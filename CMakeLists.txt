@@ -246,6 +246,7 @@ option(BUILD_HTTPFS_EXTENSION "Build the HTTP File System extension." FALSE)
 option(BUILD_VISUALIZER_EXTENSION "Build the profiler-output visualizer extension." FALSE)
 option(BUILD_JSON_EXTENSION "Build the JSON extension." FALSE)
 option(BUILD_EXCEL_EXTENSION "Build the excel extension." FALSE)
+option(BUILD_GEO_EXTENSION "Build the geo extension." FALSE)
 option(BUILD_BENCHMARKS "Enable building of the benchmark suite." FALSE)
 option(BUILD_SQLSMITH_EXTENSION "Enable building of the SQLSmith extension." FALSE)
 option(BUILD_TPCE "Enable building of the TPC-E tool." FALSE)
@@ -298,6 +299,10 @@ if(BUILD_PYTHON)
   set(BUILD_TPCDS_EXTENSION TRUE)
   set(BUILD_FTS_EXTENSION TRUE)
   set(BUILD_EXCEL_EXTENSION TRUE)
+endif()
+
+if(BUILD_GEO)
+  set(BUILD_GEO_EXTENSION TRUE)
 endif()
 
 if(BUILD_SQLSMITH)
@@ -544,6 +549,11 @@ function(add_extension_definitions)
     add_definitions(-DBUILD_EXCEL_EXTENSION=${BUILD_EXCEL_EXTENSION})
   endif()
 
+  if(${BUILD_GEO_EXTENSION})
+    include_directories(${PROJECT_SOURCE_DIR}/extension/geo/include)
+    add_definitions(-DBUILD_GEO_EXTENSION=${BUILD_GEO_EXTENSION})
+  endif()
+
   if(${BUILD_SQLSMITH_EXTENSION})
     include_directories(${PROJECT_SOURCE_DIR}/extension/sqlsmith/include)
     add_definitions(-DBUILD_SQLSMITH_EXTENSION=${BUILD_SQLSMITH_EXTENSION})
@@ -589,6 +599,10 @@ function(add_extension_dependencies LIBRARY)
 
   if(${BUILD_EXCEL_EXTENSION})
     add_dependencies(${LIBRARY} excel_extension)
+  endif()
+
+  if(${BUILD_GEO_EXTENSION})
+    add_dependencies(${LIBRARY} geo_extension)
   endif()
 
   if(${BUILD_SQLSMITH_EXTENSION})
@@ -641,6 +655,10 @@ function(link_extension_libraries LIBRARY)
 
   if(${BUILD_EXCEL_EXTENSION})
     target_link_libraries(${LIBRARY} excel_extension)
+  endif()
+
+  if(${BUILD_GEO_EXTENSION})
+    target_link_libraries(${LIBRARY} geo_extension)
   endif()
 
   if(${BUILD_SQLSMITH_EXTENSION})

@@ -1,0 +1,33 @@
+require geo
+
+query I
+SELECT st_point(1.0, 2.0);
+----
+{'x': 1.0, 'y': 2.0}
+
+query I
+SELECT st_geohash(st_point(1.0, 2.0), 5);
+----
+s02eq
+
+
+query I
+SELECT st_geohash(st_point(4.9582, 52.3563), 5);
+----
+u179b
+
+
+query I
+SELECT st_geohash(st_point(4.9582, 52.3563), 9);
+----
+u179bg4mw
+
+
+query I
+SELECT st_makeline(points) 
+FROM (
+    VALUES 
+        ([st_point(1.0, 2.0), st_point(3.0, 4.0)]),
+        ([st_point(1.0, 1.0), st_point(2.0, 2.0)]) 
+) AS rows(points);
+----

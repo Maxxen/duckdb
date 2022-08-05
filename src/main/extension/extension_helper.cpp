@@ -69,6 +69,11 @@
 #include "excel-extension.hpp"
 #endif
 
+#if defined(BUILD_GEO_EXTENSION) && !defined(DISABLE_BUILTIN_EXTENSIONS)
+#include "geo-extension.hpp"
+#endif
+
+
 #if defined(BUILD_SQLSMITH_EXTENSION) && !defined(DISABLE_BUILTIN_EXTENSIONS)
 #include "sqlsmith-extension.hpp"
 #endif
@@ -89,6 +94,7 @@ static DefaultExtension internal_extensions[] = {
     {"json", "Adds support for JSON operations", JSON_STATICALLY_LOADED},
     {"sqlite_scanner", "Adds support for reading SQLite database files", false},
     {"postgres_scanner", "Adds support for reading from a Postgres database", false},
+	{"geo", "Geo extensions", true},
     {nullptr, nullptr, false}};
 
 idx_t ExtensionHelper::DefaultExtensionCount() {
@@ -204,6 +210,13 @@ ExtensionLoadResult ExtensionHelper::LoadExtensionInternal(DuckDB &db, const std
 		db.LoadExtension<EXCELExtension>();
 #else
 		// excel extension required but not build: skip this test
+		return ExtensionLoadResult::NOT_LOADED;
+#endif
+	} else if (extension == "geo") {
+#if defined(BUILD_GEO_EXTENSION) && !defined(DISABLE_BUILTIN_EXTENSIONS)
+		db.LoadExtension<GeoExtension>();
+#else
+		// geo extension required but not build: skip this test
 		return ExtensionLoadResult::NOT_LOADED;
 #endif
 	} else if (extension == "sqlsmith") {

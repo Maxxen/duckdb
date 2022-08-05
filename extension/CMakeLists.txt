@@ -34,6 +34,10 @@ if(${BUILD_EXCEL_EXTENSION})
   add_subdirectory(excel)
 endif()
 
+if(${BUILD_GEO_EXTENSION})
+  add_subdirectory(geo)
+endif()
+
 if(${BUILD_SUBSTRAIT_EXTENSION})
   add_subdirectory(substrait)
 endif()
