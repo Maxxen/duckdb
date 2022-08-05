@@ -44,6 +44,7 @@ static void STMakeLineFunction(DataChunk &args, ExpressionState &state, Vector &
 
     auto points_count = ListVector::GetListSize(args.data[0]);
     ListVector::Reserve(*result_fields[1], points_count);
+    ListVector::SetListSize(*result_fields[1], points_count);
     
     auto result_points_entries = ListVector::GetData(*result_fields[1]);
     for(idx_t i = 0; i < points_count; i++){
@@ -54,25 +55,6 @@ static void STMakeLineFunction(DataChunk &args, ExpressionState &state, Vector &
 
     result_points_fields[0]->Reinterpret(*input_points_fields[0]);
     result_points_fields[1]->Reinterpret(*input_points_fields[1]);
-
-    //result_points_fields[0]->Reference(*input_points_fields[0]);
-    //result_points_fields[1]->Reference(*input_points_fields[1]);
-
-
-    /*
-    for(idx_t i = 0; i < args.size(); i++) {
-        auto entry = list_entries[i];
-        auto sum = 0.0;
-        for(idx_t point_idx = 0; point_idx < entry.length; point_idx++) {
-            auto x = x_data[entry.offset + point_idx];
-            auto y = y_data[entry.offset + point_idx];
-            
-            sum += x * x + y * y;
-        }
-
-        result_x_vector[i] = sum;
-    }
-    */
 } 
 
 // TODO: Handle invalid precision inputs or error instead of silently clamping
