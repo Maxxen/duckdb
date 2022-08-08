@@ -275,6 +275,7 @@ static bool TemplatedOptimumValue(Vector &left, idx_t lidx, idx_t lcount, Vector
 	case PhysicalType::LIST:
 		return TemplatedOptimumList<OP>(left, lidx, lcount, right, ridx, rcount);
 	case PhysicalType::MAP:
+	case PhysicalType::UNION:
 	case PhysicalType::STRUCT:
 		return TemplatedOptimumStruct<OP>(left, lidx, lcount, right, ridx, rcount);
 	default:
@@ -544,7 +545,7 @@ static void AddMinMaxOperator(AggregateFunctionSet &set) {
 			set.AddFunction(AggregateFunction({type}, type, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 			                                  BindDecimalMinMax<OP>));
 		} else if (type.id() == LogicalTypeId::LIST || type.id() == LogicalTypeId::MAP ||
-		           type.id() == LogicalTypeId::STRUCT) {
+		           type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::UNION) {
 			set.AddFunction(GetMinMaxFunction<OP_VECTOR, VectorMinMaxState>(type));
 
 		} else {

@@ -1,0 +1,3 @@
+
+statement ok
+CREATE TABLE tbl(u UNION(i INT, v VARCHAR));

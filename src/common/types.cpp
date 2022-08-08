@@ -106,6 +106,7 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::INTERVAL:
 		return PhysicalType::INTERVAL;
 	case LogicalTypeId::MAP:
+	case LogicalTypeId::UNION:
 	case LogicalTypeId::STRUCT:
 		return PhysicalType::STRUCT;
 	case LogicalTypeId::LIST:
@@ -207,7 +208,7 @@ const vector<LogicalType> LogicalType::AllTypes() {
 	    LogicalType::HUGEINT,  LogicalTypeId::DECIMAL, LogicalType::UTINYINT,     LogicalType::USMALLINT,
 	    LogicalType::UINTEGER, LogicalType::UBIGINT,   LogicalType::TIME,         LogicalTypeId::LIST,
 	    LogicalTypeId::STRUCT, LogicalType::TIME_TZ,   LogicalType::TIMESTAMP_TZ, LogicalTypeId::MAP,
-	    LogicalType::UUID,     LogicalType::JSON};
+	    LogicalType::UUID,     LogicalType::JSON, 	   LogicalTypeId::UNION};
 	return types;
 }
 
@@ -254,6 +255,8 @@ string TypeIdToString(PhysicalType type) {
 		return "BIT";
 	case PhysicalType::MAP:
 		return "MAP";
+	case PhysicalType::UNION:
+		return "UNION";
 	case PhysicalType::UNKNOWN:
 		return "UNKNOWN";
 	}
@@ -383,6 +386,8 @@ string LogicalTypeIdToString(LogicalTypeId id) {
 		return "LIST";
 	case LogicalTypeId::MAP:
 		return "MAP";
+	case LogicalTypeId::UNION:
+		return "UNION";
 	case LogicalTypeId::POINTER:
 		return "POINTER";
 	case LogicalTypeId::TABLE:
@@ -445,6 +450,24 @@ string LogicalType::ToString() const {
 		}
 		return "MAP(" + ListType::GetChildType(child_types[0].second).ToString() + ", " +
 		       ListType::GetChildType(child_types[1].second).ToString() + ")";
+	}
+	case LogicalTypeId::UNION: {
+		if (!type_info_) {
+			return "UNION";
+		}
+		auto &child_types = StructType::GetChildTypes(*this);
+		if (child_types.empty()) {
+			return "UNION(?)";
+		}
+		string ret = "UNION(";
+		for (size_t i = 0; i < child_types.size(); i++) {
+			ret += child_types[i].first + " " + child_types[i].second.ToString();
+			if (i < child_types.size() - 1) {
+				ret += ", ";
+			}
+		}
+		ret += ")";
+		return ret;
 	}
 	case LogicalTypeId::DECIMAL: {
 		if (!type_info_) {
@@ -1163,6 +1186,15 @@ const LogicalType &MapType::ValueType(const LogicalType &type) {
 	D_ASSERT(type.id() == LogicalTypeId::MAP);
 	return ListType::GetChildType(StructType::GetChildTypes(type)[1].second);
 }
+
+//===--------------------------------------------------------------------===//
+// Union Type
+//===--------------------------------------------------------------------===//
+LogicalType LogicalType::UNION(child_list_t<LogicalType> children) {
+	auto info = make_shared<StructTypeInfo>(move(children));
+	return LogicalType(LogicalTypeId::UNION, move(info));
+}
+
 
 //===--------------------------------------------------------------------===//
 // User Type
