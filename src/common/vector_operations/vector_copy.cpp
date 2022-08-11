@@ -232,6 +232,20 @@ void VectorOperations::Copy(const Vector &source_p, Vector &target, const Select
 		}
 		break;
 	}
+	case PhysicalType::UNION: {
+		D_ASSERT(target.GetType().InternalType() == PhysicalType::UNION);
+		
+		// TODO
+		auto &source_children = StructVector::GetEntries(*source);
+		auto &target_children = StructVector::GetEntries(target);
+		D_ASSERT(source_children.size() == target_children.size());
+		for (idx_t i = 0; i < source_children.size(); i++) {
+			VectorOperations::Copy(*source_children[i], *target_children[i], sel_p, source_count, source_offset,
+			                       target_offset);
+		}
+		break;
+
+	}
 	default:
 		throw NotImplementedException("Unimplemented type '%s' for copy!",
 		                              TypeIdToString(source->GetType().InternalType()));

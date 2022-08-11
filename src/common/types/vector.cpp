@@ -1393,6 +1393,19 @@ void ListVector::Reserve(Vector &vector, idx_t required_capacity) {
 	child_buffer.Reserve(required_capacity);
 }
 
+// Union Vector
+
+const uint8_t* UnionVector::GetTags(const Vector &vector){
+	D_ASSERT(vector.GetType().id() == LogicalTypeId::UNION);
+	D_ASSERT(vector.GetVectorType() == VectorType::FLAT_VECTOR ||
+			vector.GetVectorType() == VectorType::CONSTANT_VECTOR);
+	
+	return FlatVector::GetData<uint8_t>(vector);
+}
+
+//
+
+
 template <class T>
 void TemplatedSearchInMap(Vector &list, T key, vector<idx_t> &offsets, bool is_key_null, idx_t offset, idx_t length) {
 	auto &list_vector = ListVector::GetEntry(list);

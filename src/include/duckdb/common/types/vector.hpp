@@ -359,6 +359,16 @@ struct StructVector {
 	DUCKDB_API static vector<unique_ptr<Vector>> &GetEntries(Vector &vector);
 };
 
+struct UnionVector {
+	static inline union_entry_t *GetData(Vector &v) {
+		if (v.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+			auto &child = DictionaryVector::Child(v);
+			return GetData(child);
+		}
+		return FlatVector::GetData<union_entry_t>(v);
+	}
+};
+
 struct SequenceVector {
 	static void GetSequence(const Vector &vector, int64_t &start, int64_t &increment) {
 		D_ASSERT(vector.GetVectorType() == VectorType::SEQUENCE_VECTOR);

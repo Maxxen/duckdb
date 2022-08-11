@@ -164,6 +164,14 @@ static bool NumericCastSwitch(Vector &source, Vector &result, idx_t count, strin
 		VectorStringCast<SRC, duckdb::StringCast>(source, result, count);
 		return true;
 	}
+	case LogicalTypeId::UNION: {
+		if(UnionType::HasChildType(result.GetType(), source.GetType())){
+			// TODO: actually convert data
+			
+			return true;
+		}
+		throw TypeMismatchException(source.GetType(), result.GetType(), "Cannot cast UNIONs of different size");
+	}
 	default:
 		return TryVectorNullCast(source, result, count, error_message);
 	}
@@ -610,6 +618,28 @@ static bool ListCastSwitch(Vector &source, Vector &result, idx_t count, string *
 	}
 }
 
+static bool UnionCastSwitch(Vector &source, Vector &result, idx_t count, string *error_message) {
+	if(result.GetType().id() == LogicalTypeId::UNION) {	
+		auto &source_child_types = UnionType::GetChildTypes(source.GetType());
+		auto &result_child_types = UnionType::GetChildTypes(result.GetType());
+		if (source_child_types.size() != result_child_types.size()) {
+			throw TypeMismatchException(source.GetType(), result.GetType(), "Cannot cast UNIONs of different size");
+		}
+
+		// TODO: handle casts
+		ConstantVector::SetNull(result, ConstantVector::IsNull(source));
+		return true;
+	}
+	// TODO: we would like to be able to cast a union to a child type of the union and null the mismatches
+	// I.E. UNION(A,B)... -> B = null, B, null, null ...
+
+	// TODO: it would also be cool to cast a union into a struct and null the missing members as well.
+	else {
+		return ValueStringCastSwitch(source, result, count, error_message);
+	}
+	
+}
+
 template <class SRC_TYPE, class RES_TYPE>
 bool FillEnum(Vector &source, Vector &result, idx_t count, string *error_message) {
 	bool all_converted = true;
@@ -867,6 +897,9 @@ bool VectorOperations::TryCast(Vector &source, Vector &result, idx_t count, stri
 		return StructCastSwitch(source, result, count, error_message);
 	case LogicalTypeId::LIST:
 		return ListCastSwitch(source, result, count, error_message);
+	case LogicalTypeId::UNION:{
+		return UnionCastSwitch(source, result, count, error_message);
+	}
 	case LogicalTypeId::ENUM:
 		return EnumCastSwitch(source, result, count, error_message, strict);
 	case LogicalTypeId::AGGREGATE_STATE:

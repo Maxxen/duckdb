@@ -208,6 +208,17 @@ struct list_entry_t {
 	uint64_t length;
 };
 
+using union_tag_t = uint8_t;
+struct union_entry_t {
+	union_entry_t() = default;
+	union_entry_t(union_tag_t tag, uint64_t offset) : tag(tag), offset(offset) {
+	}
+
+	union_tag_t tag;
+	uint64_t offset;
+};
+
+
 //===--------------------------------------------------------------------===//
 // Internal Types
 //===--------------------------------------------------------------------===//
@@ -499,10 +510,10 @@ public:
 	// explicitly allowing these functions to be capitalized to be in-line with the remaining functions
 	DUCKDB_API static LogicalType DECIMAL(int width, int scale);                 // NOLINT
 	DUCKDB_API static LogicalType VARCHAR_COLLATION(string collation);           // NOLINT
-	DUCKDB_API static LogicalType LIST( LogicalType child);                       // NOLINT
-	DUCKDB_API static LogicalType STRUCT( child_list_t<LogicalType> children);    // NOLINT
+	DUCKDB_API static LogicalType LIST(LogicalType child);                       // NOLINT
+	DUCKDB_API static LogicalType STRUCT(child_list_t<LogicalType> children);    // NOLINT
 	DUCKDB_API static LogicalType AGGREGATE_STATE(aggregate_state_t state_type);    // NOLINT
-	DUCKDB_API static LogicalType MAP( child_list_t<LogicalType> children);       // NOLINT
+	DUCKDB_API static LogicalType MAP(child_list_t<LogicalType> children);       // NOLINT
 	DUCKDB_API static LogicalType MAP(LogicalType key, LogicalType value); // NOLINT
 	DUCKDB_API static LogicalType UNION(child_list_t<LogicalType> children); // NOLINT
 	DUCKDB_API static LogicalType ENUM(const string &enum_name, Vector &ordered_data, idx_t size); // NOLINT
@@ -555,6 +566,15 @@ struct StructType {
 struct MapType {
 	DUCKDB_API static const LogicalType &KeyType(const LogicalType &type);
 	DUCKDB_API static const LogicalType &ValueType(const LogicalType &type);
+};
+
+struct UnionType {
+	DUCKDB_API static const child_list_t<LogicalType> &GetChildTypes(const LogicalType &type);
+	DUCKDB_API static const LogicalType &GetChildType(const LogicalType &type, idx_t index);
+	DUCKDB_API static const string &GetChildName(const LogicalType &type, idx_t index);
+	DUCKDB_API static idx_t GetChildCount(const LogicalType &type);
+	DUCKDB_API static bool HasChildType(const LogicalType &type, const LogicalType &child);
+	DUCKDB_API static bool IsSingleton(const LogicalType &type);
 };
 
 struct AggregateStateType {

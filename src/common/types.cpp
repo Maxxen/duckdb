@@ -106,9 +106,10 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::INTERVAL:
 		return PhysicalType::INTERVAL;
 	case LogicalTypeId::MAP:
-	case LogicalTypeId::UNION:
 	case LogicalTypeId::STRUCT:
 		return PhysicalType::STRUCT;
+	case LogicalTypeId::UNION:
+		return PhysicalType::UNION;
 	case LogicalTypeId::LIST:
 		return PhysicalType::LIST;
 	case LogicalTypeId::POINTER:
@@ -300,6 +301,8 @@ idx_t GetTypeIdSize(PhysicalType type) {
 		return 0; // no own payload
 	case PhysicalType::LIST:
 		return sizeof(list_entry_t); // offset + len
+	case PhysicalType::UNION:
+		return sizeof(uint8_t); // TODO: Figure out the maximum size of the union by checking child types. Or just store the tag?
 	default:
 		throw InternalException("Invalid PhysicalType for GetTypeIdSize");
 	}
@@ -455,7 +458,7 @@ string LogicalType::ToString() const {
 		if (!type_info_) {
 			return "UNION";
 		}
-		auto &child_types = StructType::GetChildTypes(*this);
+		auto &child_types = UnionType::GetChildTypes(*this);
 		if (child_types.empty()) {
 			return "UNION(?)";
 		}
@@ -805,7 +808,8 @@ enum class ExtraTypeInfoType : uint8_t {
 	STRUCT_TYPE_INFO = 5,
 	ENUM_TYPE_INFO = 6,
 	USER_TYPE_INFO = 7,
-	AGGREGATE_STATE_TYPE_INFO = 8
+	AGGREGATE_STATE_TYPE_INFO = 8,
+	UNION_TYPE_INFO = 9
 };
 
 struct ExtraTypeInfo {
@@ -1190,9 +1194,85 @@ const LogicalType &MapType::ValueType(const LogicalType &type) {
 //===--------------------------------------------------------------------===//
 // Union Type
 //===--------------------------------------------------------------------===//
+
+// Type info
+struct UnionTypeInfo : public ExtraTypeInfo {
+	explicit UnionTypeInfo(child_list_t<LogicalType> child_types_p)
+	    : ExtraTypeInfo(ExtraTypeInfoType::UNION_TYPE_INFO), child_types(move(child_types_p)) {
+	}
+
+	child_list_t<LogicalType> child_types;
+
+public:
+	void Serialize(FieldWriter &writer) const override {
+		writer.WriteField<uint32_t>(child_types.size());
+		auto &serializer = writer.GetSerializer();
+		for (idx_t i = 0; i < child_types.size(); i++) {
+			serializer.WriteString(child_types[i].first);
+			child_types[i].second.Serialize(serializer);
+		}
+	}
+
+	static shared_ptr<ExtraTypeInfo> Deserialize(FieldReader &reader) {
+		child_list_t<LogicalType> child_list;
+		auto child_types_size = reader.ReadRequired<uint32_t>();
+		auto &source = reader.GetSource();
+		for (uint32_t i = 0; i < child_types_size; i++) {
+			auto name = source.Read<string>();
+			auto type = LogicalType::Deserialize(source);
+			child_list.push_back(make_pair(move(name), move(type)));
+		}
+		return make_shared<UnionTypeInfo>(move(child_list));
+	}
+
+protected:
+	bool EqualsInternal(ExtraTypeInfo *other_p) const override {
+		auto &other = (UnionTypeInfo &)*other_p;
+		return child_types == other.child_types;
+	}
+};
+
+// Union
 LogicalType LogicalType::UNION(child_list_t<LogicalType> children) {
-	auto info = make_shared<StructTypeInfo>(move(children));
+	auto info = make_shared<UnionTypeInfo>(move(children));
 	return LogicalType(LogicalTypeId::UNION, move(info));
+}
+
+const child_list_t<LogicalType> &UnionType::GetChildTypes(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::UNION);
+	auto info = type.AuxInfo();
+	D_ASSERT(info);
+	return ((UnionTypeInfo &)*info).child_types;
+}
+
+const LogicalType &UnionType::GetChildType(const LogicalType &type, idx_t index) {
+	auto &child_types = UnionType::GetChildTypes(type);
+	D_ASSERT(index < child_types.size());
+	return child_types[index].second;
+}
+
+const string &UnionType::GetChildName(const LogicalType &type, idx_t index) {
+	auto &child_types = UnionType::GetChildTypes(type);
+	D_ASSERT(index < child_types.size());
+	return child_types[index].first;
+}
+
+idx_t UnionType::GetChildCount(const LogicalType &type) {
+	return UnionType::GetChildTypes(type).size();
+}
+
+bool UnionType::HasChildType (const LogicalType &type, const LogicalType &child_type) {
+	auto &child_types = UnionType::GetChildTypes(type);
+	for (idx_t i = 0; i < child_types.size(); i++) {
+		if (child_types[i].second == child_type) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UnionType::IsSingleton(const LogicalType &type) {
+	return UnionType::GetChildTypes(type).size() == 1;
 }
 
 

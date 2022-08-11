@@ -99,7 +99,7 @@ LogicalType Transformer::TransformTypeName(duckdb_libpgquery::PGTypeName *type_n
 			children.push_back(make_pair(entry_name, entry_type));
 		}
 		D_ASSERT(!children.empty());
-		result_type = LogicalType::STRUCT(move(children));
+		result_type = LogicalType::UNION(move(children));
 	} else {
 		int8_t width, scale;
 		if (base_type == LogicalTypeId::DECIMAL) {
