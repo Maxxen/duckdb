@@ -10,52 +10,21 @@
 #include "duckdb/catalog/catalog.hpp"
 
 #include "geo-extension.hpp"
-#include "geo_functions.cpp"
+#include "geo_common.hpp"
+#include "geo_types.hpp"
+#include "geo_functions.hpp"
+
 
 namespace duckdb {
-
 
 void GeoExtension::Load(DuckDB &db){
     Connection con(db);
     con.BeginTransaction();
-
-    auto &catalog = Catalog::GetCatalog(*con.context);
-
-    ScalarFunction st_point(
-        "st_point", 
-        {LogicalType::DOUBLE, LogicalType::DOUBLE}, 
-        LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}}), 
-        STPointFunction
-    );
-
-    CreateScalarFunctionInfo st_point_info(move(st_point));
-    catalog.CreateFunction(*con.context, &st_point_info);
-
-    ScalarFunction st_geohash(
-        "st_geohash",
-        {LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}}), LogicalType::INTEGER}, 
-        LogicalType::VARCHAR,
-        STGeoHashFunction
-    );
-    CreateScalarFunctionInfo st_geohash_info(move(st_geohash));
-    catalog.CreateFunction(*con.context, &st_geohash_info);
-
-    ScalarFunction st_makeline(
-        "st_makeline",
-        {LogicalType::LIST(LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}}))},
-        LogicalType::STRUCT({
-            { "kind", LogicalType::VARCHAR },
-            { "points", LogicalType::LIST(
-                LogicalType::STRUCT({
-                    {"x", LogicalType::DOUBLE}, 
-                    {"y", LogicalType::DOUBLE}}
-                ))
-            }
-        }),
-        STMakeLineFunction
-    );
-    CreateScalarFunctionInfo st_makeline_info(move(st_makeline));
-    catalog.CreateFunction(*con.context, &st_makeline_info);
+    
+    geo::RegisterMakeLineFunctions(*con.context);
+    geo::RegisterPointFunctions(*con.context);
+    geo::RegisterGeohashFunctions(*con.context);
+    geo::RegisterGeometryTypes(*con.context);
 
     con.Commit();
 }
