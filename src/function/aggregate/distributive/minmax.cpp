@@ -544,7 +544,7 @@ static void AddMinMaxOperator(AggregateFunctionSet &set) {
 			set.AddFunction(AggregateFunction({type}, type, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 			                                  BindDecimalMinMax<OP>));
 		} else if (type.id() == LogicalTypeId::LIST || type.id() == LogicalTypeId::MAP ||
-		           type.id() == LogicalTypeId::STRUCT) {
+		           type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::UNION) {
 			set.AddFunction(GetMinMaxFunction<OP_VECTOR, VectorMinMaxState>(type));
 
 		} else {

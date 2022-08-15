@@ -106,6 +106,7 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::INTERVAL:
 		return PhysicalType::INTERVAL;
 	case LogicalTypeId::MAP:
+	case LogicalTypeId::UNION:
 	case LogicalTypeId::STRUCT:
 		return PhysicalType::STRUCT;
 	case LogicalTypeId::LIST:
@@ -207,7 +208,7 @@ const vector<LogicalType> LogicalType::AllTypes() {
 	    LogicalType::HUGEINT,  LogicalTypeId::DECIMAL, LogicalType::UTINYINT,     LogicalType::USMALLINT,
 	    LogicalType::UINTEGER, LogicalType::UBIGINT,   LogicalType::TIME,         LogicalTypeId::LIST,
 	    LogicalTypeId::STRUCT, LogicalType::TIME_TZ,   LogicalType::TIMESTAMP_TZ, LogicalTypeId::MAP,
-	    LogicalType::UUID,     LogicalType::JSON};
+	    LogicalType::UUID,     LogicalType::JSON, 	   LogicalTypeId::UNION};
 	return types;
 }
 
@@ -383,6 +384,8 @@ string LogicalTypeIdToString(LogicalTypeId id) {
 		return "LIST";
 	case LogicalTypeId::MAP:
 		return "MAP";
+	case LogicalTypeId::UNION:
+		return "UNION";
 	case LogicalTypeId::POINTER:
 		return "POINTER";
 	case LogicalTypeId::TABLE:
@@ -445,6 +448,21 @@ string LogicalType::ToString() const {
 		}
 		return "MAP(" + ListType::GetChildType(child_types[0].second).ToString() + ", " +
 		       ListType::GetChildType(child_types[1].second).ToString() + ")";
+	}
+	case LogicalTypeId::UNION: {
+		if (!type_info_) {
+			return "UNION";
+		}
+		auto &child_types = StructType::GetChildTypes(*this);
+		string ret = "UNION(";
+		for (size_t i = 0; i < child_types.size(); i++) {
+			ret += child_types[i].first + " " + child_types[i].second.ToString();
+			if (i < child_types.size() - 1) {
+				ret += ", ";
+			}
+		}
+		ret += ")";
+		return ret;
 	}
 	case LogicalTypeId::DECIMAL: {
 		if (!type_info_) {
@@ -1114,7 +1132,7 @@ const string AggregateStateType::GetTypeName(const LogicalType &type) {
 }
 
 const child_list_t<LogicalType> &StructType::GetChildTypes(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::MAP);
+	D_ASSERT(type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::MAP || type.id() == LogicalTypeId::UNION);
 	auto info = type.AuxInfo();
 	D_ASSERT(info);
 	return ((StructTypeInfo &)*info).child_types;
@@ -1169,6 +1187,27 @@ const LogicalType &MapType::KeyType(const LogicalType &type) {
 const LogicalType &MapType::ValueType(const LogicalType &type) {
 	D_ASSERT(type.id() == LogicalTypeId::MAP);
 	return ListType::GetChildType(StructType::GetChildTypes(type)[1].second);
+}
+
+//===--------------------------------------------------------------------===//
+// Union Type
+//===--------------------------------------------------------------------===//
+
+LogicalType LogicalType::UNION(child_list_t<LogicalType> children) {
+	auto info = make_shared<StructTypeInfo>(move(children));
+	return LogicalType(LogicalTypeId::UNION, move(info));
+}
+
+const child_list_t<LogicalType> &UnionType::GetChildrenOfType(const LogicalType &type, const LogicalType &child_type) {
+	D_ASSERT(type.id() == LogicalTypeId::UNION);
+	auto &child_types = StructType::GetChildTypes(type);
+	child_list_t<LogicalType> result;
+	for (auto &child : child_types) {
+		if (child.second == child_type) {
+			result.push_back(child);
+		}
+	}
+	return result;
 }
 
 //===--------------------------------------------------------------------===//
