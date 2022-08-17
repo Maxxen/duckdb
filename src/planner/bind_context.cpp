@@ -371,7 +371,7 @@ void BindContext::GenerateAllColumnExpressions(StarExpression &expr,
 		if (is_struct_ref) {
 			auto col_idx = binding->GetBindingIndex(expr.relation_name);
 			auto col_type = binding->types[col_idx];
-			if (col_type.id() != LogicalTypeId::STRUCT) {
+			if (col_type.id() != LogicalTypeId::STRUCT && col_type.id() != LogicalTypeId::UNION) {
 				throw BinderException(StringUtil::Format(
 				    "Cannot extract field from expression \"%s\" because it is not a struct", expr.ToString()));
 			}

@@ -1198,7 +1198,7 @@ LogicalType LogicalType::UNION(child_list_t<LogicalType> children) {
 	return LogicalType(LogicalTypeId::UNION, move(info));
 }
 
-const child_list_t<LogicalType> &UnionType::GetChildrenOfType(const LogicalType &type, const LogicalType &child_type) {
+const child_list_t<LogicalType> UnionType::GetChildrenOfType(const LogicalType &type, const LogicalType &child_type) {
 	D_ASSERT(type.id() == LogicalTypeId::UNION);
 	auto &child_types = StructType::GetChildTypes(type);
 	child_list_t<LogicalType> result;
@@ -1208,6 +1208,18 @@ const child_list_t<LogicalType> &UnionType::GetChildrenOfType(const LogicalType 
 		}
 	}
 	return result;
+}
+
+idx_t UnionType::GetIndexOfChild(const LogicalType &type, const LogicalType &child_type) {
+	D_ASSERT(type.id() == LogicalTypeId::UNION);
+	auto &child_types = StructType::GetChildTypes(type);
+	for (idx_t i = 0; i < child_types.size(); i++) {
+		if (child_types[i].second == child_type) {
+			return i;
+		}
+	}
+	D_ASSERT(false);
+	return -1;
 }
 
 //===--------------------------------------------------------------------===//

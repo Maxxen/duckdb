@@ -14,5 +14,35 @@ INSERT INTO tbl VALUES ('hello');
 query I 
 SELECT * FROM tbl;
 ----
-1   1
-2   'hello' 
+1
+hello
+
+query I
+SELECT u.i FROM tbl;
+----
+1
+NULL
+
+query I
+SELECT u.v FROM tbl;
+----
+NULL
+hello
+
+statement ok
+CREATE TABlE tbl2(u UNION(s STRUCT(a INT, b INT), i INT))
+
+statement ok
+INSERT INTO tbl2 VALUES (1), ({a: 2, b: 3})
+
+query I
+SELECT * from tbl2;
+----
+1
+{'a': 2, 'b': 3}
+
+query I
+SELECT u.s.b FROM tbl2;
+----
+NULL
+3

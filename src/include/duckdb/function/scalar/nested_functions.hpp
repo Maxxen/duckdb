@@ -127,7 +127,8 @@ struct CardinalityFun {
 };
 
 struct StructExtractFun {
-	static ScalarFunction GetFunction();
+	static ScalarFunction GetStructFunction();
+	static ScalarFunction GetUnionFunction();
 	static void RegisterFunction(BuiltinFunctions &set);
 };
 

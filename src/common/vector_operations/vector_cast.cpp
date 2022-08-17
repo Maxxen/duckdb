@@ -12,6 +12,43 @@
 #include "duckdb/common/limits.hpp"
 namespace duckdb {
 
+static bool ToUnionCast(Vector &source, Vector &result, idx_t count, string *error_message) {
+	auto &candidates = UnionType::GetChildrenOfType(result.GetType(), source.GetType());
+
+	if(candidates.size() == 0) {
+		throw TypeMismatchException(source.GetType(), result.GetType(), "Cannot cast to UNION");
+	}
+	else if(candidates.size() == 1){
+		// find the index of the only candidate child type
+		auto candidate_type = candidates[0].second;
+
+		auto &child_vectors = StructVector::GetEntries(result);
+
+		for(idx_t child_idx = 0; child_idx < child_vectors.size(); child_idx++) {
+			auto &child = child_vectors[child_idx];
+			
+			if(child->GetType() == candidate_type) {
+				child->ReferenceAndSetType(source);
+			}
+			else {
+				// TODO: We need to OR with the inverted validity mask of the selected candidate child
+				// This probably wont work..?
+				for(idx_t j = 0; j < count; j++) {
+					FlatVector::SetNull(*child, j, true);
+				}
+			}
+		}
+
+		return true;
+	}
+	else {
+		// We have multiple union members of the same type.
+		// TODO: Allow users to disambiguate by passing a struct as a key and value pair
+		throw TypeMismatchException(source.GetType(), result.GetType(), "More than one candidate for UNION cast");
+	}
+}
+
+
 template <class OP>
 struct VectorStringCastOperator {
 	template <class INPUT_TYPE, class RESULT_TYPE>
@@ -163,6 +200,9 @@ static bool NumericCastSwitch(Vector &source, Vector &result, idx_t count, strin
 	case LogicalTypeId::VARCHAR: {
 		VectorStringCast<SRC, duckdb::StringCast>(source, result, count);
 		return true;
+	}
+	case LogicalTypeId::UNION: {
+		return ToUnionCast(source, result, count, error_message);
 	}
 	default:
 		return TryVectorNullCast(source, result, count, error_message);
@@ -322,6 +362,9 @@ static bool StringCastSwitch(Vector &source, Vector &result, idx_t count, bool s
 	case LogicalTypeId::JSON:
 		result.Reinterpret(source);
 		return true;
+	case LogicalTypeId::UNION: {
+		return ToUnionCast(source, result, count, error_message);
+	}
 	default:
 		return VectorStringCastNumericSwitch(source, result, count, strict, error_message);
 	}
@@ -605,6 +648,9 @@ static bool ListCastSwitch(Vector &source, Vector &result, idx_t count, string *
 		D_ASSERT(ListVector::GetListSize(result) == source_size);
 		return true;
 	}
+	case LogicalTypeId::UNION: {
+		return ToUnionCast(source, result, count, error_message);
+	}
 	default:
 		return ValueStringCastSwitch(source, result, count, error_message);
 	}
@@ -796,6 +842,9 @@ static bool StructCastSwitch(Vector &source, Vector &result, idx_t count, string
 			result.SetValue(i, Value(str_val));
 		}
 		return true;
+	case LogicalTypeId::UNION: {
+		return ToUnionCast(source, result, count, error_message);
+	}
 	default:
 		return TryVectorNullCast(source, result, count, error_message);
 	}

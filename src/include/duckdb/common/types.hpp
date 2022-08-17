@@ -559,7 +559,9 @@ struct MapType {
 };
 
 struct UnionType {
-	DUCKDB_API static const child_list_t<LogicalType> &GetChildrenOfType(const LogicalType &type, const LogicalType &child_type);
+	DUCKDB_API static const child_list_t<LogicalType> GetChildrenOfType(const LogicalType &type, const LogicalType &child_type);
+	DUCKDB_API static idx_t GetIndexOfChild(const LogicalType &type, const LogicalType &child_type);
+
 };
 
 struct AggregateStateType {

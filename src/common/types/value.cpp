@@ -540,6 +540,26 @@ Value Value::MAP(Value key, Value value) {
 	return result;
 }
 
+Value Value::UNION(child_list_t<LogicalType> child_types, std::string name, Value value) {
+	Value result;
+	D_ASSERT(
+		[&]{
+			// Ensure that the supplied key-value pair is a part of the union
+			for(auto &child : child_types) {
+				if(child.first == name && child.second == value.type()) {
+					return true;
+				}
+			}
+			return false;
+		}()
+	);
+
+	result.type_ = LogicalType::UNION(move(child_types));
+	result.struct_value.push_back(move(value));
+	result.is_null = false;
+	return result;
+}
+
 Value Value::LIST(vector<Value> values) {
 	if (values.empty()) {
 		throw InternalException("Value::LIST requires a non-empty list of values. Use Value::EMPTYLIST instead.");
@@ -1374,6 +1394,9 @@ string Value::ToString() const {
 		}
 		ret += "}";
 		return ret;
+	}
+	case LogicalTypeId::UNION: {
+		return struct_value[0].ToString();
 	}
 	case LogicalTypeId::ENUM: {
 		auto &values_insert_order = EnumType::GetValuesInsertOrder(type_);

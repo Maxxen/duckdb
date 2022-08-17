@@ -95,6 +95,7 @@ BindResult ExpressionBinder::BindExpression(OperatorExpression &op, idx_t depth)
 		auto &extract_exp = (BoundExpression &)*op.children[0];
 		auto &name_exp = (BoundExpression &)*op.children[1];
 		if (extract_exp.expr->return_type.id() != LogicalTypeId::STRUCT &&
+			extract_exp.expr->return_type.id() != LogicalTypeId::UNION &&
 		    extract_exp.expr->return_type.id() != LogicalTypeId::SQLNULL) {
 			return BindResult(
 			    StringUtil::Format("Cannot extract field %s from expression \"%s\" because it is not a struct",

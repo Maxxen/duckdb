@@ -46,7 +46,10 @@ static unique_ptr<FunctionData> StructExtractBind(ClientContext &context, Scalar
 	if (arguments[0]->return_type.id() == LogicalTypeId::UNKNOWN) {
 		throw ParameterNotResolvedException();
 	}
-	D_ASSERT(LogicalTypeId::STRUCT == arguments[0]->return_type.id());
+	D_ASSERT(
+		LogicalTypeId::STRUCT == arguments[0]->return_type.id() ||
+		LogicalTypeId::UNION == arguments[0]->return_type.id()
+	);
 	auto &struct_children = StructType::GetChildTypes(arguments[0]->return_type);
 	if (struct_children.empty()) {
 		throw InternalException("Can't extract something from an empty struct");
@@ -112,15 +115,25 @@ static unique_ptr<BaseStatistics> PropagateStructExtractStats(ClientContext &con
 	return struct_stats.child_stats[info.index]->Copy();
 }
 
-ScalarFunction StructExtractFun::GetFunction() {
+ScalarFunction StructExtractFun::GetStructFunction() {
 	return ScalarFunction("struct_extract", {LogicalTypeId::STRUCT, LogicalType::VARCHAR}, LogicalType::ANY,
+	                      StructExtractFunction, StructExtractBind, nullptr, PropagateStructExtractStats);
+}
+
+ScalarFunction StructExtractFun::GetUnionFunction() {
+	return ScalarFunction("struct_extract", {LogicalTypeId::UNION, LogicalType::VARCHAR}, LogicalType::ANY,
 	                      StructExtractFunction, StructExtractBind, nullptr, PropagateStructExtractStats);
 }
 
 void StructExtractFun::RegisterFunction(BuiltinFunctions &set) {
 	// the arguments and return types are actually set in the binder function
-	auto fun = GetFunction();
-	set.AddFunction(fun);
+	auto fun1 = GetStructFunction();
+	auto fun2 = GetUnionFunction();
+
+	ScalarFunctionSet extract("struct_extract");
+	extract.AddFunction(fun1);
+	extract.AddFunction(fun2);
+	set.AddFunction(extract);
 }
 
 } // namespace duckdb

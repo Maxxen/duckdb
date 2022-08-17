@@ -239,7 +239,7 @@ void ListExtractFun::RegisterFunction(BuiltinFunctions &set) {
 	ScalarFunctionSet array_extract("array_extract");
 	array_extract.AddFunction(lfun);
 	array_extract.AddFunction(sfun);
-	array_extract.AddFunction(StructExtractFun::GetFunction());
+	array_extract.AddFunction(StructExtractFun::GetStructFunction());
 	set.AddFunction(array_extract);
 }
 

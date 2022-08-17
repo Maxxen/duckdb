@@ -556,6 +556,26 @@ Value Vector::GetValueInternal(const Vector &v_p, idx_t index_p) {
 		}
 		return Value::LIST(ListType::GetChildType(type), move(children));
 	}
+	case LogicalTypeId::UNION: {
+		// we can derive the value schema from the vector schema
+		auto &child_entries = StructVector::GetEntries(*vector);
+		child_list_t<LogicalType> children;
+
+		auto selected_name = std::string("");
+		auto selected_value = Value(std::nullptr_t());
+
+		for (idx_t child_idx = 0; child_idx < child_entries.size(); child_idx++) {
+			auto &struct_child = child_entries[child_idx];
+
+			auto member_value = struct_child->GetValue(index_p);
+			if(!member_value.IsNull()) {
+				selected_name = StructType::GetChildName(type, child_idx);
+				selected_value = member_value;
+			}
+			children.push_back(make_pair(StructType::GetChildName(type, child_idx), struct_child->GetType()));
+		}
+		return Value::UNION(move(children), move(selected_name), move(selected_value));
+	}
 	default:
 		throw InternalException("Unimplemented type for value access");
 	}
@@ -1358,7 +1378,7 @@ void StringVector::AddHeapReference(Vector &vector, Vector &other) {
 }
 
 vector<unique_ptr<Vector>> &StructVector::GetEntries(Vector &vector) {
-	D_ASSERT(vector.GetType().id() == LogicalTypeId::STRUCT || vector.GetType().id() == LogicalTypeId::MAP);
+	D_ASSERT(vector.GetType().id() == LogicalTypeId::STRUCT || vector.GetType().id() == LogicalTypeId::MAP || vector.GetType().id() == LogicalTypeId::UNION);
 	if (vector.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
 		auto &child = DictionaryVector::Child(vector);
 		return StructVector::GetEntries(child);

@@ -152,6 +152,8 @@ public:
 	DUCKDB_API static Value EMPTYLIST(LogicalType child_type);
 	//! Create a map value from a (key, value) pair
 	DUCKDB_API static Value MAP(Value key, Value value);
+	//! Create a union value from a list of alternatives
+	DUCKDB_API static Value UNION(child_list_t<LogicalType> child_types, std::string name, Value value);
 
 	//! Create a blob Value from a data pointer and a length: no bytes are interpreted
 	DUCKDB_API static Value BLOB(const_data_ptr_t data, idx_t len);
