@@ -620,7 +620,7 @@ static bool ListCastSwitch(Vector &source, Vector &result, idx_t count, string *
 	case LogicalTypeId::LIST: {
 		// only handle constant and flat vectors here for now
 		if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
-			result.SetVectorType(source.GetVectorType());
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 			ConstantVector::SetNull(result, ConstantVector::IsNull(source));
 
 			auto ldata = ConstantVector::GetData<list_entry_t>(source);
