@@ -21,3 +21,10 @@ SELECT * FROM tbl;
 ----
 1 (tag: 0)
 2.0 (tag: 1)
+
+
+query I
+SELECT u.i FROM tbl;
+----
+1
+NULL

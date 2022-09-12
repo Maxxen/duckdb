@@ -10,6 +10,7 @@ add_subdirectory(string)
 add_subdirectory(struct)
 add_subdirectory(system)
 add_subdirectory(enum)
+add_subdirectory(union)
 add_library_unity(
   duckdb_func_scalar
   OBJECT
