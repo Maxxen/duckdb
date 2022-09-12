@@ -141,8 +141,8 @@ void FixedSizeScan(ColumnSegment &segment, ColumnScanState &state, idx_t scan_co
 	auto source_data = data + start * sizeof(T);
 
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	if (std::is_same<T, list_entry_t>()) {
-		// list columns are modified in-place during the scans to correct the offsets
+	if (std::is_same<T, list_entry_t>() || std::is_same<T, union_entry_t>()) {
+		// list and union columns are modified in-place during the scans to correct the offsets
 		// so we can't do a zero-copy there
 		memcpy(FlatVector::GetData(result), source_data, scan_count * sizeof(T));
 	} else {
@@ -202,6 +202,18 @@ void AppendLoop<list_entry_t>(SegmentStatistics &stats, data_ptr_t target, idx_t
                               UnifiedVectorFormat &adata, idx_t offset, idx_t count) {
 	auto sdata = (list_entry_t *)adata.data;
 	auto tdata = (list_entry_t *)target;
+	for (idx_t i = 0; i < count; i++) {
+		auto source_idx = adata.sel->get_index(offset + i);
+		auto target_idx = target_offset + i;
+		tdata[target_idx] = sdata[source_idx];
+	}
+}
+
+template <>
+void AppendLoop<union_entry_t>(SegmentStatistics &stats, data_ptr_t target, idx_t target_offset,
+                              UnifiedVectorFormat &adata, idx_t offset, idx_t count) {
+	auto sdata = (union_entry_t *)adata.data;
+	auto tdata = (union_entry_t *)target;
 	for (idx_t i = 0; i < count; i++) {
 		auto source_idx = adata.sel->get_index(offset + i);
 		auto target_idx = target_offset + i;
@@ -272,6 +284,8 @@ CompressionFunction FixedSizeUncompressed::GetFunction(PhysicalType data_type) {
 		return FixedSizeGetFunction<interval_t>(data_type);
 	case PhysicalType::LIST:
 		return FixedSizeGetFunction<list_entry_t>(data_type);
+	case PhysicalType::UNION:
+		return FixedSizeGetFunction<union_entry_t>(data_type);
 	default:
 		throw InternalException("Unsupported type for FixedSizeUncompressed::GetFunction");
 	}

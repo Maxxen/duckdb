@@ -9,6 +9,7 @@ add_library_unity(
   segment_statistics.cpp
   string_statistics.cpp
   struct_statistics.cpp
+  union_statistics.cpp
   validity_statistics.cpp)
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_storage_statistics>

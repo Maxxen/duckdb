@@ -12,6 +12,7 @@
 #include "duckdb/storage/table/standard_column_data.hpp"
 #include "duckdb/storage/table/struct_column_data.hpp"
 #include "duckdb/storage/table/update_segment.hpp"
+#include "duckdb/storage/table/union_column_data.hpp"
 
 namespace duckdb {
 
@@ -497,7 +498,11 @@ static RET CreateColumnInternal(DataTableInfo &info, idx_t column_index, idx_t s
 		return OP::template Create<StructColumnData>(info, column_index, start_row, type, parent);
 	} else if (type.InternalType() == PhysicalType::LIST) {
 		return OP::template Create<ListColumnData>(info, column_index, start_row, type, parent);
-	} else if (type.id() == LogicalTypeId::VALIDITY) {
+	}
+	else if (type.InternalType() == PhysicalType::UNION) {
+		return OP::template Create<UnionColumnData>(info, column_index, start_row, type, parent);
+	} 
+	else if (type.id() == LogicalTypeId::VALIDITY) {
 		return OP::template Create<ValidityColumnData>(info, column_index, start_row, parent);
 	}
 	return OP::template Create<StandardColumnData>(info, column_index, start_row, type, parent);

@@ -40,9 +40,10 @@ VectorDataIndex ColumnDataCollectionSegment::AllocateVector(const LogicalType &t
 	if (prev_index.IsValid()) {
 		GetVectorData(prev_index).next_data = index;
 	}
-	if (type.InternalType() == PhysicalType::STRUCT) {
+	auto internal_type = type.InternalType();
+	if (internal_type== PhysicalType::STRUCT || internal_type == PhysicalType::UNION) {
 		// initialize the struct children
-		auto &child_types = StructType::GetChildTypes(type);
+		auto &child_types = internal_type == PhysicalType::STRUCT ? StructType::GetChildTypes(type) : UnionType::GetChildTypes(type);
 		auto base_child_index = ReserveChildren(child_types.size());
 		for (idx_t child_idx = 0; child_idx < child_types.size(); child_idx++) {
 			VectorDataIndex prev_child_index;
@@ -180,7 +181,17 @@ idx_t ColumnDataCollectionSegment::ReadVector(ChunkManagementState &state, Vecto
 				throw InternalException("Column Data Collection: mismatch in struct child sizes");
 			}
 		}
+	} else if (internal_type == PhysicalType::UNION) {
+		auto &child_vectors = UnionVector::GetEntries(result);
+		for (idx_t child_idx = 0; child_idx < child_vectors.size(); child_idx++) {
+			auto child_count =
+			    ReadVector(state, GetChildIndex(vdata.child_index, child_idx), *child_vectors[child_idx]);
+			if (child_count != count) {
+				throw InternalException("Column Data Collection: mismatch in union child sizes");
+			}
+		}
 	}
+
 	return count;
 }
 

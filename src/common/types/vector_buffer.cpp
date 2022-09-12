@@ -51,6 +51,30 @@ VectorStructBuffer::VectorStructBuffer(Vector &other, const SelectionVector &sel
 VectorStructBuffer::~VectorStructBuffer() {
 }
 
+VectorUnionBuffer::VectorUnionBuffer() : VectorBuffer(VectorBufferType::UNION_BUFFER) {
+}
+
+VectorUnionBuffer::VectorUnionBuffer(const LogicalType &type, idx_t capacity)
+	: VectorBuffer(VectorBufferType::UNION_BUFFER) {
+	auto &child_types = UnionType::GetChildTypes(type);
+	for (auto &child_type : child_types) {
+		auto vector = make_unique<Vector>(child_type.second, capacity);
+		children.push_back(move(vector));
+	}
+}
+
+VectorUnionBuffer::VectorUnionBuffer(Vector &other, const SelectionVector &sel, idx_t count)
+	: VectorBuffer(VectorBufferType::UNION_BUFFER) {
+	auto &other_vector = UnionVector::GetEntries(other);
+	for (auto &child_vector : other_vector) {
+		auto vector = make_unique<Vector>(*child_vector, sel, count);
+		children.push_back(move(vector));
+	}
+}
+
+VectorUnionBuffer::~VectorUnionBuffer() {
+}
+
 VectorListBuffer::VectorListBuffer(unique_ptr<Vector> vector, idx_t initial_capacity)
     : VectorBuffer(VectorBufferType::LIST_BUFFER), capacity(initial_capacity), child(move(vector)) {
 }

@@ -26,6 +26,7 @@ enum class VectorBufferType : uint8_t {
 	VECTOR_CHILD_BUFFER, // vector child buffer: holds another vector
 	STRING_BUFFER,       // string buffer, holds a string heap
 	STRUCT_BUFFER,       // struct buffer, holds a ordered mapping from name to child vector
+	UNION_BUFFER,        // union buffer, holds a ordered mapping from tag to child vector
 	LIST_BUFFER,         // list buffer, holds a single flatvector child
 	MANAGED_BUFFER,      // managed buffer, holds a buffer managed by the buffermanager
 	OPAQUE_BUFFER        // opaque buffer, can be created for example by the parquet reader
@@ -164,6 +165,26 @@ public:
 	VectorStructBuffer(const LogicalType &struct_type, idx_t capacity = STANDARD_VECTOR_SIZE);
 	VectorStructBuffer(Vector &other, const SelectionVector &sel, idx_t count);
 	~VectorStructBuffer() override;
+
+public:
+	const vector<unique_ptr<Vector>> &GetChildren() const {
+		return children;
+	}
+	vector<unique_ptr<Vector>> &GetChildren() {
+		return children;
+	}
+
+private:
+	//! child vectors used for nested data
+	vector<unique_ptr<Vector>> children;
+};
+
+class VectorUnionBuffer : public VectorBuffer {
+public:
+	VectorUnionBuffer();
+	VectorUnionBuffer(const LogicalType &union_type, idx_t capacity = STANDARD_VECTOR_SIZE);
+	VectorUnionBuffer(Vector &other, const SelectionVector &sel, idx_t count);
+	~VectorUnionBuffer() override;
 
 public:
 	const vector<unique_ptr<Vector>> &GetChildren() const {

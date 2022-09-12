@@ -83,6 +83,27 @@ void Vector::Reference(const Value &value) {
 		auxiliary = move(list_buffer);
 		data = buffer->GetData();
 		SetValue(0, value);
+	} else if (internal_type == PhysicalType::UNION) {
+
+		// set children
+		auto union_buffer = make_unique<VectorUnionBuffer>();
+		auto &child_types = UnionType::GetChildTypes(value.type());
+		auto &child_vectors = union_buffer->GetChildren();
+		for (idx_t i = 0; i < child_types.size(); i++) {
+			if(i == UnionValue::GetDiscriminator(value)) {
+				auto vector = make_unique<Vector>(UnionValue::GetChild(value));
+				child_vectors.push_back(move(vector));
+			} else {
+				auto vector = make_unique<Vector>(Value(child_types[i].second));
+				child_vectors.push_back(move(vector));
+			}
+		}
+		auxiliary = move(union_buffer);
+		
+		// set tag
+		data = buffer->GetData();
+		SetValue(0, value);
+
 	} else {
 		auxiliary.reset();
 		data = buffer->GetData();
@@ -165,12 +186,21 @@ void Vector::Slice(const SelectionVector &sel, idx_t count) {
 			new_child.auxiliary = make_buffer<VectorStructBuffer>(new_child, sel, count);
 			auxiliary = make_buffer<VectorChildBuffer>(move(new_child));
 		}
+		else if(GetType().InternalType() == PhysicalType::UNION) {
+			auto &child_vector = DictionaryVector::Child(*this);
+			
+			Vector new_child(child_vector);
+			new_child.auxiliary = make_buffer<VectorUnionBuffer>(new_child, sel, count);
+			auxiliary = make_buffer<VectorChildBuffer>(move(new_child));
+		}
 		return;
 	}
 	Vector child_vector(*this);
 	auto internal_type = GetType().InternalType();
 	if (internal_type == PhysicalType::STRUCT) {
 		child_vector.auxiliary = make_buffer<VectorStructBuffer>(*this, sel, count);
+	} else if(internal_type == PhysicalType::UNION) {
+		child_vector.auxiliary = make_buffer<VectorUnionBuffer>(*this, sel, count);
 	}
 	auto child_ref = make_buffer<VectorChildBuffer>(move(child_vector));
 	auto dict_buffer = make_buffer<DictionaryBuffer>(sel);
@@ -210,6 +240,9 @@ void Vector::Initialize(bool zero_data, idx_t capacity) {
 	} else if (internal_type == PhysicalType::LIST) {
 		auto list_buffer = make_unique<VectorListBuffer>(type, capacity);
 		auxiliary = move(list_buffer);
+	} else if (internal_type == PhysicalType::UNION) {
+		auto union_buffer = make_unique<VectorUnionBuffer>(type, capacity);
+		auxiliary = move(union_buffer);
 	}
 	auto type_size = GetTypeIdSize(internal_type);
 	if (type_size > 0) {
@@ -398,6 +431,24 @@ void Vector::SetValue(idx_t index, const Value &val) {
 		entry.offset = offset;
 		break;
 	}
+	case PhysicalType::UNION: {
+		// set tag
+		auto &entry = ((union_entry_t *)data)[index];
+		entry.tag = UnionValue::GetDiscriminator(val);
+		// set children
+		auto &children = UnionVector::GetEntries(*this);
+		auto &val_child = UnionValue::GetChild(val);
+
+		// TODO: what about null values?
+		for(idx_t i = 0; i < children.size(); i++) {
+			if (i == entry.tag) {
+				children[i]->SetValue(index, val_child);
+			} else {
+				children[i]->SetValue(index, Value());
+			}
+		}
+		break;
+	}
 	default:
 		throw InternalException("Unimplemented type for Vector::SetValue");
 	}
@@ -558,23 +609,21 @@ Value Vector::GetValueInternal(const Vector &v_p, idx_t index_p) {
 	}
 	case LogicalTypeId::UNION: {
 		// we can derive the value schema from the vector schema
-		auto &child_entries = StructVector::GetEntries(*vector);
-		child_list_t<LogicalType> children;
+		auto &child_entries = UnionVector::GetEntries(*vector);
+		auto tag = (((union_entry_t *)data)[index]).tag;
+		
+		//if(tag >= child_entries.size()) {
+		//	return Value(nullptr);
+		//}
+		D_ASSERT(tag < child_entries.size());
+		
+		auto selected_value_name = UnionType::GetChildName(type, tag);
+		auto selected_value = child_entries[tag]->GetValue(index);
+		auto all_types = UnionType::GetChildTypes(type);
 
-		auto selected_name = std::string("");
-		auto selected_value = Value(std::nullptr_t());
-
-		for (idx_t child_idx = 0; child_idx < child_entries.size(); child_idx++) {
-			auto &struct_child = child_entries[child_idx];
-
-			auto member_value = struct_child->GetValue(index_p);
-			if(!member_value.IsNull()) {
-				selected_name = StructType::GetChildName(type, child_idx);
-				selected_value = member_value;
-			}
-			children.push_back(make_pair(StructType::GetChildName(type, child_idx), struct_child->GetType()));
-		}
-		return Value::UNION(move(children), move(selected_name), move(selected_value));
+		auto v = Value::UNION(move(all_types), tag, move(selected_value));
+		UnionValue::Validate(v);
+		return v;
 	}
 	default:
 		throw InternalException("Unimplemented type for value access");
@@ -759,6 +808,24 @@ void Vector::Flatten(idx_t count) {
 			auto &new_children = normalified_buffer->GetChildren();
 
 			auto &child_entries = StructVector::GetEntries(*this);
+			for (auto &child : child_entries) {
+				D_ASSERT(child->GetVectorType() == VectorType::CONSTANT_VECTOR);
+				auto vector = make_unique<Vector>(*child);
+				vector->Flatten(count);
+				new_children.push_back(move(vector));
+			}
+			auxiliary = move(normalified_buffer);
+		} break;
+		case PhysicalType::UNION: {
+			// Flatten the main tag vector
+			TemplatedFlattenConstantVector<union_entry_t>(data, old_data, count);
+
+			// Flatten the child vectors
+			auto normalified_buffer = make_unique<VectorUnionBuffer>();
+
+			auto &new_children = normalified_buffer->GetChildren();
+
+			auto &child_entries = UnionVector::GetEntries(*this);
 			for (auto &child : child_entries) {
 				D_ASSERT(child->GetVectorType() == VectorType::CONSTANT_VECTOR);
 				auto vector = make_unique<Vector>(*child);
@@ -987,10 +1054,18 @@ void Vector::SetVectorType(VectorType vector_type_p) {
 	    (GetVectorType() == VectorType::CONSTANT_VECTOR || GetVectorType() == VectorType::FLAT_VECTOR)) {
 		auxiliary.reset();
 	}
-	if (vector_type == VectorType::CONSTANT_VECTOR && GetType().InternalType() == PhysicalType::STRUCT) {
-		auto &entries = StructVector::GetEntries(*this);
-		for (auto &entry : entries) {
-			entry->SetVectorType(vector_type);
+	if (vector_type == VectorType::CONSTANT_VECTOR) {
+		if(GetType().InternalType() == PhysicalType::STRUCT) {
+			auto &entries = StructVector::GetEntries(*this);
+			for (auto &entry : entries) {
+				entry->SetVectorType(vector_type);
+			}
+		}
+		else if(GetType().InternalType() == PhysicalType::UNION) {
+			auto &entries = UnionVector::GetEntries(*this);
+			for (auto &entry : entries) {
+				entry->SetVectorType(vector_type);
+			}
 		}
 	}
 }
@@ -1277,6 +1352,33 @@ void ConstantVector::Reference(Vector &vector, Vector &source, idx_t position, i
 		vector.SetVectorType(VectorType::CONSTANT_VECTOR);
 		break;
 	}
+	case PhysicalType::UNION: {
+		UnifiedVectorFormat vdata;
+		source.ToUnifiedFormat(count, vdata);
+
+		auto union_index = vdata.sel->get_index(position);
+		if (!vdata.validity.RowIsValid(union_index)) {
+			// null union: create null value
+			Value null_value(source_type);
+			vector.Reference(null_value);
+			break;
+		}
+
+		// add the union tag as the first element of "vector"
+		auto union_data = (union_entry_t *)vdata.data;
+		auto union_tag = union_data[union_index];
+		auto target_data = FlatVector::GetData<union_entry_t>(vector);
+		target_data[0] = union_tag;
+
+		// union: pass constant reference into child entries
+		auto &source_entries = UnionVector::GetEntries(source);
+		auto &target_entries = UnionVector::GetEntries(vector);
+		for (idx_t i = 0; i < source_entries.size(); i++) {
+			ConstantVector::Reference(*target_entries[i], *source_entries[i], position, count);
+		}
+		vector.SetVectorType(VectorType::CONSTANT_VECTOR);
+		break;
+	}
 	default:
 		// default behavior: get a value from the vector and reference it
 		// this is not that expensive for scalar types
@@ -1378,7 +1480,7 @@ void StringVector::AddHeapReference(Vector &vector, Vector &other) {
 }
 
 vector<unique_ptr<Vector>> &StructVector::GetEntries(Vector &vector) {
-	D_ASSERT(vector.GetType().id() == LogicalTypeId::STRUCT || vector.GetType().id() == LogicalTypeId::MAP || vector.GetType().id() == LogicalTypeId::UNION);
+	D_ASSERT(vector.GetType().id() == LogicalTypeId::STRUCT || vector.GetType().id() == LogicalTypeId::MAP);
 	if (vector.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
 		auto &child = DictionaryVector::Child(vector);
 		return StructVector::GetEntries(child);
@@ -1588,6 +1690,24 @@ void ListVector::Append(Vector &target, const Vector &source, const SelectionVec
 void ListVector::PushBack(Vector &target, const Value &insert) {
 	auto &target_buffer = (VectorListBuffer &)*target.auxiliary;
 	target_buffer.PushBack(insert);
+}
+
+// Union vector
+vector<unique_ptr<Vector>> &UnionVector::GetEntries(Vector &vector) {
+	D_ASSERT(vector.GetType().id() == LogicalTypeId::UNION);
+	if (vector.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+		auto &child = DictionaryVector::Child(vector);
+		return UnionVector::GetEntries(child);
+	}
+	D_ASSERT(vector.GetVectorType() == VectorType::FLAT_VECTOR ||
+	         vector.GetVectorType() == VectorType::CONSTANT_VECTOR);
+	D_ASSERT(vector.auxiliary);
+	D_ASSERT(vector.auxiliary->GetBufferType() == VectorBufferType::UNION_BUFFER);
+	return ((VectorUnionBuffer *)vector.auxiliary.get())->GetChildren();
+}
+
+const vector<unique_ptr<Vector>> &UnionVector::GetEntries(const Vector &vector) {
+	return GetEntries((Vector &)vector);
 }
 
 } // namespace duckdb

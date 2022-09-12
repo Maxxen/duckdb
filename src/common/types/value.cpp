@@ -71,12 +71,13 @@ Value::~Value() {
 
 Value::Value(const Value &other)
     : type_(other.type_), is_null(other.is_null), value_(other.value_), str_value(other.str_value),
-      struct_value(other.struct_value), list_value(other.list_value) {
+      struct_value(other.struct_value), list_value(other.list_value), union_value(other.union_value ? make_unique<Value>(other.union_value->Copy()) : nullptr), 
+	  union_discriminator(other.union_discriminator) {
 }
 
 Value::Value(Value &&other) noexcept
     : type_(move(other.type_)), is_null(other.is_null), value_(other.value_), str_value(move(other.str_value)),
-      struct_value(move(other.struct_value)), list_value(move(other.list_value)) {
+      struct_value(move(other.struct_value)), list_value(move(other.list_value)), union_value(move(other.union_value)), union_discriminator(other.union_discriminator) {
 }
 
 Value &Value::operator=(const Value &other) {
@@ -86,6 +87,8 @@ Value &Value::operator=(const Value &other) {
 	str_value = other.str_value;
 	struct_value = other.struct_value;
 	list_value = other.list_value;
+	union_value = other.union_value ? make_unique<Value>(other.union_value->Copy()) : nullptr;
+	union_discriminator = other.union_discriminator;
 	return *this;
 }
 
@@ -96,6 +99,8 @@ Value &Value::operator=(Value &&other) noexcept {
 	str_value = move(other.str_value);
 	struct_value = move(other.struct_value);
 	list_value = move(other.list_value);
+	union_value = move(other.union_value);
+	union_discriminator = other.union_discriminator;
 	return *this;
 }
 
@@ -540,22 +545,11 @@ Value Value::MAP(Value key, Value value) {
 	return result;
 }
 
-Value Value::UNION(child_list_t<LogicalType> child_types, std::string name, Value value) {
+Value Value::UNION(child_list_t<LogicalType> child_types, uint8_t discriminator, Value value) {
 	Value result;
-	D_ASSERT(
-		[&]{
-			// Ensure that the supplied key-value pair is a part of the union
-			for(auto &child : child_types) {
-				if(child.first == name && child.second == value.type()) {
-					return true;
-				}
-			}
-			return false;
-		}()
-	);
-
 	result.type_ = LogicalType::UNION(move(child_types));
-	result.struct_value.push_back(move(value));
+	result.union_discriminator = discriminator;
+	result.union_value = make_unique<Value>(move(value)); 
 	result.is_null = false;
 	return result;
 }
@@ -1396,7 +1390,7 @@ string Value::ToString() const {
 		return ret;
 	}
 	case LogicalTypeId::UNION: {
-		return struct_value[0].ToString();
+		return union_value->ToString() + " (tag: " + to_string(union_discriminator) + ")";
 	}
 	case LogicalTypeId::ENUM: {
 		auto &values_insert_order = EnumType::GetValuesInsertOrder(type_);
@@ -1571,6 +1565,22 @@ const vector<Value> &ListValue::GetChildren(const Value &value) {
 	return value.list_value;
 }
 
+const Value &UnionValue::GetChild(const Value &value) {
+	D_ASSERT(value.type().InternalType() == PhysicalType::UNION);
+	D_ASSERT(value.union_value != nullptr);
+	return *value.union_value;
+}
+
+uint8_t UnionValue::GetDiscriminator(const Value &value) {
+	D_ASSERT(value.type().InternalType() == PhysicalType::UNION);
+	return value.union_discriminator;
+}
+
+void UnionValue::Validate(const Value &value) {
+	D_ASSERT(value.type().InternalType() == PhysicalType::UNION);
+	D_ASSERT(value.union_value != nullptr);
+}
+
 hugeint_t IntegralValue::Get(const Value &value) {
 	switch (value.type().InternalType()) {
 	case PhysicalType::INT8:
@@ -1682,6 +1692,8 @@ bool Value::TryCastAs(const LogicalType &target_type, bool strict) {
 	str_value = new_value.str_value;
 	struct_value = new_value.struct_value;
 	list_value = new_value.list_value;
+	union_value = move(new_value.union_value);
+	union_discriminator = new_value.union_discriminator;
 	return true;
 }
 

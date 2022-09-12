@@ -3,46 +3,21 @@
 # group: [union]
 
 statement ok
-CREATE TABLE tbl(u UNION(i INTEGER, v VARCHAR));
+CREATE TABLE tbl(u UNION(i INTEGER, f FLOAT));
 
 statement ok
-INSERT INTO tbl VALUES (1);
+INSERT INTO tbl VALUES (1::INTEGER);
+
+query I
+SELECT * from tbl;
+----
+1 (tag: 0)
 
 statement ok
-INSERT INTO tbl VALUES ('hello');
+INSERT INTO tbl VALUES (2.0::FLOAT);
 
 query I 
 SELECT * FROM tbl;
 ----
-1
-hello
-
-query I
-SELECT u.i FROM tbl;
-----
-1
-NULL
-
-query I
-SELECT u.v FROM tbl;
-----
-NULL
-hello
-
-statement ok
-CREATE TABlE tbl2(u UNION(s STRUCT(a INT, b INT), i INT))
-
-statement ok
-INSERT INTO tbl2 VALUES (1), ({a: 2, b: 3})
-
-query I
-SELECT * from tbl2;
-----
-1
-{'a': 2, 'b': 3}
-
-query I
-SELECT u.s.b FROM tbl2;
-----
-NULL
-3
+1 (tag: 0)
+2.0 (tag: 1)

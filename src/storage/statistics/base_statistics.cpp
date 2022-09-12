@@ -7,6 +7,7 @@
 #include "duckdb/storage/statistics/numeric_statistics.hpp"
 #include "duckdb/storage/statistics/string_statistics.hpp"
 #include "duckdb/storage/statistics/struct_statistics.hpp"
+#include "duckdb/storage/statistics/union_statistics.hpp"
 #include "duckdb/storage/statistics/validity_statistics.hpp"
 
 namespace duckdb {
@@ -103,6 +104,9 @@ unique_ptr<BaseStatistics> BaseStatistics::CreateEmpty(LogicalType type, Statist
 		break;
 	case PhysicalType::LIST:
 		result = make_unique<ListStatistics>(move(type));
+		break;
+	case PhysicalType::UNION:
+		result = make_unique<UnionStatistics>(move(type));
 		break;
 	case PhysicalType::INTERVAL:
 	default:

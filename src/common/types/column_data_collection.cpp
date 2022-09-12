@@ -469,6 +469,30 @@ void ColumnDataCopyStruct(ColumnDataMetaData &meta_data, const UnifiedVectorForm
 	}
 }
 
+void ColumnDataCopyUnion(ColumnDataMetaData &meta_data, const UnifiedVectorFormat &source_data, Vector &source,
+                          idx_t offset, idx_t copy_count) {
+	auto &segment = meta_data.segment;
+
+	// copy the main tag vector
+	ColumnDataCopy<union_entry_t>(meta_data, source_data, source, offset, copy_count);
+	
+	auto &child_types = UnionType::GetChildTypes(source.GetType());
+	// now copy all the child vectors
+	D_ASSERT(meta_data.GetVectorMetaData().child_index.IsValid());
+	auto &child_vectors = UnionVector::GetEntries(source);
+	for (idx_t child_idx = 0; child_idx < child_types.size(); child_idx++) {
+		auto &child_function = meta_data.copy_function.child_functions[child_idx];
+		auto child_index = segment.GetChildIndex(meta_data.GetVectorMetaData().child_index, child_idx);
+		ColumnDataMetaData child_meta_data(child_function, meta_data, child_index);
+
+		UnifiedVectorFormat child_data;
+		child_vectors[child_idx]->ToUnifiedFormat(copy_count, child_data);
+
+		child_function.function(child_meta_data, child_data, *child_vectors[child_idx], offset, copy_count);
+	}
+}
+
+
 ColumnDataCopyFunction ColumnDataCollection::GetCopyFunction(const LogicalType &type) {
 	ColumnDataCopyFunction result;
 	column_data_copy_function_t function;
@@ -529,6 +553,15 @@ ColumnDataCopyFunction ColumnDataCollection::GetCopyFunction(const LogicalType &
 		result.child_functions.push_back(child_function);
 		break;
 	}
+	
+	case PhysicalType::UNION: {
+		function = ColumnDataCopyUnion;
+		auto &child_types = UnionType::GetChildTypes(type);
+		for (auto &kv : child_types) {
+			result.child_functions.push_back(GetCopyFunction(kv.second));
+		}
+		break;
+	}
 	default:
 		throw InternalException("Unsupported type for ColumnDataCollection::GetCopyFunction");
 	}
@@ -540,6 +573,7 @@ static bool IsComplexType(const LogicalType &type) {
 	switch (type.InternalType()) {
 	case PhysicalType::STRUCT:
 	case PhysicalType::LIST:
+	case PhysicalType::UNION:
 		return true;
 	default:
 		return false;

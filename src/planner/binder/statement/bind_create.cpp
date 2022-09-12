@@ -138,6 +138,12 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, const st
 		} else {
 			type = LogicalType::MAP(child_types);
 		}
+	} else if (type.id() == LogicalTypeId::UNION) {
+		auto child_types = UnionType::GetChildTypes(type);
+		for (auto &child_type : child_types) {
+			BindLogicalType(context, child_type.second, schema);
+		}
+		type = LogicalType::UNION(child_types);
 	} else if (type.id() == LogicalTypeId::USER) {
 		auto &catalog = Catalog::GetCatalog(context);
 		type = catalog.GetType(context, schema, UserType::GetTypeName(type));

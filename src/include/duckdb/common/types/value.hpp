@@ -24,6 +24,7 @@ class Value {
 	friend struct StringValue;
 	friend struct StructValue;
 	friend struct ListValue;
+	friend struct UnionValue;
 
 public:
 	//! Create an empty NULL value of the specified type
@@ -153,7 +154,7 @@ public:
 	//! Create a map value from a (key, value) pair
 	DUCKDB_API static Value MAP(Value key, Value value);
 	//! Create a union value from a list of alternatives
-	DUCKDB_API static Value UNION(child_list_t<LogicalType> child_types, std::string name, Value value);
+	DUCKDB_API static Value UNION(child_list_t<LogicalType> child_types, uint8_t discriminator, Value value);
 
 	//! Create a blob Value from a data pointer and a length: no bytes are interpreted
 	DUCKDB_API static Value BLOB(const_data_ptr_t data, idx_t len);
@@ -291,6 +292,8 @@ public:
 
 	vector<Value> struct_value;
 	vector<Value> list_value;
+	unique_ptr<Value> union_value;
+	uint8_t union_discriminator;
 
 private:
 	template <class T>
@@ -376,6 +379,14 @@ struct StructValue {
 
 struct ListValue {
 	DUCKDB_API static const vector<Value> &GetChildren(const Value &value);
+};
+
+struct UnionValue {
+	DUCKDB_API static const Value &GetChild(const Value &value);
+	DUCKDB_API static uint8_t GetDiscriminator(const Value &value);
+
+	DUCKDB_API static void Validate(const Value &value);
+
 };
 
 //! Return the internal integral value for any type that is stored as an integral value internally

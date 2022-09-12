@@ -29,6 +29,18 @@ public:
 			auxiliary = move(struct_buffer);
 			break;
 		}
+		case PhysicalType::UNION: {
+			// memory for the union tags
+			owned_data = allocator.Allocate(STANDARD_VECTOR_SIZE * GetTypeIdSize(internal_type));
+			// child members
+			auto &child_types = UnionType::GetChildTypes(type);
+			for (auto &child_type : child_types) {
+				child_caches.push_back(make_buffer<VectorCacheBuffer>(allocator, child_type.second));
+			}
+			auto union_buffer = make_unique<VectorUnionBuffer>(type);
+			auxiliary = move(union_buffer);
+			break;
+		}
 		default:
 			owned_data = allocator.Allocate(STANDARD_VECTOR_SIZE * GetTypeIdSize(internal_type));
 			break;
@@ -69,6 +81,20 @@ public:
 				auto &child_cache = (VectorCacheBuffer &)*child_caches[i];
 				child_cache.ResetFromCache(*children[i], child_caches[i]);
 			}
+			break;
+		}
+		case PhysicalType::UNION: {
+			// unions like lists have an owned buffer (with tags)
+			result.data = owned_data.get();
+			// reinitialize the VectorUnionBuffer
+			auxiliary->SetAuxiliaryData(nullptr);
+			AssignSharedPointer(result.auxiliary, auxiliary);
+			// propagate through children
+			auto &children = ((VectorUnionBuffer &)*result.auxiliary).GetChildren();
+			for (idx_t i = 0; i < children.size(); i++) {
+				auto &child_cache = (VectorCacheBuffer &)*child_caches[i];
+				child_cache.ResetFromCache(*children[i], child_caches[i]);
+			} 
 			break;
 		}
 		default:

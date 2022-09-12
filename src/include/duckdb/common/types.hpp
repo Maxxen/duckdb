@@ -209,6 +209,13 @@ struct list_entry_t {
 	uint64_t length;
 };
 
+struct union_entry_t {
+	union_entry_t() = default;
+	union_entry_t(uint8_t tag) : tag(tag) {
+	}
+	uint8_t tag;
+};
+
 //===--------------------------------------------------------------------===//
 // Internal Types
 //===--------------------------------------------------------------------===//
@@ -295,7 +302,7 @@ enum class PhysicalType : uint8_t {
 	STRUCT = 24,
 
 	///// Unions of logical types
-	//UNION = 25,
+	UNION = 25,
 
 	///// Dictionary-encoded type, also called "categorical" or "factor"
 	///// in other programming languages. Holds the dictionary value
@@ -560,8 +567,10 @@ struct MapType {
 };
 
 struct UnionType {
+	DUCKDB_API static const child_list_t<LogicalType> &GetChildTypes(const LogicalType &type);
 	DUCKDB_API static const child_list_t<LogicalType> GetChildrenOfType(const LogicalType &type, const LogicalType &child_type);
 	DUCKDB_API static idx_t GetIndexOfChild(const LogicalType &type, const LogicalType &child_type);
+	DUCKDB_API static const string &GetChildName(const LogicalType &type, idx_t index);
 
 };
 

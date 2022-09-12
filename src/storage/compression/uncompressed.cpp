@@ -18,6 +18,7 @@ CompressionFunction UncompressedFun::GetFunction(PhysicalType type) {
 	case PhysicalType::FLOAT:
 	case PhysicalType::DOUBLE:
 	case PhysicalType::LIST:
+	case PhysicalType::UNION:
 	case PhysicalType::INTERVAL:
 		return FixedSizeUncompressed::GetFunction(type);
 	case PhysicalType::BIT:

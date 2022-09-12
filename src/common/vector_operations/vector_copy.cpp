@@ -232,6 +232,31 @@ void VectorOperations::Copy(const Vector &source_p, Vector &target, const Select
 		}
 		break;
 	}
+	case PhysicalType::UNION: {
+		D_ASSERT(target.GetType().InternalType() == PhysicalType::UNION);
+
+		auto sdata = FlatVector::GetData<union_entry_t>(*source);
+		auto tdata = FlatVector::GetData<union_entry_t>(target);
+
+		//! copy the tags
+		for (idx_t i = 0; i < copy_count; i++) {
+			auto source_idx = sel->get_index(source_offset + i);
+			auto &source_entry = sdata[source_idx];
+			auto &target_entry = tdata[target_offset + i];
+			
+			target_entry.tag = source_entry.tag;
+		}
+
+		//! copy the children
+		auto &source_children = UnionVector::GetEntries(*source);
+		auto &target_children = UnionVector::GetEntries(target);
+		D_ASSERT(source_children.size() == target_children.size());
+		for (idx_t i = 0; i < source_children.size(); i++) {
+			VectorOperations::Copy(*source_children[i], *target_children[i], sel_p, source_count, source_offset,
+			                       target_offset);
+		}
+		break;
+	}
 	default:
 		throw NotImplementedException("Unimplemented type '%s' for copy!",
 		                              TypeIdToString(source->GetType().InternalType()));

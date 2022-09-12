@@ -29,6 +29,7 @@ struct UnifiedVectorFormat {
 class VectorCache;
 class VectorStructBuffer;
 class VectorListBuffer;
+class VectorUnionBuffer;
 
 struct SelCache;
 
@@ -40,7 +41,9 @@ class Vector {
 	friend struct ListVector;
 	friend struct StringVector;
 	friend struct StructVector;
+	friend struct UnionVector;
 	friend struct SequenceVector;
+	friend struct UnionVector;
 
 	friend class DataChunk;
 	friend class VectorCacheBuffer;
@@ -367,6 +370,18 @@ struct SequenceVector {
 		start = data[0];
 		increment = data[1];
 	}
+};
+
+struct UnionVector {
+	static inline union_entry_t *GetData(Vector &v) {
+		if (v.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+			auto &child = DictionaryVector::Child(v);
+			return GetData(child);
+		}
+		return FlatVector::GetData<union_entry_t>(v);
+	}
+	DUCKDB_API static const vector<unique_ptr<Vector>> &GetEntries(const Vector &vector);
+	DUCKDB_API static vector<unique_ptr<Vector>> &GetEntries(Vector &vector);
 };
 
 } // namespace duckdb
