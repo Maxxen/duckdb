@@ -1,4 +1,4 @@
-# name: test/sql/union/union_test.test
+# name: test/sql/types/union/union_test.test
 # description: Test union type
 # group: [union]
 

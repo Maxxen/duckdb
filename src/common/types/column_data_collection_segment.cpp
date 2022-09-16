@@ -41,9 +41,10 @@ VectorDataIndex ColumnDataCollectionSegment::AllocateVector(const LogicalType &t
 		GetVectorData(prev_index).next_data = index;
 	}
 	auto internal_type = type.InternalType();
-	if (internal_type== PhysicalType::STRUCT || internal_type == PhysicalType::UNION) {
+	if (internal_type == PhysicalType::STRUCT || internal_type == PhysicalType::UNION) {
 		// initialize the struct children
-		auto &child_types = internal_type == PhysicalType::STRUCT ? StructType::GetChildTypes(type) : UnionType::GetChildTypes(type);
+		auto &child_types =
+		    internal_type == PhysicalType::STRUCT ? StructType::GetChildTypes(type) : UnionType::GetChildTypes(type);
 		auto base_child_index = ReserveChildren(child_types.size());
 		for (idx_t child_idx = 0; child_idx < child_types.size(); child_idx++) {
 			VectorDataIndex prev_child_index;

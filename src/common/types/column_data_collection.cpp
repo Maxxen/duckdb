@@ -470,12 +470,12 @@ void ColumnDataCopyStruct(ColumnDataMetaData &meta_data, const UnifiedVectorForm
 }
 
 void ColumnDataCopyUnion(ColumnDataMetaData &meta_data, const UnifiedVectorFormat &source_data, Vector &source,
-                          idx_t offset, idx_t copy_count) {
+                         idx_t offset, idx_t copy_count) {
 	auto &segment = meta_data.segment;
 
 	// copy the main tag vector
 	ColumnDataCopy<union_entry_t>(meta_data, source_data, source, offset, copy_count);
-	
+
 	auto &child_types = UnionType::GetChildTypes(source.GetType());
 	// now copy all the child vectors
 	D_ASSERT(meta_data.GetVectorMetaData().child_index.IsValid());
@@ -491,7 +491,6 @@ void ColumnDataCopyUnion(ColumnDataMetaData &meta_data, const UnifiedVectorForma
 		child_function.function(child_meta_data, child_data, *child_vectors[child_idx], offset, copy_count);
 	}
 }
-
 
 ColumnDataCopyFunction ColumnDataCollection::GetCopyFunction(const LogicalType &type) {
 	ColumnDataCopyFunction result;
@@ -553,7 +552,7 @@ ColumnDataCopyFunction ColumnDataCollection::GetCopyFunction(const LogicalType &
 		result.child_functions.push_back(child_function);
 		break;
 	}
-	
+
 	case PhysicalType::UNION: {
 		function = ColumnDataCopyUnion;
 		auto &child_types = UnionType::GetChildTypes(type);

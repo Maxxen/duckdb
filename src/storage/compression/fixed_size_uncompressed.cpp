@@ -211,7 +211,7 @@ void AppendLoop<list_entry_t>(SegmentStatistics &stats, data_ptr_t target, idx_t
 
 template <>
 void AppendLoop<union_entry_t>(SegmentStatistics &stats, data_ptr_t target, idx_t target_offset,
-                              UnifiedVectorFormat &adata, idx_t offset, idx_t count) {
+                               UnifiedVectorFormat &adata, idx_t offset, idx_t count) {
 	auto sdata = (union_entry_t *)adata.data;
 	auto tdata = (union_entry_t *)target;
 	for (idx_t i = 0; i < count; i++) {

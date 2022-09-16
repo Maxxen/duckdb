@@ -71,13 +71,15 @@ Value::~Value() {
 
 Value::Value(const Value &other)
     : type_(other.type_), is_null(other.is_null), value_(other.value_), str_value(other.str_value),
-      struct_value(other.struct_value), list_value(other.list_value), union_value(other.union_value ? make_unique<Value>(other.union_value->Copy()) : nullptr), 
-	  union_discriminator(other.union_discriminator) {
+      struct_value(other.struct_value), list_value(other.list_value),
+      union_value(other.union_value ? make_unique<Value>(other.union_value->Copy()) : nullptr),
+      union_discriminator(other.union_discriminator) {
 }
 
 Value::Value(Value &&other) noexcept
     : type_(move(other.type_)), is_null(other.is_null), value_(other.value_), str_value(move(other.str_value)),
-      struct_value(move(other.struct_value)), list_value(move(other.list_value)), union_value(move(other.union_value)), union_discriminator(other.union_discriminator) {
+      struct_value(move(other.struct_value)), list_value(move(other.list_value)), union_value(move(other.union_value)),
+      union_discriminator(other.union_discriminator) {
 }
 
 Value &Value::operator=(const Value &other) {
@@ -549,7 +551,7 @@ Value Value::UNION(child_list_t<LogicalType> child_types, uint8_t discriminator,
 	Value result;
 	result.type_ = LogicalType::UNION(move(child_types));
 	result.union_discriminator = discriminator;
-	result.union_value = make_unique<Value>(move(value)); 
+	result.union_value = make_unique<Value>(move(value));
 	result.is_null = false;
 	return result;
 }

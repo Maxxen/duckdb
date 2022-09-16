@@ -94,7 +94,7 @@ public:
 			for (idx_t i = 0; i < children.size(); i++) {
 				auto &child_cache = (VectorCacheBuffer &)*child_caches[i];
 				child_cache.ResetFromCache(*children[i], child_caches[i]);
-			} 
+			}
 			break;
 		}
 		default:

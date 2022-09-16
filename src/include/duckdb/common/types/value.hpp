@@ -386,7 +386,6 @@ struct UnionValue {
 	DUCKDB_API static uint8_t GetDiscriminator(const Value &value);
 
 	DUCKDB_API static void Validate(const Value &value);
-
 };
 
 //! Return the internal integral value for any type that is stored as an integral value internally

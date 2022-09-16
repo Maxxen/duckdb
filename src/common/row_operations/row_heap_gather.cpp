@@ -133,7 +133,8 @@ static void HeapGatherListVector(Vector &v, const idx_t vcount, const SelectionV
 	}
 }
 
-static void HeapGatherUnionVector(Vector &v, const idx_t vcount, const SelectionVector &sel, data_ptr_t *key_locations) {
+static void HeapGatherUnionVector(Vector &v, const idx_t vcount, const SelectionVector &sel,
+                                  data_ptr_t *key_locations) {
 	// struct must have a validitymask for its fields
 	auto &child_types = UnionType::GetChildTypes(v.GetType());
 	const idx_t union_validitymask_size = (child_types.size() + 7) / 8;

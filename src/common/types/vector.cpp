@@ -90,7 +90,7 @@ void Vector::Reference(const Value &value) {
 		auto &child_types = UnionType::GetChildTypes(value.type());
 		auto &child_vectors = union_buffer->GetChildren();
 		for (idx_t i = 0; i < child_types.size(); i++) {
-			if(i == UnionValue::GetDiscriminator(value)) {
+			if (i == UnionValue::GetDiscriminator(value)) {
 				auto vector = make_unique<Vector>(UnionValue::GetChild(value));
 				child_vectors.push_back(move(vector));
 			} else {
@@ -99,7 +99,7 @@ void Vector::Reference(const Value &value) {
 			}
 		}
 		auxiliary = move(union_buffer);
-		
+
 		// set tag
 		data = buffer->GetData();
 		SetValue(0, value);
@@ -185,10 +185,9 @@ void Vector::Slice(const SelectionVector &sel, idx_t count) {
 			Vector new_child(child_vector);
 			new_child.auxiliary = make_buffer<VectorStructBuffer>(new_child, sel, count);
 			auxiliary = make_buffer<VectorChildBuffer>(move(new_child));
-		}
-		else if(GetType().InternalType() == PhysicalType::UNION) {
+		} else if (GetType().InternalType() == PhysicalType::UNION) {
 			auto &child_vector = DictionaryVector::Child(*this);
-			
+
 			Vector new_child(child_vector);
 			new_child.auxiliary = make_buffer<VectorUnionBuffer>(new_child, sel, count);
 			auxiliary = make_buffer<VectorChildBuffer>(move(new_child));
@@ -199,7 +198,7 @@ void Vector::Slice(const SelectionVector &sel, idx_t count) {
 	auto internal_type = GetType().InternalType();
 	if (internal_type == PhysicalType::STRUCT) {
 		child_vector.auxiliary = make_buffer<VectorStructBuffer>(*this, sel, count);
-	} else if(internal_type == PhysicalType::UNION) {
+	} else if (internal_type == PhysicalType::UNION) {
 		child_vector.auxiliary = make_buffer<VectorUnionBuffer>(*this, sel, count);
 	}
 	auto child_ref = make_buffer<VectorChildBuffer>(move(child_vector));
@@ -428,7 +427,7 @@ void Vector::SetValue(idx_t index, const Value &val) {
 		auto &val_child = UnionValue::GetChild(val);
 
 		// TODO: what about null values?
-		for(idx_t i = 0; i < children.size(); i++) {
+		for (idx_t i = 0; i < children.size(); i++) {
 			if (i == entry.tag) {
 				children[i]->SetValue(index, val_child);
 			} else {
@@ -599,12 +598,12 @@ Value Vector::GetValueInternal(const Vector &v_p, idx_t index_p) {
 		// we can derive the value schema from the vector schema
 		auto &child_entries = UnionVector::GetEntries(*vector);
 		auto tag = (((union_entry_t *)data)[index]).tag;
-		
-		//if(tag >= child_entries.size()) {
+
+		// if(tag >= child_entries.size()) {
 		//	return Value(nullptr);
-		//}
+		// }
 		D_ASSERT(tag < child_entries.size());
-		
+
 		auto selected_value_name = UnionType::GetChildName(type, tag);
 		auto selected_value = child_entries[tag]->GetValue(index);
 		auto all_types = UnionType::GetChildTypes(type);
@@ -1046,13 +1045,12 @@ void Vector::SetVectorType(VectorType vector_type_p) {
 		auxiliary.reset();
 	}
 	if (vector_type == VectorType::CONSTANT_VECTOR) {
-		if(GetType().InternalType() == PhysicalType::STRUCT) {
+		if (GetType().InternalType() == PhysicalType::STRUCT) {
 			auto &entries = StructVector::GetEntries(*this);
 			for (auto &entry : entries) {
 				entry->SetVectorType(vector_type);
 			}
-		}
-		else if(GetType().InternalType() == PhysicalType::UNION) {
+		} else if (GetType().InternalType() == PhysicalType::UNION) {
 			auto &entries = UnionVector::GetEntries(*this);
 			for (auto &entry : entries) {
 				entry->SetVectorType(vector_type);

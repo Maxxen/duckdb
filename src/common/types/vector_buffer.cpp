@@ -55,7 +55,7 @@ VectorUnionBuffer::VectorUnionBuffer() : VectorBuffer(VectorBufferType::UNION_BU
 }
 
 VectorUnionBuffer::VectorUnionBuffer(const LogicalType &type, idx_t capacity)
-	: VectorBuffer(VectorBufferType::UNION_BUFFER) {
+    : VectorBuffer(VectorBufferType::UNION_BUFFER) {
 	auto &child_types = UnionType::GetChildTypes(type);
 	for (auto &child_type : child_types) {
 		auto vector = make_unique<Vector>(child_type.second, capacity);
@@ -64,7 +64,7 @@ VectorUnionBuffer::VectorUnionBuffer(const LogicalType &type, idx_t capacity)
 }
 
 VectorUnionBuffer::VectorUnionBuffer(Vector &other, const SelectionVector &sel, idx_t count)
-	: VectorBuffer(VectorBufferType::UNION_BUFFER) {
+    : VectorBuffer(VectorBufferType::UNION_BUFFER) {
 	auto &other_vector = UnionVector::GetEntries(other);
 	for (auto &child_vector : other_vector) {
 		auto vector = make_unique<Vector>(*child_vector, sel, count);

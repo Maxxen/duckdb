@@ -29,7 +29,7 @@ static bool ToUnionCast(Vector &source, Vector &result, idx_t count, string *err
 			// same type: just copy the data over
 			candidate_entries[i]->Reference(source);
 
-			auto tags = (uint8_t*)UnionVector::GetData(result);
+			auto tags = (uint8_t *)UnionVector::GetData(result);
 			for (idx_t j = 0; j < count; j++) {
 				tags[j] = i;
 			}
@@ -43,18 +43,18 @@ static bool ToUnionCast(Vector &source, Vector &result, idx_t count, string *err
 	auto &candidates = UnionType::GetChildrenOfType(result.GetType(), source.GetType());
 
 	if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
-		result.SetVectorType(source.GetVectorType());
+	    result.SetVectorType(source.GetVectorType());
 	} else {
-		result.SetVectorType(VectorType::FLAT_VECTOR);
+	    result.SetVectorType(VectorType::FLAT_VECTOR);
 	}
 
 	if(candidates.size() < 1) {
-		throw TypeMismatchException(source.GetType(), result.GetType(), "Cannot cast to UNION");
+	    throw TypeMismatchException(source.GetType(), result.GetType(), "Cannot cast to UNION");
 	}
 	if(candidates.size() > 1) {
-		// We have multiple union members of the same type.
-		// TODO: Allow users to disambiguate by passing a struct as a key and value pair
-		throw TypeMismatchException(source.GetType(), result.GetType(), "More than one candidate for UNION cast");
+	    // We have multiple union members of the same type.
+	    // TODO: Allow users to disambiguate by passing a struct as a key and value pair
+	    throw TypeMismatchException(source.GetType(), result.GetType(), "More than one candidate for UNION cast");
 	}
 
 	// find the index of the only candidate child type
@@ -63,21 +63,21 @@ static bool ToUnionCast(Vector &source, Vector &result, idx_t count, string *err
 	auto &child_vectors = StructVector::GetEntries(result);
 
 	for(idx_t child_idx = 0; child_idx < child_vectors.size(); child_idx++) {
-		auto &child = child_vectors[child_idx];
-		
-		if(child->GetType() == candidate_type) {
-			child->ReferenceAndSetType(source);
-		}
-		else {
-			// TODO: We need to OR with the inverted validity mask of the selected candidate child
-			// This probably wont work..?
-			//for(idx_t j = 0; j < count; j++) {
-			//	FlatVector::SetNull(*child, j, true);
-			//}
-			
-			child->SetVectorType(VectorType::CONSTANT_VECTOR);
-			ConstantVector::SetNull(*child, true);			
-		}
+	    auto &child = child_vectors[child_idx];
+
+	    if(child->GetType() == candidate_type) {
+	        child->ReferenceAndSetType(source);
+	    }
+	    else {
+	        // TODO: We need to OR with the inverted validity mask of the selected candidate child
+	        // This probably wont work..?
+	        //for(idx_t j = 0; j < count; j++) {
+	        //	FlatVector::SetNull(*child, j, true);
+	        //}
+
+	        child->SetVectorType(VectorType::CONSTANT_VECTOR);
+	        ConstantVector::SetNull(*child, true);
+	    }
 	}
 	*/
 
@@ -85,9 +85,7 @@ static bool ToUnionCast(Vector &source, Vector &result, idx_t count, string *err
 	ConstantVector::SetNull(result, true);
 
 	return true;
-
 }
-
 
 template <class OP>
 struct VectorStringCastOperator {

@@ -41,14 +41,12 @@ static void UnionExtractFunction(DataChunk &args, ExpressionState &state, Vector
 }
 
 static unique_ptr<FunctionData> UnionExtractBind(ClientContext &context, ScalarFunction &bound_function,
-                                                  vector<unique_ptr<Expression>> &arguments) {
+                                                 vector<unique_ptr<Expression>> &arguments) {
 	D_ASSERT(bound_function.arguments.size() == 2);
 	if (arguments[0]->return_type.id() == LogicalTypeId::UNKNOWN) {
 		throw ParameterNotResolvedException();
 	}
-	D_ASSERT(
-		LogicalTypeId::UNION == arguments[0]->return_type.id()
-	);
+	D_ASSERT(LogicalTypeId::UNION == arguments[0]->return_type.id());
 	auto &union_children = UnionType::GetChildTypes(arguments[0]->return_type);
 	if (union_children.empty()) {
 		throw InternalException("Can't extract something from an empty union");

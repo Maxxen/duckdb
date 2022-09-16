@@ -51,8 +51,7 @@ LogicalType Transformer::TransformTypeName(duckdb_libpgquery::PGTypeName *type_n
 		}
 		D_ASSERT(!children.empty());
 		result_type = LogicalType::STRUCT(move(children));
-	}
-	else if (base_type == LogicalTypeId::UNION) {
+	} else if (base_type == LogicalTypeId::UNION) {
 		if (!type_name->typmods || type_name->typmods->length == 0) {
 			throw ParserException("Union needs a name and entries");
 		}

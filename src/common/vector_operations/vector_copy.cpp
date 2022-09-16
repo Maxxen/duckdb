@@ -243,7 +243,7 @@ void VectorOperations::Copy(const Vector &source_p, Vector &target, const Select
 			auto source_idx = sel->get_index(source_offset + i);
 			auto &source_entry = sdata[source_idx];
 			auto &target_entry = tdata[target_offset + i];
-			
+
 			target_entry.tag = source_entry.tag;
 		}
 

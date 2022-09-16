@@ -4,7 +4,7 @@
 namespace duckdb {
 
 UnionColumnData::UnionColumnData(DataTableInfo &info, idx_t column_index, idx_t start_row, LogicalType type_p,
-                                   ColumnData *parent)
+                                 ColumnData *parent)
     : ColumnData(info, column_index, start_row, move(type_p), parent), validity(info, 0, start_row, this) {
 	D_ASSERT(type.InternalType() == PhysicalType::UNION);
 	auto &child_types = UnionType::GetChildTypes(type);
@@ -80,8 +80,8 @@ idx_t UnionColumnData::Scan(Transaction &transaction, idx_t vector_index, Column
 }
 
 idx_t UnionColumnData::ScanCommitted(idx_t vector_index, ColumnScanState &state, Vector &result, bool allow_updates) {
-	auto scan_count = ColumnData::ScanCommitted(vector_index, state, result, allow_updates); 
-	
+	auto scan_count = ColumnData::ScanCommitted(vector_index, state, result, allow_updates);
+
 	validity.ScanCommitted(vector_index, state.child_states[0], result, allow_updates);
 	auto &child_entries = UnionVector::GetEntries(result);
 	for (idx_t i = 0; i < sub_columns.size(); i++) {
@@ -161,49 +161,49 @@ idx_t UnionColumnData::Fetch(ColumnScanState &state, row_t row_id, Vector &resul
 	auto &child_entries = UnionVector::GetEntries(result);
 	// insert any child states that are required
 	for (idx_t i = state.child_states.size(); i < child_entries.size() + 1; i++) {
-		ColumnScanState child_state;
-		state.child_states.push_back(move(child_state));
+	    ColumnScanState child_state;
+	    state.child_states.push_back(move(child_state));
 	}
 	// fetch the validity state
 	idx_t scan_count = validity.Fetch(state.child_states[0], row_id, result);
 	// fetch the sub-column states
 	for (idx_t i = 0; i < child_entries.size(); i++) {
-		sub_columns[i]->Fetch(state.child_states[i + 1], row_id, *child_entries[i]);
+	    sub_columns[i]->Fetch(state.child_states[i + 1], row_id, *child_entries[i]);
 	}
 	return scan_count;
 	*/
 }
 
 void UnionColumnData::Update(Transaction &transaction, idx_t column_index, Vector &update_vector, row_t *row_ids,
-                              idx_t update_count) {
+                             idx_t update_count) {
 	throw NotImplementedException("Union Update is not supported");
 	/*
 	validity.Update(transaction, column_index, update_vector, row_ids, update_count);
 	auto &child_entries = UnionVector::GetEntries(update_vector);
 	for (idx_t i = 0; i < child_entries.size(); i++) {
-		sub_columns[i]->Update(transaction, column_index, *child_entries[i], row_ids, update_count);
+	    sub_columns[i]->Update(transaction, column_index, *child_entries[i], row_ids, update_count);
 	}
 	*/
 }
 
-void UnionColumnData::UpdateColumn(Transaction &transaction, const vector<column_t> &column_path,
-                                    Vector &update_vector, row_t *row_ids, idx_t update_count, idx_t depth) {
+void UnionColumnData::UpdateColumn(Transaction &transaction, const vector<column_t> &column_path, Vector &update_vector,
+                                   row_t *row_ids, idx_t update_count, idx_t depth) {
 	throw NotImplementedException("Union Update Column is not supported");
 	/*
 	// we can never DIRECTLY update a union column
 	if (depth >= column_path.size()) {
-		throw InternalException("Attempting to directly update a union column - this should not be possible");
+	    throw InternalException("Attempting to directly update a union column - this should not be possible");
 	}
 	auto update_column = column_path[depth];
 	if (update_column == 0) {
-		// update the validity column
-		validity.UpdateColumn(transaction, column_path, update_vector, row_ids, update_count, depth + 1);
+	    // update the validity column
+	    validity.UpdateColumn(transaction, column_path, update_vector, row_ids, update_count, depth + 1);
 	} else {
-		if (update_column > sub_columns.size()) {
-			throw InternalException("Update column_path out of range");
-		}
-		sub_columns[update_column - 1]->UpdateColumn(transaction, column_path, update_vector, row_ids, update_count,
-		                                             depth + 1);
+	    if (update_column > sub_columns.size()) {
+	        throw InternalException("Update column_path out of range");
+	    }
+	    sub_columns[update_column - 1]->UpdateColumn(transaction, column_path, update_vector, row_ids, update_count,
+	                                                 depth + 1);
 	}
 	*/
 }
@@ -223,10 +223,10 @@ unique_ptr<BaseStatistics> UnionColumnData::GetUpdateStatistics() {
 }
 
 void UnionColumnData::FetchRow(Transaction &transaction, ColumnFetchState &state, row_t row_id, Vector &result,
-                                idx_t result_idx) {
+                               idx_t result_idx) {
 	// insert any child states that are required
 	// (validity, and all the sub-columns)
-	
+
 	// sub-columns
 	auto &child_entries = UnionVector::GetEntries(result);
 	for (idx_t i = state.child_states.size(); i < child_entries.size() + 1; i++) {
@@ -241,7 +241,7 @@ void UnionColumnData::FetchRow(Transaction &transaction, ColumnFetchState &state
 
 	// fetch the sub-column states (if the union is not NULL)
 	auto &validity = FlatVector::Validity(result);
-	if(!validity.RowIsValid(result_idx)){
+	if (!validity.RowIsValid(result_idx)) {
 		// the union itself is NULL, we dont need to fetch any of the sub-columns
 		return;
 	}
@@ -256,14 +256,14 @@ void UnionColumnData::FetchRow(Transaction &transaction, ColumnFetchState &state
 	auto &child_entries = UnionVector::GetEntries(result);
 	// insert any child states that are required
 	for (idx_t i = state.child_states.size(); i < child_entries.size() + 1; i++) {
-		auto child_state = make_unique<ColumnFetchState>();
-		state.child_states.push_back(move(child_state));
+	    auto child_state = make_unique<ColumnFetchState>();
+	    state.child_states.push_back(move(child_state));
 	}
 	// fetch the validity state
 	validity.FetchRow(transaction, *state.child_states[0], row_id, result, result_idx);
 	// fetch the sub-column states
 	for (idx_t i = 0; i < child_entries.size(); i++) {
-		sub_columns[i]->FetchRow(transaction, *state.child_states[i + 1], row_id, *child_entries[i], result_idx);
+	    sub_columns[i]->FetchRow(transaction, *state.child_states[i + 1], row_id, *child_entries[i], result_idx);
 	}
 	*/
 }
@@ -304,13 +304,12 @@ public:
 	}
 };
 
-unique_ptr<ColumnCheckpointState> UnionColumnData::CreateCheckpointState(RowGroup &row_group,
-                                                                          TableDataWriter &writer) {
+unique_ptr<ColumnCheckpointState> UnionColumnData::CreateCheckpointState(RowGroup &row_group, TableDataWriter &writer) {
 	return make_unique<UnionColumnCheckpointState>(row_group, *this, writer);
 }
 
 unique_ptr<ColumnCheckpointState> UnionColumnData::Checkpoint(RowGroup &row_group, TableDataWriter &writer,
-                                                               ColumnCheckpointInfo &checkpoint_info) {
+                                                              ColumnCheckpointInfo &checkpoint_info) {
 	auto checkpoint_state = make_unique<UnionColumnCheckpointState>(row_group, *this, writer);
 	checkpoint_state->validity_state = validity.Checkpoint(row_group, writer, checkpoint_info);
 	for (auto &sub_column : sub_columns) {

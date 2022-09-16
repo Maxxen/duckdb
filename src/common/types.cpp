@@ -210,7 +210,7 @@ const vector<LogicalType> LogicalType::AllTypes() {
 	    LogicalType::HUGEINT,  LogicalTypeId::DECIMAL, LogicalType::UTINYINT,     LogicalType::USMALLINT,
 	    LogicalType::UINTEGER, LogicalType::UBIGINT,   LogicalType::TIME,         LogicalTypeId::LIST,
 	    LogicalTypeId::STRUCT, LogicalType::TIME_TZ,   LogicalType::TIMESTAMP_TZ, LogicalTypeId::MAP,
-	    LogicalType::UUID,     LogicalType::JSON, 	   LogicalTypeId::UNION};
+	    LogicalType::UUID,     LogicalType::JSON,      LogicalTypeId::UNION};
 	return types;
 }
 
@@ -459,7 +459,7 @@ string LogicalType::ToString() const {
 		if (!type_info_) {
 			return "UNION";
 		}
-		
+
 		auto &child_types = UnionType::GetChildTypes(*this);
 		string ret = "UNION(";
 		for (size_t i = 0; i < child_types.size(); i++) {
@@ -469,7 +469,7 @@ string LogicalType::ToString() const {
 			}
 		}
 		ret += ")";
-		
+
 		return ret;
 	}
 	case LogicalTypeId::DECIMAL: {
