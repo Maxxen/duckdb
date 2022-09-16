@@ -114,14 +114,14 @@ static unique_ptr<BaseStatistics> PropagateStructExtractStats(ClientContext &con
 	return struct_stats.child_stats[info.index]->Copy();
 }
 
-ScalarFunction StructExtractFun::GetStructFunction() {
+ScalarFunction StructExtractFun::GetFunction() {
 	return ScalarFunction("struct_extract", {LogicalTypeId::STRUCT, LogicalType::VARCHAR}, LogicalType::ANY,
 	                      StructExtractFunction, StructExtractBind, nullptr, PropagateStructExtractStats);
 }
 
 void StructExtractFun::RegisterFunction(BuiltinFunctions &set) {
 	// the arguments and return types are actually set in the binder function
-	auto fun = GetStructFunction();
+	auto fun = GetFunction();
 
 	ScalarFunctionSet extract("struct_extract");
 	extract.AddFunction(fun);

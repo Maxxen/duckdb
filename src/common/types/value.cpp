@@ -1390,7 +1390,7 @@ string Value::ToString() const {
 		return ret;
 	}
 	case LogicalTypeId::UNION: {
-		return union_value->ToString() + " (tag: " + to_string(union_discriminator) + ")";
+		return union_value->ToString();
 	}
 	case LogicalTypeId::ENUM: {
 		auto &values_insert_order = EnumType::GetValuesInsertOrder(type_);

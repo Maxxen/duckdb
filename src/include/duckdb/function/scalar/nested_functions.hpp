@@ -140,12 +140,17 @@ struct CardinalityFun {
 };
 
 struct StructExtractFun {
-	static ScalarFunction GetStructFunction();
+	static ScalarFunction GetFunction();
 	static void RegisterFunction(BuiltinFunctions &set);
 };
 
 struct UnionExtractFun {
-	static ScalarFunction GetUnionFunction();
+	static ScalarFunction GetFunction();
+	static void RegisterFunction(BuiltinFunctions &set);
+};
+
+struct UnionTagFun {
+	static ScalarFunction GetFunction();
 	static void RegisterFunction(BuiltinFunctions &set);
 };
 

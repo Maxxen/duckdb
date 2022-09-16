@@ -47,7 +47,6 @@ static unique_ptr<FunctionData> UnionExtractBind(ClientContext &context, ScalarF
 		throw ParameterNotResolvedException();
 	}
 	D_ASSERT(
-		LogicalTypeId::STRUCT == arguments[0]->return_type.id() ||
 		LogicalTypeId::UNION == arguments[0]->return_type.id()
 	);
 	auto &union_children = UnionType::GetChildTypes(arguments[0]->return_type);
@@ -115,14 +114,14 @@ static unique_ptr<BaseStatistics> PropagateUnionExtractStats(ClientContext &cont
 	return union_stats.child_stats[info.index]->Copy();
 }
 
-ScalarFunction UnionExtractFun::GetUnionFunction() {
+ScalarFunction UnionExtractFun::GetFunction() {
 	return ScalarFunction("union_extract", {LogicalTypeId::UNION, LogicalType::VARCHAR}, LogicalType::ANY,
 	                      UnionExtractFunction, UnionExtractBind, nullptr, PropagateUnionExtractStats);
 }
 
 void UnionExtractFun::RegisterFunction(BuiltinFunctions &set) {
 	// the arguments and return types are actually set in the binder function
-	auto fun = GetUnionFunction();
+	auto fun = GetFunction();
 
 	ScalarFunctionSet extract("union_extract");
 	extract.AddFunction(fun);
