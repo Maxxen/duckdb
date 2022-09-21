@@ -1213,9 +1213,15 @@ const child_list_t<LogicalType> &UnionType::GetChildTypes(const LogicalType &typ
 	return ((StructTypeInfo &)*info).child_types;
 }
 
+const LogicalType &UnionType::GetChildType(const LogicalType &type, idx_t index) {
+	auto &child_types = UnionType::GetChildTypes(type);
+	D_ASSERT(index < child_types.size());
+	return child_types[index].second;
+}
+
 const child_list_t<LogicalType> UnionType::GetChildrenOfType(const LogicalType &type, const LogicalType &child_type) {
 	D_ASSERT(type.id() == LogicalTypeId::UNION);
-	auto &child_types = StructType::GetChildTypes(type);
+	auto &child_types = UnionType::GetChildTypes(type);
 	child_list_t<LogicalType> result;
 	for (auto &child : child_types) {
 		if (child.second == child_type) {

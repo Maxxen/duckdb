@@ -133,23 +133,44 @@ static void HeapGatherListVector(Vector &v, const idx_t vcount, const SelectionV
 	}
 }
 
+// works!
 static void HeapGatherUnionVector(Vector &v, const idx_t vcount, const SelectionVector &sel,
                                   data_ptr_t *key_locations) {
+	
+	auto target = UnionVector::GetData(v);
+
 	// struct must have a validitymask for its fields
 	auto &child_types = UnionType::GetChildTypes(v.GetType());
-	const idx_t union_validitymask_size = (child_types.size() + 7) / 8;
+	const idx_t struct_validitymask_size = (child_types.size() + 7) / 8;
 	data_ptr_t union_validitymask_locations[STANDARD_VECTOR_SIZE];
 	for (idx_t i = 0; i < vcount; i++) {
+
 		// use key_locations as the validitymask, and create struct_key_locations
 		union_validitymask_locations[i] = key_locations[i];
-		key_locations[i] += union_validitymask_size;
+		key_locations[i] += struct_validitymask_size;
+
+		// get tag
+		const auto col_idx = sel.get_index(i);
+		auto tag = Load<uint8_t>(key_locations[i]);
+		key_locations[i] += sizeof(uint8_t);
+		target[col_idx] = union_entry_t(tag);
+	
 	}
 
-	// now deserialize into the struct vectors
-	auto &children = StructVector::GetEntries(v);
+	// now deserialize into the union vectors
+	auto &children = UnionVector::GetEntries(v);
 	for (idx_t i = 0; i < child_types.size(); i++) {
 		RowOperations::HeapGather(*children[i], vcount, sel, i, key_locations, union_validitymask_locations);
 	}
+	/*
+	auto target = UnionVector::GetData(v);
+
+	for (idx_t i = 0; i < vcount; ++i) {
+		const auto col_idx = sel.get_index(i);
+		auto tag = Load<uint8_t>(key_locations[i]);
+		target[col_idx] = union_entry_t(tag);
+		key_locations[i] += sizeof(uint8_t);
+	}*/
 }
 
 void RowOperations::HeapGather(Vector &v, const idx_t &vcount, const SelectionVector &sel, const idx_t &col_no,

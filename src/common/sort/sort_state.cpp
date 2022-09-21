@@ -31,6 +31,10 @@ idx_t GetNestedSortingColSize(idx_t &col_size, const LogicalType &type) {
 			// Structs get 1 bytes (null)
 			col_size++;
 			return GetNestedSortingColSize(col_size, StructType::GetChildType(type, 0));
+		case PhysicalType::UNION:
+			// Unions get 2 bytes (tag and null)
+			col_size += 2;
+			return GetNestedSortingColSize(col_size, UnionType::GetChildType(type, 0));
 		default:
 			throw NotImplementedException("Unable to order column with type %s", type.ToString());
 		}

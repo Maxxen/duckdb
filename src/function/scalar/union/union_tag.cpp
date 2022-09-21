@@ -27,24 +27,38 @@ static void UnionTagFunction(DataChunk &args, ExpressionState &state, Vector &re
 	auto types = UnionType::GetChildTypes(union_vector.GetType());
 
 	// Create a string vector with the name of each tag
-	auto tag_name_vector = Vector(LogicalType::VARCHAR, types.size());
+	auto tag_name_vector = Vector(LogicalType::VARCHAR, types.size() + 1);
 	auto tag_name_vector_entries = FlatVector::GetData<string_t>(tag_name_vector);
 	for (idx_t tag_idx = 0; tag_idx < types.size(); tag_idx++) {
-		auto tag_str = types[tag_idx].first;
-		tag_name_vector_entries[tag_idx] =
-		    tag_str.size() < 12 ? string_t(tag_str) : StringVector::AddString(tag_name_vector, tag_str);
+		auto tag_str = string_t(types[tag_idx].first);
+
+		tag_name_vector_entries[tag_idx] = tag_str.IsInlined() 
+			? tag_str 
+			: StringVector::AddString(tag_name_vector, tag_str);
 	}
+	// add a null tag entry for null union values
+	FlatVector::SetNull(tag_name_vector, types.size(), true);
 
 	// map the entries tags to the actual tag names using a selection vector
 	auto entries = UnionVector::GetData(union_vector);
 
+	UnifiedVectorFormat sdata;
+	args.data[0].ToUnifiedFormat(args.size(), sdata);
+
 	SelectionVector selection(args.size());
 	for (idx_t i = 0; i < args.size(); i++) {
-		auto &entry = entries[i];
-		selection.set_index(i, entry.tag);
+		auto idx = sdata.sel->get_index(i);
+		
+		auto &entry = entries[idx];
+		if (sdata.validity.RowIsValid(idx)) {
+			selection.set_index(i, entry.tag);	
+		} else {
+			// point to the null tag entry if the union itself is null
+			selection.set_index(i, types.size());
+		}
 	}
-
 	result.Slice(tag_name_vector, selection, args.size());
+	result.Verify(args.size());
 }
 
 static unique_ptr<FunctionData> UnionTagBind(ClientContext &context, ScalarFunction &bound_function,

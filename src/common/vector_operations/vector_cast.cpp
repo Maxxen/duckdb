@@ -12,80 +12,6 @@
 #include "duckdb/common/limits.hpp"
 namespace duckdb {
 
-static bool ToUnionCast(Vector &source, Vector &result, idx_t count, string *error_message) {
-	if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
-		result.SetVectorType(source.GetVectorType());
-	}
-
-	auto &candidate_types = UnionType::GetChildTypes(result.GetType());
-	auto &candidate_entries = UnionVector::GetEntries(result);
-
-	auto &source_type = source.GetType();
-
-	// find the type that we can cast to
-	for (idx_t i = 0; i < candidate_types.size(); i++) {
-		auto &candidate_type = candidate_types[i];
-		if (source_type == candidate_type.second) {
-			// same type: just copy the data over
-			candidate_entries[i]->Reference(source);
-
-			auto tags = (uint8_t *)UnionVector::GetData(result);
-			for (idx_t j = 0; j < count; j++) {
-				tags[j] = i;
-			}
-
-			return true;
-		}
-	}
-	return false;
-
-	/*
-	auto &candidates = UnionType::GetChildrenOfType(result.GetType(), source.GetType());
-
-	if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
-	    result.SetVectorType(source.GetVectorType());
-	} else {
-	    result.SetVectorType(VectorType::FLAT_VECTOR);
-	}
-
-	if(candidates.size() < 1) {
-	    throw TypeMismatchException(source.GetType(), result.GetType(), "Cannot cast to UNION");
-	}
-	if(candidates.size() > 1) {
-	    // We have multiple union members of the same type.
-	    // TODO: Allow users to disambiguate by passing a struct as a key and value pair
-	    throw TypeMismatchException(source.GetType(), result.GetType(), "More than one candidate for UNION cast");
-	}
-
-	// find the index of the only candidate child type
-	auto candidate_type = candidates[0].second;
-
-	auto &child_vectors = StructVector::GetEntries(result);
-
-	for(idx_t child_idx = 0; child_idx < child_vectors.size(); child_idx++) {
-	    auto &child = child_vectors[child_idx];
-
-	    if(child->GetType() == candidate_type) {
-	        child->ReferenceAndSetType(source);
-	    }
-	    else {
-	        // TODO: We need to OR with the inverted validity mask of the selected candidate child
-	        // This probably wont work..?
-	        //for(idx_t j = 0; j < count; j++) {
-	        //	FlatVector::SetNull(*child, j, true);
-	        //}
-
-	        child->SetVectorType(VectorType::CONSTANT_VECTOR);
-	        ConstantVector::SetNull(*child, true);
-	    }
-	}
-	*/
-
-	result.SetVectorType(VectorType::CONSTANT_VECTOR);
-	ConstantVector::SetNull(result, true);
-
-	return true;
-}
 
 template <class OP>
 struct VectorStringCastOperator {
@@ -203,6 +129,107 @@ static void VectorStringCast(Vector &source, Vector &result, idx_t count) {
 	D_ASSERT(result.GetType().InternalType() == PhysicalType::VARCHAR);
 	UnaryExecutor::GenericExecute<SRC, string_t, VectorStringCastOperator<OP>>(source, result, count, (void *)&result);
 }
+
+
+
+
+static bool ToUnionCast(Vector &source, Vector &result, idx_t count, string *error_message) {
+	if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+		result.SetVectorType(source.GetVectorType());
+	}
+
+	auto &member_types = UnionType::GetChildTypes(result.GetType());
+	auto &member_entries = UnionVector::GetEntries(result);
+
+	auto &source_type = source.GetType();
+	auto &result_type = result.GetType();
+
+	// union members matching the result type
+	auto &candidate_types = UnionType::GetChildrenOfType(result_type, source_type);
+
+	if(candidate_types.size() < 1) {
+		// no matching types
+
+		// try to cast to any of the union types
+		auto &all_child_types = UnionType::GetChildTypes(result_type);
+		for(idx_t i = 0; i < all_child_types.size(); i++) {
+			// try cast
+			if(VectorOperations::TryCast(source, *member_entries[i], count, error_message, false)) {
+				// cast succeeded, update tags
+				auto tags = (uint8_t *)UnionVector::GetData(result);
+				for (idx_t j = 0; j < count; j++) {
+					tags[j] = i;
+				}		
+				return true;
+			}
+		}
+
+		throw TypeMismatchException(source_type, result_type, "Cannot cast to UNION, no matching types");
+	}
+
+	if(candidate_types.size() > 1) {
+		// multiple matching types
+		throw TypeMismatchException(source_type, result_type, "Cannot cast to UNION, multiple matching types");
+	}
+
+	// exactly one matching type
+	// find the type that we can cast to
+	for (idx_t i = 0; i < member_types.size(); i++) {
+		auto &candidate_type = member_types[i];
+		if (source_type == candidate_type.second) {
+			// same type: just copy the data over
+			member_entries[i]->Reference(source);
+
+			auto tags = (uint8_t *)UnionVector::GetData(result);
+			for (idx_t j = 0; j < count; j++) {
+				tags[j] = i;
+			}
+
+			return true;
+		}
+	}
+
+
+	return false;
+}
+
+static bool StructToUnionCast(Vector &source, Vector &result, idx_t count, string *error_message){
+	if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+		result.SetVectorType(source.GetVectorType());
+	}
+
+	auto &member_types = UnionType::GetChildTypes(result.GetType());
+	auto &member_entries = UnionVector::GetEntries(result);
+
+	auto &source_type = source.GetType();
+	auto &result_type = result.GetType();
+
+	if(source_type.id() == LogicalTypeId::STRUCT && StructType::GetChildCount(source_type) == 1) {
+		// special case: struct with one member can be used to disambiguate tag
+		auto tag_name = StructType::GetChildName(source_type, 0);
+		auto &child_vec = StructVector::GetEntries(source)[0];
+
+		for(idx_t i = 0; i < member_types.size(); i++) {
+			if(UnionType::GetChildName(result_type, i) == tag_name) {
+				// found matching tag!
+
+				member_entries[i]->Reference(*child_vec);
+				auto tags = (uint8_t *)UnionVector::GetData(result);
+				for (idx_t j = 0; j < count; j++) {
+					tags[j] = i;
+				}
+
+				return true;
+			}
+		}
+
+		// no matching tag found
+		throw TypeMismatchException(source_type, result_type, "Cannot cast struct to union, keyspace not covered");
+	};
+	return ToUnionCast(source, result, count, error_message);
+}
+
+
 
 template <class SRC>
 static bool NumericCastSwitch(Vector &source, Vector &result, idx_t count, string *error_message) {
@@ -881,7 +908,8 @@ static bool StructCastSwitch(Vector &source, Vector &result, idx_t count, string
 		}
 		return true;
 	case LogicalTypeId::UNION: {
-		return ToUnionCast(source, result, count, error_message);
+		return StructToUnionCast(source, result, count, error_message);
+		//return ToUnionCast(source, result, count, error_message);
 	}
 	default:
 		return TryVectorNullCast(source, result, count, error_message);

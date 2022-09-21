@@ -194,11 +194,68 @@ void RadixScatterStructVector(Vector &v, UnifiedVectorFormat &vdata, idx_t vcoun
 		}
 		width--;
 	}
+	
 	// serialize the struct
 	auto &child_vector = *StructVector::GetEntries(v)[0];
 	RowOperations::RadixScatter(child_vector, vcount, *FlatVector::IncrementalSelectionVector(), add_count,
 	                            key_locations, false, true, false, prefix_len, width, offset);
 	// invert bits if desc
+	if (desc) {
+		for (idx_t i = 0; i < add_count; i++) {
+			for (idx_t s = 0; s < width; s++) {
+				*(key_locations[i] - width + s) = ~*(key_locations[i] - width + s);
+			}
+		}
+	}
+}
+
+void RadixScatterUnionVector(Vector &v, UnifiedVectorFormat &vdata, idx_t vcount, const SelectionVector &sel,
+                              idx_t add_count, data_ptr_t *key_locations, const bool desc, const bool has_null,
+                              const bool nulls_first, const idx_t prefix_len, idx_t width, const idx_t offset) {
+	
+	// TODO: We might want to swap the order of validity and tag here to ensure nulls are sorted properly
+	auto source = (union_entry_t *)vdata.data;
+	// serialize null values
+	if (has_null) {
+		auto &validity = vdata.validity;
+		const data_t valid = nulls_first ? 1 : 0;
+		const data_t invalid = 1 - valid;
+
+		for (idx_t i = 0; i < add_count; i++) {
+			auto idx = sel.get_index(i);
+			auto source_idx = vdata.sel->get_index(idx) + offset;
+			
+			// write validity and according value
+			if (validity.RowIsValid(source_idx)) {
+				key_locations[i][0] = valid;
+				key_locations[i]++;
+				Radix::EncodeData<uint8_t>(key_locations[i], source[source_idx].tag);
+				key_locations[i]++;
+			} else {
+				key_locations[i][0] = invalid;
+				key_locations[i]++;
+				Radix::EncodeData<uint8_t>(key_locations[i], 0); // we just default to 0 since we don't care about it if the union is null
+				key_locations[i]++;	
+			}
+		}
+		width--;
+	}
+	else {
+		for (idx_t i = 0; i < add_count; i++) {
+			auto idx = sel.get_index(i);
+			auto source_idx = vdata.sel->get_index(idx) + offset;
+			// write value
+			Radix::EncodeData<uint8_t>(key_locations[i], source[source_idx].tag);
+			key_locations[i]++;
+		}
+	}
+
+	// serialize the union
+	auto &child_vector = *UnionVector::GetEntries(v)[0];
+	RowOperations::RadixScatter(child_vector, vcount, *FlatVector::IncrementalSelectionVector(), add_count,
+	                            key_locations, false, true, false, prefix_len, width, offset);
+	
+	// invert bits if desc	
 	if (desc) {
 		for (idx_t i = 0; i < add_count; i++) {
 			for (idx_t s = 0; s < width; s++) {
@@ -261,6 +318,10 @@ void RowOperations::RadixScatter(Vector &v, idx_t vcount, const SelectionVector 
 	case PhysicalType::STRUCT:
 		RadixScatterStructVector(v, vdata, vcount, sel, ser_count, key_locations, desc, has_null, nulls_first,
 		                         prefix_len, width, offset);
+		break;
+	case PhysicalType::UNION:
+		RadixScatterUnionVector(v, vdata, vcount, sel, ser_count, key_locations, desc, has_null, nulls_first,
+		                        prefix_len, width, offset);
 		break;
 	default:
 		throw NotImplementedException("Cannot ORDER BY column with type %s", v.GetType().ToString());

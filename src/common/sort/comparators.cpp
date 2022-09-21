@@ -51,7 +51,8 @@ int Comparators::CompareVal(const data_ptr_t l_ptr, const data_ptr_t r_ptr, cons
 	case PhysicalType::VARCHAR:
 		return TemplatedCompareVal<string_t>(l_ptr, r_ptr);
 	case PhysicalType::LIST:
-	case PhysicalType::STRUCT: {
+	case PhysicalType::STRUCT:
+	case PhysicalType::UNION: {
 		auto l_nested_ptr = Load<data_ptr_t>(l_ptr);
 		auto r_nested_ptr = Load<data_ptr_t>(r_ptr);
 		return CompareValAndAdvance(l_nested_ptr, r_nested_ptr, type);
@@ -142,6 +143,8 @@ int Comparators::CompareValAndAdvance(data_ptr_t &l_ptr, data_ptr_t &r_ptr, cons
 		return CompareListAndAdvance(l_ptr, r_ptr, ListType::GetChildType(type));
 	case PhysicalType::STRUCT:
 		return CompareStructAndAdvance(l_ptr, r_ptr, StructType::GetChildTypes(type));
+	case PhysicalType::UNION:
+		return CompareUnionAndAdvance(l_ptr, r_ptr, UnionType::GetChildTypes(type));
 	default:
 		throw NotImplementedException("Unimplemented CompareValAndAdvance for type %s", type.ToString());
 	}
@@ -185,6 +188,63 @@ int Comparators::CompareStructAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right
 	// Compare
 	int comp_res = 0;
 	for (idx_t i = 0; i < count; i++) {
+		ValidityBytes::GetEntryIndex(i, entry_idx, idx_in_entry);
+		left_valid = left_validity.RowIsValid(left_validity.GetValidityEntry(entry_idx), idx_in_entry);
+		right_valid = right_validity.RowIsValid(right_validity.GetValidityEntry(entry_idx), idx_in_entry);
+		auto &type = types[i].second;
+		if ((left_valid && right_valid) || TypeIsConstantSize(type.InternalType())) {
+			comp_res = CompareValAndAdvance(left_ptr, right_ptr, types[i].second);
+		}
+		if (!left_valid && !right_valid) {
+			comp_res = 0;
+		} else if (!left_valid) {
+			comp_res = 1;
+		} else if (!right_valid) {
+			comp_res = -1;
+		}
+		if (comp_res != 0) {
+			break;
+		}
+	}
+	return comp_res;
+}
+
+int Comparators::CompareUnionAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right_ptr, 
+										const child_list_t<LogicalType> &types) { 
+	idx_t count = types.size();
+	
+
+	// Load validity masks
+	ValidityBytes left_validity(left_ptr);
+	ValidityBytes right_validity(right_ptr);
+	left_ptr += (count + 7) / 8;
+	right_ptr += (count + 7) / 8;
+
+	// Load union tags
+	auto left_tag = Load<uint8_t>(left_ptr);
+	auto right_tag = Load<uint8_t>(right_ptr);
+
+	left_ptr += sizeof(uint8_t);
+	right_ptr += sizeof(uint8_t);
+
+	// Initialize variables
+	bool left_valid;
+	bool right_valid;
+	idx_t entry_idx;
+	idx_t idx_in_entry;
+	
+	// Compare tags first
+	if(left_tag != right_tag) {
+		return left_tag - right_tag < 0 ? -1 : 1;
+	}
+
+	// TODO: Ideally we shouldnt have to iterate over all children, 
+	// we only need to compare the child that is tagged (if left and right are tagged the same)
+
+	// Compare children
+	int comp_res = 0;
+	for (idx_t i = 0; i < count; i++) {
+
 		ValidityBytes::GetEntryIndex(i, entry_idx, idx_in_entry);
 		left_valid = left_validity.RowIsValid(left_validity.GetValidityEntry(entry_idx), idx_in_entry);
 		right_valid = right_validity.RowIsValid(right_validity.GetValidityEntry(entry_idx), idx_in_entry);
@@ -287,6 +347,9 @@ int Comparators::CompareListAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right_p
 					break;
 				case PhysicalType::STRUCT:
 					comp_res = CompareStructAndAdvance(left_ptr, right_ptr, StructType::GetChildTypes(type));
+					break;
+				case PhysicalType::UNION:
+					comp_res = CompareUnionAndAdvance(left_ptr, right_ptr, UnionType::GetChildTypes(type));
 					break;
 				default:
 					throw NotImplementedException("CompareListAndAdvance for variable-size type %s", type.ToString());

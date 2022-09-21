@@ -589,6 +589,7 @@ struct MapType {
 
 struct UnionType {
 	DUCKDB_API static const child_list_t<LogicalType> &GetChildTypes(const LogicalType &type);
+	DUCKDB_API static const LogicalType &GetChildType(const LogicalType &type, idx_t index);
 	DUCKDB_API static const child_list_t<LogicalType> GetChildrenOfType(const LogicalType &type, const LogicalType &child_type);
 	DUCKDB_API static idx_t GetIndexOfChild(const LogicalType &type, const LogicalType &child_type);
 	DUCKDB_API static const string &GetChildName(const LogicalType &type, idx_t index);

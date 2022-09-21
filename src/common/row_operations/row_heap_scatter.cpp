@@ -78,6 +78,25 @@ static void ComputeListEntrySizes(Vector &v, UnifiedVectorFormat &vdata, idx_t e
 	}
 }
 
+static void ComputeUnionEntrySizes(Vector &v, idx_t entry_sizes[], idx_t vcount, idx_t ser_count,
+                                    const SelectionVector &sel, idx_t offset) {
+	// obtain child vectors
+	idx_t num_children;
+	auto &children = UnionVector::GetEntries(v);
+	num_children = children.size();
+	// add struct validitymask size
+	// TODO: Need to add tag size here!!
+	const idx_t union_validitymask_size = (num_children + 7) / 8;
+	for (idx_t i = 0; i < ser_count; i++) {
+		entry_sizes[i] += union_validitymask_size;
+		entry_sizes[i] += sizeof(uint8_t); // tag size
+	}
+	// compute size of child vectors
+	for (auto &union_vector : children) {
+		RowOperations::ComputeEntrySizes(*union_vector, entry_sizes, vcount, ser_count, sel, offset);
+	}
+}
+
 void RowOperations::ComputeEntrySizes(Vector &v, UnifiedVectorFormat &vdata, idx_t entry_sizes[], idx_t vcount,
                                       idx_t ser_count, const SelectionVector &sel, idx_t offset) {
 	const auto physical_type = v.GetType().InternalType();
@@ -96,6 +115,9 @@ void RowOperations::ComputeEntrySizes(Vector &v, UnifiedVectorFormat &vdata, idx
 			break;
 		case PhysicalType::LIST:
 			ComputeListEntrySizes(v, vdata, entry_sizes, ser_count, sel, offset);
+			break;
+		case PhysicalType::UNION:
+			ComputeUnionEntrySizes(v, entry_sizes, vcount, ser_count, sel, offset);
 			break;
 		default:
 			// LCOV_EXCL_START
@@ -230,6 +252,74 @@ static void HeapScatterStructVector(Vector &v, idx_t vcount, const SelectionVect
 	}
 }
 
+static void HeapScatterUnionVector(Vector &v, idx_t vcount, const SelectionVector &sel, idx_t ser_count, idx_t col_idx,
+                                    data_ptr_t *key_locations, data_ptr_t *validitymask_locations, idx_t offset) {
+	UnifiedVectorFormat vdata;
+	v.ToUnifiedFormat(vcount, vdata);
+
+	auto &children = UnionVector::GetEntries(v);
+	auto union_data = UnionVector::GetData(v);
+
+	idx_t num_children = children.size();
+
+	// the whole union itself can be NULL
+	idx_t entry_idx;
+	idx_t idx_in_entry;
+	ValidityBytes::GetEntryIndex(col_idx, entry_idx, idx_in_entry);
+	const auto bit = ~(1UL << idx_in_entry);
+
+	// union must have a validitymask for its fields
+	const idx_t union_validitymask_size = (num_children + 7) / 8;
+	data_ptr_t union_validitymask_locations[STANDARD_VECTOR_SIZE];
+	for (idx_t i = 0; i < ser_count; i++) {
+
+		auto idx = sel.get_index(i);
+		auto source_idx = vdata.sel->get_index(idx) + offset;
+		
+		// initialize the union validity mask
+		union_validitymask_locations[i] = key_locations[i];
+		memset(union_validitymask_locations[i], -1, union_validitymask_size);
+		key_locations[i] += union_validitymask_size;
+
+		// store the tag
+		auto union_entry = union_data[source_idx];
+		Store<uint8_t>(union_entry.tag, key_locations[i]);
+		key_locations[i] += sizeof(uint8_t);
+
+		// set whether the whole union is null
+		if (validitymask_locations && !vdata.validity.RowIsValid(source_idx)) {
+			*(validitymask_locations[i] + entry_idx) &= bit;
+		}
+	}
+
+	// now serialize the union vectors
+	for (idx_t i = 0; i < children.size(); i++) {
+		auto &union_vector = *children[i];
+		RowOperations::HeapScatter(union_vector, vcount, sel, ser_count, i, key_locations,
+		                           union_validitymask_locations, offset);
+	}
+
+	/*
+	idx_t entry_idx;
+	idx_t idx_in_entry;
+	ValidityBytes::GetEntryIndex(col_idx, entry_idx, idx_in_entry);
+	const auto bit = ~(1UL << idx_in_entry);
+	for (idx_t i = 0; i < count; i++) {
+		auto idx = sel.get_index(i);
+		auto source_idx = vdata.sel->get_index(idx) + offset;
+
+		auto target = (T *)key_locations[i];
+		Store<T>(source[source_idx], (data_ptr_t)target);
+		key_locations[i] += sizeof(T);
+
+		// set the validitymask
+		if (!vdata.validity.RowIsValid(source_idx)) {
+			*(validitymask_locations[i] + entry_idx) &= bit;
+		}
+	}
+	*/
+}
+
 static void HeapScatterListVector(Vector &v, idx_t vcount, const SelectionVector &sel, idx_t ser_count, idx_t col_no,
                                   data_ptr_t *key_locations, data_ptr_t *validitymask_locations, idx_t offset) {
 	UnifiedVectorFormat vdata;
@@ -348,6 +438,9 @@ void RowOperations::HeapScatter(Vector &v, idx_t vcount, const SelectionVector &
 			break;
 		case PhysicalType::LIST:
 			HeapScatterListVector(v, vcount, sel, ser_count, col_idx, key_locations, validitymask_locations, offset);
+			break;
+		case PhysicalType::UNION:
+			HeapScatterUnionVector(v, vcount, sel, ser_count, col_idx, key_locations, validitymask_locations, offset);
 			break;
 		default:
 			// LCOV_EXCL_START
