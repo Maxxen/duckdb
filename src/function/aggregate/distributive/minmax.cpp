@@ -242,6 +242,9 @@ template <class OP>
 static bool TemplatedOptimumStruct(Vector &left, idx_t lidx, idx_t lcount, Vector &right, idx_t ridx, idx_t rcount);
 
 template <class OP>
+static bool TemplatedOptimumUnion(Vector &left, idx_t lidx, idx_t lcount, Vector &right, idx_t ridx, idx_t rcount);
+
+template <class OP>
 static bool TemplatedOptimumValue(Vector &left, idx_t lidx, idx_t lcount, Vector &right, idx_t ridx, idx_t rcount) {
 	D_ASSERT(left.GetType() == right.GetType());
 	switch (left.GetType().InternalType()) {
@@ -277,9 +280,58 @@ static bool TemplatedOptimumValue(Vector &left, idx_t lidx, idx_t lcount, Vector
 	case PhysicalType::MAP:
 	case PhysicalType::STRUCT:
 		return TemplatedOptimumStruct<OP>(left, lidx, lcount, right, ridx, rcount);
+	case PhysicalType::UNION:
+		return TemplatedOptimumUnion<OP>(left, lidx, lcount, right, ridx, rcount);
 	default:
 		throw InternalException("Invalid type for distinct comparison");
 	}
+}
+
+template <class OP>
+static bool TemplatedOptimumUnion(Vector &left, idx_t lidx_p, idx_t lcount, Vector &right, idx_t ridx_p,
+                                   idx_t rcount) {
+	// STRUCT dictionaries apply to all the children
+	// so map the indexes first
+	UnifiedVectorFormat lvdata, rvdata;
+	left.ToUnifiedFormat(lcount, lvdata);
+	right.ToUnifiedFormat(rcount, rvdata);
+
+	idx_t lidx = lvdata.sel->get_index(lidx_p);
+	idx_t ridx = rvdata.sel->get_index(ridx_p);
+
+	// DISTINCT semantics are in effect for nested types
+	auto lnull = !lvdata.validity.RowIsValid(lidx);
+	auto rnull = !rvdata.validity.RowIsValid(ridx);
+	if (lnull || rnull) {
+		return OP::Operation(0, 0, lnull, rnull);
+	}
+
+	auto ldata = UnionVector::GetData(left);
+	auto rdata = UnionVector::GetData(right);
+
+	auto ltag = ldata[lidx].tag;
+	auto rtag = rdata[ridx].tag;
+
+	// we first compare tags
+	if(ltag != rtag) {
+		return OP::Operation(ltag, rtag, false, false);
+	}
+
+	// if the tags are equal, we then compare the actual values
+	auto &lchild = *UnionVector::GetEntries(left)[ltag];
+	auto &rchild = *UnionVector::GetEntries(right)[rtag];
+
+	// Strict comparisons use the OP for definite
+	if (TemplatedOptimumValue<OP>(lchild, lidx_p, lcount, rchild, ridx_p, rcount)) {
+		return true;
+	}
+
+	// Strict comparisons use IS NOT DISTINCT for possible
+	if (!TemplatedOptimumValue<NotDistinctFrom>(lchild, lidx_p, lcount, rchild, ridx_p, rcount)) {
+		return false;
+	}
+
+	return false;
 }
 
 template <class OP>
