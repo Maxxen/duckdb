@@ -212,7 +212,6 @@ int Comparators::CompareStructAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right
 int Comparators::CompareUnionAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right_ptr, 
 										const child_list_t<LogicalType> &types) { 
 	idx_t count = types.size();
-	
 
 	// Load validity masks
 	ValidityBytes left_validity(left_ptr);
@@ -226,17 +225,17 @@ int Comparators::CompareUnionAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right_
 
 	left_ptr += sizeof(uint8_t);
 	right_ptr += sizeof(uint8_t);
+	
+	// Compare tags first
+	if(left_tag != right_tag) {
+		return left_tag - right_tag < 0 ? -1 : 1;
+	}
 
 	// Initialize variables
 	bool left_valid;
 	bool right_valid;
 	idx_t entry_idx;
 	idx_t idx_in_entry;
-	
-	// Compare tags first
-	if(left_tag != right_tag) {
-		return left_tag - right_tag < 0 ? -1 : 1;
-	}
 
 	// TODO: Ideally we shouldnt have to iterate over all children, 
 	// we only need to compare the child that is tagged (if left and right are tagged the same)

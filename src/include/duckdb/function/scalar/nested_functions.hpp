@@ -154,6 +154,11 @@ struct UnionTagFun {
 	static void RegisterFunction(BuiltinFunctions &set);
 };
 
+struct UnionValueFun {
+	static ScalarFunction GetFunction();
+	static void RegisterFunction(BuiltinFunctions &set);
+};
+
 MapInvalidReason CheckMapValidity(Vector &map, idx_t count,
                                   const SelectionVector &sel = *FlatVector::IncrementalSelectionVector());
 void MapConversionVerify(Vector &vector, idx_t count);

@@ -170,6 +170,17 @@ static bool TemplatedBooleanOperation(const Value &left, const Value &right) {
 		}
 		return false;
 	}
+	case PhysicalType::UNION: {
+		auto left_tag = UnionValue::GetDiscriminator(left);
+		auto right_tag = UnionValue::GetDiscriminator(right);
+		if (left_tag == right_tag) {
+			auto left_child = UnionValue::GetChild(left);
+			auto right_child = UnionValue::GetChild(right);
+
+			return TemplatedBooleanOperation<OP>(left_child, right_child);
+		}
+		return OP::Operation(left_tag, right_tag);
+	}
 	default:
 		throw InternalException("Unimplemented type for value comparison");
 	}

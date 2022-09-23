@@ -252,6 +252,7 @@ public:
 		case PhysicalType::LIST:
 		case PhysicalType::MAP:
 		case PhysicalType::STRUCT:
+		case PhysicalType::UNION:
 			NestedComparisonExecutor<OP>(left, right, result, count);
 			break;
 		default:

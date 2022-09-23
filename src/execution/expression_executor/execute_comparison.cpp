@@ -96,6 +96,7 @@ static idx_t TemplatedSelectOperation(Vector &left, Vector &right, const Selecti
 	case PhysicalType::LIST:
 	case PhysicalType::MAP:
 	case PhysicalType::STRUCT:
+	case PhysicalType::UNION:
 		return NestedSelectOperation<OP>(left, right, sel, count, true_sel, false_sel);
 	default:
 		throw InternalException("Invalid type for comparison");

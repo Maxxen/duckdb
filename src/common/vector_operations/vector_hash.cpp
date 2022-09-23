@@ -174,6 +174,33 @@ static inline void ListLoopHash(Vector &input, Vector &hashes, const SelectionVe
 	}
 }
 
+template <bool HAS_RSEL, bool FIRST_HASH>
+static inline void UnionLoopHash(Vector &input, Vector &hashes, const SelectionVector *rsel, idx_t count) {
+	auto &children = UnionVector::GetEntries(input);
+
+	D_ASSERT(!children.empty());
+	idx_t col_no = 0;
+	if (HAS_RSEL) {
+		if (FIRST_HASH) {
+			VectorOperations::Hash(*children[col_no++], hashes, *rsel, count);
+		} else {
+			VectorOperations::CombineHash(hashes, *children[col_no++], *rsel, count);
+		}
+		while (col_no < children.size()) {
+			VectorOperations::CombineHash(hashes, *children[col_no++], *rsel, count);
+		}
+	} else {
+		if (FIRST_HASH) {
+			VectorOperations::Hash(*children[col_no++], hashes, count);
+		} else {
+			VectorOperations::CombineHash(hashes, *children[col_no++], count);
+		}
+		while (col_no < children.size()) {
+			VectorOperations::CombineHash(hashes, *children[col_no++], count);
+		}
+	}
+}
+
 template <bool HAS_RSEL>
 static inline void HashTypeSwitch(Vector &input, Vector &result, const SelectionVector *rsel, idx_t count) {
 	D_ASSERT(result.GetType().id() == LogicalType::HASH);
@@ -224,6 +251,9 @@ static inline void HashTypeSwitch(Vector &input, Vector &result, const Selection
 		break;
 	case PhysicalType::LIST:
 		ListLoopHash<HAS_RSEL, true>(input, result, rsel, count);
+		break;
+	case PhysicalType::UNION:
+		UnionLoopHash<HAS_RSEL, true>(input, result, rsel, count);
 		break;
 	default:
 		throw InvalidTypeException(input.GetType(), "Invalid type for hash");
@@ -356,6 +386,9 @@ static inline void CombineHashTypeSwitch(Vector &hashes, Vector &input, const Se
 		break;
 	case PhysicalType::LIST:
 		ListLoopHash<HAS_RSEL, false>(input, hashes, rsel, count);
+		break;
+	case PhysicalType::UNION:
+		UnionLoopHash<HAS_RSEL, false>(input, hashes, rsel, count);
 		break;
 	default:
 		throw InvalidTypeException(input.GetType(), "Invalid type for hash");

@@ -669,6 +669,90 @@ static idx_t DistinctSelectList(Vector &left, Vector &right, idx_t count, const 
 	return match_count;
 }
 
+
+using UnionEntries = vector<unique_ptr<Vector>>;
+
+template <class OP>
+static idx_t DistinctSelectUnion(Vector &left, Vector &right, idx_t count, const SelectionVector &sel,
+                                  OptionalSelection &true_opt, OptionalSelection &false_opt) {
+	if (count == 0) {
+		return 0;
+	}
+
+	// Avoid allocating in the 99% of the cases where we don't need to.
+	UnionEntries lsliced, rsliced;
+	auto &lchildren = UnionVector::GetEntries(left);
+	auto &rchildren = UnionVector::GetEntries(right);
+	D_ASSERT(lchildren.size() == rchildren.size());
+
+	// In order to reuse the comparators, we have to track what passed and failed internally.
+	// To do that, we need local SVs that we then merge back into the real ones after every pass.
+	const auto vcount = count;
+	SelectionVector slice_sel(count);
+	for (idx_t i = 0; i < count; ++i) {
+		slice_sel.set_index(i, i);
+	}
+
+	SelectionVector true_sel(count);
+	SelectionVector false_sel(count);
+
+	idx_t match_count = 0;
+	for (idx_t col_no = 0; col_no < lchildren.size(); ++col_no) {
+		// Slice the children to maintain density
+		Vector lchild(*lchildren[col_no]);
+		lchild.Flatten(vcount);
+		lchild.Slice(slice_sel, count);
+
+		Vector rchild(*rchildren[col_no]);
+		rchild.Flatten(vcount);
+		rchild.Slice(slice_sel, count);
+
+		// Find everything that definitely matches
+		auto true_count = PositionComparator::Definite<OP>(lchild, rchild, slice_sel, count, &true_sel, false_sel);
+		if (true_count > 0) {
+			auto false_count = count - true_count;
+
+			// Extract the definite matches into the true result
+			ExtractNestedSelection(false_count ? true_sel : slice_sel, true_count, sel, true_opt);
+
+			// Remove the definite matches from the slicing vector
+			DensifyNestedSelection(false_sel, false_count, slice_sel);
+
+			match_count += true_count;
+			count -= true_count;
+		}
+
+		if (col_no != lchildren.size() - 1) {
+			// Find what might match on the next position
+			true_count = PositionComparator::Possible<OP>(lchild, rchild, slice_sel, count, true_sel, &false_sel);
+			auto false_count = count - true_count;
+
+			// Extract the definite failures into the false result
+			ExtractNestedSelection(true_count ? false_sel : slice_sel, false_count, sel, false_opt);
+
+			// Remove any definite failures from the slicing vector
+			if (false_count) {
+				DensifyNestedSelection(true_sel, true_count, slice_sel);
+			}
+
+			count = true_count;
+		} else {
+			true_count = PositionComparator::Final<OP>(lchild, rchild, slice_sel, count, &true_sel, &false_sel);
+			auto false_count = count - true_count;
+
+			// Extract the definite matches into the true result
+			ExtractNestedSelection(false_count ? true_sel : slice_sel, true_count, sel, true_opt);
+
+			// Extract the definite failures into the false result
+			ExtractNestedSelection(true_count ? false_sel : slice_sel, false_count, sel, false_opt);
+
+			match_count += true_count;
+		}
+	}
+	return match_count;
+}
+
+
 template <class OP, class OPNESTED>
 static idx_t DistinctSelectNested(Vector &left, Vector &right, const SelectionVector *sel, const idx_t count,
                                   SelectionVector *true_sel, SelectionVector *false_sel) {
@@ -700,7 +784,11 @@ static idx_t DistinctSelectNested(Vector &left, Vector &right, const SelectionVe
 
 	if (PhysicalType::LIST == left.GetType().InternalType()) {
 		match_count += DistinctSelectList<OPNESTED>(l_not_null, r_not_null, unknown, maybe_vec, true_opt, false_opt);
-	} else {
+	} 
+	else if (PhysicalType::UNION == left.GetType().InternalType()) {
+		match_count += DistinctSelectUnion<OPNESTED>(l_not_null, r_not_null, unknown, maybe_vec, true_opt, false_opt);
+	}
+	else {
 		match_count += DistinctSelectStruct<OPNESTED>(l_not_null, r_not_null, unknown, maybe_vec, true_opt, false_opt);
 	}
 
@@ -771,6 +859,7 @@ static void ExecuteDistinct(Vector &left, Vector &right, Vector &result, idx_t c
 	case PhysicalType::LIST:
 	case PhysicalType::MAP:
 	case PhysicalType::STRUCT:
+	case PhysicalType::UNION:
 		NestedDistinctExecute<OP>(left, right, result, count);
 		break;
 	default:
@@ -813,6 +902,7 @@ static idx_t TemplatedDistinctSelectOperation(Vector &left, Vector &right, const
 	case PhysicalType::MAP:
 	case PhysicalType::STRUCT:
 	case PhysicalType::LIST:
+	case PhysicalType::UNION:
 		return DistinctSelectNested<OP, OPNESTED>(left, right, sel, count, true_sel, false_sel);
 	default:
 		throw InternalException("Invalid type for distinct selection");

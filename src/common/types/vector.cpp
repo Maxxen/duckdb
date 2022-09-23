@@ -970,6 +970,27 @@ void Vector::Serialize(idx_t count, Serializer &serializer) {
 			child.Serialize(list_size, serializer);
 			break;
 		}
+		case PhysicalType::UNION: {
+
+			// serialize the union entries in a flat array
+			auto data = unique_ptr<union_entry_t[]>(new union_entry_t[count]);
+			auto source_array = (union_entry_t *)vdata.data;
+			for(idx_t i = 0; i < count; i++) {
+				auto idx = vdata.sel->get_index(i);
+				auto source = source_array[idx];
+				data[i].tag = source.tag;
+			}
+
+			serializer.WriteData((data_ptr_t)data.get(), count * sizeof(union_entry_t));
+
+			// serialize the child vectors by flattening them
+			Flatten(count);
+			auto &entries = UnionVector::GetEntries(*this);
+			for (auto &entry : entries) {
+				entry->Serialize(count, serializer);
+			}
+			break;
+		}
 		default:
 			throw InternalException("Unimplemented variable width type for Vector::Serialize!");
 		}
@@ -1030,6 +1051,18 @@ void Vector::Deserialize(idx_t count, Deserializer &source) {
 			auto &child = ListVector::GetEntry(*this);
 			child.Deserialize(list_size, source);
 
+			break;
+		}
+		case PhysicalType::UNION: {
+			// read the union entry
+			auto union_entries = FlatVector::GetData(*this);
+			source.ReadData(union_entries, count * sizeof(union_entry_t));
+
+			// deserialize the child vectors
+			auto &entries = UnionVector::GetEntries(*this);
+			for (auto &entry : entries) {
+				entry->Deserialize(count, source);
+			}
 			break;
 		}
 		default:

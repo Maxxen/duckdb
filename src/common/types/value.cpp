@@ -1295,6 +1295,13 @@ hash_t Value::Hash() const {
 		}
 		return hash;
 	}
+	case PhysicalType::UNION: {
+		auto &union_child = UnionValue::GetChild(*this);
+		auto tag = UnionValue::GetDiscriminator(*this);
+		hash_t hash = duckdb::Hash(tag);
+		hash ^= union_child.Hash();
+		return hash;
+	}
 	default:
 		throw InternalException("Unimplemented type for value hash");
 	}
