@@ -152,6 +152,8 @@ BoundCastInfo DefaultCasts::EnumCastSwitch(BindCastInput &input, const LogicalTy
 		default:
 			throw InternalException("ENUM can only have unsigned integers (except UINT64) as physical types");
 		}
+	case LogicalTypeId::UNION:
+		return DefaultCasts::PromoteToUnionCast(input, source, target);
 	default: {
 		return BoundCastInfo(EnumToAnyCast, BindEnumCast(input, source, target));
 	}

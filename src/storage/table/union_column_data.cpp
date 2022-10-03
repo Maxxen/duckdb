@@ -1,5 +1,6 @@
 #include "duckdb/storage/table/union_column_data.hpp"
 #include "duckdb/storage/statistics/union_statistics.hpp"
+#include "duckdb/transaction/transaction.hpp"
 
 namespace duckdb {
 
@@ -65,7 +66,7 @@ void UnionColumnData::InitializeScanWithOffset(ColumnScanState &state, idx_t row
 	}
 }
 
-idx_t UnionColumnData::Scan(Transaction &transaction, idx_t vector_index, ColumnScanState &state, Vector &result) {
+idx_t UnionColumnData::Scan(TransactionData transaction, idx_t vector_index, ColumnScanState &state, Vector &result) {
 	// scan the tag
 	auto scan_count = ColumnData::Scan(transaction, vector_index, state, result);
 	// scan the validity mask
@@ -174,7 +175,7 @@ idx_t UnionColumnData::Fetch(ColumnScanState &state, row_t row_id, Vector &resul
 	*/
 }
 
-void UnionColumnData::Update(Transaction &transaction, idx_t column_index, Vector &update_vector, row_t *row_ids,
+void UnionColumnData::Update(TransactionData transaction, idx_t column_index, Vector &update_vector, row_t *row_ids,
                              idx_t update_count) {
 	throw NotImplementedException("Union Update is not supported");
 	/*
@@ -186,7 +187,7 @@ void UnionColumnData::Update(Transaction &transaction, idx_t column_index, Vecto
 	*/
 }
 
-void UnionColumnData::UpdateColumn(Transaction &transaction, const vector<column_t> &column_path, Vector &update_vector,
+void UnionColumnData::UpdateColumn(TransactionData transaction, const vector<column_t> &column_path, Vector &update_vector,
                                    row_t *row_ids, idx_t update_count, idx_t depth) {
 	throw NotImplementedException("Union Update Column is not supported");
 	/*
@@ -222,7 +223,7 @@ unique_ptr<BaseStatistics> UnionColumnData::GetUpdateStatistics() {
 	return stats;
 }
 
-void UnionColumnData::FetchRow(Transaction &transaction, ColumnFetchState &state, row_t row_id, Vector &result,
+void UnionColumnData::FetchRow(TransactionData transaction, ColumnFetchState &state, row_t row_id, Vector &result,
                                idx_t result_idx) {
 	// insert any child states that are required
 	// (validity, and all the sub-columns)

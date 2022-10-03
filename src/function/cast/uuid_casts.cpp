@@ -11,6 +11,8 @@ BoundCastInfo DefaultCasts::UUIDCastSwitch(BindCastInput &input, const LogicalTy
 	case LogicalTypeId::JSON:
 		// uuid to varchar
 		return BoundCastInfo(&VectorCastHelpers::StringCast<hugeint_t, duckdb::CastFromUUID>);
+	case LogicalTypeId::UNION:
+		return DefaultCasts::PromoteToUnionCast(input, source, target);
 	default:
 		return TryVectorNullCast;
 	}

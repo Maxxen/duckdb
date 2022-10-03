@@ -213,6 +213,16 @@ void ExpressionExecutor::FillSwitch(Vector &vector, Vector &result, const Select
 		Vector::Verify(result, sel, count);
 		break;
 	}
+	case PhysicalType::UNION: {
+		auto &vector_entries = UnionVector::GetEntries(vector);
+		auto &result_entries = UnionVector::GetEntries(result);
+		ValidityFillLoop(vector, result, sel, count);
+		D_ASSERT(vector_entries.size() == result_entries.size());
+		for (idx_t i = 0; i < vector_entries.size(); i++) {
+			FillSwitch(*vector_entries[i], *result_entries[i], sel, count);
+		}
+		break;
+	}
 	default:
 		throw NotImplementedException("Unimplemented type for case expression: %s", result.GetType().ToString());
 	}

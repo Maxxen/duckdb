@@ -21,75 +21,54 @@ public:
 };
 
 static void UnionValueFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	
+	auto entries = UnionVector::GetData(result);
+	auto &child = UnionVector::GetEntries(result)[0];
 
-	auto &union_vector = args.data[0];
-	union_vector.Verify(args.size());
-	auto types = UnionType::GetChildTypes(union_vector.GetType());
-
-	// Create a string vector with the name of each tag
-	auto tag_name_vector = Vector(LogicalType::VARCHAR, types.size() + 1);
-	auto tag_name_vector_entries = FlatVector::GetData<string_t>(tag_name_vector);
-	for (idx_t tag_idx = 0; tag_idx < types.size(); tag_idx++) {
-		auto tag_str = string_t(types[tag_idx].first);
-
-		tag_name_vector_entries[tag_idx] = tag_str.IsInlined() 
-			? tag_str 
-			: StringVector::AddString(tag_name_vector, tag_str);
+	// Assign the new entries to the result vector
+	child->Reference(args.data[0]);
+	for(idx_t i = 0; i < args.size(); i++) {
+		entries[i].tag = 0;
 	}
-	// add a null tag entry for null union values
-	FlatVector::SetNull(tag_name_vector, types.size(), true);
 
-	// map the entries tags to the actual tag names using a selection vector
-	auto entries = UnionVector::GetData(union_vector);
-
-	UnifiedVectorFormat sdata;
-	args.data[0].ToUnifiedFormat(args.size(), sdata);
-
-	SelectionVector selection(args.size());
-	for (idx_t i = 0; i < args.size(); i++) {
-		auto idx = sdata.sel->get_index(i);
-		
-		auto &entry = entries[idx];
-		if (sdata.validity.RowIsValid(idx)) {
-			selection.set_index(i, entry.tag);	
-		} else {
-			// point to the null tag entry if the union itself is null
-			selection.set_index(i, types.size());
-		}
+	if(args.AllConstant()){
+		result.SetVectorType(VectorType::CONSTANT_VECTOR);
 	}
-	result.Slice(tag_name_vector, selection, args.size());
-	result.Verify(args.size());
 }
 
 static unique_ptr<FunctionData> UnionValueBind(ClientContext &context, ScalarFunction &bound_function,
                                              vector<unique_ptr<Expression>> &arguments) {
-	D_ASSERT(bound_function.arguments.size() == 1);
-	if (arguments[0]->return_type.id() == LogicalTypeId::UNKNOWN) {
-		throw ParameterNotResolvedException();
+	
+	if(arguments.size() != 1) {
+		throw Exception("union_value takes exactly one argument");
 	}
-	D_ASSERT(LogicalTypeId::UNION == arguments[0]->return_type.id());
+	auto &child = arguments[0];
 
-	auto &union_children = UnionType::GetChildTypes(arguments[0]->return_type);
-	if (union_children.empty()) {
-		throw InternalException("Can't get tags from an empty union");
+	if(child->alias.empty()) {
+		throw BinderException("Need named argument for union tag, e.g. UNION_VALUE(a := b)");
 	}
-	bound_function.arguments[0] = arguments[0]->return_type;
 
-	return make_unique<UnionValueBindData>();
+	child_list_t<LogicalType> union_members;
+
+	union_members.push_back(make_pair(child->alias, child->return_type));
+
+	bound_function.return_type = LogicalType::UNION(move(union_members));
+	return make_unique<VariableReturnBindData>(bound_function.return_type);
 }
 
 ScalarFunction UnionValueFun::GetFunction() {
-
-	return ScalarFunction("union_tag", {LogicalTypeId::UNION}, LogicalType::VARCHAR, UnionValueFunction, UnionValueBind,
-	                      nullptr, nullptr); // TODO: Statistics?
+	auto fun = ScalarFunction("union_value", {}, LogicalTypeId::UNION, UnionValueFunction, UnionValueBind, nullptr, nullptr);
+	fun.varargs = LogicalType::ANY;
+	fun.serialize = VariableReturnBindData::Serialize;
+	fun.deserialize = VariableReturnBindData::Deserialize;
+	return fun;
 }
 
 void UnionValueFun::RegisterFunction(BuiltinFunctions &set) {
 	auto fun = GetFunction();
-
-	ScalarFunctionSet union_tag("union_tag");
-	union_tag.AddFunction(fun);
-	set.AddFunction(union_tag);
+	ScalarFunctionSet union_value("union_value");
+	union_value.AddFunction(fun);
+	set.AddFunction(union_value);
 }
 
 } // namespace duckdb

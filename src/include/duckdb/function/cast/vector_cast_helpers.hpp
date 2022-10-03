@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/function/cast/default_casts.hpp"
+#include "duckdb/function/cast/cast_function_set.hpp"
 #include "duckdb/common/vector_operations/unary_executor.hpp"
 #include "duckdb/common/vector_operations/general_cast.hpp"
 #include "duckdb/common/operator/decimal_cast_operators.hpp"
@@ -198,3 +199,128 @@ struct VectorCastHelpers {
 };
 
 } // namespace duckdb
+
+
+/*
+
+	static bool PromoteToUnionCast(CastFunctionSet &set, Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		D_ASSERT(result.GetType().InternalType() == PhysicalType::UNION);
+		
+		if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			result.SetVectorType(source.GetVectorType());
+		}
+
+		auto &member_types = UnionType::GetChildTypes(result.GetType());
+		auto &member_entries = UnionVector::GetEntries(result);
+
+		auto &source_type = source.GetType();
+		auto &result_type = result.GetType();
+
+		// union members matching the result type
+		auto &candidate_types = UnionType::GetChildrenOfType(result_type, source_type);
+
+		if(candidate_types.size() < 1) {
+			// no matching types
+
+			// try to cast to any of the union types
+			auto &all_child_types = UnionType::GetChildTypes(result_type);
+			for(idx_t i = 0; i < all_child_types.size(); i++) {
+				// try cast
+				auto cast_function = set.GetCastFunction(source.GetType(), result.GetType());
+				if(cast_function.function(source, *member_entries[i], count, parameters)) {
+					// cast succeeded, update tags
+					auto tags = (union_entry_t *)UnionVector::GetData(result);
+					for (idx_t j = 0; j < count; j++) {
+						tags[j].tag = i;
+					}
+					return true;
+				}
+			}
+
+			throw TypeMismatchException(source_type, result_type, "Cannot cast to UNION, no matching types");
+		}
+
+		if(candidate_types.size() > 1) {
+			// multiple matching types
+			throw TypeMismatchException(source_type, result_type, "Cannot cast to UNION, multiple matching types");
+		}
+
+		// exactly one matching type
+		// find the type that we can cast to
+		for (idx_t i = 0; i < member_types.size(); i++) {
+			auto &candidate_type = member_types[i];
+			if (source_type == candidate_type.second) {
+				// same type: just copy the data over
+				member_entries[i]->Reference(source);
+
+				auto tags = (union_entry_t *)UnionVector::GetData(result);
+				for (idx_t j = 0; j < count; j++) {
+					tags[j].tag = i;
+				}
+
+				return true;
+			}
+		}
+		return false;
+	}
+	static bool PromoteToUnionCast(CastFunctionSet &set, Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		D_ASSERT(result.GetType().InternalType() == PhysicalType::UNION);
+		
+		if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			result.SetVectorType(source.GetVectorType());
+		}
+
+		auto &member_types = UnionType::GetChildTypes(result.GetType());
+		auto &member_entries = UnionVector::GetEntries(result);
+
+		auto &source_type = source.GetType();
+		auto &result_type = result.GetType();
+
+		// union members matching the result type
+		auto &candidate_types = UnionType::GetChildrenOfType(result_type, source_type);
+
+		if(candidate_types.size() < 1) {
+			// no matching types
+
+			// try to cast to any of the union types
+			auto &all_child_types = UnionType::GetChildTypes(result_type);
+			for(idx_t i = 0; i < all_child_types.size(); i++) {
+				// try cast
+				auto cast_function = set.GetCastFunction(source.GetType(), result.GetType());
+				if(cast_function.function(source, *member_entries[i], count, parameters)) {
+					// cast succeeded, update tags
+					auto tags = (union_entry_t *)UnionVector::GetData(result);
+					for (idx_t j = 0; j < count; j++) {
+						tags[j].tag = i;
+					}
+					return true;
+				}
+			}
+
+			throw TypeMismatchException(source_type, result_type, "Cannot cast to UNION, no matching types");
+		}
+
+		if(candidate_types.size() > 1) {
+			// multiple matching types
+			throw TypeMismatchException(source_type, result_type, "Cannot cast to UNION, multiple matching types");
+		}
+
+		// exactly one matching type
+		// find the type that we can cast to
+		for (idx_t i = 0; i < member_types.size(); i++) {
+			auto &candidate_type = member_types[i];
+			if (source_type == candidate_type.second) {
+				// same type: just copy the data over
+				member_entries[i]->Reference(source);
+
+				auto tags = (union_entry_t *)UnionVector::GetData(result);
+				for (idx_t j = 0; j < count; j++) {
+					tags[j].tag = i;
+				}
+
+				return true;
+			}
+		}
+		return false;
+	}
+*/

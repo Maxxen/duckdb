@@ -22,7 +22,7 @@ static int64_t TargetTypeCost(const LogicalType &type) {
 	case LogicalTypeId::STRUCT:
 	case LogicalTypeId::MAP:
 	case LogicalTypeId::LIST:
-		return 160;
+	case LogicalTypeId::UNION:
 	default:
 		return 110;
 	}
@@ -227,6 +227,46 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 		// Lists can be cast if their child types can be cast
 		return ImplicitCast(ListType::GetChildType(from), ListType::GetChildType(to));
 	}
+	if (from.id() == LogicalTypeId::UNION && to.id() == LogicalTypeId::UNION) {
+		// Unions can be cast if their child types interesect, in which case the
+		// most expensive cost is used
+		auto from_children = UnionType::GetChildTypes(from);
+		auto to_children = UnionType::GetChildTypes(to);
+		int cost = -1;
+		for(auto &from_child : from_children) {
+			for(auto &to_child : to_children) {
+				auto cast_cost = ImplicitCast(from_child.second, to_child.second);
+				if (cast_cost > cost) { 
+					// take the highest cost
+					cost = cast_cost;
+				}
+			}
+		}
+		return cost;
+	}
+	
+	// TODO: Do we want to recursively implictly cast to members?
+	// - if the source type is a member of the union, or /can be cast/ to a member of the union
+	if(to.id() == LogicalTypeId::UNION) {
+		// every type can be implicitly be cast to a union if the source type is a member of the union
+		auto to_children = UnionType::GetChildTypes(to);
+		for(auto &to_child : to_children) {
+			if (to_child.second == from) {
+				return 0;
+			}
+		}
+	}
+
+	if(from.id() == LogicalTypeId::UNION) {
+		// a union can always be cast to one of its child types (the non-matching members simply cast to NULL)
+		auto from_children = UnionType::GetChildTypes(from);
+		for(auto &from_child : from_children) {
+			if (from_child.second == to) {
+				return 0;
+			}
+		}
+	}
+
 	if ((from.id() == LogicalTypeId::TIMESTAMP_SEC || from.id() == LogicalTypeId::TIMESTAMP_MS ||
 	     from.id() == LogicalTypeId::TIMESTAMP_NS) &&
 	    to.id() == LogicalTypeId::TIMESTAMP) {

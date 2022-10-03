@@ -68,10 +68,11 @@ static bool NullTypeCast(Vector &source, Vector &result, idx_t count, CastParame
 	return true;
 }
 
+
 BoundCastInfo DefaultCasts::GetDefaultCastFunction(BindCastInput &input, const LogicalType &source,
                                                    const LogicalType &target) {
 	D_ASSERT(source != target);
-	// first switch on source type
+	// otherwise switch on source type
 	switch (source.id()) {
 	case LogicalTypeId::BOOLEAN:
 	case LogicalTypeId::TINYINT:
@@ -123,6 +124,8 @@ BoundCastInfo DefaultCasts::GetDefaultCastFunction(BindCastInput &input, const L
 		return StructCastSwitch(input, source, target);
 	case LogicalTypeId::LIST:
 		return ListCastSwitch(input, source, target);
+	case LogicalTypeId::UNION: 
+		return UnionCastSwitch(input, source, target);
 	case LogicalTypeId::ENUM:
 		return EnumCastSwitch(input, source, target);
 	case LogicalTypeId::AGGREGATE_STATE:

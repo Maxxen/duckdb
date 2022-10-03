@@ -113,6 +113,8 @@ BoundCastInfo DefaultCasts::MapCastSwitch(BindCastInput &input, const LogicalTyp
 		auto varchar_type = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
 		return BoundCastInfo(MapToVarcharCast, BindMapToMapCast(input, source, varchar_type));
 	}
+	case LogicalTypeId::UNION: 
+		return DefaultCasts::PromoteToUnionCast(input, source, target);
 	default:
 		return TryVectorNullCast;
 	}
