@@ -499,6 +499,8 @@ static RET CreateColumnInternal(ColumnData &other, idx_t start_row, ColumnData *
 		return OP::template Create<StructColumnData>(other, start_row, parent);
 	} else if (other.type.InternalType() == PhysicalType::LIST) {
 		return OP::template Create<ListColumnData>(other, start_row, parent);
+	} else if (other.type.InternalType() == PhysicalType::UNION) {
+		return OP::template Create<UnionColumnData>(other, start_row, parent);
 	} else if (other.type.id() == LogicalTypeId::VALIDITY) {
 		return OP::template Create<ValidityColumnData>(other, start_row, parent);
 	}

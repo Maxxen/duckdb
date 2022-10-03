@@ -19,6 +19,15 @@ UnionColumnData::UnionColumnData(DataTableInfo &info, idx_t column_index, idx_t 
 	}
 }
 
+UnionColumnData::UnionColumnData(ColumnData &original, idx_t start_row, ColumnData *parent)
+    : ColumnData(original, start_row, parent), validity(((UnionColumnData &)original).validity, start_row, this) {
+	auto &union_data = (UnionColumnData &)original;
+	for (auto &child_col : union_data.sub_columns) {
+		sub_columns.push_back(ColumnData::CreateColumnUnique(*child_col, start_row, this));
+	}
+}
+
+
 bool UnionColumnData::CheckZonemap(ColumnScanState &state, TableFilter &filter) {
 	// table filters are not supported yet for union columns
 	return false;

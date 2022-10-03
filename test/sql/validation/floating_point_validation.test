@@ -1,0 +1,34 @@
+# name: test/sql/validation/floating_point_validation.test
+# group: [validation]
+
+statement ok
+PRAGMA enable_verification;
+
+statement ok
+CREATE TYPE X AS int;
+
+statement ok
+CREATE TABLE tbl(x X);
+
+statement ok
+INSERT INTO tbl VALUES (10)
+
+query I
+SELECT * FROM tbl;
+----
+10
+
+query I
+SELECT map([1, 5], ['a', 'e'])
+----
+{1=a, 5=e}
+
+query I
+SELECT 0E6;
+----
+0E6
+
+query I
+SELECT .0E7382504816742;
+----
+.0E7382504816742
