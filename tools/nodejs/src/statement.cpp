@@ -278,7 +278,7 @@ struct RunPreparedTask : public Task {
 		}
 
 
-		
+		/*
 		if(run_type == RunType::ARROW_ALL) {
 
 			auto callback = [](const duckdb::DataChunk &chunk) {
@@ -292,6 +292,7 @@ struct RunPreparedTask : public Task {
 				return duckdb::make_unique<duckdb::NodeResultCollector>(context, data, callback, true); 
 			};
 		}
+		*/
 		
 
 		result = statement.statement->Execute(params->params, run_type != RunType::ALL && run_type != RunType::ARROW_ALL);
@@ -370,7 +371,7 @@ struct RunPreparedTask : public Task {
 			cb.MakeCallback(statement.Value(), {env.Null(), result_arr});
 		} break;
 		case RunType::ARROW_ALL: {
-			auto blob_result = (duckdb::NodeQueryResult *)result.get();
+			auto blob_result = (duckdb::MaterializedQueryResult *)result.get();
 			// +1 is for null bytes at end of stream
 			Napi::Array result_arr(Napi::Array::New(env, blob_result->RowCount() + 1));
 
