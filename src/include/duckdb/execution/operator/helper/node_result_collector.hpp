@@ -1,0 +1,29 @@
+#pragma once
+
+#include "duckdb/execution/operator/helper/physical_result_collector.hpp"
+
+namespace duckdb {
+
+struct NodeResultCollector : public PhysicalResultCollector {
+public:
+    NodeResultCollector(ClientContext &context, PreparedStatementData &data, const NodeQueryResult::NodeResultCallback &callback, bool parallel);
+    
+	bool parallel;
+	const NodeQueryResult::NodeResultCallback callback;
+
+public: 
+	unique_ptr<QueryResult> GetResult(GlobalSinkState &state) override;
+
+public:
+    // Sink interface
+	SinkResultType Sink(ExecutionContext &context, GlobalSinkState &state, LocalSinkState &lstate,
+	                    DataChunk &input) const override;
+	void Combine(ExecutionContext &context, GlobalSinkState &gstate, LocalSinkState &lstate) const override;
+
+	unique_ptr<LocalSinkState> GetLocalSinkState(ExecutionContext &context) const override;
+	unique_ptr<GlobalSinkState> GetGlobalSinkState(ClientContext &context) const override;
+
+	bool ParallelSink() const override;
+};
+
+} // namespace duckdb

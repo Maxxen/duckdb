@@ -277,8 +277,24 @@ struct RunPreparedTask : public Task {
 			return;
 		}
 
-		result =
-		    statement.statement->Execute(params->params, run_type != RunType::ALL && run_type != RunType::ARROW_ALL);
+
+		
+		if(run_type == RunType::ARROW_ALL) {
+
+			auto callback = [](const duckdb::DataChunk &chunk) {
+				std::cout << "callback: " << std::to_string(chunk.size()) << std::endl;
+			};
+
+			// if we are running arrow, use the custom arrow runner.
+			statement.statement->context->config.result_collector = 
+			[&](duckdb::ClientContext &context, duckdb::PreparedStatementData &data) 
+			{ 
+				return duckdb::make_unique<duckdb::NodeResultCollector>(context, data, callback, true); 
+			};
+		}
+		
+
+		result = statement.statement->Execute(params->params, run_type != RunType::ALL && run_type != RunType::ARROW_ALL);
 	}
 
 	void Callback() override {
@@ -354,9 +370,9 @@ struct RunPreparedTask : public Task {
 			cb.MakeCallback(statement.Value(), {env.Null(), result_arr});
 		} break;
 		case RunType::ARROW_ALL: {
-			auto materialized_result = (duckdb::MaterializedQueryResult *)result.get();
+			auto blob_result = (duckdb::NodeQueryResult *)result.get();
 			// +1 is for null bytes at end of stream
-			Napi::Array result_arr(Napi::Array::New(env, materialized_result->RowCount() + 1));
+			Napi::Array result_arr(Napi::Array::New(env, blob_result->RowCount() + 1));
 
 			auto deleter = [](Napi::Env, void *finalizeData, void *hint) {
 				delete static_cast<std::shared_ptr<duckdb::QueryResult> *>(hint);
@@ -393,7 +409,7 @@ struct RunPreparedTask : public Task {
 					if (is_header) {
 						result_arr.Set((uint32_t)0, typed_array);
 					} else {
-						D_ASSERT(out_idx < materialized_result->RowCount());
+						D_ASSERT(out_idx < blob_result->RowCount());
 						result_arr.Set(out_idx++, typed_array);
 					}
 				}
@@ -405,7 +421,7 @@ struct RunPreparedTask : public Task {
 			result_arr.Set(out_idx++, null_arr);
 
 			// Confirm all rows are set
-			D_ASSERT(out_idx == materialized_result->RowCount() + 1);
+			D_ASSERT(out_idx == blob_result->RowCount() + 1);
 
 			cb.MakeCallback(statement.Value(), {env.Null(), result_arr});
 		} break;

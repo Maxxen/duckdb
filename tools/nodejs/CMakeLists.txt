@@ -59,6 +59,7 @@ include_directories(${NODE_INCLUDE_DIRS})
 
 set(CMAKE_SHARED_LINKER_FLAGS "-bundle" "-undefined dynamic_lookup")
 add_library(node_duckdb src/duckdb_node.cpp src/database.cpp src/data_chunk.cpp
-                        src/connection.cpp src/statement.cpp src/utils.cpp)
+                        src/connection.cpp src/statement.cpp src/utils.cpp 
+                        src/node_result_collector.cpp)
 target_link_libraries(node_duckdb duckdb_static napi)
 link_threads(node_duckdb)

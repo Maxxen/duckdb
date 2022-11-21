@@ -24,6 +24,7 @@ add_library_unity(
   error_manager.cpp
   extension.cpp
   materialized_query_result.cpp
+  node_query_result.cpp
   pending_query_result.cpp
   prepared_statement.cpp
   prepared_statement_data.cpp
