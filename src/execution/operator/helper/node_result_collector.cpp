@@ -10,18 +10,6 @@ NodeResultCollector::NodeResultCollector(ClientContext &context, PreparedStateme
     : PhysicalResultCollector(data), parallel(parallel), callback(callback) {
 }
 
-unique_ptr<QueryResult> NodeResultCollector::GetResult(GlobalSinkState &state) {
-    auto &gstate = (NodeCollectorGlobalState &)state;
-	if (!gstate.collection) {
-		gstate.collection = make_unique<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
-	}
-
-    auto result = make_unique<NodeQueryResult>(statement_type, properties, names, move(gstate.collection),
-	                                                   gstate.context->GetClientProperties(), callback);
-
-    return move(result);
-}
-
 
 //===--------------------------------------------------------------------===//
 // Sink
@@ -78,6 +66,20 @@ unique_ptr<LocalSinkState> NodeResultCollector::GetLocalSinkState(ExecutionConte
 bool NodeResultCollector::ParallelSink() const {
 	return parallel;
 }
+
+
+unique_ptr<QueryResult> NodeResultCollector::GetResult(GlobalSinkState &state) {
+    auto &gstate = (NodeCollectorGlobalState &)state;
+	if (!gstate.collection) {
+		gstate.collection = make_unique<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
+	}
+
+    auto result = make_unique<NodeQueryResult>(statement_type, properties, names, move(gstate.collection),
+	                                                   gstate.context->GetClientProperties(), callback);
+
+    return move(result);
+}
+
 
 } // namespace duckdb
 
