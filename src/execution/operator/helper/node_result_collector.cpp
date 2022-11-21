@@ -11,7 +11,7 @@ NodeResultCollector::NodeResultCollector(ClientContext &context, PreparedStateme
 }
 
 unique_ptr<QueryResult> NodeResultCollector::GetResult(GlobalSinkState &state) {
-    auto &gstate = (MaterializedCollectorGlobalState &)state;
+    auto &gstate = (NodeCollectorGlobalState &)state;
 	if (!gstate.collection) {
 		gstate.collection = make_unique<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
 	}
@@ -26,14 +26,14 @@ unique_ptr<QueryResult> NodeResultCollector::GetResult(GlobalSinkState &state) {
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//
-class MaterializedCollectorGlobalState : public GlobalSinkState {
+class NodeCollectorGlobalState : public GlobalSinkState {
 public:
 	mutex glock;
 	unique_ptr<ColumnDataCollection> collection;
 	shared_ptr<ClientContext> context;
 };
 
-class MaterializedCollectorLocalState : public LocalSinkState {
+class NodeCollectorLocalState : public LocalSinkState {
 public:
 	unique_ptr<ColumnDataCollection> collection;
 	ColumnDataAppendState append_state;
@@ -41,15 +41,15 @@ public:
 
 SinkResultType NodeResultCollector::Sink(ExecutionContext &context, GlobalSinkState &gstate_p,
                                                    LocalSinkState &lstate_p, DataChunk &input) const {
-	auto &lstate = (MaterializedCollectorLocalState &)lstate_p;
+	auto &lstate = (NodeCollectorLocalState &)lstate_p;
 	lstate.collection->Append(lstate.append_state, input);
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
 void NodeResultCollector::Combine(ExecutionContext &context, GlobalSinkState &gstate_p,
                                             LocalSinkState &lstate_p) const {
-	auto &gstate = (MaterializedCollectorGlobalState &)gstate_p;
-	auto &lstate = (MaterializedCollectorLocalState &)lstate_p;
+	auto &gstate = (NodeCollectorGlobalState &)gstate_p;
+	auto &lstate = (NodeCollectorLocalState &)lstate_p;
 	if (lstate.collection->Count() == 0) {
 		return;
 	}
@@ -63,13 +63,13 @@ void NodeResultCollector::Combine(ExecutionContext &context, GlobalSinkState &gs
 }
 
 unique_ptr<GlobalSinkState> NodeResultCollector::GetGlobalSinkState(ClientContext &context) const {
-	auto state = make_unique<MaterializedCollectorGlobalState>();
+	auto state = make_unique<NodeCollectorGlobalState>();
 	state->context = context.shared_from_this();
 	return move(state);
 }
 
 unique_ptr<LocalSinkState> NodeResultCollector::GetLocalSinkState(ExecutionContext &context) const {
-	auto state = make_unique<MaterializedCollectorLocalState>();
+	auto state = make_unique<NodeCollectorLocalState>();
 	state->collection = make_unique<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
 	state->collection->InitializeAppend(state->append_state);
 	return move(state);
