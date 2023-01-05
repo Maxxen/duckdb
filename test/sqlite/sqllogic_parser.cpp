@@ -163,6 +163,8 @@ bool SQLLogicParser::IsSingleLineStatement(SQLLogicToken &token) {
 	case SQLLogicTokenType::SQLLOGIC_REQUIRE_ENV:
 	case SQLLogicTokenType::SQLLOGIC_LOAD:
 	case SQLLogicTokenType::SQLLOGIC_RESTART:
+	case SQLLogicTokenType::SQLLOGIC_SKIP_IF_DEBUG:
+	case SQLLogicTokenType::SQLLOGIC_ONLY_IF_DEBUG:
 		return true;
 
 	case SQLLogicTokenType::SQLLOGIC_SKIP_IF:
@@ -182,6 +184,10 @@ SQLLogicTokenType SQLLogicParser::CommandToToken(const string &token) {
 		return SQLLogicTokenType::SQLLOGIC_SKIP_IF;
 	} else if (token == "onlyif") {
 		return SQLLogicTokenType::SQLLOGIC_ONLY_IF;
+	} else if (token == "skipif_debug") {
+		return SQLLogicTokenType::SQLLOGIC_SKIP_IF_DEBUG;
+	} else if (token == "onlyif_debug") {
+		return SQLLogicTokenType::SQLLOGIC_ONLY_IF_DEBUG;
 	} else if (token == "statement") {
 		return SQLLogicTokenType::SQLLOGIC_STATEMENT;
 	} else if (token == "query") {

@@ -126,6 +126,11 @@ string SQLLogicTestRunner::ReplaceKeywords(string input) {
 	input = StringUtil::Replace(input, "__TEST_DIR__", TestDirectoryPath());
 	input = StringUtil::Replace(input, "__WORKING_DIRECTORY__", FileSystem::GetWorkingDirectory());
 	input = StringUtil::Replace(input, "__BUILD_DIRECTORY__", DUCKDB_BUILD_DIRECTORY);
+#ifdef DEBUG
+	input = StringUtil::Replace(input, "__DEBUG__", "true");
+#else
+	input = StringUtil::Replace(input, "__DEBUG__", "false");
+#endif
 	return input;
 }
 
@@ -239,6 +244,22 @@ void SQLLogicTestRunner::ExecuteFile(string script) {
 			}
 			parser.NextLine();
 			token = parser.Tokenize();
+		}
+		if (token.type == SQLLogicTokenType::SQLLOGIC_SKIP_IF_DEBUG) {
+#ifdef DEBUG
+			skip_statement = true;
+#else
+			parser.NextLine();
+			token = parser.Tokenize();
+#endif
+		}
+		if (token.type == SQLLogicTokenType::SQLLOGIC_ONLY_IF_DEBUG) {
+#ifndef DEBUG
+			skip_statement = true;
+#else
+			parser.NextLine();
+			token = parser.Tokenize();
+#endif
 		}
 		if (skip_statement) {
 			continue;
