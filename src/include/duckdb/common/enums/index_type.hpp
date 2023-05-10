@@ -17,7 +17,8 @@ namespace duckdb {
 //===--------------------------------------------------------------------===//
 enum class IndexType : uint8_t {
 	INVALID = 0, // invalid index type
-	ART = 1      // Adaptive Radix Tree
+	ART = 1,     // Adaptive Radix Tree
+	RTREE = 2    // R-Tree
 };
 
 //===--------------------------------------------------------------------===//

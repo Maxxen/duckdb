@@ -4,19 +4,12 @@
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/transformer.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/common/enum_util.hpp"
 
 namespace duckdb {
 
 static IndexType StringToIndexType(const string &str) {
-	string upper_str = StringUtil::Upper(str);
-	if (upper_str == "INVALID") {
-		return IndexType::INVALID;
-	} else if (upper_str == "ART") {
-		return IndexType::ART;
-	} else {
-		throw ConversionException("No IndexType conversion from string '%s'", upper_str);
-	}
-	return IndexType::INVALID;
+	return EnumUtil::FromString<IndexType>(StringUtil::Upper(str));
 }
 
 vector<unique_ptr<ParsedExpression>> Transformer::TransformIndexParameters(duckdb_libpgquery::PGList *list,

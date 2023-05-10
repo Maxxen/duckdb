@@ -11,6 +11,7 @@
 #include "duckdb/common/field_writer.hpp"
 #include "duckdb/common/serializer.hpp"
 #include "duckdb/execution/index/art/art.hpp"
+#include "duckdb/execution/index/rtree/rtree.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/main/connection.hpp"
@@ -389,6 +390,14 @@ void CheckpointReader::ReadIndex(ClientContext &context, MetaBlockReader &reader
 		                          info->constraint_type, storage.db, root_block_id, root_offset);
 		index_catalog.index = art.get();
 		storage.info->indexes.AddIndex(std::move(art));
+		break;
+	}
+	case IndexType::RTREE: {
+		auto &storage = table_catalog.GetStorage();
+		auto rtree = make_uniq<RTree>(info->column_ids, TableIOManager::Get(storage), std::move(unbound_expressions),
+		                              info->constraint_type, storage.db, root_block_id, root_offset);
+		index_catalog.index = rtree.get();
+		storage.info->indexes.AddIndex(std::move(rtree));
 		break;
 	}
 	default:
