@@ -7,7 +7,6 @@
 #include "duckdb/storage/storage_manager.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/execution/index/art/art_key.hpp"
-#include "duckdb/execution/index/rtree/rtree.hpp"
 
 namespace duckdb {
 
@@ -57,12 +56,6 @@ unique_ptr<GlobalSinkState> PhysicalCreateIndex::GetGlobalSinkState(ClientContex
 		                                     info->constraint_type, storage.db);
 		break;
 	}
-	case IndexType::RTREE: {
-		auto &storage = table.GetStorage();
-		state->global_index = make_uniq<RTree>(storage_ids, TableIOManager::Get(storage), unbound_expressions,
-		                                       info->constraint_type, storage.db);
-		break;
-	}
 	default:
 		throw InternalException("Unimplemented index type");
 	}
@@ -78,12 +71,6 @@ unique_ptr<LocalSinkState> PhysicalCreateIndex::GetLocalSinkState(ExecutionConte
 		auto &storage = table.GetStorage();
 		state->local_index = make_uniq<ART>(storage_ids, TableIOManager::Get(storage), unbound_expressions,
 		                                    info->constraint_type, storage.db);
-		break;
-	}
-	case IndexType::RTREE: {
-		auto &storage = table.GetStorage();
-		state->local_index = make_uniq<RTree>(storage_ids, TableIOManager::Get(storage), unbound_expressions,
-		                                      info->constraint_type, storage.db);
 		break;
 	}
 	default:

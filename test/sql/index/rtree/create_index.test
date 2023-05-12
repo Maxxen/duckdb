@@ -1,0 +1,12 @@
+# name: test/sql/index/rtree/create_index.test
+# description: CREATE INDEX
+# group: [rtree]
+
+statement ok
+CREATE TABLE boxes (b STRUCT(minx DOUBLE, miny DOUBLE, maxx DOUBLE, maxy DOUBLE));
+
+statement ok
+INSERT INTO boxes VALUES ({minx: 0, miny: 0, maxx: 1, maxy: 1});
+
+statement ok
+CREATE INDEX boxes_rtree ON boxes USING RTREE(b);

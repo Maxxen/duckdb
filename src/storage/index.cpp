@@ -56,6 +56,8 @@ bool Index::MergeIndexes(Index &other_index) {
 	switch (this->type) {
 	case IndexType::ART:
 		return Cast<ART>().MergeIndexes(state, other_index);
+	case IndexType::RTREE:
+		return Cast<RTree>().MergeIndexes(state, other_index);
 	default:
 		throw InternalException("Unimplemented index type for merge");
 	}

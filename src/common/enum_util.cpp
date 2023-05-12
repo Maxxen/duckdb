@@ -2560,6 +2560,10 @@ const char *EnumUtil::ToChars<PhysicalOperatorType>(PhysicalOperatorType value) 
 		return "PROJECTION";
 	case PhysicalOperatorType::COPY_TO_FILE:
 		return "COPY_TO_FILE";
+	case PhysicalOperatorType::BATCH_COPY_TO_FILE:
+		return "BATCH_COPY_TO_FILE";
+	case PhysicalOperatorType::FIXED_BATCH_COPY_TO_FILE:
+		return "FIXED_BATCH_COPY_TO_FILE";
 	case PhysicalOperatorType::RESERVOIR_SAMPLE:
 		return "RESERVOIR_SAMPLE";
 	case PhysicalOperatorType::STREAMING_SAMPLE:
@@ -2720,6 +2724,12 @@ PhysicalOperatorType EnumUtil::FromString<PhysicalOperatorType>(const char *valu
 	}
 	if (StringUtil::Equals(value, "COPY_TO_FILE")) {
 		return PhysicalOperatorType::COPY_TO_FILE;
+	}
+	if (StringUtil::Equals(value, "BATCH_COPY_TO_FILE")) {
+		return PhysicalOperatorType::BATCH_COPY_TO_FILE;
+	}
+	if (StringUtil::Equals(value, "FIXED_BATCH_COPY_TO_FILE")) {
+		return PhysicalOperatorType::FIXED_BATCH_COPY_TO_FILE;
 	}
 	if (StringUtil::Equals(value, "RESERVOIR_SAMPLE")) {
 		return PhysicalOperatorType::RESERVOIR_SAMPLE;
@@ -5569,6 +5579,8 @@ const char *EnumUtil::ToChars<IndexType>(IndexType value) {
 		return "INVALID";
 	case IndexType::ART:
 		return "ART";
+	case IndexType::RTREE:
+		return "RTREE";
 	default:
 		throw NotImplementedException(StringUtil::Format("Enum value: '%d' not implemented", value));
 	}
@@ -5581,6 +5593,9 @@ IndexType EnumUtil::FromString<IndexType>(const char *value) {
 	}
 	if (StringUtil::Equals(value, "ART")) {
 		return IndexType::ART;
+	}
+	if (StringUtil::Equals(value, "RTREE")) {
+		return IndexType::RTREE;
 	}
 	throw NotImplementedException(StringUtil::Format("Enum value: '%s' not implemented", value));
 }
