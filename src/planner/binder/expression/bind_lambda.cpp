@@ -127,7 +127,9 @@ void ExpressionBinder::TransformCapturedLambdaColumn(unique_ptr<Expression> &ori
 
 		} else {
 			// refers to current lambda parameter
-			replacement = make_uniq<BoundReferenceExpression>(alias, list_child_type, 0);
+			
+			// TODO: Is this ok?
+			replacement = make_uniq<BoundReferenceExpression>(alias, list_child_type, bound_lambda_ref.binding.column_index);
 		}
 
 	} else {

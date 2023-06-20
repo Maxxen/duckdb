@@ -344,7 +344,7 @@ static unique_ptr<FunctionData> ListLambdaBind(ClientContext &context, ScalarFun
 	return make_uniq<ListLambdaBindData>(bound_function.return_type, std::move(lambda_expr));
 }
 
-static unique_ptr<FunctionData> ListTransformBind(ClientContext &context, ScalarFunction &bound_function,
+static unique_ptr<FunctionData> ListTransformUnaryBind(ClientContext &context, ScalarFunction &bound_function,
                                                   vector<unique_ptr<Expression>> &arguments) {
 
 	// at least the list column and the lambda function
@@ -379,19 +379,162 @@ static unique_ptr<FunctionData> ListFilterBind(ClientContext &context, ScalarFun
 	return ListLambdaBind<1>(context, bound_function, arguments);
 }
 
-ScalarFunction ListTransformFun::GetFunction() {
-	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::LIST(LogicalType::ANY),
-	                   ListTransformFunction, ListTransformBind, nullptr, nullptr);
-	fun.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
-	fun.serialize = ListLambdaBindData::Serialize;
-	fun.deserialize = ListLambdaBindData::Deserialize;
-	return fun;
+static unique_ptr<FunctionData> ListReduceBind(ClientContext &context, ScalarFunction &bound_function,
+                                                  vector<unique_ptr<Expression>> &arguments) {
+
+	// at least the list column and the lambda function
+	D_ASSERT(arguments.size() == 2);
+	if (arguments[1]->expression_class != ExpressionClass::BOUND_LAMBDA) {
+		throw BinderException("Invalid lambda expression!");
+	}
+
+	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
+	bound_function.return_type = bound_lambda_expr.lambda_expr->return_type;
+	
+	// Reduce takes two parameters, the accumulator and the next value
+	return ListLambdaBind<2>(context, bound_function, arguments);
+}
+
+ScalarFunctionSet ListTransformFun::GetFunctions() {
+
+	ScalarFunctionSet set;
+	
+	ScalarFunction unary_fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::LIST(LogicalType::ANY),
+	                   ListTransformFunction, ListTransformUnaryBind, nullptr, nullptr);
+	unary_fun.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
+	unary_fun.serialize = ListLambdaBindData::Serialize;
+	unary_fun.deserialize = ListLambdaBindData::Deserialize;
+
+	set.AddFunction(unary_fun);
+
+	// TODO: Add binary version here
+	
+	return set;
 }
 
 ScalarFunction ListFilterFun::GetFunction() {
 	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::LIST(LogicalType::ANY),
 	                   ListFilterFunction, ListFilterBind, nullptr, nullptr);
 	fun.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
+	fun.serialize = ListLambdaBindData::Serialize;
+	fun.deserialize = ListLambdaBindData::Deserialize;
+	return fun;
+}
+
+
+static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+
+	// always at least the list argument
+	D_ASSERT(args.ColumnCount() >= 1);
+
+	auto count = args.size();
+	auto &list_vec = args.data[0];
+	// TODO: dont flatten
+	list_vec.Flatten(count);
+
+	auto list_entries = ListVector::GetData(list_vec);
+	auto &list_data = ListVector::GetEntry(list_vec);
+
+	result.SetVectorType(VectorType::FLAT_VECTOR);
+	auto result_entries = FlatVector::GetData<list_entry_t>(result);
+	auto &result_validity = FlatVector::Validity(result);
+
+	// get the lambda expression
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<ListLambdaBindData>();
+	auto &lambda_expr = info.lambda_expr;
+
+	// get the accumulator type and the argument type
+	auto accumulator_type = lambda_expr->return_type;
+	auto argument_type = list_data.GetType();
+
+	// setup the working chunks
+	DataChunk arg_chunk;
+	DataChunk res_chunk;
+
+	arg_chunk.Initialize(state.GetContext(), {accumulator_type, argument_type});
+	res_chunk.Initialize(state.GetContext(), {accumulator_type});
+
+	SelectionVector arg_sel(count);
+	SelectionVector acc_sel(count);
+	ExpressionExecutor expr_executor(state.GetContext(), *lambda_expr);
+	
+	idx_t elem_idx = 2;
+	idx_t selected_count = 0;
+
+	// First pass, initialize the accumulator with the first element
+	for (idx_t i = 0; i < count; i++) {
+		if(FlatVector::IsNull(list_vec, i)) {
+			// skip null entries
+			FlatVector::SetNull(result, i, true);
+			continue;
+		}
+		auto list_entry = &list_entries[i];
+		if (list_entry->length < elem_idx) {
+			// list does not have enough elements, skip
+			continue;
+		}
+		acc_sel.set_index(i, list_entry->offset);
+		arg_sel.set_index(i, list_entry->offset + 1);
+		selected_count++;
+	}
+	elem_idx++;
+	
+	arg_chunk.SetCardinality(selected_count);
+	res_chunk.SetCardinality(selected_count);
+
+	arg_chunk.data[0].Slice(list_data, acc_sel, selected_count);
+	arg_chunk.data[1].Slice(list_data, arg_sel, selected_count);
+	arg_chunk.Flatten();
+	expr_executor.Execute(arg_chunk, res_chunk);
+
+	
+	// Begin execution
+	while(selected_count > 0) {
+		selected_count = 0;
+		arg_sel.Initialize(count);
+		acc_sel.Initialize(count);
+		for (idx_t i = 0; i < count; i++) {
+			if(FlatVector::IsNull(list_vec, i)) {
+				// skip null entries
+				continue;
+			}
+			auto list_entry = &list_entries[i];
+			if (list_entry->length < elem_idx) {
+				// list does not have enough elements, skip
+				continue;
+			}
+			acc_sel.set_index(i, i);
+			arg_sel.set_index(i, list_entry->offset + elem_idx - 1);
+			selected_count++;
+		}
+		if(selected_count == 0) {
+			// no more elements to process
+			break;
+		}
+
+		elem_idx++;
+
+		arg_chunk.SetCardinality(selected_count);
+		res_chunk.SetCardinality(selected_count);
+		// TODO: this is wrong.
+		arg_chunk.data[0].Slice(res_chunk.data[0], acc_sel, selected_count);
+		// arg_chunk.data[0].Flatten(selected_count);
+		// VectorOperations::Copy(res_chunk.data[0], arg_chunk.data[0], selected_count, 0, 0);
+		arg_chunk.data[1].Slice(list_data, arg_sel, selected_count);
+		// arg_chunk.data[1].Flatten(selected_count);
+
+		expr_executor.Execute(arg_chunk, res_chunk);
+	}
+
+	// TODO: Fold rest of the data
+	result.Reference(res_chunk.data[0]);
+}
+
+ScalarFunction ListReduceFun::GetFunction() {
+	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::ANY,
+	                   ListReduceFunction, ListReduceBind, nullptr, nullptr);
+	fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
 	fun.serialize = ListLambdaBindData::Serialize;
 	fun.deserialize = ListLambdaBindData::Deserialize;
 	return fun;

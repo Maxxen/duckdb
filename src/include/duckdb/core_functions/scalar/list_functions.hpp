@@ -115,6 +115,45 @@ struct ArraySliceFun {
 	static constexpr const char *Name = "array_slice";
 };
 
+struct ListReduceFun {
+	static constexpr const char *Name = "list_reduce";
+	static constexpr const char *Parameters = "list,lambda";
+	static constexpr const char *Description = "Returns the value after repeatedly applying the lambda";
+	static constexpr const char *Example = "list_reduce([1, 2, 3], (x, y) -> x + y)";
+
+	static ScalarFunction GetFunction();
+};
+
+struct ArrayReduceFun {
+	using ALIAS = ListReduceFun;
+
+	static constexpr const char *Name = "array_reduce";
+};
+
+struct ListFoldFun {
+	using ALIAS = ListReduceFun;
+
+	static constexpr const char *Name = "list_fold";
+};
+
+struct ArrayFoldFun {
+	using ALIAS = ListReduceFun;
+
+	static constexpr const char *Name = "array_fold";
+};
+
+struct ReduceFun {
+	using ALIAS = ListReduceFun;
+
+	static constexpr const char *Name = "reduce";
+};
+
+struct FoldFun {
+	using ALIAS = ListReduceFun;
+
+	static constexpr const char *Name = "fold";
+};
+
 struct ListSortFun {
 	static constexpr const char *Name = "list_sort";
 	static constexpr const char *Parameters = "list";
@@ -151,7 +190,7 @@ struct ListTransformFun {
 	static constexpr const char *Description = "Returns a list that is the result of applying the lambda function to each element of the input list. See the Lambda Functions section for more details.";
 	static constexpr const char *Example = "list_transform([1, 2, 3], x -> x + 1)";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct ArrayTransformFun {

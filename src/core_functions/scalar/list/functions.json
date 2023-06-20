@@ -48,6 +48,14 @@
         "aliases": ["array_slice"]
     },
     {
+        "name": "list_reduce",
+        "parameters": "list,lambda",
+        "description": "Returns the value after repeatedly applying the lambda",
+        "example": "list_reduce([1, 2, 3], (x, y) -> x + y)",
+        "type": "scalar_function",
+        "aliases": ["array_reduce", "list_fold", "array_fold", "reduce", "fold"]
+    },
+    {
         "name": "list_sort",
         "parameters": "list",
         "description": "Sorts the elements of the list.",
@@ -68,7 +76,7 @@
         "parameters": "list,lambda",
         "description": "Returns a list that is the result of applying the lambda function to each element of the input list. See the Lambda Functions section for more details.",
         "example": "list_transform([1, 2, 3], x -> x + 1)",
-        "type": "scalar_function",
+        "type": "scalar_function_set",
         "aliases": ["array_transform", "list_apply", "array_apply", "apply"]
     },
     {

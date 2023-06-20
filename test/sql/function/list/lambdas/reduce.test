@@ -1,0 +1,19 @@
+# name: test/sql/function/list/lambdas/reduce.test
+# description: Test list_reduce function
+# group: [lambdas]
+
+# statement ok
+# PRAGMA enable_verification
+
+statement ok
+CREATE TABLE t1 (a INTEGER[]);
+INSERT INTO t1 VALUES (ARRAY[1, 2, 3, 4]);
+INSERT INTO t1 VALUES (ARRAY[1, 1, 1, 1]);
+INSERT INTO t1 VALUES (ARRAY[1, 2, 1, 1]);
+
+query I
+SELECT list_reduce(a, (x, y) -> x + y) FROM t1;
+----
+10
+4
+5
