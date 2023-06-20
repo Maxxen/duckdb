@@ -345,7 +345,7 @@ static unique_ptr<FunctionData> ListLambdaBind(ClientContext &context, ScalarFun
 }
 
 static unique_ptr<FunctionData> ListTransformUnaryBind(ClientContext &context, ScalarFunction &bound_function,
-                                                  vector<unique_ptr<Expression>> &arguments) {
+                                                       vector<unique_ptr<Expression>> &arguments) {
 
 	// at least the list column and the lambda function
 	D_ASSERT(arguments.size() == 2);
@@ -380,7 +380,7 @@ static unique_ptr<FunctionData> ListFilterBind(ClientContext &context, ScalarFun
 }
 
 static unique_ptr<FunctionData> ListReduceBind(ClientContext &context, ScalarFunction &bound_function,
-                                                  vector<unique_ptr<Expression>> &arguments) {
+                                               vector<unique_ptr<Expression>> &arguments) {
 
 	// at least the list column and the lambda function
 	D_ASSERT(arguments.size() == 2);
@@ -390,7 +390,7 @@ static unique_ptr<FunctionData> ListReduceBind(ClientContext &context, ScalarFun
 
 	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
 	bound_function.return_type = bound_lambda_expr.lambda_expr->return_type;
-	
+
 	// Reduce takes two parameters, the accumulator and the next value
 	return ListLambdaBind<2>(context, bound_function, arguments);
 }
@@ -398,9 +398,10 @@ static unique_ptr<FunctionData> ListReduceBind(ClientContext &context, ScalarFun
 ScalarFunctionSet ListTransformFun::GetFunctions() {
 
 	ScalarFunctionSet set;
-	
-	ScalarFunction unary_fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::LIST(LogicalType::ANY),
-	                   ListTransformFunction, ListTransformUnaryBind, nullptr, nullptr);
+
+	ScalarFunction unary_fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA},
+	                         LogicalType::LIST(LogicalType::ANY), ListTransformFunction, ListTransformUnaryBind,
+	                         nullptr, nullptr);
 	unary_fun.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
 	unary_fun.serialize = ListLambdaBindData::Serialize;
 	unary_fun.deserialize = ListLambdaBindData::Deserialize;
@@ -408,7 +409,7 @@ ScalarFunctionSet ListTransformFun::GetFunctions() {
 	set.AddFunction(unary_fun);
 
 	// TODO: Add binary version here
-	
+
 	return set;
 }
 
@@ -420,7 +421,6 @@ ScalarFunction ListFilterFun::GetFunction() {
 	fun.deserialize = ListLambdaBindData::Deserialize;
 	return fun;
 }
-
 
 static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 
@@ -458,13 +458,13 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 	SelectionVector arg_sel(count);
 	SelectionVector acc_sel(count);
 	ExpressionExecutor expr_executor(state.GetContext(), *lambda_expr);
-	
+
 	idx_t elem_idx = 2;
 	idx_t selected_count = 0;
 
 	// First pass, initialize the accumulator with the first element
 	for (idx_t i = 0; i < count; i++) {
-		if(FlatVector::IsNull(list_vec, i)) {
+		if (FlatVector::IsNull(list_vec, i)) {
 			// skip null entries
 			FlatVector::SetNull(result, i, true);
 			continue;
@@ -479,7 +479,7 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 		selected_count++;
 	}
 	elem_idx++;
-	
+
 	arg_chunk.SetCardinality(selected_count);
 	res_chunk.SetCardinality(selected_count);
 
@@ -488,14 +488,13 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 	arg_chunk.Flatten();
 	expr_executor.Execute(arg_chunk, res_chunk);
 
-	
 	// Begin execution
-	while(selected_count > 0) {
+	while (selected_count > 0) {
 		selected_count = 0;
 		arg_sel.Initialize(count);
 		acc_sel.Initialize(count);
 		for (idx_t i = 0; i < count; i++) {
-			if(FlatVector::IsNull(list_vec, i)) {
+			if (FlatVector::IsNull(list_vec, i)) {
 				// skip null entries
 				continue;
 			}
@@ -508,7 +507,7 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 			arg_sel.set_index(i, list_entry->offset + elem_idx - 1);
 			selected_count++;
 		}
-		if(selected_count == 0) {
+		if (selected_count == 0) {
 			// no more elements to process
 			break;
 		}
@@ -532,8 +531,8 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 }
 
 ScalarFunction ListReduceFun::GetFunction() {
-	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::ANY,
-	                   ListReduceFunction, ListReduceBind, nullptr, nullptr);
+	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::ANY, ListReduceFunction,
+	                   ListReduceBind, nullptr, nullptr);
 	fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
 	fun.serialize = ListLambdaBindData::Serialize;
 	fun.deserialize = ListLambdaBindData::Deserialize;
