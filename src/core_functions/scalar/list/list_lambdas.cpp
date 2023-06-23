@@ -436,8 +436,6 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 	auto &list_data = ListVector::GetEntry(list_vec);
 
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	auto result_entries = FlatVector::GetData<list_entry_t>(result);
-	auto &result_validity = FlatVector::Validity(result);
 
 	// get the lambda expression
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
@@ -461,6 +459,7 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 
 	idx_t elem_idx = 2;
 	idx_t selected_count = 0;
+	vector<pair<idx_t, idx_t>> finished_lists;
 
 	// First pass, initialize the accumulator with the first element
 	for (idx_t i = 0; i < count; i++) {
@@ -470,8 +469,12 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 			continue;
 		}
 		auto list_entry = &list_entries[i];
-		if (list_entry->length < elem_idx) {
-			// list does not have enough elements, skip
+		if (elem_idx == list_entry->length) {
+			// Last element, we're done after this
+			finished_lists.emplace_back(i, selected_count);
+		}
+		else if (elem_idx > list_entry->length) {
+			// skip empty entries
 			continue;
 		}
 		acc_sel.set_index(i, list_entry->offset);
@@ -488,23 +491,33 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 	arg_chunk.Flatten();
 	expr_executor.Execute(arg_chunk, res_chunk);
 
+	// Copy the result of all finished lists to the result
+	for (auto finished_list : finished_lists) {
+		result.SetValue(finished_list.first, res_chunk.data[0].GetValue(finished_list.second));
+	}
+	
+
 	// Begin execution
 	while (selected_count > 0) {
+		finished_lists.clear();
 		selected_count = 0;
-		arg_sel.Initialize(count);
-		acc_sel.Initialize(count);
 		for (idx_t i = 0; i < count; i++) {
 			if (FlatVector::IsNull(list_vec, i)) {
 				// skip null entries
 				continue;
 			}
 			auto list_entry = &list_entries[i];
-			if (list_entry->length < elem_idx) {
-				// list does not have enough elements, skip
+			if (elem_idx == list_entry->length) {
+				// Last element, we're done after this
+				finished_lists.emplace_back(i, selected_count);
+			}
+			// TODO: This doesnt make sense
+			else if (elem_idx > list_entry->length + 1) {
+				// skip empty entries
 				continue;
 			}
-			acc_sel.set_index(i, i);
-			arg_sel.set_index(i, list_entry->offset + elem_idx - 1);
+			acc_sel.set_index(selected_count, i);
+			arg_sel.set_index(selected_count, list_entry->offset + elem_idx - 1);
 			selected_count++;
 		}
 		if (selected_count == 0) {
@@ -516,18 +529,24 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 
 		arg_chunk.SetCardinality(selected_count);
 		res_chunk.SetCardinality(selected_count);
-		// TODO: this is wrong.
+
 		arg_chunk.data[0].Slice(res_chunk.data[0], acc_sel, selected_count);
-		// arg_chunk.data[0].Flatten(selected_count);
-		// VectorOperations::Copy(res_chunk.data[0], arg_chunk.data[0], selected_count, 0, 0);
 		arg_chunk.data[1].Slice(list_data, arg_sel, selected_count);
-		// arg_chunk.data[1].Flatten(selected_count);
 
 		expr_executor.Execute(arg_chunk, res_chunk);
+
+		// Copy the result of all finished lists to the result
+		for (auto finished_list : finished_lists) {
+			result.SetValue(finished_list.first, res_chunk.data[0].GetValue(finished_list.second));
+		}
 	}
 
 	// TODO: Fold rest of the data
-	result.Reference(res_chunk.data[0]);
+	//result.Reference(res_chunk.data[0]);
+
+	if(count == 1) {
+		result.SetVectorType(VectorType::CONSTANT_VECTOR);
+	}
 }
 
 ScalarFunction ListReduceFun::GetFunction() {

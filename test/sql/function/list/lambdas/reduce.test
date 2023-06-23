@@ -5,15 +5,35 @@
 # statement ok
 # PRAGMA enable_verification
 
+query I
+SELECT list_reduce([1, 2, 3, 4], (x, y) -> x + y)
+----
+10
+
+query I
+SELECT list_reduce([1, 1, 1, 1], (x, y) -> x + y)
+----
+4
+
+query I
+SELECT list_reduce([1, 2, 1, 1], (x, y) -> x + y)
+----
+5
+
+
 statement ok
 CREATE TABLE t1 (a INTEGER[]);
 INSERT INTO t1 VALUES (ARRAY[1, 2, 3, 4]);
-INSERT INTO t1 VALUES (ARRAY[1, 1, 1, 1]);
+INSERT INTO t1 VALUES (ARRAY[1, 1, 1]);
+INSERT INTO t1 VALUES (ARRAY[1, 1, 1, 1, 1]);
+INSERT INTO t1 VALUES (ARRAY[2, 2]);
 INSERT INTO t1 VALUES (ARRAY[1, 2, 1, 1]);
 
 query I
 SELECT list_reduce(a, (x, y) -> x + y) FROM t1;
 ----
 10
+3
+5
 4
 5
