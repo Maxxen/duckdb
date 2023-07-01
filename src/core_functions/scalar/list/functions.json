@@ -52,7 +52,7 @@
         "parameters": "list,lambda",
         "description": "Returns the value after repeatedly applying the lambda",
         "example": "list_reduce([1, 2, 3], (x, y) -> x + y)",
-        "type": "scalar_function",
+        "type": "scalar_function_set",
         "aliases": ["array_reduce", "list_fold", "array_fold", "reduce", "fold"]
     },
     {

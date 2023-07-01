@@ -383,9 +383,17 @@ static unique_ptr<FunctionData> ListReduceBind(ClientContext &context, ScalarFun
                                                vector<unique_ptr<Expression>> &arguments) {
 
 	// at least the list column and the lambda function
-	D_ASSERT(arguments.size() == 2);
+	D_ASSERT(arguments.size() == 2 || arguments.size() == 3);
 	if (arguments[1]->expression_class != ExpressionClass::BOUND_LAMBDA) {
 		throw BinderException("Invalid lambda expression!");
+	}
+
+	if(arguments.size() == 3) {
+		// Ensure the seed value and the list elements are of the same type
+		// TODO: Insert cast here?
+		if (ListType::GetChildType(arguments[0]->return_type) != arguments[2]->return_type) {
+			throw BinderException("Seed value and list elements must be of the same type!");
+		}
 	}
 
 	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
@@ -457,10 +465,7 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 	SelectionVector acc_sel(count);
 	ExpressionExecutor expr_executor(state.GetContext(), *lambda_expr);
 
-	idx_t elem_idx = 2;
-	idx_t selected_count = 0;
-	vector<pair<idx_t, idx_t>> finished_lists;
-
+	/*
 	// First pass, initialize the accumulator with the first element
 	for (idx_t i = 0; i < count; i++) {
 		if (FlatVector::IsNull(list_vec, i)) {
@@ -495,33 +500,58 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 	for (auto finished_list : finished_lists) {
 		result.SetValue(finished_list.first, res_chunk.data[0].GetValue(finished_list.second));
 	}
-	
 
-	// Begin execution
-	while (selected_count > 0) {
-		finished_lists.clear();
-		selected_count = 0;
+	*/
+
+
+	// Set seed value
+	idx_t elem_idx = 0;
+
+	if(args.data.size() == 2) {
+		// We got a seed value as third argument
+		auto &seed_vec = args.data[1];
+		seed_vec.Flatten(count);
+		res_chunk.data[0].Reference(seed_vec);
+	} else {
+		// No seed value, use first element of the list
 		for (idx_t i = 0; i < count; i++) {
 			if (FlatVector::IsNull(list_vec, i)) {
-				// skip null entries
 				continue;
 			}
 			auto list_entry = &list_entries[i];
-			if (elem_idx == list_entry->length) {
-				// Last element, we're done after this
-				finished_lists.emplace_back(i, selected_count);
+			if (list_entry->length == 0) {
+				throw InvalidInputException("Cannot reduce empty list without providing a seed value");
 			}
-			// TODO: This doesnt make sense
-			else if (elem_idx > list_entry->length + 1) {
-				// skip empty entries
+			res_chunk.data[0].SetValue(i, list_data.GetValue(list_entry->offset));
+		}
+
+		elem_idx++;
+	}
+
+	idx_t selected_count = 0;
+	vector<pair<idx_t, idx_t>> finished_lists;
+	
+	while(true) {
+		selected_count = 0;
+		finished_lists.clear();
+
+		for (idx_t row_idx = 0; row_idx < count; row_idx++) {
+			if(FlatVector::IsNull(list_vec, row_idx)) {
+				// skip null entries
 				continue;
 			}
-			acc_sel.set_index(selected_count, i);
-			arg_sel.set_index(selected_count, list_entry->offset + elem_idx - 1);
+			auto list_entry = &list_entries[row_idx];
+			if (elem_idx >= list_entry->length) {
+				// Last element, we're done after this
+				continue;
+			}
+
+			acc_sel.set_index(selected_count, selected_count);
+			arg_sel.set_index(selected_count, list_entry->offset + elem_idx);
 			selected_count++;
 		}
 		if (selected_count == 0) {
-			// no more elements to process
+			// No more elements to process
 			break;
 		}
 
@@ -535,27 +565,43 @@ static void ListReduceFunction(DataChunk &args, ExpressionState &state, Vector &
 
 		expr_executor.Execute(arg_chunk, res_chunk);
 
-		// Copy the result of all finished lists to the result
-		for (auto finished_list : finished_lists) {
-			result.SetValue(finished_list.first, res_chunk.data[0].GetValue(finished_list.second));
-		}
+		for(idx_t i = 0; i < selected_count; i++) {
+			auto row_idx = acc_sel.get_index(i);
+			auto list_entry = &list_entries[row_idx];
+			if(elem_idx == list_entry->length) {
+				// List is finished
+				result.SetValue(row_idx, res_chunk.data[0].GetValue(i));
+			}
+		} 
 	}
-
-	// TODO: Fold rest of the data
-	//result.Reference(res_chunk.data[0]);
 
 	if(count == 1) {
 		result.SetVectorType(VectorType::CONSTANT_VECTOR);
 	}
 }
 
-ScalarFunction ListReduceFun::GetFunction() {
-	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::ANY, ListReduceFunction,
+ScalarFunctionSet ListReduceFun::GetFunctions() {
+	ScalarFunctionSet set("list_reduce");
+
+	// With seed value
+	ScalarFunction seed_fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::ANY, ListReduceFunction,
 	                   ListReduceBind, nullptr, nullptr);
-	fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
-	fun.serialize = ListLambdaBindData::Serialize;
-	fun.deserialize = ListLambdaBindData::Deserialize;
-	return fun;
+	seed_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	seed_fun.serialize = ListLambdaBindData::Serialize;
+	seed_fun.deserialize = ListLambdaBindData::Deserialize;
+
+	set.AddFunction(seed_fun);
+	
+	// Without seed value
+	ScalarFunction no_seed_fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA, LogicalType::ANY}, LogicalType::ANY, ListReduceFunction,
+	                   ListReduceBind, nullptr, nullptr);
+	no_seed_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	no_seed_fun.serialize = ListLambdaBindData::Serialize;
+	no_seed_fun.deserialize = ListLambdaBindData::Deserialize;
+
+	set.AddFunction(no_seed_fun);
+
+	return set;
 }
 
 } // namespace duckdb

@@ -129,11 +129,13 @@ BindResult ExpressionBinder::BindFunction(FunctionExpression &function, ScalarFu
 
 BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, ScalarFunctionCatalogEntry &func,
                                                 idx_t depth) {
+	// Lambda functions always have the form:
+	// func(<list>, <lambda>, <arg1?>, ..., <argN?>, <capture1?>, ..., <captureN?>)
 
 	// bind the children of the function expression
 	string error;
 
-	if (function.children.size() != 2) {
+	if (function.children.size() < 2) {
 		throw BinderException("Invalid function arguments!");
 	}
 	D_ASSERT(function.children[1]->GetExpressionClass() == ExpressionClass::LAMBDA);
@@ -180,6 +182,14 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 		return BindResult(make_uniq<BoundConstantExpression>(Value(LogicalType::SQLNULL)));
 	}
 
+	// bind the rest of the arguments
+	for (idx_t i = 2; i < function.children.size(); i++) {
+		BindChild(function.children[i], depth, error);
+	}
+	if (!error.empty()) {
+		return BindResult(error);
+	}
+
 	// all children bound successfully
 	// extract the children and types
 	vector<unique_ptr<Expression>> children;
@@ -189,7 +199,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 	}
 
 	// capture the (lambda) columns
-	auto &bound_lambda_expr = children.back()->Cast<BoundLambdaExpression>();
+	auto &bound_lambda_expr = children[1]->Cast<BoundLambdaExpression>();
 	CaptureLambdaColumns(bound_lambda_expr.captures, list_child_type, bound_lambda_expr.lambda_expr);
 
 	FunctionBinder function_binder(context);
@@ -200,11 +210,11 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 	}
 
 	auto &bound_function_expr = result->Cast<BoundFunctionExpression>();
-	D_ASSERT(bound_function_expr.children.size() == 2);
+	D_ASSERT(bound_function_expr.children.size() >= 2);
 
 	// remove the lambda expression from the children
-	auto lambda = std::move(bound_function_expr.children.back());
-	bound_function_expr.children.pop_back();
+	auto lambda = std::move(bound_function_expr.children[1]);
+	bound_function_expr.children.erase(bound_function_expr.children.begin() + 1);
 	auto &bound_lambda = lambda->Cast<BoundLambdaExpression>();
 
 	// push back (in reverse order) any nested lambda parameters so that we can later use them in the lambda expression

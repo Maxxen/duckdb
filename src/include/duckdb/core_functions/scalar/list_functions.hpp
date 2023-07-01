@@ -121,7 +121,7 @@ struct ListReduceFun {
 	static constexpr const char *Description = "Returns the value after repeatedly applying the lambda";
 	static constexpr const char *Example = "list_reduce([1, 2, 3], (x, y) -> x + y)";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct ArrayReduceFun {
