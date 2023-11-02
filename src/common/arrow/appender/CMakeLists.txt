@@ -2,6 +2,7 @@ add_library_unity(
   duckdb_common_arrow_appender
   OBJECT
   bool_data.cpp
+  fixed_size_list_data.cpp
   list_data.cpp
   map_data.cpp
   struct_data.cpp

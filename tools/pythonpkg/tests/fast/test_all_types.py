@@ -89,6 +89,13 @@ all_types = [
     "array_of_structs",
     "map",
     "union",
+    "fixed_int_array",
+    "fixed_varchar_array",
+    "fixed_nested_int_array",
+    "fixed_struct_array",
+    "struct_of_fixed_array",
+    "fixed_array_of_list_of_int",
+    "list_of_fixed_array_of_int",
 ]
 
 
@@ -212,6 +219,33 @@ class TestAllTypes(object):
             'timestamp_ms': [(datetime.datetime(1990, 1, 1, 0, 0),)],
             'timestamp_tz': [(datetime.datetime(1990, 1, 1, 0, 0, tzinfo=pytz.UTC),)],
             'union': [('Frank',), (5,), (None,)],
+            'fixed_int_array': [((None, 2, 3),), ((4, 5, 6),), (None,)],
+            'fixed_varchar_array': [(('a', None, 'c'),), (('d', 'e', 'f'),), (None,)],
+            'fixed_nested_int_array': [
+                (((None, 2, 3), None, (None, 2, 3)),),
+                (((4, 5, 6), (None, 2, 3), (4, 5, 6)),),
+                (None,),
+            ],
+            "fixed_struct_array": [
+                (({'a': None, 'b': None}, {'a': 42, 'b': '🦆🦆🦆🦆🦆🦆'}, {'a': None, 'b': None}),),
+                (({'a': 42, 'b': '🦆🦆🦆🦆🦆🦆'}, {'a': None, 'b': None}, {'a': 42, 'b': '🦆🦆🦆🦆🦆🦆'}),),
+                (None,),
+            ],
+            "struct_of_fixed_array": [
+                ({'a': (None, 2, 3), 'b': ('a', None, 'c')},),
+                ({'a': (4, 5, 6), 'b': ('d', 'e', 'f')},),
+                (None,),
+            ],
+            "fixed_array_of_list_of_int": [
+                (([], [42, 999, None, None, -42], []),),
+                (([42, 999, None, None, -42], [], [42, 999, None, None, -42]),),
+                (None,),
+            ],
+            "list_of_fixed_array_of_int": [
+                ([(None, 2, 3), (4, 5, 6), (None, 2, 3)],),
+                ([(4, 5, 6), (None, 2, 3), (4, 5, 6)],),
+                (None,),
+            ],
         }
         if cur_type in replacement_values:
             result = conn.execute("select " + replacement_values[cur_type]).fetchall()
@@ -431,6 +465,7 @@ class TestAllTypes(object):
                 dtype=object,
             ),
             'union': np.ma.array(['Frank', 5, None], mask=[0, 0, 1], dtype=object),
+            'fixed_int_array': np.ma.array([(None, 2, 3), (4, 5, 6), None], mask=[0, 0, 1], dtype=object),
         }
 
         # The following types don't have a numpy equivalent, and are coerced to

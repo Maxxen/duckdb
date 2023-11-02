@@ -13,43 +13,33 @@
 
 namespace duckdb {
 
-RawArrayWrapper::RawArrayWrapper(const LogicalType &type) : data(nullptr), type(type), count(0) {
+static idx_t GetNumpyTypeWidth(const LogicalType &type) {
 	switch (type.id()) {
 	case LogicalTypeId::BOOLEAN:
-		type_width = sizeof(bool);
-		break;
+		return sizeof(bool);
 	case LogicalTypeId::UTINYINT:
-		type_width = sizeof(uint8_t);
-		break;
+		return sizeof(uint8_t);
 	case LogicalTypeId::USMALLINT:
-		type_width = sizeof(uint16_t);
-		break;
+		return sizeof(uint16_t);
 	case LogicalTypeId::UINTEGER:
-		type_width = sizeof(uint32_t);
-		break;
+		return sizeof(uint32_t);
 	case LogicalTypeId::UBIGINT:
-		type_width = sizeof(uint64_t);
-		break;
+		return sizeof(uint64_t);
+		;
 	case LogicalTypeId::TINYINT:
-		type_width = sizeof(int8_t);
-		break;
+		return sizeof(int8_t);
 	case LogicalTypeId::SMALLINT:
-		type_width = sizeof(int16_t);
-		break;
+		return sizeof(int16_t);
 	case LogicalTypeId::INTEGER:
-		type_width = sizeof(int32_t);
-		break;
+		return sizeof(int32_t);
 	case LogicalTypeId::BIGINT:
-		type_width = sizeof(int64_t);
-		break;
+		return sizeof(int64_t);
 	case LogicalTypeId::FLOAT:
-		type_width = sizeof(float);
-		break;
+		return sizeof(float);
 	case LogicalTypeId::HUGEINT:
 	case LogicalTypeId::DOUBLE:
 	case LogicalTypeId::DECIMAL:
-		type_width = sizeof(double);
-		break;
+		return sizeof(double);
 	case LogicalTypeId::TIMESTAMP:
 	case LogicalTypeId::TIMESTAMP_SEC:
 	case LogicalTypeId::TIMESTAMP_MS:
@@ -57,8 +47,10 @@ RawArrayWrapper::RawArrayWrapper(const LogicalType &type) : data(nullptr), type(
 	case LogicalTypeId::DATE:
 	case LogicalTypeId::INTERVAL:
 	case LogicalTypeId::TIMESTAMP_TZ:
-		type_width = sizeof(int64_t);
-		break;
+		return sizeof(int64_t);
+	case LogicalTypeId::ARRAY:
+		// return GetNumpyTypeWidth(ArrayType::GetChildType(type));
+		return sizeof(PyObject *);
 	case LogicalTypeId::TIME:
 	case LogicalTypeId::TIME_TZ:
 	case LogicalTypeId::VARCHAR:
@@ -70,11 +62,14 @@ RawArrayWrapper::RawArrayWrapper(const LogicalType &type) : data(nullptr), type(
 	case LogicalTypeId::STRUCT:
 	case LogicalTypeId::UNION:
 	case LogicalTypeId::UUID:
-		type_width = sizeof(PyObject *);
-		break;
+		return sizeof(PyObject *);
 	default:
 		throw NotImplementedException("Unsupported type \"%s\" for DuckDB -> NumPy conversion", type.ToString());
 	}
+}
+
+RawArrayWrapper::RawArrayWrapper(const LogicalType &type) : data(nullptr), type(type), count(0) {
+	type_width = GetNumpyTypeWidth(type);
 }
 
 string RawArrayWrapper::DuckDBToNumpyDtype(const LogicalType &type) {
@@ -117,6 +112,13 @@ string RawArrayWrapper::DuckDBToNumpyDtype(const LogicalType &type) {
 		return "datetime64[us]";
 	case LogicalTypeId::INTERVAL:
 		return "timedelta64[ns]";
+	case LogicalTypeId::ARRAY: {
+		// Recurse into the child type.
+		// A multidimensional numpy array has the dtype of the innermost type.
+		// auto child_type = ArrayType::GetChildType(type);
+		// return DuckDBToNumpyDtype(child_type);
+		return "object";
+	}
 	case LogicalTypeId::TIME:
 	case LogicalTypeId::TIME_TZ:
 	case LogicalTypeId::VARCHAR:

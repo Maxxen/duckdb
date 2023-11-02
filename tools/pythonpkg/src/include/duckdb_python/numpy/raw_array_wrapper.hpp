@@ -27,7 +27,6 @@ public:
 	static string DuckDBToNumpyDtype(const LogicalType &type);
 	void Initialize(idx_t capacity);
 	void Resize(idx_t new_capacity);
-	void Append(idx_t current_offset, Vector &input, idx_t count);
 };
 
 } // namespace duckdb

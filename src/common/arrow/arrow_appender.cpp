@@ -230,6 +230,9 @@ static void InitializeFunctionPointers(ArrowAppendData &append_data, const Logic
 	case LogicalTypeId::LIST:
 		InitializeAppenderForType<ArrowListData>(append_data);
 		break;
+	case LogicalTypeId::ARRAY:
+		InitializeAppenderForType<ArrowFixedSizeListData>(append_data);
+		break;
 	case LogicalTypeId::MAP:
 		InitializeAppenderForType<ArrowMapData>(append_data);
 		break;
