@@ -94,8 +94,8 @@ all_types = [
     "fixed_nested_int_array",
     "fixed_struct_array",
     "struct_of_fixed_array",
-    "fixed_array_of_list_of_int",
-    "list_of_fixed_array_of_int",
+    "fixed_array_of_int_list",
+    "list_of_fixed_int_array",
 ]
 
 
@@ -236,12 +236,12 @@ class TestAllTypes(object):
                 ({'a': (4, 5, 6), 'b': ('d', 'e', 'f')},),
                 (None,),
             ],
-            "fixed_array_of_list_of_int": [
+            "fixed_array_of_int_list": [
                 (([], [42, 999, None, None, -42], []),),
                 (([42, 999, None, None, -42], [], [42, 999, None, None, -42]),),
                 (None,),
             ],
-            "list_of_fixed_array_of_int": [
+            "list_of_fixed_int_array": [
                 ([(None, 2, 3), (4, 5, 6), (None, 2, 3)],),
                 ([(4, 5, 6), (None, 2, 3), (4, 5, 6)],),
                 (None,),
