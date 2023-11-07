@@ -140,7 +140,18 @@ void ArrayColumnData::UpdateColumn(TransactionData transaction, const vector<col
 }
 
 unique_ptr<BaseStatistics> ArrayColumnData::GetUpdateStatistics() {
-	return nullptr;
+	auto stats = BaseStatistics::CreateEmpty(type);
+	auto validity_stats = validity.GetUpdateStatistics();
+	if (validity_stats) {
+		stats.Merge(*validity_stats);
+	}
+
+	auto child_stats = child_column->GetUpdateStatistics();
+	if (child_stats) {
+		ArrayStats::SetChildStats(stats, std::move(child_stats));
+	}
+
+	return stats.ToUnique();
 }
 
 void ArrayColumnData::FetchRow(TransactionData transaction, ColumnFetchState &state, row_t row_id, Vector &result,
