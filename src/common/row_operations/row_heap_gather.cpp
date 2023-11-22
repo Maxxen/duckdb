@@ -156,7 +156,7 @@ static void HeapGatherArrayVector(Vector &v, const idx_t vcount, const Selection
 		if (!validity.RowIsValid(col_idx)) {
 			// we still need to zero out the child validity corresponding to this row
 			for (idx_t elem_idx = 0; elem_idx < array_size; elem_idx++) {
-				child_validity.Set(col_idx * array_size + elem_idx, false);
+				FlatVector::SetNull(child_vector, col_idx * array_size + elem_idx, true);
 			}
 			continue;
 		}

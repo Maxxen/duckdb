@@ -1213,18 +1213,40 @@ static void TupleDataArrayGather(const TupleDataLayout &layout, Vector &row_loca
 			target_validity.SetInvalid(target_idx);
 			// We also need to invalidate the corresponding elements in the child array.
 			for (idx_t elem_idx = 0; elem_idx < target_array_size; elem_idx++) {
-				target_child_validity.SetInvalid(target_idx * target_array_size + elem_idx);
+				FlatVector::SetNull(target_child, target_idx * target_array_size + elem_idx, true);
 			}
 		}
 	}
 
-	auto list_size_before = 0;
-
 	// Recurse
 	D_ASSERT(child_functions.size() == 1);
 	const auto &child_function = child_functions[0];
-	child_function.function(layout, heap_locations, list_size_before, scan_sel, scan_count, target_child, target_sel,
-	                        target, child_function.child_functions);
+	child_function.function(layout, heap_locations, 0, scan_sel, scan_count, target_child, target_sel, target,
+	                        child_function.child_functions);
+
+	// Un-slice the child array
+	// This is kind of ugly, but its the same thing as casting a list to an array. Since we just pretended the array
+	// was a list, we now need to pad the child vector where there are nulls.
+	auto &child_type = ArrayType::GetChildType(target.GetType());
+	auto child_count = scan_count * target_array_size;
+	Vector new_child_vec(child_type, child_count);
+
+	SelectionVector unslice_sel(child_count);
+	for (idx_t i = 0; i < scan_count; i++) {
+		auto &entry = target_list_entries[target_sel.get_index(i)];
+		for (idx_t j = 0; j < target_array_size; j++) {
+			// Set selection
+			unslice_sel.set_index(i * target_array_size + j, entry.offset + j);
+			// Also set validity
+			if (!target_child_validity.RowIsValid(entry.offset + j)) {
+				FlatVector::SetNull(new_child_vec, i * target_array_size + j, true);
+			}
+		}
+	}
+
+	VectorOperations::Copy(target_child, new_child_vec, unslice_sel, child_count, 0, 0);
+
+	target_child.Reference(new_child_vec);
 }
 
 //------------------------------------------------------------------------------

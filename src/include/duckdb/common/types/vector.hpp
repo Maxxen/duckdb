@@ -461,6 +461,14 @@ struct ArrayVector {
 	//! remains valid (e.g. if this vector is resized)
 	//! This is only used during row serialization
 	DUCKDB_API static void AllocateDummyListEntries(Vector &vector);
+	//! Ensures that the child vector of an array is invalid where the array itself is invalid
+	//! In theory, we should not need this functions because the validity of the child vector should always match the
+	//! validity of the array vector upon construction. However, there are some cases where this is currently not the
+	//! case, e.g. when deserializing from the row-format. Hence, we call this function.
+	DUCKDB_API static void BroadcastValidity(Vector &vector, idx_t count, SelectionVector &sel);
+
+private:
+	DUCKDB_API static void BroadcastValidityRecursive(Vector &vector, idx_t count, SelectionVector &sel);
 };
 
 enum class UnionInvalidReason : uint8_t {

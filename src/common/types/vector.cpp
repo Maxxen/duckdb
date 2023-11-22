@@ -27,7 +27,7 @@
 namespace duckdb {
 
 Vector::Vector(LogicalType type_p, bool create_data, bool zero_data, idx_t capacity)
-    : vector_type(VectorType::FLAT_VECTOR), type(std::move(type_p)), data(nullptr) {
+    : vector_type(VectorType::FLAT_VECTOR), type(std::move(type_p)), data(nullptr), validity(capacity) {
 	if (create_data) {
 		Initialize(zero_data, capacity);
 	}
@@ -1364,13 +1364,21 @@ void Vector::Verify(Vector &vector_p, const SelectionVector &sel_p, idx_t count)
 				child.Verify(array_size);
 			}
 		} else if (vtype == VectorType::FLAT_VECTOR) {
+			D_ASSERT(child.GetVectorType() == VectorType::FLAT_VECTOR);
 			// Flat vector case
 			auto &validity = FlatVector::Validity(*vector);
+			auto &child_validity = FlatVector::Validity(child);
+
 			idx_t selected_child_count = 0;
 			for (idx_t i = 0; i < count; i++) {
 				auto oidx = sel->get_index(i);
 				if (validity.RowIsValid(oidx)) {
 					selected_child_count += array_size;
+				} else {
+					// If the array is NULL, all the corresponding child elements should be NULL
+					for (idx_t j = 0; j < array_size; j++) {
+						D_ASSERT(!child_validity.RowIsValid(oidx * array_size + j));
+					}
 				}
 			}
 
@@ -2328,6 +2336,50 @@ void ArrayVector::AllocateDummyListEntries(Vector &vector) {
 	auto array_count = ArrayVector::GetTotalSize(vector) / array_size;
 	vector.buffer = VectorBuffer::CreateStandardVector(LogicalType::HUGEINT, array_count);
 	vector.data = vector.buffer->GetData();
+}
+
+void ArrayVector::BroadcastValidity(Vector &vector, idx_t count, SelectionVector &sel) {
+	auto array_size = ArrayType::GetSize(vector.GetType());
+	auto array_child = ArrayVector::GetEntry(vector);
+	for (idx_t i = 0; i < count; i++) {
+		const auto sel_idx = sel.get_index(i);
+		if (!vector.validity.RowIsValid(sel_idx)) {
+			// we still need to zero out the child validity corresponding to this row
+			for (idx_t elem_idx = 0; elem_idx < array_size; elem_idx++) {
+				array_child.validity.Set(sel_idx * array_size + elem_idx, false);
+			}
+			continue;
+		}
+	}
+}
+
+void ArrayVector::BroadcastValidityRecursive(Vector &vector, idx_t count, SelectionVector &sel) {
+	auto &type = vector.GetType();
+	auto &validity = vector.validity;
+	if (type.id() == LogicalTypeId::ARRAY) {
+		auto array_size = ArrayType::GetSize(type);
+		auto &child = ArrayVector::GetEntry(vector);
+		auto child_count = count * array_size;
+
+		SelectionVector child_sel(child_count);
+		for (idx_t i = 0; i < count; i++) {
+			auto sel_idx = sel.get_index(i);
+			for (idx_t j = 0; j < array_size; j++) {
+				child_sel.set_index(i * array_size + j, sel_idx * array_size + j);
+			}
+		}
+		BroadcastValidityRecursive(child, child_count, child_sel);
+	} else if (type.id() == LogicalTypeId::STRUCT) {
+		auto &children = StructVector::GetEntries(vector);
+		for (auto &child : children) {
+			BroadcastValidityRecursive(*child, count, sel);
+		}
+	} else {
+		for (idx_t i = 0; i < count; i++) {
+			auto sel_idx = sel.get_index(i);
+			validity.Set(sel_idx, vector.validity.RowIsValid(sel_idx));
+		}
+	}
 }
 
 } // namespace duckdb
