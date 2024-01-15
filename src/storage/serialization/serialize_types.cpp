@@ -12,11 +12,13 @@ namespace duckdb {
 void ExtraTypeInfo::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty<ExtraTypeInfoType>(100, "type", type);
 	serializer.WritePropertyWithDefault<string>(101, "alias", alias);
+	serializer.WritePropertyWithDefault<case_insensitive_map_t<Value>>(102, "properties", properties);
 }
 
 shared_ptr<ExtraTypeInfo> ExtraTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto type = deserializer.ReadProperty<ExtraTypeInfoType>(100, "type");
 	auto alias = deserializer.ReadPropertyWithDefault<string>(101, "alias");
+	auto properties = deserializer.ReadPropertyWithDefault<case_insensitive_map_t<Value>>(102, "properties");
 	shared_ptr<ExtraTypeInfo> result;
 	switch (type) {
 	case ExtraTypeInfoType::AGGREGATE_STATE_TYPE_INFO:
@@ -58,6 +60,7 @@ shared_ptr<ExtraTypeInfo> ExtraTypeInfo::Deserialize(Deserializer &deserializer)
 		throw SerializationException("Unsupported type for deserialization of ExtraTypeInfo!");
 	}
 	result->alias = std::move(alias);
+	result->properties = std::move(properties);
 	return result;
 }
 

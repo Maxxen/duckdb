@@ -8,6 +8,40 @@
 
 namespace duckdb {
 
+struct SizeModifiers {
+	int64_t width;
+	int64_t scale;
+};
+
+static idx_t GetSizeModifiers(duckdb_libpgquery::PGTypeName &type_name, const LogicalType &base_type,
+                              SizeModifiers &modifiers) {
+	idx_t modifier_idx = 0;
+	if (type_name.typmods) {
+		for (auto node = type_name.typmods->head; node; node = node->next) {
+			auto &const_val = *Transformer::PGPointerCast<duckdb_libpgquery::PGAConst>(node->data.ptr_value);
+			if (const_val.type != duckdb_libpgquery::T_PGAConst ||
+			    const_val.val.type != duckdb_libpgquery::T_PGInteger) {
+				throw ParserException("Expected an integer constant as type modifier");
+			}
+			if (const_val.val.val.ival < 0) {
+				throw ParserException("Negative modifier not supported");
+			}
+			if (modifier_idx == 0) {
+				modifiers.width = const_val.val.val.ival;
+				if (base_type == LogicalTypeId::BIT && const_val.location != -1) {
+					modifiers.width = 0;
+				}
+			} else if (modifier_idx == 1) {
+				modifiers.scale = const_val.val.val.ival;
+			} else {
+				throw ParserException("A maximum of two modifiers is supported");
+			}
+			modifier_idx++;
+		}
+	}
+	return modifier_idx;
+}
+
 LogicalType Transformer::TransformTypeName(duckdb_libpgquery::PGTypeName &type_name) {
 	if (type_name.type != duckdb_libpgquery::T_PGTypeName) {
 		throw ParserException("Expected a type");
@@ -132,104 +166,101 @@ LogicalType Transformer::TransformTypeName(duckdb_libpgquery::PGTypeName &type_n
 		D_ASSERT(!children.empty());
 		result_type = LogicalType::UNION(std::move(children));
 	} else {
-		int64_t width, scale;
+		SizeModifiers modifiers;
 		if (base_type == LogicalTypeId::DECIMAL) {
 			// default decimal width/scale
-			width = 18;
-			scale = 3;
+			modifiers.width = 18;
+			modifiers.scale = 3;
 		} else {
-			width = 0;
-			scale = 0;
-		}
-		// check any modifiers
-		int modifier_idx = 0;
-		if (type_name.typmods) {
-			for (auto node = type_name.typmods->head; node; node = node->next) {
-				auto &const_val = *PGPointerCast<duckdb_libpgquery::PGAConst>(node->data.ptr_value);
-				if (const_val.type != duckdb_libpgquery::T_PGAConst ||
-				    const_val.val.type != duckdb_libpgquery::T_PGInteger) {
-					throw ParserException("Expected an integer constant as type modifier");
-				}
-				if (const_val.val.val.ival < 0) {
-					throw ParserException("Negative modifier not supported");
-				}
-				if (modifier_idx == 0) {
-					width = const_val.val.val.ival;
-					if (base_type == LogicalTypeId::BIT && const_val.location != -1) {
-						width = 0;
-					}
-				} else if (modifier_idx == 1) {
-					scale = const_val.val.val.ival;
-				} else {
-					throw ParserException("A maximum of two modifiers is supported");
-				}
-				modifier_idx++;
-			}
+			modifiers.width = 0;
+			modifiers.scale = 0;
 		}
 		switch (base_type) {
-		case LogicalTypeId::VARCHAR:
-			if (modifier_idx > 1) {
+		case LogicalTypeId::VARCHAR: {
+			if (GetSizeModifiers(type_name, base_type, modifiers) > 1) {
 				throw ParserException("VARCHAR only supports a single modifier");
 			}
 			// FIXME: create CHECK constraint based on varchar width
-			width = 0;
+			modifiers.width = 0;
 			result_type = LogicalType::VARCHAR;
-			break;
-		case LogicalTypeId::DECIMAL:
-			if (modifier_idx == 1) {
-				// only width is provided: set scale to 0
-				scale = 0;
+		} break;
+		case LogicalTypeId::DECIMAL: {
+			auto modifier_count = GetSizeModifiers(type_name, base_type, modifiers);
+			if (modifier_count > 2) {
+				throw ParserException("DECIMAL only supports a maximum of two modifiers");
 			}
-			if (width <= 0 || width > Decimal::MAX_WIDTH_DECIMAL) {
+			if (modifier_count == 1) {
+				// only width is provided: set scale to 0
+				modifiers.scale = 0;
+			}
+			if (modifiers.width <= 0 || modifiers.width > Decimal::MAX_WIDTH_DECIMAL) {
 				throw ParserException("Width must be between 1 and %d!", (int)Decimal::MAX_WIDTH_DECIMAL);
 			}
-			if (scale > width) {
+			if (modifiers.scale > modifiers.width) {
 				throw ParserException("Scale cannot be bigger than width");
 			}
-			result_type = LogicalType::DECIMAL(width, scale);
-			break;
+			result_type = LogicalType::DECIMAL(modifiers.width, modifiers.scale);
+		} break;
 		case LogicalTypeId::INTERVAL:
-			if (modifier_idx > 1) {
+			if (GetSizeModifiers(type_name, base_type, modifiers) > 1) {
 				throw ParserException("INTERVAL only supports a single modifier");
 			}
-			width = 0;
+			modifiers.width = 0;
 			result_type = LogicalType::INTERVAL;
 			break;
 		case LogicalTypeId::USER: {
 			string user_type_name {name};
-			result_type = LogicalType::USER(user_type_name);
+			vector<Value> type_mods;
+
+			if (type_name.typmods) {
+				for (auto node = type_name.typmods->head; node; node = node->next) {
+					if (type_mods.size() > 9) {
+						throw ParserException("'%s': a maximum of 9 type modifiers is allowed", user_type_name);
+					}
+					auto &const_val = *PGPointerCast<duckdb_libpgquery::PGAConst>(node->data.ptr_value);
+					if (const_val.type != duckdb_libpgquery::T_PGAConst) {
+						throw ParserException("Expected a constant as type modifier");
+					}
+					auto const_expr = TransformValue(const_val.val);
+					type_mods.push_back(std::move(const_expr->value));
+				}
+			}
+
+			result_type = LogicalType::USER(user_type_name, type_mods);
 			break;
 		}
 		case LogicalTypeId::BIT: {
-			if (!width && type_name.typmods) {
+			GetSizeModifiers(type_name, base_type, modifiers);
+			if (!modifiers.width && type_name.typmods) {
 				throw ParserException("Type %s does not support any modifiers!", LogicalType(base_type).ToString());
 			}
 			result_type = LogicalType(base_type);
 			break;
 		}
-		case LogicalTypeId::TIMESTAMP:
-			if (modifier_idx == 0) {
+		case LogicalTypeId::TIMESTAMP: {
+			auto modifier_count = GetSizeModifiers(type_name, base_type, modifiers);
+			if (modifier_count == 0) {
 				result_type = LogicalType::TIMESTAMP;
 			} else {
-				if (modifier_idx > 1) {
+				if (modifier_count > 1) {
 					throw ParserException("TIMESTAMP only supports a single modifier");
 				}
-				if (width > 10) {
+				if (modifiers.width > 10) {
 					throw ParserException("TIMESTAMP only supports until nano-second precision (9)");
 				}
-				if (width == 0) {
+				if (modifiers.width == 0) {
 					result_type = LogicalType::TIMESTAMP_S;
-				} else if (width <= 3) {
+				} else if (modifiers.width <= 3) {
 					result_type = LogicalType::TIMESTAMP_MS;
-				} else if (width <= 6) {
+				} else if (modifiers.width <= 6) {
 					result_type = LogicalType::TIMESTAMP;
 				} else {
 					result_type = LogicalType::TIMESTAMP_NS;
 				}
 			}
-			break;
+		} break;
 		default:
-			if (modifier_idx > 0) {
+			if (GetSizeModifiers(type_name, base_type, modifiers) > 0) {
 				throw ParserException("Type %s does not support any modifiers!", LogicalType(base_type).ToString());
 			}
 			result_type = LogicalType(base_type);

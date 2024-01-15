@@ -360,6 +360,9 @@ bool TypeIsInteger(PhysicalType type) {
 }
 
 string LogicalType::ToString() const {
+	if (type_info_ && type_info_->type_format_handler) {
+		return type_info_->type_format_handler(*this);
+	}
 	if (id_ != LogicalTypeId::USER) {
 		auto alias = GetAlias();
 		if (!alias.empty()) {
@@ -1113,6 +1116,73 @@ bool LogicalType::HasAlias() const {
 	return false;
 }
 
+void LogicalType::SetProperty(const string &key, Value value) {
+	if (!type_info_) {
+		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO);
+	}
+	type_info_->properties[key] = std::move(value);
+}
+
+bool LogicalType::HasProperty(const string &key) const {
+	if (!type_info_) {
+		return false;
+	}
+	return type_info_->properties.find(key) != type_info_->properties.end();
+}
+
+Value LogicalType::GetProperty(const string &key) const {
+	if (!type_info_) {
+		return Value();
+	}
+	auto entry = type_info_->properties.find(key);
+	if (entry == type_info_->properties.end()) {
+		return Value();
+	}
+	return entry->second;
+}
+
+case_insensitive_map_t<Value> &LogicalType::GetProperties() {
+	if (!type_info_) {
+		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO);
+	}
+	return type_info_->properties;
+}
+
+void LogicalType::SetProperties(const case_insensitive_map_t<Value> &properties) {
+	if (!type_info_) {
+		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO);
+	}
+	type_info_->properties = properties;
+}
+
+void LogicalType::SetTypeFormatHandler(type_format_handler_t type_format_handler) {
+	if (!type_info_) {
+		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO);
+	}
+	type_info_->type_format_handler = type_format_handler;
+}
+
+type_format_handler_t LogicalType::GetTypeFormatHandler() const {
+	if (!type_info_) {
+		return nullptr;
+	}
+	return type_info_->type_format_handler;
+}
+
+void LogicalType::SetTypeModifierHandler(type_modifier_handler_t type_modifier_handler) {
+	if (!type_info_) {
+		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO);
+	}
+	type_info_->type_modifier_handler = type_modifier_handler;
+}
+
+type_modifier_handler_t LogicalType::GetTypeModifierHandler() const {
+	if (!type_info_) {
+		return nullptr;
+	}
+	return type_info_->type_modifier_handler;
+}
+
 //===--------------------------------------------------------------------===//
 // Decimal Type
 //===--------------------------------------------------------------------===//
@@ -1346,13 +1416,20 @@ const string &UserType::GetTypeName(const LogicalType &type) {
 	return info->Cast<UserTypeInfo>().user_type_name;
 }
 
-LogicalType LogicalType::USER(const string &user_type_name) {
-	auto info = make_shared<UserTypeInfo>(user_type_name);
+const vector<Value> &UserType::GetTypeModifiers(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::USER);
+	auto info = type.AuxInfo();
+	D_ASSERT(info);
+	return info->Cast<UserTypeInfo>().type_modifiers;
+}
+
+LogicalType LogicalType::USER(const string &user_type_name, const vector<Value> &type_mods) {
+	auto info = make_shared<UserTypeInfo>(user_type_name, type_mods);
 	return LogicalType(LogicalTypeId::USER, std::move(info));
 }
 
-LogicalType LogicalType::USER(string catalog, string schema, string name) {
-	auto info = make_shared<UserTypeInfo>(std::move(catalog), std::move(schema), std::move(name));
+LogicalType LogicalType::USER(string catalog, string schema, string name, const vector<Value> &type_mods) {
+	auto info = make_shared<UserTypeInfo>(std::move(catalog), std::move(schema), std::move(name), type_mods);
 	return LogicalType(LogicalTypeId::USER, std::move(info));
 }
 

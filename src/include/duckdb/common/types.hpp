@@ -12,6 +12,7 @@
 #include "duckdb/common/constants.hpp"
 #include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/common/vector.hpp"
+#include "duckdb/common/case_insensitive_map.hpp"
 
 #include <limits>
 
@@ -236,6 +237,10 @@ struct ExtraTypeInfo;
 
 struct aggregate_state_t;
 
+typedef string (*type_format_handler_t)(const LogicalType &type);
+
+typedef void (*type_modifier_handler_t)(LogicalType& type, const vector<Value> &modifiers);
+
 struct LogicalType {
 	DUCKDB_API LogicalType();
 	DUCKDB_API LogicalType(LogicalTypeId id); // NOLINT: Allow implicit conversion from `LogicalTypeId`
@@ -302,6 +307,15 @@ struct LogicalType {
 	DUCKDB_API void SetAlias(string alias);
 	DUCKDB_API bool HasAlias() const;
 	DUCKDB_API string GetAlias() const;
+	DUCKDB_API void SetProperty(const string &key, Value value);
+	DUCKDB_API bool HasProperty(const string &key) const;
+	DUCKDB_API Value GetProperty(const string &key) const;
+	DUCKDB_API case_insensitive_map_t<Value>& GetProperties();
+	DUCKDB_API void SetProperties(const case_insensitive_map_t<Value> &properties);
+	DUCKDB_API void SetTypeFormatHandler(type_format_handler_t type_format_handler);
+	DUCKDB_API type_format_handler_t GetTypeFormatHandler() const;
+	DUCKDB_API void SetTypeModifierHandler(type_modifier_handler_t type_modifier_handler);
+	DUCKDB_API type_modifier_handler_t GetTypeModifierHandler() const;
 
 	//! Returns the maximum logical type when combining the two types - or throws an exception if combining is not possible
 	DUCKDB_API static LogicalType MaxLogicalType(ClientContext &context, const LogicalType &left, const LogicalType &right);
@@ -383,8 +397,8 @@ public:
 	DUCKDB_API static LogicalType INTEGER_LITERAL(const Value &constant);               // NOLINT
 	// DEPRECATED - provided for backwards compatibility
 	DUCKDB_API static LogicalType ENUM(const string &enum_name, Vector &ordered_data, idx_t size); // NOLINT
-	DUCKDB_API static LogicalType USER(const string &user_type_name);                              // NOLINT
-	DUCKDB_API static LogicalType USER(string catalog, string schema, string name);                // NOLINT
+	DUCKDB_API static LogicalType USER(const string &user_type_name, const vector<Value> &type_mods = vector<Value>()); // NOLINT
+	DUCKDB_API static LogicalType USER(string catalog, string schema, string name, const vector<Value> &type_mods = vector<Value>());                // NOLINT
 	//! A list of all NUMERIC types (integral and floating point types)
 	DUCKDB_API static const vector<LogicalType> Numeric();
 	//! A list of all INTEGRAL types
@@ -419,6 +433,7 @@ struct UserType {
 	DUCKDB_API static const string &GetCatalog(const LogicalType &type);
 	DUCKDB_API static const string &GetSchema(const LogicalType &type);
 	DUCKDB_API static const string &GetTypeName(const LogicalType &type);
+	DUCKDB_API static const vector<Value> &GetTypeModifiers(const LogicalType &type);
 };
 
 struct EnumType {

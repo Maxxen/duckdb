@@ -17,6 +17,28 @@ ExtraTypeInfo::ExtraTypeInfo(ExtraTypeInfoType type, string alias) : type(type),
 ExtraTypeInfo::~ExtraTypeInfo() {
 }
 
+static bool CompareProperties(const case_insensitive_map_t<Value> &a, const case_insensitive_map_t<Value> &b) {
+	// We only compare properties that are present in both maps
+	for (const auto &kv : a) {
+		auto other_kv = b.find(kv.first);
+		if (other_kv == b.end()) {
+			return false;
+		}
+		// Special case for nulls:
+		// NULL == NULL, but NULL != <any other value>
+		if (kv.second.IsNull() || other_kv->second.IsNull()) {
+			if (kv.second.IsNull() && other_kv->second.IsNull()) {
+				continue;
+			}
+			return false;
+		}
+		if (kv.second != other_kv->second) {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool ExtraTypeInfo::Equals(ExtraTypeInfo *other_p) const {
 	if (type == ExtraTypeInfoType::INVALID_TYPE_INFO || type == ExtraTypeInfoType::STRING_TYPE_INFO ||
 	    type == ExtraTypeInfoType::GENERIC_TYPE_INFO) {
@@ -30,6 +52,9 @@ bool ExtraTypeInfo::Equals(ExtraTypeInfo *other_p) const {
 		if (alias != other_p->alias) {
 			return false;
 		}
+		if (!CompareProperties(properties, other_p->properties)) {
+			return false;
+		}
 		return true;
 	}
 	if (!other_p) {
@@ -38,7 +63,15 @@ bool ExtraTypeInfo::Equals(ExtraTypeInfo *other_p) const {
 	if (type != other_p->type) {
 		return false;
 	}
-	return alias == other_p->alias && EqualsInternal(other_p);
+	if (alias != other_p->alias) {
+		return false;
+	}
+
+	if (!CompareProperties(properties, other_p->properties)) {
+		return false;
+	}
+
+	return EqualsInternal(other_p);
 }
 
 bool ExtraTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
@@ -130,18 +163,19 @@ bool AggregateStateTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 UserTypeInfo::UserTypeInfo() : ExtraTypeInfo(ExtraTypeInfoType::USER_TYPE_INFO) {
 }
 
-UserTypeInfo::UserTypeInfo(string name_p)
-    : ExtraTypeInfo(ExtraTypeInfoType::USER_TYPE_INFO), user_type_name(std::move(name_p)) {
+UserTypeInfo::UserTypeInfo(string name_p, const vector<Value> &type_modifiers_p)
+    : ExtraTypeInfo(ExtraTypeInfoType::USER_TYPE_INFO), user_type_name(std::move(name_p)),
+      type_modifiers(type_modifiers_p) {
 }
 
-UserTypeInfo::UserTypeInfo(string catalog_p, string schema_p, string name_p)
+UserTypeInfo::UserTypeInfo(string catalog_p, string schema_p, string name_p, const vector<Value> &type_modifiers_p)
     : ExtraTypeInfo(ExtraTypeInfoType::USER_TYPE_INFO), catalog(std::move(catalog_p)), schema(std::move(schema_p)),
-      user_type_name(std::move(name_p)) {
+      user_type_name(std::move(name_p)), type_modifiers(type_modifiers_p) {
 }
 
 bool UserTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	auto &other = other_p->Cast<UserTypeInfo>();
-	return other.user_type_name == user_type_name;
+	return other.user_type_name == user_type_name && other.type_modifiers == type_modifiers;
 }
 
 //===--------------------------------------------------------------------===//

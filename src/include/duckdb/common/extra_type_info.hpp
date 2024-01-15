@@ -36,6 +36,9 @@ struct ExtraTypeInfo {
 
 	ExtraTypeInfoType type;
 	string alias;
+	case_insensitive_map_t<Value> properties;
+	type_format_handler_t type_format_handler = nullptr;
+	type_modifier_handler_t type_modifier_handler = nullptr;
 
 public:
 	bool Equals(ExtraTypeInfo *other_p) const;
@@ -140,12 +143,13 @@ private:
 };
 
 struct UserTypeInfo : public ExtraTypeInfo {
-	explicit UserTypeInfo(string name_p);
-	UserTypeInfo(string catalog_p, string schema_p, string name_p);
+	explicit UserTypeInfo(string name_p, const vector<Value> &type_modifiers_p);
+	UserTypeInfo(string catalog_p, string schema_p, string name_p, const vector<Value> &type_modifiers_p);
 
 	string catalog;
 	string schema;
 	string user_type_name;
+	vector<Value> type_modifiers;
 
 public:
 	void Serialize(Serializer &serializer) const override;

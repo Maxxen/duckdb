@@ -1,0 +1,16 @@
+# name: test/extension/test_custom_type.test
+# description: Enable Test alias for point.
+# group: [extension]
+
+require skip_reload
+
+require notmingw
+
+statement ok
+PRAGMA enable_verification
+
+statement ok
+LOAD '__BUILD_DIRECTORY__/test/extension/loadable_extension_demo.duckdb_extension';
+
+statement ok
+CREATE TABLE points(p1 POINT(WGS84));

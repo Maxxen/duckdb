@@ -199,42 +199,75 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, optional
 	if (type.id() == LogicalTypeId::LIST || type.id() == LogicalTypeId::MAP) {
 		auto child_type = ListType::GetChildType(type);
 		BindLogicalType(context, child_type, catalog, schema);
+
 		auto alias = type.GetAlias();
+		auto &properties = type.GetProperties();
+		auto format_func = type.GetTypeFormatHandler();
+		auto modifier_func = type.GetTypeModifierHandler();
+
 		if (type.id() == LogicalTypeId::LIST) {
 			type = LogicalType::LIST(child_type);
 		} else {
 			D_ASSERT(child_type.id() == LogicalTypeId::STRUCT); // map must be list of structs
 			type = LogicalType::MAP(child_type);
 		}
-
 		type.SetAlias(alias);
+		type.SetProperties(properties);
+		type.SetTypeFormatHandler(format_func);
+		type.SetTypeModifierHandler(modifier_func);
 	} else if (type.id() == LogicalTypeId::STRUCT) {
 		auto child_types = StructType::GetChildTypes(type);
 		for (auto &child_type : child_types) {
 			BindLogicalType(context, child_type.second, catalog, schema);
 		}
-		// Generate new Struct Type
 		auto alias = type.GetAlias();
+		auto &properties = type.GetProperties();
+		auto format_func = type.GetTypeFormatHandler();
+		auto modifier_func = type.GetTypeModifierHandler();
+
+		// Generate new Struct Type
 		type = LogicalType::STRUCT(child_types);
+
 		type.SetAlias(alias);
+		type.SetProperties(properties);
+		type.SetTypeFormatHandler(format_func);
+		type.SetTypeModifierHandler(modifier_func);
 	} else if (type.id() == LogicalTypeId::ARRAY) {
 		auto child_type = ArrayType::GetChildType(type);
 		auto array_size = ArrayType::GetSize(type);
 		BindLogicalType(context, child_type, catalog, schema);
+
 		auto alias = type.GetAlias();
+		auto &properties = type.GetProperties();
+		auto format_func = type.GetTypeFormatHandler();
+		auto modifier_func = type.GetTypeModifierHandler();
+
 		type = LogicalType::ARRAY(child_type, array_size);
+
 		type.SetAlias(alias);
+		type.SetProperties(properties);
+		type.SetTypeFormatHandler(format_func);
+		type.SetTypeModifierHandler(modifier_func);
 	} else if (type.id() == LogicalTypeId::UNION) {
 		auto member_types = UnionType::CopyMemberTypes(type);
 		for (auto &member_type : member_types) {
 			BindLogicalType(context, member_type.second, catalog, schema);
 		}
-		// Generate new Union Type
 		auto alias = type.GetAlias();
+		auto &properties = type.GetProperties();
+		auto format_func = type.GetTypeFormatHandler();
+		auto modifier_func = type.GetTypeModifierHandler();
+
+		// Generate new Union Type
 		type = LogicalType::UNION(member_types);
+
 		type.SetAlias(alias);
+		type.SetProperties(properties);
+		type.SetTypeFormatHandler(format_func);
+		type.SetTypeModifierHandler(modifier_func);
 	} else if (type.id() == LogicalTypeId::USER) {
 		auto user_type_name = UserType::GetTypeName(type);
+		auto user_type_mods = UserType::GetTypeModifiers(type);
 		if (catalog) {
 			// The search order is:
 			// 1) In the same schema as the table
@@ -255,7 +288,14 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, optional
 			BindSchemaOrCatalog(context, type_catalog, type_schema);
 			type = Catalog::GetType(context, type_catalog, type_schema, user_type_name);
 		}
+
 		BindLogicalType(context, type, catalog, schema);
+
+		// Apply any type modifiers
+		auto type_modifier_handler = type.GetTypeModifierHandler();
+		if (type_modifier_handler) {
+			type_modifier_handler(type, user_type_mods);
+		}
 	}
 }
 

@@ -7,6 +7,11 @@
 #include "duckdb/parser/parsed_data/create_type_info.hpp"
 #include "duckdb/catalog/catalog_entry/type_catalog_entry.hpp"
 #include "duckdb/planner/extension_callback.hpp"
+#include "duckdb/function/cast/cast_function_set.hpp"
+#include "duckdb/main/extension_util.hpp"
+#include "duckdb/common/vector_operations/generic_executor.hpp"
+
+#include <cmath>
 
 using namespace duckdb;
 
@@ -233,6 +238,163 @@ inline void LoadedExtensionsFunction(DataChunk &args, ExpressionState &state, Ve
 	result.Reference(Value(result_str));
 }
 
+static LogicalType GetGeoPointType() {
+	auto type = LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}});
+	type.SetAlias("GEO_POINT");
+	type.SetTypeModifierHandler([](LogicalType &type, const vector<Value> &modifiers) {
+		if (modifiers.size() != 1) {
+			throw ParserException("GEO_POINT type must have exactly one modifier");
+		}
+		if (modifiers[0].type().id() != LogicalTypeId::VARCHAR) {
+			throw ParserException("GEO_POINT type modifier must be a string");
+		}
+		auto space_val = modifiers[0].ToString();
+		type.SetProperty("SPACE", modifiers[0]);
+	});
+
+	type.SetTypeFormatHandler([](const LogicalType &type) -> string {
+		if (type.HasProperty("SPACE")) {
+			auto space = type.GetProperty("SPACE");
+			return StringUtil::Format("GEO_POINT(%s)", space.ToString());
+		} else {
+			return "GEO_POINT";
+		}
+	});
+	return type;
+}
+
+static unique_ptr<FunctionData> GeoPointInvertBind(ClientContext &context, ScalarFunction &bound_function,
+                                                   vector<unique_ptr<Expression>> &arguments) {
+	bound_function.return_type = arguments[0]->return_type;
+	return nullptr;
+}
+
+static void GeoPointInvertFunc(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &source_vector = args.data[0];
+	const int count = args.size();
+
+	using DOUBLE_TYPE = PrimitiveType<double>;
+	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+	GenericExecutor::ExecuteUnary<POINT_TYPE, POINT_TYPE>(source_vector, result, count, [&](POINT_TYPE input) {
+		auto x = input.a_val.val;
+		auto y = input.b_val.val;
+		return POINT_TYPE {-x, -y};
+	});
+}
+
+static void HaversineDistanceFunc(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &left_vector = args.data[0];
+	auto &right_vector = args.data[1];
+
+	const int count = args.size();
+	using DOUBLE_TYPE = PrimitiveType<double>;
+	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+
+	GenericExecutor::ExecuteBinary<POINT_TYPE, POINT_TYPE, DOUBLE_TYPE>(
+	    left_vector, right_vector, result, count, [&](POINT_TYPE left, POINT_TYPE right) {
+		    // Calculate the great circle distance on a unit sphere
+		    auto x1 = left.a_val.val;
+		    auto y1 = left.b_val.val;
+		    auto x2 = right.a_val.val;
+		    auto y2 = right.b_val.val;
+		    auto dx = x1 - x2;
+		    auto dy = y1 - y2;
+		    auto a =
+		        std::pow(std::sin(dy * 0.5), 2.0) + std::cos(y1) * std::cos(y2) * std::pow(std::sin(dx * 0.5), 2.0);
+		    auto c = 2.0 * std::asin(std::sqrt(a));
+		    auto r = 6371000.0; // Earth radius in meters
+		    return c * r;
+	    });
+}
+
+static void EuclideanDistanceFunc(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &left_vector = args.data[0];
+	auto &right_vector = args.data[1];
+
+	const int count = args.size();
+	using DOUBLE_TYPE = PrimitiveType<double>;
+	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+
+	GenericExecutor::ExecuteBinary<POINT_TYPE, POINT_TYPE, DOUBLE_TYPE>(
+	    left_vector, right_vector, result, count, [&](POINT_TYPE left, POINT_TYPE right) {
+		    // Calculate the cartesian distance
+		    auto x1 = left.a_val.val;
+		    auto y1 = left.b_val.val;
+		    auto x2 = right.a_val.val;
+		    auto y2 = right.b_val.val;
+		    auto dx = x1 - x2;
+		    auto dy = y1 - y2;
+		    return std::sqrt(std::pow(dx, 2.0) + std::pow(dy, 2.0));
+	    });
+}
+
+static bool SphericalToCartesianCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+	// Project from unit sphere to cartesian plane
+	using DOUBLE_TYPE = PrimitiveType<double>;
+	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+
+	GenericExecutor::ExecuteUnary<POINT_TYPE, POINT_TYPE>(source, result, count, [&](POINT_TYPE input) {
+		auto x = input.a_val.val;
+		auto y = input.b_val.val;
+		double r = 6371000.0; // Earth radius in meters
+		auto dx = r * std::cos(y) * std::cos(x);
+		auto dy = r * std::cos(y) * std::sin(x);
+		return POINT_TYPE {dx, dy};
+	});
+
+	return true;
+}
+
+static void GeoPointSpaceFunc(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto space = args.data[0].GetType().GetProperty("SPACE");
+	result.Reference(space);
+}
+
+static unique_ptr<FunctionData> GeoPointSpaceBind(ClientContext &context, ScalarFunction &bound_function,
+                                                  vector<unique_ptr<Expression>> &arguments) {
+	bound_function.arguments[0].SetProperty("SPACE", arguments[0]->return_type.GetProperty("SPACE"));
+	return nullptr;
+}
+
+static void GeoPointX(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &source_vector = args.data[0];
+	auto count = args.size();
+
+	using DOUBLE_TYPE = PrimitiveType<double>;
+	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+	GenericExecutor::ExecuteUnary<POINT_TYPE, DOUBLE_TYPE>(source_vector, result, count,
+	                                                       [&](POINT_TYPE input) { return input.a_val.val; });
+}
+static void GeoPointY(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &source_vector = args.data[0];
+	auto count = args.size();
+	using DOUBLE_TYPE = PrimitiveType<double>;
+	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+	GenericExecutor::ExecuteUnary<POINT_TYPE, DOUBLE_TYPE>(source_vector, result, count,
+	                                                       [&](POINT_TYPE input) { return input.b_val.val; });
+}
+
+static bool ToNullspaceCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+	// Project from unit sphere to cartesian plane
+	using DOUBLE_TYPE = PrimitiveType<double>;
+	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+
+	GenericExecutor::ExecuteUnary<POINT_TYPE, POINT_TYPE>(source, result, count, [&](POINT_TYPE input) {
+		auto x = input.a_val.val;
+		auto y = input.b_val.val;
+
+		if (x < -180 || x > 180) {
+			throw CastException("Cannot cast point with x value outside of [-180, 180]");
+		}
+		if (y < -90 || y > 90) {
+			throw CastException("Cannot cast point with y value outside of [-90, 90]");
+		}
+		return POINT_TYPE {x, y};
+	});
+
+	return true;
+}
+
 //===--------------------------------------------------------------------===//
 // Extension load + setup
 //===--------------------------------------------------------------------===//
@@ -290,6 +452,62 @@ DUCKDB_EXTENSION_API void loadable_extension_demo_init(duckdb::DatabaseInstance 
 	auto &config = DBConfig::GetConfig(db);
 	config.parser_extensions.push_back(QuackExtension());
 	config.extension_callbacks.push_back(make_uniq<QuackLoadExtension>());
+
+	// Custom type
+	auto geo_type = GetGeoPointType();
+	ExtensionUtil::RegisterType(db, "GEO_POINT", geo_type);
+
+	auto euclidean_type = GetGeoPointType();
+	euclidean_type.SetProperty("SPACE", Value("PLANE"));
+	ScalarFunction euclidean_distance("geopoint_euclidean_dist", {euclidean_type, euclidean_type}, LogicalType::DOUBLE,
+	                                  EuclideanDistanceFunc);
+	ExtensionUtil::RegisterFunction(db, euclidean_distance);
+
+	auto spherical_type = GetGeoPointType();
+	spherical_type.SetProperty("SPACE", Value("SPHERE"));
+	ScalarFunction haversinde_distance("geopoint_haversine_dist", {spherical_type, spherical_type}, LogicalType::DOUBLE,
+	                                   HaversineDistanceFunc);
+	ExtensionUtil::RegisterFunction(db, haversinde_distance);
+
+	// Both of these two functions are "generic" in the sense that they can be used with any geo point type as the
+	// SPACE property is not set in the input type (geo_type). Therefore no cast will be inserted. This is useful in
+	// cases where we dont care about the space property and just want to do some generic operation on the points. In
+	// this case, returning the x and y coordinates.
+
+	ScalarFunction generic_x_func("geopoint_x", {geo_type}, LogicalType::DOUBLE, GeoPointX);
+	ExtensionUtil::RegisterFunction(db, generic_x_func);
+
+	ScalarFunction generic_y_func("geopoint_y", {geo_type}, LogicalType::DOUBLE, GeoPointY);
+	ExtensionUtil::RegisterFunction(db, generic_y_func);
+
+	// Although if we do need to propagate the space property (e.g. to the return type), we can do so with an explicit
+	// bind.
+	ScalarFunction generic_func("geopoint_invert", {geo_type}, geo_type, GeoPointInvertFunc, GeoPointInvertBind);
+	ExtensionUtil::RegisterFunction(db, generic_func);
+
+	// Or inspect it and pass it along in the bind function
+	ScalarFunction generic_space_func("geopoint_space", {geo_type}, LogicalType::VARCHAR, GeoPointSpaceFunc,
+	                                  GeoPointSpaceBind);
+	ExtensionUtil::RegisterFunction(db, generic_space_func);
+
+	// We allow conversion from spherical to cartesian space using a projection
+	ExtensionUtil::RegisterCastFunction(db, spherical_type, euclidean_type, SphericalToCartesianCast, 0);
+
+	// By setting the SPACE property to NULL, we make sure theres an explict cast required
+	// In this case, casting to the untyped geo point (the "null space") is allowed as long as the coordinates are
+	// within the range [-180, 180] for x and [-90, 90] for y. This doesnt really make a whole lot of sense but is just
+	// here to illustrate the difference between a property being NULL compared to not being set at all.
+
+	auto nullspace_type = GetGeoPointType();
+	nullspace_type.SetProperty("SPACE", Value());
+
+	ExtensionUtil::RegisterCastFunction(db, spherical_type, nullspace_type, BoundCastInfo(ToNullspaceCast), 0);
+	ExtensionUtil::RegisterCastFunction(db, euclidean_type, nullspace_type, BoundCastInfo(ToNullspaceCast), 0);
+
+	// We default to the euclidean distance in the nullspace
+	ScalarFunction nullspace_dist("geopoint_dist", {nullspace_type, nullspace_type}, LogicalType::DOUBLE,
+	                              EuclideanDistanceFunc);
+	ExtensionUtil::RegisterFunction(db, nullspace_dist);
 }
 
 DUCKDB_EXTENSION_API const char *loadable_extension_demo_version() {
