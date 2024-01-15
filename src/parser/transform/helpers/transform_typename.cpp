@@ -5,6 +5,7 @@
 #include "duckdb/parser/transformer.hpp"
 #include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/types/vector.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
 
 namespace duckdb {
 
@@ -51,14 +52,15 @@ LogicalType Transformer::TransformTypeName(duckdb_libpgquery::PGTypeName &type_n
 	if (type_name.names->length > 1) {
 		// qualified typename
 		vector<string> names;
+		vector<Value> type_mods;
 		for (auto cell = type_name.names->head; cell; cell = cell->next) {
 			names.push_back(PGPointerCast<duckdb_libpgquery::PGValue>(cell->data.ptr_value)->val.str);
 		}
 		switch (type_name.names->length) {
 		case 2:
-			return LogicalType::USER(INVALID_CATALOG, std::move(names[0]), std::move(names[1]));
+			return LogicalType::USER(INVALID_CATALOG, std::move(names[0]), std::move(names[1]), type_mods);
 		case 3:
-			return LogicalType::USER(std::move(names[0]), std::move(names[1]), std::move(names[2]));
+			return LogicalType::USER(std::move(names[0]), std::move(names[1]), std::move(names[2]), type_mods);
 		default:
 			throw ParserException(
 			    "Too many qualifications for type name - expected [catalog.schema.name] or [schema.name]");

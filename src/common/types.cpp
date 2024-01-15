@@ -1116,7 +1116,7 @@ bool LogicalType::HasAlias() const {
 	return false;
 }
 
-void LogicalType::SetProperty(const string &key, Value value) {
+void LogicalType::SetProperty(const string &key, const Value &value) {
 	if (!type_info_) {
 		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO);
 	}
