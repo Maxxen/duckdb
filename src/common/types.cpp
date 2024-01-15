@@ -1120,7 +1120,7 @@ void LogicalType::SetProperty(const string &key, const Value &value) {
 	if (!type_info_) {
 		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO);
 	}
-	type_info_->properties[key] = std::move(value);
+	type_info_->properties[key] = value;
 }
 
 bool LogicalType::HasProperty(const string &key) const {
