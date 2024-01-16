@@ -16,13 +16,16 @@ ExtraTypeInfo::ExtraTypeInfo(ExtraTypeInfoType type, string alias) : type(type),
 }
 ExtraTypeInfo::~ExtraTypeInfo() {
 }
+shared_ptr<ExtraTypeInfo> ExtraTypeInfo::Copy() const {
+	return make_shared<ExtraTypeInfo>(*this);
+}
 
 static bool CompareProperties(const case_insensitive_map_t<Value> &a, const case_insensitive_map_t<Value> &b) {
 	// We only compare properties that are present in both maps
 	for (const auto &kv : a) {
 		auto other_kv = b.find(kv.first);
 		if (other_kv == b.end()) {
-			return false;
+			continue;
 		}
 		// Special case for nulls:
 		// NULL == NULL, but NULL != <any other value>
@@ -95,6 +98,10 @@ bool DecimalTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	return width == other.width && scale == other.scale;
 }
 
+shared_ptr<ExtraTypeInfo> DecimalTypeInfo::Copy() const {
+	return make_shared<DecimalTypeInfo>(*this);
+}
+
 //===--------------------------------------------------------------------===//
 // String Type Info
 //===--------------------------------------------------------------------===//
@@ -108,6 +115,10 @@ StringTypeInfo::StringTypeInfo(string collation_p)
 bool StringTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	// collation info has no impact on equality
 	return true;
+}
+
+shared_ptr<ExtraTypeInfo> StringTypeInfo::Copy() const {
+	return make_shared<StringTypeInfo>(*this);
 }
 
 //===--------------------------------------------------------------------===//
@@ -125,6 +136,10 @@ bool ListTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	return child_type == other.child_type;
 }
 
+shared_ptr<ExtraTypeInfo> ListTypeInfo::Copy() const {
+	return make_shared<ListTypeInfo>(*this);
+}
+
 //===--------------------------------------------------------------------===//
 // Struct Type Info
 //===--------------------------------------------------------------------===//
@@ -138,6 +153,10 @@ StructTypeInfo::StructTypeInfo(child_list_t<LogicalType> child_types_p)
 bool StructTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	auto &other = other_p->Cast<StructTypeInfo>();
 	return child_types == other.child_types;
+}
+
+shared_ptr<ExtraTypeInfo> StructTypeInfo::Copy() const {
+	return make_shared<StructTypeInfo>(*this);
 }
 
 //===--------------------------------------------------------------------===//
@@ -155,6 +174,10 @@ bool AggregateStateTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	return state_type.function_name == other.state_type.function_name &&
 	       state_type.return_type == other.state_type.return_type &&
 	       state_type.bound_argument_types == other.state_type.bound_argument_types;
+}
+
+shared_ptr<ExtraTypeInfo> AggregateStateTypeInfo::Copy() const {
+	return make_shared<AggregateStateTypeInfo>(*this);
 }
 
 //===--------------------------------------------------------------------===//
@@ -176,6 +199,10 @@ UserTypeInfo::UserTypeInfo(string catalog_p, string schema_p, string name_p, con
 bool UserTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	auto &other = other_p->Cast<UserTypeInfo>();
 	return other.user_type_name == user_type_name && other.type_modifiers == type_modifiers;
+}
+
+shared_ptr<ExtraTypeInfo> UserTypeInfo::Copy() const {
+	return make_shared<UserTypeInfo>(*this);
 }
 
 //===--------------------------------------------------------------------===//
@@ -351,6 +378,10 @@ void EnumTypeInfo::Serialize(Serializer &serializer) const {
 	                     [&](Serializer::List &list, idx_t i) { list.WriteElement(strings[i]); });
 }
 
+shared_ptr<ExtraTypeInfo> EnumTypeInfo::Copy() const {
+	return make_shared<EnumTypeInfo>(const_cast<Vector &>(values_insert_order), dict_size);
+}
+
 //===--------------------------------------------------------------------===//
 // ArrayTypeInfo
 //===--------------------------------------------------------------------===//
@@ -362,6 +393,10 @@ ArrayTypeInfo::ArrayTypeInfo(LogicalType child_type_p, idx_t size_p)
 bool ArrayTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	auto &other = other_p->Cast<ArrayTypeInfo>();
 	return child_type == other.child_type && size == other.size;
+}
+
+shared_ptr<ExtraTypeInfo> ArrayTypeInfo::Copy() const {
+	return make_shared<ArrayTypeInfo>(*this);
 }
 
 //===--------------------------------------------------------------------===//
@@ -379,6 +414,10 @@ bool AnyTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	return target_type == other.target_type && cast_score == other.cast_score;
 }
 
+shared_ptr<ExtraTypeInfo> AnyTypeInfo::Copy() const {
+	return make_shared<AnyTypeInfo>(*this);
+}
+
 //===--------------------------------------------------------------------===//
 // Any Type Info
 //===--------------------------------------------------------------------===//
@@ -392,6 +431,10 @@ IntegerLiteralTypeInfo::IntegerLiteralTypeInfo(Value constant_value_p)
 bool IntegerLiteralTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
 	auto &other = other_p->Cast<IntegerLiteralTypeInfo>();
 	return constant_value == other.constant_value;
+}
+
+shared_ptr<ExtraTypeInfo> IntegerLiteralTypeInfo::Copy() const {
+	return make_shared<IntegerLiteralTypeInfo>(*this);
 }
 
 } // namespace duckdb

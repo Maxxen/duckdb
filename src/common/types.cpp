@@ -1088,6 +1088,13 @@ bool ApproxEqual(double ldecimal, double rdecimal) {
 //===--------------------------------------------------------------------===//
 // Extra Type Info
 //===--------------------------------------------------------------------===//
+
+void LogicalType::CopyTypeInfo() {
+	if (type_info_) {
+		type_info_ = type_info_->Copy();
+	}
+}
+
 void LogicalType::SetAlias(string alias) {
 	if (!type_info_) {
 		type_info_ = make_shared<ExtraTypeInfo>(ExtraTypeInfoType::GENERIC_TYPE_INFO, std::move(alias));

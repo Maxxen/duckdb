@@ -238,158 +238,181 @@ inline void LoadedExtensionsFunction(DataChunk &args, ExpressionState &state, Ve
 	result.Reference(Value(result_str));
 }
 
-static LogicalType GetGeoPointType() {
-	auto type = LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}});
-	type.SetAlias("GEO_POINT");
+//-------------------------------------------------------------------------
+// Bounded type
+//-------------------------------------------------------------------------
+
+static LogicalType GetBoundedType() {
+	auto type = LogicalType(LogicalTypeId::INTEGER);
+	type.SetAlias("BOUNDED");
+
 	type.SetTypeModifierHandler([](LogicalType &type, const vector<Value> &modifiers) {
 		if (modifiers.size() != 1) {
-			throw ParserException("GEO_POINT type must have exactly one modifier");
+			throw ParserException("BOUNDED type must have exactly one modifier");
 		}
-		if (modifiers[0].type().id() != LogicalTypeId::VARCHAR) {
-			throw ParserException("GEO_POINT type modifier must be a string");
+		if (modifiers[0].type().id() != LogicalTypeId::INTEGER) {
+			throw ParserException("BOUNDED type modifier must be a integer");
 		}
-		auto space_val = modifiers[0].ToString();
-		type.SetProperty("SPACE", modifiers[0]);
+		if (modifiers[0].GetValue<int32_t>() < 0) {
+			throw ParserException("BOUNDED type modifier must be positive");
+		}
+
+		type.SetProperty("MAX", modifiers[0]);
 	});
 
 	type.SetTypeFormatHandler([](const LogicalType &type) -> string {
-		if (type.HasProperty("SPACE")) {
-			auto space = type.GetProperty("SPACE");
-			return StringUtil::Format("GEO_POINT(%s)", space.ToString());
+		if (type.HasProperty("MAX")) {
+			auto max_val = type.GetProperty("MAX");
+			return StringUtil::Format("BOUNDED(%s)", max_val.ToString());
 		} else {
-			return "GEO_POINT";
+			return "BOUNDED";
 		}
 	});
 	return type;
 }
 
-static unique_ptr<FunctionData> GeoPointInvertBind(ClientContext &context, ScalarFunction &bound_function,
-                                                   vector<unique_ptr<Expression>> &arguments) {
-	bound_function.return_type = arguments[0]->return_type;
+static void BoundedMaxFunc(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto max_val = args.data[0].GetType().GetProperty("MAX");
+	result.Reference(max_val);
+}
+
+static unique_ptr<FunctionData> BoundedMaxBind(ClientContext &context, ScalarFunction &bound_function,
+                                               vector<unique_ptr<Expression>> &arguments) {
+	if (arguments[0]->return_type == GetBoundedType()) {
+		bound_function.arguments[0] = arguments[0]->return_type;
+	} else {
+		throw BinderException("bounded_max expects a BOUNDED type");
+	}
 	return nullptr;
 }
 
-static void GeoPointInvertFunc(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &source_vector = args.data[0];
-	const int count = args.size();
-
-	using DOUBLE_TYPE = PrimitiveType<double>;
-	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
-	GenericExecutor::ExecuteUnary<POINT_TYPE, POINT_TYPE>(source_vector, result, count, [&](POINT_TYPE input) {
-		auto x = input.a_val.val;
-		auto y = input.b_val.val;
-		return POINT_TYPE {-x, -y};
-	});
-}
-
-static void HaversineDistanceFunc(DataChunk &args, ExpressionState &state, Vector &result) {
+static void BoundedAddFunc(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &left_vector = args.data[0];
 	auto &right_vector = args.data[1];
-
-	const int count = args.size();
-	using DOUBLE_TYPE = PrimitiveType<double>;
-	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
-
-	GenericExecutor::ExecuteBinary<POINT_TYPE, POINT_TYPE, DOUBLE_TYPE>(
-	    left_vector, right_vector, result, count, [&](POINT_TYPE left, POINT_TYPE right) {
-		    // Calculate the great circle distance on a unit sphere
-		    auto x1 = left.a_val.val;
-		    auto y1 = left.b_val.val;
-		    auto x2 = right.a_val.val;
-		    auto y2 = right.b_val.val;
-		    auto dx = x1 - x2;
-		    auto dy = y1 - y2;
-		    auto a =
-		        std::pow(std::sin(dy * 0.5), 2.0) + std::cos(y1) * std::cos(y2) * std::pow(std::sin(dx * 0.5), 2.0);
-		    auto c = 2.0 * std::asin(std::sqrt(a));
-		    auto r = 6371000.0; // Earth radius in meters
-		    return c * r;
-	    });
+	const auto count = args.size();
+	BinaryExecutor::Execute<int32_t, int32_t, int32_t>(left_vector, right_vector, result, count,
+	                                                   [&](int32_t left, int32_t right) { return left + right; });
 }
 
-static void EuclideanDistanceFunc(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &left_vector = args.data[0];
-	auto &right_vector = args.data[1];
+static unique_ptr<FunctionData> BoundedAddBind(ClientContext &context, ScalarFunction &bound_function,
+                                               vector<unique_ptr<Expression>> &arguments) {
+	if (arguments[0]->return_type == GetBoundedType() && arguments[1]->return_type == GetBoundedType()) {
+		auto left_max_val = arguments[0]->return_type.GetProperty("MAX");
+		auto right_max_val = arguments[1]->return_type.GetProperty("MAX");
 
-	const int count = args.size();
-	using DOUBLE_TYPE = PrimitiveType<double>;
-	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+		auto new_max_val = left_max_val.GetValue<int32_t>() + right_max_val.GetValue<int32_t>();
 
-	GenericExecutor::ExecuteBinary<POINT_TYPE, POINT_TYPE, DOUBLE_TYPE>(
-	    left_vector, right_vector, result, count, [&](POINT_TYPE left, POINT_TYPE right) {
-		    // Calculate the cartesian distance
-		    auto x1 = left.a_val.val;
-		    auto y1 = left.b_val.val;
-		    auto x2 = right.a_val.val;
-		    auto y2 = right.b_val.val;
-		    auto dx = x1 - x2;
-		    auto dy = y1 - y2;
-		    return std::sqrt(std::pow(dx, 2.0) + std::pow(dy, 2.0));
-	    });
+		bound_function.arguments[0] = arguments[0]->return_type;
+		bound_function.arguments[1] = arguments[1]->return_type;
+		bound_function.return_type = GetBoundedType();
+		bound_function.return_type.SetProperty("MAX", Value::INTEGER(new_max_val));
+	} else {
+		throw BinderException("bounded_add expects two BOUNDED types");
+	}
+	return nullptr;
 }
 
-static bool SphericalToCartesianCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
-	// Project from unit sphere to cartesian plane
-	using DOUBLE_TYPE = PrimitiveType<double>;
-	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+struct BoundedFunctionData : public FunctionData {
+	int32_t max_val;
 
-	GenericExecutor::ExecuteUnary<POINT_TYPE, POINT_TYPE>(source, result, count, [&](POINT_TYPE input) {
-		auto x = input.a_val.val;
-		auto y = input.b_val.val;
-		double r = 6371000.0; // Earth radius in meters
-		auto dx = r * std::cos(y) * std::cos(x);
-		auto dy = r * std::cos(y) * std::sin(x);
-		return POINT_TYPE {dx, dy};
-	});
+	unique_ptr<FunctionData> Copy() const override {
+		auto copy = make_uniq<BoundedFunctionData>();
+		copy->max_val = max_val;
+		return std::move(copy);
+	}
 
-	return true;
+	bool Equals(const FunctionData &other_p) const override {
+		auto &other = other_p.Cast<BoundedFunctionData>();
+		return max_val == other.max_val;
+	}
+};
+
+static void BoundedReturnSerialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
+                                   const ScalarFunction &function) {
+	auto &data = bind_data->Cast<BoundedFunctionData>();
+	serializer.WriteProperty(100, "max_value", data.max_val);
 }
 
-static void GeoPointSpaceFunc(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto space = args.data[0].GetType().GetProperty("SPACE");
-	result.Reference(space);
+static unique_ptr<FunctionData> BoundedReturnDeserialize(Deserializer &source, ScalarFunction &function) {
+	auto data = make_uniq<BoundedFunctionData>();
+	data->max_val = source.ReadProperty<int32_t>(100, "max_value");
+
+	function.return_type = GetBoundedType();
+	function.return_type.SetProperty("MAX", Value::INTEGER(data->max_val));
+
+	return std::move(data);
 }
 
-static unique_ptr<FunctionData> GeoPointSpaceBind(ClientContext &context, ScalarFunction &bound_function,
+static unique_ptr<FunctionData> BoundedInvertBind(ClientContext &context, ScalarFunction &bound_function,
                                                   vector<unique_ptr<Expression>> &arguments) {
-	bound_function.arguments[0].SetProperty("SPACE", arguments[0]->return_type.GetProperty("SPACE"));
-	return nullptr;
+	if (arguments[0]->return_type == GetBoundedType()) {
+		bound_function.arguments[0] = arguments[0]->return_type;
+		bound_function.return_type = arguments[0]->return_type;
+	} else {
+		throw BinderException("bounded_invert expects a BOUNDED type");
+	}
+	auto result = make_uniq<BoundedFunctionData>();
+	result->max_val = bound_function.return_type.GetProperty("MAX").GetValue<int32_t>();
+	return std::move(result);
 }
 
-static void GeoPointX(DataChunk &args, ExpressionState &state, Vector &result) {
+static void BoundedInvertFunc(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &source_vector = args.data[0];
-	auto count = args.size();
+	const auto count = args.size();
 
-	using DOUBLE_TYPE = PrimitiveType<double>;
-	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
-	GenericExecutor::ExecuteUnary<POINT_TYPE, DOUBLE_TYPE>(source_vector, result, count,
-	                                                       [&](POINT_TYPE input) { return input.a_val.val; });
+	auto result_type = result.GetType();
+	auto output_max = result_type.GetProperty("MAX");
+	auto output_max_val = output_max.GetValue<int32_t>();
+
+	UnaryExecutor::Execute<int32_t, int32_t>(source_vector, result, count,
+	                                         [&](int32_t input) { return std::min(-input, output_max_val); });
 }
-static void GeoPointY(DataChunk &args, ExpressionState &state, Vector &result) {
+
+static void BoundedEvenFunc(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &source_vector = args.data[0];
-	auto count = args.size();
-	using DOUBLE_TYPE = PrimitiveType<double>;
-	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
-	GenericExecutor::ExecuteUnary<POINT_TYPE, DOUBLE_TYPE>(source_vector, result, count,
-	                                                       [&](POINT_TYPE input) { return input.b_val.val; });
+	const auto count = args.size();
+	UnaryExecutor::Execute<int32_t, bool>(source_vector, result, count, [&](int32_t input) { return input % 2 == 0; });
 }
 
-static bool ToNullspaceCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
-	// Project from unit sphere to cartesian plane
-	using DOUBLE_TYPE = PrimitiveType<double>;
-	using POINT_TYPE = StructTypeBinary<DOUBLE_TYPE, DOUBLE_TYPE>;
+static void BoundedToAsciiFunc(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &source_vector = args.data[0];
+	const auto count = args.size();
 
-	GenericExecutor::ExecuteUnary<POINT_TYPE, POINT_TYPE>(source, result, count, [&](POINT_TYPE input) {
-		auto x = input.a_val.val;
-		auto y = input.b_val.val;
+	UnaryExecutor::Execute<int32_t, string_t>(source_vector, result, count, [&](int32_t input) {
+		if (input < 0) {
+			throw NotImplementedException("Negative values not supported");
+		}
+		string s;
+		s.push_back(static_cast<char>(input));
+		return string_t(s);
+	});
+}
 
-		if (x < -180 || x > 180) {
-			throw CastException("Cannot cast point with x value outside of [-180, 180]");
+static bool BoundedToBoundedCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+	auto input_max = source.GetType().GetProperty("MAX");
+	auto input_max_val = input_max.GetValue<int32_t>();
+
+	auto output_max = result.GetType().GetProperty("MAX");
+	auto output_max_val = output_max.GetValue<int32_t>();
+
+	if (input_max_val <= output_max_val) {
+		result.Reinterpret(source);
+		return true;
+	} else {
+		throw CastException(source.GetType(), result.GetType());
+	}
+}
+
+static bool IntToBoundedCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+	auto output_max = result.GetType().GetProperty("MAX");
+	auto output_max_val = output_max.GetValue<int32_t>();
+
+	UnaryExecutor::Execute<int32_t, int32_t>(source, result, count, [&](int32_t input) {
+		if (input > output_max_val) {
+			throw CastException(StringUtil::Format("Value %s exceeds max value of bounded type (%s)", to_string(input),
+			                                       output_max.ToString()));
 		}
-		if (y < -90 || y > 90) {
-			throw CastException("Cannot cast point with y value outside of [-90, 90]");
-		}
-		return POINT_TYPE {x, y};
+		return input;
 	});
 
 	return true;
@@ -453,61 +476,43 @@ DUCKDB_EXTENSION_API void loadable_extension_demo_init(duckdb::DatabaseInstance 
 	config.parser_extensions.push_back(QuackExtension());
 	config.extension_callbacks.push_back(make_uniq<QuackLoadExtension>());
 
-	// Custom type
-	auto geo_type = GetGeoPointType();
-	ExtensionUtil::RegisterType(db, "GEO_POINT", geo_type);
+	// Bounded type
+	auto bounded_type = GetBoundedType();
+	ExtensionUtil::RegisterType(db, "BOUNDED", bounded_type);
 
-	auto euclidean_type = GetGeoPointType();
-	euclidean_type.SetProperty("SPACE", Value("PLANE"));
-	ScalarFunction euclidean_distance("geopoint_euclidean_dist", {euclidean_type, euclidean_type}, LogicalType::DOUBLE,
-	                                  EuclideanDistanceFunc);
-	ExtensionUtil::RegisterFunction(db, euclidean_distance);
+	// Example of function inspecting the type property
+	ScalarFunction bounded_max("bounded_max", {bounded_type}, LogicalType::INTEGER, BoundedMaxFunc, BoundedMaxBind);
+	ExtensionUtil::RegisterFunction(db, bounded_max);
 
-	auto spherical_type = GetGeoPointType();
-	spherical_type.SetProperty("SPACE", Value("SPHERE"));
-	ScalarFunction haversinde_distance("geopoint_haversine_dist", {spherical_type, spherical_type}, LogicalType::DOUBLE,
-	                                   HaversineDistanceFunc);
-	ExtensionUtil::RegisterFunction(db, haversinde_distance);
+	// Example of function inspecting the type property and returning the same type
+	ScalarFunction bounded_invert("bounded_invert", {bounded_type}, bounded_type, BoundedInvertFunc, BoundedInvertBind);
+	// bounded_invert.serialize = BoundedReturnSerialize;
+	// bounded_invert.deserialize = BoundedReturnDeserialize;
+	ExtensionUtil::RegisterFunction(db, bounded_invert);
 
-	// Both of these two functions are "generic" in the sense that they can be used with any geo point type as the
-	// SPACE property is not set in the input type (geo_type). Therefore no cast will be inserted. This is useful in
-	// cases where we dont care about the space property and just want to do some generic operation on the points. In
-	// this case, returning the x and y coordinates.
+	// Example of function inspecting the type property of both arguments and returning a new type
+	ScalarFunction bounded_add("bounded_add", {bounded_type, bounded_type}, bounded_type, BoundedAddFunc,
+	                           BoundedAddBind);
+	ExtensionUtil::RegisterFunction(db, bounded_add);
 
-	ScalarFunction generic_x_func("geopoint_x", {geo_type}, LogicalType::DOUBLE, GeoPointX);
-	ExtensionUtil::RegisterFunction(db, generic_x_func);
+	// Example of function that is generic over the type property (the bound is not important)
+	ScalarFunction bounded_even("bounded_even", {bounded_type}, LogicalType::BOOLEAN, BoundedEvenFunc);
+	ExtensionUtil::RegisterFunction(db, bounded_even);
 
-	ScalarFunction generic_y_func("geopoint_y", {geo_type}, LogicalType::DOUBLE, GeoPointY);
-	ExtensionUtil::RegisterFunction(db, generic_y_func);
+	// Example of function that is specialized over type property
+	auto bounded_specialized_type = GetBoundedType();
+	bounded_specialized_type.SetProperty("MAX", 0xFF);
 
-	// Although if we do need to propagate the space property (e.g. to the return type), we can do so with an explicit
-	// bind.
-	ScalarFunction generic_func("geopoint_invert", {geo_type}, geo_type, GeoPointInvertFunc, GeoPointInvertBind);
-	ExtensionUtil::RegisterFunction(db, generic_func);
+	ScalarFunction bounded_to_ascii("bounded_ascii", {bounded_specialized_type}, LogicalType::VARCHAR,
+	                                BoundedToAsciiFunc);
+	ExtensionUtil::RegisterFunction(db, bounded_to_ascii);
 
-	// Or inspect it and pass it along in the bind function
-	ScalarFunction generic_space_func("geopoint_space", {geo_type}, LogicalType::VARCHAR, GeoPointSpaceFunc,
-	                                  GeoPointSpaceBind);
-	ExtensionUtil::RegisterFunction(db, generic_space_func);
+	// Enable explicit casting to our specialized type
+	ExtensionUtil::RegisterCastFunction(db, bounded_type, bounded_specialized_type, BoundCastInfo(BoundedToBoundedCast),
+	                                    0);
 
-	// We allow conversion from spherical to cartesian space using a projection
-	ExtensionUtil::RegisterCastFunction(db, spherical_type, euclidean_type, SphericalToCartesianCast, 0);
-
-	// By setting the SPACE property to NULL, we make sure theres an explict cast required
-	// In this case, casting to the untyped geo point (the "null space") is allowed as long as the coordinates are
-	// within the range [-180, 180] for x and [-90, 90] for y. This doesnt really make a whole lot of sense but is just
-	// here to illustrate the difference between a property being NULL compared to not being set at all.
-
-	auto nullspace_type = GetGeoPointType();
-	nullspace_type.SetProperty("SPACE", Value());
-
-	ExtensionUtil::RegisterCastFunction(db, spherical_type, nullspace_type, BoundCastInfo(ToNullspaceCast), 0);
-	ExtensionUtil::RegisterCastFunction(db, euclidean_type, nullspace_type, BoundCastInfo(ToNullspaceCast), 0);
-
-	// We default to the euclidean distance in the nullspace
-	ScalarFunction nullspace_dist("geopoint_dist", {nullspace_type, nullspace_type}, LogicalType::DOUBLE,
-	                              EuclideanDistanceFunc);
-	ExtensionUtil::RegisterFunction(db, nullspace_dist);
+	// Casts
+	ExtensionUtil::RegisterCastFunction(db, LogicalType::INTEGER, bounded_type, BoundCastInfo(IntToBoundedCast), 0);
 }
 
 DUCKDB_EXTENSION_API const char *loadable_extension_demo_version() {

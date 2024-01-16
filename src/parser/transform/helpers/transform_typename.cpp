@@ -42,7 +42,6 @@ static idx_t GetSizeModifiers(duckdb_libpgquery::PGTypeName &type_name, const Lo
 	}
 	return modifier_idx;
 }
-
 LogicalType Transformer::TransformTypeName(duckdb_libpgquery::PGTypeName &type_name) {
 	if (type_name.type != duckdb_libpgquery::T_PGTypeName) {
 		throw ParserException("Expected a type");
@@ -52,10 +51,25 @@ LogicalType Transformer::TransformTypeName(duckdb_libpgquery::PGTypeName &type_n
 	if (type_name.names->length > 1) {
 		// qualified typename
 		vector<string> names;
-		vector<Value> type_mods;
 		for (auto cell = type_name.names->head; cell; cell = cell->next) {
 			names.push_back(PGPointerCast<duckdb_libpgquery::PGValue>(cell->data.ptr_value)->val.str);
 		}
+
+		vector<Value> type_mods;
+		if (type_name.typmods) {
+			for (auto node = type_name.typmods->head; node; node = node->next) {
+				if (type_mods.size() > 9) {
+					throw ParserException("'%s': a maximum of 9 type modifiers is allowed", names[0]);
+				}
+				auto &const_val = *PGPointerCast<duckdb_libpgquery::PGAConst>(node->data.ptr_value);
+				if (const_val.type != duckdb_libpgquery::T_PGAConst) {
+					throw ParserException("Expected a constant as type modifier");
+				}
+				auto const_expr = TransformValue(const_val.val);
+				type_mods.push_back(std::move(const_expr->value));
+			}
+		}
+
 		switch (type_name.names->length) {
 		case 2:
 			return LogicalType::USER(INVALID_CATALOG, std::move(names[0]), std::move(names[1]), type_mods);

@@ -201,7 +201,7 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, optional
 		BindLogicalType(context, child_type, catalog, schema);
 
 		auto alias = type.GetAlias();
-		auto &properties = type.GetProperties();
+		auto properties = type.GetProperties();
 		auto format_func = type.GetTypeFormatHandler();
 		auto modifier_func = type.GetTypeModifierHandler();
 
@@ -221,7 +221,7 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, optional
 			BindLogicalType(context, child_type.second, catalog, schema);
 		}
 		auto alias = type.GetAlias();
-		auto &properties = type.GetProperties();
+		auto properties = type.GetProperties();
 		auto format_func = type.GetTypeFormatHandler();
 		auto modifier_func = type.GetTypeModifierHandler();
 
@@ -238,7 +238,7 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, optional
 		BindLogicalType(context, child_type, catalog, schema);
 
 		auto alias = type.GetAlias();
-		auto &properties = type.GetProperties();
+		auto properties = type.GetProperties();
 		auto format_func = type.GetTypeFormatHandler();
 		auto modifier_func = type.GetTypeModifierHandler();
 
@@ -254,7 +254,7 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, optional
 			BindLogicalType(context, member_type.second, catalog, schema);
 		}
 		auto alias = type.GetAlias();
-		auto &properties = type.GetProperties();
+		auto properties = type.GetProperties();
 		auto format_func = type.GetTypeFormatHandler();
 		auto modifier_func = type.GetTypeModifierHandler();
 
@@ -294,6 +294,8 @@ void Binder::BindLogicalType(ClientContext &context, LogicalType &type, optional
 		// Apply any type modifiers
 		auto type_modifier_handler = type.GetTypeModifierHandler();
 		if (type_modifier_handler) {
+			// Create a new type with the modifiers applied
+			type.CopyTypeInfo();
 			type_modifier_handler(type, user_type_mods);
 		}
 	}

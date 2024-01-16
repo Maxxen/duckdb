@@ -264,6 +264,8 @@ struct LogicalType {
 		return type_info_;
 	}
 
+	void CopyTypeInfo();
+
 	inline void CopyAuxInfo(const LogicalType &other) {
 		type_info_ = other.type_info_;
 	}
