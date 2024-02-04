@@ -729,6 +729,10 @@ unique_ptr<FileHandle> LocalFileSystem::OpenFile(const string &path_p, uint8_t f
 			creation_disposition = CREATE_ALWAYS;
 		}
 	}
+	if (open_read && DirectoryExists(path)) {
+		// if we are opening a directory, we need to use the FILE_FLAG_BACKUP_SEMANTICS flag
+		flags_and_attributes |= FILE_FLAG_BACKUP_SEMANTICS;
+	}
 	if (flags & FileFlags::FILE_FLAGS_DIRECT_IO) {
 		flags_and_attributes |= FILE_FLAG_NO_BUFFERING;
 	}
