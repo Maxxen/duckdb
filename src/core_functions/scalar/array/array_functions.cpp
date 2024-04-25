@@ -264,11 +264,12 @@ ScalarFunctionSet ArrayInnerProductFun::GetFunctions() {
 ScalarFunctionSet ArrayDistanceFun::GetFunctions() {
 	ScalarFunctionSet set("array_distance");
 	// Generic array distance function
-	for (auto &type : LogicalType::Real()) {
-		set.AddFunction(
-		    ScalarFunction({LogicalType::ARRAY(type, optional_idx()), LogicalType::ARRAY(type, optional_idx())}, type,
-		                   ArrayGenericBinaryFunction<DistanceOp>, ArrayGenericBinaryBind<DistanceOp>));
-	}
+	//for (auto &type : LogicalType::Real()) {
+	//	set.AddFunction(ScalarFunction({LogicalType::ARRAY(type), LogicalType::ARRAY(type)}, type,
+	//	                               ArrayGenericBinaryFunction<DistanceOp>, ArrayGenericBinaryBind<DistanceOp>));
+	//}
+			set.AddFunction(ScalarFunction({LogicalType::ARRAY(LogicalType::GENERIC("T"), optional_idx()), LogicalType::ARRAY(LogicalType::GENERIC("T"), optional_idx())}, LogicalType::ARRAY(LogicalType::GENERIC("T"), optional_idx()),
+			                               ArrayGenericBinaryFunction<DistanceOp>, ArrayGenericBinaryBind<DistanceOp>));
 	return set;
 }
 

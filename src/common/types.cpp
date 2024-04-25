@@ -154,6 +154,7 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::UNKNOWN:
 	case LogicalTypeId::STRING_LITERAL:
 	case LogicalTypeId::INTEGER_LITERAL:
+	case LogicalTypeId::GENERIC:
 		return PhysicalType::INVALID;
 	case LogicalTypeId::USER:
 		return PhysicalType::UNKNOWN;
@@ -503,6 +504,10 @@ string LogicalType::ToString() const {
 	}
 	case LogicalTypeId::AGGREGATE_STATE: {
 		return AggregateStateType::GetTypeName(*this);
+	}
+	case LogicalTypeId::GENERIC: {
+		auto &info = this->type_info_->Cast<TemplateTypeInfo>();
+		return "<" + info.name + ">";
 	}
 	case LogicalTypeId::SQLNULL: {
 		return "\"NULL\"";
@@ -1684,6 +1689,16 @@ idx_t AnyType::GetCastScore(const LogicalType &type) {
 }
 
 //===--------------------------------------------------------------------===//
+// Generic Type
+//===--------------------------------------------------------------------===//
+const string &GenericType::GetTypeName(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::GENERIC);
+	auto info = type.AuxInfo();
+	D_ASSERT(info);
+	return info->Cast<TemplateTypeInfo>().name;
+}
+
+//===--------------------------------------------------------------------===//
 // Integer Literal Type
 //===--------------------------------------------------------------------===//
 LogicalType IntegerLiteral::GetType(const LogicalType &type) {
@@ -1716,6 +1731,14 @@ LogicalType LogicalType::INTEGER_LITERAL(const Value &constant) { // NOLINT
 	}
 	auto type_info = make_shared_ptr<IntegerLiteralTypeInfo>(constant);
 	return LogicalType(LogicalTypeId::INTEGER_LITERAL, std::move(type_info));
+}
+
+//===--------------------------------------------------------------------===//
+// Generic Type
+//===--------------------------------------------------------------------===//
+LogicalType LogicalType::GENERIC(const string &name) {
+	auto info = make_shared<TemplateTypeInfo>(name);
+	return LogicalType(LogicalTypeId::GENERIC, std::move(info));
 }
 
 //===--------------------------------------------------------------------===//
