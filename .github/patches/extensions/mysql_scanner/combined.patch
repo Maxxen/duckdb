@@ -23,6 +23,19 @@ index b5a2713..dc69b08 100644
  public:
  	std::string Name() override {
  		return "mysql_scanner";
+diff --git a/src/include/storage/mysql_optimizer.hpp b/src/include/storage/mysql_optimizer.hpp
+index 3970851..7a44c5b 100644
+--- a/src/include/storage/mysql_optimizer.hpp
++++ b/src/include/storage/mysql_optimizer.hpp
+@@ -13,7 +13,7 @@
+ namespace duckdb {
+ class MySQLOptimizer {
+ public:
+-	static void Optimize(ClientContext &context, OptimizerExtensionInfo *info, unique_ptr<LogicalOperator> &plan);
++	static void Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan);
+ };
+ 
+ } // namespace duckdb
 diff --git a/src/include/storage/mysql_table_entry.hpp b/src/include/storage/mysql_table_entry.hpp
 index dbbed8a..6a34aaa 100644
 --- a/src/include/storage/mysql_table_entry.hpp
@@ -50,16 +63,29 @@ index 267e9f5..0c72f36 100644
  	result.Execute("SET character_set_results = 'utf8mb4';");
  	return result;
 diff --git a/src/mysql_extension.cpp b/src/mysql_extension.cpp
-index 47d90fc..c955b14 100644
+index 7f78543..b1736c1 100644
 --- a/src/mysql_extension.cpp
 +++ b/src/mysql_extension.cpp
-@@ -48,7 +48,7 @@ static void LoadInternal(DatabaseInstance &db) {
+@@ -97,7 +97,7 @@ static void LoadInternal(DatabaseInstance &db) {
  	config.optimizer_extensions.push_back(std::move(mysql_optimizer));
  }
  
 -void MySQLScannerExtension::Load(DuckDB &db) {
 +void MysqlScannerExtension::Load(DuckDB &db) {
  	LoadInternal(*db.instance);
+ }
+ 
+diff --git a/src/storage/mysql_optimizer.cpp b/src/storage/mysql_optimizer.cpp
+index 3f3b1c4..2985a0e 100644
+--- a/src/storage/mysql_optimizer.cpp
++++ b/src/storage/mysql_optimizer.cpp
+@@ -56,7 +56,7 @@ void OptimizeMySQLScan(unique_ptr<LogicalOperator> &op) {
+ 	}
+ }
+ 
+-void MySQLOptimizer::Optimize(ClientContext &context, OptimizerExtensionInfo *info, unique_ptr<LogicalOperator> &plan) {
++void MySQLOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
+ 	OptimizeMySQLScan(plan);
  }
  
 diff --git a/src/storage/mysql_table_entry.cpp b/src/storage/mysql_table_entry.cpp

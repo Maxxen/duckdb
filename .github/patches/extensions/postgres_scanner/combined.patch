@@ -58,6 +58,19 @@ index e20a803..4fe45f6 100644
  
  namespace duckdb {
  struct DropInfo;
+diff --git a/src/include/storage/postgres_optimizer.hpp b/src/include/storage/postgres_optimizer.hpp
+index b17f259..1e573f0 100644
+--- a/src/include/storage/postgres_optimizer.hpp
++++ b/src/include/storage/postgres_optimizer.hpp
+@@ -14,7 +14,7 @@ namespace duckdb {
+ 
+ class PostgresOptimizer {
+ public:
+-	static void Optimize(ClientContext &context, OptimizerExtensionInfo *info, unique_ptr<LogicalOperator> &plan);
++	static void Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan);
+ };
+ 
+ } // namespace duckdb
 diff --git a/src/include/storage/postgres_table_entry.hpp b/src/include/storage/postgres_table_entry.hpp
 index d96dfad..529c234 100644
 --- a/src/include/storage/postgres_table_entry.hpp
@@ -213,6 +226,20 @@ index 449df0b..75c029f 100644
  #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
  #include "postgres_filter_pushdown.hpp"
  #include "postgres_scanner.hpp"
+diff --git a/src/storage/postgres_optimizer.cpp b/src/storage/postgres_optimizer.cpp
+index 83943e9..0c83cdc 100644
+--- a/src/storage/postgres_optimizer.cpp
++++ b/src/storage/postgres_optimizer.cpp
+@@ -34,8 +34,7 @@ void GatherPostgresScans(LogicalOperator &op, PostgresOperators &result) {
+ 	}
+ }
+ 
+-void PostgresOptimizer::Optimize(ClientContext &context, OptimizerExtensionInfo *info,
+-                                 unique_ptr<LogicalOperator> &plan) {
++void PostgresOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
+ 	// look at the query plan and check if we can enable streaming query scans
+ 	PostgresOperators operators;
+ 	GatherPostgresScans(*plan, operators);
 diff --git a/src/storage/postgres_schema_set.cpp b/src/storage/postgres_schema_set.cpp
 index 93c3f28..cd3b46f 100644
 --- a/src/storage/postgres_schema_set.cpp

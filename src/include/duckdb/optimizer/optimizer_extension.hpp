@@ -13,22 +13,29 @@
 
 namespace duckdb {
 
+class Optimizer;
+class ClientContext;
+
 //! The OptimizerExtensionInfo holds static information relevant to the optimizer extension
 struct OptimizerExtensionInfo {
 	virtual ~OptimizerExtensionInfo() {
 	}
 };
 
-typedef void (*optimize_function_t)(ClientContext &context, OptimizerExtensionInfo *info,
-                                    unique_ptr<LogicalOperator> &plan);
+struct OptimizerExtensionInput {
+	ClientContext &context;
+	Optimizer &optimizer;
+	optional_ptr<OptimizerExtensionInfo> info;
+};
+
+typedef void (*optimize_function_t)(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan);
 
 class OptimizerExtension {
 public:
-	//! The parse function of the parser extension.
-	//! Takes a query string as input and returns ParserExtensionParseData (on success) or an error
+	//! The optimizer function of the parser extension. This function is called after the regular optimizer has run.
 	optimize_function_t optimize_function;
 
-	//! Additional parser info passed to the parse function
+	//! Additional information for the optimizer extension passed to the optimizer function as part of the input
 	shared_ptr<OptimizerExtensionInfo> optimizer_info;
 };
 
