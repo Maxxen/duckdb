@@ -7,7 +7,7 @@ namespace duckdb {
 // Structs
 //===--------------------------------------------------------------------===//
 void ArrowStructData::Initialize(ArrowAppendData &result, const LogicalType &type, idx_t capacity) {
-	auto &children = StructType::GetChildTypes(type);
+	const auto children = StructType::GetChildTypes(type);
 	for (auto &child : children) {
 		auto child_buffer = ArrowAppender::InitializeChild(child.second, capacity, result.options);
 		result.child_data.push_back(std::move(child_buffer));
@@ -32,7 +32,7 @@ void ArrowStructData::Append(ArrowAppendData &append_data, Vector &input, idx_t 
 void ArrowStructData::Finalize(ArrowAppendData &append_data, const LogicalType &type, ArrowArray *result) {
 	result->n_buffers = 1;
 
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	ArrowAppender::AddChildren(append_data, child_types.size());
 	result->children = append_data.child_pointers.data();
 	result->n_children = NumericCast<int64_t>(child_types.size());

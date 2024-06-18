@@ -78,12 +78,9 @@ static LogicalType GetJSONType(StructNames &const_struct_names, const LogicalTyp
 	}
 	case LogicalTypeId::UNION: {
 		child_list_t<LogicalType> member_types;
-		for (idx_t member_idx = 0; member_idx < UnionType::GetMemberCount(type); member_idx++) {
-			auto &member_name = UnionType::GetMemberName(type, member_idx);
-			auto &member_type = UnionType::GetMemberType(type, member_idx);
-
-			const_struct_names[member_name] = make_uniq<Vector>(Value(member_name));
-			member_types.emplace_back(member_name, GetJSONType(const_struct_names, member_type));
+		for (const auto &member : UnionType::GetMemberTypes(type)) {
+			const_struct_names[member.first] = make_uniq<Vector>(Value(member.first));
+			member_types.emplace_back(member.first, GetJSONType(const_struct_names, member.second));
 		}
 		return LogicalType::UNION(member_types);
 	}

@@ -203,7 +203,7 @@ BindResult SelectBinder::BindUnnest(FunctionExpression &function, idx_t depth, b
 			for (auto &expr : struct_expressions) {
 				if (expr->return_type.id() == LogicalTypeId::STRUCT) {
 					// struct! push a struct_extract
-					auto &child_types = StructType::GetChildTypes(expr->return_type);
+					auto child_types = StructType::GetChildTypes(expr->return_type);
 					if (StructType::IsUnnamed(expr->return_type)) {
 						for (idx_t child_index = 0; child_index < child_types.size(); child_index++) {
 							new_expressions.push_back(

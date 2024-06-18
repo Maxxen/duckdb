@@ -1478,7 +1478,7 @@ string Value::ToSQLString() const {
 	case LogicalTypeId::STRUCT: {
 		bool is_unnamed = StructType::IsUnnamed(type_);
 		string ret = is_unnamed ? "(" : "{";
-		auto &child_types = StructType::GetChildTypes(type_);
+		auto child_types = StructType::GetChildTypes(type_);
 		auto &struct_values = StructValue::GetChildren(*this);
 		for (idx_t i = 0; i < struct_values.size(); i++) {
 			auto &name = child_types[i].first;

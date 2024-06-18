@@ -440,9 +440,8 @@ void ParquetReader::InitializeSchema() {
 	}
 	root_reader = CreateReader();
 	auto &root_type = root_reader->Type();
-	auto &child_types = StructType::GetChildTypes(root_type);
 	D_ASSERT(root_type.id() == LogicalTypeId::STRUCT);
-	for (auto &type_pair : child_types) {
+	for (auto &type_pair : StructType::GetChildTypes(root_type)) {
 		names.push_back(type_pair.first);
 		return_types.push_back(type_pair.second);
 	}

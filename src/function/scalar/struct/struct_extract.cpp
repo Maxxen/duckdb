@@ -46,7 +46,7 @@ static unique_ptr<FunctionData> StructExtractBind(ClientContext &context, Scalar
 		throw ParameterNotResolvedException();
 	}
 	D_ASSERT(LogicalTypeId::STRUCT == child_type.id());
-	auto &struct_children = StructType::GetChildTypes(child_type);
+	auto struct_children = StructType::GetChildTypes(child_type);
 	if (struct_children.empty()) {
 		throw InternalException("Can't extract something from an empty struct");
 	}
@@ -109,7 +109,7 @@ static unique_ptr<FunctionData> StructExtractBindIndex(ClientContext &context, S
 		throw ParameterNotResolvedException();
 	}
 	D_ASSERT(LogicalTypeId::STRUCT == child_type.id());
-	auto &struct_children = StructType::GetChildTypes(child_type);
+	auto struct_children = StructType::GetChildTypes(child_type);
 	if (struct_children.empty()) {
 		throw InternalException("Can't extract something from an empty struct");
 	}
@@ -129,7 +129,7 @@ static unique_ptr<FunctionData> StructExtractBindIndex(ClientContext &context, S
 	}
 	Value key_val = ExpressionExecutor::EvaluateScalar(context, *key_child);
 	auto index = key_val.GetValue<int64_t>();
-	if (index <= 0 || idx_t(index) > struct_children.size()) {
+	if (index <= 0 || UnsafeNumericCast<idx_t>(index) > struct_children.size()) {
 		throw BinderException("Key index %lld for struct_extract out of range - expected an index between 1 and %llu",
 		                      index, struct_children.size());
 	}

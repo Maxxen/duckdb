@@ -188,8 +188,7 @@ CopyTypeSupport ParquetWriter::TypeIsSupported(const LogicalType &type) {
 		return CopyTypeSupport::SUPPORTED;
 	}
 	if (id == LogicalTypeId::STRUCT) {
-		auto &children = StructType::GetChildTypes(type);
-		for (auto &child : children) {
+		for (auto &child : StructType::GetChildTypes(type)) {
 			auto &child_type = child.second;
 			auto type_support = TypeIsSupported(child_type);
 			if (type_support != CopyTypeSupport::SUPPORTED) {

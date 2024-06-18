@@ -385,7 +385,7 @@ string LogicalType::ToString() const {
 			return "STRUCT";
 		}
 		auto is_unnamed = StructType::IsUnnamed(*this);
-		auto &child_types = StructType::GetChildTypes(*this);
+		auto child_types = StructType::GetChildTypes(*this);
 		string ret = "STRUCT(";
 		for (size_t i = 0; i < child_types.size(); i++) {
 			if (is_unnamed) {
@@ -896,10 +896,10 @@ static bool CombineEqualTypes(const LogicalType &left, const LogicalType &right,
 	}
 	case LogicalTypeId::STRUCT: {
 		// struct: perform recursively on each child
-		auto &left_child_types = StructType::GetChildTypes(left);
-		auto &right_child_types = StructType::GetChildTypes(right);
-		bool left_unnamed = StructType::IsUnnamed(left);
-		auto any_unnamed = left_unnamed || StructType::IsUnnamed(right);
+		const auto left_child_types = StructType::GetChildTypes(left);
+		const auto right_child_types = StructType::GetChildTypes(right);
+		const bool left_unnamed = StructType::IsUnnamed(left);
+		const auto any_unnamed = left_unnamed || StructType::IsUnnamed(right);
 		if (left_child_types.size() != right_child_types.size()) {
 			// child types are not of equal size, we can't cast
 			// return false
@@ -1155,6 +1155,30 @@ bool ApproxEqual(double ldecimal, double rdecimal) {
 	return std::fabs(ldecimal - rdecimal) <= epsilon;
 }
 
+child_view_t<LogicalType> LogicalType::GetChildTypes() const {
+	switch (id()) {
+	case LogicalTypeId::STRUCT: {
+		return StructType::GetChildTypes(*this);
+	}
+	case LogicalTypeId::UNION: {
+		return UnionType::GetMemberTypes(*this);
+	}
+	case LogicalTypeId::MAP: {
+		return StructType::GetChildTypes(ListType::GetChildType(*this));
+	}
+	case LogicalTypeId::LIST: {
+		auto child = &AuxInfo()->Cast<ListTypeInfo>().child_type;
+		return {child, child + 1};
+	}
+	case LogicalTypeId::ARRAY: {
+		auto child = &AuxInfo()->Cast<ArrayTypeInfo>().child_type;
+		return {child, child + 1};
+	}
+	default:
+		return {nullptr, nullptr};
+	}
+}
+
 //===--------------------------------------------------------------------===//
 // Extra Type Info
 //===--------------------------------------------------------------------===//
@@ -1298,7 +1322,7 @@ const LogicalType &ListType::GetChildType(const LogicalType &type) {
 	D_ASSERT(type.id() == LogicalTypeId::LIST || type.id() == LogicalTypeId::MAP);
 	auto info = type.AuxInfo();
 	D_ASSERT(info);
-	return info->Cast<ListTypeInfo>().child_type;
+	return info->Cast<ListTypeInfo>().child_type.second;
 }
 
 LogicalType LogicalType::LIST(const LogicalType &child) {
@@ -1332,28 +1356,33 @@ const string AggregateStateType::GetTypeName(const LogicalType &type) {
 //===--------------------------------------------------------------------===//
 // Struct Type
 //===--------------------------------------------------------------------===//
-const child_list_t<LogicalType> &StructType::GetChildTypes(const LogicalType &type) {
+child_view_t<LogicalType> StructType::GetChildTypes(const LogicalType &type) {
 	D_ASSERT(type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::UNION);
-
-	auto info = type.AuxInfo();
+	const auto info = type.AuxInfo();
 	D_ASSERT(info);
-	return info->Cast<StructTypeInfo>().child_types;
+	auto &children = info->Cast<StructTypeInfo>().child_types;
+	return {children.data(), children.size()};
+}
+
+child_list_t<LogicalType> StructType::CopyChildTypes(const LogicalType &type) {
+	const auto child_types = StructType::GetChildTypes(type);
+	return {child_types.begin(), child_types.end()};
 }
 
 const LogicalType &StructType::GetChildType(const LogicalType &type, idx_t index) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	D_ASSERT(index < child_types.size());
 	return child_types[index].second;
 }
 
 const string &StructType::GetChildName(const LogicalType &type, idx_t index) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	D_ASSERT(index < child_types.size());
 	return child_types[index].first;
 }
 
 idx_t StructType::GetChildIndexUnsafe(const LogicalType &type, const string &name) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	for (idx_t i = 0; i < child_types.size(); i++) {
 		if (StringUtil::CIEquals(child_types[i].first, name)) {
 			return i;
@@ -1366,7 +1395,7 @@ idx_t StructType::GetChildCount(const LogicalType &type) {
 	return StructType::GetChildTypes(type).size();
 }
 bool StructType::IsUnnamed(const LogicalType &type) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto &child_types = StructType::GetChildTypes(type);
 	if (child_types.empty()) {
 		return false;
 	}
@@ -1388,7 +1417,7 @@ LogicalType LogicalType::AGGREGATE_STATE(aggregate_state_t state_type) { // NOLI
 //===--------------------------------------------------------------------===//
 LogicalType LogicalType::MAP(const LogicalType &child_p) {
 	D_ASSERT(child_p.id() == LogicalTypeId::STRUCT);
-	auto &children = StructType::GetChildTypes(child_p);
+	const auto children = StructType::GetChildTypes(child_p);
 	D_ASSERT(children.size() == 2);
 
 	// We do this to enforce that for every MAP created, the keys are called "key"
@@ -1438,14 +1467,14 @@ LogicalType LogicalType::UNION(child_list_t<LogicalType> members) {
 }
 
 const LogicalType &UnionType::GetMemberType(const LogicalType &type, idx_t index) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	D_ASSERT(index < child_types.size());
 	// skip the "tag" field
 	return child_types[index + 1].second;
 }
 
 const string &UnionType::GetMemberName(const LogicalType &type, idx_t index) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	D_ASSERT(index < child_types.size());
 	// skip the "tag" field
 	return child_types[index + 1].first;
@@ -1455,10 +1484,15 @@ idx_t UnionType::GetMemberCount(const LogicalType &type) {
 	// don't count the "tag" field
 	return StructType::GetChildTypes(type).size() - 1;
 }
-const child_list_t<LogicalType> UnionType::CopyMemberTypes(const LogicalType &type) {
-	auto child_types = StructType::GetChildTypes(type);
-	child_types.erase(child_types.begin());
-	return child_types;
+
+child_list_t<LogicalType> UnionType::CopyMemberTypes(const LogicalType &type) {
+	const auto child_types = StructType::GetChildTypes(type);
+	return {child_types.begin() + 1, child_types.end()};
+}
+
+child_view_t<LogicalType> UnionType::GetMemberTypes(const LogicalType &type) {
+	const auto child_types = StructType::GetChildTypes(type);
+	return child_types.last(child_types.size() - 1);
 }
 
 //===--------------------------------------------------------------------===//
@@ -1576,7 +1610,7 @@ const LogicalType &ArrayType::GetChildType(const LogicalType &type) {
 	D_ASSERT(type.id() == LogicalTypeId::ARRAY);
 	auto info = type.AuxInfo();
 	D_ASSERT(info);
-	return info->Cast<ArrayTypeInfo>().child_type;
+	return info->Cast<ArrayTypeInfo>().child_type.second;
 }
 
 idx_t ArrayType::GetSize(const LogicalType &type) {
@@ -1601,7 +1635,7 @@ LogicalType ArrayType::ConvertToList(const LogicalType &type) {
 	case LogicalTypeId::LIST:
 		return LogicalType::LIST(ConvertToList(ListType::GetChildType(type)));
 	case LogicalTypeId::STRUCT: {
-		auto children = StructType::GetChildTypes(type);
+		auto children = StructType::CopyChildTypes(type);
 		for (auto &child : children) {
 			child.second = ConvertToList(child.second);
 		}

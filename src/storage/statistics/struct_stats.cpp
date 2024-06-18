@@ -8,7 +8,7 @@
 namespace duckdb {
 
 void StructStats::Construct(BaseStatistics &stats) {
-	auto &child_types = StructType::GetChildTypes(stats.GetType());
+	const auto child_types = StructType::GetChildTypes(stats.GetType());
 	stats.child_stats = unsafe_unique_array<BaseStatistics>(new BaseStatistics[child_types.size()]);
 	for (idx_t i = 0; i < child_types.size(); i++) {
 		BaseStatistics::Construct(stats.child_stats[i], child_types[i].second);
@@ -16,7 +16,7 @@ void StructStats::Construct(BaseStatistics &stats) {
 }
 
 BaseStatistics StructStats::CreateUnknown(LogicalType type) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	BaseStatistics result(std::move(type));
 	result.InitializeUnknown();
 	for (idx_t i = 0; i < child_types.size(); i++) {
@@ -26,7 +26,7 @@ BaseStatistics StructStats::CreateUnknown(LogicalType type) {
 }
 
 BaseStatistics StructStats::CreateEmpty(LogicalType type) {
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 	BaseStatistics result(std::move(type));
 	result.InitializeEmpty();
 	for (idx_t i = 0; i < child_types.size(); i++) {
@@ -104,7 +104,7 @@ void StructStats::Deserialize(Deserializer &deserializer, BaseStatistics &base) 
 	auto &type = base.GetType();
 	D_ASSERT(type.InternalType() == PhysicalType::STRUCT);
 
-	auto &child_types = StructType::GetChildTypes(type);
+	const auto child_types = StructType::GetChildTypes(type);
 
 	deserializer.ReadList(200, "child_stats", [&](Deserializer::List &list, idx_t i) {
 		deserializer.Set<const LogicalType &>(child_types[i].second);
@@ -117,7 +117,7 @@ void StructStats::Deserialize(Deserializer &deserializer, BaseStatistics &base) 
 string StructStats::ToString(const BaseStatistics &stats) {
 	string result;
 	result += " {";
-	auto &child_types = StructType::GetChildTypes(stats.GetType());
+	const auto child_types = StructType::GetChildTypes(stats.GetType());
 	for (idx_t i = 0; i < child_types.size(); i++) {
 		if (i > 0) {
 			result += ", ";

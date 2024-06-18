@@ -52,7 +52,7 @@ bool DuckDBPyType::EqualsString(const string &type_str) const {
 
 shared_ptr<DuckDBPyType> DuckDBPyType::GetAttribute(const string &name) const {
 	if (type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::UNION) {
-		auto &children = StructType::GetChildTypes(type);
+		auto children = StructType::GetChildTypes(type);
 		for (idx_t i = 0; i < children.size(); i++) {
 			auto &child = children[i];
 			if (StringUtil::CIEquals(child.first, name)) {
@@ -377,7 +377,7 @@ py::list DuckDBPyType::Children() const {
 		return children;
 	}
 	if (id == LogicalTypeId::STRUCT || id == LogicalTypeId::UNION) {
-		auto &struct_children = StructType::GetChildTypes(type);
+		auto struct_children = StructType::GetChildTypes(type);
 		for (idx_t i = 0; i < struct_children.size(); i++) {
 			auto &child = struct_children[i];
 			children.append(

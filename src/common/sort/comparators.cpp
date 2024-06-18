@@ -192,7 +192,7 @@ int Comparators::CompareStringAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right
 }
 
 int Comparators::CompareStructAndAdvance(data_ptr_t &left_ptr, data_ptr_t &right_ptr,
-                                         const child_list_t<LogicalType> &types, bool valid) {
+                                         const child_view_t<LogicalType> &types, bool valid) {
 	idx_t count = types.size();
 	// Load validity masks
 	ValidityBytes left_validity(left_ptr);

@@ -97,8 +97,7 @@ private:
 
 struct ListTypeInfo : public ExtraTypeInfo {
 	explicit ListTypeInfo(LogicalType child_type_p);
-
-	LogicalType child_type;
+	pair<string, LogicalType> child_type = make_pair("child", LogicalType::INVALID);
 
 public:
 	void Serialize(Serializer &serializer) const override;
@@ -200,7 +199,7 @@ private:
 };
 
 struct ArrayTypeInfo : public ExtraTypeInfo {
-	LogicalType child_type;
+	pair<string, LogicalType> child_type = make_pair("child", LogicalType::INVALID);
 	uint32_t size;
 	explicit ArrayTypeInfo(LogicalType child_type_p, uint32_t size_p);
 

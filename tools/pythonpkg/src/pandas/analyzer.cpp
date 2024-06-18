@@ -65,8 +65,8 @@ static bool IsStructColumnValid(const LogicalType &left, const LogicalType &righ
 	D_ASSERT(left.id() == LogicalTypeId::STRUCT && left.id() == right.id());
 
 	//! Child types of the two structs
-	auto &left_children = StructType::GetChildTypes(left);
-	auto &right_children = StructType::GetChildTypes(right);
+	const auto left_children = StructType::GetChildTypes(left);
+	const auto right_children = StructType::GetChildTypes(right);
 
 	if (left_children.size() != right_children.size()) {
 		return false;
@@ -91,7 +91,7 @@ static bool IsStructColumnValid(const LogicalType &left, const LogicalType &righ
 
 static bool CombineStructTypes(LogicalType &result, const LogicalType &input) {
 	D_ASSERT(input.id() == LogicalTypeId::STRUCT);
-	auto &children = StructType::GetChildTypes(input);
+	auto children = StructType::GetChildTypes(input);
 	for (auto &type : children) {
 		if (!UpgradeType(result, type.second)) {
 			return false;
@@ -280,8 +280,8 @@ static LogicalType EmptyMap() {
 }
 
 //! Check if the keys match
-static bool StructKeysAreEqual(idx_t row, const child_list_t<LogicalType> &reference,
-                               const child_list_t<LogicalType> &compare) {
+static bool StructKeysAreEqual(idx_t row, const child_view_t<LogicalType> &reference,
+                               const child_view_t<LogicalType> &compare) {
 	D_ASSERT(reference.size() == compare.size());
 	for (idx_t i = 0; i < reference.size(); i++) {
 		auto &ref = reference[i].first;
@@ -315,7 +315,7 @@ static bool VerifyStructValidity(vector<LogicalType> &structs) {
 		if (entry.id() == LogicalTypeId::SQLNULL) {
 			continue;
 		}
-		auto &entry_children = StructType::GetChildTypes(entry);
+		auto entry_children = StructType::GetChildTypes(entry);
 		if (entry_children.size() != reference_children.size()) {
 			return false;
 		}

@@ -481,7 +481,7 @@ BaseStatistics BaseStatistics::FromConstantType(const Value &input) {
 	}
 	case StatisticsType::STRUCT_STATS: {
 		auto result = StructStats::CreateEmpty(input.type());
-		auto &child_types = StructType::GetChildTypes(input.type());
+		const auto child_types = StructType::GetChildTypes(input.type());
 		if (input.IsNull()) {
 			for (idx_t i = 0; i < child_types.size(); i++) {
 				StructStats::SetChildStats(result, i, FromConstant(Value(child_types[i].second)));

@@ -48,7 +48,7 @@ VectorDataIndex ColumnDataCollectionSegment::AllocateVector(const LogicalType &t
 	}
 	if (type.InternalType() == PhysicalType::STRUCT) {
 		// initialize the struct children
-		auto &child_types = StructType::GetChildTypes(type);
+		auto child_types = StructType::GetChildTypes(type);
 		auto base_child_index = ReserveChildren(child_types.size());
 		for (idx_t child_idx = 0; child_idx < child_types.size(); child_idx++) {
 			VectorDataIndex prev_child_index;

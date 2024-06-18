@@ -39,8 +39,7 @@ static unique_ptr<FunctionData> MapFromEntriesBind(ClientContext &context, Scala
 	if (elem_type.id() != LogicalTypeId::STRUCT) {
 		throw InvalidInputException("The elements of the list must be structs");
 	}
-	auto &children = StructType::GetChildTypes(elem_type);
-	if (children.size() != 2) {
+	if (StructType::GetChildTypes(elem_type).size() != 2) {
 		throw InvalidInputException("The provided struct type should only contain 2 fields, a key and a value");
 	}
 

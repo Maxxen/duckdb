@@ -23,7 +23,7 @@ static Value EmptyMapValue() {
 vector<string> TransformStructKeys(py::handle keys, idx_t size, const LogicalType &type = LogicalType::UNKNOWN) {
 	vector<string> res;
 	if (type.id() == LogicalTypeId::STRUCT) {
-		auto &struct_keys = StructType::GetChildTypes(type);
+		auto struct_keys = StructType::GetChildTypes(type);
 		res.reserve(struct_keys.size());
 		for (idx_t i = 0; i < struct_keys.size(); i++) {
 			res.push_back(struct_keys[i].first);

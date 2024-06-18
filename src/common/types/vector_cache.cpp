@@ -30,7 +30,7 @@ public:
 			break;
 		}
 		case PhysicalType::STRUCT: {
-			auto &child_types = StructType::GetChildTypes(type);
+			const auto child_types = StructType::GetChildTypes(type);
 			for (auto &child_type : child_types) {
 				child_caches.push_back(make_buffer<VectorCacheBuffer>(allocator, child_type.second, capacity));
 			}

@@ -2028,7 +2028,7 @@ unique_ptr<ColumnWriter> ColumnWriter::CreateWriterRecursive(vector<duckdb_parqu
 	}
 
 	if (type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::UNION) {
-		auto &child_types = StructType::GetChildTypes(type);
+		const auto child_types = StructType::GetChildTypes(type);
 		// set up the schema element for this struct
 		duckdb_parquet::format::SchemaElement schema_element;
 		schema_element.repetition_type = null_type;

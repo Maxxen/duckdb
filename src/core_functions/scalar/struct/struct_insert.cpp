@@ -53,17 +53,14 @@ static unique_ptr<FunctionData> StructInsertBind(ClientContext &context, ScalarF
 
 	child_list_t<LogicalType> new_struct_children;
 
-	auto &existing_struct_children = StructType::GetChildTypes(arguments[0]->return_type);
-
-	for (size_t i = 0; i < existing_struct_children.size(); i++) {
-		auto &child = existing_struct_children[i];
+	for (auto &child : StructType::GetChildTypes(arguments[0]->return_type)) {
 		name_collision_set.insert(child.first);
 		new_struct_children.push_back(make_pair(child.first, child.second));
 	}
 
 	// Loop through the additional arguments (name/value pairs)
 	for (idx_t i = 1; i < arguments.size(); i++) {
-		auto &child = arguments[i];
+		const auto &child = arguments[i];
 		if (child->alias.empty() && bound_function.name == "struct_insert") {
 			throw BinderException("Need named argument for struct insert, e.g. STRUCT_PACK(a := b)");
 		}

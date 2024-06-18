@@ -62,9 +62,11 @@
       {
         "id": 200,
         "name": "child_type",
-        "type": "LogicalType"
+        "type": "LogicalType",
+        "serialize_property": "child_type.second"
       }
-    ]
+    ],
+    "constructor": ["child_type"]
   },
   {
     "class": "StructTypeInfo",
@@ -111,7 +113,8 @@
       {
         "id": 200,
         "name": "child_type",
-        "type": "LogicalType"
+        "type": "LogicalType",
+        "serialize_property": "child_type.second"
       },
       {
         "id": 201,

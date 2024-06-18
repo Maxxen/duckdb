@@ -387,11 +387,10 @@ void BindContext::GenerateAllColumnExpressions(StarExpression &expr,
 				throw BinderException(StringUtil::Format(
 				    "Cannot extract field from expression \"%s\" because it is not a struct", expr.ToString()));
 			}
-			auto &struct_children = StructType::GetChildTypes(col_type);
 			vector<string> column_names(3);
 			column_names[0] = binding->alias;
 			column_names[1] = expr.relation_name;
-			for (auto &child : struct_children) {
+			for (auto &child : StructType::GetChildTypes(col_type)) {
 				if (CheckExclusionList(expr, child.first, new_select_list, excluded_columns)) {
 					continue;
 				}

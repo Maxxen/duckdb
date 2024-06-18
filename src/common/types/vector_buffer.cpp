@@ -37,8 +37,7 @@ VectorStructBuffer::VectorStructBuffer() : VectorBuffer(VectorBufferType::STRUCT
 
 VectorStructBuffer::VectorStructBuffer(const LogicalType &type, idx_t capacity)
     : VectorBuffer(VectorBufferType::STRUCT_BUFFER) {
-	auto &child_types = StructType::GetChildTypes(type);
-	for (auto &child_type : child_types) {
+	for (auto &child_type : StructType::GetChildTypes(type)) {
 		auto vector = make_uniq<Vector>(child_type.second, capacity);
 		children.push_back(std::move(vector));
 	}

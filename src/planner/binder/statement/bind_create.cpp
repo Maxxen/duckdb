@@ -247,7 +247,7 @@ void Binder::BindLogicalType(LogicalType &type, optional_ptr<Catalog> catalog, c
 		type.SetAlias(alias);
 		type.SetModifiers(modifiers);
 	} else if (type.id() == LogicalTypeId::STRUCT) {
-		auto child_types = StructType::GetChildTypes(type);
+		auto child_types = StructType::CopyChildTypes(type);
 		for (auto &child_type : child_types) {
 			BindLogicalType(child_type.second, catalog, schema);
 		}

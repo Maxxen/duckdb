@@ -102,7 +102,7 @@ void Vector::Reference(const Value &value) {
 	auto internal_type = value.type().InternalType();
 	if (internal_type == PhysicalType::STRUCT) {
 		auto struct_buffer = make_uniq<VectorStructBuffer>();
-		auto &child_types = StructType::GetChildTypes(value.type());
+		auto child_types = StructType::GetChildTypes(value.type());
 		auto &child_vectors = struct_buffer->GetChildren();
 		for (idx_t i = 0; i < child_types.size(); i++) {
 			auto vector =
@@ -1452,7 +1452,7 @@ void Vector::Verify(Vector &vector_p, const SelectionVector &sel_p, idx_t count)
 	}
 
 	if (type.InternalType() == PhysicalType::STRUCT) {
-		auto &child_types = StructType::GetChildTypes(type);
+		auto child_types = StructType::GetChildTypes(type);
 		D_ASSERT(!child_types.empty());
 		// create a selection vector of the non-null entries of the struct vector
 		auto &children = StructVector::GetEntries(*vector);

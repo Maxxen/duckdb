@@ -37,7 +37,7 @@ static void HeapGatherStringVector(Vector &v, const idx_t vcount, const Selectio
 static void HeapGatherStructVector(Vector &v, const idx_t vcount, const SelectionVector &sel,
                                    data_ptr_t *key_locations) {
 	// struct must have a validitymask for its fields
-	auto &child_types = StructType::GetChildTypes(v.GetType());
+	const auto child_types = StructType::GetChildTypes(v.GetType());
 	const idx_t struct_validitymask_size = (child_types.size() + 7) / 8;
 	data_ptr_t struct_validitymask_locations[STANDARD_VECTOR_SIZE];
 	for (idx_t i = 0; i < vcount; i++) {

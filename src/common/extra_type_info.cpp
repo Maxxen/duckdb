@@ -124,7 +124,7 @@ ListTypeInfo::ListTypeInfo() : ExtraTypeInfo(ExtraTypeInfoType::LIST_TYPE_INFO) 
 }
 
 ListTypeInfo::ListTypeInfo(LogicalType child_type_p)
-    : ExtraTypeInfo(ExtraTypeInfoType::LIST_TYPE_INFO), child_type(std::move(child_type_p)) {
+    : ExtraTypeInfo(ExtraTypeInfoType::LIST_TYPE_INFO), child_type("child", std::move(child_type_p)) {
 }
 
 bool ListTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
@@ -389,7 +389,7 @@ shared_ptr<ExtraTypeInfo> EnumTypeInfo::Copy() const {
 //===--------------------------------------------------------------------===//
 
 ArrayTypeInfo::ArrayTypeInfo(LogicalType child_type_p, uint32_t size_p)
-    : ExtraTypeInfo(ExtraTypeInfoType::ARRAY_TYPE_INFO), child_type(std::move(child_type_p)), size(size_p) {
+    : ExtraTypeInfo(ExtraTypeInfoType::ARRAY_TYPE_INFO), child_type("child", std::move(child_type_p)), size(size_p) {
 }
 
 bool ArrayTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {

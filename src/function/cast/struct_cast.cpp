@@ -7,11 +7,11 @@ namespace duckdb {
 unique_ptr<BoundCastData> StructBoundCastData::BindStructToStructCast(BindCastInput &input, const LogicalType &source,
                                                                       const LogicalType &target) {
 	vector<BoundCastInfo> child_cast_info;
-	auto &source_child_types = StructType::GetChildTypes(source);
-	auto &result_child_types = StructType::GetChildTypes(target);
+	const auto source_child_types = StructType::GetChildTypes(source);
+	const auto result_child_types = StructType::GetChildTypes(target);
 
-	auto target_is_unnamed = StructType::IsUnnamed(target);
-	auto source_is_unnamed = StructType::IsUnnamed(source);
+	const auto target_is_unnamed = StructType::IsUnnamed(target);
+	const auto source_is_unnamed = StructType::IsUnnamed(source);
 
 	if (source_child_types.size() != result_child_types.size()) {
 		throw TypeMismatchException(input.query_location, source, target, "Cannot cast STRUCTs of different size");
@@ -72,8 +72,8 @@ unique_ptr<FunctionLocalState> StructBoundCastData::InitStructCastLocalState(Cas
 static bool StructToStructCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
 	auto &cast_data = parameters.cast_data->Cast<StructBoundCastData>();
 	auto &lstate = parameters.local_state->Cast<StructCastLocalState>();
-	auto &source_child_types = StructType::GetChildTypes(source.GetType());
-	auto &source_children = StructVector::GetEntries(source);
+	const auto &source_child_types = StructType::GetChildTypes(source.GetType());
+	const auto &source_children = StructVector::GetEntries(source);
 	D_ASSERT(source_children.size() == StructType::GetChildTypes(result.GetType()).size());
 
 	auto &result_children = StructVector::GetEntries(result);
@@ -110,7 +110,7 @@ static bool StructToVarcharCast(Vector &source, Vector &result, idx_t count, Cas
 	// now construct the actual varchar vector
 	varchar_struct.Flatten(count);
 	bool is_unnamed = StructType::IsUnnamed(source.GetType());
-	auto &child_types = StructType::GetChildTypes(source.GetType());
+	auto child_types = StructType::GetChildTypes(source.GetType());
 	auto &children = StructVector::GetEntries(varchar_struct);
 	auto &validity = FlatVector::Validity(varchar_struct);
 	auto result_data = FlatVector::GetData<string_t>(result);
@@ -185,7 +185,7 @@ BoundCastInfo DefaultCasts::StructCastSwitch(BindCastInput &input, const Logical
 		                     StructBoundCastData::InitStructCastLocalState);
 	case LogicalTypeId::VARCHAR: {
 		// bind a cast in which we convert all child entries to VARCHAR entries
-		auto &struct_children = StructType::GetChildTypes(source);
+		const auto struct_children = StructType::GetChildTypes(source);
 		child_list_t<LogicalType> varchar_children;
 		for (auto &child_entry : struct_children) {
 			varchar_children.push_back(make_pair(child_entry.first, LogicalType::VARCHAR));

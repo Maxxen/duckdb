@@ -136,9 +136,8 @@ static LogicalType AlterLogicalType(const LogicalType &original, copy_supports_t
 		return AlterLogicalType(LogicalType::LIST(child), type_check);
 	}
 	case LogicalTypeId::STRUCT: {
-		auto &original_children = StructType::GetChildTypes(original);
 		child_list_t<LogicalType> new_children;
-		for (auto &child : original_children) {
+		for (auto &child : StructType::GetChildTypes(original)) {
 			auto &child_name = child.first;
 			auto &child_type = child.second;
 

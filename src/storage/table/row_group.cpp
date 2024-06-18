@@ -137,7 +137,7 @@ void ColumnScanState::Initialize(const LogicalType &type, optional_ptr<TableScan
 	}
 	if (type.InternalType() == PhysicalType::STRUCT) {
 		// validity + struct children
-		auto &struct_children = StructType::GetChildTypes(type);
+		const auto struct_children = StructType::GetChildTypes(type);
 		child_states.resize(struct_children.size() + 1);
 		for (idx_t i = 0; i < struct_children.size(); i++) {
 			child_states[i + 1].Initialize(struct_children[i].second, options);

@@ -94,7 +94,7 @@ shared_ptr<ExtraTypeInfo> AnyTypeInfo::Deserialize(Deserializer &deserializer) {
 
 void ArrayTypeInfo::Serialize(Serializer &serializer) const {
 	ExtraTypeInfo::Serialize(serializer);
-	serializer.WriteProperty<LogicalType>(200, "child_type", child_type);
+	serializer.WriteProperty<LogicalType>(200, "child_type", child_type.second);
 	serializer.WritePropertyWithDefault<uint32_t>(201, "size", size);
 }
 
@@ -131,12 +131,12 @@ shared_ptr<ExtraTypeInfo> IntegerLiteralTypeInfo::Deserialize(Deserializer &dese
 
 void ListTypeInfo::Serialize(Serializer &serializer) const {
 	ExtraTypeInfo::Serialize(serializer);
-	serializer.WriteProperty<LogicalType>(200, "child_type", child_type);
+	serializer.WriteProperty<LogicalType>(200, "child_type", child_type.second);
 }
 
 shared_ptr<ExtraTypeInfo> ListTypeInfo::Deserialize(Deserializer &deserializer) {
-	auto result = duckdb::shared_ptr<ListTypeInfo>(new ListTypeInfo());
-	deserializer.ReadProperty<LogicalType>(200, "child_type", result->child_type);
+	auto child_type = deserializer.ReadProperty<LogicalType>(200, "child_type");
+	auto result = duckdb::shared_ptr<ListTypeInfo>(new ListTypeInfo(std::move(child_type)));
 	return std::move(result);
 }
 

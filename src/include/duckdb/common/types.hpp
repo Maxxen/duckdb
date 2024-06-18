@@ -13,7 +13,9 @@
 #include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/helper.hpp"
-
+#include "duckdb/common/pair.hpp"
+#include "duckdb/common/string.hpp"
+#include "duckdb/common/span.hpp"
 #include <limits>
 
 namespace duckdb {
@@ -28,7 +30,11 @@ class ClientContext;
 struct string_t; // NOLINT: mimic std casing
 
 template <class T>
-using child_list_t = vector<std::pair<std::string, T>>;
+using child_list_t = vector<pair<string, T>>;
+
+template<class T>
+using child_view_t = span<const pair<string, T>>;
+
 //! FIXME: this should be a single_thread_ptr
 template <class T>
 using buffer_ptr = shared_ptr<T>;
@@ -348,6 +354,8 @@ struct LogicalType {
 	bool Contains(F &&predicate) const;
 	bool Contains(LogicalTypeId type_id) const;
 
+	child_view_t<LogicalType> GetChildTypes() const;
+
 private:
 	LogicalTypeId id_; // NOLINT: allow this naming for legacy reasons
 	PhysicalType physical_type_; // NOLINT: allow this naming for legacy reasons
@@ -463,7 +471,8 @@ struct EnumType {
 };
 
 struct StructType {
-	DUCKDB_API static const child_list_t<LogicalType> &GetChildTypes(const LogicalType &type);
+	DUCKDB_API static child_view_t<LogicalType> GetChildTypes(const LogicalType &type);
+	DUCKDB_API static child_list_t<LogicalType> CopyChildTypes(const LogicalType &type);
 	DUCKDB_API static const LogicalType &GetChildType(const LogicalType &type, idx_t index);
 	DUCKDB_API static const string &GetChildName(const LogicalType &type, idx_t index);
 	DUCKDB_API static idx_t GetChildIndexUnsafe(const LogicalType &type, const string &name);
@@ -481,7 +490,8 @@ struct UnionType {
 	DUCKDB_API static idx_t GetMemberCount(const LogicalType &type);
 	DUCKDB_API static const LogicalType &GetMemberType(const LogicalType &type, idx_t index);
 	DUCKDB_API static const string &GetMemberName(const LogicalType &type, idx_t index);
-	DUCKDB_API static const child_list_t<LogicalType> CopyMemberTypes(const LogicalType &type);
+	DUCKDB_API static child_view_t<LogicalType> GetMemberTypes(const LogicalType &type);
+	DUCKDB_API static child_list_t<LogicalType> CopyMemberTypes(const LogicalType &type);
 };
 
 struct ArrayType {
@@ -551,30 +561,10 @@ bool LogicalType::Contains(F &&predicate) const {
 	if(predicate(*this)) {
 		return true;
 	}
-	switch(id()) {
-	case LogicalTypeId::STRUCT: {
-		for(const auto &child : StructType::GetChildTypes(*this)) {
-			if(child.second.Contains(predicate)) {
-				return true;
-			}
+	for(auto &child : GetChildTypes()) {
+		if(child.second.Contains(predicate)) {
+			return true;
 		}
-		}
-		break;
-	case LogicalTypeId::LIST:
-		return ListType::GetChildType(*this).Contains(predicate);
-	case LogicalTypeId::MAP:
-		return MapType::KeyType(*this).Contains(predicate) || MapType::ValueType(*this).Contains(predicate);
-	case LogicalTypeId::UNION:
-		for(const auto &child : UnionType::CopyMemberTypes(*this)) {
-			if(child.second.Contains(predicate)) {
-				return true;
-			}
-		}
-		break;
-	case LogicalTypeId::ARRAY:
-		return ArrayType::GetChildType(*this).Contains(predicate);
-	default:
-		return false;
 	}
 	return false;
 }

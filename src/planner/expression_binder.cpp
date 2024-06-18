@@ -184,7 +184,7 @@ LogicalType ExpressionBinder::ExchangeType(const LogicalType &type, LogicalTypeI
 	switch (type.id()) {
 	case LogicalTypeId::STRUCT: {
 		// we make a copy of the child types of the struct here
-		auto child_types = StructType::GetChildTypes(type);
+		auto child_types = StructType::CopyChildTypes(type);
 		for (auto &child_type : child_types) {
 			child_type.second = ExchangeType(child_type.second, target, new_type);
 		}

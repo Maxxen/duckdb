@@ -62,10 +62,8 @@ struct TestVectorFlat {
 		switch (type.InternalType()) {
 		case PhysicalType::STRUCT: {
 			vector<child_list_t<Value>> struct_children;
-			auto &child_types = StructType::GetChildTypes(type);
-
 			struct_children.resize(TEST_VECTOR_CARDINALITY);
-			for (auto &child_type : child_types) {
+			for (auto &child_type : StructType::GetChildTypes(type)) {
 				auto child_values = GenerateValues(info, child_type.second);
 
 				for (idx_t i = 0; i < child_values.size(); i++) {

@@ -242,8 +242,7 @@ static bool TypeSupportsRegularUpdate(const LogicalType &type) {
 		// lists and maps and unions don't support updates directly
 		return false;
 	case LogicalTypeId::STRUCT: {
-		auto &child_types = StructType::GetChildTypes(type);
-		for (auto &entry : child_types) {
+		for (auto &entry : StructType::GetChildTypes(type)) {
 			if (!TypeSupportsRegularUpdate(entry.second)) {
 				return false;
 			}

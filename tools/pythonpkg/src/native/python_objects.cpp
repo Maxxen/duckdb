@@ -382,7 +382,7 @@ py::object PythonObject::FromStruct(const Value &val, const LogicalType &type,
                                     const ClientProperties &client_properties) {
 	auto &struct_values = StructValue::GetChildren(val);
 
-	auto &child_types = StructType::GetChildTypes(type);
+	auto child_types = StructType::GetChildTypes(type);
 	if (StructType::IsUnnamed(type)) {
 		py::tuple py_tuple(struct_values.size());
 		for (idx_t i = 0; i < struct_values.size(); i++) {

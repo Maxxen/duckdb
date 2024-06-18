@@ -631,7 +631,7 @@ void ColumnDataCopyStruct(ColumnDataMetaData &meta_data, const UnifiedVectorForm
 	// copy the NULL values for the main struct vector
 	TemplatedColumnDataCopy<StructValueCopy>(meta_data, source_data, source, offset, copy_count);
 
-	auto &child_types = StructType::GetChildTypes(source.GetType());
+	const auto child_types = StructType::GetChildTypes(source.GetType());
 	// now copy all the child vectors
 	D_ASSERT(meta_data.GetVectorMetaData().child_index.IsValid());
 	auto &child_vectors = StructVector::GetEntries(source);
@@ -753,8 +753,7 @@ ColumnDataCopyFunction ColumnDataCollection::GetCopyFunction(const LogicalType &
 		break;
 	case PhysicalType::STRUCT: {
 		function = ColumnDataCopyStruct;
-		auto &child_types = StructType::GetChildTypes(type);
-		for (auto &kv : child_types) {
+		for (auto &kv : StructType::GetChildTypes(type)) {
 			result.child_functions.push_back(GetCopyFunction(kv.second));
 		}
 		break;

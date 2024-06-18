@@ -346,7 +346,7 @@ struct StructConvert {
 
 		py::dict py_struct;
 		auto val = input.GetValue(chunk_offset);
-		auto &child_types = StructType::GetChildTypes(input.GetType());
+		auto child_types = StructType::GetChildTypes(input.GetType());
 		auto &struct_children = StructValue::GetChildren(val);
 
 		for (idx_t i = 0; i < struct_children.size(); i++) {
