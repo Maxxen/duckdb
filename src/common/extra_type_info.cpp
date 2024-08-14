@@ -445,8 +445,7 @@ shared_ptr<ExtraTypeInfo> IntegerLiteralTypeInfo::Copy() const {
 //===--------------------------------------------------------------------===//
 // Template Type Info
 //===--------------------------------------------------------------------===//
-TemplateTypeInfo::TemplateTypeInfo()
-    : ExtraTypeInfo(ExtraTypeInfoType::TEMPLATE_TYPE_INFO) {
+TemplateTypeInfo::TemplateTypeInfo() : ExtraTypeInfo(ExtraTypeInfoType::TEMPLATE_TYPE_INFO) {
 }
 
 TemplateTypeInfo::TemplateTypeInfo(string name_p)

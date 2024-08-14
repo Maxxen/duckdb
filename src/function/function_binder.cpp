@@ -372,7 +372,7 @@ static idx_t GetChildTypeCount(const LogicalType &type) {
 		return 0;
 	}
 }
-static const LogicalType& GetTypeAtPosition(const LogicalType &type, idx_t position) {
+static const LogicalType &GetTypeAtPosition(const LogicalType &type, idx_t position) {
 	switch (type.id()) {
 	case LogicalTypeId::STRUCT:
 		return StructType::GetChildType(type, position);
@@ -391,14 +391,18 @@ static const LogicalType& GetTypeAtPosition(const LogicalType &type, idx_t posit
 	}
 }
 
-static void InferTemplateTypes(ClientContext &ctx, const LogicalType &type, const LogicalType &arg, unordered_map<string, LogicalType> &inferred_types) {
-	if(type.id() == LogicalTypeId::GENERIC) {
-		auto &name = GenericType::GetTypeName(type);
-		if(inferred_types.find(name) == inferred_types.end()) {
+static void InferTemplateTypes(ClientContext &ctx, const string &function_name, const LogicalType &type,
+                               const LogicalType &arg, unordered_map<string, LogicalType> &inferred_types) {
+	if (type.id() == LogicalTypeId::TEMPLATE) {
+		auto &name = TemplateType::GetTypeName(type);
+		if (inferred_types.find(name) == inferred_types.end()) {
 			inferred_types[name] = arg;
 		} else {
-			if(!LogicalType::TryGetMaxLogicalType(ctx, inferred_types[name], arg, inferred_types[name])) {
-				throw BinderException("Cannot infer type for generic argument type \"%s\"", name.c_str());
+			if (!LogicalType::TryGetMaxLogicalType(ctx, inferred_types[name], arg, inferred_types[name])) {
+				// TODO: Improve this error message by reporting where the types were bound and how the types differ
+				throw BinderException(
+				    "%s: Unable to infer generic argument type '%s' (deduced: '%s' = '%s', but got: '%s')",
+				    function_name, name, name, inferred_types[name].ToString(), arg.ToString());
 			}
 		}
 		return;
@@ -406,60 +410,53 @@ static void InferTemplateTypes(ClientContext &ctx, const LogicalType &type, cons
 	// Else, look through the children and try to infer the generic types based on position
 	auto type_children_count = GetChildTypeCount(type);
 	auto arg_children_count = GetChildTypeCount(arg);
-	if(type_children_count != arg_children_count) {
+	if (type_children_count != arg_children_count) {
 		return; // cannot infer types for different shaped types
 	}
 
 	for (idx_t i = 0; i < type_children_count; i++) {
-		InferTemplateTypes(ctx, GetTypeAtPosition(type, i), GetTypeAtPosition(type, i), inferred_types);
+		InferTemplateTypes(ctx, function_name, GetTypeAtPosition(type, i), GetTypeAtPosition(arg, i), inferred_types);
 	}
 }
 
-static LogicalType SubstituteTemplateTypes(const LogicalType &type, unordered_map<string, LogicalType> &inferred_types) {
+static LogicalType SubstituteTemplateTypes(const string &function_name, const LogicalType &type,
+                                           unordered_map<string, LogicalType> &inferred_types) {
 	switch (type.id()) {
-		case LogicalTypeId::STRUCT:
-		{
-			auto &children = StructType::GetChildTypes(type);
-		    child_list_t<LogicalType> new_children;
-		    for(auto &child : children) {
-			    new_children.emplace_back(child.first, SubstituteTemplateTypes(child.second, inferred_types));
-		    }
-		    return LogicalType::STRUCT(new_children);
+	case LogicalTypeId::STRUCT: {
+		auto &children = StructType::GetChildTypes(type);
+		child_list_t<LogicalType> new_children;
+		for (auto &child : children) {
+			new_children.emplace_back(child.first,
+			                          SubstituteTemplateTypes(function_name, child.second, inferred_types));
 		}
-		break;
-		case LogicalTypeId::LIST:
-		{
-			auto &child = ListType::GetChildType(type);
-			return LogicalType::LIST(SubstituteTemplateTypes(child, inferred_types));
+		return LogicalType::STRUCT(new_children);
+	} break;
+	case LogicalTypeId::LIST: {
+		auto &child = ListType::GetChildType(type);
+		return LogicalType::LIST(SubstituteTemplateTypes(function_name, child, inferred_types));
+	} break;
+	case LogicalTypeId::MAP: {
+		auto &key_type = MapType::KeyType(type);
+		auto &value_type = MapType::ValueType(type);
+		auto new_key = SubstituteTemplateTypes(function_name, key_type, inferred_types);
+		auto new_value = SubstituteTemplateTypes(function_name, value_type, inferred_types);
+		return LogicalType::MAP(new_key, new_value);
+	} break;
+	case LogicalTypeId::ARRAY: {
+		auto &child = ArrayType::GetChildType(type);
+		return LogicalType::ARRAY(SubstituteTemplateTypes(function_name, child, inferred_types), optional_idx());
+	} break;
+	case LogicalTypeId::TEMPLATE: {
+		auto &name = TemplateType::GetTypeName(type);
+		if (inferred_types.find(name) != inferred_types.end()) {
+			return inferred_types[name];
+		} else {
+			// FIXME: Can this even happen?
+			throw BinderException("%s: Unable to infer generic argument type '%s'", function_name, name);
 		}
-		break;
-		case LogicalTypeId::MAP:
-		{
-			auto &key_type = MapType::KeyType(type);
-			auto &value_type = MapType::ValueType(type);
-			auto new_key = SubstituteTemplateTypes(key_type, inferred_types);
-			auto new_value = SubstituteTemplateTypes(value_type, inferred_types);
-			return LogicalType::MAP(new_key, new_value);
-		}
-		break;
-		case LogicalTypeId::ARRAY:
-		{
-			auto &child = ArrayType::GetChildType(type);
-			auto array_size = ArrayType::GetSize(type);
-			return LogicalType::ARRAY(SubstituteTemplateTypes(child, inferred_types), array_size);
-		}
-		break;
-		case LogicalTypeId::GENERIC: {
-			auto &name = GenericType::GetTypeName(type);
-		    if(inferred_types.find(name) != inferred_types.end()) {
-			    return inferred_types[name];
-		    } else {
-			    throw BinderException("Cannot infer type for generic argument type \"%s\"", name.c_str());
-		    }
-	    }
-		break;
-		default:
-		    return type;
+	} break;
+	default:
+		return type;
 		break;
 	}
 }
@@ -470,22 +467,24 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunction bound_f
 
 	// check if function has any generic argument types
 	// if so, substitute the generic type with the maxlogicaltype of all instantiated types for that generic
-	if(!bound_function.HasVarArgs()) {
+	if (!bound_function.HasVarArgs()) {
 		unordered_map<string, LogicalType> inferred_types;
-		for(idx_t i = 0; i < children.size(); i++) {
+		for (idx_t i = 0; i < children.size(); i++) {
 			auto &type = bound_function.arguments[i];
 			auto &arg = children[i]->return_type;
-			InferTemplateTypes(context, type, arg, inferred_types);
+			InferTemplateTypes(context, bound_function.name, type, arg, inferred_types);
 		}
-		if(!inferred_types.empty()) {
+		if (!inferred_types.empty()) {
 			for (auto &arg : bound_function.arguments) {
-				arg = SubstituteTemplateTypes(arg, inferred_types);
+				arg = SubstituteTemplateTypes(bound_function.name, arg, inferred_types);
 			}
 			// If the return type is a generic type, replace it with the inferred type
-			bound_function.return_type = SubstituteTemplateTypes(bound_function.return_type, inferred_types);
+			bound_function.return_type =
+			    SubstituteTemplateTypes(bound_function.name, bound_function.return_type, inferred_types);
 		}
 	}
 
+	// Run the functions bind handler
 	unique_ptr<FunctionData> bind_info;
 	if (bound_function.bind) {
 		bind_info = bound_function.bind(context, bound_function, children);

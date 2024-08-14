@@ -253,11 +253,14 @@ private:
 struct TemplateTypeInfo : public ExtraTypeInfo {
 	explicit TemplateTypeInfo(string name_p);
 	string name;
+
 public:
 	void Serialize(Serializer &serializer) const override;
 	static shared_ptr<ExtraTypeInfo> Deserialize(Deserializer &source);
+
 protected:
 	bool EqualsInternal(ExtraTypeInfo *other_p) const override;
+
 private:
 	TemplateTypeInfo();
 };

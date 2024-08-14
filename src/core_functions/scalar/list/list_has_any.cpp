@@ -12,21 +12,6 @@ static unique_ptr<FunctionData> ListHasAnyBind(ClientContext &context, ScalarFun
 	arguments[0] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[0]));
 	arguments[1] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[1]));
 
-	const auto left_type = ListType::GetChildType(arguments[0]->return_type);
-	const auto right_type = ListType::GetChildType(arguments[1]->return_type);
-
-	if (left_type != LogicalType::SQLNULL && right_type != LogicalType::SQLNULL && left_type != right_type) {
-		LogicalType common_type;
-		if (LogicalType::TryGetMaxLogicalType(context, arguments[0]->return_type, arguments[1]->return_type,
-		                                      common_type)) {
-			arguments[0] = BoundCastExpression::AddCastToType(context, std::move(arguments[0]), common_type);
-			arguments[1] = BoundCastExpression::AddCastToType(context, std::move(arguments[1]), common_type);
-		} else {
-			throw BinderException("list_has_any: cannot compare lists of different types: '%s' and '%s'",
-			                      left_type.ToString(), right_type.ToString());
-		}
-	}
-
 	return nullptr;
 }
 
@@ -120,7 +105,8 @@ static void ListHasAnyFunction(DataChunk &args, ExpressionState &, Vector &resul
 }
 
 ScalarFunction ListHasAnyFun::GetFunction() {
-	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LIST(LogicalType::ANY)}, LogicalType::BOOLEAN,
+	auto inner_type = LogicalType::TEMPLATE("T");
+	ScalarFunction fun({LogicalType::LIST(inner_type), LogicalType::LIST(inner_type)}, LogicalType::BOOLEAN,
 	                   ListHasAnyFunction, ListHasAnyBind);
 	return fun;
 }

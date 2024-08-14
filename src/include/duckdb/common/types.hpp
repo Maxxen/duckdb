@@ -188,7 +188,7 @@ enum class LogicalTypeId : uint8_t {
 	UNKNOWN = 2, /* unknown type, used for parameter expressions */
 	ANY = 3,     /* ANY type, used for functions that accept any type as parameter */
 	USER = 4,    /* A User Defined Type (e.g., ENUMs before the binder) */
- 	GENERIC = 5, /* A generic type that can be instantiated with any type */
+ 	TEMPLATE = 5, /* A generic type that can be instantiated with any type */
 	BOOLEAN = 10,
 	TINYINT = 11,
 	SMALLINT = 12,
@@ -414,7 +414,7 @@ public:
 	DUCKDB_API static LogicalType USER(const string &user_type_name);                              // NOLINT
 	DUCKDB_API static LogicalType USER(const string &user_type_name, const vector<Value> &user_type_mods); // NOLINT
 	DUCKDB_API static LogicalType USER(string catalog, string schema, string name, vector<Value> user_type_mods); // NOLINT
-	DUCKDB_API static LogicalType GENERIC(const string &name);
+	DUCKDB_API static LogicalType TEMPLATE(const string &name);
 	//! A list of all NUMERIC types (integral and floating point types)
 	DUCKDB_API static const vector<LogicalType> Numeric();
 	//! A list of all INTEGRAL types
@@ -503,7 +503,7 @@ struct AnyType {
 	DUCKDB_API static idx_t GetCastScore(const LogicalType &type);
 };
 
-struct GenericType {
+struct TemplateType {
 	DUCKDB_API static const string &GetTypeName(const LogicalType &type);
 };
 

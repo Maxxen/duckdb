@@ -154,7 +154,7 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::UNKNOWN:
 	case LogicalTypeId::STRING_LITERAL:
 	case LogicalTypeId::INTEGER_LITERAL:
-	case LogicalTypeId::GENERIC:
+	case LogicalTypeId::TEMPLATE:
 		return PhysicalType::INVALID;
 	case LogicalTypeId::USER:
 		return PhysicalType::UNKNOWN;
@@ -505,7 +505,7 @@ string LogicalType::ToString() const {
 	case LogicalTypeId::AGGREGATE_STATE: {
 		return AggregateStateType::GetTypeName(*this);
 	}
-	case LogicalTypeId::GENERIC: {
+	case LogicalTypeId::TEMPLATE: {
 		auto &info = this->type_info_->Cast<TemplateTypeInfo>();
 		return "<" + info.name + ">";
 	}
@@ -1007,6 +1007,7 @@ static idx_t GetLogicalTypeScore(const LogicalType &type) {
 	case LogicalTypeId::SQLNULL:
 	case LogicalTypeId::UNKNOWN:
 	case LogicalTypeId::ANY:
+	case LogicalTypeId::TEMPLATE:
 	case LogicalTypeId::STRING_LITERAL:
 	case LogicalTypeId::INTEGER_LITERAL:
 		return 0;
@@ -1689,10 +1690,10 @@ idx_t AnyType::GetCastScore(const LogicalType &type) {
 }
 
 //===--------------------------------------------------------------------===//
-// Generic Type
+// Template Type
 //===--------------------------------------------------------------------===//
-const string &GenericType::GetTypeName(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::GENERIC);
+const string &TemplateType::GetTypeName(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::TEMPLATE);
 	auto info = type.AuxInfo();
 	D_ASSERT(info);
 	return info->Cast<TemplateTypeInfo>().name;
@@ -1734,11 +1735,11 @@ LogicalType LogicalType::INTEGER_LITERAL(const Value &constant) { // NOLINT
 }
 
 //===--------------------------------------------------------------------===//
-// Generic Type
+// Template Type
 //===--------------------------------------------------------------------===//
-LogicalType LogicalType::GENERIC(const string &name) {
-	auto info = make_shared<TemplateTypeInfo>(name);
-	return LogicalType(LogicalTypeId::GENERIC, std::move(info));
+LogicalType LogicalType::TEMPLATE(const string &name) {
+	auto info = make_shared_ptr<TemplateTypeInfo>(name);
+	return LogicalType(LogicalTypeId::TEMPLATE, std::move(info));
 }
 
 //===--------------------------------------------------------------------===//
