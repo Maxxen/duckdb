@@ -2934,6 +2934,8 @@ const char* EnumUtil::ToChars<ExtraTypeInfoType>(ExtraTypeInfoType value) {
 		return "ANY_TYPE_INFO";
 	case ExtraTypeInfoType::INTEGER_LITERAL_TYPE_INFO:
 		return "INTEGER_LITERAL_TYPE_INFO";
+	case ExtraTypeInfoType::TEMPLATE_TYPE_INFO:
+		return "TEMPLATE_TYPE_INFO";
 	default:
 		throw NotImplementedException(StringUtil::Format("Enum value: '%d' not implemented", value));
 	}
@@ -2976,6 +2978,9 @@ ExtraTypeInfoType EnumUtil::FromString<ExtraTypeInfoType>(const char *value) {
 	}
 	if (StringUtil::Equals(value, "INTEGER_LITERAL_TYPE_INFO")) {
 		return ExtraTypeInfoType::INTEGER_LITERAL_TYPE_INFO;
+	}
+	if (StringUtil::Equals(value, "TEMPLATE_TYPE_INFO")) {
+		return ExtraTypeInfoType::TEMPLATE_TYPE_INFO;
 	}
 	throw NotImplementedException(StringUtil::Format("Enum value: '%s' not implemented", value));
 }
@@ -3880,6 +3885,8 @@ const char* EnumUtil::ToChars<LogicalTypeId>(LogicalTypeId value) {
 		return "ANY";
 	case LogicalTypeId::USER:
 		return "USER";
+	case LogicalTypeId::TEMPLATE:
+		return "TEMPLATE";
 	case LogicalTypeId::BOOLEAN:
 		return "BOOLEAN";
 	case LogicalTypeId::TINYINT:
@@ -3985,6 +3992,9 @@ LogicalTypeId EnumUtil::FromString<LogicalTypeId>(const char *value) {
 	}
 	if (StringUtil::Equals(value, "USER")) {
 		return LogicalTypeId::USER;
+	}
+	if (StringUtil::Equals(value, "TEMPLATE")) {
+		return LogicalTypeId::TEMPLATE;
 	}
 	if (StringUtil::Equals(value, "BOOLEAN")) {
 		return LogicalTypeId::BOOLEAN;
