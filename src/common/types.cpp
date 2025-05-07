@@ -119,6 +119,8 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::BLOB:
 	case LogicalTypeId::BIT:
 	case LogicalTypeId::VARINT:
+	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		return PhysicalType::VARCHAR;
 	case LogicalTypeId::INTERVAL:
 		return PhysicalType::INTERVAL;
@@ -466,6 +468,10 @@ string LogicalType::ToString() const {
 		}
 		return StringUtil::Format("DECIMAL(%d,%d)", width, scale);
 	}
+	case LogicalTypeId::GEOMETRY:
+		return "GEOMETRY";
+	case LogicalTypeId::GEOGRAPHY:
+		return "GEOGRAPHY";
 	case LogicalTypeId::ENUM: {
 		string ret = "ENUM(";
 		for (idx_t i = 0; i < EnumType::GetSize(*this); i++) {
@@ -587,7 +593,9 @@ LogicalType TransformStringToLogicalType(const string &str) {
 		                                      "TEXT",
 		                                      "STRING",
 		                                      "MAP(INTEGER, VARCHAR)",
-		                                      "UNION(num INTEGER, text VARCHAR)"};
+		                                      "UNION(num INTEGER, text VARCHAR)",
+												"GEOMETRY",
+												"GEOGRAPHY"};
 		std::ostringstream error;
 		error << "Value \"" << str << "\" can not be converted to a DuckDB Type." << '\n';
 		error << "Possible examples as suggestions: " << '\n';
@@ -697,6 +705,10 @@ bool LogicalType::IsTemporal() const {
 	default:
 		return false;
 	}
+}
+
+bool LogicalType::IsSpatial() const {
+	return id_ == LogicalTypeId::GEOMETRY || id_ == LogicalTypeId::GEOGRAPHY;
 }
 
 bool LogicalType::IsValid() const {
@@ -1835,6 +1847,20 @@ LogicalType LogicalType::ARRAY(const LogicalType &child, optional_idx size) {
 		auto info = make_shared_ptr<ArrayTypeInfo>(child, array_size);
 		return LogicalType(LogicalTypeId::ARRAY, std::move(info));
 	}
+}
+
+//===--------------------------------------------------------------------===//
+// Geometry/Geography Type
+//===--------------------------------------------------------------------===//
+
+LogicalType LogicalType::GEOMETRY() {
+	auto info = make_shared_ptr<SpatialTypeInfo>();
+	return LogicalType(LogicalTypeId::GEOMETRY, std::move(info));
+}
+
+LogicalType LogicalType::GEOGRAPHY() {
+	auto info = make_shared_ptr<SpatialTypeInfo>();
+	return LogicalType(LogicalTypeId::GEOGRAPHY, std::move(info));
 }
 
 //===--------------------------------------------------------------------===//

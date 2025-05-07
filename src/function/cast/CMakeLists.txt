@@ -14,6 +14,7 @@ add_library_unity(
   map_cast.cpp
   numeric_casts.cpp
   pointer_cast.cpp
+  spatial_cast.cpp
   string_cast.cpp
   struct_cast.cpp
   time_casts.cpp

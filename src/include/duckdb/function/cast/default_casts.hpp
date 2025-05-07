@@ -167,6 +167,7 @@ private:
 	static BoundCastInfo VarintCastSwitch(BindCastInput &input, const LogicalType &source, const LogicalType &target);
 	static BoundCastInfo ImplicitToUnionCast(BindCastInput &input, const LogicalType &source,
 	                                         const LogicalType &target);
+	static BoundCastInfo SpatialCastSwitch(BindCastInput &input, const LogicalType &source, const LogicalType &target);
 };
 
 } // namespace duckdb

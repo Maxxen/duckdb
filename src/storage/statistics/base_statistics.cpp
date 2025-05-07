@@ -62,6 +62,9 @@ StatisticsType BaseStatistics::GetStatsType(const LogicalType &type) {
 	if (type.id() == LogicalTypeId::SQLNULL) {
 		return StatisticsType::BASE_STATS;
 	}
+	if(type.IsSpatial()) {
+		return StatisticsType::SPATIAL_STATS;
+	}
 	switch (type.InternalType()) {
 	case PhysicalType::BOOL:
 	case PhysicalType::INT8:
@@ -153,6 +156,9 @@ void BaseStatistics::Merge(const BaseStatistics &other) {
 	case StatisticsType::ARRAY_STATS:
 		ArrayStats::Merge(*this, other);
 		break;
+	case StatisticsType::SPATIAL_STATS:
+		SpatialStats::Merge(*this, other);
+		break;
 	default:
 		break;
 	}
@@ -174,6 +180,8 @@ BaseStatistics BaseStatistics::CreateUnknownType(LogicalType type) {
 		return StructStats::CreateUnknown(std::move(type));
 	case StatisticsType::ARRAY_STATS:
 		return ArrayStats::CreateUnknown(std::move(type));
+	case StatisticsType::SPATIAL_STATS:
+		return SpatialStats::CreateUnknown(std::move(type));
 	default:
 		return BaseStatistics(std::move(type));
 	}
@@ -191,6 +199,8 @@ BaseStatistics BaseStatistics::CreateEmptyType(LogicalType type) {
 		return StructStats::CreateEmpty(std::move(type));
 	case StatisticsType::ARRAY_STATS:
 		return ArrayStats::CreateEmpty(std::move(type));
+	case StatisticsType::SPATIAL_STATS:
+		return SpatialStats::CreateEmpty(std::move(type));
 	default:
 		return BaseStatistics(std::move(type));
 	}
@@ -329,6 +339,9 @@ void BaseStatistics::Serialize(Serializer &serializer) const {
 		case StatisticsType::ARRAY_STATS:
 			ArrayStats::Serialize(*this, serializer);
 			break;
+		case StatisticsType::SPATIAL_STATS:
+			SpatialStats::Serialize(*this, serializer);
+			break;
 		default:
 			break;
 		}
@@ -367,6 +380,9 @@ BaseStatistics BaseStatistics::Deserialize(Deserializer &deserializer) {
 		case StatisticsType::ARRAY_STATS:
 			ArrayStats::Deserialize(obj, stats);
 			break;
+		case StatisticsType::SPATIAL_STATS:
+			SpatialStats::Deserialize(obj, stats);
+			break;
 		default:
 			break;
 		}
@@ -397,6 +413,9 @@ string BaseStatistics::ToString() const {
 	case StatisticsType::ARRAY_STATS:
 		result = ArrayStats::ToString(*this) + result;
 		break;
+	case StatisticsType::SPATIAL_STATS:
+		result = SpatialStats::ToString(*this) + result;
+		break;
 	default:
 		break;
 	}
@@ -420,6 +439,9 @@ void BaseStatistics::Verify(Vector &vector, const SelectionVector &sel, idx_t co
 		break;
 	case StatisticsType::ARRAY_STATS:
 		ArrayStats::Verify(*this, vector, sel, count);
+		break;
+	case StatisticsType::SPATIAL_STATS:
+		SpatialStats::Verify(*this, vector, sel, count);
 		break;
 	default:
 		break;
@@ -502,6 +524,14 @@ BaseStatistics BaseStatistics::FromConstantType(const Value &input) {
 			for (auto &child_element : list_children) {
 				child_stats.Merge(FromConstant(child_element));
 			}
+		}
+		return result;
+	}
+	case StatisticsType::SPATIAL_STATS: {
+		auto result = SpatialStats::CreateEmpty(input.type());
+		if (!input.IsNull()) {
+			auto &wkb_blob = StringValue::Get(input);
+			SpatialStats::Update(result, wkb_blob);
 		}
 		return result;
 	}

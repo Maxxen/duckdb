@@ -222,6 +222,9 @@ enum class LogicalTypeId : uint8_t {
 	VALIDITY = 53,
 	UUID = 54,
 
+	GEOMETRY = 55,
+	GEOGRAPHY = 56,
+
 	STRUCT = 100,
 	LIST = 101,
 	MAP = 102,
@@ -230,7 +233,7 @@ enum class LogicalTypeId : uint8_t {
 	AGGREGATE_STATE = 105,
 	LAMBDA = 106,
 	UNION = 107,
-	ARRAY = 108
+	ARRAY = 108,
 };
 
 struct ExtraTypeInfo;
@@ -322,6 +325,7 @@ struct LogicalType {
 	DUCKDB_API bool IsNumeric() const;
 	DUCKDB_API static bool IsNumeric(LogicalTypeId type);
 	DUCKDB_API bool IsTemporal() const;
+	DUCKDB_API bool IsSpatial() const;
 	DUCKDB_API hash_t Hash() const;
 	DUCKDB_API void SetAlias(string alias);
 	DUCKDB_API bool HasAlias() const;
@@ -411,6 +415,8 @@ public:
 	DUCKDB_API static LogicalType UNION(child_list_t<LogicalType> members);      // NOLINT
 	DUCKDB_API static LogicalType ARRAY(const LogicalType &child, optional_idx index);   // NOLINT
 	DUCKDB_API static LogicalType ENUM(Vector &ordered_data, idx_t size); // NOLINT
+	DUCKDB_API static LogicalType GEOMETRY(); // NOLINT
+	DUCKDB_API static LogicalType GEOGRAPHY(); // NOLINT
 	// ANY but with special rules (default is LogicalType::ANY, 5)
 	DUCKDB_API static LogicalType ANY_PARAMS(LogicalType target, idx_t cast_score = 5); // NOLINT
 	//! Integer literal of the specified value

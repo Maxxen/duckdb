@@ -424,6 +424,22 @@ shared_ptr<ExtraTypeInfo> ArrayTypeInfo::Copy() const {
 }
 
 //===--------------------------------------------------------------------===//
+// SpatialTypeInfo
+//===--------------------------------------------------------------------===//
+SpatialTypeInfo::SpatialTypeInfo()
+	: ExtraTypeInfo(ExtraTypeInfoType::SPATIAL_TYPE_INFO) {
+}
+
+bool SpatialTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
+	const auto &other = other_p->Cast<SpatialTypeInfo>();
+	return crs == other.crs;
+}
+
+shared_ptr<ExtraTypeInfo> SpatialTypeInfo::Copy() const {
+	return make_shared_ptr<SpatialTypeInfo>(*this);
+}
+
+//===--------------------------------------------------------------------===//
 // Any Type Info
 //===--------------------------------------------------------------------===//
 AnyTypeInfo::AnyTypeInfo() : ExtraTypeInfo(ExtraTypeInfoType::ANY_TYPE_INFO) {

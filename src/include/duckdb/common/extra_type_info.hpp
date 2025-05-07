@@ -27,7 +27,8 @@ enum class ExtraTypeInfoType : uint8_t {
 	AGGREGATE_STATE_TYPE_INFO = 8,
 	ARRAY_TYPE_INFO = 9,
 	ANY_TYPE_INFO = 10,
-	INTEGER_LITERAL_TYPE_INFO = 11
+	INTEGER_LITERAL_TYPE_INFO = 11,
+	SPATIAL_TYPE_INFO = 12
 };
 
 struct ExtraTypeInfo {
@@ -218,6 +219,20 @@ public:
 protected:
 	bool EqualsInternal(ExtraTypeInfo *other_p) const override;
 };
+
+struct SpatialTypeInfo : public ExtraTypeInfo {
+	string crs;
+	explicit SpatialTypeInfo();
+
+public:
+	void Serialize(Serializer &serializer) const override;
+	static shared_ptr<ExtraTypeInfo> Deserialize(Deserializer &reader);
+	shared_ptr<ExtraTypeInfo> Copy() const override;
+
+protected:
+	bool EqualsInternal(ExtraTypeInfo *other_p) const override;
+};
+
 
 struct AnyTypeInfo : public ExtraTypeInfo {
 	AnyTypeInfo(LogicalType target_type, idx_t cast_score);
