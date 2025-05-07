@@ -89,7 +89,7 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 		return BindExpression(function, depth, expr);
 	}
 	case ExpressionClass::LAMBDA:
-		return BindExpression(expr_ref.Cast<LambdaExpression>(), depth, LogicalTypeId::INVALID, nullptr);
+		return BindExpression(expr_ref.Cast<LambdaExpression>(), depth, {LogicalTypeId::INVALID}, nullptr);
 	case ExpressionClass::OPERATOR:
 		return BindExpression(expr_ref.Cast<OperatorExpression>(), depth);
 	case ExpressionClass::SUBQUERY:

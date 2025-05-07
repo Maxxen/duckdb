@@ -195,4 +195,14 @@ struct CastToTypeFun {
 	static ScalarFunction GetFunction();
 };
 
+struct InvokeFun {
+	static constexpr const char *Name = "invoke";
+	static constexpr const char *Parameters = "lambda, args...";
+	static constexpr const char *Description = "Invokes a lambda function with the provided arguments. The lambda function must be a valid SQL expression";
+	static constexpr const char *Example = "invoke(lambda x: x + 1, 42)";
+	static constexpr const char *Categories = "";
+
+	static ScalarFunction GetFunction();
+};
+
 } // namespace duckdb

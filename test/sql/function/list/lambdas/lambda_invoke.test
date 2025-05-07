@@ -1,0 +1,7 @@
+# name: test/sql/function/list/lambdas/lambda_invoke.test
+# group: [lambdas]
+
+query I
+SELECT invoke(lambda x: x + 1, 42);
+----
+43

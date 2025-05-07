@@ -10,7 +10,8 @@ add_library_unity(
   least.cpp
   stats.cpp
   typeof.cpp
-  system_functions.cpp)
+  system_functions.cpp
+  invoke.cpp)
 set(CORE_FUNCTION_FILES
     ${CORE_FUNCTION_FILES} $<TARGET_OBJECTS:duckdb_core_functions_generic>
     PARENT_SCOPE)

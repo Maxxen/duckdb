@@ -126,5 +126,12 @@
         "description": "Casts the first argument to the type of the second argument",
         "example": "cast_to_type('42', NULL::INTEGER)",
         "type": "scalar_function"
+    },
+    {
+        "name": "invoke",
+        "parameters": "lambda, args...",
+        "description": "Invokes a lambda function with the provided arguments. The lambda function must be a valid SQL expression",
+        "example": "invoke(lambda x: x + 1, 42)",
+        "type": "scalar_function"
     }
 ]
