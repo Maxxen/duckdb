@@ -282,5 +282,12 @@
             "float8"
         ],
         "description": "double precision floating-point number (8 bytes)"
+    },
+    {
+        "id": "GEOMETRY",
+        "names": [
+            "geometry"
+        ],
+        "description": "Geometric data type, used for spatial data representation."
     }
 ]

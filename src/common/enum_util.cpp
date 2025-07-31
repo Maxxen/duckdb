@@ -87,6 +87,7 @@
 #include "duckdb/common/types/column/partitioned_column_data.hpp"
 #include "duckdb/common/types/conflict_manager.hpp"
 #include "duckdb/common/types/date.hpp"
+#include "duckdb/common/types/geometry.hpp"
 #include "duckdb/common/types/hyperloglog.hpp"
 #include "duckdb/common/types/row/block_iterator.hpp"
 #include "duckdb/common/types/row/partitioned_tuple_data.hpp"
@@ -2033,6 +2034,30 @@ GateStatus EnumUtil::FromString<GateStatus>(const char *value) {
 	return static_cast<GateStatus>(StringUtil::StringToEnum(GetGateStatusValues(), 2, "GateStatus", value));
 }
 
+const StringUtil::EnumStringLiteral *GetGeometryTypeValues() {
+	static constexpr StringUtil::EnumStringLiteral values[] {
+		{ static_cast<uint32_t>(GeometryType::INVALID), "INVALID" },
+		{ static_cast<uint32_t>(GeometryType::POINT), "POINT" },
+		{ static_cast<uint32_t>(GeometryType::LINESTRING), "LINESTRING" },
+		{ static_cast<uint32_t>(GeometryType::POLYGON), "POLYGON" },
+		{ static_cast<uint32_t>(GeometryType::MULTIPOINT), "MULTIPOINT" },
+		{ static_cast<uint32_t>(GeometryType::MULTILINESTRING), "MULTILINESTRING" },
+		{ static_cast<uint32_t>(GeometryType::MULTIPOLYGON), "MULTIPOLYGON" },
+		{ static_cast<uint32_t>(GeometryType::GEOMETRYCOLLECTION), "GEOMETRYCOLLECTION" }
+	};
+	return values;
+}
+
+template<>
+const char* EnumUtil::ToChars<GeometryType>(GeometryType value) {
+	return StringUtil::EnumToString(GetGeometryTypeValues(), 8, "GeometryType", static_cast<uint32_t>(value));
+}
+
+template<>
+GeometryType EnumUtil::FromString<GeometryType>(const char *value) {
+	return static_cast<GeometryType>(StringUtil::StringToEnum(GetGeometryTypeValues(), 8, "GeometryType", value));
+}
+
 const StringUtil::EnumStringLiteral *GetHLLStorageTypeValues() {
 	static constexpr StringUtil::EnumStringLiteral values[] {
 		{ static_cast<uint32_t>(HLLStorageType::HLL_V1), "HLL_V1" },
@@ -2554,6 +2579,7 @@ const StringUtil::EnumStringLiteral *GetLogicalTypeIdValues() {
 		{ static_cast<uint32_t>(LogicalTypeId::POINTER), "POINTER" },
 		{ static_cast<uint32_t>(LogicalTypeId::VALIDITY), "VALIDITY" },
 		{ static_cast<uint32_t>(LogicalTypeId::UUID), "UUID" },
+		{ static_cast<uint32_t>(LogicalTypeId::GEOMETRY), "GEOMETRY" },
 		{ static_cast<uint32_t>(LogicalTypeId::STRUCT), "STRUCT" },
 		{ static_cast<uint32_t>(LogicalTypeId::LIST), "LIST" },
 		{ static_cast<uint32_t>(LogicalTypeId::MAP), "MAP" },
@@ -2569,12 +2595,12 @@ const StringUtil::EnumStringLiteral *GetLogicalTypeIdValues() {
 
 template<>
 const char* EnumUtil::ToChars<LogicalTypeId>(LogicalTypeId value) {
-	return StringUtil::EnumToString(GetLogicalTypeIdValues(), 49, "LogicalTypeId", static_cast<uint32_t>(value));
+	return StringUtil::EnumToString(GetLogicalTypeIdValues(), 50, "LogicalTypeId", static_cast<uint32_t>(value));
 }
 
 template<>
 LogicalTypeId EnumUtil::FromString<LogicalTypeId>(const char *value) {
-	return static_cast<LogicalTypeId>(StringUtil::StringToEnum(GetLogicalTypeIdValues(), 49, "LogicalTypeId", value));
+	return static_cast<LogicalTypeId>(StringUtil::StringToEnum(GetLogicalTypeIdValues(), 50, "LogicalTypeId", value));
 }
 
 const StringUtil::EnumStringLiteral *GetLookupResultTypeValues() {

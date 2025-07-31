@@ -158,6 +158,8 @@ BoundCastInfo DefaultCasts::GetDefaultCastFunction(BindCastInput &input, const L
 		return ArrayCastSwitch(input, source, target);
 	case LogicalTypeId::VARINT:
 		return VarintCastSwitch(input, source, target);
+	case LogicalTypeId::GEOMETRY:
+		return GeometryCastSwitch(input, source, target);
 	case LogicalTypeId::AGGREGATE_STATE:
 		return AggregateStateToBlobCast;
 	default:

@@ -21,7 +21,8 @@ add_library_unity(
   uuid_casts.cpp
   varint_casts.cpp
   nested_to_varchar_cast.cpp
-  vector_cast_helpers.cpp)
+  vector_cast_helpers.cpp
+  geometry_casts.cpp)
 
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_func_cast>

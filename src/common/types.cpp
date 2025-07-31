@@ -116,6 +116,7 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::BLOB:
 	case LogicalTypeId::BIT:
 	case LogicalTypeId::VARINT:
+	case LogicalTypeId::GEOMETRY:
 		return PhysicalType::VARCHAR;
 	case LogicalTypeId::INTERVAL:
 		return PhysicalType::INTERVAL;
@@ -183,6 +184,7 @@ constexpr const LogicalTypeId LogicalType::UBIGINT;
 constexpr const LogicalTypeId LogicalType::HUGEINT;
 constexpr const LogicalTypeId LogicalType::UHUGEINT;
 constexpr const LogicalTypeId LogicalType::UUID;
+constexpr const LogicalTypeId LogicalType::GEOMETRY;
 constexpr const LogicalTypeId LogicalType::FLOAT;
 constexpr const LogicalTypeId LogicalType::DOUBLE;
 constexpr const LogicalTypeId LogicalType::DATE;
@@ -247,7 +249,7 @@ const vector<LogicalType> LogicalType::AllTypes() {
 	    LogicalType::UTINYINT, LogicalType::USMALLINT,    LogicalType::UINTEGER,  LogicalType::UBIGINT,
 	    LogicalType::UHUGEINT, LogicalType::TIME,         LogicalTypeId::LIST,    LogicalTypeId::STRUCT,
 	    LogicalType::TIME_TZ,  LogicalType::TIMESTAMP_TZ, LogicalTypeId::MAP,     LogicalTypeId::UNION,
-	    LogicalType::UUID,     LogicalTypeId::ARRAY};
+	    LogicalType::UUID,     LogicalTypeId::ARRAY,      LogicalType::GEOMETRY};
 	return types;
 }
 
@@ -587,6 +589,7 @@ LogicalType TransformStringToLogicalType(const string &str) {
 		                                      "UTINYINT",
 		                                      "UUID",
 		                                      "VARCHAR",
+		                                      "GEOMETRY",
 		                                      "CHAR",
 		                                      "BPCHAR",
 		                                      "TEXT",
@@ -1318,6 +1321,8 @@ static idx_t GetLogicalTypeScore(const LogicalType &type) {
 		return 102;
 	case LogicalTypeId::VARINT:
 		return 103;
+	case LogicalTypeId::GEOMETRY:
+		return 104;
 	// nested types
 	case LogicalTypeId::STRUCT:
 		return 125;

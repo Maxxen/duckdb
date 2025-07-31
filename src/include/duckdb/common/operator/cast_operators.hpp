@@ -1041,6 +1041,19 @@ DUCKDB_API bool TryCastToUUID::Operation(string_t input, hugeint_t &result, Vect
                                          CastParameters &parameters);
 
 //===--------------------------------------------------------------------===//
+// GEOMETRY
+//===--------------------------------------------------------------------===//
+struct TryCastToGeometry {
+	template <class SRC, class DST>
+	static inline bool Operation(SRC input, DST &result, Vector &result_vector, CastParameters &parameters) {
+		throw InternalException("Unsupported type for try cast to geometry");
+	}
+};
+
+template <>
+bool TryCastToGeometry::Operation(string_t input, string_t &result, Vector &result_vector, CastParameters &parameters);
+
+//===--------------------------------------------------------------------===//
 // Pointers
 //===--------------------------------------------------------------------===//
 struct CastFromPointer {

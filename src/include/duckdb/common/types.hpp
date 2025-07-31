@@ -187,7 +187,6 @@ enum class LogicalTypeId : uint8_t {
 	ANY = 3,     /* ANY type, used for functions that accept any type as parameter */
 	USER = 4,    /* A User Defined Type (e.g., ENUMs before the binder) */
 
-
 	// A "template" type functions as a "placeholder" type for function arguments and return types.
 	// Templates only exist during the binding phase, in the scope of a function, and are replaced with concrete types
 	// before execution. When defining a template, you provide a name to distinguish between different template types,
@@ -229,6 +228,7 @@ enum class LogicalTypeId : uint8_t {
 	POINTER = 51,
 	VALIDITY = 53,
 	UUID = 54,
+	GEOMETRY = 55,
 
 	STRUCT = 100,
 	LIST = 101,
@@ -406,6 +406,7 @@ public:
 	static constexpr const LogicalTypeId BLOB = LogicalTypeId::BLOB;
 	static constexpr const LogicalTypeId BIT = LogicalTypeId::BIT;
 	static constexpr const LogicalTypeId VARINT = LogicalTypeId::VARINT;
+	static constexpr const LogicalTypeId GEOMETRY = LogicalTypeId::GEOMETRY;
 
 	static constexpr const LogicalTypeId INTERVAL = LogicalTypeId::INTERVAL;
 	static constexpr const LogicalTypeId HUGEINT = LogicalTypeId::HUGEINT;

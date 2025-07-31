@@ -24,6 +24,7 @@
 #include "duckdb/common/types/bit.hpp"
 #include "duckdb/common/operator/integer_cast_operator.hpp"
 #include "duckdb/common/operator/double_cast_operator.hpp"
+#include "duckdb/common/types/geometry.hpp"
 #include "duckdb/planner/expression.hpp"
 
 #include <cctype>
@@ -1510,6 +1511,14 @@ bool TryCastToUUID::Operation(string_t input, hugeint_t &result, Vector &result_
 }
 
 //===--------------------------------------------------------------------===//
+// Cast To Geometry
+//===--------------------------------------------------------------------===//
+template <>
+bool TryCastToGeometry::Operation(string_t input, string_t &result, Vector &result_vector, CastParameters &parameters) {
+	return Geometry::FromString(input.GetString(), result, result_vector, parameters.strict);
+}
+
+//===--------------------------------------------------------------------===//
 // Cast To Date
 //===--------------------------------------------------------------------===//
 template <>
@@ -2001,7 +2010,7 @@ string_t StringCastFromDecimal::Operation(hugeint_t input, uint8_t width, uint8_
 // Decimal <-> Bool
 //===--------------------------------------------------------------------===//
 template <class T, class OP = NumericHelper>
-bool TryCastBoolToDecimal(bool input, T &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
+static bool TryCastBoolToDecimal(bool input, T &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
 	if (width > scale) {
 		result = UnsafeNumericCast<T>(input ? OP::POWERS_OF_TEN[scale] : 0);
 		return true;
@@ -2076,7 +2085,8 @@ struct UnsignedToDecimalOperator {
 };
 
 template <class SRC, class DST, class OP = SignedToDecimalOperator>
-bool StandardNumericToDecimalCast(SRC input, DST &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
+static bool StandardNumericToDecimalCast(SRC input, DST &result, CastParameters &parameters, uint8_t width,
+                                         uint8_t scale) {
 	// check for overflow
 	DST max_width = UnsafeNumericCast<DST>(NumericHelper::POWERS_OF_TEN[width - scale]);
 	if (OP::template Operation<SRC, DST>(input, max_width)) {
@@ -2089,7 +2099,8 @@ bool StandardNumericToDecimalCast(SRC input, DST &result, CastParameters &parame
 }
 
 template <class SRC>
-bool NumericToHugeDecimalCast(SRC input, hugeint_t &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
+static bool NumericToHugeDecimalCast(SRC input, hugeint_t &result, CastParameters &parameters, uint8_t width,
+                                     uint8_t scale) {
 	// check for overflow
 	hugeint_t max_width = Hugeint::POWERS_OF_TEN[width - scale];
 	hugeint_t hinput = Hugeint::Convert(input);
@@ -2310,7 +2321,8 @@ bool TryCastToDecimal::Operation(uint64_t input, hugeint_t &result, CastParamete
 // Hugeint -> Decimal Cast
 //===--------------------------------------------------------------------===//
 template <class DST>
-bool HugeintToDecimalCast(hugeint_t input, DST &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
+static bool HugeintToDecimalCast(hugeint_t input, DST &result, CastParameters &parameters, uint8_t width,
+                                 uint8_t scale) {
 	// check for overflow
 	hugeint_t max_width = Hugeint::POWERS_OF_TEN[width - scale];
 	if (input >= max_width || input <= -max_width) {
@@ -2350,7 +2362,8 @@ bool TryCastToDecimal::Operation(hugeint_t input, hugeint_t &result, CastParamet
 // Uhugeint -> Decimal Cast
 //===--------------------------------------------------------------------===//
 template <class DST>
-bool UhugeintToDecimalCast(uhugeint_t input, DST &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
+static bool UhugeintToDecimalCast(uhugeint_t input, DST &result, CastParameters &parameters, uint8_t width,
+                                  uint8_t scale) {
 	// check for overflow
 	uhugeint_t max_width = Uhugeint::POWERS_OF_TEN[width - scale];
 	if (input >= max_width) {
@@ -2390,7 +2403,7 @@ bool TryCastToDecimal::Operation(uhugeint_t input, hugeint_t &result, CastParame
 // Float/Double -> Decimal Cast
 //===--------------------------------------------------------------------===//
 template <class SRC, class DST>
-bool DoubleToDecimalCast(SRC input, DST &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
+static bool DoubleToDecimalCast(SRC input, DST &result, CastParameters &parameters, uint8_t width, uint8_t scale) {
 	double value = input * NumericHelper::DOUBLE_POWERS_OF_TEN[scale];
 	double roundedValue = round(value);
 	if (roundedValue <= -NumericHelper::DOUBLE_POWERS_OF_TEN[width] ||
@@ -2456,7 +2469,7 @@ bool TryCastToDecimal::Operation(double input, hugeint_t &result, CastParameters
 // Decimal -> Numeric Cast
 //===--------------------------------------------------------------------===//
 template <class SRC, class DST>
-bool TryCastDecimalToNumeric(SRC input, DST &result, CastParameters &parameters, uint8_t scale) {
+static bool TryCastDecimalToNumeric(SRC input, DST &result, CastParameters &parameters, uint8_t scale) {
 	// Round away from 0.
 	const auto power = NumericHelper::POWERS_OF_TEN[scale];
 	// https://graphics.stanford.edu/~seander/bithacks.html#ConditionalNegate
@@ -2472,7 +2485,7 @@ bool TryCastDecimalToNumeric(SRC input, DST &result, CastParameters &parameters,
 }
 
 template <class DST>
-bool TryCastHugeDecimalToNumeric(hugeint_t input, DST &result, CastParameters &parameters, uint8_t scale) {
+static bool TryCastHugeDecimalToNumeric(hugeint_t input, DST &result, CastParameters &parameters, uint8_t scale) {
 	const auto power = Hugeint::POWERS_OF_TEN[scale];
 	const auto rounding = ((input < 0) ? -power : power) / 2;
 	auto scaled_value = (input + rounding) / power;
@@ -2796,7 +2809,7 @@ void GetDivMod(hugeint_t lhs, hugeint_t rhs, hugeint_t &div, hugeint_t &mod) {
 }
 
 template <class SRC, class DST>
-bool TryCastDecimalToFloatingPoint(SRC input, DST &result, uint8_t scale) {
+static bool TryCastDecimalToFloatingPoint(SRC input, DST &result, uint8_t scale) {
 	if (IsRepresentableExactly<SRC, DST>(input, DST(0.0)) || scale == 0) {
 		// Fast path, integer is representable exaclty as a float/double
 		result = Cast::Operation<SRC, DST>(input) / DST(NumericHelper::DOUBLE_POWERS_OF_TEN[scale]);
