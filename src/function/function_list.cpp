@@ -11,6 +11,7 @@
 #include "duckdb/function/scalar/string_functions.hpp"
 #include "duckdb/function/scalar/struct_functions.hpp"
 #include "duckdb/function/scalar/system_functions.hpp"
+#include "duckdb/function/scalar/geometry_functions.hpp"
 #include "duckdb/parser/parsed_data/create_aggregate_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
@@ -150,6 +151,8 @@ static const StaticFunctionDefinition function[] = {
 	DUCKDB_SCALAR_FUNCTION_SET(SHA1Fun),
 	DUCKDB_SCALAR_FUNCTION_SET(SHA256Fun),
 	DUCKDB_SCALAR_FUNCTION_ALIAS(SplitFun),
+	DUCKDB_SCALAR_FUNCTION(StExtentFun),
+	DUCKDB_SCALAR_FUNCTION(StIntersectExtentFun),
 	DUCKDB_SCALAR_FUNCTION_ALIAS(StrSplitFun),
 	DUCKDB_SCALAR_FUNCTION_SET_ALIAS(StrSplitRegexFun),
 	DUCKDB_SCALAR_FUNCTION_SET(StrfTimeFun),

@@ -3,6 +3,7 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 
 namespace duckdb {
 
@@ -27,6 +28,24 @@ bool ExpressionFilter::EvaluateWithConstant(ExpressionExecutor &executor, const 
 }
 
 FilterPropagateResult ExpressionFilter::CheckStatistics(BaseStatistics &stats) const {
+
+	if (expr->type == ExpressionType::BOUND_FUNCTION) {
+		auto &func = expr->Cast<BoundFunctionExpression>();
+		if (func.function.name == "st_intersect_extent") {
+			auto &arg1 = func.children[0];
+			auto &arg2 = func.children[1];
+
+			if (arg2->type == ExpressionType::VALUE_CONSTANT) {
+				auto &const_arg = arg2->Cast<BoundConstantExpression>();
+				if (!const_arg.value.IsNull()) {
+					// if the second argument is NULL, the result is always NULL
+					D_ASSERT(stats.GetStatsType() == StatisticsType::GEOMETRY_STATS);
+					return GeometryStats::CheckZonemap(stats, const_arg.value);
+				}
+			}
+		}
+	}
+
 	// we cannot prune based on arbitrary expressions currently
 	return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 }

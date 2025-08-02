@@ -35,6 +35,7 @@ class Value {
 	friend struct UnionValue;
 	friend struct ArrayValue;
 	friend struct MapValue;
+	friend struct GeometryValue;
 
 public:
 	//! Create an empty NULL value of the specified type

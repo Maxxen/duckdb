@@ -70,7 +70,7 @@ bool StringStats::CanContainUnicode(const BaseStatistics &stats) {
 	return StringStats::GetDataUnsafe(stats).has_unicode;
 }
 
-string GetStringMinMaxValue(const data_t data[]) {
+static string GetStringMinMaxValue(const data_t data[]) {
 	idx_t len;
 	for (len = 0; len < StringStatsData::MAX_STRING_MINMAX_SIZE; len++) {
 		if (!data[len]) {

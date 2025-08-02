@@ -1,0 +1,16 @@
+[
+    {
+        "name": "st_extent",
+        "parameters": "geometry",
+        "description": "Returns the extent of a geometry",
+        "example": "st_extent(geometry)",
+        "type": "scalar_function"
+    },
+    {
+        "name": "st_intersect_extent",
+        "parameters": "geometry, geometry",
+        "description": "Returns if two geometries extents intersect",
+        "example": "st_intersect_extent(geometry)",
+        "type": "scalar_function"
+    }
+]
