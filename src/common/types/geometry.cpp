@@ -829,6 +829,35 @@ void Geometry::Verify(const string_t &blob) {
 
 }
 
+GeometryType Geometry::GetGeometryType(const string_t &blob) {
+	BinaryReader reader(blob.GetData(), blob.GetSize());
+	const auto byte_order = reader.Read<uint8_t>();
+	if (byte_order != 1) {
+		throw InvalidInputException("Unsupported byte order %d in WKB", byte_order);
+	}
+	const auto meta = reader.Read<uint32_t>();
+	return static_cast<GeometryType>(meta % 1000);
+}
+
+int32_t Geometry::GetZMFlag(const string_t &geom) {
+	BinaryReader reader(geom.GetData(), geom.GetSize());
+	const auto byte_order = reader.Read<uint8_t>();
+	if (byte_order != 1) {
+		throw InvalidInputException("Unsupported byte order %d in WKB", byte_order);
+	}
+	const auto meta = reader.Read<uint32_t>();
+	switch (meta / 1000) {
+		case 0: return 0; // No Z or M
+		case 1: return 2; // Has M
+		case 2: return 1; // Has Z
+		case 3: return 3; // Has Z and M
+		default:
+			throw InvalidInputException("Invalid ZM flag %d in WKB", meta / 1000);
+	}
+}
+
+
+
 /*
 
 enum class VertexType : uint8_t { XY = 0, XYZ = 1, XYM = 2, XYZM = 3 };

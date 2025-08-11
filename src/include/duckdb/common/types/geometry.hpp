@@ -26,6 +26,14 @@ enum class GeometryType : uint8_t {
 	GEOMETRYCOLLECTION = 7,
 };
 
+enum class GeometryFlag {
+	INVALID = 0,
+	HAS_XY = 0,
+	HAS_XYZ = 1,
+	HAS_XYM = 2,
+	HAS_XYZM = 3,
+};
+
 struct GeometryExtent {
 	double min_x;
 	double min_y;
@@ -35,6 +43,11 @@ struct GeometryExtent {
 	static GeometryExtent Empty() {
 		return {NumericLimits<double>::Maximum(), NumericLimits<double>::Maximum(), NumericLimits<double>::Minimum(),
 		        NumericLimits<double>::Minimum()};
+	}
+
+	static GeometryExtent Unknown() {
+		return {NumericLimits<double>::Minimum(), NumericLimits<double>::Minimum(), NumericLimits<double>::Maximum(),
+		        NumericLimits<double>::Maximum()};
 	}
 
 	void Extend(const GeometryExtent &other) {
@@ -60,6 +73,8 @@ public:
 	static string_t ToString(Vector &result, const char *buf, idx_t len);
 	static string_t ToWKB(const string_t &geom, Vector &result);
 	static idx_t GetExtent(const string_t &geom, GeometryExtent &result);
+	static GeometryType GetGeometryType(const string_t &geom);
+	static int32_t GetZMFlag(const string_t &geom);
 
 	static void Verify(const string_t &blob);
 };
