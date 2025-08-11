@@ -22,7 +22,9 @@ struct SelectionVector;
 class Vector;
 
 struct GeometryStatsData {
-	Box2D bounds;
+	// TODO: Put this in unique_ptr if it gets too big
+	// We got around 40 bytes to work with total before it gets larger than numeric stats
+	GeometryExtent bounds;
 };
 
 struct GeometryStats {

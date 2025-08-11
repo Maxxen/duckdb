@@ -26,25 +26,25 @@ enum class GeometryType : uint8_t {
 	GEOMETRYCOLLECTION = 7,
 };
 
-struct Box2D {
+struct GeometryExtent {
 	double min_x;
 	double min_y;
 	double max_x;
 	double max_y;
 
-	static Box2D Empty() {
+	static GeometryExtent Empty() {
 		return {NumericLimits<double>::Maximum(), NumericLimits<double>::Maximum(), NumericLimits<double>::Minimum(),
 		        NumericLimits<double>::Minimum()};
 	}
 
-	void Extend(const Box2D &other) {
+	void Extend(const GeometryExtent &other) {
 		min_x = MinValue(min_x, other.min_x);
 		min_y = MinValue(min_y, other.min_y);
 		max_x = MaxValue(max_x, other.max_x);
 		max_y = MaxValue(max_y, other.max_y);
 	}
 
-	bool Intersects(const Box2D &other) const {
+	bool Intersects(const GeometryExtent &other) const {
 		return !(min_x > other.max_x || max_x < other.min_x || min_y > other.max_y || max_y < other.min_y);
 	}
 };
@@ -59,7 +59,7 @@ public:
 
 	static string_t ToString(Vector &result, const char *buf, idx_t len);
 	static string_t ToWKB(const string_t &geom, Vector &result);
-	static idx_t GetBounds(const string_t &geom, Box2D &result);
+	static idx_t GetExtent(const string_t &geom, GeometryExtent &result);
 
 	static void Verify(const string_t &blob);
 };

@@ -26,8 +26,8 @@ static void ExtentFunction(DataChunk &input, ExpressionState &state, Vector &res
 			continue;
 		}
 
-		Box2D bounds = Box2D::Empty();
-		if (!Geometry::GetBounds(geom_data[row_idx], bounds)) {
+		auto bounds = GeometryExtent::Empty();
+		if (!Geometry::GetExtent(geom_data[row_idx], bounds)) {
 			FlatVector::SetNull(result, out_idx, true);
 			continue;
 		}
@@ -57,9 +57,9 @@ ScalarFunction StExtentFun::GetFunction() {
 static void IntersectFunction(DataChunk &input, ExpressionState &state, Vector &result) {
 	BinaryExecutor::Execute<string_t, string_t, bool>(
 	    input.data[0], input.data[1], result, input.size(), [&](const string_t &a, const string_t &b) {
-		    Box2D bounds_a = Box2D::Empty();
-		    Box2D bounds_b = Box2D::Empty();
-		    if (!Geometry::GetBounds(a, bounds_a) || !Geometry::GetBounds(b, bounds_b)) {
+		    auto bounds_a = GeometryExtent::Empty();
+		    auto bounds_b = GeometryExtent::Empty();
+		    if (!Geometry::GetExtent(a, bounds_a) || !Geometry::GetExtent(b, bounds_b)) {
 			    return false;
 		    }
 		    return bounds_a.Intersects(bounds_b);

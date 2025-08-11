@@ -15,7 +15,7 @@ BaseStatistics GeometryStats::CreateUnknown(LogicalType type) {
 	result.InitializeUnknown();
 
 	auto &data = GeometryStats::GetDataUnsafe(result);
-	data.bounds = Box2D::Empty();
+	data.bounds = GeometryExtent::Empty();
 
 	return result;
 }
@@ -25,7 +25,7 @@ BaseStatistics GeometryStats::CreateEmpty(LogicalType type) {
 	result.InitializeEmpty();
 
 	auto &data = GeometryStats::GetDataUnsafe(result);
-	data.bounds = Box2D::Empty();
+	data.bounds = GeometryExtent::Empty();
 
 	return result;
 }
@@ -65,8 +65,8 @@ void GeometryStats::Deserialize(Deserializer &deserializer, BaseStatistics &stat
 void GeometryStats::Update(BaseStatistics &stats, const string_t &value) {
 	auto &geometry_data = GeometryStats::GetDataUnsafe(stats);
 
-	Box2D bounds = Box2D::Empty();
-	if (Geometry::GetBounds(value, bounds) != 0) {
+	GeometryExtent bounds = GeometryExtent::Empty();
+	if (Geometry::GetExtent(value, bounds) != 0) {
 		geometry_data.bounds.Extend(bounds);
 	}
 }
@@ -90,8 +90,8 @@ FilterPropagateResult GeometryStats::CheckZonemap(const BaseStatistics &stats, c
 	auto &geometry_data = GeometryStats::GetDataUnsafe(stats);
 	auto &geometry_value = StringValue::Get(value);
 
-	Box2D bounds = Box2D::Empty();
-	if (!Geometry::GetBounds(geometry_value, bounds)) {
+	GeometryExtent bounds = GeometryExtent::Empty();
+	if (!Geometry::GetExtent(geometry_value, bounds)) {
 		// If we cannot get bounds from the geometry, we cannot check comparison
 		return FilterPropagateResult::FILTER_ALWAYS_FALSE;
 	}

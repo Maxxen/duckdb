@@ -743,7 +743,7 @@ string_t Geometry::ToWKB(const string_t &geom, Vector &result) {
 }
 
 
-static idx_t GetBoundsRecursive(BinaryReader &reader, Box2D &result, uint32_t depth) {
+static idx_t GetExtentRecursive(BinaryReader &reader, GeometryExtent &result, uint32_t depth) {
 	if (depth == Geometry::MAX_RECURSION_DEPTH) {
 		throw InvalidInputException("Geometry exceeds maximum recursion depth of %d", Geometry::MAX_RECURSION_DEPTH);
 	}
@@ -811,7 +811,7 @@ static idx_t GetBoundsRecursive(BinaryReader &reader, Box2D &result, uint32_t de
 			uint32_t total_vert_count = 0;
 			const auto part_count = reader.Read<uint32_t>();
 			for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
-				total_vert_count += GetBoundsRecursive(reader, result, depth + 1);
+				total_vert_count += GetExtentRecursive(reader, result, depth + 1);
 			}
 			return total_vert_count; // Return total vertex count from all parts
 		}
@@ -820,9 +820,9 @@ static idx_t GetBoundsRecursive(BinaryReader &reader, Box2D &result, uint32_t de
 		}
 }
 
-idx_t Geometry::GetBounds(const string_t &geom, Box2D &result) {
+idx_t Geometry::GetExtent(const string_t &geom, GeometryExtent &result) {
 	BinaryReader reader(geom.GetData(), geom.GetSize());
-	return GetBoundsRecursive(reader, result, 0);
+	return GetExtentRecursive(reader, result, 0);
 }
 
 void Geometry::Verify(const string_t &blob) {
