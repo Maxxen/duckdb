@@ -23,10 +23,13 @@
 #include "reader/uuid_column_reader.hpp"
 
 #include "zstd.h"
+#include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 
 #include "duckdb/storage/table/column_segment.hpp"
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/types/bit.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 
 namespace duckdb {
 
@@ -754,6 +757,34 @@ void ColumnReader::ApplyPendingSkips(data_ptr_t define_out, data_ptr_t repeat_ou
 //===--------------------------------------------------------------------===//
 // Create Column Reader
 //===--------------------------------------------------------------------===//
+static unique_ptr<ColumnReader> CreateGeoReader(ParquetReader &reader, const ParquetColumnSchema &schema, ClientContext &context, const LogicalTypeId &target) {
+	// TODO: Handle GEOGRAPHY
+
+	auto func_name = "";
+	if (target == LogicalTypeId::GEOMETRY) {
+		func_name = "st_geomfromwkb";
+	} else {
+		throw NotImplementedException("Unsupported target type for geometry reader");
+	}
+
+	// Lookup the conversion function in the catalog
+	auto &catalog = Catalog::GetSystemCatalog(context);
+	auto &func_set = catalog.GetEntry<ScalarFunctionCatalogEntry>(context, DEFAULT_SCHEMA, func_name);
+	auto func = func_set.functions.GetFunctionByArguments(context, {target});
+
+	// Create a callback column reader that will convert the WKB data to GEOMETRY
+	auto args = vector<unique_ptr<Expression>>();
+	args.push_back(std::move(make_uniq<BoundReferenceExpression>(target, 0)));
+	auto expr =
+		make_uniq<BoundFunctionExpression>(func.return_type, func, std::move(args), nullptr);
+
+	// Create a child reader
+	auto child_reader = make_uniq<StringColumnReader>(reader, schema);
+
+	// Create an expression reader that applies the conversion function to the child reader
+	return make_uniq<ExpressionColumnReader>(context, std::move(child_reader), std::move(expr), schema);
+}
+
 template <class T>
 static unique_ptr<ColumnReader> CreateDecimalReader(ParquetReader &reader, const ParquetColumnSchema &schema) {
 	switch (schema.type.InternalType()) {
@@ -770,7 +801,11 @@ static unique_ptr<ColumnReader> CreateDecimalReader(ParquetReader &reader, const
 	}
 }
 
-unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const ParquetColumnSchema &schema) {
+unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const ParquetColumnSchema &schema, ClientContext &context) {
+	if (schema.schema_type == ParquetColumnSchemaType::GEOMETRY) {
+		return CreateGeoReader(reader, schema.children[0], context, LogicalTypeId::GEOMETRY);
+	}
+
 	switch (schema.type.id()) {
 	case LogicalTypeId::BOOLEAN:
 		return make_uniq<BooleanColumnReader>(reader, schema);
@@ -867,6 +902,9 @@ unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const
 			throw InternalException("TIME_TZ requires type info");
 		}
 	case LogicalTypeId::BLOB:
+		if (schema.schema_type == ParquetColumnSchemaType::GEOMETRY) {
+			return CreateGeoReader(reader, schema, context, LogicalTypeId::GEOMETRY);
+		}
 	case LogicalTypeId::VARCHAR:
 		return make_uniq<StringColumnReader>(reader, schema);
 	case LogicalTypeId::DECIMAL:
@@ -882,6 +920,8 @@ unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const
 			throw NotImplementedException("Unrecognized Parquet type for Decimal");
 		}
 		break;
+	case LogicalTypeId::GEOMETRY:
+		return CreateGeoReader(reader, schema, context, LogicalTypeId::GEOMETRY);
 	case LogicalTypeId::UUID:
 		return make_uniq<UUIDColumnReader>(reader, schema);
 	case LogicalTypeId::INTERVAL:

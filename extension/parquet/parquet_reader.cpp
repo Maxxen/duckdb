@@ -225,6 +225,12 @@ LogicalType ParquetReader::DeriveLogicalType(const SchemaElement &s_ele, Parquet
 				return LogicalType::TIME_TZ;
 			}
 			return LogicalType::TIME;
+		} else if (s_ele.logicalType.__isset.GEOMETRY) {
+			// TODO: Handle CRS
+			return LogicalType::GEOMETRY;
+		} else if (s_ele.logicalType.__isset.GEOGRAPHY) {
+			// TODO: Handle CRS, return GEOGRAPHY type
+			return LogicalType::GEOMETRY;
 		}
 	}
 	if (s_ele.__isset.converted_type) {
@@ -403,13 +409,13 @@ unique_ptr<ColumnReader> ParquetReader::CreateReaderRecursive(ClientContext &con
                                                               const ParquetColumnSchema &schema) {
 	switch (schema.schema_type) {
 	case ParquetColumnSchemaType::GEOMETRY:
-		return metadata->geo_metadata->CreateColumnReader(*this, schema, context);
+		return ColumnReader::CreateReader(*this, schema, context);
 	case ParquetColumnSchemaType::FILE_ROW_NUMBER:
 		return make_uniq<RowNumberColumnReader>(*this, schema);
 	case ParquetColumnSchemaType::COLUMN: {
 		if (schema.children.empty()) {
 			// leaf reader
-			return ColumnReader::CreateReader(*this, schema);
+			return ColumnReader::CreateReader(*this, schema, context);
 		}
 		vector<unique_ptr<ColumnReader>> children;
 		children.resize(schema.children.size());

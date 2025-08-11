@@ -10,6 +10,7 @@
 
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/limits.hpp"
 
 namespace duckdb {
 
@@ -51,9 +52,16 @@ struct Box2D {
 //! The Geometry class is a static class that holds helper function for the GEOMETRY type.
 class Geometry {
 public:
+	static constexpr auto MAX_RECURSION_DEPTH = 16;
+
+	static bool FromWKB(const string_t &wkb_blob, string_t &result, Vector &result_vector, bool strict);
 	static bool FromString(const string &str, string_t &result, Vector &result_vector, bool strict);
+
 	static string_t ToString(Vector &result, const char *buf, idx_t len);
-	static idx_t GetBounds(const string_t &blob, Box2D &result);
+	static string_t ToWKB(const string_t &geom, Vector &result);
+	static idx_t GetBounds(const string_t &geom, Box2D &result);
+
+	static void Verify(const string_t &blob);
 };
 
 } // namespace duckdb
