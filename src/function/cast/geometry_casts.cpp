@@ -12,13 +12,14 @@ static bool GeometryToVarcharCast(Vector &source, Vector &result, idx_t count, C
 
 BoundCastInfo DefaultCasts::GeometryCastSwitch(BindCastInput &input, const LogicalType &source,
                                                const LogicalType &target) {
-	D_ASSERT(source.id() == LogicalTypeId::GEOMETRY);
+	D_ASSERT(source.id() == LogicalTypeId::GEOMETRY || source.id() == LogicalTypeId::GEOGRAPHY);
 	// now switch on the result type
 	switch (target.id()) {
 	case LogicalTypeId::VARCHAR:
 		return GeometryToVarcharCast;
+	case LogicalTypeId::GEOGRAPHY:
 	case LogicalTypeId::GEOMETRY:
-		// Only cast if the target geometry type has no CRS
+		// Only cast if the target or source geometry type don't have a coordinate system specified
 		if (!GeoType::HasCRS(target) || !GeoType::HasCRS(source)) {
 			return DefaultCasts::ReinterpretCast;
 		} else {

@@ -19,7 +19,7 @@ struct DefaultType {
 	LogicalTypeId type;
 };
 
-using builtin_type_array = std::array<DefaultType, 75>;
+using builtin_type_array = std::array<DefaultType, 76>;
 
 static constexpr const builtin_type_array BUILTIN_TYPES{{
 	{"decimal", LogicalTypeId::DECIMAL},
@@ -96,7 +96,8 @@ static constexpr const builtin_type_array BUILTIN_TYPES{{
 	{"float4", LogicalTypeId::FLOAT},
 	{"double", LogicalTypeId::DOUBLE},
 	{"float8", LogicalTypeId::DOUBLE},
-	{"geometry", LogicalTypeId::GEOMETRY}
+	{"geometry", LogicalTypeId::GEOMETRY},
+	{"geography", LogicalTypeId::GEOGRAPHY}
 }};
 
 } // namespace duckdb

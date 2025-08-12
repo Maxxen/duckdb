@@ -289,5 +289,12 @@
             "geometry"
         ],
         "description": "Geometric data type, used for spatial data representation."
+    },
+    {
+        "id": "GEOGRAPHY",
+        "names": [
+            "geography"
+        ],
+        "description": "Geographic data type, used for spatial data representation on the Earths surface."
     }
 ]

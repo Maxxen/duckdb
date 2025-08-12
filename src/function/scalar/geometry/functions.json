@@ -11,7 +11,14 @@
         "parameters": "geometry, geometry",
         "description": "Returns if two geometries extents intersect",
         "example": "st_intersect_extent(geometry)",
-        "type": "scalar_function",
+        "type": "scalar_function_set",
         "aliases": ["&&"]
+    },
+    {
+        "name": "st_crs",
+        "parameters": "geometry",
+        "description": "Returns the coordinate reference system of a geometry type",
+        "example": "st_crs(geometry)",
+        "type": "scalar_function_set"
     }
 ]

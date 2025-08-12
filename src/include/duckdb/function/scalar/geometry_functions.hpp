@@ -32,13 +32,23 @@ struct StIntersectExtentFun {
 	static constexpr const char *Example = "st_intersect_extent(geometry)";
 	static constexpr const char *Categories = "";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct StIntersectExtentFunAlias {
 	using ALIAS = StIntersectExtentFun;
 
 	static constexpr const char *Name = "&&";
+};
+
+struct StCrsFun {
+	static constexpr const char *Name = "st_crs";
+	static constexpr const char *Parameters = "geometry";
+	static constexpr const char *Description = "Returns the coordinate reference system of a geometry type";
+	static constexpr const char *Example = "st_crs(geometry)";
+	static constexpr const char *Categories = "";
+
+	static ScalarFunctionSet GetFunctions();
 };
 
 } // namespace duckdb

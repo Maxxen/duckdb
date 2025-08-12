@@ -1,5 +1,6 @@
 #include "duckdb/function/scalar/geometry_functions.hpp"
-
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/common/types/geometry.hpp"
 
 namespace duckdb {
@@ -87,10 +88,49 @@ static void IntersectFunction(DataChunk &input, ExpressionState &state, Vector &
 	    });
 }
 
-ScalarFunction StIntersectExtentFun::GetFunction() {
-	ScalarFunction fun("st_intersect_extent", {LogicalType::GEOMETRY(), LogicalType::GEOMETRY()}, LogicalType::BOOLEAN,
-	                   IntersectFunction, IntersectExtentBind);
-	return fun;
+ScalarFunctionSet StIntersectExtentFun::GetFunctions() {
+	ScalarFunction fun({LogicalType::GEOMETRY(), LogicalType::GEOMETRY()}, LogicalType::BOOLEAN, IntersectFunction,
+	                   IntersectExtentBind);
+
+	ScalarFunctionSet set("ST_Intersect_Extent");
+	set.AddFunction(fun);
+
+	return set;
+}
+
+static unique_ptr<FunctionData> BindCRSFunction(ClientContext &context, ScalarFunction &bound_function,
+                                                vector<unique_ptr<Expression>> &arguments) {
+	// Check if the CRS is set in the first argument
+	bound_function.arguments[0] = arguments[0]->return_type;
+	return nullptr;
+}
+
+static void CRSFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &type = args.data[0].GetType();
+	const auto v = GeoType::HasCRS(type) ? GeoType::GetCRS(type) : Value(LogicalTypeId::VARCHAR);
+	result.Reference(v);
+}
+
+static unique_ptr<Expression> BindCRSFunctionExpression(FunctionBindExpressionInput &input) {
+	const auto &return_type = input.children[0]->return_type;
+	if (return_type.id() == LogicalTypeId::UNKNOWN || return_type.id() == LogicalTypeId::SQLNULL) {
+		// parameter - unknown return type
+		return nullptr;
+	}
+	// Emit a constant expression
+	auto v = GeoType::HasCRS(return_type) ? Value(GeoType::GetCRS(return_type)) : Value(LogicalTypeId::VARCHAR);
+	return make_uniq<BoundConstantExpression>(std::move(v));
+}
+
+ScalarFunctionSet StCrsFun::GetFunctions() {
+	ScalarFunctionSet set("ST_CRS");
+	for (auto &type : {LogicalTypeId::GEOMETRY, LogicalTypeId::GEOGRAPHY}) {
+		ScalarFunction geom_func({type}, LogicalType::VARCHAR, CRSFunction, BindCRSFunction);
+		geom_func.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
+		geom_func.bind_expression = BindCRSFunctionExpression;
+		set.AddFunction(geom_func);
+	}
+	return set;
 }
 
 } // namespace duckdb

@@ -141,9 +141,10 @@ void GeometryStats::Update(BaseStatistics &stats, const string_t &value) {
 }
 
 void GeometryStats::Merge(BaseStatistics &stats, const BaseStatistics &other) {
-	if (other.GetType().id() != LogicalTypeId::GEOMETRY) {
+	if (stats.GetType().id() != other.GetType().id()) {
 		return;
 	}
+
 	auto &geometry_data = GeometryStats::GetDataUnsafe(stats);
 	auto &other_geometry_data = GeometryStats::GetDataUnsafe(other);
 
