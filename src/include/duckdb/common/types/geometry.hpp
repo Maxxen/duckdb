@@ -11,6 +11,7 @@
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/limits.hpp"
+#include "duckdb/common/pair.hpp"
 
 namespace duckdb {
 
@@ -24,6 +25,13 @@ enum class GeometryType : uint8_t {
 	MULTILINESTRING = 5,
 	MULTIPOLYGON = 6,
 	GEOMETRYCOLLECTION = 7,
+};
+
+enum class VertexType : uint8_t {
+	XY = 0,  // 2D point
+	XYZ = 1, // 3D point
+	XYM = 2, // 2D point with measure
+	XYZM = 3 // 3D point with measure
 };
 
 enum class GeometryFlag {
@@ -73,8 +81,7 @@ public:
 	static string_t ToString(Vector &result, const char *buf, idx_t len);
 	static string_t ToWKB(const string_t &geom, Vector &result);
 	static idx_t GetExtent(const string_t &geom, GeometryExtent &result);
-	static GeometryType GetGeometryType(const string_t &geom);
-	static int32_t GetZMFlag(const string_t &geom);
+	static pair<GeometryType, VertexType> GetGeometryType(const string_t &geom);
 
 	static void Verify(const string_t &blob);
 };

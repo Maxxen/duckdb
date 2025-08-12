@@ -27,86 +27,145 @@ class GeometryTypeSet {
 public:
 	GeometryTypeSet() = default;
 
-	// Add a type to the set
-	void Add(GeometryType type) {
-		bitset |= (1U << static_cast<uint32_t>(type));
+	// Add the specified geometry type and vertex type to the set
+	void Add(GeometryType gtype, VertexType vtype) {
+		bits[static_cast<uint8_t>(vtype)] |= (1U << static_cast<uint32_t>(gtype));
 	}
 
-	// Check if any geometry in the column is of the specified type
-	bool Any(GeometryType type) const {
-		return (bitset & (1U << static_cast<uint32_t>(type))) != 0;
+	// Add the specified geometry type to all vertex types
+	void Add(GeometryType gtype) {
+		for (auto &set : bits) {
+			set |= (1U << static_cast<uint32_t>(gtype));
+		}
 	}
 
-	// Check if all geometry in the column is of the specified type
-	bool All(GeometryType type) const {
-		return bitset == (1U << static_cast<uint32_t>(type));
+	// Add the specified vertex type to all geometry types
+	void Add(VertexType vtype) {
+		bits[static_cast<uint8_t>(vtype)] = bits[0] | bits[1] | bits[2] | bits[3];
 	}
 
-	// Reset to unknown, i.e. all types are set
+	// Check if any geometry of the specified type and vertex type is present
+	bool Any(GeometryType gtype, VertexType vtype) const {
+		return (bits[static_cast<uint8_t>(vtype)] & (1U << static_cast<uint32_t>(gtype))) != 0;
+	}
+
+	// Check if any geometry of the specified type is present
+	bool Any(GeometryType gtype) const {
+		for (auto &set : bits) {
+			if ((set & (1U << static_cast<uint32_t>(gtype))) != 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Check if any geometry of the specified vertex type is present
+	bool Any(VertexType vtype) {
+		return bits[static_cast<uint8_t>(vtype)] != 0;
+	}
+
+	// Check if all geometries are of the specified geometry and vertex type
+	bool All(GeometryType gtype, VertexType vtype) const {
+		for (idx_t i = 0; i < 4; i++) {
+			if (i == static_cast<uint8_t>(vtype)) {
+				if (bits[i] != (1U << static_cast<uint32_t>(gtype))) {
+					return false;
+				}
+			} else {
+				if (bits[i] & (1U << static_cast<uint32_t>(gtype))) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	// Check if all geometries are of the specified geometry type
+	bool All(GeometryType gtype) const {
+		for (auto &set : bits) {
+			if (set != (1U << static_cast<uint32_t>(gtype))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// Check if all geometries are of the specified vertex type
+	bool All(VertexType vtype) const {
+		for (idx_t i = 0; i < 4; i++) {
+			if (i == static_cast<uint8_t>(vtype)) {
+				if (bits[i] == 0) {
+					return false;
+				}
+			} else {
+				if (bits[i] != 0) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	// Reset to unknown, i.e. all geometry types and vertex types are set
 	void SetUnknown() {
-		bitset = 0xFFFFFFFF;
+		for (auto &set : bits) {
+			set = 0xFFFFFFFF;
+		}
 	}
 
-	// Reset to empty, i.e. no types are set
+	// Reset to empty, i.e. no geometry types or vertex types are set
 	void SetEmpty() {
-		bitset = 0;
+		for (auto &set : bits) {
+			set = 0x00000000;
+		}
 	}
 
-	// Reset to a specific type
-	void Set(GeometryType type) {
-		bitset = (1U << static_cast<uint32_t>(type));
+	// Reset to a specific geometry type and vertex type
+	void Set(GeometryType gtype, VertexType vtype) {
+		for (idx_t i = 0; i < 4; i++) {
+			if (i == static_cast<uint8_t>(vtype)) {
+				bits[i] = (1U << static_cast<uint32_t>(gtype));
+			} else {
+				bits[i] = 0;
+			}
+		}
 	}
 
-	// Check if the set is unknown, i.e. all types are set
-	bool IsUnknown() const {
-		return bitset == 0xFFFFFFFF;
+	// Reset all vertex types to a specific geometry type
+	void Set(GeometryType gtype) {
+		for (auto &set : bits) {
+			set = (1U << static_cast<uint32_t>(gtype));
+		}
 	}
 
-	// Check if the set is empty, i.e. no types are set
+	// Reset all geometries to a specific vertex type
+	void Set(VertexType vtype) {
+		bits[static_cast<uint8_t>(vtype)] = bits[0] | bits[1] | bits[2] | bits[3];
+		for (idx_t i = 0; i < 4; i++) {
+			if (i != static_cast<uint8_t>(vtype)) {
+				bits[i] = 0;
+			}
+		}
+	}
+
 	bool IsEmpty() const {
-		return bitset == 0;
+		return bits[0] == 0x00000000 && bits[1] == 0x00000000 &&
+			   bits[2] == 0x00000000 && bits[3] == 0x00000000;
 	}
 
-	// Merge with another set
+	bool IsUnknown() const {
+		return bits[0] == 0xFFFFFFFF && bits[1] == 0xFFFFFFFF &&
+		       bits[2] == 0xFFFFFFFF && bits[3] == 0xFFFFFFFF;
+	}
+
 	void Merge(const GeometryTypeSet &other) {
-		bitset |= other.bitset;
+		for (idx_t i = 0; i < 4; i++) {
+			bits[i] |= other.bits[i];
+		}
 	}
 private:
 	friend struct GeometryStats;
-	uint32_t bitset; // Bitset to track which geometry types are present
-};
-
-// Tracks which geometry flags are present in the column
-// Can contain false positives, but never false negatives
-class GeometryFlagSet {
-public:
-	void Add(GeometryFlag flag) {
-		bitset |= (1U << static_cast<uint32_t>(flag));
-	}
-	bool Any(GeometryFlag flag) const {
-		return (bitset & (1U << static_cast<uint32_t>(flag))) != 0;
-	}
-	bool All(GeometryFlag flag) const {
-		return bitset == (1U << static_cast<uint32_t>(flag));
-	}
-	void SetUnknown() {
-		bitset = 0xFFFFFFFF;
-	}
-	void SetEmpty() {
-		bitset = 0;
-	}
-	bool IsUnknown() const {
-		return bitset == 0xFFFFFFFF;
-	}
-	bool IsEmpty() const {
-		return bitset == 0;
-	}
-	void Merge(const GeometryFlagSet &other) {
-		bitset |= other.bitset;
-	}
-private:
-	friend struct GeometryStats;
-	uint32_t bitset; // to track which geometry flags are present
+	uint32_t bits[4];
 };
 
 struct GeometryStatsData {
@@ -114,7 +173,6 @@ struct GeometryStatsData {
 	// We got around 40 bytes to work with total before it gets larger than numeric stats
 	GeometryExtent bounds;
 	GeometryTypeSet types;
-	GeometryFlagSet flags;
 };
 
 struct GeometryStats {
