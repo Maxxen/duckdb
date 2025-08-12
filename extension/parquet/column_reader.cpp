@@ -757,7 +757,8 @@ void ColumnReader::ApplyPendingSkips(data_ptr_t define_out, data_ptr_t repeat_ou
 //===--------------------------------------------------------------------===//
 // Create Column Reader
 //===--------------------------------------------------------------------===//
-static unique_ptr<ColumnReader> CreateGeoReader(ParquetReader &reader, const ParquetColumnSchema &schema, ClientContext &context, const LogicalTypeId &target) {
+static unique_ptr<ColumnReader> CreateGeoReader(ParquetReader &reader, const ParquetColumnSchema &schema,
+                                                ClientContext &context, const LogicalTypeId &target) {
 	// TODO: Handle GEOGRAPHY
 
 	auto func_name = "";
@@ -775,8 +776,7 @@ static unique_ptr<ColumnReader> CreateGeoReader(ParquetReader &reader, const Par
 	// Create a callback column reader that will convert the WKB data to GEOMETRY
 	auto args = vector<unique_ptr<Expression>>();
 	args.push_back(std::move(make_uniq<BoundReferenceExpression>(target, 0)));
-	auto expr =
-		make_uniq<BoundFunctionExpression>(func.return_type, func, std::move(args), nullptr);
+	auto expr = make_uniq<BoundFunctionExpression>(func.return_type, func, std::move(args), nullptr);
 
 	// Create a child reader
 	auto child_reader = make_uniq<StringColumnReader>(reader, schema);
@@ -801,7 +801,8 @@ static unique_ptr<ColumnReader> CreateDecimalReader(ParquetReader &reader, const
 	}
 }
 
-unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const ParquetColumnSchema &schema, ClientContext &context) {
+unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const ParquetColumnSchema &schema,
+                                                    ClientContext &context) {
 	if (schema.schema_type == ParquetColumnSchemaType::GEOMETRY) {
 		return CreateGeoReader(reader, schema.children[0], context, LogicalTypeId::GEOMETRY);
 	}

@@ -50,7 +50,7 @@ ScalarFunction StExtentFun::GetFunction() {
 	                                        {"xmax", LogicalType::DOUBLE},
 	                                        {"ymax", LogicalType::DOUBLE}});
 
-	ScalarFunction fun("st_extent", {LogicalType::GEOMETRY}, std::move(extent_type), ExtentFunction);
+	ScalarFunction fun("st_extent", {LogicalType::GEOMETRY()}, std::move(extent_type), ExtentFunction);
 	return fun;
 }
 
@@ -67,7 +67,7 @@ static void IntersectFunction(DataChunk &input, ExpressionState &state, Vector &
 }
 
 ScalarFunction StIntersectExtentFun::GetFunction() {
-	ScalarFunction fun("st_intersect_extent", {LogicalType::GEOMETRY, LogicalType::GEOMETRY}, LogicalType::BOOLEAN,
+	ScalarFunction fun("st_intersect_extent", {LogicalType::GEOMETRY(), LogicalType::GEOMETRY()}, LogicalType::BOOLEAN,
 	                   IntersectFunction);
 	return fun;
 }

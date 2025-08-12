@@ -149,13 +149,11 @@ public:
 	}
 
 	bool IsEmpty() const {
-		return bits[0] == 0x00000000 && bits[1] == 0x00000000 &&
-			   bits[2] == 0x00000000 && bits[3] == 0x00000000;
+		return bits[0] == 0x00000000 && bits[1] == 0x00000000 && bits[2] == 0x00000000 && bits[3] == 0x00000000;
 	}
 
 	bool IsUnknown() const {
-		return bits[0] == 0xFFFFFFFF && bits[1] == 0xFFFFFFFF &&
-		       bits[2] == 0xFFFFFFFF && bits[3] == 0xFFFFFFFF;
+		return bits[0] == 0xFFFFFFFF && bits[1] == 0xFFFFFFFF && bits[2] == 0xFFFFFFFF && bits[3] == 0xFFFFFFFF;
 	}
 
 	void Merge(const GeometryTypeSet &other) {
@@ -163,6 +161,7 @@ public:
 			bits[i] |= other.bits[i];
 		}
 	}
+
 private:
 	friend struct GeometryStats;
 	uint32_t bits[4];

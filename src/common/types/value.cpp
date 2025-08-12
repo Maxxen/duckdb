@@ -902,12 +902,12 @@ Value Value::BIGNUM(const string &data) {
 	return result;
 }
 
-Value Value::GEOMETRY(const_data_ptr_t data, idx_t len) {
-	return GEOMETRY(string(const_char_ptr_cast(data), len));
+Value Value::GEOMETRY(const string &crs, const_data_ptr_t data, idx_t len) {
+	return GEOMETRY(crs, string(const_char_ptr_cast(data), len));
 }
 
-Value Value::GEOMETRY(const string &data) {
-	Value result(LogicalType::GEOMETRY);
+Value Value::GEOMETRY(const string &crs, const string &data) {
+	Value result(LogicalType::GEOMETRY(crs));
 	result.is_null = false;
 	result.value_info_ = make_shared_ptr<StringValueInfo>(data);
 	return result;

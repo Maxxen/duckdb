@@ -184,7 +184,6 @@ constexpr const LogicalTypeId LogicalType::UBIGINT;
 constexpr const LogicalTypeId LogicalType::HUGEINT;
 constexpr const LogicalTypeId LogicalType::UHUGEINT;
 constexpr const LogicalTypeId LogicalType::UUID;
-constexpr const LogicalTypeId LogicalType::GEOMETRY;
 constexpr const LogicalTypeId LogicalType::FLOAT;
 constexpr const LogicalTypeId LogicalType::DOUBLE;
 constexpr const LogicalTypeId LogicalType::DATE;
@@ -249,7 +248,7 @@ const vector<LogicalType> LogicalType::AllTypes() {
 	    LogicalType::UTINYINT, LogicalType::USMALLINT,    LogicalType::UINTEGER,  LogicalType::UBIGINT,
 	    LogicalType::UHUGEINT, LogicalType::TIME,         LogicalTypeId::LIST,    LogicalTypeId::STRUCT,
 	    LogicalType::TIME_TZ,  LogicalType::TIMESTAMP_TZ, LogicalTypeId::MAP,     LogicalTypeId::UNION,
-	    LogicalType::UUID,     LogicalTypeId::ARRAY,      LogicalType::GEOMETRY};
+	    LogicalType::UUID,     LogicalTypeId::ARRAY,      LogicalTypeId::GEOMETRY};
 	return types;
 }
 
@@ -523,6 +522,18 @@ string LogicalType::ToString() const {
 			return "T";
 		}
 		return TemplateType::GetName(*this);
+	}
+	case LogicalTypeId::GEOMETRY: {
+		string ret = "GEOMETRY";
+		if (!type_info_) {
+			return ret;
+		}
+		auto crs = GeoType::GetCRS(*this);
+		if (crs.empty()) {
+			return ret;
+		}
+		ret += "(" + KeywordHelper::WriteQuoted(crs) + ")";
+		return ret;
 	}
 	default:
 		return EnumUtil::ToString(id_);
@@ -1967,6 +1978,31 @@ const string &TemplateType::GetName(const LogicalType &type) {
 	auto info = type.AuxInfo();
 	D_ASSERT(info->type == ExtraTypeInfoType::TEMPLATE_TYPE_INFO);
 	return info->Cast<TemplateTypeInfo>().name;
+}
+
+//===--------------------------------------------------------------------===//
+// Geometry Type
+//===--------------------------------------------------------------------===//
+LogicalType LogicalType::GEOMETRY(const string &crs) {
+	auto type_info = make_shared_ptr<GeoTypeInfo>(crs);
+	return LogicalType(LogicalTypeId::GEOMETRY, std::move(type_info));
+}
+
+const string &GeoType::GetCRS(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::GEOMETRY);
+	auto info = type.AuxInfo();
+	D_ASSERT(info);
+	D_ASSERT(info->type == ExtraTypeInfoType::GEO_TYPE_INFO);
+	return info->Cast<GeoTypeInfo>().crs;
+}
+
+bool GeoType::HasCRS(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::GEOMETRY);
+	auto info = type.AuxInfo();
+	if (!info) {
+		return false;
+	}
+	return info->type == ExtraTypeInfoType::GEO_TYPE_INFO && !info->Cast<GeoTypeInfo>().crs.empty();
 }
 
 //===--------------------------------------------------------------------===//

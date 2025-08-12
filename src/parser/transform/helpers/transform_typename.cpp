@@ -203,6 +203,21 @@ LogicalType Transformer::TransformTypeNameInternal(duckdb_libpgquery::PGTypeName
 		return LogicalType::USER(user_type_name, type_mods);
 	}
 
+	if (base_type == LogicalTypeId::GEOMETRY) {
+		vector<Value> type_mods = TransformTypeModifiers(type_name);
+		if (type_mods.size() > 1) {
+			throw ParserException("GEOMETRY type only supports a single modifier");
+		}
+		string crs;
+		if (!type_mods.empty()) {
+			if (type_mods[0].type() != LogicalType::VARCHAR) {
+				throw ParserException("GEOMETRY type modifier must be a string");
+			}
+			crs = type_mods[0].GetValue<string>();
+		}
+		return LogicalType::GEOMETRY(crs);
+	}
+
 	SizeModifiers modifiers = GetSizeModifiers(type_name, base_type);
 	switch (base_type) {
 	case LogicalTypeId::VARCHAR:

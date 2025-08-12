@@ -28,7 +28,8 @@ enum class ExtraTypeInfoType : uint8_t {
 	ARRAY_TYPE_INFO = 9,
 	ANY_TYPE_INFO = 10,
 	INTEGER_LITERAL_TYPE_INFO = 11,
-	TEMPLATE_TYPE_INFO = 12
+	TEMPLATE_TYPE_INFO = 12,
+	GEO_TYPE_INFO = 13,
 };
 
 struct ExtraTypeInfo {
@@ -276,6 +277,21 @@ public:
 protected:
 	bool EqualsInternal(ExtraTypeInfo *other_p) const override;
 	TemplateTypeInfo();
+};
+
+struct GeoTypeInfo : public ExtraTypeInfo {
+	GeoTypeInfo();
+	explicit GeoTypeInfo(string crs_p);
+
+	// The optional Coordinate Reference System (CRS) for the spatial data, e.g., "EPSG:4326".
+	string crs;
+
+	void Serialize(Serializer &serializer) const override;
+	static shared_ptr<ExtraTypeInfo> Deserialize(Deserializer &source);
+	shared_ptr<ExtraTypeInfo> Copy() const override;
+
+protected:
+	bool EqualsInternal(ExtraTypeInfo *other_p) const override;
 };
 
 } // namespace duckdb

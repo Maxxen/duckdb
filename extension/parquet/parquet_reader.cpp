@@ -227,10 +227,10 @@ LogicalType ParquetReader::DeriveLogicalType(const SchemaElement &s_ele, Parquet
 			return LogicalType::TIME;
 		} else if (s_ele.logicalType.__isset.GEOMETRY) {
 			// TODO: Handle CRS
-			return LogicalType::GEOMETRY;
+			return LogicalType::GEOMETRY(s_ele.logicalType.GEOMETRY.crs);
 		} else if (s_ele.logicalType.__isset.GEOGRAPHY) {
 			// TODO: Handle CRS, return GEOGRAPHY type
-			return LogicalType::GEOMETRY;
+			return LogicalType::GEOMETRY(s_ele.logicalType.GEOGRAPHY.crs);
 		}
 	}
 	if (s_ele.__isset.converted_type) {

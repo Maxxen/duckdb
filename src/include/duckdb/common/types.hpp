@@ -405,7 +405,6 @@ public:
 	static constexpr const LogicalTypeId ANY = LogicalTypeId::ANY;
 	static constexpr const LogicalTypeId BLOB = LogicalTypeId::BLOB;
 	static constexpr const LogicalTypeId BIT = LogicalTypeId::BIT;
-	static constexpr const LogicalTypeId GEOMETRY = LogicalTypeId::GEOMETRY;
 	static constexpr const LogicalTypeId BIGNUM = LogicalTypeId::BIGNUM;
 
 	static constexpr const LogicalTypeId INTERVAL = LogicalTypeId::INTERVAL;
@@ -430,6 +429,7 @@ public:
 	DUCKDB_API static LogicalType UNION(child_list_t<LogicalType> members);      // NOLINT
 	DUCKDB_API static LogicalType ARRAY(const LogicalType &child, optional_idx index);   // NOLINT
 	DUCKDB_API static LogicalType ENUM(Vector &ordered_data, idx_t size); // NOLINT
+	DUCKDB_API static LogicalType GEOMETRY(const string &crs = ""); // NOLINT
 	// ANY but with special rules (default is LogicalType::ANY, 5)
 	DUCKDB_API static LogicalType ANY_PARAMS(LogicalType target, idx_t cast_score = 5); // NOLINT
 	DUCKDB_API static LogicalType TEMPLATE(const string &name);							// NOLINT
@@ -538,6 +538,12 @@ struct IntegerLiteral {
 struct TemplateType {
 	// Get the name of the template type
 	DUCKDB_API static const string &GetName(const LogicalType &type);
+};
+
+struct GeoType {
+	// TODO: Return optional_ptr here
+	DUCKDB_API static const string &GetCRS(const LogicalType &type);
+	DUCKDB_API static bool HasCRS(const LogicalType &type);
 };
 
 // **DEPRECATED**: Use EnumUtil directly instead.

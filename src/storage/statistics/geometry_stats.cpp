@@ -92,9 +92,11 @@ string GeometryStats::ToString(const BaseStatistics &stats) {
 		str += "]";
 	}
 
-	const auto types = StringUtil::Format("[XY: %s, ZZ: %s, MM: %s, ZM: %s]", type_str[0], type_str[1], type_str[2], type_str[3]);
-	const auto extent = StringUtil::Format("[MinX: %g, MinY: %g, MaxX: %g, MaxY: %g]", geometry_data.bounds.min_x,
-	                          geometry_data.bounds.min_y, geometry_data.bounds.max_x, geometry_data.bounds.max_y);
+	const auto types =
+	    StringUtil::Format("[XY: %s, ZZ: %s, MM: %s, ZM: %s]", type_str[0], type_str[1], type_str[2], type_str[3]);
+	const auto extent =
+	    StringUtil::Format("[MinX: %g, MinY: %g, MaxX: %g, MaxY: %g]", geometry_data.bounds.min_x,
+	                       geometry_data.bounds.min_y, geometry_data.bounds.max_x, geometry_data.bounds.max_y);
 	return StringUtil::Format("[Types: %s, Extent: %s]", types, extent);
 }
 

@@ -27,19 +27,12 @@ enum class GeometryType : uint8_t {
 	GEOMETRYCOLLECTION = 7,
 };
 
+// Vertex Type
 enum class VertexType : uint8_t {
 	XY = 0,  // 2D point
 	XYZ = 1, // 3D point
 	XYM = 2, // 2D point with measure
 	XYZM = 3 // 3D point with measure
-};
-
-enum class GeometryFlag {
-	INVALID = 0,
-	HAS_XY = 0,
-	HAS_XYZ = 1,
-	HAS_XYM = 2,
-	HAS_XYZM = 3,
 };
 
 struct GeometryExtent {
