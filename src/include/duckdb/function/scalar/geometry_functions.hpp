@@ -35,4 +35,10 @@ struct StIntersectExtentFun {
 	static ScalarFunction GetFunction();
 };
 
+struct StIntersectExtentFunAlias {
+	using ALIAS = StIntersectExtentFun;
+
+	static constexpr const char *Name = "&&";
+};
+
 } // namespace duckdb

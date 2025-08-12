@@ -45,6 +45,7 @@ static const StaticFunctionDefinition function[] = {
 	DUCKDB_SCALAR_FUNCTION(NotLikeFun),
 	DUCKDB_SCALAR_FUNCTION(NotILikeFun),
 	DUCKDB_SCALAR_FUNCTION_SET(OperatorModuloFun),
+	DUCKDB_SCALAR_FUNCTION_ALIAS(StIntersectExtentFunAlias),
 	DUCKDB_SCALAR_FUNCTION_SET(OperatorMultiplyFun),
 	DUCKDB_SCALAR_FUNCTION_SET(OperatorAddFun),
 	DUCKDB_SCALAR_FUNCTION_SET(OperatorSubtractFun),

@@ -54,9 +54,8 @@ ScalarFunction StExtentFun::GetFunction() {
 	return fun;
 }
 
-
 static unique_ptr<FunctionData> IntersectExtentBind(ClientContext &context, ScalarFunction &bound_function,
-									   vector<unique_ptr<Expression>> &arguments) {
+                                                    vector<unique_ptr<Expression>> &arguments) {
 	const auto lhs_has_crs = GeoType::HasCRS(arguments[0]->return_type);
 	const auto rhs_has_crs = GeoType::HasCRS(arguments[1]->return_type);
 	if (lhs_has_crs != rhs_has_crs) {

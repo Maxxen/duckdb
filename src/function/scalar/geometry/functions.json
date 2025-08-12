@@ -11,6 +11,7 @@
         "parameters": "geometry, geometry",
         "description": "Returns if two geometries extents intersect",
         "example": "st_intersect_extent(geometry)",
-        "type": "scalar_function"
+        "type": "scalar_function",
+        "aliases": ["&&"]
     }
 ]
