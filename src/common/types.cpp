@@ -530,11 +530,17 @@ string LogicalType::ToString() const {
 		if (!type_info_) {
 			return ret;
 		}
-		auto crs = GeoType::GetCRS(*this);
+		auto &crs = GeoType::GetCRS(*this);
 		if (crs.empty()) {
 			return ret;
 		}
-		ret += "(" + KeywordHelper::WriteQuoted(crs) + ")";
+		// If someone decides to stuff in a whole PROJJSON string, we'd like to truncate it
+		if (crs.size() > 64) {
+			auto small_crs = crs.substr(0, 64) + "...";
+			ret += "(" + KeywordHelper::WriteQuoted(small_crs) + ")";
+		} else {
+			ret += "(" + KeywordHelper::WriteQuoted(crs) + ")";
+		}
 		return ret;
 	}
 	default:
