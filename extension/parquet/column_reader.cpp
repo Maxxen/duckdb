@@ -758,25 +758,29 @@ void ColumnReader::ApplyPendingSkips(data_ptr_t define_out, data_ptr_t repeat_ou
 // Create Column Reader
 //===--------------------------------------------------------------------===//
 static unique_ptr<ColumnReader> CreateGeoReader(ParquetReader &reader, const ParquetColumnSchema &schema,
-                                                ClientContext &context, const LogicalTypeId &target) {
+                                                ClientContext &context, const LogicalType &target) {
 	// TODO: Handle GEOGRAPHY
-
 	auto func_name = "";
-	if (target == LogicalTypeId::GEOMETRY) {
+	switch (target.id()) {
+	case LogicalTypeId::GEOMETRY:
 		func_name = "st_geomfromwkb";
-	} else {
+		break;
+	case LogicalTypeId::GEOGRAPHY:
+		func_name = "st_geogfromwkb";
+		break;
+	default:
 		throw NotImplementedException("Unsupported target type for geometry reader");
 	}
 
 	// Lookup the conversion function in the catalog
 	auto &catalog = Catalog::GetSystemCatalog(context);
 	auto &func_set = catalog.GetEntry<ScalarFunctionCatalogEntry>(context, DEFAULT_SCHEMA, func_name);
-	auto func = func_set.functions.GetFunctionByArguments(context, {target});
+	auto func = func_set.functions.GetFunctionByArguments(context, {LogicalTypeId::BLOB});
 
 	// Create a callback column reader that will convert the WKB data to GEOMETRY
 	auto args = vector<unique_ptr<Expression>>();
-	args.push_back(std::move(make_uniq<BoundReferenceExpression>(target, 0)));
-	auto expr = make_uniq<BoundFunctionExpression>(func.return_type, func, std::move(args), nullptr);
+	args.push_back(std::move(make_uniq<BoundReferenceExpression>(LogicalTypeId::BLOB, 0)));
+	auto expr = make_uniq<BoundFunctionExpression>(target, func, std::move(args), nullptr);
 
 	// Create a child reader
 	auto child_reader = make_uniq<StringColumnReader>(reader, schema);
@@ -804,7 +808,7 @@ static unique_ptr<ColumnReader> CreateDecimalReader(ParquetReader &reader, const
 unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const ParquetColumnSchema &schema,
                                                     ClientContext &context) {
 	if (schema.schema_type == ParquetColumnSchemaType::GEOMETRY) {
-		return CreateGeoReader(reader, schema.children[0], context, LogicalTypeId::GEOMETRY);
+		return CreateGeoReader(reader, schema.children[0], context, schema.type);
 	}
 
 	switch (schema.type.id()) {

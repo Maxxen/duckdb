@@ -226,11 +226,9 @@ LogicalType ParquetReader::DeriveLogicalType(const SchemaElement &s_ele, Parquet
 			}
 			return LogicalType::TIME;
 		} else if (s_ele.logicalType.__isset.GEOMETRY) {
-			// TODO: Handle CRS
 			return LogicalType::GEOMETRY(s_ele.logicalType.GEOMETRY.crs);
 		} else if (s_ele.logicalType.__isset.GEOGRAPHY) {
-			// TODO: Handle CRS, return GEOGRAPHY type
-			return LogicalType::GEOMETRY(s_ele.logicalType.GEOGRAPHY.crs);
+			return LogicalType::GEOGRAPHY(s_ele.logicalType.GEOGRAPHY.crs);
 		}
 	}
 	if (s_ele.__isset.converted_type) {
@@ -591,8 +589,9 @@ ParquetColumnSchema ParquetReader::ParseSchemaRecursive(idx_t depth, idx_t max_d
 		// geoparquet types have to be at the root of the schema, and have to be present in the kv metadata.
 		// geoarrow types, although geometry columns, are structs and have chilren and are handled below.
 		if (metadata->geo_metadata && metadata->geo_metadata->IsGeometryColumn(s_ele.name) && s_ele.num_children == 0) {
+			auto &geo_col_meta = metadata->geo_metadata->GetColumnMeta().find(s_ele.name)->second;
 			auto root_schema = ParseColumnSchema(s_ele, max_define, max_repeat, this_idx, next_file_idx++);
-			return ParquetColumnSchema(std::move(root_schema), GeoParquetFileMetadata::GeometryType(),
+			return ParquetColumnSchema(std::move(root_schema), geo_col_meta.logical_type,
 			                           ParquetColumnSchemaType::GEOMETRY);
 		}
 	}

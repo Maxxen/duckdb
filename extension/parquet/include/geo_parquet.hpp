@@ -100,6 +100,9 @@ struct GeoParquetColumnMetadata {
 
 	// The crs of the geometry column (if any) in PROJJSON format
 	string projjson;
+
+	// The logical type of the column
+	LogicalType logical_type;
 };
 
 class GeoParquetColumnMetadataWriter {
@@ -126,7 +129,10 @@ public:
 	void Write(duckdb_parquet::FileMetaData &file_meta_data) const;
 
 	void FlushColumnMeta(const string &column_name, const GeoParquetColumnMetadata &meta);
-	const unordered_map<string, GeoParquetColumnMetadata> &GetColumnMeta() const;
+
+	const unordered_map<string, GeoParquetColumnMetadata> &GetColumnMeta() const {
+		return geometry_columns;
+	}
 
 	unique_ptr<ColumnReader> CreateColumnReader(ParquetReader &reader, const ParquetColumnSchema &schema,
 	                                            ClientContext &context);

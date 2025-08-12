@@ -20,5 +20,19 @@
         "description": "Returns the coordinate reference system of a geometry type",
         "example": "st_crs(geometry)",
         "type": "scalar_function_set"
+    },
+    {
+        "name": "st_geomfromwkb",
+        "parameters": "wkb",
+        "description": "Creates a GEOMETRY from a WKB (Well-Known Binary) representation",
+        "example": "st_geomfromwkb(wkb)",
+        "type": "scalar_function_set"
+    },
+    {
+        "name": "st_geogfromwkb",
+        "parameters": "ewkb",
+        "description": "Creates a GEOGRAPHY from an WKB (Well-Known Binary) representation",
+        "example": "st_geogfromewkb(ewkb)",
+        "type": "scalar_function_set"
     }
 ]

@@ -133,4 +133,32 @@ ScalarFunctionSet StCrsFun::GetFunctions() {
 	return set;
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// ST_GeomFromWKB
+//----------------------------------------------------------------------------------------------------------------------
+static void GeomFromWKBFunction(DataChunk &input, ExpressionState &state, Vector &result) {
+	UnaryExecutor::Execute<string_t, string_t>(input.data[0], result, input.size(), [&](const string_t &wkb) {
+		string_t res;
+		if (!Geometry::FromWKB(wkb, res, result, true)) {
+			throw InvalidInputException("Failed to convert WKB: %s", wkb.GetString());
+		}
+		return res;
+	});
+}
+
+ScalarFunctionSet StGeomfromwkbFun::GetFunctions() {
+	// Create the function that converts WKB to GEOMETRY
+	ScalarFunctionSet set;
+	ScalarFunction fun({LogicalType::BLOB}, LogicalType::GEOMETRY(), GeomFromWKBFunction);
+	set.AddFunction(fun);
+	return set;
+}
+
+ScalarFunctionSet StGeogfromwkbFun::GetFunctions() {
+	ScalarFunctionSet set;
+	ScalarFunction fun({LogicalType::BLOB}, LogicalType::GEOGRAPHY(), GeomFromWKBFunction);
+	set.AddFunction(fun);
+	return set;
+}
+
 } // namespace duckdb

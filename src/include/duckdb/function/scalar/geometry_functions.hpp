@@ -51,4 +51,24 @@ struct StCrsFun {
 	static ScalarFunctionSet GetFunctions();
 };
 
+struct StGeomfromwkbFun {
+	static constexpr const char *Name = "st_geomfromwkb";
+	static constexpr const char *Parameters = "wkb";
+	static constexpr const char *Description = "Creates a GEOMETRY from a WKB (Well-Known Binary) representation";
+	static constexpr const char *Example = "st_geomfromwkb(wkb)";
+	static constexpr const char *Categories = "";
+
+	static ScalarFunctionSet GetFunctions();
+};
+
+struct StGeogfromwkbFun {
+	static constexpr const char *Name = "st_geogfromwkb";
+	static constexpr const char *Parameters = "ewkb";
+	static constexpr const char *Description = "Creates a GEOGRAPHY from an WKB (Well-Known Binary) representation";
+	static constexpr const char *Example = "st_geogfromewkb(ewkb)";
+	static constexpr const char *Categories = "";
+
+	static ScalarFunctionSet GetFunctions();
+};
+
 } // namespace duckdb

@@ -171,6 +171,8 @@ void GeoParquetColumnMetadataWriter::Update(GeoParquetColumnMetadata &meta, Vect
 //------------------------------------------------------------------------------
 // GeoParquetFileMetadata
 //------------------------------------------------------------------------------
+static constexpr auto OGC_WGS84_PROJJSON =
+    R">>({"$schema":"https://proj.org/schemas/v0.7/projjson.schema.json","type":"GeographicCRS","name":"WGS 84 (CRS84)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"},{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"}]},"scope":"unknown","area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","code":"CRS84"}})>>";
 
 unique_ptr<GeoParquetFileMetadata> GeoParquetFileMetadata::TryRead(const duckdb_parquet::FileMetaData &file_meta_data,
                                                                    const ClientContext &context) {
@@ -265,6 +267,38 @@ unique_ptr<GeoParquetFileMetadata> GeoParquetFileMetadata::TryRead(const duckdb_
 						throw InvalidInputException("Geoparquet column '%s' does not have geometry types", column_name);
 					}
 					// We dont care about the geometry types for now.
+
+					// Try parse the crs
+					column.projjson = OGC_WGS84_PROJJSON; // Default to OGC:CRS84 if not specified
+
+					const auto crs_val = yyjson_obj_get(column_val, "crs");
+					if (yyjson_is_obj(crs_val)) {
+						// Print the object as a str
+						size_t crs_json_len = 0;
+						auto crs_json = yyjson_val_write_opts(crs_val, 0, nullptr, &crs_json_len, nullptr);
+						if (!crs_json) {
+							throw InvalidInputException("Geoparquet column '%s' could not read CRS", column_name);
+						}
+						column.projjson = string(crs_json, crs_json_len);
+						free(crs_json);
+					}
+
+					// Try parse the edges
+					const auto edges_val = yyjson_obj_get(column_val, "edges");
+					if (yyjson_is_str(edges_val)) {
+						auto edges_str = yyjson_get_str(edges_val);
+						if (strcmp(edges_str, "planar") == 0) {
+							column.logical_type = LogicalType::GEOMETRY(column.projjson); // Default planar geometry
+						} else if (strcmp(edges_str, "spherical") == 0) {
+							column.logical_type = LogicalType::GEOGRAPHY(column.projjson);
+						} else {
+							throw InvalidInputException("Geoparquet column '%s' has an unsupported edge type: %s",
+							                            column_name, edges_str);
+						}
+					} else {
+						column.logical_type =
+						    LogicalType::GEOMETRY(column.projjson); // Default to planar geometry if not specified
+					}
 
 					// TODO: Parse the bounding box, other metadata that might be useful.
 					// (Only encoding and geometry types are required to be present)
@@ -381,10 +415,6 @@ bool GeoParquetFileMetadata::IsGeoParquetConversionEnabled(const ClientContext &
 	}
 	if (!geoparquet_enabled.GetValue<bool>()) {
 		// Disabled by setting
-		return false;
-	}
-	if (!context.db->ExtensionIsLoaded("spatial")) {
-		// Spatial extension is not loaded, we cant convert anyway
 		return false;
 	}
 	return true;
