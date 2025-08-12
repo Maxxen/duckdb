@@ -533,6 +533,14 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 		return cost;
 	}
 
+	if (from.id() == LogicalTypeId::GEOMETRY && to.id() == LogicalTypeId::GEOMETRY) {
+		// Only allow implicit casts to and from geometries without a coordinate reference system
+		if (!GeoType::HasCRS(to) || !GeoType::HasCRS(from)) {
+			return 0;
+		}
+		return -1; // Not possible to cast geometries with different CRS
+	}
+
 	if (from.id() == to.id()) {
 		// arguments match: do nothing
 		return 0;

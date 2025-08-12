@@ -17,6 +17,13 @@ BoundCastInfo DefaultCasts::GeometryCastSwitch(BindCastInput &input, const Logic
 	switch (target.id()) {
 	case LogicalTypeId::VARCHAR:
 		return GeometryToVarcharCast;
+	case LogicalTypeId::GEOMETRY:
+		// Only cast if the target geometry type has no CRS
+		if (!GeoType::HasCRS(target) || !GeoType::HasCRS(source)) {
+			return DefaultCasts::ReinterpretCast;
+		} else {
+			return TryVectorNullCast;
+		}
 	default:
 		return TryVectorNullCast;
 	}

@@ -54,6 +54,28 @@ ScalarFunction StExtentFun::GetFunction() {
 	return fun;
 }
 
+
+static unique_ptr<FunctionData> IntersectExtentBind(ClientContext &context, ScalarFunction &bound_function,
+									   vector<unique_ptr<Expression>> &arguments) {
+	const auto lhs_has_crs = GeoType::HasCRS(arguments[0]->return_type);
+	const auto rhs_has_crs = GeoType::HasCRS(arguments[1]->return_type);
+	if (lhs_has_crs != rhs_has_crs) {
+		throw BinderException("st_intersect_extent requires both geometries to have the same CRS");
+	}
+	if (lhs_has_crs || rhs_has_crs) {
+		// If both geometries have a CRS, we need to check if they are the same
+		const auto lhs_crs = GeoType::GetCRS(arguments[0]->return_type);
+		const auto rhs_crs = GeoType::GetCRS(arguments[1]->return_type);
+		if (lhs_crs != rhs_crs) {
+			throw BinderException("st_intersect_extent requires both geometries to have the same CRS");
+		}
+	}
+
+	bound_function.arguments[0] = arguments[0]->return_type;
+	bound_function.arguments[1] = arguments[1]->return_type;
+
+	return nullptr;
+}
 static void IntersectFunction(DataChunk &input, ExpressionState &state, Vector &result) {
 	BinaryExecutor::Execute<string_t, string_t, bool>(
 	    input.data[0], input.data[1], result, input.size(), [&](const string_t &a, const string_t &b) {
@@ -68,7 +90,7 @@ static void IntersectFunction(DataChunk &input, ExpressionState &state, Vector &
 
 ScalarFunction StIntersectExtentFun::GetFunction() {
 	ScalarFunction fun("st_intersect_extent", {LogicalType::GEOMETRY(), LogicalType::GEOMETRY()}, LogicalType::BOOLEAN,
-	                   IntersectFunction);
+	                   IntersectFunction, IntersectExtentBind);
 	return fun;
 }
 
