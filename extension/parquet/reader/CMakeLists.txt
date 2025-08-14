@@ -7,7 +7,8 @@ add_library_unity(
   row_number_column_reader.cpp
   string_column_reader.cpp
   struct_column_reader.cpp
-  variant_column_reader.cpp)
+  variant_column_reader.cpp
+  geo_column_reader.cpp)
 
 add_subdirectory(variant)
 

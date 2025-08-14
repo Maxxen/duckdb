@@ -21,6 +21,7 @@
 #include "reader/struct_column_reader.hpp"
 #include "reader/templated_column_reader.hpp"
 #include "reader/uuid_column_reader.hpp"
+#include "reader/geo_column_reader.hpp"
 
 #include "zstd.h"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
@@ -925,10 +926,10 @@ unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const
 		break;
 	case LogicalTypeId::GEOMETRY:
 		// TODO: Verify valid WKB
-		return make_uniq<StringColumnReader>(reader, schema);
+		return make_uniq<GeoColumnReader>(reader, schema);
 	case LogicalTypeId::GEOGRAPHY:
 		// TODO: Verify valid WKB
-		return make_uniq<StringColumnReader>(reader, schema);
+		return make_uniq<GeoColumnReader>(reader, schema);
 	case LogicalTypeId::UUID:
 		return make_uniq<UUIDColumnReader>(reader, schema);
 	case LogicalTypeId::INTERVAL:

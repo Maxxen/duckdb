@@ -22,10 +22,17 @@ public:
 	idx_t fixed_width_string_length;
 
 public:
-	static void VerifyString(const char *str_data, uint32_t str_len, const bool isVarchar);
-	void VerifyString(const char *str_data, uint32_t str_len);
-
+	static void VerifyString(const char *str_data, uint32_t str_len);
 	static void ReferenceBlock(Vector &result, shared_ptr<ResizeableBuffer> &block);
+
+	virtual void Verify(const char *str_data, uint32_t str_len);
+
+	// Verify, reference or transform the string data if necessary. Return true if we need to reference the block
+	virtual bool FromRawData(const char *data, uint32_t length, string_t &result) {
+		Verify(data, length);
+		result = string_t(data, length);
+		return true;
+	}
 
 protected:
 	void Plain(ByteBuffer &plain_data, uint8_t *defines, idx_t num_values, idx_t result_offset,
@@ -43,35 +50,6 @@ protected:
 	}
 	bool SupportsDirectSelect() const override {
 		return true;
-	}
-};
-
-struct StringParquetValueConversion {
-	template <bool CHECKED>
-	static string_t PlainRead(ByteBuffer &plain_data, ColumnReader &reader) {
-		auto &scr = reader.Cast<StringColumnReader>();
-		uint32_t str_len =
-		    scr.fixed_width_string_length == 0 ? plain_data.read<uint32_t>() : scr.fixed_width_string_length;
-		plain_data.available(str_len);
-		auto plain_str = char_ptr_cast(plain_data.ptr);
-		scr.VerifyString(plain_str, str_len);
-		auto ret_str = string_t(plain_str, str_len);
-		plain_data.inc(str_len);
-		return ret_str;
-	}
-	template <bool CHECKED>
-	static void PlainSkip(ByteBuffer &plain_data, ColumnReader &reader) {
-		auto &scr = reader.Cast<StringColumnReader>();
-		uint32_t str_len =
-		    scr.fixed_width_string_length == 0 ? plain_data.read<uint32_t>() : scr.fixed_width_string_length;
-		plain_data.inc(str_len);
-	}
-	static bool PlainAvailable(const ByteBuffer &plain_data, const idx_t count) {
-		return false;
-	}
-
-	static idx_t PlainConstantSize() {
-		return 0;
 	}
 };
 

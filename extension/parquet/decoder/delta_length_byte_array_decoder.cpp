@@ -58,7 +58,9 @@ void DeltaLengthByteArrayDecoder::ReadInternal(shared_ptr<ResizeableBuffer> &blo
 		}
 	}
 
-	const auto start_ptr = block.ptr;
+	auto &string_reader = reader.Cast<StringColumnReader>();
+	bool needs_reference = false;
+
 	for (idx_t row_idx = 0; row_idx < read_count; row_idx++) {
 		const auto result_idx = result_offset + row_idx;
 		if (HAS_DEFINES) {
@@ -74,14 +76,21 @@ void DeltaLengthByteArrayDecoder::ReadInternal(shared_ptr<ResizeableBuffer> &blo
 			}
 		}
 		const auto &str_len = length_data[length_idx++];
-		result_data[result_idx] = string_t(char_ptr_cast(block.ptr), str_len);
+
+		string_t result_str;
+		if (string_reader.FromRawData(char_ptr_cast(block.ptr), str_len, result_str)) {
+			needs_reference = true;
+			result_data[result_idx] = result_str;
+		} else {
+			StringVector::AddString(result, result_str);
+		}
+
 		block.unsafe_inc(str_len);
 	}
 
-	// Verify that the strings we read are valid UTF-8
-	reader.Cast<StringColumnReader>().VerifyString(char_ptr_cast(start_ptr), block.ptr - start_ptr);
-
-	StringColumnReader::ReferenceBlock(result, block_ref);
+	if (needs_reference) {
+		StringColumnReader::ReferenceBlock(result, block_ref);
+	}
 }
 
 void DeltaLengthByteArrayDecoder::Skip(uint8_t *defines, idx_t skip_count) {

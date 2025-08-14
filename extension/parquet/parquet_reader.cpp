@@ -587,12 +587,20 @@ ParquetColumnSchema ParquetReader::ParseSchemaRecursive(idx_t depth, idx_t max_d
 	// Check for geoparquet spatial types
 	if (depth == 1) {
 		// geoparquet types have to be at the root of the schema, and have to be present in the kv metadata.
-		// geoarrow types, although geometry columns, are structs and have chilren and are handled below.
+		// geoarrow types, although geometry columns, are structs and have children and are handled below.
 		if (metadata->geo_metadata && metadata->geo_metadata->IsGeometryColumn(s_ele.name) && s_ele.num_children == 0) {
 			auto &geo_col_meta = metadata->geo_metadata->GetColumnMeta().find(s_ele.name)->second;
-			auto root_schema = ParseColumnSchema(s_ele, max_define, max_repeat, this_idx, next_file_idx++);
-			return ParquetColumnSchema(std::move(root_schema), geo_col_meta.logical_type,
-			                           ParquetColumnSchemaType::GEOMETRY);
+			if (geo_col_meta.geometry_encoding == GeoParquetColumnEncoding::WKB) {
+				// Take the type from the geoparquet metadata, not the schema element
+				// This is because old-style geoparquet files do not have the logical type set, instead they are just
+				// raw blobs, because they were made before the geometry/geography logical type was introduced to the
+				// spec.
+				ParquetColumnSchema schema(max_define, max_repeat, this_idx, next_file_idx++);
+				schema.name = s_ele.name;
+				schema.parquet_type = s_ele.type;
+				schema.type = geo_col_meta.logical_type;
+				return schema;
+			}
 		}
 	}
 
