@@ -273,17 +273,33 @@ void GeoParquetFileMetadata::Write(duckdb_parquet::FileMetaData &file_meta_data)
 		yyjson_mut_arr_add_real(doc, bbox, column.second.bbox.max_x);
 		yyjson_mut_arr_add_real(doc, bbox, column.second.bbox.max_y);
 
-		// If the CRS is present, add it
+		yyjson_doc *crs_doc = nullptr;
+
+		// Try to get the CRS from the settings
 		if (!column.second.projjson.empty()) {
-			const auto crs_doc = yyjson_read(column.second.projjson.c_str(), column.second.projjson.size(), 0);
-			if (!crs_doc) {
-				yyjson_mut_doc_free(doc);
-				throw InvalidInputException("Failed to parse CRS JSON");
+			crs_doc = yyjson_read(column.second.projjson.c_str(), column.second.projjson.size(), 0);
+		}
+
+		// Try to get it from the logical type
+		if (!crs_doc) {
+			if (GeoType::HasCRS(column.second.logical_type)) {
+				auto &crs = column.second.projjson;
+				crs_doc = yyjson_read(crs.c_str(), crs.size(), 0);
+				if (!crs_doc) {
+					// TODO: Use the `spatial` extension to attempt to convert the CRS to PROJJSON format automatically
+					yyjson_mut_doc_free(doc);
+					throw InvalidInputException("GeoParquet requires the CRS field to be in PROJJSON format!");
+				}
 			}
+		}
+
+		if (crs_doc) {
 			const auto crs_root = yyjson_doc_get_root(crs_doc);
 			const auto crs_val = yyjson_val_mut_copy(doc, crs_root);
 			const auto crs_key = yyjson_mut_strcpy(doc, "projjson");
 			yyjson_mut_obj_add(column_json, crs_key, crs_val);
+
+			// Free the CRS document
 			yyjson_doc_free(crs_doc);
 		}
 	}
