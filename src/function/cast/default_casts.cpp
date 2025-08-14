@@ -155,6 +155,7 @@ BoundCastInfo DefaultCasts::GetDefaultCastFunction(BindCastInput &input, const L
 	case LogicalTypeId::ENUM:
 		return EnumCastSwitch(input, source, target);
 	case LogicalTypeId::ARRAY:
+		return ArrayCastSwitch(input, source, target);
 	case LogicalTypeId::GEOMETRY:
 	case LogicalTypeId::GEOGRAPHY:
 		return GeometryCastSwitch(input, source, target);
