@@ -109,6 +109,8 @@ bool ParquetWriter::TryGetParquetType(const LogicalType &duckdb_type, optional_p
 	case LogicalTypeId::ENUM:
 	case LogicalTypeId::BLOB:
 	case LogicalTypeId::VARCHAR:
+	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		parquet_type = Type::BYTE_ARRAY;
 		break;
 	case LogicalTypeId::TIME:
@@ -278,6 +280,24 @@ void ParquetWriter::SetSchemaProperties(const LogicalType &duckdb_type, duckdb_p
 		schema_ele.logicalType.DECIMAL.precision = schema_ele.precision;
 		schema_ele.logicalType.DECIMAL.scale = schema_ele.scale;
 		break;
+	case LogicalTypeId::GEOMETRY:
+		schema_ele.__isset.logicalType = true;
+		schema_ele.logicalType.__isset.GEOMETRY = true;
+		if (GeoType::HasCRS(duckdb_type)) {
+			// TODO: Write CRS better
+			schema_ele.logicalType.GEOMETRY.crs = GeoType::GetCRS(duckdb_type);
+			schema_ele.logicalType.GEOMETRY.__isset.crs = true;
+		}
+		break;
+	case LogicalTypeId::GEOGRAPHY:
+		schema_ele.__isset.logicalType = true;
+		schema_ele.logicalType.__isset.GEOGRAPHY = true;
+		if (GeoType::HasCRS(duckdb_type)) {
+			// TODO: Write CRS better
+			schema_ele.logicalType.GEOGRAPHY.crs = GeoType::GetCRS(duckdb_type);
+			schema_ele.logicalType.GEOGRAPHY.__isset.crs = true;
+		}
+		break;
 	default:
 		break;
 	}
@@ -344,14 +364,16 @@ ParquetWriter::ParquetWriter(ClientContext &context, FileSystem &fs, string file
                              shared_ptr<ParquetEncryptionConfig> encryption_config_p,
                              optional_idx dictionary_size_limit_p, idx_t string_dictionary_page_size_limit_p,
                              bool enable_bloom_filters_p, double bloom_filter_false_positive_ratio_p,
-                             int64_t compression_level_p, bool debug_use_openssl_p, ParquetVersion parquet_version)
+                             int64_t compression_level_p, bool debug_use_openssl_p, ParquetVersion parquet_version,
+                             GeoParquetVersion geoparquet_version)
     : context(context), file_name(std::move(file_name_p)), sql_types(std::move(types_p)),
       column_names(std::move(names_p)), codec(codec), field_ids(std::move(field_ids_p)),
       encryption_config(std::move(encryption_config_p)), dictionary_size_limit(dictionary_size_limit_p),
       string_dictionary_page_size_limit(string_dictionary_page_size_limit_p),
       enable_bloom_filters(enable_bloom_filters_p),
       bloom_filter_false_positive_ratio(bloom_filter_false_positive_ratio_p), compression_level(compression_level_p),
-      debug_use_openssl(debug_use_openssl_p), parquet_version(parquet_version), total_written(0), num_row_groups(0) {
+      debug_use_openssl(debug_use_openssl_p), parquet_version(parquet_version), geoparquet_version(geoparquet_version),
+      total_written(0), num_row_groups(0) {
 
 	// initialize the file writer
 	writer = make_uniq<BufferedFileWriter>(fs, file_name.c_str(),
@@ -403,6 +425,11 @@ ParquetWriter::ParquetWriter(ClientContext &context, FileSystem &fs, string file
 
 	auto &unique_names = column_names;
 	VerifyUniqueNames(unique_names);
+
+	// If this is a GeoParquet file, we need to initialize the geoparquet metadata
+	if (geoparquet_version != GeoParquetVersion::NONE) {
+		geoparquet_data = make_uniq<GeoParquetFileMetadata>(geoparquet_version);
+	}
 
 	// construct the child schemas
 	for (idx_t i = 0; i < sql_types.size(); i++) {
@@ -914,9 +941,7 @@ void ParquetWriter::Finalize() {
 }
 
 GeoParquetFileMetadata &ParquetWriter::GetGeoParquetData() {
-	if (!geoparquet_data) {
-		geoparquet_data = make_uniq<GeoParquetFileMetadata>();
-	}
+	D_ASSERT(geoparquet_data);
 	return *geoparquet_data;
 }
 

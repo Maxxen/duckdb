@@ -201,6 +201,21 @@ void ParquetMetaDataOperatorData::BindMetaData(vector<LogicalType> &return_types
 
 	names.emplace_back("row_group_compressed_bytes");
 	return_types.emplace_back(LogicalType::BIGINT);
+
+	names.emplace_back("geo_bbox");
+	return_types.emplace_back(LogicalType::STRUCT({
+	    {"xmin", LogicalType::DOUBLE},
+	    {"xmax", LogicalType::DOUBLE},
+	    {"ymin", LogicalType::DOUBLE},
+	    {"ymax", LogicalType::DOUBLE},
+	    {"zmin", LogicalType::DOUBLE},
+	    {"zmax", LogicalType::DOUBLE},
+	    {"mmin", LogicalType::DOUBLE},
+	    {"mmax", LogicalType::DOUBLE},
+	}));
+
+	names.emplace_back("geo_types");
+	return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
 }
 
 static Value ConvertParquetStats(const LogicalType &type, const ParquetColumnSchema &schema_ele, bool stats_is_set,
@@ -209,6 +224,88 @@ static Value ConvertParquetStats(const LogicalType &type, const ParquetColumnSch
 		return Value(LogicalType::VARCHAR);
 	}
 	return ParquetStatisticsUtils::ConvertValue(type, schema_ele, stats).DefaultCastAs(LogicalType::VARCHAR);
+}
+
+static Value ConvertParquetGeoStatsBBOX(const duckdb_parquet::GeospatialStatistics &stats) {
+	if (!stats.__isset.bbox) {
+		return Value(LogicalType::STRUCT({
+		    {"xmin", LogicalType::DOUBLE},
+		    {"xmax", LogicalType::DOUBLE},
+		    {"ymin", LogicalType::DOUBLE},
+		    {"ymax", LogicalType::DOUBLE},
+		    {"zmin", LogicalType::DOUBLE},
+		    {"zmax", LogicalType::DOUBLE},
+		    {"mmin", LogicalType::DOUBLE},
+		    {"mmax", LogicalType::DOUBLE},
+		}));
+	}
+
+	return Value::STRUCT({
+	    {"xmin", Value::DOUBLE(stats.bbox.xmin)},
+	    {"xmax", Value::DOUBLE(stats.bbox.xmax)},
+	    {"ymin", Value::DOUBLE(stats.bbox.ymin)},
+	    {"ymax", Value::DOUBLE(stats.bbox.ymax)},
+	    {"zmin", stats.bbox.__isset.zmin ? Value::DOUBLE(stats.bbox.zmin) : Value(LogicalTypeId::DOUBLE)},
+	    {"zmax", stats.bbox.__isset.zmax ? Value::DOUBLE(stats.bbox.zmax) : Value(LogicalTypeId::DOUBLE)},
+	    {"mmin", stats.bbox.__isset.mmin ? Value::DOUBLE(stats.bbox.mmin) : Value(LogicalTypeId::DOUBLE)},
+	    {"mmax", stats.bbox.__isset.mmax ? Value::DOUBLE(stats.bbox.mmax) : Value(LogicalTypeId::DOUBLE)},
+	});
+}
+
+static Value ConvertParquetGeoStatsTypes(const duckdb_parquet::GeospatialStatistics &stats) {
+	if (!stats.__isset.geospatial_types) {
+		return Value(LogicalType::LIST(LogicalType::VARCHAR));
+	}
+	vector<Value> types;
+	types.reserve(stats.geospatial_types.size());
+	for (auto &type : stats.geospatial_types) {
+		string result;
+		switch (type % 1000) {
+		case 1:
+			result = "POINT";
+			break;
+		case 2:
+			result = "LINESTRING";
+			break;
+		case 3:
+			result = "POLYGON";
+			break;
+		case 4:
+			result = "MULTIPOINT";
+			break;
+		case 5:
+			result = "MULTILINESTRING";
+			break;
+		case 6:
+			result = "MULTIPOLYGON";
+			break;
+		case 7:
+			result = "GEOMETRYCOLLECTION";
+			break;
+		default:
+			result = "UNKNOWN";
+			break;
+		}
+		switch (type / 1000) {
+		case 0:
+			result += "_XY";
+			break;
+		case 1:
+			result += "_XYZ";
+			break;
+		case 2:
+			result += "_XYM";
+			break;
+		case 3:
+			result += "_XYZM";
+			break;
+		default:
+			result += "_UNKNOWN";
+			break;
+		}
+		types.emplace_back(result);
+	}
+	return Value::LIST(LogicalType::VARCHAR, std::move(types));
 }
 
 void ParquetMetaDataOperatorData::LoadRowGroupMetadata(ClientContext &context, const vector<LogicalType> &return_types,
@@ -355,6 +452,12 @@ void ParquetMetaDataOperatorData::LoadRowGroupMetadata(ClientContext &context, c
 			current_chunk.SetValue(
 			    28, count,
 			    ParquetElementBigint(row_group.__isset.total_compressed_size, row_group.__isset.total_compressed_size));
+
+			// geo_stats_bbox, LogicalType::STRUCT(...)
+			current_chunk.SetValue(29, count, ConvertParquetGeoStatsBBOX(col_meta.geospatial_statistics));
+
+			// geo_stats_types, LogicalType::LIST(LogicalType::VARCHAR)
+			current_chunk.SetValue(30, count, ConvertParquetGeoStatsTypes(col_meta.geospatial_statistics));
 
 			count++;
 			if (count >= STANDARD_VECTOR_SIZE) {

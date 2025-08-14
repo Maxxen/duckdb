@@ -40,36 +40,6 @@ struct WKBGeometryTypes {
 	static const char *ToString(WKBGeometryType type);
 };
 
-struct GeometryBounds {
-	double min_x = NumericLimits<double>::Maximum();
-	double max_x = NumericLimits<double>::Minimum();
-	double min_y = NumericLimits<double>::Maximum();
-	double max_y = NumericLimits<double>::Minimum();
-
-	GeometryBounds() = default;
-
-	void Combine(const GeometryBounds &other) {
-		min_x = std::min(min_x, other.min_x);
-		max_x = std::max(max_x, other.max_x);
-		min_y = std::min(min_y, other.min_y);
-		max_y = std::max(max_y, other.max_y);
-	}
-
-	void Combine(const double &x, const double &y) {
-		min_x = std::min(min_x, x);
-		max_x = std::max(max_x, x);
-		min_y = std::min(min_y, y);
-		max_y = std::max(max_y, y);
-	}
-
-	void Combine(const double &min_x, const double &max_x, const double &min_y, const double &max_y) {
-		this->min_x = std::min(this->min_x, min_x);
-		this->max_x = std::max(this->max_x, max_x);
-		this->min_y = std::min(this->min_y, min_y);
-		this->max_y = std::max(this->max_y, max_y);
-	}
-};
-
 //------------------------------------------------------------------------------
 // GeoParquetMetadata
 //------------------------------------------------------------------------------
@@ -96,7 +66,7 @@ struct GeoParquetColumnMetadata {
 	set<WKBGeometryType> geometry_types;
 
 	// The bounds of the geometry column
-	GeometryBounds bbox;
+	GeometryExtent bbox = GeometryExtent::Empty();
 
 	// The crs of the geometry column (if any) in PROJJSON format
 	string projjson;
@@ -105,47 +75,35 @@ struct GeoParquetColumnMetadata {
 	LogicalType logical_type;
 };
 
-class GeoParquetColumnMetadataWriter {
-	unique_ptr<ExpressionExecutor> executor;
-	DataChunk input_chunk;
-	DataChunk result_chunk;
-
-	unique_ptr<Expression> type_expr;
-	unique_ptr<Expression> flag_expr;
-	unique_ptr<Expression> bbox_expr;
-
-public:
-	explicit GeoParquetColumnMetadataWriter(ClientContext &context);
-	void Update(GeoParquetColumnMetadata &meta, Vector &vector, idx_t count);
+enum class GeoParquetVersion : uint8_t {
+	NONE = 0,   //! No GeoParquet metadata, write geometries as normal Parquet geometry columns
+	V100 = 100, //! GeoParquet v1.0
+	V110 = 110, //! GeoParquet v1.1
 };
 
 class GeoParquetFileMetadata {
 public:
-	// Try to read GeoParquet metadata. Returns nullptr if not found, invalid or the required spatial extension is not
-	// available.
+	// Try to read GeoParquet metadata. Returns nullptr if not found, invalid or disabled by setting.
+	explicit GeoParquetFileMetadata(GeoParquetVersion version);
 
 	static unique_ptr<GeoParquetFileMetadata> TryRead(const duckdb_parquet::FileMetaData &file_meta_data,
 	                                                  const ClientContext &context);
 	void Write(duckdb_parquet::FileMetaData &file_meta_data) const;
 
-	void FlushColumnMeta(const string &column_name, const GeoParquetColumnMetadata &meta);
-
 	const unordered_map<string, GeoParquetColumnMetadata> &GetColumnMeta() const {
 		return geometry_columns;
 	}
 
-	unique_ptr<ColumnReader> CreateColumnReader(ParquetReader &reader, const ParquetColumnSchema &schema,
-	                                            ClientContext &context);
-
 	bool IsGeometryColumn(const string &column_name) const;
-	void RegisterGeometryColumn(const string &column_name);
+
+	void AddGeoParquetStats(const string &column_name, const LogicalType &type,
+	                        const duckdb_parquet::GeospatialStatistics &stats);
 
 	static bool IsGeoParquetConversionEnabled(const ClientContext &context);
-	static LogicalType GeometryType();
 
 private:
 	mutex write_lock;
-	string version = "1.1.0";
+	GeoParquetVersion version;
 	string primary_geometry_column;
 	unordered_map<string, GeoParquetColumnMetadata> geometry_columns;
 };

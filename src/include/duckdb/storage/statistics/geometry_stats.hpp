@@ -162,6 +162,20 @@ public:
 		}
 	}
 
+	template <class CALLBACK>
+	void Scan(CALLBACK &&callback) const {
+		for (idx_t i = 0; i < 4; i++) {
+			if (bits[i] == 0) {
+				continue;
+			}
+			for (uint32_t j = 0; j < sizeof(uint32_t) * 8; j++) {
+				if ((bits[i] & (1U << j)) != 0) {
+					callback(static_cast<GeometryType>(j), static_cast<VertexType>(i));
+				}
+			}
+		}
+	}
+
 private:
 	friend struct GeometryStats;
 	uint32_t bits[4];

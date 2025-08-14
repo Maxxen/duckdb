@@ -298,6 +298,25 @@ void PrimitiveColumnWriter::SetParquetStatistics(PrimitiveColumnWriterState &sta
 		column_chunk.meta_data.statistics.__isset.distinct_count = true;
 		column_chunk.meta_data.__isset.statistics = true;
 	}
+
+	if (state.stats_state->HasGeoStats()) {
+		column_chunk.meta_data.__isset.geospatial_statistics = true;
+		state.stats_state->WriteGeoStats(column_chunk.meta_data.geospatial_statistics);
+
+		// Is this a GeoParquet file?
+		switch (writer.GetGeoParquetVersion()) {
+		case GeoParquetVersion::V100:
+		case GeoParquetVersion::V110: {
+			// Add the geospatial statistics to the extra GeoParquet metadata
+			auto &geoparquet_data = writer.GetGeoParquetData();
+			geoparquet_data.AddGeoParquetStats(column_schema.name, column_schema.type,
+			                                   column_chunk.meta_data.geospatial_statistics);
+		}
+		default:
+			break;
+		}
+	}
+
 	for (const auto &write_info : state.write_info) {
 		// only care about data page encodings, data_page_header.encoding is meaningless for dict
 		if (write_info.page_header.type != PageType::DATA_PAGE &&

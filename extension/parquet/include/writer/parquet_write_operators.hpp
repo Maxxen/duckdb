@@ -108,6 +108,56 @@ struct ParquetTimestampSOperator : public ParquetCastOperator {
 	}
 };
 
+struct ParquetBaseGeoOperator : public BaseParquetOperator {
+	template <class SRC, class TGT>
+	static TGT Operation(SRC input) {
+		return input;
+	}
+
+	template <class SRC, class TGT>
+	static void HandleStats(ColumnWriterStatistics *stats, TGT target_value) {
+		auto &geo_stats = stats->Cast<GeoStatisticsState>();
+		geo_stats.Update(target_value);
+	}
+
+	template <class SRC, class TGT>
+	static void WriteToStream(const TGT &target_value, WriteStream &ser) {
+		ser.Write<uint32_t>(target_value.GetSize());
+		ser.WriteData(const_data_ptr_cast(target_value.GetData()), target_value.GetSize());
+	}
+
+	template <class SRC, class TGT>
+	static idx_t WriteSize(const TGT &target_value) {
+		return sizeof(uint32_t) + target_value.GetSize();
+	}
+
+	template <class SRC, class TGT>
+	static uint64_t XXHash64(const TGT &target_value) {
+		return duckdb_zstd::XXH64(target_value.GetData(), target_value.GetSize(), 0);
+	}
+
+	template <class SRC, class TGT>
+	static idx_t GetRowSize(const Vector &vector, idx_t index) {
+		// This needs to add the 4 bytes (just like WriteSize) otherwise we underestimate and we have to realloc
+		// This seriously harms performance, mostly by making it very inconsistent (see internal issue #4990)
+		return sizeof(uint32_t) + FlatVector::GetData<string_t>(vector)[index].GetSize();
+	}
+};
+
+struct ParquetGeometryOperator : public ParquetBaseGeoOperator {
+	template <class SRC, class TGT>
+	static unique_ptr<ColumnWriterStatistics> InitializeStats() {
+		return make_uniq<GeoStatisticsState>(LogicalTypeId::GEOMETRY);
+	}
+};
+
+struct ParquetGeographyOperator : public ParquetBaseGeoOperator {
+	template <class SRC, class TGT>
+	static unique_ptr<ColumnWriterStatistics> InitializeStats() {
+		return make_uniq<GeoStatisticsState>(LogicalTypeId::GEOGRAPHY);
+	}
+};
+
 struct ParquetBaseStringOperator : public BaseParquetOperator {
 	template <class SRC, class TGT>
 	static TGT Operation(SRC input) {

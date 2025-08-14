@@ -238,6 +238,9 @@ struct ParquetWriteBindData : public TableFunctionData {
 
 	//! Which encodings to include when writing
 	ParquetVersion parquet_version = ParquetVersion::V1;
+
+	//! Which geo-parquet version to use when writing
+	GeoParquetVersion geoparquet_version = GeoParquetVersion::NONE;
 };
 
 struct ParquetWriteGlobalState : public GlobalFunctionData {
@@ -402,6 +405,17 @@ static unique_ptr<FunctionData> ParquetWriteBind(ClientContext &context, CopyFun
 			} else {
 				throw BinderException("Expected parquet_version 'V1' or 'V2'");
 			}
+		} else if (loption == "geoparquet_version") {
+			const auto roption = StringUtil::Upper(option.second[0].ToString());
+			if (roption == "NONE") {
+				bind_data->geoparquet_version = GeoParquetVersion::NONE;
+			} else if (roption == "V100") {
+				bind_data->geoparquet_version = GeoParquetVersion::V100;
+			} else if (roption == "V110") {
+				bind_data->geoparquet_version = GeoParquetVersion::V110;
+			} else {
+				throw BinderException("Expected geoparquet_version 'NONE', 'V100' or 'V110'");
+			}
 		} else {
 			throw NotImplementedException("Unrecognized option for PARQUET: %s", option.first.c_str());
 		}
@@ -433,7 +447,8 @@ static unique_ptr<GlobalFunctionData> ParquetWriteInitializeGlobal(ClientContext
 	    parquet_bind.field_ids.Copy(), parquet_bind.kv_metadata, parquet_bind.encryption_config,
 	    parquet_bind.dictionary_size_limit, parquet_bind.string_dictionary_page_size_limit,
 	    parquet_bind.enable_bloom_filters, parquet_bind.bloom_filter_false_positive_ratio,
-	    parquet_bind.compression_level, parquet_bind.debug_use_openssl, parquet_bind.parquet_version);
+	    parquet_bind.compression_level, parquet_bind.debug_use_openssl, parquet_bind.parquet_version,
+	    parquet_bind.geoparquet_version);
 	return std::move(global_state);
 }
 
@@ -602,6 +617,34 @@ ParquetVersion EnumUtil::FromString<ParquetVersion>(const char *value) {
 	throw NotImplementedException(StringUtil::Format("Enum value: '%s' not implemented", value));
 }
 
+template <>
+const char *EnumUtil::ToChars<GeoParquetVersion>(GeoParquetVersion value) {
+	switch (value) {
+	case GeoParquetVersion::NONE:
+		return "NONE";
+	case GeoParquetVersion::V100:
+		return "V100";
+	case GeoParquetVersion::V110:
+		return "V110";
+	default:
+		throw NotImplementedException(StringUtil::Format("Enum value: '%s' not implemented", value));
+	}
+}
+
+template <>
+GeoParquetVersion EnumUtil::FromString<GeoParquetVersion>(const char *value) {
+	if (StringUtil::Equals(value, "NONE")) {
+		return GeoParquetVersion::NONE;
+	}
+	if (StringUtil::Equals(value, "V100")) {
+		return GeoParquetVersion::V100;
+	}
+	if (StringUtil::Equals(value, "V110")) {
+		return GeoParquetVersion::V110;
+	}
+	throw NotImplementedException(StringUtil::Format("Enum value: '%s' not implemented", value));
+}
+
 static optional_idx SerializeCompressionLevel(const int64_t compression_level) {
 	return compression_level < 0 ? NumericLimits<idx_t>::Maximum() - NumericCast<idx_t>(AbsValue(compression_level))
 	                             : NumericCast<idx_t>(compression_level);
@@ -639,7 +682,7 @@ static void ParquetCopySerialize(Serializer &serializer, const FunctionData &bin
 	// We have to std::move them, otherwise MSVC will complain that it's not a "const T &&"
 	const auto compression_level = SerializeCompressionLevel(bind_data.compression_level);
 	D_ASSERT(DeserializeCompressionLevel(compression_level) == bind_data.compression_level);
-	ParquetWriteBindData default_value;
+	const ParquetWriteBindData default_value;
 	serializer.WritePropertyWithDefault(109, "compression_level", compression_level);
 	serializer.WritePropertyWithDefault(110, "row_groups_per_file", bind_data.row_groups_per_file,
 	                                    default_value.row_groups_per_file);
@@ -655,6 +698,8 @@ static void ParquetCopySerialize(Serializer &serializer, const FunctionData &bin
 	serializer.WritePropertyWithDefault(115, "string_dictionary_page_size_limit",
 	                                    bind_data.string_dictionary_page_size_limit,
 	                                    default_value.string_dictionary_page_size_limit);
+	serializer.WritePropertyWithDefault(116, "geoparquet_version", bind_data.geoparquet_version,
+	                                    default_value.geoparquet_version);
 }
 
 static unique_ptr<FunctionData> ParquetCopyDeserialize(Deserializer &deserializer, CopyFunction &function) {
@@ -674,7 +719,7 @@ static unique_ptr<FunctionData> ParquetCopyDeserialize(Deserializer &deserialize
 	deserializer.ReadPropertyWithDefault<optional_idx>(109, "compression_level", compression_level);
 	data->compression_level = DeserializeCompressionLevel(compression_level);
 	D_ASSERT(SerializeCompressionLevel(data->compression_level) == compression_level);
-	ParquetWriteBindData default_value;
+	const ParquetWriteBindData default_value;
 	data->row_groups_per_file = deserializer.ReadPropertyWithExplicitDefault<optional_idx>(
 	    110, "row_groups_per_file", default_value.row_groups_per_file);
 	data->debug_use_openssl =
@@ -687,6 +732,8 @@ static unique_ptr<FunctionData> ParquetCopyDeserialize(Deserializer &deserialize
 	    deserializer.ReadPropertyWithExplicitDefault(114, "parquet_version", default_value.parquet_version);
 	data->string_dictionary_page_size_limit = deserializer.ReadPropertyWithExplicitDefault(
 	    115, "string_dictionary_page_size_limit", default_value.string_dictionary_page_size_limit);
+	data->geoparquet_version =
+	    deserializer.ReadPropertyWithExplicitDefault(116, "geoparquet_version", default_value.geoparquet_version);
 
 	return std::move(data);
 }

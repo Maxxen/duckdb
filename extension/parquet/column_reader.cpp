@@ -780,6 +780,8 @@ static unique_ptr<ColumnReader> CreateGeoReader(ParquetReader &reader, const Par
 	// Create a callback column reader that will convert the WKB data to GEOMETRY
 	auto args = vector<unique_ptr<Expression>>();
 	args.push_back(std::move(make_uniq<BoundReferenceExpression>(LogicalTypeId::BLOB, 0)));
+
+	// Pass the actual target type here so we get the CRS information too
 	auto expr = make_uniq<BoundFunctionExpression>(target, func, std::move(args), nullptr);
 
 	// Create a child reader
@@ -807,10 +809,6 @@ static unique_ptr<ColumnReader> CreateDecimalReader(ParquetReader &reader, const
 
 unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const ParquetColumnSchema &schema,
                                                     ClientContext &context) {
-	if (schema.schema_type == ParquetColumnSchemaType::GEOMETRY) {
-		return CreateGeoReader(reader, schema.children[0], context, schema.type);
-	}
-
 	switch (schema.type.id()) {
 	case LogicalTypeId::BOOLEAN:
 		return make_uniq<BooleanColumnReader>(reader, schema);
@@ -926,7 +924,11 @@ unique_ptr<ColumnReader> ColumnReader::CreateReader(ParquetReader &reader, const
 		}
 		break;
 	case LogicalTypeId::GEOMETRY:
-		return CreateGeoReader(reader, schema, context, LogicalTypeId::GEOMETRY);
+		// TODO: Verify valid WKB
+		return make_uniq<StringColumnReader>(reader, schema);
+	case LogicalTypeId::GEOGRAPHY:
+		// TODO: Verify valid WKB
+		return make_uniq<StringColumnReader>(reader, schema);
 	case LogicalTypeId::UUID:
 		return make_uniq<UUIDColumnReader>(reader, schema);
 	case LogicalTypeId::INTERVAL:

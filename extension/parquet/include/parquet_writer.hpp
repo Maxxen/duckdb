@@ -85,7 +85,7 @@ public:
 	              shared_ptr<ParquetEncryptionConfig> encryption_config, optional_idx dictionary_size_limit,
 	              idx_t string_dictionary_page_size_limit, bool enable_bloom_filters,
 	              double bloom_filter_false_positive_ratio, int64_t compression_level, bool debug_use_openssl,
-	              ParquetVersion parquet_version);
+	              ParquetVersion parquet_version, GeoParquetVersion geoparquet_version);
 	~ParquetWriter();
 
 public:
@@ -139,6 +139,9 @@ public:
 	ParquetVersion GetParquetVersion() const {
 		return parquet_version;
 	}
+	GeoParquetVersion GetGeoParquetVersion() const {
+		return geoparquet_version;
+	}
 	const string &GetFileName() const {
 		return file_name;
 	}
@@ -175,6 +178,7 @@ private:
 	bool debug_use_openssl;
 	shared_ptr<EncryptionUtil> encryption_util;
 	ParquetVersion parquet_version;
+	GeoParquetVersion geoparquet_version;
 	vector<ParquetColumnSchema> column_schemas;
 
 	unique_ptr<BufferedFileWriter> writer;
