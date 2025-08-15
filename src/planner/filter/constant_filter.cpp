@@ -57,6 +57,9 @@ FilterPropagateResult ConstantFilter::CheckStatistics(BaseStatistics &stats) con
 		result = NumericStats::CheckZonemap(stats, comparison_type, array_ptr<const Value>(&constant, 1));
 		break;
 	case PhysicalType::VARCHAR:
+		if (stats.GetStatsType() != StatisticsType::STRING_STATS) {
+			return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+		}
 		result = StringStats::CheckZonemap(stats, comparison_type, array_ptr<const Value>(&constant, 1));
 		break;
 	default:

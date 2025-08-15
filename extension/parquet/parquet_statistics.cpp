@@ -69,6 +69,90 @@ static unique_ptr<BaseStatistics> CreateFloatingPointStats(const LogicalType &ty
 	return stats.ToUnique();
 }
 
+static unique_ptr<BaseStatistics> CreateGeoStats(const LogicalType &type, const ParquetColumnSchema &schema_ele,
+                                                 const duckdb_parquet::GeospatialStatistics &geo_stats) {
+
+	auto stats = GeometryStats::CreateUnknown(type);
+	auto &gstats = GeometryStats::GetDataUnsafe(stats);
+	if (geo_stats.__isset.bbox) {
+		auto &bbox = geo_stats.bbox;
+
+		gstats.bounds.min_x = bbox.xmin;
+		gstats.bounds.min_y = bbox.ymin;
+		gstats.bounds.max_x = bbox.xmax;
+		gstats.bounds.max_y = bbox.ymax;
+
+		if (bbox.__isset.zmin) {
+			gstats.bounds.min_z = bbox.zmin;
+		}
+		if (bbox.__isset.zmax) {
+			gstats.bounds.max_z = bbox.zmax;
+		}
+		if (bbox.__isset.mmin) {
+			gstats.bounds.min_m = bbox.mmin;
+		}
+		if (bbox.__isset.mmax) {
+			gstats.bounds.max_m = bbox.mmax;
+		}
+	}
+
+	if (geo_stats.__isset.geospatial_types && !geo_stats.geospatial_types.empty()) {
+		gstats.types.SetEmpty();
+
+		for (const auto &geometry_type : geo_stats.geospatial_types) {
+			GeometryType gtype;
+			VertexType vtype;
+
+			switch (geometry_type % 1000) {
+			case 1:
+				gtype = GeometryType::POINT;
+				break;
+			case 2:
+				gtype = GeometryType::LINESTRING;
+				break;
+			case 3:
+				gtype = GeometryType::POLYGON;
+				break;
+			case 4:
+				gtype = GeometryType::MULTIPOINT;
+				break;
+			case 5:
+				gtype = GeometryType::MULTILINESTRING;
+				break;
+			case 6:
+				gtype = GeometryType::MULTIPOLYGON;
+				break;
+			case 7:
+				gtype = GeometryType::GEOMETRYCOLLECTION;
+				break;
+			default:
+				throw InvalidInputException("Unsupported geometry type %d", geometry_type % 1000);
+			}
+			switch (geometry_type / 1000) {
+			case 0:
+				vtype = VertexType::XY;
+				break;
+			case 1:
+				vtype = VertexType::XYZ;
+				break;
+			case 2:
+				vtype = VertexType::XYM;
+				break;
+			case 3:
+				vtype = VertexType::XYZM;
+				break;
+			default:
+				throw InvalidInputException("Unsupported vertex type %d", geometry_type / 1000);
+			}
+
+			// Add the geometry type and vertex type to the stats
+			gstats.types.Add(gtype, vtype);
+		}
+	}
+
+	return stats.ToUnique();
+}
+
 Value ParquetStatisticsUtils::ConvertValue(const LogicalType &type, const ParquetColumnSchema &schema_ele,
                                            const std::string &stats) {
 	Value result;
@@ -352,13 +436,26 @@ unique_ptr<BaseStatistics> ParquetStatisticsUtils::TransformColumnStatistics(con
 		return nullptr;
 	}
 
-	// Otherwise, its a standard column with stats
-
+	// Otherwise, it's a standard column with stats
 	auto &column_chunk = columns[schema.column_index];
-	if (!column_chunk.__isset.meta_data || !column_chunk.meta_data.__isset.statistics) {
+	if (!column_chunk.__isset.meta_data) {
 		// no stats present for row group
 		return nullptr;
 	}
+
+	// Geospatial stats
+	if (type.IsSpatial()) {
+		if (!column_chunk.meta_data.__isset.geospatial_statistics) {
+			return nullptr;
+		}
+		return CreateGeoStats(type, schema, column_chunk.meta_data.geospatial_statistics);
+	}
+
+	// Normal stats
+	if (!column_chunk.meta_data.__isset.statistics) {
+		return nullptr;
+	}
+
 	auto &parquet_stats = column_chunk.meta_data.statistics;
 
 	switch (type.id()) {
