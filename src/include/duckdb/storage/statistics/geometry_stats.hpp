@@ -162,8 +162,8 @@ public:
 		}
 	}
 
-	template <class CALLBACK>
-	void Scan(CALLBACK &&callback) const {
+	template <class FUNC>
+	void Scan(FUNC &&callback) const {
 		for (idx_t i = 0; i < 4; i++) {
 			if (bits[i] == 0) {
 				continue;
