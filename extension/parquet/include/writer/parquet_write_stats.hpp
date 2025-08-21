@@ -29,6 +29,7 @@ public:
 
 	virtual bool HasGeoStats();
 	virtual void WriteGeoStats(duckdb_parquet::GeospatialStatistics &stats);
+	virtual optional_ptr<GeometryStatsData> GetGeoStats();
 
 public:
 	template <class TARGET>
@@ -255,56 +256,57 @@ class GeoStatisticsState final : public ColumnWriterStatistics {
 	static constexpr const idx_t MAX_STRING_STATISTICS_SIZE = 256;
 
 public:
-	explicit GeoStatisticsState(LogicalTypeId type)
-	    : type(type), has_stats(false), bounding_box(GeometryExtent::Empty()) {
-		types.SetEmpty();
+	explicit GeoStatisticsState(LogicalTypeId type) : type(type), has_stats(false) {
+		geo_stats.bbox = GeometryExtent::Empty();
+		geo_stats.types = GeometryTypeSet::Empty();
 	}
 
 	LogicalTypeId type;
 	bool has_stats;
-
-	GeometryExtent bounding_box;
-	GeometryTypeSet types;
+	GeometryStatsData geo_stats;
 
 public:
 	void Update(const string_t &val) {
-		auto bbox = GeometryExtent::Empty();
-
-		if (Geometry::GetExtent(val, bbox) == 0) {
-			return;
+		auto value_bbox = GeometryExtent::Empty();
+		if (Geometry::GetExtent(val, value_bbox) != 0) {
+			geo_stats.bbox.Extend(value_bbox);
 		}
-		bounding_box.Extend(bbox);
-		const auto type = Geometry::GetGeometryType(val);
-		types.Add(type.first, type.second);
 
+		const auto type = Geometry::GetGeometryType(val);
+		geo_stats.types.Add(type.first, type.second);
 		has_stats = true;
 	}
-
 	bool HasGeoStats() override {
 		return has_stats;
 	}
+	optional_ptr<GeometryStatsData> GetGeoStats() override {
+		return geo_stats;
+	}
 
 	void WriteGeoStats(duckdb_parquet::GeospatialStatistics &stats) override {
+		const auto &types = geo_stats.types;
+		const auto &bbox = geo_stats.bbox;
+
 		const auto has_z = types.Any(VertexType::XYZ) || types.Any(VertexType::XYZM);
 		const auto has_m = types.Any(VertexType::XYM) || types.Any(VertexType::XYZM);
 
 		stats.__isset.bbox = true;
-		stats.bbox.ymin = bounding_box.min_y;
-		stats.bbox.ymax = bounding_box.max_y;
-		stats.bbox.xmin = bounding_box.min_x;
-		stats.bbox.xmax = bounding_box.max_x;
+		stats.bbox.ymin = bbox.min_y;
+		stats.bbox.ymax = bbox.max_y;
+		stats.bbox.xmin = bbox.min_x;
+		stats.bbox.xmax = bbox.max_x;
 
 		if (has_z) {
 			stats.bbox.__isset.zmin = true;
 			stats.bbox.__isset.zmax = true;
-			stats.bbox.zmin = bounding_box.min_z;
-			stats.bbox.zmax = bounding_box.max_z;
+			stats.bbox.zmin = bbox.min_z;
+			stats.bbox.zmax = bbox.max_z;
 		}
 		if (has_m) {
 			stats.bbox.__isset.mmin = true;
 			stats.bbox.__isset.mmax = true;
-			stats.bbox.mmin = bounding_box.min_m;
-			stats.bbox.mmax = bounding_box.max_m;
+			stats.bbox.mmin = bbox.min_m;
+			stats.bbox.mmax = bbox.max_m;
 		}
 
 		stats.__isset.geospatial_types = true;
@@ -348,7 +350,7 @@ public:
 			default:
 				break;
 			}
-			stats.geospatial_types.push_back(std::move(value));
+			stats.geospatial_types.push_back(value);
 		});
 	}
 };

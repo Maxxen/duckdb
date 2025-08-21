@@ -18,28 +18,6 @@
 namespace duckdb {
 struct ParquetColumnSchema;
 
-enum class WKBGeometryType : uint16_t {
-	POINT = 1,
-	LINESTRING = 2,
-	POLYGON = 3,
-	MULTIPOINT = 4,
-	MULTILINESTRING = 5,
-	MULTIPOLYGON = 6,
-	GEOMETRYCOLLECTION = 7,
-
-	POINT_Z = 1001,
-	LINESTRING_Z = 1002,
-	POLYGON_Z = 1003,
-	MULTIPOINT_Z = 1004,
-	MULTILINESTRING_Z = 1005,
-	MULTIPOLYGON_Z = 1006,
-	GEOMETRYCOLLECTION_Z = 1007,
-};
-
-struct WKBGeometryTypes {
-	static const char *ToString(WKBGeometryType type);
-};
-
 //------------------------------------------------------------------------------
 // GeoParquetMetadata
 //------------------------------------------------------------------------------
@@ -62,11 +40,8 @@ struct GeoParquetColumnMetadata {
 	// The encoding of the geometry column
 	GeoParquetColumnEncoding geometry_encoding;
 
-	// The geometry types that are present in the column
-	set<WKBGeometryType> geometry_types;
-
-	// The bounds of the geometry column
-	GeometryExtent bbox = GeometryExtent::Empty();
+	// Global geoparquet statistics for this geometry column
+	GeometryStatsData stats;
 
 	// The crs of the geometry column (if any) in PROJJSON format
 	string projjson;

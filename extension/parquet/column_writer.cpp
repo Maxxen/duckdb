@@ -96,6 +96,10 @@ bool ColumnWriterStatistics::HasGeoStats() {
 	return false;
 }
 
+optional_ptr<GeometryStatsData> ColumnWriterStatistics::GetGeoStats() {
+	return nullptr;
+}
+
 void ColumnWriterStatistics::WriteGeoStats(duckdb_parquet::GeospatialStatistics &stats) {
 	D_ASSERT(false); // this should never be called
 }

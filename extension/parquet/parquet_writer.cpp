@@ -349,6 +349,10 @@ struct ColumnStatsUnifier {
 	bool can_have_nan = false;
 	bool has_nan = false;
 
+	unique_ptr<GeometryStatsData> geo_stats;
+
+	virtual void UnifyGeoStats(GeometryStatsData &data) {
+	}
 	virtual void UnifyMinMax(const string &new_min, const string &new_max) = 0;
 	virtual string StatsToString(const string &stats) = 0;
 };
@@ -655,6 +659,50 @@ struct DecimalStatsUnifier : public NumericStatsUnifier<T> {
 	}
 };
 
+struct GeoStatsUnifier : public ColumnStatsUnifier {
+
+	void UnifyGeoStats(GeometryStatsData &other) override {
+		if (geo_stats) {
+			geo_stats->bbox.Extend(other.bbox);
+			geo_stats->types.Merge(other.types);
+		} else {
+			// Make copy
+			geo_stats = make_uniq<GeometryStatsData>();
+			geo_stats->bbox = other.bbox;
+			geo_stats->types = other.types;
+		}
+	}
+
+	void UnifyMinMax(const string &new_min, const string &new_max) override {
+		// Do nothing
+	}
+
+	string StatsToString(const string &stats) override {
+		if (!geo_stats) {
+			return string();
+		}
+
+		const auto &bbox = geo_stats->bbox;
+		const auto &types = geo_stats->types;
+
+		const auto bbox_value = Value::STRUCT({{"xmin", bbox.min_x},
+		                                       {"xmax", bbox.max_x},
+		                                       {"ymin", bbox.min_y},
+		                                       {"ymax", bbox.max_y},
+		                                       {"zmin", bbox.min_z},
+		                                       {"zmax", bbox.max_z},
+		                                       {"mmin", bbox.min_m},
+		                                       {"mmax", bbox.max_m}});
+
+		vector<Value> type_strings;
+		for (const auto &type : types.Format(false)) {
+			type_strings.push_back(Value(type));
+		}
+
+		return Value::STRUCT({{"bbox", bbox_value}, {"types", Value::LIST(type_strings)}}).ToString();
+	}
+};
+
 struct BaseStringStatsUnifier : public ColumnStatsUnifier {
 	void UnifyMinMax(const string &new_min, const string &new_max) override {
 		if (!min_is_set) {
@@ -786,6 +834,9 @@ static unique_ptr<ColumnStatsUnifier> GetBaseStatsUnifier(const LogicalType &typ
 		return make_uniq<StringStatsUnifier>();
 	case LogicalTypeId::UUID:
 		return make_uniq<UUIDStatsUnifier>();
+	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
+		return make_uniq<GeoStatsUnifier>();
 	case LogicalTypeId::INTERVAL:;
 	case LogicalTypeId::ENUM:
 	default:
@@ -838,6 +889,9 @@ void ParquetWriter::FlushColumnStats(idx_t col_idx, duckdb_parquet::ColumnChunk 
 		} else {
 			stats_unifier->all_nulls_set = false;
 		}
+		if (writer_stats && writer_stats->HasGeoStats()) {
+			stats_unifier->UnifyGeoStats(*writer_stats->GetGeoStats());
+		}
 		stats_unifier->column_size_bytes += column.meta_data.total_compressed_size;
 	}
 }
@@ -865,6 +919,36 @@ void ParquetWriter::GatherWrittenStatistics() {
 		}
 		if (stats_unifier->can_have_nan) {
 			column_stats["has_nan"] = Value::BOOLEAN(stats_unifier->has_nan);
+		}
+		if (stats_unifier->geo_stats) {
+			const auto &bbox = stats_unifier->geo_stats->bbox;
+			const auto &types = stats_unifier->geo_stats->types;
+
+			column_stats["bbox.xmin"] = Value::DOUBLE(bbox.min_x);
+			column_stats["bbox.xmax"] = Value::DOUBLE(bbox.max_x);
+			column_stats["bbox.ymin"] = Value::DOUBLE(bbox.min_y);
+			column_stats["bbox.ymax"] = Value::DOUBLE(bbox.max_y);
+
+			const auto has_z = types.Any(VertexType::XYZ) || types.Any(VertexType::XYZM);
+			const auto has_m = types.Any(VertexType::XYM) || types.Any(VertexType::XYZM);
+
+			if (has_z) {
+				column_stats["bbox.zmin"] = Value::DOUBLE(bbox.min_z);
+				column_stats["bbox.zmax"] = Value::DOUBLE(bbox.max_z);
+			}
+
+			if (has_m) {
+				column_stats["bbox.mmin"] = Value::DOUBLE(bbox.min_m);
+				column_stats["bbox.mmax"] = Value::DOUBLE(bbox.max_m);
+			}
+
+			if (!types.IsEmpty()) {
+				vector<Value> type_strings;
+				for (const auto &type : types.Format(false)) {
+					type_strings.push_back(Value(type));
+				}
+				column_stats["geometry_types"] = Value::LIST(type_strings);
+			}
 		}
 		written_stats->column_statistics.insert(make_pair(stats_unifier->column_name, std::move(column_stats)));
 	}

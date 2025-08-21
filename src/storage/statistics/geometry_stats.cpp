@@ -15,7 +15,7 @@ BaseStatistics GeometryStats::CreateUnknown(LogicalType type) {
 	result.InitializeUnknown();
 
 	auto &data = GeometryStats::GetDataUnsafe(result);
-	data.bounds = GeometryExtent::Unknown();
+	data.bbox = GeometryExtent::Unknown();
 	data.types.SetUnknown();
 
 	return result;
@@ -26,7 +26,7 @@ BaseStatistics GeometryStats::CreateEmpty(LogicalType type) {
 	result.InitializeEmpty();
 
 	auto &data = GeometryStats::GetDataUnsafe(result);
-	data.bounds = GeometryExtent::Empty();
+	data.bbox = GeometryExtent::Empty();
 	data.types.SetEmpty();
 
 	return result;
@@ -49,78 +49,90 @@ const GeometryTypeSet &GeometryStats::GetTypes(const BaseStatistics &stats) {
 	return GeometryStats::GetDataUnsafe(stats).types;
 }
 
+vector<string> GeometryTypeSet::Format(bool geoparquet_case) const {
+	vector<string> result;
+	for (idx_t i = 0; i < 4; i++) {
+		if (bits[i] == 0) {
+			continue;
+		}
+
+		Scan([&](GeometryType gtype, VertexType vtype) {
+			string type_str;
+			switch (gtype) {
+			case GeometryType::POINT:
+				type_str = geoparquet_case ? "Point" : "POINT";
+				break;
+			case GeometryType::LINESTRING:
+				type_str = geoparquet_case ? "LineString" : "LINESTRING";
+				break;
+			case GeometryType::POLYGON:
+				type_str = geoparquet_case ? "Polygon" : "POLYGON";
+				break;
+			case GeometryType::MULTIPOINT:
+				type_str = geoparquet_case ? "MultiPoint" : "MULTIPOINT";
+				break;
+			case GeometryType::MULTILINESTRING:
+				type_str = geoparquet_case ? "MultiLineString" : "MULTILINESTRING";
+				break;
+			case GeometryType::MULTIPOLYGON:
+				type_str = geoparquet_case ? "MultiPolygon" : "MULTIPOLYGON";
+				break;
+			case GeometryType::GEOMETRYCOLLECTION:
+				type_str = geoparquet_case ? "GeometryCollection" : "GEOMETRYCOLLECTION";
+				break;
+			default:
+				break;
+			}
+			if (type_str.empty()) {
+				return;
+			}
+			switch (vtype) {
+			case VertexType::XY:
+				type_str += geoparquet_case ? " XY" : "_XY";
+				break;
+			case VertexType::XYZ:
+				type_str += geoparquet_case ? " XYZ" : "_XYZ";
+				break;
+			case VertexType::XYM:
+				type_str += geoparquet_case ? " XYM" : "_XYM";
+				break;
+			case VertexType::XYZM:
+				type_str += geoparquet_case ? " XYZM" : "_XYZM";
+				break;
+			default:
+				break;
+			}
+			result.push_back(std::move(type_str));
+		});
+	}
+	return result;
+}
+
 string GeometryStats::ToString(const BaseStatistics &stats) {
 	const auto &geometry_data = GeometryStats::GetDataUnsafe(stats);
 
 	string type_str = "[";
-	for (idx_t vert_idx = 0; vert_idx < 4; vert_idx++) {
-		for (idx_t geom_idx = 0; geom_idx < 8; geom_idx++) {
-			const auto bit = (1U << geom_idx);
-			const auto gtype = static_cast<GeometryType>(geom_idx);
-			const auto vtype = static_cast<VertexType>(vert_idx);
-			if (geometry_data.types.bits[vert_idx] & bit) {
-				if (type_str.back() != '[') {
-					type_str += ", ";
-				}
-				switch (gtype) {
-				case GeometryType::POINT:
-					type_str += "POINT";
-					break;
-				case GeometryType::LINESTRING:
-					type_str += "LINESTRING";
-					break;
-				case GeometryType::POLYGON:
-					type_str += "POLYGON";
-					break;
-				case GeometryType::MULTIPOINT:
-					type_str += "MULTIPOINT";
-					break;
-				case GeometryType::MULTILINESTRING:
-					type_str += "MULTILINESTRING";
-					break;
-				case GeometryType::MULTIPOLYGON:
-					type_str += "MULTIPOLYGON";
-					break;
-				case GeometryType::GEOMETRYCOLLECTION:
-					type_str += "GEOMETRYCOLLECTION";
-					break;
-				default:
-					type_str += "UNKNOWN";
-					break;
-				}
-
-				// Also add the vertex type
-				switch (vtype) {
-				case VertexType::XY:
-					type_str += "_XY";
-					break;
-				case VertexType::XYZ:
-					type_str += "_XYZ";
-					break;
-				case VertexType::XYM:
-					type_str += "_XYM";
-					break;
-				case VertexType::XYZM:
-					type_str += "_XYZM";
-					break;
-				}
-			}
+	auto types = geometry_data.types.Format(false);
+	for (idx_t i = 0; i < types.size(); i++) {
+		if (i > 0) {
+			type_str += ", ";
 		}
+		type_str += types[i];
 	}
 	type_str += "]";
 
 	const auto extent =
-	    StringUtil::Format("[XMin: %g, XMax: %g, YMin: %g, YMax: %g]", geometry_data.bounds.min_x,
-	                       geometry_data.bounds.max_x, geometry_data.bounds.min_y, geometry_data.bounds.max_y);
+	    StringUtil::Format("[XMin: %g, XMax: %g, YMin: %g, YMax: %g]", geometry_data.bbox.min_x,
+	                       geometry_data.bbox.max_x, geometry_data.bbox.min_y, geometry_data.bbox.max_y);
 	return StringUtil::Format("[Extent: %s, Types: %s]", extent, type_str);
 }
 
 void GeometryStats::Serialize(const BaseStatistics &stats, Serializer &serializer) {
 	auto &geometry_data = GeometryStats::GetDataUnsafe(stats);
-	serializer.WriteProperty(200, "xmin", geometry_data.bounds.min_x);
-	serializer.WriteProperty(201, "xmax", geometry_data.bounds.max_x);
-	serializer.WriteProperty(202, "ymin", geometry_data.bounds.min_y);
-	serializer.WriteProperty(203, "ymax", geometry_data.bounds.max_y);
+	serializer.WriteProperty(200, "xmin", geometry_data.bbox.min_x);
+	serializer.WriteProperty(201, "xmax", geometry_data.bbox.max_x);
+	serializer.WriteProperty(202, "ymin", geometry_data.bbox.min_y);
+	serializer.WriteProperty(203, "ymax", geometry_data.bbox.max_y);
 
 	serializer.WritePropertyWithDefault<uint32_t>(210, "xy_bitset", geometry_data.types.bits[0]);
 	serializer.WritePropertyWithDefault<uint32_t>(211, "xyz_bitset", geometry_data.types.bits[1]);
@@ -130,10 +142,10 @@ void GeometryStats::Serialize(const BaseStatistics &stats, Serializer &serialize
 
 void GeometryStats::Deserialize(Deserializer &deserializer, BaseStatistics &stats) {
 	auto &geometry_data = GeometryStats::GetDataUnsafe(stats);
-	geometry_data.bounds.min_x = deserializer.ReadProperty<double>(200, "xmin");
-	geometry_data.bounds.max_x = deserializer.ReadProperty<double>(201, "xmax");
-	geometry_data.bounds.min_y = deserializer.ReadProperty<double>(202, "ymin");
-	geometry_data.bounds.max_y = deserializer.ReadProperty<double>(203, "ymax");
+	geometry_data.bbox.min_x = deserializer.ReadProperty<double>(200, "xmin");
+	geometry_data.bbox.max_x = deserializer.ReadProperty<double>(201, "xmax");
+	geometry_data.bbox.min_y = deserializer.ReadProperty<double>(202, "ymin");
+	geometry_data.bbox.max_y = deserializer.ReadProperty<double>(203, "ymax");
 
 	geometry_data.types.bits[0] = deserializer.ReadPropertyWithDefault<uint32_t>(210, "xy_bitset");
 	geometry_data.types.bits[1] = deserializer.ReadPropertyWithDefault<uint32_t>(211, "xyz_bitset");
@@ -147,7 +159,7 @@ void GeometryStats::Update(BaseStatistics &stats, const string_t &value) {
 	// Add bounds to the statistics
 	GeometryExtent bounds = GeometryExtent::Empty();
 	if (Geometry::GetExtent(value, bounds) != 0) {
-		geometry_data.bounds.Extend(bounds);
+		geometry_data.bbox.Extend(bounds);
 	}
 
 	// Add geometry and vertex type to the statistics
@@ -163,7 +175,7 @@ void GeometryStats::Merge(BaseStatistics &stats, const BaseStatistics &other) {
 	auto &geometry_data = GeometryStats::GetDataUnsafe(stats);
 	auto &other_geometry_data = GeometryStats::GetDataUnsafe(other);
 
-	geometry_data.bounds.Extend(other_geometry_data.bounds);
+	geometry_data.bbox.Extend(other_geometry_data.bbox);
 	geometry_data.types.Merge(other_geometry_data.types);
 }
 
@@ -183,7 +195,7 @@ FilterPropagateResult GeometryStats::CheckZonemap(const BaseStatistics &stats, c
 		return FilterPropagateResult::FILTER_ALWAYS_FALSE;
 	}
 
-	if (geometry_data.bounds.Intersects(bounds)) {
+	if (geometry_data.bbox.Intersects(bounds)) {
 		return FilterPropagateResult::FILTER_ALWAYS_TRUE;
 	}
 

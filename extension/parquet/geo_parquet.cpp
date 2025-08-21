@@ -7,41 +7,6 @@ namespace duckdb {
 
 using namespace duckdb_yyjson; // NOLINT
 
-const char *WKBGeometryTypes::ToString(WKBGeometryType type) {
-	switch (type) {
-	case WKBGeometryType::POINT:
-		return "Point";
-	case WKBGeometryType::LINESTRING:
-		return "LineString";
-	case WKBGeometryType::POLYGON:
-		return "Polygon";
-	case WKBGeometryType::MULTIPOINT:
-		return "MultiPoint";
-	case WKBGeometryType::MULTILINESTRING:
-		return "MultiLineString";
-	case WKBGeometryType::MULTIPOLYGON:
-		return "MultiPolygon";
-	case WKBGeometryType::GEOMETRYCOLLECTION:
-		return "GeometryCollection";
-	case WKBGeometryType::POINT_Z:
-		return "Point Z";
-	case WKBGeometryType::LINESTRING_Z:
-		return "LineString Z";
-	case WKBGeometryType::POLYGON_Z:
-		return "Polygon Z";
-	case WKBGeometryType::MULTIPOINT_Z:
-		return "MultiPoint Z";
-	case WKBGeometryType::MULTILINESTRING_Z:
-		return "MultiLineString Z";
-	case WKBGeometryType::MULTIPOLYGON_Z:
-		return "MultiPolygon Z";
-	case WKBGeometryType::GEOMETRYCOLLECTION_Z:
-		return "GeometryCollection Z";
-	default:
-		throw NotImplementedException("Unsupported geometry type");
-	}
-}
-
 //------------------------------------------------------------------------------
 // GeoParquetFileMetadata
 //------------------------------------------------------------------------------
@@ -261,17 +226,20 @@ void GeoParquetFileMetadata::Write(duckdb_parquet::FileMetaData &file_meta_data)
 			throw NotImplementedException("Unsupported logical type for GeoParquet column: %s",
 			                              column.second.logical_type.ToString());
 		}
-
 		const auto geometry_types = yyjson_mut_obj_add_arr(doc, column_json, "geometry_types");
-		for (auto &geometry_type : column.second.geometry_types) {
-			const auto type_name = WKBGeometryTypes::ToString(geometry_type);
-			yyjson_mut_arr_add_str(doc, geometry_types, type_name);
+		for (auto &type_name : column.second.stats.types.Format(true)) {
+			yyjson_mut_arr_add_strcpy(doc, geometry_types, type_name.c_str());
 		}
 		const auto bbox = yyjson_mut_obj_add_arr(doc, column_json, "bbox");
-		yyjson_mut_arr_add_real(doc, bbox, column.second.bbox.min_x);
-		yyjson_mut_arr_add_real(doc, bbox, column.second.bbox.min_y);
-		yyjson_mut_arr_add_real(doc, bbox, column.second.bbox.max_x);
-		yyjson_mut_arr_add_real(doc, bbox, column.second.bbox.max_y);
+		yyjson_mut_arr_add_real(doc, bbox, column.second.stats.bbox.min_x);
+		yyjson_mut_arr_add_real(doc, bbox, column.second.stats.bbox.min_y);
+		yyjson_mut_arr_add_real(doc, bbox, column.second.stats.bbox.max_x);
+		yyjson_mut_arr_add_real(doc, bbox, column.second.stats.bbox.max_y);
+
+		if (column.second.stats.types.Any(VertexType::XYZ) || column.second.stats.types.Any(VertexType::XYZM)) {
+			yyjson_mut_arr_add_real(doc, bbox, column.second.stats.bbox.min_z);
+			yyjson_mut_arr_add_real(doc, bbox, column.second.stats.bbox.max_z);
+		}
 
 		yyjson_doc *crs_doc = nullptr;
 
@@ -343,23 +311,70 @@ void GeoParquetFileMetadata::AddGeoParquetStats(const string &column_name, const
 	column.geometry_encoding = GeoParquetColumnEncoding::WKB; // Default to WKB encoding
 
 	// Try to extract the stats
-	column.bbox.min_x = std::min(stats.bbox.xmin, stats.bbox.xmax);
-	column.bbox.min_y = std::min(stats.bbox.ymin, stats.bbox.ymax);
-	column.bbox.max_x = std::max(stats.bbox.xmin, stats.bbox.xmax);
-	column.bbox.max_y = std::max(stats.bbox.ymin, stats.bbox.ymax);
+	column.stats.bbox.min_x = std::min(stats.bbox.xmin, stats.bbox.xmax);
+	column.stats.bbox.min_y = std::min(stats.bbox.ymin, stats.bbox.ymax);
+	column.stats.bbox.max_x = std::max(stats.bbox.xmin, stats.bbox.xmax);
+	column.stats.bbox.max_y = std::max(stats.bbox.ymin, stats.bbox.ymax);
 
 	// Add Z bounds, if present
 	// M values are not supported in GeoParquet, so we ignore them
 	if (stats.bbox.__isset.zmin && stats.bbox.__isset.zmax) {
-		column.bbox.min_z = std::min(stats.bbox.zmin, stats.bbox.zmax);
-		column.bbox.max_z = std::max(stats.bbox.zmin, stats.bbox.zmax);
+		column.stats.bbox.min_z = std::min(stats.bbox.zmin, stats.bbox.zmax);
+		column.stats.bbox.max_z = std::max(stats.bbox.zmin, stats.bbox.zmax);
 	}
 
 	// Add the geometry types, but only if they are _XY or _XYZ.
+	// GeoParquet doesnt currently support _XYM or _XYZM types.
 	if (stats.__isset.geospatial_types) {
 		for (auto &gtype : stats.geospatial_types) {
-			if (gtype < 1999) {
-				column.geometry_types.insert(static_cast<WKBGeometryType>(gtype));
+			switch (gtype) {
+			case 1:
+				column.stats.types.Add(GeometryType::POINT, VertexType::XY);
+				break;
+			case 1001:
+				column.stats.types.Add(GeometryType::POINT, VertexType::XYZ);
+				break;
+			case 2:
+				column.stats.types.Add(GeometryType::LINESTRING, VertexType::XY);
+				break;
+			case 1002:
+				column.stats.types.Add(GeometryType::LINESTRING, VertexType::XYZ);
+				break;
+			case 3:
+				column.stats.types.Add(GeometryType::POLYGON, VertexType::XY);
+				break;
+			case 1003:
+				column.stats.types.Add(GeometryType::POLYGON, VertexType::XYZ);
+				break;
+			case 4:
+				column.stats.types.Add(GeometryType::MULTIPOINT, VertexType::XY);
+				break;
+			case 1004:
+				column.stats.types.Add(GeometryType::MULTIPOINT, VertexType::XYZ);
+				break;
+			case 5:
+				column.stats.types.Add(GeometryType::MULTILINESTRING, VertexType::XY);
+				break;
+			case 1005:
+				column.stats.types.Add(GeometryType::MULTILINESTRING, VertexType::XYZ);
+				break;
+			case 6:
+				column.stats.types.Add(GeometryType::MULTIPOLYGON, VertexType::XY);
+				break;
+			case 1006:
+				column.stats.types.Add(GeometryType::MULTIPOLYGON, VertexType::XYZ);
+				break;
+			case 7:
+				column.stats.types.Add(GeometryType::GEOMETRYCOLLECTION, VertexType::XY);
+				break;
+			case 1007:
+				column.stats.types.Add(GeometryType::GEOMETRYCOLLECTION, VertexType::XYZ);
+				break;
+			default:
+				throw InvalidInputException("GeoParquet only supports XY and XYZ geometries of POINT, "
+				                            "LINESTRING, POLYGON, MULTIPOINT, MULTILINESTRING, MULTIPOLYGON and "
+				                            "GEOMETRYCOLLECTION types. Unsupported type: %d",
+				                            gtype);
 			}
 		}
 	}

@@ -77,22 +77,22 @@ static unique_ptr<BaseStatistics> CreateGeoStats(const LogicalType &type, const 
 	if (geo_stats.__isset.bbox) {
 		auto &bbox = geo_stats.bbox;
 
-		gstats.bounds.min_x = bbox.xmin;
-		gstats.bounds.min_y = bbox.ymin;
-		gstats.bounds.max_x = bbox.xmax;
-		gstats.bounds.max_y = bbox.ymax;
+		gstats.bbox.min_x = bbox.xmin;
+		gstats.bbox.min_y = bbox.ymin;
+		gstats.bbox.max_x = bbox.xmax;
+		gstats.bbox.max_y = bbox.ymax;
 
 		if (bbox.__isset.zmin) {
-			gstats.bounds.min_z = bbox.zmin;
+			gstats.bbox.min_z = bbox.zmin;
 		}
 		if (bbox.__isset.zmax) {
-			gstats.bounds.max_z = bbox.zmax;
+			gstats.bbox.max_z = bbox.zmax;
 		}
 		if (bbox.__isset.mmin) {
-			gstats.bounds.min_m = bbox.mmin;
+			gstats.bbox.min_m = bbox.mmin;
 		}
 		if (bbox.__isset.mmax) {
-			gstats.bounds.max_m = bbox.mmax;
+			gstats.bbox.max_m = bbox.mmax;
 		}
 	}
 

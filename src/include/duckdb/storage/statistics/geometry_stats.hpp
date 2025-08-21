@@ -60,7 +60,7 @@ public:
 	}
 
 	// Check if any geometry of the specified vertex type is present
-	bool Any(VertexType vtype) {
+	bool Any(VertexType vtype) const {
 		return bits[static_cast<uint8_t>(vtype)] != 0;
 	}
 
@@ -176,6 +176,20 @@ public:
 		}
 	}
 
+	static GeometryTypeSet Unknown() {
+		GeometryTypeSet result;
+		result.SetUnknown();
+		return result;
+	}
+
+	static GeometryTypeSet Empty() {
+		GeometryTypeSet result;
+		result.SetEmpty();
+		return result;
+	}
+
+	vector<string> Format(bool geoparquet_case) const;
+
 private:
 	friend struct GeometryStats;
 	uint32_t bits[4];
@@ -184,8 +198,21 @@ private:
 struct GeometryStatsData {
 	// TODO: Put this in unique_ptr if it gets too big
 	// We got around 40 bytes to work with total before it gets larger than numeric stats
-	GeometryExtent bounds;
+	GeometryExtent bbox;
 	GeometryTypeSet types;
+
+	static GeometryStatsData Unknown() {
+		GeometryStatsData result;
+		result.bbox = GeometryExtent::Unknown();
+		result.types = GeometryTypeSet::Unknown();
+		return result;
+	}
+	static GeometryStatsData Empty() {
+		GeometryStatsData result;
+		result.bbox = GeometryExtent::Empty();
+		result.types = GeometryTypeSet::Empty();
+		return result;
+	}
 };
 
 struct GeometryStats {
