@@ -195,8 +195,9 @@ FilterPropagateResult GeometryStats::CheckZonemap(const BaseStatistics &stats, c
 		return FilterPropagateResult::FILTER_ALWAYS_FALSE;
 	}
 
-	if (geometry_data.bbox.Intersects(bounds)) {
-		return FilterPropagateResult::FILTER_ALWAYS_TRUE;
+	// TODO: Make this more robust (check for nulls and whatnot)
+	if (!geometry_data.bbox.Intersects(bounds)) {
+		return FilterPropagateResult::FILTER_ALWAYS_FALSE;
 	}
 
 	return FilterPropagateResult::NO_PRUNING_POSSIBLE;

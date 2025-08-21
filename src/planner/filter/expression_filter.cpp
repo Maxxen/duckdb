@@ -28,7 +28,6 @@ bool ExpressionFilter::EvaluateWithConstant(ExpressionExecutor &executor, const 
 }
 
 FilterPropagateResult ExpressionFilter::CheckStatistics(BaseStatistics &stats) const {
-
 	if (expr->type == ExpressionType::BOUND_FUNCTION) {
 		auto &func = expr->Cast<BoundFunctionExpression>();
 		if (func.function.name == "st_intersect_extent") {
