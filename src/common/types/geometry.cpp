@@ -1,6 +1,8 @@
 #include "duckdb/common/types/geometry.hpp"
 #include "duckdb/common/types/string_type.hpp"
+#include "duckdb/common/types/vector.hpp"
 #include "fast_float/fast_float.h"
+#include "fmt/format.h"
 
 namespace duckdb {
 //----------------------------------------------------------------------------------------------------------------------
