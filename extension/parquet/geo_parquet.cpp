@@ -251,7 +251,7 @@ void GeoParquetFileMetadata::Write(duckdb_parquet::FileMetaData &file_meta_data)
 		// Try to get it from the logical type
 		if (!crs_doc) {
 			if (GeoType::HasCRS(column.second.logical_type)) {
-				auto &crs = column.second.projjson;
+				auto &crs = GeoType::GetCRS(column.second.logical_type);
 				crs_doc = yyjson_read(crs.c_str(), crs.size(), 0);
 				if (!crs_doc) {
 					// TODO: Use the `spatial` extension to attempt to convert the CRS to PROJJSON format automatically
@@ -370,11 +370,17 @@ void GeoParquetFileMetadata::AddGeoParquetStats(const string &column_name, const
 			case 1007:
 				column.stats.types.Add(GeometryType::GEOMETRYCOLLECTION, VertexType::XYZ);
 				break;
-			default:
+			default: {
+				// Nicer error if has M
+				const auto has_m = gtype / 2000 == 1 || gtype / 3000 == 1;
+				if (has_m) {
+					throw InvalidInputException("Geoparquet does not support geometries with M coordinates");
+				}
 				throw InvalidInputException("GeoParquet only supports XY and XYZ geometries of POINT, "
 				                            "LINESTRING, POLYGON, MULTIPOINT, MULTILINESTRING, MULTIPOLYGON and "
 				                            "GEOMETRYCOLLECTION types. Unsupported type: %d",
 				                            gtype);
+			}
 			}
 		}
 	}

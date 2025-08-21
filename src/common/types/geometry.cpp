@@ -334,6 +334,7 @@ static void FromStringRecursive(TextReader &reader, BinaryWriter &writer, idx_t 
 			if (has_paren) {
 				reader.Match(')'); // Match the closing parenthesis if it was opened
 			}
+			part_count.value++;
 		} while (reader.TryMatch(','));
 		writer.Write(part_count);
 	} break;
@@ -497,7 +498,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 		writer.Write('(');
 		for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
 			if (vert_idx > 0) {
-				writer.Write(',');
+				writer.Write(", ");
 			}
 			for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
 				if (d_idx > 0) {
@@ -520,7 +521,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 		writer.Write('(');
 		for (uint32_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
 			if (ring_idx > 0) {
-				writer.Write(',');
+				writer.Write(", ");
 			}
 			const auto vert_count = reader.Read<uint32_t>();
 			if (vert_count == 0) {
@@ -530,7 +531,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 			writer.Write('(');
 			for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
 				if (vert_idx > 0) {
-					writer.Write(',');
+					writer.Write(", ");
 				}
 				for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
 					if (d_idx > 0) {
@@ -574,8 +575,9 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 				    reader.GetPosition());
 			}
 			if (part_idx > 0) {
-				writer.Write(',');
+				writer.Write(", ");
 			}
+			writer.Write('(');
 			double vert[4] = {0, 0, 0, 0};
 			auto all_nan = true;
 			for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
@@ -584,6 +586,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 			}
 			if (all_nan) {
 				writer.Write("EMPTY");
+				writer.Write(')');
 				continue;
 			}
 			for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
@@ -592,6 +595,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 				}
 				writer.Write(vert[d_idx]);
 			}
+			writer.Write(')');
 		}
 		writer.Write(')');
 
@@ -626,7 +630,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 				    reader.GetPosition());
 			}
 			if (part_idx > 0) {
-				writer.Write(',');
+				writer.Write(", ");
 			}
 			const auto vert_count = reader.Read<uint32_t>();
 			if (vert_count == 0) {
@@ -636,7 +640,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 			writer.Write('(');
 			for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
 				if (vert_idx > 0) {
-					writer.Write(',');
+					writer.Write(", ");
 				}
 				for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
 					if (d_idx > 0) {
@@ -661,7 +665,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 		writer.Write('(');
 		for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
 			if (part_idx > 0) {
-				writer.Write(',');
+				writer.Write(", ");
 			}
 
 			const auto part_byte_order = reader.Read<uint8_t>();
@@ -690,7 +694,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 			writer.Write('(');
 			for (uint32_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
 				if (ring_idx > 0) {
-					writer.Write(',');
+					writer.Write(", ");
 				}
 				const auto vert_count = reader.Read<uint32_t>();
 				if (vert_count == 0) {
@@ -700,7 +704,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 				writer.Write('(');
 				for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
 					if (vert_idx > 0) {
-						writer.Write(',');
+						writer.Write(", ");
 					}
 					for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
 						if (d_idx > 0) {
@@ -727,7 +731,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 		writer.Write('(');
 		for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
 			if (part_idx > 0) {
-				writer.Write(',');
+				writer.Write(", ");
 			}
 			// Recursively parse the geometry inside the collection
 			ToStringRecursive(reader, writer, depth + 1, has_z, has_m);

@@ -1,8 +1,6 @@
 # name: test/geoparquet/roundtrip.test
 # group: [geoparquet]
 
-require spatial
-
 require parquet
 
 #------------------------------------------------------------------------------
@@ -13,7 +11,7 @@ query II nosort point_result
 SELECT col, geometry FROM '__WORKING_DIRECTORY__/data/geoparquet/data-point-wkt.csv'
 
 query II nosort point_result
-SELECT col, st_astext(geometry) FROM '__WORKING_DIRECTORY__/data/geoparquet/data-point-encoding_wkb.parquet'
+SELECT col, geometry::VARCHAR FROM '__WORKING_DIRECTORY__/data/geoparquet/data-point-encoding_wkb.parquet'
 
 # Now write it back to parquet
 statement ok
@@ -24,8 +22,6 @@ TO '__TEST_DIR__/data-point-out.parquet' (FORMAT PARQUET)
 query II nosort point_result
 SELECT col, geometry FROM '__TEST_DIR__/data-point-out.parquet'
 
-
-
 #------------------------------------------------------------------------------
 # Test linestrings
 #------------------------------------------------------------------------------
@@ -34,7 +30,7 @@ query II nosort linestring_result
 SELECT col, geometry FROM '__WORKING_DIRECTORY__/data/geoparquet/data-linestring-wkt.csv'
 
 query II nosort linestring_result
-SELECT col, st_astext(geometry) FROM '__WORKING_DIRECTORY__/data/geoparquet/data-linestring-encoding_wkb.parquet'
+SELECT col, geometry::VARCHAR FROM '__WORKING_DIRECTORY__/data/geoparquet/data-linestring-encoding_wkb.parquet'
 
 # Now write it back to parquet
 statement ok
@@ -55,7 +51,7 @@ query II nosort polygon_result
 SELECT col, geometry FROM '__WORKING_DIRECTORY__/data/geoparquet/data-polygon-wkt.csv'
 
 query II nosort polygon_result
-SELECT col, st_astext(geometry) FROM '__WORKING_DIRECTORY__/data/geoparquet/data-polygon-encoding_wkb.parquet'
+SELECT col, geometry::VARCHAR FROM '__WORKING_DIRECTORY__/data/geoparquet/data-polygon-encoding_wkb.parquet'
 
 # Now write it back to parquet
 statement ok
@@ -73,7 +69,7 @@ SELECT col, geometry FROM '__TEST_DIR__/data-polygon-out.parquet'
 #------------------------------------------------------------------------------
 
 query II nosort multipoint_result
-SELECT col, ST_GeomFromText(geometry) FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multipoint-wkt.csv'
+SELECT col, geometry::GEOMETRY FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multipoint-wkt.csv'
 
 query II nosort multipoint_result
 SELECT col, geometry FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multipoint-encoding_wkb.parquet'
@@ -97,7 +93,7 @@ query II nosort multilinestring_result
 SELECT col, geometry FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multilinestring-wkt.csv'
 
 query II nosort multilinestring_result
-SELECT col, st_astext(geometry) FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multilinestring-encoding_wkb.parquet'
+SELECT col, geometry::VARCHAR FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multilinestring-encoding_wkb.parquet'
 
 # Now write it back to parquet
 statement ok
@@ -118,12 +114,12 @@ query II nosort multipolygon_result
 SELECT col, geometry FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multipolygon-wkt.csv'
 
 query II nosort multipolygon_result
-SELECT col, st_astext(geometry) FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multipolygon-encoding_wkb.parquet'
+SELECT col, geometry::VARCHAR FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multipolygon-encoding_wkb.parquet'
 
 # Now write it back to parquet
 statement ok
 COPY (SELECT col, geometry FROM '__WORKING_DIRECTORY__/data/geoparquet/data-multipolygon-encoding_wkb.parquet')
-TO '__TEST_DIR__/data-multipolygon-out.parquet' (FORMAT PARQUET)
+TO '__TEST_DIR__/data-multipolygon-out.parquet' (FORMAT PARQUET, GEOPARQUET_VERSION 'V110')
 
 # Test that the data is the same
 query II nosort multipolygon_result
@@ -138,4 +134,4 @@ query I
 SELECT decode(value) as col
 FROM parquet_kv_metadata('__TEST_DIR__/data-multipolygon-out.parquet') WHERE key = 'geo';
 ----
-{"version":"1.1.0","primary_column":"geometry","columns":{"geometry":{"encoding":"WKB","geometry_types":["MultiPolygon"],"bbox":[5.0,5.0,45.0,45.0]}}}
+{"version":"1.1.0","primary_column":"geometry","columns":{"geometry":{"encoding":"WKB","edges":"planar","geometry_types":["MultiPolygon XY"],"bbox":[5.0,5.0,45.0,45.0],"projjson":{"$schema":"https://proj.org/schemas/v0.7/projjson.schema.json","type":"GeographicCRS","name":"WGS 84 (CRS84)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"},{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"}]},"scope":"unknown","area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","code":"CRS84"}}}}}
