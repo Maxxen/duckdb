@@ -91,6 +91,8 @@ public:
 
 	static string_t ToString(Vector &result, const char *buf, idx_t len);
 	static string_t ToWKB(const string_t &geom, Vector &result);
+	static idx_t ToWKBRequiredSize(const string_t &geom);
+	static void ToWKB(const string_t &geom, char *buf, idx_t len);
 	static idx_t GetExtent(const string_t &geom, GeometryExtent &result);
 	static pair<GeometryType, VertexType> GetGeometryType(const string_t &geom);
 

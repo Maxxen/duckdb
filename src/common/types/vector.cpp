@@ -24,6 +24,7 @@
 #include "duckdb/storage/string_uncompressed.hpp"
 #include "duckdb/common/types/uuid.hpp"
 #include "fsst.h"
+#include "duckdb/common/types/geometry_crs.hpp"
 
 #include <cstring> // strlen() on Solaris
 namespace duckdb {
@@ -717,14 +718,14 @@ Value Vector::GetValueInternal(const Vector &v_p, idx_t index_p) {
 	case LogicalTypeId::GEOMETRY: {
 		auto str = reinterpret_cast<string_t *>(data)[index];
 		if (GeoType::HasCRS(type)) {
-			return Value::GEOMETRY(const_data_ptr_cast(str.GetData()), str.GetSize(), GeoType::GetCRS(type));
+			return Value::GEOMETRY(str.GetString(), GeoType::GetCRS(type));
 		}
 		return Value::GEOMETRY(const_data_ptr_cast(str.GetData()), str.GetSize());
 	}
 	case LogicalTypeId::GEOGRAPHY: {
 		auto str = reinterpret_cast<string_t *>(data)[index];
 		if (GeoType::HasCRS(type)) {
-			return Value::GEOGRAPHY(const_data_ptr_cast(str.GetData()), str.GetSize(), GeoType::GetCRS(type));
+			return Value::GEOGRAPHY(str.GetString(), GeoType::GetCRS(type));
 		}
 		return Value::GEOGRAPHY(const_data_ptr_cast(str.GetData()), str.GetSize());
 	}

@@ -26,6 +26,7 @@
 #include "duckdb/common/types/bignum.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/common/types/geometry_crs.hpp"
 
 #include <utility>
 #include <cmath>
@@ -907,6 +908,10 @@ Value Value::GEOMETRY(const_data_ptr_t data, idx_t len, const string &crs) {
 }
 
 Value Value::GEOMETRY(const string &data, const string &crs) {
+	return GEOMETRY(data, CoordinateReferenceSystem(crs));
+}
+
+Value Value::GEOMETRY(const string &data, const CoordinateReferenceSystem &crs) {
 	Value result(LogicalType::GEOMETRY(crs));
 	result.is_null = false;
 	result.value_info_ = make_shared_ptr<StringValueInfo>(data);
@@ -918,6 +923,10 @@ Value Value::GEOGRAPHY(const_data_ptr_t data, idx_t len, const string &crs) {
 }
 
 Value Value::GEOGRAPHY(const string &data, const string &crs) {
+	return GEOGRAPHY(data, CoordinateReferenceSystem(crs));
+}
+
+Value Value::GEOGRAPHY(const string &data, const CoordinateReferenceSystem &crs) {
 	Value result(LogicalType::GEOGRAPHY(crs));
 	result.is_null = false;
 	result.value_info_ = make_shared_ptr<StringValueInfo>(data);

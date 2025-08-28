@@ -2,6 +2,7 @@
 #include "column_reader.hpp"
 #include "parquet_reader.hpp"
 #include "yyjson.hpp"
+#include "duckdb/common/types/geometry_crs.hpp"
 
 namespace duckdb {
 
@@ -150,19 +151,24 @@ unique_ptr<GeoParquetFileMetadata> GeoParquetFileMetadata::TryRead(const duckdb_
 
 					// Try parse the edges
 					const auto edges_val = yyjson_obj_get(column_val, "edges");
+					auto is_geography = false;
 					if (yyjson_is_str(edges_val)) {
 						auto edges_str = yyjson_get_str(edges_val);
 						if (strcmp(edges_str, "planar") == 0) {
-							column.logical_type = LogicalType::GEOMETRY(column.projjson); // Default planar geometry
+							is_geography = false;
 						} else if (strcmp(edges_str, "spherical") == 0) {
-							column.logical_type = LogicalType::GEOGRAPHY(column.projjson);
+							is_geography = true;
 						} else {
 							throw InvalidInputException("Geoparquet column '%s' has an unsupported edge type: %s",
 							                            column_name, edges_str);
 						}
+					}
+
+					auto crs = CoordinateReferenceSystem::FromPROJJSON(column.projjson);
+					if (is_geography) {
+						column.logical_type = LogicalType::GEOGRAPHY(crs);
 					} else {
-						column.logical_type =
-						    LogicalType::GEOMETRY(column.projjson); // Default to planar geometry if not specified
+						column.logical_type = LogicalType::GEOMETRY(crs);
 					}
 
 					// TODO: Parse the bounding box, other metadata that might be useful.
@@ -252,11 +258,11 @@ void GeoParquetFileMetadata::Write(duckdb_parquet::FileMetaData &file_meta_data)
 		if (!crs_doc) {
 			if (GeoType::HasCRS(column.second.logical_type)) {
 				auto &crs = GeoType::GetCRS(column.second.logical_type);
-				crs_doc = yyjson_read(crs.c_str(), crs.size(), 0);
-				if (!crs_doc) {
-					// TODO: Use the `spatial` extension to attempt to convert the CRS to PROJJSON format automatically
-					yyjson_mut_doc_free(doc);
-					throw InvalidInputException("GeoParquet requires the CRS field to be in PROJJSON format!");
+
+				// GeoParquet only supports PROJJSON format.
+				if (crs.type != CoordinateReferenceSystemType::PROJJSON) {
+					// TODO: Try to convert it to PROJJSON using the `spatial` extension
+					throw InvalidInputException("GeoParquet only supports PROJJSON coordinate systems");
 				}
 			}
 		}

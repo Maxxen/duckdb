@@ -11,6 +11,7 @@
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/extension_type_info.hpp"
+#include "types/geometry_crs.hpp"
 
 namespace duckdb {
 
@@ -284,7 +285,7 @@ struct GeoTypeInfo : public ExtraTypeInfo {
 	explicit GeoTypeInfo(string crs_p);
 
 	// The optional Coordinate Reference System (CRS) for the spatial data, e.g., "EPSG:4326".
-	string crs;
+	CoordinateReferenceSystem crs;
 
 	void Serialize(Serializer &serializer) const override;
 	static shared_ptr<ExtraTypeInfo> Deserialize(Deserializer &source);

@@ -169,8 +169,21 @@ public:
 		pos += size;
 	}
 
+	const char *Reserve(size_t size) {
+		if (pos + size > end) {
+			throw InvalidInputException("Reserving beyond end of binary data at position %zu", pos - beg);
+		}
+		auto current_pos = pos;
+		pos += size;
+		return current_pos;
+	}
+
 	size_t GetPosition() const {
 		return static_cast<idx_t>(pos - beg);
+	}
+
+	bool IsAtEnd() const {
+		return pos >= end;
 	}
 
 private:
@@ -188,7 +201,14 @@ public:
 		buffer.push_back(c);
 	}
 	void Write(double value) {
-		duckdb_fmt::format_to(std::back_inserter(buffer), "{:G}", value);
+		duckdb_fmt::format_to(std::back_inserter(buffer), "{}", value);
+		// Remove trailing zero
+		if (buffer.back() == '0') {
+			buffer.pop_back();
+			if (buffer.back() == '.') {
+				buffer.pop_back();
+			}
+		}
 	}
 	const vector<char> &GetBuffer() const {
 		return buffer;
@@ -579,7 +599,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 			if (part_idx > 0) {
 				writer.Write(", ");
 			}
-			writer.Write('(');
+			// writer.Write('(');
 			double vert[4] = {0, 0, 0, 0};
 			auto all_nan = true;
 			for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
@@ -588,7 +608,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 			}
 			if (all_nan) {
 				writer.Write("EMPTY");
-				writer.Write(')');
+				// writer.Write(')');
 				continue;
 			}
 			for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
@@ -597,7 +617,7 @@ static void ToStringRecursive(BinaryReader &reader, TextWriter &writer, idx_t de
 				}
 				writer.Write(vert[d_idx]);
 			}
-			writer.Write(')');
+			// writer.Write(')');
 		}
 		writer.Write(')');
 
@@ -767,86 +787,153 @@ string_t Geometry::ToWKB(const string_t &geom, Vector &result) {
 	return StringVector::AddStringOrBlob(result, geom);
 }
 
-static idx_t GetExtentRecursive(BinaryReader &reader, GeometryExtent &result, uint32_t depth) {
-	if (depth == Geometry::MAX_RECURSION_DEPTH) {
-		throw InvalidInputException("Geometry exceeds maximum recursion depth of %d", Geometry::MAX_RECURSION_DEPTH);
-	}
+idx_t Geometry::ToWKBRequiredSize(const string_t &geom) {
+	// TODO: Implement this/Verify/Rewrite to little endian
+	return geom.GetSize();
+}
 
-	const auto byte_order = reader.Read<uint8_t>();
-	if (byte_order != 1) {
-		throw InvalidInputException("Unsupported byte order %d in WKB", byte_order);
-	}
-	const auto meta = reader.Read<uint32_t>();
-	const auto type = static_cast<GeometryType>(meta % 1000);
-	const auto flag = meta / 1000;
-	const auto has_z = (flag & 0x01) != 0;
-	const auto has_m = (flag & 0x02) != 0;
-
-	const uint32_t dims = 2 + (has_z ? 1 : 0) + (has_m ? 1 : 0);
-
-	switch (type) {
-	case GeometryType::POINT: {
-		double vert[4] = {0, 0, 0, 0};
-		auto all_nan = true;
-		for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
-			vert[d_idx] = reader.Read<double>();
-			all_nan &= std::isnan(vert[d_idx]);
-		}
-		if (all_nan) { // Empty point
-			return 0;
-		}
-		result.Extend(vert[0], vert[1]);
-		return 1; // One vertex
-	} break;
-	case GeometryType::LINESTRING: {
-		const auto vert_count = reader.Read<uint32_t>();
-		for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
-			double vert[4] = {0, 0, 0, 0};
-			for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
-				vert[d_idx] = reader.Read<double>();
-			}
-			result.Extend(vert[0], vert[1]);
-		}
-		return vert_count;
-	} break;
-	case GeometryType::POLYGON: {
-		uint32_t total_vert_count = 0;
-		const auto ring_count = reader.Read<uint32_t>();
-		for (uint32_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
-			const auto vert_count = reader.Read<uint32_t>();
-			if (vert_count == 0) { // Empty ring
-				continue;
-			}
-			for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
-				double vert[4] = {0, 0, 0, 0};
-				for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
-					vert[d_idx] = reader.Read<double>();
-				}
-				result.Extend(vert[0], vert[1]);
-			}
-			total_vert_count += vert_count;
-		}
-		return total_vert_count; // Return total vertex count from all rings
-	} break;
-	case GeometryType::MULTIPOINT:
-	case GeometryType::MULTILINESTRING:
-	case GeometryType::MULTIPOLYGON:
-	case GeometryType::GEOMETRYCOLLECTION: {
-		uint32_t total_vert_count = 0;
-		const auto part_count = reader.Read<uint32_t>();
-		for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
-			total_vert_count += GetExtentRecursive(reader, result, depth + 1);
-		}
-		return total_vert_count; // Return total vertex count from all parts
-	}
-	default:
-		throw InvalidInputException("Unsupported geometry type %d in WKB", static_cast<int>(type));
-	}
+void Geometry::ToWKB(const string_t &geom, char *buf, idx_t len) {
+	// TODO: Implement this/Verify/Rewrite to little endian
+	D_ASSERT(len == geom.GetSize());
+	memcpy(buf, geom.GetData(), geom.GetSize());
 }
 
 idx_t Geometry::GetExtent(const string_t &geom, GeometryExtent &result) {
 	BinaryReader reader(geom.GetData(), geom.GetSize());
-	return GetExtentRecursive(reader, result, 0);
+
+	uint32_t total_vert_count = 0;
+
+	while (!reader.IsAtEnd()) {
+		const auto le = reader.Read<uint8_t>();
+		if (le != 1) {
+			throw InvalidInputException("Geometry is not little endian WKB!");
+		}
+		const auto meta = reader.Read<uint32_t>();
+		const auto type = static_cast<GeometryType>(meta % 1000);
+		const auto flag = meta / 1000;
+		const auto has_z = (flag & 0x01) != 0;
+		const auto has_m = (flag & 0x02) != 0;
+
+		switch (type) {
+		case GeometryType::POINT: {
+			if (has_z && has_m) {
+				constexpr auto vert_width = sizeof(double) * 4;
+				const auto vert_array = reader.Reserve(vert_width);
+				double vert[4];
+				memcpy(vert, vert_array, sizeof(double) * 4);
+
+				for (const auto &v : vert) {
+					if (!std::isnan(v)) {
+						result.Extend(vert[0], vert[1]);
+						total_vert_count += 1;
+						break;
+					}
+				}
+			} else if (has_z || has_m) {
+				constexpr auto vert_width = sizeof(double) * 3;
+				const auto vert_array = reader.Reserve(vert_width);
+				double vert[3];
+				memcpy(vert, vert_array, sizeof(double) * 3);
+
+				for (const auto &v : vert) {
+					if (!std::isnan(v)) {
+						result.Extend(vert[0], vert[1]);
+						total_vert_count += 1;
+						break;
+					}
+				}
+			} else {
+				constexpr auto vert_width = sizeof(double) * 2;
+				const auto vert_array = reader.Reserve(vert_width);
+				double vert[2];
+				memcpy(vert, vert_array, sizeof(double) * 2);
+
+				for (const auto &v : vert) {
+					if (!std::isnan(v)) {
+						result.Extend(vert[0], vert[1]);
+						total_vert_count += 1;
+						break;
+					}
+				}
+			}
+		} break;
+		case GeometryType::LINESTRING: {
+			const auto vert_count = reader.Read<uint32_t>();
+
+			total_vert_count += vert_count;
+
+			if (has_z && has_m) {
+				constexpr auto vert_width = sizeof(double) * 4;
+				const auto vert_array = reader.Reserve(vert_width * vert_count);
+				for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+					double vert[2];
+					memcpy(vert, vert_array + vert_idx * vert_width, sizeof(double) * 2);
+					result.Extend(vert[0], vert[1]);
+				}
+			} else if (has_z || has_m) {
+				constexpr auto vert_width = sizeof(double) * 3;
+				const auto vert_array = reader.Reserve(vert_width * vert_count);
+				for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+					double vert[2];
+					memcpy(vert, vert_array + vert_idx * vert_width, sizeof(double) * 2);
+					result.Extend(vert[0], vert[1]);
+				}
+			} else {
+				constexpr auto vert_width = sizeof(double) * 2;
+				const auto vert_array = reader.Reserve(vert_width * vert_count);
+				for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+					double vert[2];
+					memcpy(vert, vert_array + vert_idx * vert_width, sizeof(double) * 2);
+					result.Extend(vert[0], vert[1]);
+				}
+			}
+		} break;
+		case GeometryType::POLYGON: {
+			const auto ring_count = reader.Read<uint32_t>();
+			for (uint32_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
+				const auto vert_count = reader.Read<uint32_t>();
+
+				total_vert_count += vert_count;
+
+				if (has_z && has_m) {
+					constexpr auto vert_width = sizeof(double) * 4;
+					const auto vert_array = reader.Reserve(vert_width * vert_count);
+					for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+						double vert[2];
+						memcpy(vert, vert_array + vert_idx * vert_width, sizeof(double) * 2);
+						result.Extend(vert[0], vert[1]);
+					}
+				} else if (has_z || has_m) {
+					constexpr auto vert_width = sizeof(double) * 3;
+					const auto vert_array = reader.Reserve(vert_width * vert_count);
+					for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+						double vert[2];
+						memcpy(vert, vert_array + vert_idx * vert_width, sizeof(double) * 2);
+						result.Extend(vert[0], vert[1]);
+					}
+				} else {
+					constexpr auto vert_width = sizeof(double) * 2;
+					const auto vert_array = reader.Reserve(vert_width * vert_count);
+					for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+						double vert[2];
+						memcpy(vert, vert_array + vert_idx * vert_width, sizeof(double) * 2);
+						result.Extend(vert[0], vert[1]);
+					}
+				}
+			}
+		} break;
+		case GeometryType::MULTIPOINT:
+		case GeometryType::MULTILINESTRING:
+		case GeometryType::MULTIPOLYGON:
+		case GeometryType::GEOMETRYCOLLECTION: {
+			reader.Skip(sizeof(uint32_t));
+		} break;
+		default:
+			throw InvalidInputException("Unsupported geometry type %d in WKB", static_cast<int>(type));
+		}
+	}
+
+	return total_vert_count;
 }
 
 void Geometry::Verify(const string_t &blob) {

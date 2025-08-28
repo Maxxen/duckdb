@@ -390,6 +390,11 @@ string LogicalType::ToString() const {
 				auto &ext_info = *GetExtensionInfo();
 				alias += TypeModifierListToString(ext_info.modifiers);
 			}
+
+			if (id_ == LogicalTypeId::BLOB && (alias == "GEOMETRY" || alias == "GEOGRAPHY")) {
+				return alias + "(EXTENSION)";
+			}
+
 			return alias;
 		}
 	}
@@ -527,19 +532,22 @@ string LogicalType::ToString() const {
 	case LogicalTypeId::GEOMETRY:
 	case LogicalTypeId::GEOGRAPHY: {
 		string ret = id() == LogicalTypeId::GEOGRAPHY ? "GEOGRAPHY" : "GEOMETRY";
-		if (!type_info_) {
+		if (!GeoType::HasCRS(*this)) {
 			return ret;
 		}
 		auto &crs = GeoType::GetCRS(*this);
-		if (crs.empty()) {
+		if (!crs.GetName().empty()) {
+			ret += "(" + KeywordHelper::WriteQuoted(crs.GetName()) + ")"; // Use the name if available
 			return ret;
 		}
-		// If someone decides to stuff in a whole PROJJSON string, we'd like to truncate it
-		if (crs.size() > 64) {
-			auto small_crs = crs.substr(0, 64) + "...";
+		// Fallback to the full CRS string.
+		// If someone decides to stuff in a whole PROJJSON/WKT string, we'd like to truncate it
+		auto &crs_text = crs.text;
+		if (crs_text.size() > 64) {
+			auto small_crs = crs_text.substr(0, 64) + "...";
 			ret += "(" + KeywordHelper::WriteQuoted(small_crs) + ")";
 		} else {
-			ret += "(" + KeywordHelper::WriteQuoted(crs) + ")";
+			ret += "(" + KeywordHelper::WriteQuoted(crs_text) + ")";
 		}
 		return ret;
 	}
@@ -2008,12 +2016,24 @@ LogicalType LogicalType::GEOMETRY(const string &crs) {
 	return LogicalType(LogicalTypeId::GEOMETRY, std::move(type_info));
 }
 
+LogicalType LogicalType::GEOMETRY(const CoordinateReferenceSystem &crs) {
+	auto type_info = make_shared_ptr<GeoTypeInfo>();
+	type_info->crs = crs;
+	return LogicalType(LogicalTypeId::GEOMETRY, std::move(type_info));
+}
+
 LogicalType LogicalType::GEOGRAPHY(const string &crs) {
 	auto type_info = make_shared_ptr<GeoTypeInfo>(crs);
 	return LogicalType(LogicalTypeId::GEOGRAPHY, std::move(type_info));
 }
 
-const string &GeoType::GetCRS(const LogicalType &type) {
+LogicalType LogicalType::GEOGRAPHY(const CoordinateReferenceSystem &crs) {
+	auto type_info = make_shared_ptr<GeoTypeInfo>();
+	type_info->crs = crs;
+	return LogicalType(LogicalTypeId::GEOGRAPHY, std::move(type_info));
+}
+
+const CoordinateReferenceSystem &GeoType::GetCRS(const LogicalType &type) {
 	D_ASSERT(type.IsSpatial());
 	auto info = type.AuxInfo();
 	D_ASSERT(info);
@@ -2027,7 +2047,7 @@ bool GeoType::HasCRS(const LogicalType &type) {
 	if (!info) {
 		return false;
 	}
-	return info->type == ExtraTypeInfoType::GEO_TYPE_INFO && !info->Cast<GeoTypeInfo>().crs.empty();
+	return info->type == ExtraTypeInfoType::GEO_TYPE_INFO && !info->Cast<GeoTypeInfo>().crs.text.empty();
 }
 
 //===--------------------------------------------------------------------===//

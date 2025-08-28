@@ -257,7 +257,7 @@
       {
         "id": 200,
         "name": "crs",
-        "type": "string"
+        "type": "CoordinateReferenceSystem"
       }
     ]
   }

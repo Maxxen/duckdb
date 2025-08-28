@@ -17,6 +17,7 @@
 #include "duckdb/parser/parsed_data/create_copy_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/common/types/blob.hpp"
+#include "duckdb/common/types/geometry_crs.hpp"
 
 namespace duckdb {
 
@@ -285,7 +286,7 @@ void ParquetWriter::SetSchemaProperties(const LogicalType &duckdb_type, duckdb_p
 		schema_ele.logicalType.__isset.GEOMETRY = true;
 		if (GeoType::HasCRS(duckdb_type)) {
 			// TODO: Write CRS better
-			schema_ele.logicalType.GEOMETRY.crs = GeoType::GetCRS(duckdb_type);
+			schema_ele.logicalType.GEOMETRY.crs = GeoType::GetCRS(duckdb_type).GetValue();
 			schema_ele.logicalType.GEOMETRY.__isset.crs = true;
 		}
 		break;
@@ -294,7 +295,7 @@ void ParquetWriter::SetSchemaProperties(const LogicalType &duckdb_type, duckdb_p
 		schema_ele.logicalType.__isset.GEOGRAPHY = true;
 		if (GeoType::HasCRS(duckdb_type)) {
 			// TODO: Write CRS better
-			schema_ele.logicalType.GEOGRAPHY.crs = GeoType::GetCRS(duckdb_type);
+			schema_ele.logicalType.GEOGRAPHY.crs = GeoType::GetCRS(duckdb_type).GetValue();
 			schema_ele.logicalType.GEOGRAPHY.__isset.crs = true;
 		}
 		break;

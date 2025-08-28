@@ -195,8 +195,10 @@ public:
 	DUCKDB_API static Value BIT(const string &data);
 	DUCKDB_API static Value GEOMETRY(const_data_ptr_t data, idx_t len, const string &crs = "");
 	DUCKDB_API static Value GEOMETRY(const string &data, const string &crs = "");
+	DUCKDB_API static Value GEOMETRY(const string &data, const CoordinateReferenceSystem &crs);
 	DUCKDB_API static Value GEOGRAPHY(const_data_ptr_t data, idx_t len, const string &crs = "");
 	DUCKDB_API static Value GEOGRAPHY(const string &data, const string &crs = "");
+	DUCKDB_API static Value GEOGRAPHY(const string &data, const CoordinateReferenceSystem &crs);
 	DUCKDB_API static Value BIGNUM(const_data_ptr_t data, idx_t len);
 	DUCKDB_API static Value BIGNUM(const string &data);
 

@@ -2,6 +2,7 @@
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/common/types/geometry.hpp"
+#include "duckdb/common/types/geometry_crs.hpp"
 
 namespace duckdb {
 
@@ -64,8 +65,8 @@ static unique_ptr<FunctionData> IntersectExtentBind(ClientContext &context, Scal
 	}
 	if (lhs_has_crs || rhs_has_crs) {
 		// If both geometries have a CRS, we need to check if they are the same
-		const auto lhs_crs = GeoType::GetCRS(arguments[0]->return_type);
-		const auto rhs_crs = GeoType::GetCRS(arguments[1]->return_type);
+		const auto &lhs_crs = GeoType::GetCRS(arguments[0]->return_type);
+		const auto &rhs_crs = GeoType::GetCRS(arguments[1]->return_type);
 		if (lhs_crs != rhs_crs) {
 			throw BinderException("st_intersect_extent requires both geometries to have the same CRS");
 		}
@@ -105,10 +106,56 @@ static unique_ptr<FunctionData> BindCRSFunction(ClientContext &context, ScalarFu
 	return nullptr;
 }
 
+static LogicalType GetCRSLogicalType() {
+	return LogicalType::STRUCT({
+	    {"type", LogicalType::VARCHAR},
+	    {"name", LogicalType::VARCHAR},
+	    {"value", LogicalType::VARCHAR},
+	});
+}
+
+static Value GetCRSValue(const LogicalType &logical_type) {
+
+	if (!GeoType::HasCRS(logical_type)) {
+		// Return null
+		return Value(GetCRSLogicalType());
+	}
+
+	auto &crs = GeoType::GetCRS(logical_type);
+
+	const char *type_str;
+	switch (crs.type) {
+	case CoordinateReferenceSystemType::PROJJSON:
+		type_str = "projjson";
+		break;
+	case CoordinateReferenceSystemType::WKT2_2019:
+		type_str = "wkt2:2019";
+		break;
+	case CoordinateReferenceSystemType::AUTH_CODE:
+		type_str = "authority_code";
+		break;
+	case CoordinateReferenceSystemType::SRID:
+		type_str = "srid";
+		break;
+	case CoordinateReferenceSystemType::UNKNOWN:
+	default:
+		type_str = "unknown";
+		break;
+	}
+
+	auto type_value = Value(type_str);
+	auto name_value = crs.name.empty() ? Value(LogicalTypeId::VARCHAR) : Value(crs.name);
+	auto text_value = Value(crs.text);
+
+	auto crs_value =
+	    Value::STRUCT(GetCRSLogicalType(), {std::move(type_value), std::move(name_value), std::move(text_value)});
+
+	return crs_value;
+}
+
 static void CRSFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &type = args.data[0].GetType();
-	const auto v = GeoType::HasCRS(type) ? GeoType::GetCRS(type) : Value(LogicalTypeId::VARCHAR);
-	result.Reference(v);
+	result.Reference(GetCRSValue(type));
 }
 
 static unique_ptr<Expression> BindCRSFunctionExpression(FunctionBindExpressionInput &input) {
@@ -117,15 +164,17 @@ static unique_ptr<Expression> BindCRSFunctionExpression(FunctionBindExpressionIn
 		// parameter - unknown return type
 		return nullptr;
 	}
-	// Emit a constant expression
-	auto v = GeoType::HasCRS(return_type) ? Value(GeoType::GetCRS(return_type)) : Value(LogicalTypeId::VARCHAR);
-	return make_uniq<BoundConstantExpression>(std::move(v));
+
+	return make_uniq<BoundConstantExpression>(GetCRSValue(return_type));
 }
 
 ScalarFunctionSet StCrsFun::GetFunctions() {
 	ScalarFunctionSet set("ST_CRS");
+
+	const auto crs_type = GetCRSLogicalType();
+
 	for (auto &type : {LogicalTypeId::GEOMETRY, LogicalTypeId::GEOGRAPHY}) {
-		ScalarFunction geom_func({type}, LogicalType::VARCHAR, CRSFunction, BindCRSFunction);
+		ScalarFunction geom_func({type}, crs_type, CRSFunction, BindCRSFunction);
 		geom_func.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
 		geom_func.bind_expression = BindCRSFunctionExpression;
 		set.AddFunction(geom_func);

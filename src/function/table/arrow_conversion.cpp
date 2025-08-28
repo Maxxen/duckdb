@@ -839,6 +839,8 @@ void ArrowToDuckDBConversion::ColumnArrowToDuckDB(Vector &vector, ArrowArray &ar
 	case LogicalTypeId::UUID:
 		UUIDConversion(vector, array, chunk_offset, nested_offset, NumericCast<int64_t>(parent_offset), size);
 		break;
+	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 	case LogicalTypeId::BLOB:
 	case LogicalTypeId::BIT:
 	case LogicalTypeId::BIGNUM:
