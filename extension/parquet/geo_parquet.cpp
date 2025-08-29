@@ -264,6 +264,9 @@ void GeoParquetFileMetadata::Write(duckdb_parquet::FileMetaData &file_meta_data)
 					// TODO: Try to convert it to PROJJSON using the `spatial` extension
 					throw InvalidInputException("GeoParquet only supports PROJJSON coordinate systems");
 				}
+
+				auto &crs_value = crs.GetValue();
+				crs_doc = yyjson_read(crs_value.c_str(), crs_value.size(), 0);
 			}
 		}
 
