@@ -164,7 +164,7 @@ unique_ptr<GeoParquetFileMetadata> GeoParquetFileMetadata::TryRead(const duckdb_
 						}
 					}
 
-					auto crs = CoordinateReferenceSystem::FromPROJJSON(column.projjson);
+					CoordinateReferenceSystem crs(column.projjson);
 					if (is_geography) {
 						column.logical_type = LogicalType::GEOGRAPHY(crs);
 					} else {
@@ -260,7 +260,7 @@ void GeoParquetFileMetadata::Write(duckdb_parquet::FileMetaData &file_meta_data)
 				auto &crs = GeoType::GetCRS(column.second.logical_type);
 
 				// GeoParquet only supports PROJJSON format.
-				if (crs.type != CoordinateReferenceSystemType::PROJJSON) {
+				if (crs.GetType() != CoordinateReferenceSystemType::PROJJSON) {
 					// TODO: Try to convert it to PROJJSON using the `spatial` extension
 					throw InvalidInputException("GeoParquet only supports PROJJSON coordinate systems");
 				}

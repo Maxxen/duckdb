@@ -25,34 +25,8 @@ enum class CoordinateReferenceSystemType : uint8_t {
 
 class CoordinateReferenceSystem {
 public:
-	CoordinateReferenceSystem() : type(CoordinateReferenceSystemType::UNKNOWN), name(""), text("") {
-	}
-
-	// Allow implicit conversion from string
-	CoordinateReferenceSystem(string text)
-	    : type(CoordinateReferenceSystemType::UNKNOWN), name(""), text(std::move(text)) {
-		// TODO: Try to auto-detect the type from the text
-	}
-	CoordinateReferenceSystem(const char *str) : CoordinateReferenceSystem(string(str)) {
-	}
-
-	static CoordinateReferenceSystem FromPROJJSON(const string &projjson) {
-		CoordinateReferenceSystem crs;
-		crs.type = CoordinateReferenceSystemType::PROJJSON;
-		crs.text = projjson;
-		// TODO: Try to parse name
-		return crs;
-	}
-
-	bool operator==(const CoordinateReferenceSystem &other) const {
-		return type == other.type && name == other.name && text == other.text;
-	}
-	bool operator!=(const CoordinateReferenceSystem &other) const {
-		return !(*this == other);
-	}
-
-	void Serialize(Serializer &serializer) const;
-	static CoordinateReferenceSystem Deserialize(Deserializer &deserializer);
+	CoordinateReferenceSystem();
+	explicit CoordinateReferenceSystem(const string &crs);
 
 	const string &GetValue() const {
 		return text;
@@ -66,7 +40,23 @@ public:
 		return type;
 	}
 
-public:
+	bool operator==(const CoordinateReferenceSystem &other) const {
+		return type == other.type && name == other.name && text == other.text;
+	}
+
+	bool operator!=(const CoordinateReferenceSystem &other) const {
+		return !(*this == other);
+	}
+
+	void Serialize(Serializer &serializer) const;
+
+	static CoordinateReferenceSystem Deserialize(Deserializer &deserializer);
+
+	// string TryGetAsPROJJSON();
+	// string TryGetAsWKT22019();
+	// string TryGetAsAuthCode();
+
+private:
 	// The format of the coordinate reference system
 	CoordinateReferenceSystemType type;
 
@@ -74,7 +64,7 @@ public:
 	string name;
 
 	// The text representation of the CRS, e.g., "EPSG:4326" or a PROJJSON or WKT2 string
-	// This is the only mandatory field
+	// This is the only mandatory property
 	string text;
 };
 

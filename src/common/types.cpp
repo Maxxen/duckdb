@@ -542,7 +542,7 @@ string LogicalType::ToString() const {
 		}
 		// Fallback to the full CRS string.
 		// If someone decides to stuff in a whole PROJJSON/WKT string, we'd like to truncate it
-		auto &crs_text = crs.text;
+		auto &crs_text = crs.GetValue();
 		if (crs_text.size() > 64) {
 			auto small_crs = crs_text.substr(0, 64) + "...";
 			ret += "(" + KeywordHelper::WriteQuoted(small_crs) + ")";
@@ -2047,7 +2047,7 @@ bool GeoType::HasCRS(const LogicalType &type) {
 	if (!info) {
 		return false;
 	}
-	return info->type == ExtraTypeInfoType::GEO_TYPE_INFO && !info->Cast<GeoTypeInfo>().crs.text.empty();
+	return info->type == ExtraTypeInfoType::GEO_TYPE_INFO && !info->Cast<GeoTypeInfo>().crs.GetValue().empty();
 }
 
 //===--------------------------------------------------------------------===//

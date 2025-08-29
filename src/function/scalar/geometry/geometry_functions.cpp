@@ -124,7 +124,7 @@ static Value GetCRSValue(const LogicalType &logical_type) {
 	auto &crs = GeoType::GetCRS(logical_type);
 
 	const char *type_str;
-	switch (crs.type) {
+	switch (crs.GetType()) {
 	case CoordinateReferenceSystemType::PROJJSON:
 		type_str = "projjson";
 		break;
@@ -144,8 +144,8 @@ static Value GetCRSValue(const LogicalType &logical_type) {
 	}
 
 	auto type_value = Value(type_str);
-	auto name_value = crs.name.empty() ? Value(LogicalTypeId::VARCHAR) : Value(crs.name);
-	auto text_value = Value(crs.text);
+	auto name_value = crs.GetName().empty() ? Value(LogicalTypeId::VARCHAR) : Value(crs.GetName());
+	auto text_value = Value(crs.GetValue());
 
 	auto crs_value =
 	    Value::STRUCT(GetCRSLogicalType(), {std::move(type_value), std::move(name_value), std::move(text_value)});
