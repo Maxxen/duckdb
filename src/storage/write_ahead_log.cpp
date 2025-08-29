@@ -47,9 +47,10 @@ BufferedFileWriter &WriteAheadLog::Initialize() {
 	}
 	lock_guard<mutex> lock(wal_lock);
 	if (!writer) {
-		writer = make_uniq<BufferedFileWriter>(FileSystem::Get(database), wal_path,
-		                                       FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE |
-		                                           FileFlags::FILE_FLAGS_APPEND);
+		writer =
+		    make_uniq<BufferedFileWriter>(FileSystem::Get(database), wal_path,
+		                                  FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE |
+		                                      FileFlags::FILE_FLAGS_APPEND | FileFlags::FILE_FLAGS_MULTI_CLIENT_ACCESS);
 		if (init_state == WALInitState::UNINITIALIZED_REQUIRES_TRUNCATE) {
 			writer->Truncate(wal_size);
 		}
@@ -125,7 +126,7 @@ public:
 		// then encrypt WAL before flushing
 		auto &catalog = wal.GetDatabase().GetCatalog().Cast<DuckCatalog>();
 
-		if (wal.IsEncrypted() && catalog.GetIsEncrypted()) {
+		if (catalog.GetIsEncrypted()) {
 			return FlushEncrypted();
 		}
 
@@ -249,7 +250,7 @@ void WriteAheadLog::WriteVersion() {
 	serializer.WriteProperty(100, "wal_type", WALType::WAL_VERSION);
 	auto &catalog = GetDatabase().GetCatalog().Cast<DuckCatalog>();
 	auto encryption_key_id = catalog.GetEncryptionKeyId();
-	if (IsEncrypted() && catalog.GetIsEncrypted()) {
+	if (catalog.GetIsEncrypted()) {
 		serializer.WriteProperty(101, "version", idx_t(WAL_ENCRYPTED_VERSION_NUMBER));
 	} else {
 		serializer.WriteProperty(101, "version", idx_t(WAL_VERSION_NUMBER));
@@ -261,11 +262,6 @@ void WriteAheadLog::WriteCheckpoint(MetaBlockPointer meta_block) {
 	WriteAheadLogSerializer serializer(*this, WALType::CHECKPOINT);
 	serializer.WriteProperty(101, "meta_block", meta_block);
 	serializer.End();
-}
-
-bool WriteAheadLog::IsEncrypted() const {
-	const auto &config = DBConfig::GetConfig(database.GetDatabase());
-	return config.options.wal_encryption;
 }
 
 //===--------------------------------------------------------------------===//

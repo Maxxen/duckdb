@@ -274,7 +274,7 @@ if (ENABLE_EXTENSION_AUTOLOADING)
   add_definitions(-DDUCKDB_EXTENSION_AUTOLOAD_DEFAULT=1)
 endif()
 if (ENABLE_EXTENSION_AUTOINSTALL)
-  add_definitions(-DDUCKDB_EXTENSION_AUTOINSTALL_DEFAULT=${ENABLE_EXTENSION_AUTOINSTALL})
+  add_definitions(-DDUCKDB_EXTENSION_AUTOINSTALL_DEFAULT=1)
 endif()
 
 option(OSX_BUILD_UNIVERSAL "Build both architectures on OSX and create a single binary containing both." FALSE)
@@ -378,6 +378,8 @@ if (NOT DEFINED GIT_COMMIT_HASH)
   string(REGEX REPLACE "v[0-9]+\.[0-9]+\.[0-9]+\-[0-9]+\-g([a-f0-9]+)" "\\1" GIT_COMMIT_HASH "${GIT_DESCRIBE}")
 endif()
 
+set(DUCKDB_VERSION_NUMBER "${DUCKDB_MAJOR_VERSION}.${DUCKDB_MINOR_VERSION}.${DUCKDB_PATCH_VERSION}")
+
 string(LENGTH "${GIT_COMMIT_HASH}" LENGTH_GIT_COMMIT_HASH)
 if (NOT ${LENGTH_GIT_COMMIT_HASH} EQUAL 10)
    message(STATUS "GIT_COMMIT_HASH has length ${LENGTH_GIT_COMMIT_HASH} different than the expected 10")
@@ -452,6 +454,7 @@ option(DISABLE_MEMORY_SAFETY "Debug setting: disable memory access checks at run
 option(DISABLE_ASSERTIONS "Debug setting: disable assertions" FALSE)
 option(ALTERNATIVE_VERIFY "Debug setting: use alternative verify mode" FALSE)
 option(DISABLE_POINTER_SALT "Debug setting: verify correct results without pointer salt" FALSE)
+option(HASH_ZERO "Debug setting: verify hash collision resolution by setting all hashes to 0" FALSE)
 option(RUN_SLOW_VERIFIERS "Debug setting: enable a more extensive set of verifiers" FALSE)
 option(DESTROY_UNPINNED_BLOCKS "Debug setting: destroy unpinned buffer-managed blocks" FALSE)
 option(FORCE_ASYNC_SINK_SOURCE "Debug setting: forces sinks/sources to block the first 2 times they're called" FALSE)
@@ -542,6 +545,10 @@ endif()
 
 if(DISABLE_POINTER_SALT)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDUCKDB_DISABLE_POINTER_SALT")
+endif()
+
+if(HASH_ZERO)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDUCKDB_HASH_ZERO")
 endif()
 
 if(LATEST_STORAGE)
@@ -1350,7 +1357,7 @@ foreach(EXT_NAME IN LISTS DUCKDB_EXTENSION_NAMES)
 
   # Warning for trying to load vcpkg extensions without having VCPKG_BUILD SET
   if (EXISTS "${DUCKDB_EXTENSION_${EXT_NAME_UPPERCASE}_PATH}/vcpkg.json" AND NOT DEFINED VCPKG_BUILD)
-    message(WARNING "Extension '${EXT_NAME}' has a vcpkg.json, but build was not run with VCPKG. If build fails, check out VCPKG build instructions in 'duckdb/extension/README.md' or try manually installing the dependencies in ${DUCKDB_EXTENSION_${EXT_NAME_UPPERCASE}_PATH}vcpkg.json")
+    message(WARNING "Extension '${EXT_NAME}' has a vcpkg.json, but build was not run with VCPKG. If build fails, check out VCPKG build instructions in 'duckdb/extension/README.md' or try manually installing the dependencies in ${DUCKDB_EXTENSION_${EXT_NAME_UPPERCASE}_PATH}/vcpkg.json")
   endif()
 
   if (NOT "${DUCKDB_EXTENSION_${EXT_NAME_UPPERCASE}_EXT_VERSION}" STREQUAL "")
