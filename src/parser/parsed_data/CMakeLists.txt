@@ -12,6 +12,7 @@ add_library_unity(
   create_function_info.cpp
   create_index_info.cpp
   create_aggregate_function_info.cpp
+  create_window_function_info.cpp
   create_collation_info.cpp
   create_copy_function_info.cpp
   create_macro_info.cpp

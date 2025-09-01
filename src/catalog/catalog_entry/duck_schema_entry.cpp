@@ -383,6 +383,7 @@ CatalogSet &DuckSchemaEntry::GetCatalogSet(CatalogType type) {
 	case CatalogType::AGGREGATE_FUNCTION_ENTRY:
 	case CatalogType::SCALAR_FUNCTION_ENTRY:
 	case CatalogType::MACRO_ENTRY:
+	case CatalogType::WINDOW_FUNCTION_ENTRY:
 		return functions;
 	case CatalogType::SEQUENCE_ENTRY:
 		return sequences;

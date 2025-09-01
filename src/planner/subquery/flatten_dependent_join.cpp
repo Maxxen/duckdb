@@ -96,8 +96,7 @@ unique_ptr<LogicalOperator> FlattenDependentJoins::Decorrelate(unique_ptr<Logica
 			// and perform all duplicate elimination on that row number instead
 			D_ASSERT(op.correlated_columns[0].type.id() == LogicalTypeId::BIGINT);
 			auto window = make_uniq<LogicalWindow>(op.correlated_columns[0].binding.table_index);
-			auto row_number = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_ROW_NUMBER, LogicalType::BIGINT,
-			                                                   nullptr, nullptr);
+			auto row_number = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_ROW_NUMBER, LogicalType::BIGINT);
 			row_number->start = WindowBoundary::UNBOUNDED_PRECEDING;
 			row_number->end = WindowBoundary::CURRENT_ROW_ROWS;
 			row_number->SetAlias("delim_index");
@@ -799,7 +798,7 @@ unique_ptr<LogicalOperator> FlattenDependentJoins::PushDownDependentJoinInternal
 		auto window_index = binder.GenerateTableIndex();
 		auto window = make_uniq<LogicalWindow>(window_index);
 		auto row_number =
-		    make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_ROW_NUMBER, LogicalType::BIGINT, nullptr, nullptr);
+		    make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_ROW_NUMBER, LogicalType::BIGINT);
 		auto partition_count = perform_delim ? correlated_columns.size() : 1;
 		for (idx_t i = 0; i < partition_count; i++) {
 			auto &col = correlated_columns[i];

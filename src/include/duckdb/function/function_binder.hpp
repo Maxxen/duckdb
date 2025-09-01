@@ -40,6 +40,14 @@ public:
 	                                     const vector<LogicalType> &arguments, ErrorData &error);
 	DUCKDB_API optional_idx BindFunction(const string &name, AggregateFunctionSet &functions,
 	                                     vector<unique_ptr<Expression>> &arguments, ErrorData &error);
+
+	//! Bind a window function from the set of functions and input arguments. Returns the index of the chosen
+	//! function, returns optional_idx() and sets error if none could be found
+	DUCKDB_API optional_idx BindFunction(const string &name, WindowFunctionSet &functions,
+	                                     const vector<LogicalType> &arguments, ErrorData &error);
+	DUCKDB_API optional_idx BindFunction(const string &name, WindowFunctionSet &functions,
+	                                     vector<unique_ptr<Expression>> &arguments, ErrorData &error);
+
 	//! Bind a table function from the set of functions and input arguments. Returns the index of the chosen
 	//! function, returns optional_idx() and sets error if none could be found
 	DUCKDB_API optional_idx BindFunction(const string &name, TableFunctionSet &functions,
@@ -72,6 +80,18 @@ public:
 	DUCKDB_API static void BindSortedAggregate(ClientContext &context, BoundAggregateExpression &expr,
 	                                           const vector<unique_ptr<Expression>> &groups);
 	DUCKDB_API static void BindSortedAggregate(ClientContext &context, BoundWindowExpression &expr);
+
+	struct BoundWindowFunction {
+		WindowFunction function;
+		unique_ptr<FunctionData> bind_info;
+		vector<unique_ptr<Expression>> children;
+
+		BoundWindowFunction(WindowFunction function, vector<unique_ptr<Expression>> &&children,
+		                    unique_ptr<FunctionData> bind_info) : function(function), bind_info(std::move(bind_info)),
+		                                                children(std::move(children)) {
+		}
+	};
+	DUCKDB_API unique_ptr<BoundWindowFunction> BindWindowFunction(WindowFunction bound_function, vector<unique_ptr<Expression>> children);
 
 	//! Cast a set of expressions to the arguments of this function
 	void CastToFunctionArguments(SimpleFunction &function, vector<unique_ptr<Expression>> &children);

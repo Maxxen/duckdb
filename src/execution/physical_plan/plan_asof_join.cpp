@@ -199,7 +199,7 @@ PhysicalPlanGenerator::PlanAsOfLoopJoin(LogicalComparisonJoin &op, PhysicalOpera
 
 	// Add a synthetic primary integer key to the probe relation using streaming windowing.
 	vector<unique_ptr<Expression>> window_select;
-	auto pk = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_ROW_NUMBER, pk_type, nullptr, nullptr);
+	auto pk = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_ROW_NUMBER, pk_type);
 	pk->start = WindowBoundary::UNBOUNDED_PRECEDING;
 	pk->end = WindowBoundary::CURRENT_ROW_ROWS;
 	pk->alias = "row_number";
@@ -302,7 +302,7 @@ PhysicalOperator &PhysicalPlanGenerator::PlanAsOfJoin(LogicalComparisonJoin &op)
 	auto &asof_comp = op.conditions[asof_idx];
 	auto &asof_column = asof_comp.right;
 	auto asof_type = asof_column->return_type;
-	auto asof_end = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_LEAD, asof_type, nullptr, nullptr);
+	auto asof_end = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_LEAD, asof_type);
 	asof_end->children.emplace_back(asof_column->Copy());
 	// TODO: If infinities are not supported for a type, fake them by looking at LHS statistics?
 	asof_end->offset_expr = make_uniq<BoundConstantExpression>(Value::BIGINT(1));

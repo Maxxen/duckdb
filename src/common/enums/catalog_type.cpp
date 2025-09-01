@@ -23,6 +23,8 @@ string CatalogTypeToString(CatalogType type) {
 		return "Scalar Function";
 	case CatalogType::AGGREGATE_FUNCTION_ENTRY:
 		return "Aggregate Function";
+	case CatalogType::WINDOW_FUNCTION_ENTRY:
+		return "Window Function";
 	case CatalogType::COPY_FUNCTION_ENTRY:
 		return "Copy Function";
 	case CatalogType::PRAGMA_FUNCTION_ENTRY:
@@ -78,6 +80,9 @@ CatalogType CatalogTypeFromString(const string &type) {
 	}
 	if (type == "Aggregate Function") {
 		return CatalogType::AGGREGATE_FUNCTION_ENTRY;
+	}
+	if (type == "Window Function") {
+		return CatalogType::WINDOW_FUNCTION_ENTRY;
 	}
 	if (type == "Copy Function") {
 		return CatalogType::COPY_FUNCTION_ENTRY;

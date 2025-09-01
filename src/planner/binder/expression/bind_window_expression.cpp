@@ -3,6 +3,7 @@
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_macro_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/window_function_catalog_entry.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/window_expression.hpp"
@@ -267,44 +268,81 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 		types.push_back(bound->return_type);
 		children.push_back(std::move(bound));
 	}
+
 	//  Determine the function type.
-	LogicalType sql_type;
-	unique_ptr<AggregateFunction> aggregate;
-	unique_ptr<FunctionData> bind_info;
-	if (window.GetExpressionType() == ExpressionType::WINDOW_AGGREGATE) {
-		//  Look up the aggregate function in the catalog
-		if (!entry || entry->type != CatalogType::AGGREGATE_FUNCTION_ENTRY) {
-			//	Not an aggregate: Look it up to generate error
-			Catalog::GetEntry<AggregateFunctionCatalogEntry>(context, window.catalog, window.schema,
-			                                                 window.function_name, error_context);
-		}
-		auto &func = entry->Cast<AggregateFunctionCatalogEntry>();
-		D_ASSERT(func.type == CatalogType::AGGREGATE_FUNCTION_ENTRY);
+	unique_ptr<BoundWindowExpression> result = nullptr;
 
-		// bind the aggregate
-		ErrorData error_aggr;
-		FunctionBinder function_binder(context);
-		auto best_function = function_binder.BindFunction(func.name, func.functions, types, error_aggr);
-		if (!best_function.IsValid()) {
-			error_aggr.AddQueryLocation(window);
-			error_aggr.Throw();
-		}
-
-		// found a matching function! bind it as an aggregate
-		auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
-		auto window_bound_aggregate = function_binder.BindAggregateFunction(bound_function, std::move(children));
-		// create the aggregate
-		aggregate = make_uniq<AggregateFunction>(window_bound_aggregate->function);
-		bind_info = std::move(window_bound_aggregate->bind_info);
-		children = std::move(window_bound_aggregate->children);
-		sql_type = window_bound_aggregate->return_type;
-
-	} else {
+	// First pass, if this is a special non-aggregate window function, handle it directly
+	if (window.GetExpressionType() != ExpressionType::WINDOW_AGGREGATE) {
 		// fetch the child of the non-aggregate window function (if any)
-		sql_type = ResolveWindowExpressionType(window.GetExpressionType(), types);
+		auto sql_type = ResolveWindowExpressionType(window.GetExpressionType(), types);
+		result = make_uniq<BoundWindowExpression>(window.GetExpressionType(), sql_type);
 	}
-	auto result = make_uniq<BoundWindowExpression>(window.GetExpressionType(), sql_type, std::move(aggregate),
-	                                               std::move(bind_info));
+
+	// Second pass, look for an aggregate function
+	if (!result) {
+		EntryLookupInfo function_lookup(CatalogType::AGGREGATE_FUNCTION_ENTRY, window.function_name, error_context);
+		entry = GetCatalogEntry(window.catalog, window.schema, function_lookup, OnEntryNotFound::RETURN_NULL);
+		if (entry) {
+			auto &func = entry->Cast<AggregateFunctionCatalogEntry>();
+			// bind the aggregate
+			ErrorData error_aggr;
+			FunctionBinder function_binder(context);
+			auto best_function = function_binder.BindFunction(func.name, func.functions, types, error_aggr);
+			if (!best_function.IsValid()) {
+				error_aggr.AddQueryLocation(window);
+				error_aggr.Throw();
+			}
+
+			// found a matching function! bind it as an aggregate
+			auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
+			auto window_bound_aggregate = function_binder.BindAggregateFunction(bound_function, std::move(children));
+			// create the aggregate
+			auto aggregate = make_uniq<AggregateFunction>(window_bound_aggregate->function);
+			auto bind_info = std::move(window_bound_aggregate->bind_info);
+			auto sql_type = window_bound_aggregate->return_type;
+
+			children = std::move(window_bound_aggregate->children);
+			result = make_uniq<BoundWindowExpression>(window.GetExpressionType(), sql_type, std::move(aggregate),
+													   std::move(bind_info));
+		}
+	}
+	// Third pass, look for a window function
+	if (!result) {
+		EntryLookupInfo function_lookup(CatalogType::WINDOW_FUNCTION_ENTRY, window.function_name, error_context);
+		entry = GetCatalogEntry(window.catalog, window.schema, function_lookup, OnEntryNotFound::RETURN_NULL);
+		if (entry) {
+			auto &func = entry->Cast<WindowFunctionCatalogEntry>();
+			// bind the window
+			ErrorData error_window;
+			FunctionBinder function_binder(context);
+			auto best_function = function_binder.BindFunction(func.name, func.functions, types, error_window);
+			if (!best_function.IsValid()) {
+				error_window.AddQueryLocation(window);
+				error_window.Throw();
+			}
+
+			// found a matching function! bind it as a window
+			auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
+			auto window_bound_function = function_binder.BindWindowFunction(bound_function, std::move(children));
+			// create the aggregate
+			auto window_func = make_uniq<WindowFunction>(window_bound_function->function);
+			auto bind_info = std::move(window_bound_function->bind_info);
+			auto sql_type = window_func->return_type;
+
+			children = std::move(window_bound_function->children);
+			result = make_uniq<BoundWindowExpression>(window.GetExpressionType(), sql_type, std::move(window_func),
+													   std::move(bind_info));
+		}
+	}
+	// Else, throw an error
+	if (!result) {
+		// TODO: Throw nicer error here
+		// Make another lookup to throw an exception
+		Catalog::GetEntry<WindowFunctionCatalogEntry>(context, window.catalog, window.schema,
+														 window.function_name, error_context);
+	}
+
 	result->children = std::move(children);
 	for (auto &child : window.partitions) {
 		result->partitions.push_back(GetExpression(child));

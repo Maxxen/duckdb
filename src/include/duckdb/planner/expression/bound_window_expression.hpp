@@ -15,6 +15,7 @@
 
 namespace duckdb {
 class AggregateFunction;
+class WindowFunction;
 
 class BoundWindowExpression : public Expression {
 public:
@@ -23,9 +24,14 @@ public:
 public:
 	BoundWindowExpression(ExpressionType type, LogicalType return_type, unique_ptr<AggregateFunction> aggregate,
 	                      unique_ptr<FunctionData> bind_info);
+	BoundWindowExpression(ExpressionType type, LogicalType return_type, unique_ptr<WindowFunction> aggregate,
+					  unique_ptr<FunctionData> bind_info);
+	BoundWindowExpression(ExpressionType type, LogicalType return_type);
 
 	//! The bound aggregate function
 	unique_ptr<AggregateFunction> aggregate;
+	//! The bound window function
+	unique_ptr<WindowFunction> window;
 	//! The bound function info
 	unique_ptr<FunctionData> bind_info;
 	//! The child expressions of the main window function

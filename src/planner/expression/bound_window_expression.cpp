@@ -13,6 +13,19 @@ BoundWindowExpression::BoundWindowExpression(ExpressionType type, LogicalType re
                                              unique_ptr<FunctionData> bind_info)
     : Expression(type, ExpressionClass::BOUND_WINDOW, std::move(return_type)), aggregate(std::move(aggregate)),
       bind_info(std::move(bind_info)), ignore_nulls(false), distinct(false) {
+	D_ASSERT(type == ExpressionType::WINDOW_AGGREGATE);
+}
+
+BoundWindowExpression::BoundWindowExpression(ExpressionType type, LogicalType return_type,
+											 unique_ptr<WindowFunction> window,
+											 unique_ptr<FunctionData> bind_info)
+	: Expression(type, ExpressionClass::BOUND_WINDOW, std::move(return_type)), window(std::move(window)),
+	  bind_info(std::move(bind_info)), ignore_nulls(false), distinct(false) {
+	D_ASSERT(type == ExpressionType::WINDOW_AGGREGATE);
+}
+
+BoundWindowExpression::BoundWindowExpression(ExpressionType type, LogicalType return_type)
+	: Expression(type, ExpressionClass::BOUND_WINDOW, std::move(return_type)), ignore_nulls(false), distinct(false) {
 }
 
 string BoundWindowExpression::ToString() const {
@@ -135,7 +148,7 @@ bool BoundWindowExpression::KeysAreCompatible(const BoundWindowExpression &other
 }
 
 unique_ptr<Expression> BoundWindowExpression::Copy() const {
-	auto new_window = make_uniq<BoundWindowExpression>(type, return_type, nullptr, nullptr);
+	auto new_window = make_uniq<BoundWindowExpression>(type, return_type);
 	new_window->CopyProperties(*this);
 
 	if (aggregate) {

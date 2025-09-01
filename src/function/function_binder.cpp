@@ -181,6 +181,11 @@ optional_idx FunctionBinder::BindFunction(const string &name, AggregateFunctionS
 	return BindFunctionFromArguments(name, functions, arguments, error);
 }
 
+optional_idx FunctionBinder::BindFunction(const string &name, WindowFunctionSet &functions,
+											const vector<LogicalType> &arguments, ErrorData &error) {
+	return BindFunctionFromArguments(name, functions, arguments, error);
+}
+
 optional_idx FunctionBinder::BindFunction(const string &name, TableFunctionSet &functions,
                                           const vector<LogicalType> &arguments, ErrorData &error) {
 	return BindFunctionFromArguments(name, functions, arguments, error);
@@ -223,6 +228,12 @@ optional_idx FunctionBinder::BindFunction(const string &name, ScalarFunctionSet 
 
 optional_idx FunctionBinder::BindFunction(const string &name, AggregateFunctionSet &functions,
                                           vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
+	auto types = GetLogicalTypesFromExpressions(arguments);
+	return BindFunction(name, functions, types, error);
+}
+
+optional_idx FunctionBinder::BindFunction(const string &name, WindowFunctionSet &functions,
+											vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
 	auto types = GetLogicalTypesFromExpressions(arguments);
 	return BindFunction(name, functions, types, error);
 }
@@ -715,6 +726,26 @@ unique_ptr<BoundAggregateExpression> FunctionBinder::BindAggregateFunction(Aggre
 
 	return make_uniq<BoundAggregateExpression>(std::move(bound_function), std::move(children), std::move(filter),
 	                                           std::move(bind_info), aggr_type);
+}
+
+unique_ptr<FunctionBinder::BoundWindowFunction> FunctionBinder::BindWindowFunction(
+	WindowFunction bound_function, vector<unique_ptr<Expression>> children) {
+	ResolveTemplateTypes(bound_function, children);
+
+	unique_ptr<FunctionData> bind_info;
+	// TODO: Binding
+	//if (bound_function.bind) {
+	//	bind_info = bound_function.bind(context, bound_function, children);
+	//	// we may have lost some arguments in the bind
+	//	children.resize(MinValue(bound_function.arguments.size(), children.size()));
+	//}
+
+	CheckTemplateTypesResolved(bound_function);
+
+	// check if we need to add casts to the children
+	CastToFunctionArguments(bound_function, children);
+
+	return make_uniq<BoundWindowFunction>(std::move(bound_function), std::move(children), std::move(bind_info));
 }
 
 } // namespace duckdb
