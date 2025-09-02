@@ -507,4 +507,24 @@ shared_ptr<ExtraTypeInfo> TemplateTypeInfo::Copy() const {
 	return make_shared_ptr<TemplateTypeInfo>(*this);
 }
 
+//===--------------------------------------------------------------------===//
+// Lambda Type Info
+//===--------------------------------------------------------------------===//
+LambdaTypeInfo::LambdaTypeInfo() : ExtraTypeInfo(ExtraTypeInfoType::LAMBDA_TYPE_INFO) {
+}
+
+LambdaTypeInfo::LambdaTypeInfo(child_list_t<LogicalType> params_p, LogicalType return_type_p)
+    : ExtraTypeInfo(ExtraTypeInfoType::LAMBDA_TYPE_INFO), parameter_types(std::move(params_p)),
+      return_type(std::move(return_type_p)) {
+}
+
+bool LambdaTypeInfo::EqualsInternal(ExtraTypeInfo *other_p) const {
+	auto &other = other_p->Cast<LambdaTypeInfo>();
+	return parameter_types == other.parameter_types && return_type == other.return_type;
+}
+
+shared_ptr<ExtraTypeInfo> LambdaTypeInfo::Copy() const {
+	return make_shared_ptr<LambdaTypeInfo>(*this);
+}
+
 } // namespace duckdb

@@ -67,6 +67,18 @@ inline LogicalType TypeVisitor::VisitReplace(const LogicalType &type, F &&func) 
 		const auto &value = MapType::ValueType(type);
 		return func(LogicalType::MAP(VisitReplace(key, func), VisitReplace(value, func)));
 	}
+	case LogicalTypeId::LAMBDA: {
+		if (!type.AuxInfo()) {
+			return func(type);
+		}
+		auto children = LambdaType::GetParameterTypes(type);
+		for (auto &child : children) {
+			child.second = VisitReplace(child.second, func);
+		}
+		auto return_type = LambdaType::GetReturnType(type);
+		return_type = VisitReplace(return_type, func);
+		return func(LogicalType::LAMBDA_TYPE(children, return_type));
+	}
 	default:
 		return func(type);
 	}
@@ -114,6 +126,17 @@ inline bool TypeVisitor::Contains(const LogicalType &type, F &&predicate) {
 			return false;
 		}
 		return Contains(MapType::KeyType(type), predicate) || Contains(MapType::ValueType(type), predicate);
+	case LogicalTypeId::LAMBDA: {
+		if (!type.AuxInfo()) {
+			return false;
+		}
+		for (const auto &child : LambdaType::GetParameterTypes(type)) {
+			if (Contains(child.second, predicate)) {
+				return true;
+			}
+		}
+		return Contains(LambdaType::GetReturnType(type), predicate);
+	}
 	default:
 		return false;
 	}

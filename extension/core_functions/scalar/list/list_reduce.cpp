@@ -308,8 +308,12 @@ void LambdaFunctions::ListReduceFunction(DataChunk &args, ExpressionState &state
 }
 
 ScalarFunctionSet ListReduceFun::GetFunctions() {
-	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::ANY,
-	                   LambdaFunctions::ListReduceFunction, ListReduceBind, nullptr, nullptr);
+	auto elem_type = LogicalType::TEMPLATE("T");
+	auto list_type = LogicalType::LIST(elem_type);
+	auto func_type = LogicalType::LAMBDA_TYPE({{"accumulator", elem_type}, {"x", elem_type}}, elem_type);
+
+	ScalarFunction fun({list_type, func_type}, elem_type, LambdaFunctions::ListReduceFunction, ListReduceBind, nullptr,
+	                   nullptr);
 
 	fun.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
 	fun.serialize = ListLambdaBindData::Serialize;
@@ -318,7 +322,7 @@ ScalarFunctionSet ListReduceFun::GetFunctions() {
 
 	ScalarFunctionSet set;
 	set.AddFunction(fun);
-	fun.arguments.push_back(LogicalType::ANY);
+	fun.arguments.push_back(elem_type);
 	set.AddFunction(fun);
 	return set;
 }

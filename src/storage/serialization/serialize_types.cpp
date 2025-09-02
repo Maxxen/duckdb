@@ -47,6 +47,9 @@ shared_ptr<ExtraTypeInfo> ExtraTypeInfo::Deserialize(Deserializer &deserializer)
 		break;
 	case ExtraTypeInfoType::INVALID_TYPE_INFO:
 		return nullptr;
+	case ExtraTypeInfoType::LAMBDA_TYPE_INFO:
+		result = LambdaTypeInfo::Deserialize(deserializer);
+		break;
 	case ExtraTypeInfoType::LIST_TYPE_INFO:
 		result = ListTypeInfo::Deserialize(deserializer);
 		break;
@@ -144,6 +147,19 @@ void IntegerLiteralTypeInfo::Serialize(Serializer &serializer) const {
 shared_ptr<ExtraTypeInfo> IntegerLiteralTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto result = duckdb::shared_ptr<IntegerLiteralTypeInfo>(new IntegerLiteralTypeInfo());
 	deserializer.ReadProperty<Value>(200, "constant_value", result->constant_value);
+	return std::move(result);
+}
+
+void LambdaTypeInfo::Serialize(Serializer &serializer) const {
+	ExtraTypeInfo::Serialize(serializer);
+	serializer.WriteProperty<LogicalType>(200, "return_type", return_type);
+	serializer.WritePropertyWithDefault<child_list_t<LogicalType>>(201, "parameter_types", parameter_types);
+}
+
+shared_ptr<ExtraTypeInfo> LambdaTypeInfo::Deserialize(Deserializer &deserializer) {
+	auto result = duckdb::shared_ptr<LambdaTypeInfo>(new LambdaTypeInfo());
+	deserializer.ReadProperty<LogicalType>(200, "return_type", result->return_type);
+	deserializer.ReadPropertyWithDefault<child_list_t<LogicalType>>(201, "parameter_types", result->parameter_types);
 	return std::move(result);
 }
 

@@ -9,16 +9,12 @@ static unique_ptr<FunctionData> ListTransformBind(ClientContext &context, Scalar
                                                   vector<unique_ptr<Expression>> &arguments) {
 
 	// the list column and the bound lambda expression
-	D_ASSERT(arguments.size() == 2);
 	if (arguments[1]->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
 		throw BinderException("Invalid lambda expression!");
 	}
 
-	arguments[0] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[0]));
-
-	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
-	bound_function.return_type = LogicalType::LIST(bound_lambda_expr.lambda_expr->return_type);
-	auto has_index = bound_lambda_expr.parameter_count == 2;
+	// bound_function.return_type = LogicalType::LIST(bound_lambda_expr.lambda_expr->return_type);
+	auto has_index = arguments[1]->Cast<BoundLambdaExpression>().parameter_count == 2;
 	return LambdaFunctions::ListLambdaBind(context, bound_function, arguments, has_index);
 }
 
@@ -28,8 +24,14 @@ static LogicalType ListTransformBindLambda(ClientContext &context, const vector<
 }
 
 ScalarFunction ListTransformFun::GetFunction() {
-	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::LIST(LogicalType::ANY),
-	                   LambdaFunctions::ListTransformFunction, ListTransformBind, nullptr, nullptr);
+	auto in_type = LogicalType::TEMPLATE("T");
+	auto out_type = LogicalType::TEMPLATE("U");
+	auto in_list_type = LogicalType::LIST(in_type);
+	auto out_list_type = LogicalType::LIST(out_type);
+	auto func_type = LogicalType::LAMBDA_TYPE({{"x", in_type}, {"i", LogicalType::BIGINT}}, out_type);
+
+	ScalarFunction fun({in_list_type, func_type}, out_list_type, LambdaFunctions::ListTransformFunction,
+	                   ListTransformBind, nullptr, nullptr);
 
 	fun.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
 	fun.serialize = ListLambdaBindData::Serialize;

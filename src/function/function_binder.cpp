@@ -508,6 +508,21 @@ static void InferTemplateType(ClientContext &context, const LogicalType &source,
 	// Otherwise, recurse downwards into nested types, and try to infer nested type members
 	// This only works if the source and target types are completely defined (excluding templates),
 	// i.e. they have aux info.
+	if (source.id() == LogicalTypeId::LAMBDA && target.id() == LogicalTypeId::LAMBDA) {
+		auto &source_params = LambdaType::GetParameterTypes(source);
+		auto &target_params = LambdaType::GetParameterTypes(target);
+
+		for (idx_t i = 0; i < MinValue(source_params.size(), target_params.size()); i++) {
+			InferTemplateType(context, source_params[i].second, target_params[i].second, bindings, current_expr,
+			                  function);
+		}
+
+		auto &source_return = LambdaType::GetReturnType(source);
+		auto &target_return = LambdaType::GetReturnType(target);
+		InferTemplateType(context, source_return, target_return, bindings, current_expr, function);
+		return;
+	}
+
 	if (!(source.IsNested() && target.IsNested() && source.AuxInfo() && target.AuxInfo())) {
 		return;
 	}

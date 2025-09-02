@@ -414,11 +414,11 @@ public:
 	static constexpr const LogicalTypeId HASH = LogicalTypeId::UBIGINT;
 	static constexpr const LogicalTypeId POINTER = LogicalTypeId::POINTER;
 	static constexpr const LogicalTypeId TABLE = LogicalTypeId::TABLE;
-	static constexpr const LogicalTypeId LAMBDA = LogicalTypeId::LAMBDA;
 	static constexpr const LogicalTypeId INVALID = LogicalTypeId::INVALID;
 	static constexpr const LogicalTypeId ROW_TYPE = LogicalTypeId::BIGINT;
 
 	// explicitly allowing these functions to be capitalized to be in-line with the remaining functions
+	DUCKDB_API static LogicalType LAMBDA_TYPE(child_list_t<LogicalType> params, LogicalType return_type); // NOLINT
 	DUCKDB_API static LogicalType DECIMAL(uint8_t width, uint8_t scale);                 // NOLINT
 	DUCKDB_API static LogicalType VARCHAR_COLLATION(string collation);           // NOLINT
 	DUCKDB_API static LogicalType LIST(const LogicalType &child);                // NOLINT
@@ -537,6 +537,11 @@ struct IntegerLiteral {
 struct TemplateType {
 	// Get the name of the template type
 	DUCKDB_API static const string &GetName(const LogicalType &type);
+};
+
+struct LambdaType {
+	DUCKDB_API static const LogicalType &GetReturnType(const LogicalType &lambda_type);
+	DUCKDB_API static const child_list_t<LogicalType> &GetParameterTypes(const LogicalType &lambda_type);
 };
 
 // **DEPRECATED**: Use EnumUtil directly instead.

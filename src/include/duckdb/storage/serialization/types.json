@@ -248,5 +248,22 @@
         "type": "string"
       }
     ]
+  },
+  {
+    "class": "LambdaTypeInfo",
+    "base": "ExtraTypeInfo",
+    "enum": "LAMBDA_TYPE_INFO",
+    "members": [
+      {
+        "id": 200,
+        "name": "return_type",
+        "type": "LogicalType"
+      },
+      {
+        "id": 201,
+        "name": "parameter_types",
+        "type": "child_list_t<LogicalType>"
+      }
+    ]
   }
 ]

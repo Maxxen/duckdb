@@ -384,11 +384,6 @@ unique_ptr<FunctionData> LambdaFunctions::ListLambdaPrepareBind(vector<unique_pt
 unique_ptr<FunctionData> LambdaFunctions::ListLambdaBind(ClientContext &context, ScalarFunction &bound_function,
                                                          vector<unique_ptr<Expression>> &arguments,
                                                          const bool has_index) {
-	unique_ptr<FunctionData> bind_data = ListLambdaPrepareBind(arguments, context, bound_function);
-	if (bind_data) {
-		return bind_data;
-	}
-
 	// get the lambda expression and put it in the bind info
 	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
 	auto lambda_expr = std::move(bound_lambda_expr.lambda_expr);

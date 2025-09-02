@@ -212,7 +212,6 @@ constexpr const LogicalTypeId LogicalType::ROW_TYPE;
 
 // TODO these are incomplete and should maybe not exist as such
 constexpr const LogicalTypeId LogicalType::TABLE;
-constexpr const LogicalTypeId LogicalType::LAMBDA;
 
 constexpr const LogicalTypeId LogicalType::ANY;
 
@@ -521,6 +520,23 @@ string LogicalType::ToString() const {
 			return "T";
 		}
 		return TemplateType::GetName(*this);
+	}
+	case LogicalTypeId::LAMBDA: {
+		if (!type_info_) {
+			return "LAMBDA";
+		} else {
+			auto &param_types = LambdaType::GetParameterTypes(*this);
+			auto &return_type = LambdaType::GetReturnType(*this);
+			string result = "LAMBDA(";
+			for (idx_t i = 0; i < param_types.size(); i++) {
+				if (i > 0) {
+					result += ", ";
+				}
+				result += param_types[i].second.ToString();
+			}
+			result += ") -> " + return_type.ToString();
+			return result;
+		}
 	}
 	default:
 		return EnumUtil::ToString(id_);
@@ -1962,6 +1978,28 @@ const string &TemplateType::GetName(const LogicalType &type) {
 	auto info = type.AuxInfo();
 	D_ASSERT(info->type == ExtraTypeInfoType::TEMPLATE_TYPE_INFO);
 	return info->Cast<TemplateTypeInfo>().name;
+}
+
+//===--------------------------------------------------------------------===//
+// Lambda Type
+//===--------------------------------------------------------------------===//
+LogicalType LogicalType::LAMBDA_TYPE(child_list_t<LogicalType> params, LogicalType return_type) {
+	auto type_info = make_shared_ptr<LambdaTypeInfo>(std::move(params), std::move(return_type));
+	return LogicalType(LogicalTypeId::LAMBDA, std::move(type_info));
+}
+
+const LogicalType &LambdaType::GetReturnType(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::LAMBDA);
+	auto info = type.AuxInfo();
+	D_ASSERT(info->type == ExtraTypeInfoType::LAMBDA_TYPE_INFO);
+	return info->Cast<LambdaTypeInfo>().return_type;
+}
+
+const child_list_t<LogicalType> &LambdaType::GetParameterTypes(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::LAMBDA);
+	auto info = type.AuxInfo();
+	D_ASSERT(info->type == ExtraTypeInfoType::LAMBDA_TYPE_INFO);
+	return info->Cast<LambdaTypeInfo>().parameter_types;
 }
 
 //===--------------------------------------------------------------------===//

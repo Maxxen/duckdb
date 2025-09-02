@@ -36,8 +36,12 @@ static LogicalType ListFilterBindLambda(ClientContext &context, const vector<Log
 }
 
 ScalarFunction ListFilterFun::GetFunction() {
-	ScalarFunction fun({LogicalType::LIST(LogicalType::ANY), LogicalType::LAMBDA}, LogicalType::LIST(LogicalType::ANY),
-	                   LambdaFunctions::ListFilterFunction, ListFilterBind, nullptr, nullptr);
+	auto elem_type = LogicalType::TEMPLATE("T");
+	auto list_type = LogicalType::LIST(elem_type);
+	auto func_type = LogicalType::LAMBDA_TYPE({{"x", elem_type}}, LogicalType::BOOLEAN);
+
+	ScalarFunction fun({list_type, func_type}, list_type, LambdaFunctions::ListFilterFunction, ListFilterBind, nullptr,
+	                   nullptr);
 
 	fun.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
 	fun.serialize = ListLambdaBindData::Serialize;

@@ -209,7 +209,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 	ErrorData error;
 	for (idx_t i = 0; i < function.children.size(); i++) {
 		if (i == lambda_expr_idx) {
-			function_child_types.push_back(LogicalType::LAMBDA);
+			function_child_types.push_back(scalar_function.arguments[i]);
 			continue;
 		}
 

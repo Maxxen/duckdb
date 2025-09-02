@@ -28,7 +28,8 @@ enum class ExtraTypeInfoType : uint8_t {
 	ARRAY_TYPE_INFO = 9,
 	ANY_TYPE_INFO = 10,
 	INTEGER_LITERAL_TYPE_INFO = 11,
-	TEMPLATE_TYPE_INFO = 12
+	TEMPLATE_TYPE_INFO = 12,
+	LAMBDA_TYPE_INFO = 13,
 };
 
 struct ExtraTypeInfo {
@@ -276,6 +277,22 @@ public:
 protected:
 	bool EqualsInternal(ExtraTypeInfo *other_p) const override;
 	TemplateTypeInfo();
+};
+
+struct LambdaTypeInfo : public ExtraTypeInfo {
+	explicit LambdaTypeInfo(child_list_t<LogicalType> parameter_types_p, LogicalType return_type_p);
+
+	child_list_t<LogicalType> parameter_types;
+	LogicalType return_type;
+
+public:
+	void Serialize(Serializer &serializer) const override;
+	static shared_ptr<ExtraTypeInfo> Deserialize(Deserializer &source);
+	shared_ptr<ExtraTypeInfo> Copy() const override;
+
+protected:
+	bool EqualsInternal(ExtraTypeInfo *other_p) const override;
+	LambdaTypeInfo();
 };
 
 } // namespace duckdb
