@@ -252,13 +252,13 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 	const uint32_t dims = 2 + (has_z ? 1 : 0) + (has_m ? 1 : 0);
 
 	// WKB type
-	const auto meta = static_cast<uint32_t>(type) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
+	const auto meta = static_cast<uint32_t>(type.GetPartType()) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
 	// Write the geometry type and vertex type
 	writer.Write<uint8_t>(1); // LE Byte Order
 	writer.Write<uint32_t>(meta);
 
-	switch (type) {
-	case GeometryType::POINT: {
+	switch (type.GetPartType()) {
+	case GeometryPartType::POINT: {
 		if (is_empty) {
 			for (uint32_t d_idx = 0; d_idx < dims; d_idx++) {
 				// Write NaN for each dimension, if point is empty
@@ -273,7 +273,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 			reader.Match(')');
 		}
 	} break;
-	case GeometryType::LINESTRING: {
+	case GeometryPartType::LINESTRING: {
 		if (is_empty) {
 			writer.Write<uint32_t>(0); // No vertices in empty linestring
 			break;
@@ -290,7 +290,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		reader.Match(')');
 		writer.Write(vert_count);
 	} break;
-	case GeometryType::POLYGON: {
+	case GeometryPartType::POLYGON: {
 		if (is_empty) {
 			writer.Write<uint32_t>(0);
 			break; // No rings in empty polygon
@@ -314,7 +314,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		reader.Match(')');
 		writer.Write(ring_count);
 	} break;
-	case GeometryType::MULTIPOINT: {
+	case GeometryPartType::MULTIPOINT: {
 		if (is_empty) {
 			writer.Write<uint32_t>(0); // No points in empty multipoint
 			break;
@@ -324,7 +324,8 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		do {
 			bool has_paren = reader.TryMatch('(');
 
-			const auto part_meta = static_cast<uint32_t>(GeometryType::POINT) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
+			const auto part_meta =
+			    static_cast<uint32_t>(GeometryPartType::POINT) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
 			writer.Write<uint8_t>(1);
 			writer.Write<uint32_t>(part_meta);
 
@@ -346,7 +347,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		} while (reader.TryMatch(','));
 		writer.Write(part_count);
 	} break;
-	case GeometryType::MULTILINESTRING: {
+	case GeometryPartType::MULTILINESTRING: {
 		if (is_empty) {
 			writer.Write<uint32_t>(0);
 			return; // No linestrings in empty multilinestring
@@ -356,7 +357,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		do {
 
 			const auto part_meta =
-			    static_cast<uint32_t>(GeometryType::LINESTRING) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
+			    static_cast<uint32_t>(GeometryPartType::LINESTRING) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
 			writer.Write<uint8_t>(1);
 			writer.Write<uint32_t>(part_meta);
 
@@ -376,7 +377,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		reader.Match(')');
 		writer.Write(part_count);
 	} break;
-	case GeometryType::MULTIPOLYGON: {
+	case GeometryPartType::MULTIPOLYGON: {
 		if (is_empty) {
 			writer.Write<uint32_t>(0); // No polygons in empty multipolygon
 			break;
@@ -386,7 +387,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		do {
 
 			const auto part_meta =
-			    static_cast<uint32_t>(GeometryType::POLYGON) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
+			    static_cast<uint32_t>(GeometryPartType::POLYGON) + (has_z ? 1000 : 0) + (has_m ? 2000 : 0);
 			writer.Write<uint8_t>(1);
 			writer.Write<uint32_t>(part_meta);
 
@@ -413,7 +414,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		reader.Match(')');
 		writer.Write(part_count);
 	} break;
-	case GeometryType::GEOMETRYCOLLECTION: {
+	case GeometryPartType::GEOMETRYCOLLECTION: {
 		if (is_empty) {
 			writer.Write<uint32_t>(0); // No geometries in empty geometry collection
 			break;
@@ -429,7 +430,7 @@ void FromStringRecursive(TextReader &reader, BlobWriter &writer, uint32_t depth,
 		writer.Write(part_count);
 	} break;
 	default:
-		throw InvalidInputException("Unknown geometry type %d at position %zu", static_cast<int>(type),
+		throw InvalidInputException("Unknown geometry type %d at position %zu", static_cast<int>(meta),
 		                            reader.GetPosition());
 	}
 }
@@ -446,7 +447,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 	}
 
 	const auto meta = reader.Read<uint32_t>();
-	const auto type = static_cast<GeometryType>(meta % 1000);
+	const auto type = static_cast<GeometryPartType>(meta % 1000);
 	const auto flag = meta / 1000;
 	const auto has_z = (flag & 0x01) != 0;
 	const auto has_m = (flag & 0x02) != 0;
@@ -460,7 +461,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 	const auto flag_str = has_z ? (has_m ? " ZM " : " Z ") : (has_m ? " M " : " ");
 
 	switch (type) {
-	case GeometryType::POINT: {
+	case GeometryPartType::POINT: {
 		writer.Write("POINT");
 		writer.Write(flag_str);
 
@@ -483,7 +484,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 		}
 		writer.Write(')');
 	} break;
-	case GeometryType::LINESTRING: {
+	case GeometryPartType::LINESTRING: {
 		writer.Write("LINESTRING");
 		;
 		writer.Write(flag_str);
@@ -507,7 +508,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 		}
 		writer.Write(')');
 	} break;
-	case GeometryType::POLYGON: {
+	case GeometryPartType::POLYGON: {
 		writer.Write("POLYGON");
 		writer.Write(flag_str);
 		const auto ring_count = reader.Read<uint32_t>();
@@ -542,7 +543,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 		}
 		writer.Write(')');
 	} break;
-	case GeometryType::MULTIPOINT: {
+	case GeometryPartType::MULTIPOINT: {
 		writer.Write("MULTIPOINT");
 		writer.Write(flag_str);
 		const auto part_count = reader.Read<uint32_t>();
@@ -557,12 +558,12 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 				throw InvalidInputException("Unsupported byte order %d in WKB", part_byte_order);
 			}
 			const auto part_meta = reader.Read<uint32_t>();
-			const auto part_type = static_cast<GeometryType>(part_meta % 1000);
+			const auto part_type = static_cast<GeometryPartType>(part_meta % 1000);
 			const auto part_flag = part_meta / 1000;
 			const auto part_has_z = (part_flag & 0x01) != 0;
 			const auto part_has_m = (part_flag & 0x02) != 0;
 
-			if (part_type != GeometryType::POINT) {
+			if (part_type != GeometryPartType::POINT) {
 				throw InvalidInputException("Expected POINT in MULTIPOINT but got %d", static_cast<int>(part_type));
 			}
 
@@ -596,7 +597,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 		writer.Write(')');
 
 	} break;
-	case GeometryType::MULTILINESTRING: {
+	case GeometryPartType::MULTILINESTRING: {
 		writer.Write("MULTILINESTRING");
 		writer.Write(flag_str);
 		const auto part_count = reader.Read<uint32_t>();
@@ -611,12 +612,12 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 				throw InvalidInputException("Unsupported byte order %d in WKB", part_byte_order);
 			}
 			const auto part_meta = reader.Read<uint32_t>();
-			const auto part_type = static_cast<GeometryType>(part_meta % 1000);
+			const auto part_type = static_cast<GeometryPartType>(part_meta % 1000);
 			const auto part_flag = part_meta / 1000;
 			const auto part_has_z = (part_flag & 0x01) != 0;
 			const auto part_has_m = (part_flag & 0x02) != 0;
 
-			if (part_type != GeometryType::LINESTRING) {
+			if (part_type != GeometryPartType::LINESTRING) {
 				throw InvalidInputException("Expected LINESTRING in MULTILINESTRING but got %d",
 				                            static_cast<int>(part_type));
 			}
@@ -650,7 +651,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 		}
 		writer.Write(')');
 	} break;
-	case GeometryType::MULTIPOLYGON: {
+	case GeometryPartType::MULTIPOLYGON: {
 		writer.Write("MULTIPOLYGON");
 		writer.Write(flag_str);
 		const auto part_count = reader.Read<uint32_t>();
@@ -669,11 +670,11 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 				throw InvalidInputException("Unsupported byte order %d in WKB", part_byte_order);
 			}
 			const auto part_meta = reader.Read<uint32_t>();
-			const auto part_type = static_cast<GeometryType>(part_meta % 1000);
+			const auto part_type = static_cast<GeometryPartType>(part_meta % 1000);
 			const auto part_flag = part_meta / 1000;
 			const auto part_has_z = (part_flag & 0x01) != 0;
 			const auto part_has_m = (part_flag & 0x02) != 0;
-			if (part_type != GeometryType::POLYGON) {
+			if (part_type != GeometryPartType::POLYGON) {
 				throw InvalidInputException("Expected POLYGON in MULTIPOLYGON but got %d", static_cast<int>(part_type));
 			}
 			if ((has_z != part_has_z) || (has_m != part_has_m)) {
@@ -716,7 +717,7 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 		}
 		writer.Write(')');
 	} break;
-	case GeometryType::GEOMETRYCOLLECTION: {
+	case GeometryPartType::GEOMETRYCOLLECTION: {
 		writer.Write("GEOMETRYCOLLECTION");
 		writer.Write(flag_str);
 		const auto part_count = reader.Read<uint32_t>();
@@ -747,6 +748,14 @@ void ToStringRecursive(BlobReader &reader, TextWriter &writer, idx_t depth, bool
 // Public interface
 //----------------------------------------------------------------------------------------------------------------------
 namespace duckdb {
+
+const GeometryType GeometryType::POINT = {GeometryPartType::POINT, GeometryVertexType::XY};
+const GeometryType GeometryType::LINESTRING = {GeometryPartType::LINESTRING, GeometryVertexType::XY};
+const GeometryType GeometryType::POLYGON = {GeometryPartType::POLYGON, GeometryVertexType::XY};
+const GeometryType GeometryType::MULTIPOINT = {GeometryPartType::MULTIPOINT, GeometryVertexType::XY};
+const GeometryType GeometryType::MULTILINESTRING = {GeometryPartType::MULTILINESTRING, GeometryVertexType::XY};
+const GeometryType GeometryType::MULTIPOLYGON = {GeometryPartType::MULTIPOLYGON, GeometryVertexType::XY};
+const GeometryType GeometryType::GEOMETRYCOLLECTION = {GeometryPartType::GEOMETRYCOLLECTION, GeometryVertexType::XY};
 
 bool Geometry::FromString(const string_t &wkt_text, string_t &result, Vector &result_vector, bool strict) {
 	TextReader reader(wkt_text.GetData(), static_cast<uint32_t>(wkt_text.GetSize()));
