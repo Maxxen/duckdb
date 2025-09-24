@@ -757,6 +757,21 @@ const GeometryType GeometryType::MULTILINESTRING = {GeometryPartType::MULTILINES
 const GeometryType GeometryType::MULTIPOLYGON = {GeometryPartType::MULTIPOLYGON, GeometryVertexType::XY};
 const GeometryType GeometryType::GEOMETRYCOLLECTION = {GeometryPartType::GEOMETRYCOLLECTION, GeometryVertexType::XY};
 
+GeometryType GeometryType::FromWKB(uint32_t wkb_type) {
+	// TODO: Handle EWKB
+
+	const auto type_id = wkb_type % 1000;
+	const auto flag_id = wkb_type / 1000;
+
+	if (type_id < 1 || type_id > 7) {
+		throw InvalidInputException("Unknown geometry type %d in WKB", wkb_type);
+	}
+	if (flag_id > 3) {
+		throw InvalidInputException("Unsupported geometry vertex type %d in WKB", wkb_type);
+	}
+	return GeometryType(static_cast<GeometryPartType>(type_id), static_cast<GeometryVertexType>(flag_id));
+}
+
 bool Geometry::FromString(const string_t &wkt_text, string_t &result, Vector &result_vector, bool strict) {
 	TextReader reader(wkt_text.GetData(), static_cast<uint32_t>(wkt_text.GetSize()));
 	BlobWriter writer;
@@ -777,6 +792,134 @@ string_t Geometry::ToString(Vector &result, const string_t &geom) {
 	// Convert the buffer to string_t
 	const auto &buffer = writer.GetBuffer();
 	return StringVector::AddString(result, buffer.data(), buffer.size());
+}
+
+GeometryType Geometry::GetType(const string_t &geom) {
+	BlobReader reader(geom.GetData(), static_cast<uint32_t>(geom.GetSize()));
+
+	const auto byte_order = reader.Read<uint8_t>();
+	if (byte_order != 1) {
+		throw InvalidInputException("Unsupported big endian in WKB", byte_order);
+	}
+
+	const auto meta = reader.Read<uint32_t>();
+	return GeometryType::FromWKB(meta);
+}
+
+static void UpdateBoundsFromVertexArray(GeometryExtent &bbox, GeometryVertexType vert_type, const char *vert_array,
+                                        uint32_t vert_count) {
+	switch (vert_type) {
+	case GeometryVertexType::XY: { // XY
+		constexpr auto vert_width = sizeof(double) * 2;
+		for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+			double vert[2];
+			memcpy(vert, vert_array + vert_idx * vert_width, vert_width);
+			bbox.ExtendX(vert[0]);
+			bbox.ExtendY(vert[1]);
+		}
+	} break;
+	case GeometryVertexType::XYZ: { // XYZ
+		constexpr auto vert_width = sizeof(double) * 3;
+		for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+			double vert[3];
+			memcpy(vert, vert_array + vert_idx * vert_width, vert_width);
+			bbox.ExtendX(vert[0]);
+			bbox.ExtendY(vert[1]);
+			bbox.ExtendZ(vert[2]);
+		}
+	} break;
+	case GeometryVertexType::XYM: { // XYM
+		constexpr auto vert_width = sizeof(double) * 3;
+		for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+			double vert[3];
+			memcpy(vert, vert_array + vert_idx * vert_width, vert_width);
+			bbox.ExtendX(vert[0]);
+			bbox.ExtendY(vert[1]);
+			bbox.ExtendM(vert[2]);
+		}
+	} break;
+	case GeometryVertexType::XYZM: { // XYZM
+		constexpr auto vert_width = sizeof(double) * 4;
+		for (uint32_t vert_idx = 0; vert_idx < vert_count; vert_idx++) {
+			double vert[4];
+			memcpy(vert, vert_array + vert_idx * vert_width, vert_width);
+			bbox.ExtendX(vert[0]);
+			bbox.ExtendY(vert[1]);
+			bbox.ExtendZ(vert[2]);
+			bbox.ExtendM(vert[3]);
+		}
+	} break;
+	default:
+		break;
+	}
+}
+
+uint32_t Geometry::GetExtent(const string_t &geom, GeometryExtent &bbox) {
+	BlobReader reader(geom.GetData(), static_cast<uint32_t>(geom.GetSize()));
+
+	uint32_t total_vertex_count = 0;
+
+	while (!reader.IsAtEnd()) {
+		const auto byte_order = reader.Read<uint8_t>();
+		if (byte_order != 1) {
+			throw InvalidInputException("Unsupported big endian in WKB", byte_order);
+		}
+		const auto type = GeometryType::FromWKB(reader.Read<uint32_t>());
+		const auto vert_width = type.GetVertexWidth();
+
+		switch (type.GetPartType()) {
+		case GeometryPartType::POINT: {
+			// Point are special in that they are considered "empty" if they are all-nan
+			const auto vert_array = reader.Reserve(vert_width);
+			const auto dims_count = type.GetVertexWidth() / sizeof(double);
+			double vert_point[4] = {0, 0, 0, 0};
+
+			memcpy(vert_point, vert_array, vert_width);
+
+			for (uint32_t dim_idx = 0; dim_idx < dims_count; dim_idx++) {
+				if (!std::isnan(vert_point[dim_idx])) {
+					bbox.ExtendX(vert_point[0]);
+					bbox.ExtendY(vert_point[1]);
+					if (type.HasZ() && type.HasM()) {
+						bbox.ExtendZ(vert_point[2]);
+						bbox.ExtendM(vert_point[3]);
+					} else if (type.HasZ()) {
+						bbox.ExtendZ(vert_point[2]);
+					} else if (type.HasM()) {
+						bbox.ExtendM(vert_point[2]);
+					}
+					total_vertex_count++;
+					break;
+				}
+			}
+		} break;
+		case GeometryPartType::LINESTRING: {
+			const auto vert_count = reader.Read<uint32_t>();
+			const auto vert_array = reader.Reserve(vert_width * vert_count);
+			UpdateBoundsFromVertexArray(bbox, type.GetVertType(), vert_array, vert_count);
+			total_vertex_count += vert_count;
+		} break;
+		case GeometryPartType::POLYGON: {
+			const auto ring_count = reader.Read<uint32_t>();
+			for (uint32_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
+				const auto vert_count = reader.Read<uint32_t>();
+				const auto vert_array = reader.Reserve(vert_count * vert_width);
+				UpdateBoundsFromVertexArray(bbox, type.GetVertType(), vert_array, vert_count);
+				total_vertex_count += vert_count;
+			}
+		} break;
+		case GeometryPartType::MULTIPOINT:
+		case GeometryPartType::MULTILINESTRING:
+		case GeometryPartType::MULTIPOLYGON:
+		case GeometryPartType::GEOMETRYCOLLECTION: {
+			reader.Skip(sizeof(uint32_t));
+		} break;
+		default:
+			break;
+		}
+	}
+
+	return total_vertex_count;
 }
 
 } // namespace duckdb

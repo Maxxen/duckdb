@@ -688,7 +688,7 @@ struct GeoStatsUnifier : public ColumnStatsUnifier {
 
 	void UnifyGeoStats(const GeometryStats &other) override {
 		if (geo_stats) {
-			geo_stats->bbox.Combine(other.bbox);
+			geo_stats->bbox.Merge(other.bbox);
 			geo_stats->types.Combine(other.types);
 		} else {
 			// Make copy

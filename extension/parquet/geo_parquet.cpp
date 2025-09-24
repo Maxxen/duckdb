@@ -177,6 +177,8 @@ void GeometryStats::Update(const string_t &wkb) {
 		case 7: { // GEOMETRYCOLLECTION
 			reader.Skip(sizeof(uint32_t));
 		} break;
+		default:
+			break;
 		}
 	}
 }
@@ -302,11 +304,11 @@ void GeoParquetFileMetadata::AddGeoParquetStats(const string &column_name, const
 		auto &column = geometry_columns[column_name];
 
 		column.stats.types.Combine(stats.types);
-		column.stats.bbox.Combine(stats.bbox);
+		column.stats.bbox.Merge(stats.bbox);
 		column.insertion_index = geometry_columns.size() - 1;
 	} else {
 		it->second.stats.types.Combine(stats.types);
-		it->second.stats.bbox.Combine(stats.bbox);
+		it->second.stats.bbox.Merge(stats.bbox);
 	}
 }
 

@@ -14,6 +14,7 @@
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/common/unordered_set.hpp"
 #include "parquet_types.h"
+#include "duckdb/common/types/geometry.hpp"
 
 namespace duckdb {
 
@@ -111,66 +112,6 @@ struct GeometryKindSet {
 			}
 		}
 		return result;
-	}
-};
-
-struct GeometryExtent {
-
-	double xmin = NumericLimits<double>::Maximum();
-	double xmax = NumericLimits<double>::Minimum();
-	double ymin = NumericLimits<double>::Maximum();
-	double ymax = NumericLimits<double>::Minimum();
-	double zmin = NumericLimits<double>::Maximum();
-	double zmax = NumericLimits<double>::Minimum();
-	double mmin = NumericLimits<double>::Maximum();
-	double mmax = NumericLimits<double>::Minimum();
-
-	bool IsSet() const {
-		return xmin != NumericLimits<double>::Maximum() && xmax != NumericLimits<double>::Minimum() &&
-		       ymin != NumericLimits<double>::Maximum() && ymax != NumericLimits<double>::Minimum();
-	}
-
-	bool HasZ() const {
-		return zmin != NumericLimits<double>::Maximum() && zmax != NumericLimits<double>::Minimum();
-	}
-
-	bool HasM() const {
-		return mmin != NumericLimits<double>::Maximum() && mmax != NumericLimits<double>::Minimum();
-	}
-
-	void Combine(const GeometryExtent &other) {
-		xmin = std::min(xmin, other.xmin);
-		xmax = std::max(xmax, other.xmax);
-		ymin = std::min(ymin, other.ymin);
-		ymax = std::max(ymax, other.ymax);
-		zmin = std::min(zmin, other.zmin);
-		zmax = std::max(zmax, other.zmax);
-		mmin = std::min(mmin, other.mmin);
-		mmax = std::max(mmax, other.mmax);
-	}
-
-	void Combine(const double &xmin_p, const double &xmax_p, const double &ymin_p, const double &ymax_p) {
-		xmin = std::min(xmin, xmin_p);
-		xmax = std::max(xmax, xmax_p);
-		ymin = std::min(ymin, ymin_p);
-		ymax = std::max(ymax, ymax_p);
-	}
-
-	void ExtendX(const double &x) {
-		xmin = std::min(xmin, x);
-		xmax = std::max(xmax, x);
-	}
-	void ExtendY(const double &y) {
-		ymin = std::min(ymin, y);
-		ymax = std::max(ymax, y);
-	}
-	void ExtendZ(const double &z) {
-		zmin = std::min(zmin, z);
-		zmax = std::max(zmax, z);
-	}
-	void ExtendM(const double &m) {
-		mmin = std::min(mmin, m);
-		mmax = std::max(mmax, m);
 	}
 };
 
