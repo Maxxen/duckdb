@@ -336,9 +336,9 @@ struct ColumnStatsUnifier {
 	bool can_have_nan = false;
 	bool has_nan = false;
 
-	unique_ptr<GeometryStats> geo_stats;
+	unique_ptr<ParquetGeometryStats> geo_stats;
 
-	virtual void UnifyGeoStats(const GeometryStats &other) {
+	virtual void UnifyGeoStats(const ParquetGeometryStats &other) {
 	}
 
 	virtual void UnifyMinMax(const string &new_min, const string &new_max) = 0;
@@ -686,13 +686,13 @@ struct BlobStatsUnifier : public BaseStringStatsUnifier {
 
 struct GeoStatsUnifier : public ColumnStatsUnifier {
 
-	void UnifyGeoStats(const GeometryStats &other) override {
+	void UnifyGeoStats(const ParquetGeometryStats &other) override {
 		if (geo_stats) {
 			geo_stats->bbox.Merge(other.bbox);
 			geo_stats->types.Combine(other.types);
 		} else {
 			// Make copy
-			geo_stats = make_uniq<GeometryStats>();
+			geo_stats = make_uniq<ParquetGeometryStats>();
 			geo_stats->bbox = other.bbox;
 			geo_stats->types = other.types;
 		}

@@ -115,7 +115,7 @@ struct GeometryKindSet {
 	}
 };
 
-struct GeometryStats {
+struct ParquetGeometryStats {
 	GeometryKindSet types;
 	GeometryExtent bbox;
 
@@ -145,7 +145,7 @@ struct GeoParquetColumnMetadata {
 	GeoParquetColumnEncoding geometry_encoding;
 
 	// The statistics of the geometry column
-	GeometryStats stats;
+	ParquetGeometryStats stats;
 
 	// The crs of the geometry column (if any) in PROJJSON format
 	string projjson;
@@ -156,7 +156,7 @@ struct GeoParquetColumnMetadata {
 
 class GeoParquetFileMetadata {
 public:
-	void AddGeoParquetStats(const string &column_name, const LogicalType &type, const GeometryStats &stats);
+	void AddGeoParquetStats(const string &column_name, const LogicalType &type, const ParquetGeometryStats &stats);
 	void Write(duckdb_parquet::FileMetaData &file_meta_data);
 
 	// Try to read GeoParquet metadata. Returns nullptr if not found, invalid or the required spatial extension is not

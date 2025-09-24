@@ -112,7 +112,7 @@ static void UpdateBoundsFromVertexArray(GeometryExtent &bbox, uint32_t flag, con
 	}
 }
 
-void GeometryStats::Update(const string_t &wkb) {
+void ParquetGeometryStats::Update(const string_t &wkb) {
 	BinaryReader reader(wkb.GetData(), wkb.GetSize());
 
 	bool first_geom = true;
@@ -294,7 +294,7 @@ unique_ptr<GeoParquetFileMetadata> GeoParquetFileMetadata::TryRead(const duckdb_
 }
 
 void GeoParquetFileMetadata::AddGeoParquetStats(const string &column_name, const LogicalType &type,
-                                                const GeometryStats &stats) {
+                                                const ParquetGeometryStats &stats) {
 
 	// Lock the metadata
 	lock_guard<mutex> glock(write_lock);

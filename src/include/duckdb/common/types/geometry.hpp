@@ -92,14 +92,28 @@ private:
 
 struct GeometryExtent {
 
-	double xmin = NumericLimits<double>::Maximum();
-	double xmax = NumericLimits<double>::Minimum();
-	double ymin = NumericLimits<double>::Maximum();
-	double ymax = NumericLimits<double>::Minimum();
-	double zmin = NumericLimits<double>::Maximum();
-	double zmax = NumericLimits<double>::Minimum();
-	double mmin = NumericLimits<double>::Maximum();
-	double mmax = NumericLimits<double>::Minimum();
+	double xmin;
+	double xmax;
+	double ymin;
+	double ymax;
+	double zmin;
+	double zmax;
+	double mmin;
+	double mmax;
+
+	// Encompasses no points
+	static GeometryExtent Empty() {
+		constexpr auto min = NumericLimits<double>::Maximum();
+		constexpr auto max = NumericLimits<double>::Minimum();
+		return {min, max, min, max, min, max, min, max};
+	}
+
+	// Encompasses all possible points
+	static GeometryExtent Unknown() {
+		constexpr auto min = NumericLimits<double>::Minimum();
+		constexpr auto max = NumericLimits<double>::Maximum();
+		return {min, max, min, max, min, max, min, max};
+	}
 
 	bool IsSet() const {
 		return xmin != NumericLimits<double>::Maximum() && xmax != NumericLimits<double>::Minimum() &&

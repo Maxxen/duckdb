@@ -28,7 +28,7 @@ public:
 	virtual bool MaxIsExact();
 
 	virtual bool HasGeoStats();
-	virtual optional_ptr<GeometryStats> GetGeoStats();
+	virtual optional_ptr<ParquetGeometryStats> GetGeoStats();
 	virtual void WriteGeoStats(duckdb_parquet::GeospatialStatistics &stats);
 
 public:
@@ -258,7 +258,7 @@ public:
 	}
 
 	bool has_stats;
-	GeometryStats geo_stats;
+	ParquetGeometryStats geo_stats;
 
 public:
 	void Update(const string_t &val) {
@@ -268,7 +268,7 @@ public:
 	bool HasGeoStats() override {
 		return has_stats;
 	}
-	optional_ptr<GeometryStats> GetGeoStats() override {
+	optional_ptr<ParquetGeometryStats> GetGeoStats() override {
 		return geo_stats;
 	}
 	void WriteGeoStats(duckdb_parquet::GeospatialStatistics &stats) override {
