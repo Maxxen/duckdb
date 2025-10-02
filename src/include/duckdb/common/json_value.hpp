@@ -67,9 +67,9 @@ public:
 	string ToString() const;
 
 	// Convert to YYJSON document
-	static yyjson_mut_doc *ToYYJSON(const JsonValue &value);
+	static duckdb_yyjson::yyjson_mut_doc *ToYYJSON(const JsonValue &value);
 	// Convert from YYJSON document
-	static JsonValue FromYYJSON(yyjson_doc *doc);
+	static JsonValue FromYYJSON(duckdb_yyjson::yyjson_doc *doc);
 
 	JsonKind GetKind() const &;
 
