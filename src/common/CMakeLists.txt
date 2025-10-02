@@ -66,6 +66,7 @@ add_library_unity(
   symbols.cpp
   render_tree.cpp
   tree_renderer.cpp
+  json_value.cpp
   types.cpp
   bignum.cpp
   virtual_file_system.cpp

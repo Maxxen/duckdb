@@ -13,6 +13,7 @@
 #include "duckdb/main/chunk_scan_state.hpp"
 #include "duckdb/common/arrow/arrow_type_extension.hpp"
 #include "duckdb/common/complex_json.hpp"
+#include "duckdb/common/json_value.hpp"
 
 namespace duckdb {
 class ArrowSchemaMetadata {
@@ -46,6 +47,6 @@ private:
 	//! The unordered map that holds the metadata
 	unordered_map<string, string> schema_metadata_map;
 	//! The extension metadata map, currently only used for internal types in arrow.opaque
-	unique_ptr<ComplexJSON> extension_metadata_map;
+	JsonValue extension_metadata_map = JsonValue(JsonKind::OBJECT);
 };
 } // namespace duckdb
