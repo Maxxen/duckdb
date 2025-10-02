@@ -1,22 +1,18 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/common/complex_json.hpp
+// duckdb/common/json_value.hpp
 //
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
-#include "array_ptr.hpp"
-
-#include "pair.hpp"
-
-#include <unordered_map>
-#include <string>
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/unique_ptr.hpp"
+#include "duckdb/common/string.hpp"
+#include "duckdb/common/unordered_map.hpp"
 
 namespace duckdb_yyjson {
 typedef struct yyjson_mut_doc yyjson_mut_doc;
@@ -71,9 +67,9 @@ public:
 	string ToString() const;
 
 	// Convert to YYJSON document
-	static duckdb_yyjson::yyjson_mut_doc *ToYYJSON(const JsonValue &value);
+	static yyjson_mut_doc *ToYYJSON(const JsonValue &value);
 	// Convert from YYJSON document
-	static JsonValue FromYYJSON(duckdb_yyjson::yyjson_doc *doc);
+	static JsonValue FromYYJSON(yyjson_doc *doc);
 
 	JsonKind GetKind() const &;
 
