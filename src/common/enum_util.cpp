@@ -77,6 +77,7 @@
 #include "duckdb/common/file_open_flags.hpp"
 #include "duckdb/common/filename_pattern.hpp"
 #include "duckdb/common/http_util.hpp"
+#include "duckdb/common/json_value.hpp"
 #include "duckdb/common/multi_file/multi_file_data.hpp"
 #include "duckdb/common/multi_file/multi_file_list.hpp"
 #include "duckdb/common/multi_file/multi_file_options.hpp"
@@ -2325,6 +2326,28 @@ const char* EnumUtil::ToChars<JoinType>(JoinType value) {
 template<>
 JoinType EnumUtil::FromString<JoinType>(const char *value) {
 	return static_cast<JoinType>(StringUtil::StringToEnum(GetJoinTypeValues(), 11, "JoinType", value));
+}
+
+const StringUtil::EnumStringLiteral *GetJsonKindValues() {
+	static constexpr StringUtil::EnumStringLiteral values[] {
+		{ static_cast<uint32_t>(JsonKind::JSON_NULL), "JSON_NULL" },
+		{ static_cast<uint32_t>(JsonKind::BOOLEAN), "BOOLEAN" },
+		{ static_cast<uint32_t>(JsonKind::NUMBER), "NUMBER" },
+		{ static_cast<uint32_t>(JsonKind::STRING), "STRING" },
+		{ static_cast<uint32_t>(JsonKind::ARRAY), "ARRAY" },
+		{ static_cast<uint32_t>(JsonKind::OBJECT), "OBJECT" }
+	};
+	return values;
+}
+
+template<>
+const char* EnumUtil::ToChars<JsonKind>(JsonKind value) {
+	return StringUtil::EnumToString(GetJsonKindValues(), 6, "JsonKind", static_cast<uint32_t>(value));
+}
+
+template<>
+JsonKind EnumUtil::FromString<JsonKind>(const char *value) {
+	return static_cast<JsonKind>(StringUtil::StringToEnum(GetJsonKindValues(), 6, "JsonKind", value));
 }
 
 const StringUtil::EnumStringLiteral *GetKeywordCategoryValues() {
