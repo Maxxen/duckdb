@@ -18,6 +18,21 @@
 
 namespace duckdb {
 
+//! The FunctionArguments class holds the arguments that are passed to a function
+class FunctionArguments {
+public:
+	FunctionArguments() = default;
+	// Allow implicit cast for now, to avoid having to change a lot of code
+	FunctionArguments(const vector<LogicalType> &types) : types(types), names(types.size()) {
+		for (idx_t i = 0; i < types.size(); i++) {
+			names[i] = "";
+		}
+	}
+
+	vector<LogicalType> types;
+	vector<string> names;
+};
+
 //! The FunctionBinder class is responsible for binding functions
 class FunctionBinder {
 public:
@@ -31,19 +46,19 @@ public:
 	//! Bind a scalar function from the set of functions and input arguments. Returns the index of the chosen function,
 	//! returns optional_idx() and sets error if none could be found
 	DUCKDB_API optional_idx BindFunction(const string &name, ScalarFunctionSet &functions,
-	                                     const vector<LogicalType> &arguments, ErrorData &error);
+	                                     const FunctionArguments &arguments, ErrorData &error);
 	DUCKDB_API optional_idx BindFunction(const string &name, ScalarFunctionSet &functions,
 	                                     vector<unique_ptr<Expression>> &arguments, ErrorData &error);
 	//! Bind an aggregate function from the set of functions and input arguments. Returns the index of the chosen
 	//! function, returns optional_idx() and sets error if none could be found
 	DUCKDB_API optional_idx BindFunction(const string &name, AggregateFunctionSet &functions,
-	                                     const vector<LogicalType> &arguments, ErrorData &error);
+	                                     const FunctionArguments &arguments, ErrorData &error);
 	DUCKDB_API optional_idx BindFunction(const string &name, AggregateFunctionSet &functions,
 	                                     vector<unique_ptr<Expression>> &arguments, ErrorData &error);
 	//! Bind a table function from the set of functions and input arguments. Returns the index of the chosen
 	//! function, returns optional_idx() and sets error if none could be found
 	DUCKDB_API optional_idx BindFunction(const string &name, TableFunctionSet &functions,
-	                                     const vector<LogicalType> &arguments, ErrorData &error);
+	                                     const FunctionArguments &arguments, ErrorData &error);
 	DUCKDB_API optional_idx BindFunction(const string &name, TableFunctionSet &functions,
 	                                     vector<unique_ptr<Expression>> &arguments, ErrorData &error);
 	//! Bind a pragma function from the set of functions and input arguments
@@ -81,22 +96,22 @@ public:
 
 private:
 	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
-	optional_idx BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
+	optional_idx BindFunctionCost(const SimpleFunction &func, const FunctionArguments &arguments);
 
 	template <class T>
 	vector<idx_t> BindFunctionsFromArguments(const string &name, FunctionSet<T> &functions,
-	                                         const vector<LogicalType> &arguments, ErrorData &error);
+	                                         const FunctionArguments &arguments, ErrorData &error);
 
 	template <class T>
 	optional_idx MultipleCandidateException(const string &catalog_name, const string &schema_name, const string &name,
 	                                        FunctionSet<T> &functions, vector<idx_t> &candidate_functions,
-	                                        const vector<LogicalType> &arguments, ErrorData &error);
+	                                        const FunctionArguments &arguments, ErrorData &error);
 
 	template <class T>
 	optional_idx BindFunctionFromArguments(const string &name, FunctionSet<T> &functions,
-	                                       const vector<LogicalType> &arguments, ErrorData &error);
+	                                       const FunctionArguments &arguments, ErrorData &error);
 
-	vector<LogicalType> GetLogicalTypesFromExpressions(vector<unique_ptr<Expression>> &arguments);
+	FunctionArguments GetLogicalTypesFromExpressions(vector<unique_ptr<Expression>> &arguments);
 };
 
 } // namespace duckdb
