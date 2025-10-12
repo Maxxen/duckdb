@@ -155,6 +155,7 @@ ScalarFunctionSet ListExtractFun::GetFunctions() {
 	// the arguments and return types are actually set in the binder function
 	ScalarFunction lfun({LogicalType::LIST(LogicalType::TEMPLATE("T")), LogicalType::BIGINT},
 	                    LogicalType::TEMPLATE("T"), ListExtractFunction, ListExtractBind, nullptr, ListExtractStats);
+	lfun.parameter_names = {"input", "index"};
 
 	ScalarFunction sfun({LogicalType::VARCHAR, LogicalType::BIGINT}, LogicalType::VARCHAR, ListExtractFunction);
 	BaseScalarFunction::SetReturnsError(lfun);

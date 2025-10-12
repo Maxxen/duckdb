@@ -46,7 +46,7 @@ optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func,
 	return cost;
 }
 
-optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const FunctionArguments &arguments) {
+optional_idx FunctionBinder::BindFunctionCost(const BaseScalarFunction &func, const FunctionArguments &arguments) {
 	if (func.HasVarArgs()) {
 		// special case varargs function
 		return BindVarArgsFunctionCost(func, arguments.types);
@@ -69,16 +69,55 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 			// By position!
 			cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments.types[i], func.arguments[i]);
 		} else {
-			// By name!
-			idx_t name_idx = 0;
-			sscanf(arguments.names[i].c_str(), "arg%llu", &name_idx);
-			if (name_idx == 0 || name_idx > func.arguments.size()) {
-				// Invalid name!
+			D_ASSERT(func.parameter_names.size() == func.arguments.size());
+			auto found = false;
+			for (idx_t j = 0; j < func.parameter_names.size(); j++) {
+				if (arguments.names[i] == func.parameter_names[j]) {
+					// By name!
+					cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments.types[i], func.arguments[j]);
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				// Not found by name
 				return optional_idx();
 			}
-			// By name!
-			cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments.types[i], func.arguments[name_idx - 1]);
 		}
+		if (cast_cost >= 0) {
+			// we can implicitly cast, add the cost to the total cost
+			cost += idx_t(cast_cost);
+		} else {
+			// we can't implicitly cast: throw an error
+			return optional_idx();
+		}
+	}
+	if (has_parameter) {
+		// all arguments are implicitly castable and there is a parameter - return 0 as cost
+		return 0;
+	}
+	return cost;
+}
+
+optional_idx FunctionBinder::BindFunctionCost(const SimpleNamedParameterFunction &func,
+                                              const FunctionArguments &arguments) {
+	if (func.HasVarArgs()) {
+		// special case varargs function
+		return BindVarArgsFunctionCost(func, arguments.types);
+	}
+	if (func.arguments.size() != arguments.types.size()) {
+		// invalid argument count: check the next function
+		return optional_idx();
+	}
+	idx_t cost = 0;
+	bool has_parameter = false;
+	for (idx_t i = 0; i < arguments.types.size(); i++) {
+		if (arguments.types[i].id() == LogicalTypeId::UNKNOWN) {
+			has_parameter = true;
+			continue;
+		}
+		// Try to get the function argument either by position or by name
+		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments.types[i], func.arguments[i]);
 		if (cast_cost >= 0) {
 			// we can implicitly cast, add the cost to the total cost
 			cost += idx_t(cast_cost);
@@ -134,7 +173,8 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 			}
 			candidates.push_back(f.ToString());
 		}
-		error = ErrorData(BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments.types, candidates));
+		error = ErrorData(
+		    BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments.types, candidates));
 		return candidate_functions;
 	}
 	candidate_functions.push_back(best_function.GetIndex());
@@ -368,9 +408,10 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunctionCatalogE
 
 	// If we had any named arguments, we need to reorder the children to match the selected function signature
 	// we can do this in place, since we know that the named arguments are at the end of the list.
+	D_ASSERT(bound_function.parameter_names.size() == bound_function.arguments.size());
 	if (named_args_start.IsValid()) {
 		for (idx_t i = named_args_start.GetIndex(); i < bound_function.arguments.size(); i++) {
-			auto param_name = StringUtil::Format("arg%llu", i + 1);
+			auto param_name = bound_function.parameter_names[i];
 
 			for (idx_t j = i + 1; j < children.size(); j++) {
 				if (children[j]->HasAlias() && children[j]->GetAlias() == param_name) {

@@ -82,6 +82,15 @@ BaseScalarFunction::BaseScalarFunction(string name_p, vector<LogicalType> argume
     : SimpleFunction(std::move(name_p), std::move(arguments_p), std::move(varargs_p)),
       return_type(std::move(return_type_p)), stability(stability), null_handling(null_handling), errors(errors),
       collation_handling(FunctionCollationHandling::PROPAGATE_COLLATIONS) {
+
+	if (arguments.size() == 1) {
+		parameter_names.push_back("arg");
+	} else {
+		for (idx_t i = 0; i < arguments.size(); i++) {
+			// Create default argument names arg1, arg2.
+			parameter_names.push_back(StringUtil::Format("arg%llu", i + 1));
+		}
+	}
 }
 
 BaseScalarFunction::~BaseScalarFunction() {

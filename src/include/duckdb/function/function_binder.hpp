@@ -96,7 +96,8 @@ public:
 
 private:
 	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
-	optional_idx BindFunctionCost(const SimpleFunction &func, const FunctionArguments &arguments);
+	optional_idx BindFunctionCost(const SimpleNamedParameterFunction &func, const FunctionArguments &arguments);
+	optional_idx BindFunctionCost(const BaseScalarFunction &func, const FunctionArguments &arguments);
 
 	template <class T>
 	vector<idx_t> BindFunctionsFromArguments(const string &name, FunctionSet<T> &functions,

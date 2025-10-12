@@ -185,6 +185,8 @@ public:
 	FunctionErrors errors;
 	//! Collation handling of the function
 	FunctionCollationHandling collation_handling;
+	//! Parameter names
+	vector<string> parameter_names;
 
 	static BaseScalarFunction SetReturnsError(BaseScalarFunction &function) {
 		function.errors = FunctionErrors::CAN_THROW_RUNTIME_ERROR;
