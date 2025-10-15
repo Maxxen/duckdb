@@ -46,15 +46,7 @@ optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func,
 	return cost;
 }
 
-optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
-	if (func.HasVarArgs()) {
-		// special case varargs function
-		return BindVarArgsFunctionCost(func, arguments);
-	}
-	if (func.arguments.size() != arguments.size()) {
-		// invalid argument count: check the next function
-		return optional_idx();
-	}
+optional_idx FunctionBinder::BindPositionalArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
 	idx_t cost = 0;
 	bool has_parameter = false;
 	for (idx_t i = 0; i < arguments.size(); i++) {
@@ -78,9 +70,139 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 	return cost;
 }
 
+
+static bool CanPassArgumentsByName(const BaseScalarFunction &func, const FunctionArguments &args) {
+
+	// ALL parameters in the function need to have a name
+	if (func.parameter_names.empty()) {
+		return false;
+	}
+	if (func.arguments.size() != func.parameter_names.size()) {
+		return false;
+	}
+	for (auto &name : func.parameter_names) {
+		if (name.empty()) {
+			return false;
+		}
+	}
+
+	// All the named arguments in the call need to exist in the function definition.
+	// There cant be any duplicate names in the call. Positional arguments cannot follow named arguments.
+	case_insensitive_set_t seen_names;
+	for (idx_t i = 0; i < args.names.size(); i++) {
+		auto &name = args.names[i];
+		if (name.empty()) {
+			// Positional argument
+			if (!seen_names.empty()) {
+				// Positional arguments cannot follow named arguments
+				return false;
+			}
+			continue;
+		}
+		if (!StringUtil::CIEquals(name, func.parameter_names[i])) {
+			// Named argument does not match the parameter name at this position
+			bool found = false;
+			for (auto &param_name : func.parameter_names) {
+				if (StringUtil::CIEquals(name, param_name)) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				// Named argument does not exist in the function definition
+				return false;
+			}
+		}
+		if (!seen_names.insert(name).second) {
+			// Duplicate named argument
+			return false;
+		}
+	}
+
+	// Check if there was ANY named argument in the call
+	if (seen_names.empty()) {
+		return false;
+	}
+
+	return true;
+}
+
+template<class T>
+static void ReorderToMatchNamedParameters(const BaseScalarFunction &func, const FunctionArguments &args, vector<T> &result) {
+	D_ASSERT(func.arguments.size() == args.types.size());
+	D_ASSERT(CanPassArgumentsByName(func, args));
+
+	// First fill in the positional arguments
+	for (idx_t i = 0; i < func.arguments.size(); i++) {
+		if (args.names[i].empty()) {
+			// Positional argument
+			continue;
+		}
+
+		// Otherwise, find the argument with this name
+		for (idx_t j = i + 1; j < args.names.size(); j++) {
+			if (StringUtil::CIEquals(args.names[j], func.parameter_names[i])) {
+				// Named argument
+				if (i != j) {
+					std::swap(result[i], result[j]);
+				}
+				break;
+			}
+		}
+	}
+}
+
+static bool NeedsToReorderNamedParameters(const BaseScalarFunction &func, const vector<unique_ptr<Expression>> &children) {
+	if (children.empty()) {
+		return false;
+	}
+	for (idx_t i = 0; i < children.size(); i++) {
+		auto &alias = children[i]->GetAlias();
+		if (alias.empty()) {
+			// Positional argument
+			continue;
+		}
+		if (!StringUtil::CIEquals(alias, func.parameter_names[i])) {
+			// Named argument does not match the parameter name at this position
+			return true;
+		}
+	}
+	return false;
+}
+
+optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const FunctionArguments &arguments) {
+	if (func.HasVarArgs()) {
+		// special case varargs function
+		return BindVarArgsFunctionCost(func, arguments.types);
+	}
+	if (func.arguments.size() != arguments.types.size()) {
+		// invalid argument count: check the next function
+		return optional_idx();
+	}
+	return BindPositionalArgsFunctionCost(func, arguments.types);
+}
+
+optional_idx FunctionBinder::BindFunctionCost(const BaseScalarFunction &func, const FunctionArguments &arguments) {
+	if (func.HasVarArgs()) {
+		// special case varargs function
+		return BindVarArgsFunctionCost(func, arguments.types);
+	}
+	if (func.arguments.size() != arguments.types.size()) {
+		// invalid argument count: check the next function
+		return optional_idx();
+	}
+	if (CanPassArgumentsByName(func, arguments)) {
+		// Make a copy and remap the named arguments to positional arguments
+		auto args = arguments.types;
+		ReorderToMatchNamedParameters(func, arguments, args);
+		return BindPositionalArgsFunctionCost(func, args);
+	}
+	return BindPositionalArgsFunctionCost(func, arguments.types);
+}
+
 template <class T>
 vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, FunctionSet<T> &functions,
-                                                         const vector<LogicalType> &arguments, ErrorData &error) {
+                                                         const FunctionArguments &arguments, ErrorData &error) {
 	optional_idx best_function;
 	idx_t lowest_cost = NumericLimits<idx_t>::Maximum();
 	vector<idx_t> candidate_functions;
@@ -118,7 +240,7 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 			}
 			candidates.push_back(f.ToString());
 		}
-		error = ErrorData(BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments, candidates));
+		error = ErrorData(BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments.types, candidates));
 		return candidate_functions;
 	}
 	candidate_functions.push_back(best_function.GetIndex());
@@ -149,7 +271,7 @@ optional_idx FunctionBinder::MultipleCandidateException(const string &catalog_na
 
 template <class T>
 optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, FunctionSet<T> &functions,
-                                                       const vector<LogicalType> &arguments, ErrorData &error) {
+                                                       const FunctionArguments &arguments, ErrorData &error) {
 	auto candidate_functions = BindFunctionsFromArguments<T>(name, functions, arguments, error);
 	if (candidate_functions.empty()) {
 		// No candidates, return an invalid index.
@@ -157,7 +279,7 @@ optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, Funct
 	}
 	if (candidate_functions.size() > 1) {
 		// Multiple candidates, check if there are any unknown arguments.
-		for (auto &arg_type : arguments) {
+		for (auto &arg_type : arguments.types) {
 			if (arg_type.IsUnknown()) {
 				// We cannot resolve the parameters to a function.
 				throw ParameterNotResolvedException();
@@ -165,8 +287,8 @@ optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, Funct
 		}
 		auto catalog_name = functions.functions.size() > 0 ? functions.functions[0].catalog_name : "";
 		auto schema_name = functions.functions.size() > 0 ? functions.functions[0].schema_name : "";
-		return MultipleCandidateException(catalog_name, schema_name, name, functions, candidate_functions, arguments,
-		                                  error);
+		return MultipleCandidateException(catalog_name, schema_name, name, functions, candidate_functions,
+			arguments.types, error);
 	}
 	return candidate_functions[0];
 }
@@ -206,31 +328,33 @@ optional_idx FunctionBinder::BindFunction(const string &name, PragmaFunctionSet 
 	return entry;
 }
 
-vector<LogicalType> FunctionBinder::GetLogicalTypesFromExpressions(vector<unique_ptr<Expression>> &arguments) {
-	vector<LogicalType> types;
-	types.reserve(arguments.size());
+static FunctionArguments GetArgumentsFromExpressions(vector<unique_ptr<Expression>> &arguments) {
+	FunctionArguments args;
+	args.names.reserve(arguments.size());
+	args.types.reserve(arguments.size());
 	for (auto &argument : arguments) {
-		types.push_back(ExpressionBinder::GetExpressionReturnType(*argument));
+		args.names.push_back(argument->GetAlias());
+		args.types.push_back(ExpressionBinder::GetExpressionReturnType(*argument));
 	}
-	return types;
+	return args;
 }
 
 optional_idx FunctionBinder::BindFunction(const string &name, ScalarFunctionSet &functions,
                                           vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
-	auto types = GetLogicalTypesFromExpressions(arguments);
-	return BindFunction(name, functions, types, error);
+	auto types = GetArgumentsFromExpressions(arguments);
+	return BindFunctionFromArguments(name, functions, types, error);
 }
 
 optional_idx FunctionBinder::BindFunction(const string &name, AggregateFunctionSet &functions,
                                           vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
-	auto types = GetLogicalTypesFromExpressions(arguments);
-	return BindFunction(name, functions, types, error);
+	auto types = GetArgumentsFromExpressions(arguments);
+	return BindFunctionFromArguments(name, functions, types, error);
 }
 
 optional_idx FunctionBinder::BindFunction(const string &name, TableFunctionSet &functions,
                                           vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
-	auto types = GetLogicalTypesFromExpressions(arguments);
-	return BindFunction(name, functions, types, error);
+	auto types = GetArgumentsFromExpressions(arguments);
+	return BindFunctionFromArguments(name, functions, types, error);
 }
 
 enum class LogicalTypeComparisonResult : uint8_t { IDENTICAL_TYPE, TARGET_IS_ANY, DIFFERENT_TYPES };
@@ -320,7 +444,9 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunctionCatalogE
                                                           vector<unique_ptr<Expression>> children, ErrorData &error,
                                                           bool is_operator, optional_ptr<Binder> binder) {
 	// bind the function
-	auto best_function = BindFunction(func.name, func.functions, children, error);
+	FunctionArguments args = GetArgumentsFromExpressions(children);
+
+	auto best_function = BindFunctionFromArguments(func.name, func.functions, args, error);
 	if (!best_function.IsValid()) {
 		return nullptr;
 	}
@@ -352,6 +478,12 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunctionCatalogE
 			}
 		}
 	}
+
+	// Before we move on to casting, we need to check if we need to reorder named parameters
+	if (CanPassArgumentsByName(bound_function, args) && NeedsToReorderNamedParameters(bound_function, children)) {
+		ReorderToMatchNamedParameters(bound_function, args, children);
+	}
+
 	return BindScalarFunction(bound_function, std::move(children), is_operator, binder);
 }
 
@@ -698,6 +830,11 @@ unique_ptr<BoundAggregateExpression> FunctionBinder::BindAggregateFunction(Aggre
                                                                            vector<unique_ptr<Expression>> children,
                                                                            unique_ptr<Expression> filter,
                                                                            AggregateType aggr_type) {
+
+	auto args = GetArgumentsFromExpressions(children);
+	if (CanPassArgumentsByName(bound_function, args) && NeedsToReorderNamedParameters(bound_function, children)) {
+		ReorderToMatchNamedParameters(bound_function, args, children);
+	}
 
 	ResolveTemplateTypes(bound_function, children);
 

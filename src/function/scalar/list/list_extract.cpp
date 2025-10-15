@@ -156,6 +156,8 @@ ScalarFunctionSet ListExtractFun::GetFunctions() {
 	ScalarFunction lfun({LogicalType::LIST(LogicalType::TEMPLATE("T")), LogicalType::BIGINT},
 	                    LogicalType::TEMPLATE("T"), ListExtractFunction, ListExtractBind, nullptr, ListExtractStats);
 
+	lfun.parameter_names = {"list", "index"};
+
 	ScalarFunction sfun({LogicalType::VARCHAR, LogicalType::BIGINT}, LogicalType::VARCHAR, ListExtractFunction);
 	BaseScalarFunction::SetReturnsError(lfun);
 	BaseScalarFunction::SetReturnsError(sfun);

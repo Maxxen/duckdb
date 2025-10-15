@@ -186,6 +186,10 @@ public:
 	//! Collation handling of the function
 	FunctionCollationHandling collation_handling;
 
+	//! Names of the parameters of the function, if any.
+	//! If all parameters have names, the function can be called with named parameter syntax.
+	vector<string> parameter_names;
+
 	static BaseScalarFunction SetReturnsError(BaseScalarFunction &function) {
 		function.errors = FunctionErrors::CAN_THROW_RUNTIME_ERROR;
 		return function;

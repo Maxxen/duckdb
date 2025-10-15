@@ -18,6 +18,16 @@
 
 namespace duckdb {
 
+class FunctionArguments {
+public:
+	FunctionArguments() = default;
+	// NOLINTNEXTLINE (allow implicit)
+	FunctionArguments(const vector<LogicalType> &types) : types(types), names(types.size(), "") { }
+public:
+	vector<LogicalType> types;
+	vector<string> names;
+};
+
 //! The FunctionBinder class is responsible for binding functions
 class FunctionBinder {
 public:
@@ -81,11 +91,14 @@ public:
 
 private:
 	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
-	optional_idx BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
+	optional_idx BindPositionalArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
+
+	optional_idx BindFunctionCost(const SimpleFunction &func, const FunctionArguments &arguments);
+	optional_idx BindFunctionCost(const BaseScalarFunction &func, const FunctionArguments &arguments);
 
 	template <class T>
 	vector<idx_t> BindFunctionsFromArguments(const string &name, FunctionSet<T> &functions,
-	                                         const vector<LogicalType> &arguments, ErrorData &error);
+	                                         const FunctionArguments &arguments, ErrorData &error);
 
 	template <class T>
 	optional_idx MultipleCandidateException(const string &catalog_name, const string &schema_name, const string &name,
@@ -94,9 +107,7 @@ private:
 
 	template <class T>
 	optional_idx BindFunctionFromArguments(const string &name, FunctionSet<T> &functions,
-	                                       const vector<LogicalType> &arguments, ErrorData &error);
-
-	vector<LogicalType> GetLogicalTypesFromExpressions(vector<unique_ptr<Expression>> &arguments);
+	                                       const FunctionArguments &arguments, ErrorData &error);
 };
 
 } // namespace duckdb
