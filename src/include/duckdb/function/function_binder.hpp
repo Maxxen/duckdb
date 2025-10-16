@@ -22,7 +22,9 @@ class FunctionArguments {
 public:
 	FunctionArguments() = default;
 	// NOLINTNEXTLINE (allow implicit)
-	FunctionArguments(const vector<LogicalType> &types) : types(types), names(types.size(), "") { }
+	FunctionArguments(const vector<LogicalType> &types) : types(types), names(types.size(), "") {
+	}
+
 public:
 	vector<LogicalType> types;
 	vector<string> names;

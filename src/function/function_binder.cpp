@@ -46,7 +46,8 @@ optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func,
 	return cost;
 }
 
-optional_idx FunctionBinder::BindPositionalArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
+optional_idx FunctionBinder::BindPositionalArgsFunctionCost(const SimpleFunction &func,
+                                                            const vector<LogicalType> &arguments) {
 	idx_t cost = 0;
 	bool has_parameter = false;
 	for (idx_t i = 0; i < arguments.size(); i++) {
@@ -69,7 +70,6 @@ optional_idx FunctionBinder::BindPositionalArgsFunctionCost(const SimpleFunction
 	}
 	return cost;
 }
-
 
 static bool CanPassArgumentsByName(const BaseScalarFunction &func, const FunctionArguments &args) {
 
@@ -127,8 +127,9 @@ static bool CanPassArgumentsByName(const BaseScalarFunction &func, const Functio
 	return true;
 }
 
-template<class T>
-static void ReorderToMatchNamedParameters(const BaseScalarFunction &func, const FunctionArguments &args, vector<T> &result) {
+template <class T>
+static void ReorderToMatchNamedParameters(const BaseScalarFunction &func, const FunctionArguments &args,
+                                          vector<T> &result) {
 	D_ASSERT(func.arguments.size() == args.types.size());
 	D_ASSERT(CanPassArgumentsByName(func, args));
 
@@ -152,7 +153,8 @@ static void ReorderToMatchNamedParameters(const BaseScalarFunction &func, const 
 	}
 }
 
-static bool NeedsToReorderNamedParameters(const BaseScalarFunction &func, const vector<unique_ptr<Expression>> &children) {
+static bool NeedsToReorderNamedParameters(const BaseScalarFunction &func,
+                                          const vector<unique_ptr<Expression>> &children) {
 	if (children.empty()) {
 		return false;
 	}
@@ -240,7 +242,8 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 			}
 			candidates.push_back(f.ToString());
 		}
-		error = ErrorData(BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments.types, candidates));
+		error = ErrorData(
+		    BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments.types, candidates));
 		return candidate_functions;
 	}
 	candidate_functions.push_back(best_function.GetIndex());
@@ -288,7 +291,7 @@ optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, Funct
 		auto catalog_name = functions.functions.size() > 0 ? functions.functions[0].catalog_name : "";
 		auto schema_name = functions.functions.size() > 0 ? functions.functions[0].schema_name : "";
 		return MultipleCandidateException(catalog_name, schema_name, name, functions, candidate_functions,
-			arguments.types, error);
+		                                  arguments.types, error);
 	}
 	return candidate_functions[0];
 }
