@@ -17,10 +17,10 @@ namespace duckdb {
 
 struct AgeFun {
 	static constexpr const char *Name = "age";
-	static constexpr const char *Parameters = "timestamp,timestamp";
-	static constexpr const char *Description = "Subtract arguments, resulting in the time difference between the two timestamps";
-	static constexpr const char *Example = "age(TIMESTAMP '2001-04-10', TIMESTAMP '1992-09-20')";
-	static constexpr const char *Categories = "";
+	static constexpr const char *Parameters = "timestamp::TIMESTAMP\001timestamp1::TIMESTAMP,timestamp2::TIMESTAMP";
+	static constexpr const char *Description = "Subtract `timestamp` from the current date (at midnight), returning an INTERVAL.\001Subtract two timestamps, returning the time difference between them as an INTERVAL.";
+	static constexpr const char *Example = "age(TIMESTAMP '1992-09-20')\001age(TIMESTAMP '2001-04-10', TIMESTAMP '1992-09-20')";
+	static constexpr const char *Categories = "date\001date";
 
 	static ScalarFunctionSet GetFunctions();
 };
@@ -53,7 +53,7 @@ struct DatediffFun {
 
 struct DatePartFun {
 	static constexpr const char *Name = "date_part";
-	static constexpr const char *Parameters = "ts";
+	static constexpr const char *Parameters = "ts,part";
 	static constexpr const char *Description = "Get subfield (equivalent to extract)";
 	static constexpr const char *Example = "date_part('minute', TIMESTAMP '1992-09-20 20:38:40')";
 	static constexpr const char *Categories = "";
@@ -283,9 +283,9 @@ struct LastDayFun {
 
 struct MakeDateFun {
 	static constexpr const char *Name = "make_date";
-	static constexpr const char *Parameters = "year,month,day\001date-struct::STRUCT(year BIGINT, month BIGINT, day BIGINT)";
-	static constexpr const char *Description = "The date for the given parts.\001The date for the given struct.";
-	static constexpr const char *Example = "make_date(1992, 9, 20)\001make_date({'year': 2024, 'month': 11, 'day': 14})";
+	static constexpr const char *Parameters = "date-struct::STRUCT(year BIGINT, month BIGINT, day BIGINT)\001year,month,day";
+	static constexpr const char *Description = "The date for the given struct.\001The date for the given parts.";
+	static constexpr const char *Example = "make_date({'year': 2024, 'month': 11, 'day': 14})\001make_date(1992, 9, 20)";
 	static constexpr const char *Categories = "\001";
 
 	static ScalarFunctionSet GetFunctions();

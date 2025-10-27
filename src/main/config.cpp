@@ -433,11 +433,26 @@ LogicalType DBConfig::ParseLogicalType(const string &type) {
 		return LogicalType::STRUCT(struct_members);
 	}
 
-	LogicalType type_id = StringUtil::CIEquals(type, "ANY") ? LogicalType::ANY : TransformStringToLogicalTypeId(type);
+	if (StringUtil::CIEquals(type, "ANY")) {
+		return LogicalType::ANY;
+	}
+
+	if (StringUtil::CIEquals(type, "T")) {
+		return LogicalType::TEMPLATE("T");
+	}
+	if (StringUtil::CIEquals(type, "K")) {
+		return LogicalType::TEMPLATE("K");
+	}
+	if (StringUtil::CIEquals(type, "V")) {
+		return LogicalType::TEMPLATE("V");
+	}
+
+	auto type_id = TransformStringToLogicalTypeId(type);
 	if (type_id == LogicalTypeId::USER) {
 		throw InternalException("Error while generating extension function overloads - unrecognized logical type %s",
 		                        type);
 	}
+
 	return type_id;
 }
 

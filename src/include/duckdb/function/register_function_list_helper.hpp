@@ -30,6 +30,28 @@ static void FillFunctionParameters(FunctionDescription &function_description, co
 	}
 }
 
+static void FillOverloadParameters(BaseScalarFunction &function, vector<string> &parameters) {
+	if (!parameters.empty() && parameters.size() < function.arguments.size() && !function.varargs.IsValid()) {
+		// mismatch in number of parameters
+		// Dont proceed further
+		return;
+	}
+
+	for (idx_t i = 0; i < parameters.size(); i++) {
+		auto &parameter = parameters[i];
+		vector<string> parameter_name_type = StringUtil::Split(parameter, "::");
+
+		if (parameter_name_type[0] == "..." && i == parameters.size() - 1 && function.varargs.IsValid()) {
+			// variadic parameter, allow
+			break;
+		}
+
+		if (parameter_name_type.size() == 1) {
+			function.parameter_names.push_back(std::move(parameter_name_type[0]));
+		}
+	}
+}
+
 static vector<string> GetExamplesForFunctionAlias(const string &function_name, const string &alias_of,
                                                   vector<string> &all_examples) {
 	vector<string> filtered_examples;
@@ -77,6 +99,9 @@ static void FillFunctionDescriptions(const FunctionDefinition &function, T &info
 		// parameter_names and parameter_types
 		vector<string> parameters = StringUtil::SplitWithParentheses(variants[variant_index], ',');
 		FillFunctionParameters(function_description, function.name, parameters, descriptions);
+
+		FillOverloadParameters(info.functions.functions[variant_index], parameters);
+
 		// description
 		if (descriptions.size() == variants.size()) {
 			function_description.description = descriptions[variant_index];

@@ -46,19 +46,52 @@
     },
     {
         "name": "list_extract",
-        "parameters": "list,index",
-        "description": "Extract the `index`th (1-based) value from the list.",
-        "example": "list_extract([4, 5, 6], 3)",
-        "categories": ["list"],
+        "variants": [
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "index", "type": "BIGINT"}
+                ],
+                "description": "Extracts a single character from a `string` using a (1-based) `index`.",
+                "example": "list_extract('DuckDB', 2)",
+                "categories": ["string"]
+            },
+            {
+                "parameters": [
+                    {"name": "list", "type": "T[]"},
+                    {"name": "index", "type": "BIGINT"}
+                ],
+                "description": "Extract the `index`th (1-based) value from the `list`.",
+                "example": "list_extract([4, 5, 6], 3)",
+                "categories": ["list"]
+            }
+        ],
         "type": "scalar_function_set",
         "aliases": ["list_element"]
     },
     {
         "name": "list_resize",
-        "parameters": "list,size[,value]",
-        "description": "Resizes the `list` to contain `size` elements. Initializes new elements with `value` or `NULL` if `value` is not set.",
-        "example": "list_resize([1, 2, 3], 5, 0)",
-        "categories": ["list"],
+        "variants": [
+            {
+                "parameters": [
+                    {"name":  "list", "type":  "ANY[]"},
+                    {"name":  "size", "type":  "ANY"}
+                ],
+                "description": "Resizes the `list` to contain `size` elements. Initializes new elements with `NULL`.",
+                "example": "list_resize([1, 2, 3], 5)",
+                "categories": ["list"]
+            },
+            {
+                "parameters": [
+                    {"name":  "list", "type":  "ANY[]"},
+                    {"name":  "size", "type":  "ANY"},
+                    {"name":  "value", "type":  "ANY"}
+                ],
+                "description": "Resizes the `list` to contain `size` elements. Initializes new elements with `value`.",
+                "example": "list_resize([1, 2, 3], 5, 0)",
+                "categories": ["list"]
+            }
+        ],
         "type": "scalar_function_set",
         "aliases": ["array_resize"]
     },
@@ -67,8 +100,17 @@
         "variants": [
             {
                 "parameters": [
+                    {"name": "list", "type": "T[]"},
+                    {"name": "index", "type": "BIGINT"}
+                ],
+                "description": "Extracts the `index`th (1-based) value from the `list`.",
+                "example": "array_extract([4, 5, 6], 3)",
+                "categories": ["list"]
+            },
+            {
+                "parameters": [
                     {"name": "string", "type": "VARCHAR"},
-                    {"name": "index", "type": "ANY"}
+                    {"name": "index", "type": "BIGINT"}
                 ],
                 "description": "Extracts a single character from a `string` using a (1-based) `index`.",
                 "example": "array_extract('DuckDB', 2)",
@@ -86,20 +128,11 @@
             {
                 "parameters": [
                     {"name": "struct", "type": "STRUCT"},
-                    {"name": "index", "type": "ANY"}
+                    {"name": "index", "type": "BIGINT"}
                 ],
                 "description": "Extracts the entry from an unnamed `STRUCT` (tuple) using an index (1-based).",
                 "example": "array_extract(row(42, 84), 1)",
                 "categories": ["struct"]
-            },
-            {
-                "parameters": [
-                    {"name": "list", "type": "ANY[]"},
-                    {"name": "index", "type": "ANY"}
-                ],
-                "description": "Extracts the `index`th (1-based) value from the `list`.",
-                "example": "array_extract([4, 5, 6], 3)",
-                "categories": ["list"]
             }
         ],
         "type": "scalar_function_set",

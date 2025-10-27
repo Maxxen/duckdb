@@ -121,10 +121,10 @@ struct ArrayZipFun {
 
 struct ListExtractFun {
 	static constexpr const char *Name = "list_extract";
-	static constexpr const char *Parameters = "list,index";
-	static constexpr const char *Description = "Extract the `index`th (1-based) value from the list.";
-	static constexpr const char *Example = "list_extract([4, 5, 6], 3)";
-	static constexpr const char *Categories = "list";
+	static constexpr const char *Parameters = "string::VARCHAR,index::BIGINT\001list::T[],index::BIGINT";
+	static constexpr const char *Description = "Extracts a single character from a `string` using a (1-based) `index`.\001Extract the `index`th (1-based) value from the `list`.";
+	static constexpr const char *Example = "list_extract('DuckDB', 2)\001list_extract([4, 5, 6], 3)";
+	static constexpr const char *Categories = "string\001list";
 
 	static ScalarFunctionSet GetFunctions();
 };
@@ -137,10 +137,10 @@ struct ListElementFun {
 
 struct ListResizeFun {
 	static constexpr const char *Name = "list_resize";
-	static constexpr const char *Parameters = "list,size[,value]";
-	static constexpr const char *Description = "Resizes the `list` to contain `size` elements. Initializes new elements with `value` or `NULL` if `value` is not set.";
-	static constexpr const char *Example = "list_resize([1, 2, 3], 5, 0)";
-	static constexpr const char *Categories = "list";
+	static constexpr const char *Parameters = "list::ANY[],size::ANY\001list::ANY[],size::ANY,value::ANY";
+	static constexpr const char *Description = "Resizes the `list` to contain `size` elements. Initializes new elements with `NULL`.\001Resizes the `list` to contain `size` elements. Initializes new elements with `value`.";
+	static constexpr const char *Example = "list_resize([1, 2, 3], 5)\001list_resize([1, 2, 3], 5, 0)";
+	static constexpr const char *Categories = "list\001list";
 
 	static ScalarFunctionSet GetFunctions();
 };
@@ -153,10 +153,10 @@ struct ArrayResizeFun {
 
 struct ArrayExtractFun {
 	static constexpr const char *Name = "array_extract";
-	static constexpr const char *Parameters = "string::VARCHAR,index::ANY\001struct::STRUCT,entry::VARCHAR\001struct::STRUCT,index::ANY\001list::ANY[],index::ANY";
-	static constexpr const char *Description = "Extracts a single character from a `string` using a (1-based) `index`.\001Extracts the named `entry` from the `STRUCT`.\001Extracts the entry from an unnamed `STRUCT` (tuple) using an index (1-based).\001Extracts the `index`th (1-based) value from the `list`.";
-	static constexpr const char *Example = "array_extract('DuckDB', 2)\001array_extract({'i': 3, 'v2': 3, 'v3': 0}, 'i')\001array_extract(row(42, 84), 1)\001array_extract([4, 5, 6], 3)";
-	static constexpr const char *Categories = "string\001struct\001struct\001list";
+	static constexpr const char *Parameters = "list::T[],index::BIGINT\001string::VARCHAR,index::BIGINT\001struct::STRUCT,entry::VARCHAR\001struct::STRUCT,index::BIGINT";
+	static constexpr const char *Description = "Extracts the `index`th (1-based) value from the `list`.\001Extracts a single character from a `string` using a (1-based) `index`.\001Extracts the named `entry` from the `STRUCT`.\001Extracts the entry from an unnamed `STRUCT` (tuple) using an index (1-based).";
+	static constexpr const char *Example = "array_extract([4, 5, 6], 3)\001array_extract('DuckDB', 2)\001array_extract({'i': 3, 'v2': 3, 'v3': 0}, 'i')\001array_extract(row(42, 84), 1)";
+	static constexpr const char *Categories = "list\001string\001struct\001struct";
 
 	static ScalarFunctionSet GetFunctions();
 };

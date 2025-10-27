@@ -191,6 +191,8 @@ public:
 		return function;
 	}
 
+	vector<string> parameter_names;
+
 public:
 	DUCKDB_API hash_t Hash() const;
 

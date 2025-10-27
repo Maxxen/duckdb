@@ -91,8 +91,8 @@
             },
             {
                 "parameters": [
-                    {"name": "list", "type": "ANY[]"},
-                    {"name": "element", "type": "ANY"}
+                    {"name": "list", "type": "T[]"},
+                    {"name": "element", "type": "T"}
                 ],
                 "description": "Returns `true` if the `list` contains the `element`.",
                 "example": "contains([1, 2, NULL], 1)",
@@ -100,8 +100,8 @@
             },
             {
                 "parameters": [
-                    {"name": "map", "type": "MAP(ANY,ANY)"},
-                    {"name": "key", "type": "ANY"}
+                    {"name": "map", "type": "MAP(K,V)"},
+                    {"name": "key", "type": "K"}
                 ],
                 "description": "Checks if a `map` contains a given `key`.",
                 "example": "contains(MAP {'key1': 10, 'key2': 20, 'key3': 30}, 'key2')",
@@ -222,7 +222,7 @@
             {
                 "parameters": [
                     {"name": "list", "type": "ANY[]"},
-                    {"name": "dimension", "type": "ANY"}
+                    {"name": "dimension", "type": "BIGINT"}
                 ],
                 "description": "`array_length` for lists with dimensions other than 1 not implemented",
                 "example": "",
@@ -265,36 +265,106 @@
     },
     {
         "name": "string_split_regex",
-        "parameters": "string,regex,options",
-        "description": "Splits the `string` along the `regex`. A set of optional regex `options` can be set.",
-        "example": "string_split_regex('hello world; 42', ';? ')",
-        "categories": ["regex"],
+        "variants": [
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"}
+                ],
+                "description": "Splits the `string` along the `regex`. A set of optional regex `options` can be set.",
+                "example": "string_split_regex('hello world; 42', ';? ')",
+                "categories": ["regex"]
+            },
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"},
+                    {"name": "options", "type": "VARCHAR"}
+                ],
+                "description": "Splits the `string` along the `regex`. Allows passing regex `options`.",
+                "example": "string_split_regex('hello world; 42', ';? ', 'i')",
+                "categories": ["regex"]
+            }
+        ],
         "type": "scalar_function_set",
         "aliases": ["str_split_regex", "regexp_split_to_array"]
     },
     {
         "name": "regexp_full_match",
-        "parameters": "string,regex",
-        "description": "Returns `true` if the entire `string` matches the `regex`. A set of optional regex `options` can be set.",
-        "example": "regexp_full_match('anabanana', '(an)*')",
-        "categories": ["regex"],
+        "variants": [
+            {
+                "parameters": [
+                    { "name": "string", "type": "VARCHAR" },
+                    { "name": "regex", "type": "VARCHAR" }
+                ],
+                "description": "Returns `true` if the entire `string` matches the `regex`. A set of optional regex `options` can be set.",
+                "example": "regexp_full_match('anabanana', '(an)*')",
+                "categories": ["regex"]
+            },
+            {
+                "parameters": [
+                    { "name": "string", "type": "VARCHAR" },
+                    { "name": "regex", "type": "VARCHAR" },
+                    { "name": "options", "type": "VARCHAR" }
+                ],
+                "description": "Returns `true` if the entire `string` matches the `regex`. Allows passing regex `options`.",
+                "example": "regexp_full_match('AnABanana', '(an)*', 'i')",
+                "categories": ["regex"]
+            }
+        ],
         "type": "scalar_function_set",
         "struct": "RegexpFun"
     },
     {
         "name": "regexp_matches",
-        "parameters": "string,regex,options",
-        "description": "Returns `true` if `string` contains the `regex`, `false` otherwise. A set of optional regex `options` can be set.",
-        "example": "regexp_matches('anabanana', '(an)*')",
-        "categories": ["regex"],
+        "variants": [
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"}
+                ],
+                "description": "Returns `true` if `string` contains the `regex`, `false` otherwise. A set of optional regex `options` can be set.",
+                "example": "regexp_matches('anabanana', '(an)*')",
+                "categories": ["regex"]
+            },
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"},
+                    {"name": "options", "type": "VARCHAR"}
+                ],
+                "description": "Returns `true` if `string` contains the `regex`, `false` otherwise. Allows passing regex `options`.",
+                "example": "regexp_matches('anabanana', '(an)*', 'i')",
+                "categories": ["regex"]
+            }
+        ],
         "type": "scalar_function_set"
     },
     {
         "name": "regexp_replace",
-        "parameters": "string,regex,replacement,options",
-        "description": "If `string` contains the `regex`, replaces the matching part with `replacement`. A set of optional regex `options` can be set.",
-        "example": "regexp_replace('hello', '[lo]', '-')",
-        "categories": ["regex"],
+        "variants": [
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"},
+                    {"name": "replacement", "type": "VARCHAR"}
+                ],
+                "description": "If `string` contains the `regex`, replaces the matching part with `replacement`. A set of optional regex `options` can be set.",
+                "example": "regexp_replace('hello', '[lo]', '-')",
+                "categories": ["regex"]
+            },
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"},
+                    {"name": "replacement", "type": "VARCHAR"},
+                    {"name": "options", "type": "VARCHAR"}
+                ],
+                "description": "If `string` contains the `regex`, replaces the matching part with `replacement`. Allows passing regex `options`.",
+                "example": "regexp_replace('hello', '[lo]', '-', 'i')",
+                "categories": ["regex"]
+            }
+        ],
         "type": "scalar_function_set"
     },
     {
@@ -356,10 +426,38 @@
     },
     {
         "name": "regexp_extract_all",
-        "parameters": "string,regex,group,options",
-        "description": "Finds non-overlapping occurrences of the `regex` in the `string` and returns the corresponding values of the capturing `group`. A set of optional regex `options` can be set.",
-        "example": "regexp_extract_all('Peter: 33, Paul:14', '(\\w+):\\s*(\\d+)', 2)",
-        "categories": ["regex"],
+        "variants": [
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"}
+                ],
+                "description": "Finds non-overlapping occurrences of the `regex` in the `string` and returns the corresponding values of the capturing `group`. A set of optional regex `options` can be set.",
+                "example": "regexp_extract_all('Peter: 33, Paul:14', '(,\\w+):\\s*(\\d+)', 2)",
+                "categories": ["regex"]
+            },
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"},
+                    {"name": "group", "type": "INTEGER"}
+                ],
+                "description": "Finds non-overlapping occurrences of the `regex` in the `string` and returns the corresponding values of the capturing `group`. A set of optional regex `options` can be set.",
+                "example": "regexp_extract_all('Peter: 33, Paul:14', '(,\\w+):\\s*(\\d+)', 2)",
+                "categories": ["regex"]
+            },
+            {
+                "parameters": [
+                    {"name": "string", "type": "VARCHAR"},
+                    {"name": "regex", "type": "VARCHAR"},
+                    {"name": "group", "type": "INTEGER"},
+                    {"name": "options", "type": "VARCHAR"}
+                ],
+                "description": "Finds non-overlapping occurrences of the `regex` in the `string` and returns the corresponding values of the capturing `group`. A set of optional regex `options` can be set.",
+                "example": "regexp_extract_all('Peter: 33, Paul:14', '(,\\w+):\\s*(\\d+)', 2, 'i')",
+                "categories": ["regex"]
+            }
+        ],
         "type": "scalar_function_set"
     },
     {

@@ -454,19 +454,23 @@ ScalarFunctionSet RegexpExtractFun::GetFunctions() {
 
 ScalarFunctionSet RegexpExtractAllFun::GetFunctions() {
 	ScalarFunctionSet regexp_extract_all("regexp_extract_all");
+
 	regexp_extract_all.AddFunction(ScalarFunction(
 	    {LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR),
 	    RegexpExtractAll::Execute, RegexpExtractAll::Bind, nullptr, nullptr, RegexpExtractAll::InitLocalState,
 	    LogicalType::INVALID, FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING));
+
 	regexp_extract_all.AddFunction(ScalarFunction(
 	    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER}, LogicalType::LIST(LogicalType::VARCHAR),
 	    RegexpExtractAll::Execute, RegexpExtractAll::Bind, nullptr, nullptr, RegexpExtractAll::InitLocalState,
 	    LogicalType::INVALID, FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING));
+
 	regexp_extract_all.AddFunction(
 	    ScalarFunction({LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::VARCHAR},
 	                   LogicalType::LIST(LogicalType::VARCHAR), RegexpExtractAll::Execute, RegexpExtractAll::Bind,
 	                   nullptr, nullptr, RegexpExtractAll::InitLocalState, LogicalType::INVALID,
 	                   FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING));
+
 	return (regexp_extract_all);
 }
 
