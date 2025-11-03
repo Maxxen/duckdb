@@ -166,7 +166,7 @@ private:
 };
 
 int64_t CastFunctionSet::ImplicitCastCost(optional_ptr<ClientContext> context, const LogicalType &source,
-                                          const LogicalType &target) {
+                                          const LogicalType &target, optional_ptr<bool> used_old_implicit_casting) {
 	// check if a cast has been registered
 	if (map_info) {
 		auto entry = map_info->GetEntry(source, target);
@@ -185,18 +185,23 @@ int64_t CastFunctionSet::ImplicitCastCost(optional_ptr<ClientContext> context, c
 		}
 		if (old_implicit_casting) {
 			score = 149;
+
+			if (used_old_implicit_casting) {
+				*used_old_implicit_casting = true;
+			}
 		}
 	}
 	return score;
 }
 
-int64_t CastFunctionSet::ImplicitCastCost(ClientContext &context, const LogicalType &source,
-                                          const LogicalType &target) {
-	return CastFunctionSet::Get(context).ImplicitCastCost(&context, source, target);
+int64_t CastFunctionSet::ImplicitCastCost(ClientContext &context, const LogicalType &source, const LogicalType &target,
+                                          optional_ptr<bool> used_old_implicit_casting) {
+	return CastFunctionSet::Get(context).ImplicitCastCost(&context, source, target, used_old_implicit_casting);
 }
 
-int64_t CastFunctionSet::ImplicitCastCost(DatabaseInstance &db, const LogicalType &source, const LogicalType &target) {
-	return CastFunctionSet::Get(db).ImplicitCastCost(nullptr, source, target);
+int64_t CastFunctionSet::ImplicitCastCost(DatabaseInstance &db, const LogicalType &source, const LogicalType &target,
+                                          optional_ptr<bool> used_old_implicit_casting) {
+	return CastFunctionSet::Get(db).ImplicitCastCost(nullptr, source, target, used_old_implicit_casting);
 }
 
 static BoundCastInfo MapCastFunction(BindCastInput &input, const LogicalType &source, const LogicalType &target) {

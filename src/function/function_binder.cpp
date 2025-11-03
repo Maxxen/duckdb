@@ -22,7 +22,8 @@ FunctionBinder::FunctionBinder(ClientContext &context_p) : binder(nullptr), cont
 FunctionBinder::FunctionBinder(Binder &binder_p) : binder(&binder_p), context(binder_p.context) {
 }
 
-optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
+optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments,
+                                                     bool &used_old_implicit_casting) {
 	if (arguments.size() < func.arguments.size()) {
 		// not enough arguments to fulfill the non-vararg part of the function
 		return optional_idx();
@@ -34,7 +35,8 @@ optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func,
 			// arguments match: do nothing
 			continue;
 		}
-		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], arg_type);
+		int64_t cast_cost =
+		    CastFunctionSet::ImplicitCastCost(context, arguments[i], arg_type, &used_old_implicit_casting);
 		if (cast_cost >= 0) {
 			// we can implicitly cast, add the cost to the total cost
 			cost += idx_t(cast_cost);
@@ -46,10 +48,11 @@ optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func,
 	return cost;
 }
 
-optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
+optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments,
+                                              bool &used_old_implicit_casting) {
 	if (func.HasVarArgs()) {
 		// special case varargs function
-		return BindVarArgsFunctionCost(func, arguments);
+		return BindVarArgsFunctionCost(func, arguments, used_old_implicit_casting);
 	}
 	if (func.arguments.size() != arguments.size()) {
 		// invalid argument count: check the next function
@@ -62,7 +65,8 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 			has_parameter = true;
 			continue;
 		}
-		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], func.arguments[i]);
+		int64_t cast_cost =
+		    CastFunctionSet::ImplicitCastCost(context, arguments[i], func.arguments[i], &used_old_implicit_casting);
 		if (cast_cost >= 0) {
 			// we can implicitly cast, add the cost to the total cost
 			cost += idx_t(cast_cost);
@@ -87,7 +91,8 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 	for (idx_t f_idx = 0; f_idx < functions.functions.size(); f_idx++) {
 		auto &func = functions.functions[f_idx];
 		// check the arguments of the function
-		auto bind_cost = BindFunctionCost(func, arguments);
+		bool used_old_implicit_casting = false;
+		auto bind_cost = BindFunctionCost(func, arguments, used_old_implicit_casting);
 		if (!bind_cost.IsValid()) {
 			// auto casting was not possible
 			continue;
@@ -100,6 +105,14 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 		if (cost > lowest_cost) {
 			continue;
 		}
+
+		if (used_old_implicit_casting && best_function.IsValid() &&
+		    functions.functions[best_function.GetIndex()].HasTemplateArgs()) {
+			// The previous best function used template args, prefer that over a function that matched
+			// using old implicit casting rules.
+			continue;
+		}
+
 		candidate_functions.clear();
 		lowest_cost = cost;
 		best_function = f_idx;

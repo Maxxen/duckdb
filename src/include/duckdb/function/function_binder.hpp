@@ -80,8 +80,10 @@ public:
 	void CheckTemplateTypesResolved(const BaseScalarFunction &bound_function);
 
 private:
-	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
-	optional_idx BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
+	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments,
+	                                     bool &used_old_implicit_casting);
+	optional_idx BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments,
+	                              bool &used_old_implicit_casting);
 
 	template <class T>
 	vector<idx_t> BindFunctionsFromArguments(const string &name, FunctionSet<T> &functions,

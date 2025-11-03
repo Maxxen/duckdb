@@ -9,6 +9,7 @@
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/main/extension_entries.hpp"
+#include "duckdb/common/type_visitor.hpp"
 
 namespace duckdb {
 
@@ -58,6 +59,18 @@ string SimpleFunction::ToString() const {
 
 bool SimpleFunction::HasVarArgs() const {
 	return varargs.id() != LogicalTypeId::INVALID;
+}
+
+bool SimpleFunction::HasTemplateArgs() const {
+	for (auto &arg : arguments) {
+		if (TypeVisitor::Contains(arg, LogicalTypeId::TEMPLATE)) {
+			return true;
+		}
+	}
+	if (TypeVisitor::Contains(varargs, LogicalTypeId::TEMPLATE)) {
+		return true;
+	}
+	return false;
 }
 
 SimpleNamedParameterFunction::SimpleNamedParameterFunction(string name_p, vector<LogicalType> arguments_p,

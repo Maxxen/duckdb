@@ -150,6 +150,8 @@ public:
 	DUCKDB_API virtual string ToString() const;
 
 	DUCKDB_API bool HasVarArgs() const;
+
+	DUCKDB_API bool HasTemplateArgs() const;
 };
 
 class SimpleNamedParameterFunction : public SimpleFunction {
