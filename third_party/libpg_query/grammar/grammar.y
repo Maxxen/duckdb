@@ -61,6 +61,7 @@
 	PGLoadInstallType loadinstalltype;
 	PGTransactionStmtType transactiontype;
 	PGMergeAction mergeaction;
+	PGCreateCastContext coercioncontext;
 }
 
 %type <node> stmt

@@ -2324,4 +2324,28 @@ typedef struct PGFunctionParameter {
 	PGExpr *defaultValue;		  /* default value of parameter (optional) */
 } PGFunctionParameter;
 
+/* ----------------------
+ *		CREATE CAST Statement
+ * ----------------------
+ */
+
+typedef struct PGCreateCastContext
+{
+	PGCoercionContext context;   /* PG_COERCION_IMPLICIT / PG_COERCION_EXPLICIT */
+	int cost;      /* -1 if not specified */
+} PGCreateCastContext;
+
+typedef struct PGCreateCastStmt {
+	PGNodeTag type;
+	PGTypeName *source;         /* source type */
+	PGTypeName *target;         /* target type */
+	PGRangeVar *funcname;       /* cast function name */
+	PGExpr	   *lambda_body;    /* lambda body for cast function */
+	const char *lambda_name;	/* lambda parameter name */
+	bool is_lambda;				/* is cast function a lambda */
+	char relpersistence;
+	PGCreateCastContext context;  /* coercion context */
+	PGList *options;
+} PGCreateCastStmt;
+
 }

@@ -8,6 +8,7 @@ CallStmt
 CheckPointStmt
 CopyStmt
 CreateAsStmt
+CreateCastStmt
 CreateSecretStmt
 CreateTypeStmt
 CreateFunctionStmt

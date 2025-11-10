@@ -1127,9 +1127,10 @@ typedef union YYSTYPE
 	PGLoadInstallType loadinstalltype;
 	PGTransactionStmtType transactiontype;
 	PGMergeAction mergeaction;
+	PGCreateCastContext coercioncontext;
 }
 /* Line 1529 of yacc.c.  */
-#line 1133 "third_party/libpg_query/grammar/grammar_out.hpp"
+#line 1134 "third_party/libpg_query/grammar/grammar_out.hpp"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
