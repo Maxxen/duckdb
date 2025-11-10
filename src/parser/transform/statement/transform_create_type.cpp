@@ -43,6 +43,7 @@ unique_ptr<CreateStatement> Transformer::TransformCreateType(duckdb_libpgquery::
 	info->name = qualified_name.name;
 	info->temporary = !stmt.typeName->relpersistence;
 	info->on_conflict = TransformOnConflict(stmt.onconflict);
+	info->distinct = stmt.distinct;
 
 	switch (stmt.kind) {
 	case duckdb_libpgquery::PG_NEWTYPE_ENUM: {
@@ -69,6 +70,12 @@ unique_ptr<CreateStatement> Transformer::TransformCreateType(duckdb_libpgquery::
 	default:
 		throw InternalException("Unknown kind of new type");
 	}
+
+	if (info->distinct) {
+		// Distinct types have an actual type name (alias)
+		info->type.SetAlias(info->name);
+	}
+
 	result->info = std::move(info);
 	return result;
 }

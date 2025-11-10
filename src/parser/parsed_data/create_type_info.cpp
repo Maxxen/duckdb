@@ -6,11 +6,11 @@
 
 namespace duckdb {
 
-CreateTypeInfo::CreateTypeInfo() : CreateInfo(CatalogType::TYPE_ENTRY), bind_function(nullptr) {
+CreateTypeInfo::CreateTypeInfo() : CreateInfo(CatalogType::TYPE_ENTRY), bind_function(nullptr), distinct(false) {
 }
 CreateTypeInfo::CreateTypeInfo(string name_p, LogicalType type_p, bind_logical_type_function_t bind_function_p)
     : CreateInfo(CatalogType::TYPE_ENTRY), name(std::move(name_p)), type(std::move(type_p)),
-      bind_function(bind_function_p) {
+      bind_function(bind_function_p), distinct(false) {
 }
 
 unique_ptr<CreateInfo> CreateTypeInfo::Copy() const {

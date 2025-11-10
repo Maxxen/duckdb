@@ -36,6 +36,8 @@ struct CreateTypeInfo : public CreateInfo {
 	unique_ptr<SQLStatement> query;
 	//! Bind type modifiers to the type
 	bind_logical_type_function_t bind_function;
+	//! Whether or not this is a distinct type
+	bool distinct;
 
 public:
 	unique_ptr<CreateInfo> Copy() const override;

@@ -4,30 +4,38 @@
  *
  *****************************************************************************/
 CreateTypeStmt:
-				CREATE_P OptTemp TYPE_P qualified_name AS create_type_value
+				CREATE_P OptTemp opt_distinct TYPE_P qualified_name AS create_type_value
 				{
-					PGCreateTypeStmt *n = (PGCreateTypeStmt *) $6;
-					$4->relpersistence = $2;
-					n->typeName = $4;
+					PGCreateTypeStmt *n = (PGCreateTypeStmt *) $7;
+					$5->relpersistence = $2;
+					n->typeName = $5;
 					n->onconflict = PG_ERROR_ON_CONFLICT;
+					n->distinct = $3;
 					$$ = (PGNode *)n;
 				}
-				| CREATE_P OptTemp TYPE_P IF_P NOT EXISTS qualified_name AS create_type_value
+				| CREATE_P OptTemp opt_distinct TYPE_P IF_P NOT EXISTS qualified_name AS create_type_value
+				{
+					PGCreateTypeStmt *n = (PGCreateTypeStmt *) $10;
+					$8->relpersistence = $2;
+					n->typeName = $8;
+					n->onconflict = PG_IGNORE_ON_CONFLICT;
+					n->distinct = $3;
+					$$ = (PGNode *)n;
+				}
+				| CREATE_P OR REPLACE OptTemp opt_distinct TYPE_P qualified_name AS create_type_value
 				{
 					PGCreateTypeStmt *n = (PGCreateTypeStmt *) $9;
-					$7->relpersistence = $2;
+					$7->relpersistence = $4;
 					n->typeName = $7;
-					n->onconflict = PG_IGNORE_ON_CONFLICT;
-					$$ = (PGNode *)n;
-				}
-				| CREATE_P OR REPLACE OptTemp TYPE_P qualified_name AS create_type_value
-				{
-					PGCreateTypeStmt *n = (PGCreateTypeStmt *) $8;
-					$6->relpersistence = $4;
-					n->typeName = $6;
 					n->onconflict = PG_REPLACE_ON_CONFLICT;
+					n->distinct = $3;
 					$$ = (PGNode *)n;
 				}
+		;
+
+opt_distinct:
+			DISTINCT 		{ $$ = true; }
+			| /*EMPTY*/		{ $$ = false; }
 		;
 
 create_type_value:

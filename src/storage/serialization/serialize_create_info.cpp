@@ -183,12 +183,14 @@ void CreateTypeInfo::Serialize(Serializer &serializer) const {
 	CreateInfo::Serialize(serializer);
 	serializer.WritePropertyWithDefault<string>(200, "name", name);
 	serializer.WriteProperty<LogicalType>(201, "logical_type", type);
+	serializer.WritePropertyWithDefault<bool>(202, "distinct", distinct, false);
 }
 
 unique_ptr<CreateInfo> CreateTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto result = duckdb::unique_ptr<CreateTypeInfo>(new CreateTypeInfo());
 	deserializer.ReadPropertyWithDefault<string>(200, "name", result->name);
 	deserializer.ReadProperty<LogicalType>(201, "logical_type", result->type);
+	deserializer.ReadPropertyWithExplicitDefault<bool>(202, "distinct", result->distinct, false);
 	return std::move(result);
 }
 

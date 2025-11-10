@@ -28,6 +28,7 @@ public:
 	LogicalType user_type;
 
 	bind_logical_type_function_t bind_function;
+	bool distinct = false;
 
 public:
 	unique_ptr<CreateInfo> GetInfo() const override;

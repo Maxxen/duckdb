@@ -2189,6 +2189,7 @@ typedef struct PGCreateTypeStmt
 	PGTypeName *ofType;			/* original type of alias name */
     PGNode *query;
 	PGOnCreateConflict onconflict;        /* what to do on create conflict */
+	bool distinct;				/* DISTINCT type */
 } PGCreateTypeStmt;
 
 /* ----------------------

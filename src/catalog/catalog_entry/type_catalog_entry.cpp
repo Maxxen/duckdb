@@ -19,6 +19,7 @@ TypeCatalogEntry::TypeCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schema,
 	this->dependencies = info.dependencies;
 	this->comment = info.comment;
 	this->tags = info.tags;
+	this->distinct = info.distinct;
 }
 
 unique_ptr<CatalogEntry> TypeCatalogEntry::Copy(ClientContext &context) const {
@@ -38,12 +39,17 @@ unique_ptr<CreateInfo> TypeCatalogEntry::GetInfo() const {
 	result->comment = comment;
 	result->tags = tags;
 	result->bind_function = bind_function;
+	result->distinct = distinct;
 	return std::move(result);
 }
 
 string TypeCatalogEntry::ToSQL() const {
 	duckdb::stringstream ss;
-	ss << "CREATE TYPE ";
+	ss << "CREATE";
+	if (distinct) {
+		ss << " DISTINCT";
+	}
+	ss << " TYPE ";
 	ss << KeywordHelper::WriteOptionallyQuoted(name);
 	ss << " AS ";
 

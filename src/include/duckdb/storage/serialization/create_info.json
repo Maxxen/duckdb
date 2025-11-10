@@ -227,6 +227,12 @@
         "name": "logical_type",
         "property": "type",
         "type": "LogicalType"
+      },
+      {
+        "id": 202,
+        "name": "distinct",
+        "type": "bool",
+        "default": "false"
       }
     ]
   },

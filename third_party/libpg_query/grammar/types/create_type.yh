@@ -1,3 +1,4 @@
 %type <list> opt_enum_val_list
 %type <list> enum_val_list
 %type <node> create_type_value
+%type <boolean> opt_distinct
