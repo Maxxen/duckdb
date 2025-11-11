@@ -13,6 +13,12 @@ unique_ptr<CreateStatement> Transformer::TransformCreateCast(duckdb_libpgquery::
 	info->target = TransformTypeName(*stmt.target);
 	info->cast_cost = stmt.context.cost;
 
+	auto qname = TransformQualifiedName(*stmt.funcname);
+	;
+	info->function_name = qname.name;
+	info->function_schema = qname.schema;
+	info->function_catalog = qname.catalog;
+
 	auto result = make_uniq<CreateStatement>();
 	result->info = std::move(info);
 	return result;

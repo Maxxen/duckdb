@@ -22,6 +22,9 @@ struct CreateCastInfo : public CreateInfo {
 	LogicalType source;
 	LogicalType target;
 	int64_t cast_cost;
+	string function_name;
+	string function_schema;
+	string function_catalog;
 
 public:
 	unique_ptr<CreateInfo> Copy() const override;
