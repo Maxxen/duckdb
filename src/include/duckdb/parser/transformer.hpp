@@ -136,6 +136,8 @@ private:
 	unique_ptr<CreateStatement> TransformCreateFunction(duckdb_libpgquery::PGCreateFunctionStmt &stmt);
 	//! Transform a Postgres duckdb_libpgquery::T_PGCreateTypeStmt node into CreateStatement
 	unique_ptr<CreateStatement> TransformCreateType(duckdb_libpgquery::PGCreateTypeStmt &stmt);
+	//! Transform a Postgres duckdb_libpgquery::T_PGCreateCastStmt node into CreateStatement
+	unique_ptr<CreateStatement> TransformCreateCast(duckdb_libpgquery::PGCreateCastStmt &stmt);
 	//! Transform a Postgres duckdb_libpgquery::T_PGCreateTypeStmt node into CreateStatement
 	unique_ptr<AlterStatement> TransformCommentOn(duckdb_libpgquery::PGCommentOnStmt &stmt);
 	//! Transform a Postgres duckdb_libpgquery::T_PGAlterSeqStmt node into CreateStatement

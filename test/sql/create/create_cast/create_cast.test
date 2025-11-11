@@ -1,0 +1,10 @@
+# name: test/sql/create/create_cast/create_cast.test
+# group: [create_cast]
+
+statement ok
+CREATE CAST (INT as VARCHAR[]) WITH LAMBDA x: [printf('%d', x + 1)];
+
+query I
+select 1::VARCHAR[]
+----
+['1']

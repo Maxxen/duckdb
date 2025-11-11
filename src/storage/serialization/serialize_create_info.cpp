@@ -13,6 +13,7 @@
 #include "duckdb/parser/parsed_data/create_type_info.hpp"
 #include "duckdb/parser/parsed_data/create_macro_info.hpp"
 #include "duckdb/parser/parsed_data/create_sequence_info.hpp"
+#include "duckdb/parser/parsed_data/create_cast_info.hpp"
 
 namespace duckdb {
 
@@ -45,6 +46,9 @@ unique_ptr<CreateInfo> CreateInfo::Deserialize(Deserializer &deserializer) {
 	deserializer.Set<CatalogType>(type);
 	unique_ptr<CreateInfo> result;
 	switch (type) {
+	case CatalogType::CAST_ENTRY:
+		result = CreateCastInfo::Deserialize(deserializer);
+		break;
 	case CatalogType::INDEX_ENTRY:
 		result = CreateIndexInfo::Deserialize(deserializer);
 		break;
@@ -83,6 +87,21 @@ unique_ptr<CreateInfo> CreateInfo::Deserialize(Deserializer &deserializer) {
 	result->tags = std::move(tags);
 	result->dependencies = dependencies;
 	return result;
+}
+
+void CreateCastInfo::Serialize(Serializer &serializer) const {
+	CreateInfo::Serialize(serializer);
+	serializer.WriteProperty<LogicalType>(200, "source", source);
+	serializer.WriteProperty<LogicalType>(201, "target", target);
+	serializer.WritePropertyWithDefault<int64_t>(202, "cast_cost", cast_cost);
+}
+
+unique_ptr<CreateInfo> CreateCastInfo::Deserialize(Deserializer &deserializer) {
+	auto result = duckdb::unique_ptr<CreateCastInfo>(new CreateCastInfo());
+	deserializer.ReadProperty<LogicalType>(200, "source", result->source);
+	deserializer.ReadProperty<LogicalType>(201, "target", result->target);
+	deserializer.ReadPropertyWithDefault<int64_t>(202, "cast_cost", result->cast_cost);
+	return std::move(result);
 }
 
 void CreateIndexInfo::Serialize(Serializer &serializer) const {

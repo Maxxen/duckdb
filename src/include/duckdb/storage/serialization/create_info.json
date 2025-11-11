@@ -308,5 +308,30 @@
         "type": "bool"
       }
     ]
+  },
+  {
+    "class": "CreateCastInfo",
+    "base": "CreateInfo",
+    "enum": "CAST_ENTRY",
+    "includes": [
+      "duckdb/parser/parsed_data/create_cast_info.hpp"
+    ],
+    "members": [
+      {
+        "id": 200,
+        "name": "source",
+        "type": "LogicalType"
+      },
+      {
+        "id": 201,
+        "name": "target",
+        "type": "LogicalType"
+      },
+      {
+          "id": 202,
+          "name": "cast_cost",
+          "type": "int64_t"
+      }
+    ]
   }
 ]

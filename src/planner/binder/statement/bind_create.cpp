@@ -707,6 +707,10 @@ BoundStatement Binder::Bind(CreateStatement &stmt) {
 
 		return SecretManager::Get(context).BindCreateSecret(transaction, create_secret_input);
 	}
+	case CatalogType::CAST_ENTRY: {
+		result.plan = make_uniq<LogicalCreate>(LogicalOperatorType::LOGICAL_CREATE_CAST, std::move(stmt.info), nullptr);
+		break;
+	}
 	default:
 		throw InternalException("Unrecognized type!");
 	}
