@@ -57,6 +57,8 @@ class CompressionInfo;
 class EncryptionUtil;
 class HTTPUtil;
 class DatabaseFilePathManager;
+class ServiceContainer;
+class ServiceProvider;
 
 struct CompressionFunctionSet;
 struct DatabaseCacheEntry;
@@ -279,6 +281,8 @@ public:
 	shared_ptr<DatabaseCacheEntry> db_cache_entry;
 	//! Reference to the database file path manager
 	shared_ptr<DatabaseFilePathManager> path_manager;
+	//! Root service container
+	unique_ptr<ServiceContainer> services;
 
 public:
 	DUCKDB_API static DBConfig &GetConfig(ClientContext &context);
@@ -338,6 +342,8 @@ public:
 	DUCKDB_API bool HasArrowExtension(const LogicalType &type) const;
 	DUCKDB_API bool HasArrowExtension(ArrowExtensionMetadata info) const;
 	DUCKDB_API void RegisterArrowExtension(const ArrowTypeExtension &extension) const;
+
+	DUCKDB_API ServiceProvider &GetServiceProvider() const;
 
 	bool operator==(const DBConfig &other);
 	bool operator!=(const DBConfig &other);

@@ -54,6 +54,8 @@ DBConfig::DBConfig() {
 	secret_manager = make_uniq<SecretManager>();
 	http_util = make_shared_ptr<HTTPUtil>();
 	storage_extensions["__open_file__"] = OpenFileStorageExtension::Create();
+
+	services = make_uniq<ServiceContainer>(ServiceScope::GLOBAL, nullptr);
 }
 
 DBConfig::DBConfig(bool read_only) : DBConfig::DBConfig() {

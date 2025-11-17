@@ -29,6 +29,7 @@
 #include "duckdb/planner/expression/bound_parameter_data.hpp"
 #include "duckdb/transaction/transaction_context.hpp"
 #include "duckdb/main/query_parameters.hpp"
+#include "duckdb/service/service_container.hpp"
 
 namespace duckdb {
 
@@ -89,6 +90,8 @@ public:
 	unique_ptr<ClientData> client_data;
 	//! Data for the currently running transaction
 	TransactionContext transaction;
+	//! Connection-local services
+	unique_ptr<ServiceContainer> services;
 
 public:
 	MetaTransaction &ActiveTransaction() {

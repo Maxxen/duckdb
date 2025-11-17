@@ -35,6 +35,7 @@ struct DatabaseCacheEntry;
 class LogManager;
 class ExternalFileCache;
 class ResultSetManager;
+class ServiceProvider;
 
 class DatabaseInstance : public enable_shared_from_this<DatabaseInstance> {
 	friend class DuckDB;
@@ -73,6 +74,7 @@ public:
 	DUCKDB_API SettingLookupResult TryGetCurrentSetting(const string &key, Value &result) const;
 
 	DUCKDB_API shared_ptr<EncryptionUtil> GetEncryptionUtil();
+	DUCKDB_API ServiceProvider &GetServiceProvider();
 
 	shared_ptr<AttachedDatabase> CreateAttachedDatabase(ClientContext &context, AttachInfo &info,
 	                                                    AttachOptions &options);

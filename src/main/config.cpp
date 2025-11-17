@@ -9,6 +9,7 @@
 #include "duckdb/storage/storage_extension.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/exception/parser_exception.hpp"
+#include "duckdb/service/service_container.hpp"
 
 #ifndef DUCKDB_NO_THREADS
 #include "duckdb/common/thread.hpp"
@@ -858,6 +859,10 @@ bool DBConfig::CanAccessFile(const string &input_path, FileType type) {
 		}
 	}
 	return true;
+}
+
+ServiceProvider &DBConfig::GetServiceProvider() const {
+	return *services.get();
 }
 
 SerializationOptions::SerializationOptions(AttachedDatabase &db) {

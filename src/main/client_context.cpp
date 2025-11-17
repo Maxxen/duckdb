@@ -155,6 +155,8 @@ ClientContext::ClientContext(shared_ptr<DatabaseInstance> database)
 	LoggingContext context(LogContextScope::CONNECTION);
 	logger = db->GetLogManager().CreateLogger(context, true);
 	client_data = make_uniq<ClientData>(*this);
+
+	services = make_uniq<ServiceContainer>(ServiceScope::CONNECTION, db->config.services.get());
 }
 
 ClientContext::~ClientContext() {

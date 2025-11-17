@@ -98,6 +98,7 @@ else()
   add_subdirectory(parallel)
   add_subdirectory(storage)
   add_subdirectory(transaction)
+  add_subdirectory(service)
   add_subdirectory(verification)
 
   set(DUCKDB_LINK_LIBS
