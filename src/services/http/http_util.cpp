@@ -1,4 +1,4 @@
-#include "duckdb/common/http_util.hpp"
+#include "duckdb/services/http/http_util.hpp"
 
 #include "duckdb/common/exception/http_exception.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
@@ -8,6 +8,7 @@
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/database_file_opener.hpp"
+#include "duckdb/services/service_provider.hpp"
 
 #ifndef DISABLE_DUCKDB_REMOTE_INSTALL
 #ifndef DUCKDB_DISABLE_EXTENSION_LOAD
@@ -88,7 +89,7 @@ const string &HTTPResponse::GetError() const {
 }
 
 HTTPUtil &HTTPUtil::Get(DatabaseInstance &db) {
-	return *db.config.http_util;
+	return db.config.GetServiceProvider().GetService<HTTPUtil>();
 }
 
 string HTTPUtil::GetName() const {

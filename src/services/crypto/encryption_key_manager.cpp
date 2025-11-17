@@ -1,4 +1,4 @@
-#include "duckdb/common/encryption_key_manager.hpp"
+#include "duckdb/services/crypto/encryption_key_manager.hpp"
 #include "mbedtls_wrapper.hpp"
 #include "duckdb/common/exception/conversion_exception.hpp"
 #include "duckdb/common/helper.hpp"

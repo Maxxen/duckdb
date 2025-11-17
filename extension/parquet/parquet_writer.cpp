@@ -21,6 +21,8 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/common/types/blob.hpp"
 
+#include <duckdb/services/service_provider.hpp>
+
 namespace duckdb {
 
 using namespace duckdb_apache::thrift;            // NOLINT
@@ -355,6 +357,7 @@ ParquetWriter::ParquetWriter(ClientContext &context, FileSystem &fs, string file
 
 	if (encryption_config) {
 		auto &config = DBConfig::GetConfig(context);
+<<<<<<< HEAD
 
 		// To ensure we can write, we need to autoload httpfs
 		if (!config.encryption_util || !config.encryption_util->SupportsEncryption()) {
@@ -362,8 +365,12 @@ ParquetWriter::ParquetWriter(ClientContext &context, FileSystem &fs, string file
 		}
 
 		if (config.encryption_util && debug_use_openssl) {
+=======
+		auto enc_util = config.GetServiceProvider().TryGetSharedService<EncryptionUtil>();
+		if (enc_util && debug_use_openssl) {
+>>>>>>> cce71f2683 (add initial global service container and move httputil/encryptionutil)
 			// Use OpenSSL
-			encryption_util = config.encryption_util;
+			encryption_util = enc_util;
 		} else {
 			encryption_util = make_shared_ptr<duckdb_mbedtls::MbedTlsWrapper::AESStateMBEDTLSFactory>();
 		}

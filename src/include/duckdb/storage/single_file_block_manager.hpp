@@ -16,7 +16,7 @@
 #include "duckdb/common/set.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/main/config.hpp"
-#include "duckdb/common/encryption_functions.hpp"
+#include "../services/crypto/encryption_functions.hpp"
 
 namespace duckdb {
 

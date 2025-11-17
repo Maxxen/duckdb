@@ -3,9 +3,9 @@
 #include "duckdb/catalog/duck_catalog.hpp"
 #include "duckdb/common/allocator.hpp"
 #include "duckdb/common/checksum.hpp"
-#include "duckdb/common/encryption_functions.hpp"
-#include "duckdb/common/encryption_key_manager.hpp"
-#include "duckdb/common/encryption_state.hpp"
+#include "duckdb/services/crypto/encryption_functions.hpp"
+#include "duckdb/services/crypto/encryption_key_manager.hpp"
+#include "duckdb/services/crypto/encryption_state.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/common/types/uuid.hpp"
@@ -298,7 +298,7 @@ MainHeader ConstructMainHeader(idx_t version_number) {
 void SingleFileBlockManager::StoreEncryptedCanary(AttachedDatabase &db, MainHeader &main_header, const string &key_id) {
 	const_data_ptr_t key = EncryptionEngine::GetKeyFromCache(db.GetDatabase(), key_id);
 	// Encrypt canary with the derived key
-	auto encryption_state = db.GetDatabase().GetEncryptionUtil()->CreateEncryptionState(
+	auto encryption_state = db.GetDatabase().GetServiceProvider().GetService<EncryptionUtil>().CreateEncryptionState(
 	    main_header.GetEncryptionCipher(), MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);
 	EncryptCanary(main_header, encryption_state, key);
 }
@@ -340,7 +340,7 @@ void SingleFileBlockManager::CheckAndAddEncryptionKey(MainHeader &main_header, s
 	data_t derived_key[MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH];
 	EncryptionKeyManager::DeriveKey(user_key, db_identifier, derived_key);
 
-	auto encryption_state = db.GetDatabase().GetEncryptionUtil()->CreateEncryptionState(
+	auto encryption_state = db.GetDatabase().GetServiceProvider().GetService<EncryptionUtil>().CreateEncryptionState(
 	    main_header.GetEncryptionCipher(), MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);
 	if (!DecryptCanary(main_header, encryption_state, derived_key)) {
 		throw IOException("Wrong encryption key used to open the database file");

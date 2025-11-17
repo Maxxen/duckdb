@@ -9,8 +9,8 @@
 #include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 #include "duckdb/catalog/duck_catalog.hpp"
 #include "duckdb/common/checksum.hpp"
-#include "duckdb/common/encryption_functions.hpp"
-#include "duckdb/common/encryption_key_manager.hpp"
+#include "duckdb/services/crypto/encryption_functions.hpp"
+#include "duckdb/services/crypto/encryption_key_manager.hpp"
 #include "duckdb/common/serializer/binary_serializer.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/execution/index/bound_index.hpp"
@@ -22,6 +22,8 @@
 #include "duckdb/storage/table/column_data.hpp"
 #include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/table_io_manager.hpp"
+
+#include <duckdb/services/service_provider.hpp>
 
 namespace duckdb {
 
@@ -155,8 +157,9 @@ public:
 		auto &db = wal.GetDatabase();
 		auto &keys = EncryptionKeyManager::Get(db.GetDatabase());
 
-		auto encryption_state = db.GetDatabase().GetEncryptionUtil()->CreateEncryptionState(
-		    db.GetStorageManager().GetCipher(), MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);
+		auto encryption_state =
+		    db.GetDatabase().GetServiceProvider().GetService<EncryptionUtil>().CreateEncryptionState(
+		        db.GetStorageManager().GetCipher(), MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);
 
 		// temp buffer
 		const idx_t ciphertext_size = size + sizeof(uint64_t);

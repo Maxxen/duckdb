@@ -1,6 +1,6 @@
 #include "duckdb/common/exception/http_exception.hpp"
 #include "duckdb/common/gzip_file_system.hpp"
-#include "duckdb/common/http_util.hpp"
+#include "duckdb/services/http/http_util.hpp"
 #include "duckdb/common/local_file_system.hpp"
 #include "duckdb/common/serializer/binary_serializer.hpp"
 #include "duckdb/common/string_util.hpp"

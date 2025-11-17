@@ -6,8 +6,8 @@
 #include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 #include "duckdb/catalog/duck_catalog.hpp"
 #include "duckdb/common/checksum.hpp"
-#include "duckdb/common/encryption_functions.hpp"
-#include "duckdb/common/encryption_key_manager.hpp"
+#include "duckdb/services/crypto/encryption_functions.hpp"
+#include "duckdb/services/crypto/encryption_key_manager.hpp"
 #include "duckdb/common/serializer/binary_deserializer.hpp"
 #include "duckdb/common/serializer/buffered_file_reader.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
@@ -33,6 +33,8 @@
 #include "duckdb/storage/write_ahead_log.hpp"
 #include "duckdb/transaction/meta_transaction.hpp"
 #include "duckdb/main/client_data.hpp"
+
+#include <duckdb/services/service_provider.hpp>
 
 namespace duckdb {
 
@@ -145,7 +147,7 @@ public:
 			auto derived_key = keys.GetKey(catalog.GetEncryptionKeyId());
 
 			//! initialize the decryption
-			auto encryption_state = database.GetEncryptionUtil()->CreateEncryptionState(
+			auto encryption_state = database.GetServiceProvider().GetService<EncryptionUtil>().CreateEncryptionState(
 			    state_p.db.GetStorageManager().GetCipher(), MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);
 			encryption_state->InitializeDecryption(nonce.data(), nonce.size(), derived_key,
 			                                       MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);

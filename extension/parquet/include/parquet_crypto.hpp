@@ -9,7 +9,7 @@
 #pragma once
 
 #include "parquet_types.h"
-#include "duckdb/common/encryption_state.hpp"
+#include "../../../src/include/duckdb/services/crypto/encryption_state.hpp"
 #include "duckdb/storage/object_cache.hpp"
 
 namespace duckdb {

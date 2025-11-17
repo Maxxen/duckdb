@@ -10,6 +10,7 @@
 
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/services/service.hpp"
 
 namespace duckdb {
 
@@ -44,8 +45,13 @@ protected:
 	idx_t key_len;
 };
 
-class EncryptionUtil {
+class EncryptionUtil : public Service {
 public:
+	static constexpr auto SERVICE_KEY = "duckdb.crypto.encryption_util";
+	const char *GetServiceKey() const override {
+		return SERVICE_KEY;
+	}
+
 	DUCKDB_API explicit EncryptionUtil() {};
 
 public:

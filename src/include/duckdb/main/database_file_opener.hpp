@@ -37,8 +37,9 @@ public:
 	optional_ptr<DatabaseInstance> TryGetDatabase() override {
 		return &db;
 	}
-	shared_ptr<HTTPUtil> &GetHTTPUtil() override {
-		return TryGetDatabase()->config.http_util;
+
+	ServiceProvider &GetServiceProvider() const override {
+		return db.config.GetServiceProvider();
 	}
 
 private:

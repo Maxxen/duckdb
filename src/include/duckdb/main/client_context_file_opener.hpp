@@ -13,6 +13,7 @@
 namespace duckdb {
 
 class ClientContext;
+class ServiceProvider;
 
 //! ClientContext-specific FileOpener implementation.
 //! This object is owned by ClientContext and never outlives it.
@@ -29,7 +30,7 @@ public:
 		return &context;
 	}
 	optional_ptr<DatabaseInstance> TryGetDatabase() override;
-	shared_ptr<HTTPUtil> &GetHTTPUtil() override;
+	ServiceProvider &GetServiceProvider() const override;
 
 private:
 	ClientContext &context;

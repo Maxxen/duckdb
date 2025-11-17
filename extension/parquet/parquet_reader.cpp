@@ -19,7 +19,7 @@
 #include "reader/templated_column_reader.hpp"
 #include "thrift_tools.hpp"
 #include "duckdb/main/config.hpp"
-#include "duckdb/common/encryption_state.hpp"
+#include "../../src/include/duckdb/services/crypto/encryption_state.hpp"
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/hive_partitioning.hpp"
@@ -35,6 +35,7 @@
 #include <chrono>
 #include <cstring>
 #include <sstream>
+#include <duckdb/services/service_provider.hpp>
 
 namespace duckdb {
 
@@ -840,10 +841,12 @@ ParquetReader::ParquetReader(ClientContext &context_p, OpenFileInfo file_p, Parq
 			footer_size = UBigIntValue::Get(footer_entry->second);
 		}
 	}
+
 	// set pointer to factory method for AES state
 	auto &config = DBConfig::GetConfig(context_p);
-	if (config.encryption_util && parquet_options.debug_use_openssl) {
-		encryption_util = config.encryption_util;
+	auto enc_util = config.GetServiceProvider().TryGetSharedService<EncryptionUtil>();
+	if (enc_util && parquet_options.debug_use_openssl) {
+		encryption_util = enc_util;
 	} else {
 		encryption_util = make_shared_ptr<duckdb_mbedtls::MbedTlsWrapper::AESStateMBEDTLSFactory>();
 	}

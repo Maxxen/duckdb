@@ -14,7 +14,7 @@
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/common/cgroups.hpp"
 #include "duckdb/common/common.hpp"
-#include "duckdb/common/encryption_state.hpp"
+#include "../services/crypto/encryption_state.hpp"
 #include "duckdb/common/enums/access_mode.hpp"
 #include "duckdb/common/enums/thread_pin_mode.hpp"
 #include "duckdb/common/enums/compression_type.hpp"
@@ -39,8 +39,11 @@
 #include "duckdb/logging/log_manager.hpp"
 
 namespace duckdb {
+<<<<<<< HEAD
 
 class BlockAllocator;
+=======
+>>>>>>> cce71f2683 (add initial global service container and move httputil/encryptionutil)
 class BufferManager;
 class BufferPool;
 class CastFunctionSet;
@@ -55,8 +58,9 @@ class ExtensionCallback;
 class SecretManager;
 class CompressionInfo;
 class EncryptionUtil;
-class HTTPUtil;
 class DatabaseFilePathManager;
+class ServiceContainer;
+class ServiceProvider;
 
 struct CompressionFunctionSet;
 struct DatabaseCacheEntry;
@@ -271,16 +275,16 @@ public:
 	shared_ptr<BufferManager> buffer_manager;
 	//! Set of callbacks that can be installed by extensions
 	vector<unique_ptr<ExtensionCallback>> extension_callbacks;
-	//! Encryption Util for OpenSSL
-	shared_ptr<EncryptionUtil> encryption_util;
-	//! HTTP Request utility functions
-	shared_ptr<HTTPUtil> http_util;
 	//! Reference to the database cache entry (if any)
 	shared_ptr<DatabaseCacheEntry> db_cache_entry;
 	//! Reference to the database file path manager
 	shared_ptr<DatabaseFilePathManager> path_manager;
+	//! Service container
+	unique_ptr<ServiceContainer> services;
 
 public:
+	DUCKDB_API ServiceProvider &GetServiceProvider() const;
+
 	DUCKDB_API static DBConfig &GetConfig(ClientContext &context);
 	DUCKDB_API static DBConfig &GetConfig(DatabaseInstance &db);
 	DUCKDB_API static DBConfig &Get(AttachedDatabase &db);
