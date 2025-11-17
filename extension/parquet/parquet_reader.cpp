@@ -19,7 +19,7 @@
 #include "reader/templated_column_reader.hpp"
 #include "thrift_tools.hpp"
 #include "duckdb/main/config.hpp"
-#include "../../src/include/duckdb/services/crypto/encryption_state.hpp"
+#include "duckdb/services/crypto/encryption_state.hpp"
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/hive_partitioning.hpp"
@@ -30,12 +30,12 @@
 #include "duckdb/planner/table_filter_state.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/logging/log_manager.hpp"
+#include "duckdb/services/service_provider.hpp"
 
 #include <cassert>
 #include <chrono>
 #include <cstring>
 #include <sstream>
-#include <duckdb/services/service_provider.hpp>
 
 namespace duckdb {
 

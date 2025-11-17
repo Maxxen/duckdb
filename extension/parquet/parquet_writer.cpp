@@ -21,6 +21,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/common/types/blob.hpp"
 
+#include <duckdb/services/service_container.hpp>
 #include <duckdb/services/service_provider.hpp>
 
 namespace duckdb {
@@ -356,22 +357,8 @@ ParquetWriter::ParquetWriter(ClientContext &context, FileSystem &fs, string file
 	                                       FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE_NEW);
 
 	if (encryption_config) {
-		auto &config = DBConfig::GetConfig(context);
-<<<<<<< HEAD
-
-		// To ensure we can write, we need to autoload httpfs
-		if (!config.encryption_util || !config.encryption_util->SupportsEncryption()) {
-			ExtensionHelper::TryAutoLoadExtension(context, "httpfs");
-		}
-
-		if (config.encryption_util && debug_use_openssl) {
-=======
-		auto enc_util = config.GetServiceProvider().TryGetSharedService<EncryptionUtil>();
-		if (enc_util && debug_use_openssl) {
->>>>>>> cce71f2683 (add initial global service container and move httputil/encryptionutil)
-			// Use OpenSSL
-			encryption_util = enc_util;
-		} else {
+		encryption_util = context.db->GetEncryptionUtil();
+		if (!encryption_util || !debug_use_openssl) {
 			encryption_util = make_shared_ptr<duckdb_mbedtls::MbedTlsWrapper::AESStateMBEDTLSFactory>();
 		}
 		// encrypted parquet files start with the string "PARE"

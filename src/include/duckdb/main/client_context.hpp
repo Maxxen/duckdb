@@ -53,6 +53,7 @@ class BufferedData;
 struct ClientData;
 class ClientContextState;
 class RegisteredStateManager;
+class ServiceContainer;
 
 struct PendingQueryParameters {
 	//! Prepared statement parameters (if any)
@@ -89,6 +90,8 @@ public:
 	unique_ptr<ClientData> client_data;
 	//! Data for the currently running transaction
 	TransactionContext transaction;
+	//! The connection-scoped service container
+	unique_ptr<ServiceContainer> services;
 
 public:
 	MetaTransaction &ActiveTransaction() {

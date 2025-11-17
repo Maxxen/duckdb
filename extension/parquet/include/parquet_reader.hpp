@@ -11,7 +11,7 @@
 #include "duckdb.hpp"
 #include "duckdb/storage/caching_file_system.hpp"
 #include "duckdb/common/common.hpp"
-#include "../../../src/include/duckdb/services/crypto/encryption_state.hpp"
+#include "duckdb/services/crypto/encryption_state.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/multi_file/base_file_reader.hpp"
 #include "duckdb/common/multi_file/multi_file_options.hpp"

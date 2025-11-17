@@ -10,7 +10,7 @@
 
 #include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/common/typedefs.hpp"
-#include "../../../src/include/duckdb/services/crypto/encryption_state.hpp"
+#include "duckdb/services/crypto/encryption_state.hpp"
 
 #include <string>
 

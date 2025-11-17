@@ -14,7 +14,6 @@
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/common/cgroups.hpp"
 #include "duckdb/common/common.hpp"
-#include "../services/crypto/encryption_state.hpp"
 #include "duckdb/common/enums/access_mode.hpp"
 #include "duckdb/common/enums/thread_pin_mode.hpp"
 #include "duckdb/common/enums/compression_type.hpp"
@@ -39,11 +38,8 @@
 #include "duckdb/logging/log_manager.hpp"
 
 namespace duckdb {
-<<<<<<< HEAD
 
 class BlockAllocator;
-=======
->>>>>>> cce71f2683 (add initial global service container and move httputil/encryptionutil)
 class BufferManager;
 class BufferPool;
 class CastFunctionSet;

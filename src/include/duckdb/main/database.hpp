@@ -71,13 +71,8 @@ public:
 	DUCKDB_API bool ExtensionIsLoaded(const string &name);
 
 	DUCKDB_API SettingLookupResult TryGetCurrentSetting(const string &key, Value &result) const;
-
-<<<<<<< HEAD
 	DUCKDB_API shared_ptr<EncryptionUtil> GetEncryptionUtil();
-=======
 	DUCKDB_API ServiceProvider &GetServiceProvider();
->>>>>>> cce71f2683 (add initial global service container and move httputil/encryptionutil)
-
 	shared_ptr<AttachedDatabase> CreateAttachedDatabase(ClientContext &context, AttachInfo &info,
 	                                                    AttachOptions &options);
 

@@ -6,11 +6,19 @@
 
 namespace duckdb {
 
+enum class ServiceScope : uint8_t {
+	GLOBAL,     // Scoped to the entire database instance
+	CONNECTION, // Scoped to a single connection
+	QUERY,      // Scoped to a single query
+};
+
 class ServiceProvider {
 public:
+	virtual ServiceScope GetScope() const = 0;
 	virtual shared_ptr<Service> TryGetSharedService(const char *key) const = 0;
 	virtual ~ServiceProvider() = default;
 
+public:
 	optional_ptr<Service> TryGetService(const char *key) const {
 		auto service = TryGetSharedService(key);
 		if (!service) {

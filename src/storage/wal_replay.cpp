@@ -115,7 +115,6 @@ public:
 		}
 
 		if (state_p.wal_version == 3) {
-			auto &database = state_p.db.GetDatabase();
 			//! Version 3 means that the WAL is encrypted
 			//! For encryption, the length field remains plaintext
 			//! After the length field, we store a 12-byte nonce (for GCM)
@@ -147,7 +146,7 @@ public:
 			auto derived_key = keys.GetKey(catalog.GetEncryptionKeyId());
 
 			//! initialize the decryption
-			auto encryption_state = database.GetServiceProvider().GetService<EncryptionUtil>().CreateEncryptionState(
+			auto encryption_state = state_p.db.GetDatabase().GetEncryptionUtil()->CreateEncryptionState(
 			    state_p.db.GetStorageManager().GetCipher(), MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);
 			encryption_state->InitializeDecryption(nonce.data(), nonce.size(), derived_key,
 			                                       MainHeader::DEFAULT_ENCRYPTION_KEY_LENGTH);

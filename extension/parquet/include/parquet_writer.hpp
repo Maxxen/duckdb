@@ -11,7 +11,7 @@
 #include "duckdb.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/optional_idx.hpp"
-#include "../../../src/include/duckdb/services/crypto/encryption_state.hpp"
+#include "duckdb/services/crypto/encryption_state.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/atomic.hpp"

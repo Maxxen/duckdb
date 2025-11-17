@@ -54,14 +54,17 @@ DBConfig::DBConfig() {
 	error_manager = make_uniq<ErrorManager>();
 	secret_manager = make_uniq<SecretManager>();
 
-	// Instantiate service container
-	services = make_uniq<ServiceContainer>();
+	// Instantiate root service container
+	services = make_uniq<ServiceContainer>(ServiceScope::GLOBAL);
 
-	// Register HTTP Util service
-	services->AddService<HTTPUtil>();
+	// Register HTTP Util service lazily
+	services->AddService(ServiceScope::GLOBAL, HTTPUtil::SERVICE_KEY,
+	                     [](const ServiceProvider &provider) { return make_shared_ptr<HTTPUtil>(); });
 
 	// Add default encryption service based on mbedTLS
-	services->AddServiceBase<EncryptionUtil, duckdb_mbedtls::MbedTlsWrapper::AESStateMBEDTLSFactory>();
+	services->AddService(ServiceScope::GLOBAL, EncryptionUtil::SERVICE_KEY, [](const ServiceProvider &provider) {
+		return shared_ptr<EncryptionUtil>(new duckdb_mbedtls::MbedTlsWrapper::AESStateMBEDTLSFactory());
+	});
 
 	storage_extensions["__open_file__"] = OpenFileStorageExtension::Create();
 }
@@ -528,23 +531,19 @@ SettingLookupResult DatabaseInstance::TryGetCurrentSetting(const string &key, Va
 	return db_config.TryGetCurrentSetting(key, result);
 }
 
-<<<<<<< HEAD
+// Try to get the encryption util, auto-loading the httpfs extension if needed
 shared_ptr<EncryptionUtil> DatabaseInstance::GetEncryptionUtil() {
-	if (!config.encryption_util || !config.encryption_util->SupportsEncryption()) {
+	auto util = GetServiceProvider().TryGetSharedService<EncryptionUtil>();
+	if (!util || !util->SupportsEncryption()) {
+		// Try to auto-load the httpfs extension if not already loaded
 		ExtensionHelper::TryAutoLoadExtension(*this, "httpfs");
 	}
+	// Try to get the encryption util again
+	return GetServiceProvider().TryGetSharedService<EncryptionUtil>();
+}
 
-	if (config.encryption_util) {
-		return config.encryption_util;
-	}
-
-	auto result = make_shared_ptr<duckdb_mbedtls::MbedTlsWrapper::AESStateMBEDTLSFactory>();
-
-	return std::move(result);
-=======
 ServiceProvider &DatabaseInstance::GetServiceProvider() {
 	return config.GetServiceProvider();
->>>>>>> cce71f2683 (add initial global service container and move httputil/encryptionutil)
 }
 
 ValidChecker &DatabaseInstance::GetValidChecker() {
