@@ -304,6 +304,9 @@ unique_ptr<BaseStatistics> ListValueStats(ClientContext &context, FunctionStatis
 		list_child_stats.Merge(child_stats[i]);
 	}
 	list_stats.SetHasNoNullFast();
+
+	ListStats::UpdateLength(list_stats, child_stats.size());
+
 	return list_stats.ToUnique();
 }
 

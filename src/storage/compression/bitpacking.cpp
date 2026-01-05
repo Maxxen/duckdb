@@ -384,7 +384,28 @@ idx_t BitpackingFinalAnalyze(AnalyzeState &state) {
 //===--------------------------------------------------------------------===//
 // Compress
 //===--------------------------------------------------------------------===//
-template <class T, bool WRITE_STATISTICS, class T_S = typename MakeSigned<T>::type>
+namespace {
+struct NumericStatsWriter {
+	template <class T, class T_S = typename MakeSigned<T>::type>
+	static void Write(BaseStatistics &stats, T min, T max, T_S min_delta, T_S max_delta) {
+		stats.UpdateNumericStats<T>(min);
+		stats.UpdateNumericStats<T>(max);
+	}
+};
+
+struct ListStatsWriter {
+	template <class T, class T_S = typename MakeSigned<T>::type>
+	static void Write(BaseStatistics &stats, T min, T max, T_S min_delta, T_S max_delta) {
+		// Because we store the list-offsets, we use the delta to get the sizes of the lists
+		const auto min_length = UnsafeNumericCast<T>(AbsValue(min_delta));
+		const auto max_length = UnsafeNumericCast<T>(AbsValue(max_delta));
+		ListStats::UpdateLength(stats, min_length, max_length);
+	}
+};
+
+} // namespace
+
+template <class T, class WRITE_STATISTICS, class T_S = typename MakeSigned<T>::type>
 struct BitpackingCompressionState : public CompressionState {
 public:
 	explicit BitpackingCompressionState(ColumnDataCheckpointData &checkpoint_data, const CompressionInfo &info)
@@ -489,18 +510,16 @@ public:
 		static void UpdateStats(BitpackingCompressionState<T, WRITE_STATISTICS> *state, idx_t count) {
 			state->current_segment->count += count;
 
-			if (WRITE_STATISTICS) {
-				if (state->state.has_valid) {
-					state->current_segment->stats.statistics.SetHasNoNullFast();
-				}
-				if (state->state.has_invalid) {
-					state->current_segment->stats.statistics.SetHasNullFast();
-				}
-
-				if (!state->state.all_invalid) {
-					state->current_segment->stats.statistics.template UpdateNumericStats<T>(state->state.maximum);
-					state->current_segment->stats.statistics.template UpdateNumericStats<T>(state->state.minimum);
-				}
+			if (state->state.has_valid) {
+				state->current_segment->stats.statistics.SetHasNoNullFast();
+			}
+			if (state->state.has_invalid) {
+				state->current_segment->stats.statistics.SetHasNullFast();
+			}
+			if (!state->state.all_invalid) {
+				auto &stats = state->current_segment->stats.statistics;
+				WRITE_STATISTICS::template Write<T>(stats, state->state.minimum, state->state.maximum,
+				                                    state->state.minimum_delta, state->state.maximum_delta);
 			}
 		}
 	};
@@ -580,13 +599,13 @@ public:
 	}
 };
 
-template <class T, bool WRITE_STATISTICS>
+template <class T, class WRITE_STATISTICS>
 unique_ptr<CompressionState> BitpackingInitCompression(ColumnDataCheckpointData &checkpoint_data,
                                                        unique_ptr<AnalyzeState> state) {
 	return make_uniq<BitpackingCompressionState<T, WRITE_STATISTICS>>(checkpoint_data, state->info);
 }
 
-template <class T, bool WRITE_STATISTICS>
+template <class T, class WRITE_STATISTICS>
 void BitpackingCompress(CompressionState &state_p, Vector &scan_vector, idx_t count) {
 	auto &state = state_p.Cast<BitpackingCompressionState<T, WRITE_STATISTICS>>();
 	UnifiedVectorFormat vdata;
@@ -594,7 +613,7 @@ void BitpackingCompress(CompressionState &state_p, Vector &scan_vector, idx_t co
 	state.Append(vdata, count);
 }
 
-template <class T, bool WRITE_STATISTICS>
+template <class T, class WRITE_STATISTICS>
 void BitpackingFinalizeCompress(CompressionState &state_p) {
 	auto &state = state_p.Cast<BitpackingCompressionState<T, WRITE_STATISTICS>>();
 	state.Finalize();
@@ -993,7 +1012,7 @@ InsertionOrderPreservingMap<string> BitpackingGetSegmentInfo(QueryContext contex
 //===--------------------------------------------------------------------===//
 // Get Function
 //===--------------------------------------------------------------------===//
-template <class T, bool WRITE_STATISTICS = true>
+template <class T, class WRITE_STATISTICS = NumericStatsWriter>
 CompressionFunction GetBitpackingFunction(PhysicalType data_type) {
 	auto bitpacking = CompressionFunction(
 	    CompressionType::COMPRESSION_BITPACKING, data_type, BitpackingInitAnalyze<T>, BitpackingAnalyze<T>,
@@ -1028,7 +1047,7 @@ CompressionFunction BitpackingFun::GetFunction(PhysicalType type) {
 	case PhysicalType::UINT128:
 		return GetBitpackingFunction<uhugeint_t>(type);
 	case PhysicalType::LIST:
-		return GetBitpackingFunction<uint64_t, false>(type);
+		return GetBitpackingFunction<uint64_t, ListStatsWriter>(type);
 	default:
 		throw InternalException("Unsupported type for Bitpacking");
 	}

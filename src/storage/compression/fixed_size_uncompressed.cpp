@@ -242,10 +242,21 @@ struct ListFixedSizeAppend {
 	                   idx_t offset, idx_t count) {
 		auto sdata = UnifiedVectorFormat::GetData<uint64_t>(adata);
 		auto tdata = reinterpret_cast<uint64_t *>(target);
+
+		uint64_t last_offset = 0;
 		for (idx_t i = 0; i < count; i++) {
 			auto source_idx = adata.sel->get_index(offset + i);
 			auto target_idx = target_offset + i;
-			tdata[target_idx] = sdata[source_idx];
+
+			const auto list_offset = sdata[source_idx];
+			tdata[target_idx] = list_offset;
+
+			// Update list statistics
+			const auto length = list_offset - last_offset;
+
+			ListStats::UpdateLength(stats.statistics, length);
+
+			last_offset = list_offset;
 		}
 	}
 };

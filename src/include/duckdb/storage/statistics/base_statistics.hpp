@@ -18,6 +18,7 @@
 #include "duckdb/storage/statistics/string_stats.hpp"
 #include "duckdb/storage/statistics/geometry_stats.hpp"
 #include "duckdb/storage/statistics/variant_stats.hpp"
+#include "duckdb/storage/statistics/list_stats.hpp"
 
 namespace duckdb {
 struct SelectionVector;
@@ -165,6 +166,8 @@ private:
 		GeometryStatsData geometry_data;
 		//! Variant stats data, for variant stats
 		VariantStatsData variant_data;
+		//! List stats, for list stats
+		ListStatsData list_data;
 	} stats_union;
 	//! Child stats (for LIST and STRUCT)
 	unsafe_unique_array<BaseStatistics> child_stats;
@@ -173,8 +176,8 @@ private:
 template <>
 inline void BaseStatistics::UpdateNumericStats<interval_t>(interval_t new_value) {
 }
+
 template <>
-inline void BaseStatistics::UpdateNumericStats<list_entry_t>(list_entry_t new_value) {
-}
+inline void BaseStatistics::UpdateNumericStats<list_entry_t>(list_entry_t new_value);
 
 } // namespace duckdb

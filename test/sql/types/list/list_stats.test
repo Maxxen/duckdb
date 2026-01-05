@@ -133,3 +133,28 @@ SELECT l[1] FROM lists
 NULL
 NULL
 NULL
+
+# query I
+# select stats([1,2,3]);
+# ----
+# <REGEX>:.*Min Length: 3.*Max Length: 3.*Has Null: false.*
+#
+# statement ok
+# create table t1(l integer[]);
+#
+# statement ok
+# insert into t1 values ([1,2,3]), (NULL), ([]), ([NULL]), ([4,5]);
+#
+# query I
+# select distinct stats(l) from t1;
+# ----
+# <REGEX>:.*Min Length: 0.*Max Length: 3.*Has Null: true.*
+#
+# statement ok
+# insert into t1 values ([6,7,8,9]);
+#
+# query I
+# select distinct stats(l) from t1;
+# ----
+# <REGEX>:.*Min Length: 0.*Max Length: 4.*Has Null: true.*
+

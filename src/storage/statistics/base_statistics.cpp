@@ -548,6 +548,7 @@ BaseStatistics BaseStatistics::FromConstantType(const Value &input) {
 			for (auto &child_element : list_children) {
 				child_stats.Merge(FromConstant(child_element));
 			}
+			ListStats::UpdateLength(result, list_children.size());
 		}
 		return result;
 	}

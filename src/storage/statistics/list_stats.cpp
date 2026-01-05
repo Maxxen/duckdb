@@ -18,6 +18,13 @@ BaseStatistics ListStats::CreateUnknown(LogicalType type) {
 	BaseStatistics result(std::move(type));
 	result.InitializeUnknown();
 	result.child_stats[0].Copy(BaseStatistics::CreateUnknown(child_type));
+
+	auto &data = GetDataUnsafe(result);
+	data.has_min_length = false;
+	data.has_max_length = false;
+	data.min_length = 0;
+	data.max_length = 0;
+
 	return result;
 }
 
@@ -26,6 +33,13 @@ BaseStatistics ListStats::CreateEmpty(LogicalType type) {
 	BaseStatistics result(std::move(type));
 	result.InitializeEmpty();
 	result.child_stats[0].Copy(BaseStatistics::CreateEmpty(child_type));
+
+	auto &data = GetDataUnsafe(result);
+	data.has_min_length = true;
+	data.has_max_length = true;
+	data.min_length = NumericLimits<uint64_t>::Maximum();
+	data.max_length = NumericLimits<uint64_t>::Minimum();
+
 	return result;
 }
 
@@ -33,6 +47,13 @@ void ListStats::Copy(BaseStatistics &stats, const BaseStatistics &other) {
 	D_ASSERT(stats.child_stats);
 	D_ASSERT(other.child_stats);
 	stats.child_stats[0].Copy(other.child_stats[0]);
+	auto &data = GetDataUnsafe(stats);
+	const auto &other_data = GetDataUnsafe(other);
+
+	data.has_min_length = other_data.has_min_length;
+	data.has_max_length = other_data.has_max_length;
+	data.min_length = other_data.min_length;
+	data.max_length = other_data.max_length;
 }
 
 const BaseStatistics &ListStats::GetChildStats(const BaseStatistics &stats) {
@@ -66,11 +87,32 @@ void ListStats::Merge(BaseStatistics &stats, const BaseStatistics &other) {
 	auto &child_stats = ListStats::GetChildStats(stats);
 	auto &other_child_stats = ListStats::GetChildStats(other);
 	child_stats.Merge(other_child_stats);
+
+	auto &data = GetDataUnsafe(stats);
+	auto &other_data = GetDataUnsafe(other);
+
+	if (data.has_min_length && other_data.has_min_length) {
+		data.min_length = MinValue(data.min_length, other_data.min_length);
+	} else {
+		data.has_min_length = false;
+		data.min_length = 0;
+	}
+
+	if (data.has_max_length && other_data.has_max_length) {
+		data.max_length = MaxValue(data.max_length, other_data.max_length);
+	} else {
+		data.has_max_length = false;
+		data.max_length = 0;
+	}
 }
 
 void ListStats::Serialize(const BaseStatistics &stats, Serializer &serializer) {
 	auto &child_stats = ListStats::GetChildStats(stats);
 	serializer.WriteProperty(200, "child_stats", child_stats);
+	serializer.WritePropertyWithDefault(201, "has_min_length", GetDataUnsafe(stats).has_min_length, false);
+	serializer.WritePropertyWithDefault(202, "has_max_length", GetDataUnsafe(stats).has_max_length, false);
+	serializer.WritePropertyWithDefault(203, "min_length", GetDataUnsafe(stats).min_length, 0ULL);
+	serializer.WritePropertyWithDefault(204, "max_length", GetDataUnsafe(stats).max_length, 0ULL);
 }
 
 void ListStats::Deserialize(Deserializer &deserializer, BaseStatistics &base) {
@@ -82,11 +124,19 @@ void ListStats::Deserialize(Deserializer &deserializer, BaseStatistics &base) {
 	deserializer.Set<const LogicalType &>(child_type);
 	base.child_stats[0].Copy(deserializer.ReadProperty<BaseStatistics>(200, "child_stats"));
 	deserializer.Unset<LogicalType>();
+
+	auto &data = GetDataUnsafe(base);
+	data.has_min_length = deserializer.ReadPropertyWithExplicitDefault<bool>(201, "has_min_length", false);
+	data.has_max_length = deserializer.ReadPropertyWithExplicitDefault<bool>(202, "has_max_length", false);
+	data.min_length = deserializer.ReadPropertyWithExplicitDefault<uint64_t>(203, "min_length", 0ULL);
+	data.max_length = deserializer.ReadPropertyWithExplicitDefault<uint64_t>(204, "max_length", 0ULL);
 }
 
 string ListStats::ToString(const BaseStatistics &stats) {
 	auto &child_stats = ListStats::GetChildStats(stats);
-	return StringUtil::Format("[%s]", child_stats.ToString());
+	return StringUtil::Format("[Min Length: %s, Max Length: %s, Data: [%s]]",
+	                          ListStats::MinLengthOrNull(stats).ToString(),
+	                          ListStats::MaxLengthOrNull(stats).ToString(), child_stats.ToString());
 }
 
 void ListStats::Verify(const BaseStatistics &stats, Vector &vector, const SelectionVector &sel, idx_t count) {
@@ -121,6 +171,104 @@ void ListStats::Verify(const BaseStatistics &stats, Vector &vector, const Select
 	}
 
 	child_stats.Verify(child_entry, list_sel, list_count);
+}
+
+void ListStats::UpdateLength(BaseStatistics &stats, const uint64_t length) {
+	auto &data = GetDataUnsafe(stats);
+	if (data.has_min_length) {
+		data.min_length = MinValue(data.min_length, length);
+	} else {
+		data.has_min_length = true;
+		data.min_length = length;
+	}
+
+	if (data.has_max_length) {
+		data.max_length = MaxValue(data.max_length, length);
+	} else {
+		data.has_max_length = true;
+		data.max_length = length;
+	}
+}
+
+void ListStats::UpdateLength(BaseStatistics &stats, const uint64_t max_length, const uint64_t min_length) {
+	auto &data = GetDataUnsafe(stats);
+	if (data.has_min_length) {
+		data.min_length = MinValue(data.min_length, min_length);
+	} else {
+		data.has_min_length = true;
+		data.min_length = min_length;
+	}
+
+	if (data.has_max_length) {
+		data.max_length = MaxValue(data.max_length, max_length);
+	} else {
+		data.has_max_length = true;
+		data.max_length = max_length;
+	}
+}
+
+ListStatsData &ListStats::GetDataUnsafe(BaseStatistics &stats) {
+	D_ASSERT(stats.GetStatsType() == StatisticsType::LIST_STATS);
+	return stats.stats_union.list_data;
+}
+
+const ListStatsData &ListStats::GetDataUnsafe(const BaseStatistics &stats) {
+	D_ASSERT(stats.GetStatsType() == StatisticsType::LIST_STATS);
+	return stats.stats_union.list_data;
+}
+
+uint64_t ListStats::GetMinLengthUnsafe(const BaseStatistics &stats) {
+	auto &data = GetDataUnsafe(stats);
+	D_ASSERT(data.has_min_length);
+	return data.min_length;
+}
+
+uint64_t ListStats::GetMaxLengthUnsafe(const BaseStatistics &stats) {
+	auto &data = GetDataUnsafe(stats);
+	D_ASSERT(data.has_max_length);
+	return data.max_length;
+}
+
+Value ListStats::MinLengthOrNull(const BaseStatistics &stats) {
+	auto &data = GetDataUnsafe(stats);
+	if (!data.has_min_length) {
+		return Value(LogicalType::UBIGINT);
+	}
+	return Value::UBIGINT(data.min_length);
+}
+Value ListStats::MaxLengthOrNull(const BaseStatistics &stats) {
+	auto &data = GetDataUnsafe(stats);
+	if (!data.has_max_length) {
+		return Value(LogicalType::UBIGINT);
+	}
+	return Value::UBIGINT(data.max_length);
+}
+
+bool ListStats::HasMinLength(const BaseStatistics &stats) {
+	auto &data = GetDataUnsafe(stats);
+	return data.has_min_length;
+}
+
+bool ListStats::HasMaxLength(const BaseStatistics &stats) {
+	auto &data = GetDataUnsafe(stats);
+	return data.has_max_length;
+}
+
+void ListStats::SetMinLength(BaseStatistics &stats, uint64_t length) {
+	auto &data = GetDataUnsafe(stats);
+	data.has_min_length = true;
+	data.min_length = length;
+}
+
+void ListStats::SetMaxLength(BaseStatistics &stats, uint64_t length) {
+	auto &data = GetDataUnsafe(stats);
+	data.has_max_length = true;
+	data.max_length = length;
+}
+
+template <>
+inline void BaseStatistics::UpdateNumericStats<list_entry_t>(list_entry_t new_value) {
+	ListStats::UpdateLength(*this, new_value.length);
 }
 
 } // namespace duckdb
