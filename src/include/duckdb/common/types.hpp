@@ -167,6 +167,7 @@ enum class PhysicalType : uint8_t {
 	///// Like LIST, but with 64-bit offsets
 	// LARGE_LIST = 33,
 
+
 	/// DuckDB Extensions
 	VARCHAR = 200, // our own string representation, different from STRING and LARGE_STRING above
 	UINT128 = 203, // 128-bit unsigned integers
@@ -174,6 +175,7 @@ enum class PhysicalType : uint8_t {
 	UNKNOWN = 205, // Unknown physical type of user defined types
 	/// Boolean as 1 bit, LSB bit-packed ordering
 	BIT = 206,
+	GEOMETRY = 207,
 
 	INVALID = 255
 };

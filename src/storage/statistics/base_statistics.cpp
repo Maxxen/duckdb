@@ -580,8 +580,9 @@ BaseStatistics BaseStatistics::FromConstantType(const Value &input) {
 	case StatisticsType::GEOMETRY_STATS: {
 		auto result = GeometryStats::CreateEmpty(input.type());
 		if (!input.IsNull()) {
-			auto &string_value = StringValue::Get(input);
-			GeometryStats::Update(result, string_t(string_value));
+			auto &string_value = GeometryValue::Get(input);
+			// TODO: Fix stats
+			// GeometryStats::Update(result, string_t(string_value));
 		}
 		return result;
 	}

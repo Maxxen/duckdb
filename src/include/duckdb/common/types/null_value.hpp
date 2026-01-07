@@ -10,6 +10,7 @@
 
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/types/string_type.hpp"
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/types/interval.hpp"
 #include "duckdb/common/limits.hpp"
@@ -43,6 +44,11 @@ inline string_t NullValue() {
 template <>
 inline char *NullValue() {
 	return (char *)NullValue<const char *>(); // NOLINT
+}
+
+template <>
+inline geometry_t NullValue() {
+	return geometry_t(1, NullValue<char *>(), 0);
 }
 
 template <>

@@ -597,6 +597,36 @@ void TupleDataAllocator::RecomputeHeapPointers(Vector &old_heap_ptrs, const Sele
 			VerifyStrings(layout, type.id(), row_locations, col_idx, base_col_offset, col_offset, offset, count);
 			break;
 		}
+		case PhysicalType::GEOMETRY: {
+			for (idx_t i = 0; i < count; i++) {
+				const auto idx = offset + i;
+				const auto &row_location = row_locations[idx] + base_col_offset;
+				const auto valid =
+				    all_valid ||
+				    ValidityBytes::RowIsValid(
+				        ValidityBytes(row_location, column_count).GetValidityEntryUnsafe(entry_idx), idx_in_entry);
+				if (!valid) {
+					continue;
+				}
+
+				const auto &old_heap_ptr = old_heap_locations[old_heap_sel.get_index(idx)];
+				const auto &new_heap_ptr = new_heap_locations[new_heap_sel.get_index(idx)];
+
+				const auto geom_location = row_location + col_offset;
+
+				// Load the geometry, and replace the pointer
+				auto geom = Load<geometry_t>(geom_location);
+				const auto geom_children_ptr = reinterpret_cast<data_ptr_t>(geom.GetChildren());
+				const auto diff = geom_children_ptr - old_heap_ptr;
+				D_ASSERT(diff >= 0);
+				geom.SetDataPtrUnsafe(char_ptr_cast(new_heap_ptr + diff));
+
+				geom.Verify();
+
+				Store<geometry_t>(geom, geom_location);
+			}
+			// TODO: Verify geometry data pointers
+		} break;
 		case PhysicalType::LIST:
 		case PhysicalType::ARRAY: {
 			for (idx_t i = 0; i < count; i++) {
@@ -682,6 +712,31 @@ void TupleDataAllocator::FindHeapPointers(TupleDataChunkState &chunk_state, Sele
 #ifndef DUCKDB_DEBUG_NO_INLINE
 				}
 #endif
+				not_found.set_index(next_not_found_count++, idx);
+			}
+			not_found_count = next_not_found_count;
+			break;
+		}
+		case PhysicalType::GEOMETRY: {
+			for (idx_t i = 0; i < not_found_count; i++) {
+				const auto idx = not_found.get_index(i);
+				const auto &row_location = row_locations[idx] + base_col_offset;
+				D_ASSERT(FlatVector::GetData<idx_t>(chunk_state.heap_sizes)[idx] != 0);
+
+				const auto valid =
+				    all_valid ||
+				    ValidityBytes::RowIsValid(
+				        ValidityBytes(row_location, column_count).GetValidityEntryUnsafe(entry_idx), idx_in_entry);
+
+				if (valid) {
+					const auto geom_location = row_location + col_offset;
+
+					// Load the geometry
+					// TODO: Add better way to access geometry data pointers
+					auto geom = Load<geometry_t>(geom_location);
+					heap_locations[idx] = reinterpret_cast<data_ptr_t>(geom.GetChildren());
+					continue;
+				}
 				not_found.set_index(next_not_found_count++, idx);
 			}
 			not_found_count = next_not_found_count;

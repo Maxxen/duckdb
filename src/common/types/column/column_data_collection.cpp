@@ -739,6 +739,62 @@ void ColumnDataCopy<string_t>(ColumnDataMetaData &meta_data, const UnifiedVector
 }
 
 template <>
+void ColumnDataCopy<geometry_t>(ColumnDataMetaData &meta_data, const UnifiedVectorFormat &source_data, Vector &source,
+                                idx_t offset, idx_t copy_count) {
+	auto &segment = meta_data.segment;
+	auto &append_state = meta_data.state;
+
+	auto current_index = meta_data.vector_data_index;
+	idx_t remaining = copy_count;
+
+	while (remaining > 0) {
+		auto &current_segment = segment.GetVectorData(current_index);
+		idx_t append_count = MinValue<idx_t>(STANDARD_VECTOR_SIZE - current_segment.count, remaining);
+
+		auto base_ptr = segment.allocator->GetDataPointer(append_state.current_chunk_state, current_segment.block_id,
+		                                                  current_segment.offset);
+		auto validity_data = ColumnDataCollectionSegment::GetValidityPointerForWriting(base_ptr, sizeof(geometry_t));
+
+		ValidityMask result_validity(validity_data, STANDARD_VECTOR_SIZE);
+		if (current_segment.count == 0) {
+			result_validity.SetAllValid(STANDARD_VECTOR_SIZE);
+		}
+
+		auto source_entries = UnifiedVectorFormat::GetData<geometry_t>(source_data);
+		auto target_entries = reinterpret_cast<geometry_t *>(base_ptr);
+
+		for (idx_t i = 0; i < append_count; i++) {
+			auto source_idx = source_data.sel->get_index(offset + i);
+			auto target_idx = current_segment.count + i;
+			if (!source_data.validity.RowIsValid(source_idx)) {
+				result_validity.SetInvalid(target_idx);
+				continue;
+			}
+			const auto &source_entry = source_entries[source_idx];
+			// geometry_t is never inlined - always copy to heap
+			// TODO: Dont do this string_t stuff
+			// TODO: This is probably not aligned...
+			// TODO: This wont work, because the pointers will be mangled once we spill to disk.
+			// We need to do swizzling.
+			auto &allocator = meta_data.segment.heap->GetAllocator();
+			target_entries[target_idx] = source_entry.DeepCopy(allocator);
+		}
+
+		current_segment.count += append_count;
+		offset += append_count;
+		remaining -= append_count;
+
+		if (remaining > 0) {
+			if (!current_segment.next_data.IsValid()) {
+				segment.AllocateVector(source.GetType(), meta_data.chunk_data, append_state, current_index);
+			}
+			D_ASSERT(segment.GetVectorData(current_index).next_data.IsValid());
+			current_index = segment.GetVectorData(current_index).next_data;
+		}
+	}
+}
+
+template <>
 void ColumnDataCopy<list_entry_t>(ColumnDataMetaData &meta_data, const UnifiedVectorFormat &source_data, Vector &source,
                                   idx_t offset, idx_t copy_count) {
 	auto &segment = meta_data.segment;
@@ -921,6 +977,9 @@ ColumnDataCopyFunction ColumnDataCollection::GetCopyFunction(const LogicalType &
 		break;
 	case PhysicalType::VARCHAR:
 		function = ColumnDataCopy<string_t>;
+		break;
+	case PhysicalType::GEOMETRY:
+		function = ColumnDataCopy<geometry_t>;
 		break;
 	case PhysicalType::STRUCT: {
 		function = ColumnDataCopyStruct;

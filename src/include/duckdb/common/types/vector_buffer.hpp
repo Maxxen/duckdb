@@ -30,7 +30,8 @@ enum class VectorBufferType : uint8_t {
 	LIST_BUFFER,         // list buffer, holds a single flatvector child
 	MANAGED_BUFFER,      // managed buffer, holds a buffer managed by the buffermanager
 	OPAQUE_BUFFER,       // opaque buffer, can be created for example by the parquet reader
-	ARRAY_BUFFER         // array buffer, holds a single flatvector child
+	ARRAY_BUFFER,        // array buffer, holds a single flatvector child
+	GEOMETRY_BUFFER
 };
 
 enum class VectorAuxiliaryDataType : uint8_t {

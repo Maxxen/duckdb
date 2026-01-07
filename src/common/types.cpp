@@ -13,6 +13,7 @@
 #include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/types/hash.hpp"
 #include "duckdb/common/types/string_type.hpp"
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/uhugeint.hpp"
@@ -163,7 +164,7 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::AGGREGATE_STATE:
 		return PhysicalType::VARCHAR;
 	case LogicalTypeId::GEOMETRY:
-		return PhysicalType::VARCHAR;
+		return PhysicalType::GEOMETRY;
 	default:
 		throw InternalException("Invalid LogicalType %s", ToString());
 	}
@@ -290,6 +291,8 @@ string TypeIdToString(PhysicalType type) {
 		return "DOUBLE";
 	case PhysicalType::VARCHAR:
 		return "VARCHAR";
+	case PhysicalType::GEOMETRY:
+		return "GEOMETRY";
 	case PhysicalType::INTERVAL:
 		return "INTERVAL";
 	case PhysicalType::STRUCT:
@@ -340,6 +343,8 @@ idx_t GetTypeIdSize(PhysicalType type) {
 		return sizeof(double);
 	case PhysicalType::VARCHAR:
 		return sizeof(string_t);
+	case PhysicalType::GEOMETRY:
+		return sizeof(geometry_t);
 	case PhysicalType::INTERVAL:
 		return sizeof(interval_t);
 	case PhysicalType::STRUCT:

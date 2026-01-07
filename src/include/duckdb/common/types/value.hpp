@@ -36,6 +36,7 @@ class Value {
 	friend struct UnionValue;
 	friend struct ArrayValue;
 	friend struct MapValue;
+	friend struct GeometryValue;
 
 public:
 	//! Create an empty NULL value of the specified type
@@ -411,6 +412,10 @@ struct DoubleValue {
 };
 
 struct StringValue {
+	DUCKDB_API static const string &Get(const Value &value);
+};
+
+struct GeometryValue {
 	DUCKDB_API static const string &Get(const Value &value);
 };
 

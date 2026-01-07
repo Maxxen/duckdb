@@ -151,6 +151,37 @@ hash_t Hash(string_t val) {
 }
 
 template <>
+hash_t Hash(geometry_t val) {
+	const auto type = val.GetType();
+	const auto count = val.GetCount();
+
+	auto hash = CombineHash(Hash(type), Hash(count));
+
+	switch (val.GetType()) {
+	case 1:
+	case 2: {
+		// POINT, LINESTRING
+		auto verts = val.GetCoords();
+		hash = CombineHash(hash, HashBytes(const_data_ptr_cast(verts), count * 2 * sizeof(double)));
+	} break;
+	case 3:   // POLYGON
+	case 4:   // MULTIPOINT
+	case 5:   // MULTILINESTRING
+	case 6:   // MULTIPOLYGON
+	case 7: { // GEOMETRYCOLLECTION
+		auto parts = val.GetChildren();
+		for (uint32_t i = 0; i < count; i++) {
+			hash = CombineHash(hash, Hash(parts[i]));
+		}
+	} break;
+	default:
+		break;
+	}
+
+	return hash;
+}
+
+template <>
 hash_t Hash(char *val) {
 	return Hash<const char *>(val);
 }

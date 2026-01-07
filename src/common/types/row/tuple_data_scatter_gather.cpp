@@ -46,6 +46,21 @@ inline void TupleDataValueStore(const string_t &source, data_t *__restrict const
 	}
 }
 
+template <>
+inline void TupleDataValueStore(const geometry_t &source, data_t *__restrict const &row_location,
+                                const idx_t &offset_in_row, data_ptr_t &heap_location) {
+	// Copy over the data
+	// TODO: Be more clever here than just a fully copy
+	auto byte_size = geometry_t::SerializeToHeapSize(source);
+	auto result = geometry_t::SerializeToHeap(source, heap_location, byte_size);
+
+	// Copy the new geometry_t into the row, pointing to the heap location
+	Store<geometry_t>(result, row_location + offset_in_row);
+
+	// Increment heap pointer
+	heap_location += byte_size;
+}
+
 template <class T>
 static void TupleDataWithinListValueStore(const T &source, const data_ptr_t &location, data_ptr_t &) {
 	Store<T>(source, location);
@@ -60,6 +75,21 @@ inline void TupleDataWithinListValueStore(const string_t &source, const data_ptr
 	Store<uint32_t>(UnsafeNumericCast<uint32_t>(source.GetSize()), location);
 	FastMemcpy(heap_location, source.GetData(), source.GetSize());
 	heap_location += source.GetSize();
+}
+
+template <>
+inline void TupleDataWithinListValueStore(const geometry_t &source, const data_ptr_t &location,
+                                          data_ptr_t &heap_location) {
+	// TODO:
+	/*
+	// Store the size
+	const auto byte_size = source.GetTotalByteSize();
+	Store<uint32_t>(UnsafeNumericCast<uint32_t>(byte_size), location);
+	// Store the data
+	source.Serialize(char_ptr_cast(heap_location), byte_size);
+	heap_location += byte_size;
+	*/
+	throw NotImplementedException("Storing geometry_t within lists is not yet implemented");
 }
 
 template <class T>
@@ -78,6 +108,15 @@ inline void TupleDataValueVerify(const LogicalType &type, const string_t &value)
 #endif
 }
 
+template <>
+inline void TupleDataValueVerify(const LogicalType &type, const geometry_t &value) {
+#ifdef D_ASSERT_IS_ENABLED
+	if (type.id() == LogicalTypeId::GEOMETRY) {
+		value.Verify();
+	}
+#endif
+}
+
 template <class T>
 static T TupleDataWithinListValueLoad(const data_ptr_t &location, data_ptr_t &) {
 	return Load<T>(location);
@@ -89,6 +128,17 @@ inline string_t TupleDataWithinListValueLoad(const data_ptr_t &location, data_pt
 	string_t result(const_char_ptr_cast(heap_location), size);
 	heap_location += size;
 	return result;
+}
+
+template <>
+inline geometry_t TupleDataWithinListValueLoad(const data_ptr_t &location, data_ptr_t &heap_location) {
+	/*
+	const auto size = Load<uint32_t>(location);
+	string_t result(const_char_ptr_cast(heap_location), size);
+	heap_location += size;
+	return result;
+	*/
+	throw NotImplementedException("Loading geometry_t within lists is not yet implemented");
 }
 
 static void ResetCombinedListData(vector<TupleDataVectorFormat> &vector_data) {
@@ -143,12 +193,41 @@ void ComputeStringHeapSizesInternal(idx_t *const heap_sizes, const UnifiedVector
 	}
 }
 
+static idx_t GeometryHeapSize(const geometry_t &val) {
+	return geometry_t::SerializeToHeapSize(val);
+}
+
+#ifndef DUCKDB_SMALLER_BINARY
+template <bool ALL_VALID, bool HAS_APPEND_SEL, bool HAS_SOURCE_SEL>
+#endif
+void ComputeGeometryHeapSizesInternal(idx_t *const heap_sizes, const UnifiedVectorFormat &source_vector_data,
+                                      const SelectionVector &append_sel, const idx_t append_count) {
+	const auto source_data = UnifiedVectorFormat::GetData<geometry_t>(source_vector_data);
+	const auto &source_sel = *source_vector_data.sel;
+	const auto &source_validity = source_vector_data.validity;
+
+#ifdef DUCKDB_SMALLER_BINARY
+	const auto ALL_VALID = source_validity.AllValid();
+	const auto HAS_APPEND_SEL = append_sel.IsSet();
+	const auto HAS_SOURCE_SEL = source_sel.IsSet();
+#endif
+
+	// Fully branchless loop
+	const auto null_geom_size = GeometryHeapSize(NullValue<geometry_t>());
+	for (idx_t i = 0; i < append_count; i++) {
+		const auto append_idx = HAS_APPEND_SEL ? append_sel.get_index_unsafe(i) : i;
+		const auto source_idx = HAS_SOURCE_SEL ? source_sel.get_index_unsafe(append_idx) : append_idx;
+		const auto valid = ALL_VALID || source_validity.RowIsValidUnsafe(source_idx);
+		heap_sizes[i] += valid * GeometryHeapSize(source_data[source_idx]) + !valid * null_geom_size;
+	}
+}
+
 void TupleDataCollection::ComputeHeapSizes(Vector &heap_sizes_v, const Vector &source_v,
                                            TupleDataVectorFormat &source_format, const SelectionVector &append_sel,
                                            const idx_t append_count) {
 	const auto type = source_v.GetType().InternalType();
 	if (type != PhysicalType::VARCHAR && type != PhysicalType::STRUCT && type != PhysicalType::LIST &&
-	    type != PhysicalType::ARRAY) {
+	    type != PhysicalType::ARRAY && type != PhysicalType::GEOMETRY) {
 		return;
 	}
 
@@ -199,6 +278,50 @@ void TupleDataCollection::ComputeHeapSizes(Vector &heap_sizes_v, const Vector &s
 				} else {
 					ComputeStringHeapSizesInternal<false, false, false>(heap_sizes, source_vector_data, append_sel,
 					                                                    append_count);
+				}
+			}
+		}
+#endif
+		break;
+	}
+	case PhysicalType::GEOMETRY: {
+#ifdef DUCKDB_SMALLER_BINARY
+		ComputeGeometryHeapSizesInternal(heap_sizes, source_vector_data, append_sel, append_count);
+#else
+		if (source_validity.AllValid()) {
+			if (append_sel.IsSet()) {
+				if (source_sel.IsSet()) {
+					ComputeGeometryHeapSizesInternal<true, true, true>(heap_sizes, source_vector_data, append_sel,
+					                                                   append_count);
+				} else {
+					ComputeGeometryHeapSizesInternal<true, true, false>(heap_sizes, source_vector_data, append_sel,
+					                                                    append_count);
+				}
+			} else {
+				if (source_sel.IsSet()) {
+					ComputeGeometryHeapSizesInternal<true, false, true>(heap_sizes, source_vector_data, append_sel,
+					                                                    append_count);
+				} else {
+					ComputeGeometryHeapSizesInternal<true, false, false>(heap_sizes, source_vector_data, append_sel,
+					                                                     append_count);
+				}
+			}
+		} else {
+			if (append_sel.IsSet()) {
+				if (source_sel.IsSet()) {
+					ComputeGeometryHeapSizesInternal<false, true, true>(heap_sizes, source_vector_data, append_sel,
+					                                                    append_count);
+				} else {
+					ComputeGeometryHeapSizesInternal<false, true, false>(heap_sizes, source_vector_data, append_sel,
+					                                                     append_count);
+				}
+			} else {
+				if (source_sel.IsSet()) {
+					ComputeGeometryHeapSizesInternal<false, false, true>(heap_sizes, source_vector_data, append_sel,
+					                                                     append_count);
+				} else {
+					ComputeGeometryHeapSizesInternal<false, false, false>(heap_sizes, source_vector_data, append_sel,
+					                                                      append_count);
 				}
 			}
 		}
@@ -1258,6 +1381,9 @@ TupleDataScatterFunction TupleDataCollection::GetScatterFunction(const LogicalTy
 	case PhysicalType::VARCHAR:
 		result.function = TupleDataGetScatterFunction<string_t>(within_collection);
 		break;
+	case PhysicalType::GEOMETRY:
+		result.function = TupleDataGetScatterFunction<geometry_t>(within_collection);
+		break;
 	case PhysicalType::STRUCT: {
 		result.function = within_collection ? TupleDataStructWithinCollectionScatter : TupleDataStructScatter;
 		for (const auto &child_type : StructType::GetChildTypes(type)) {
@@ -1365,6 +1491,21 @@ void TupleDataCollection::Gather(Vector &row_locations, const SelectionVector &s
 	Vector::Verify(result, target_sel, scan_count);
 }
 
+template <class T>
+inline T TupleDataValueLoad(data_ptr_t source_ptr) {
+	return Load<T>(source_ptr);
+}
+
+template <>
+inline geometry_t TupleDataValueLoad(data_ptr_t source_ptr) {
+	auto geom = Load<geometry_t>(source_ptr);
+
+	// Now, we need to Unswizzle
+	geom.Unswizzle();
+
+	return geom;
+}
+
 #ifdef DUCKDB_SMALLER_BINARY
 template <class T>
 #else
@@ -1397,12 +1538,12 @@ static void TupleDataTemplatedGatherInternal(const TupleDataLayout &layout, Vect
 		const auto source_idx = HAS_SCAN_SEL ? scan_sel.get_index_unsafe(i) : i;
 		const auto target_idx = HAS_TARGET_SEL ? target_sel.get_index_unsafe(i) : i;
 		const auto &source_row = source_locations[source_idx];
-		target_data[target_idx] = Load<T>(source_row + offset_in_row);
 		if (!ALL_VALID &&
 		    !ValidityBytes::RowIsValid(ValidityBytes(source_row, column_count).GetValidityEntryUnsafe(entry_idx),
 		                               idx_in_entry)) {
 			target_validity.SetInvalid(target_idx);
 		} else {
+			target_data[target_idx] = TupleDataValueLoad<T>(source_row + offset_in_row);
 			TupleDataValueVerify<T>(target.GetType(), target_data[target_idx]);
 		}
 	}
@@ -1863,6 +2004,9 @@ static TupleDataGatherFunction TupleDataGetGatherFunctionInternal(const LogicalT
 		break;
 	case PhysicalType::VARCHAR:
 		result.function = TupleDataGetGatherFunction<string_t>(within_collection);
+		break;
+	case PhysicalType::GEOMETRY:
+		result.function = TupleDataGetGatherFunction<geometry_t>(within_collection);
 		break;
 	case PhysicalType::STRUCT: {
 		result.function = within_collection ? TupleDataStructWithinCollectionGather : TupleDataStructGather;

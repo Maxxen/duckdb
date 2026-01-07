@@ -50,4 +50,9 @@ public:
 	static constexpr idx_t DEFAULT_STRING_BLOCK_LIMIT = 4096;
 };
 
+struct GeometryUncompressed {
+public:
+	static CompressionFunction GetFunction(PhysicalType data_type);
+};
+
 } // namespace duckdb

@@ -1133,4 +1133,652 @@ uint32_t Geometry::GetExtent(const string_t &wkb, GeometryExtent &extent) {
 	return vertex_count;
 }
 
+geometry_t Geometry::FromWKT(Vector &res, const string_t &wkt) {
+	TextReader reader(wkt.GetData(), static_cast<uint32_t>(wkt.GetSize()));
+	BlobWriter writer;
+
+	reader.Match("POINT");
+	reader.Match('(');
+	auto x = reader.MatchNumber();
+	auto y = reader.MatchNumber();
+	reader.Match(')');
+
+	writer.Write<double>(x);
+	writer.Write<double>(y);
+	const auto &buffer = writer.GetBuffer();
+
+	auto point = GeometryVector::AddPoint(res, 1);
+	memcpy(point.GetCoords(), buffer.data(), buffer.size());
+	return point;
+}
+
+string_t Geometry::ToWKT(Vector &res, const geometry_t &geom) {
+	TextWriter writer;
+
+	switch (geom.GetType()) {
+	case 1:
+		writer.Write("POINT");
+		break;
+	case 2:
+		writer.Write("LINESTRING");
+		break;
+	case 3:
+		writer.Write("POLYGON");
+		break;
+	default:
+		writer.Write("UNKNOWN");
+		break;
+	}
+
+	if (geom.GetCount() == 0) {
+		writer.Write(" EMPTY");
+		const auto &buffer = writer.GetBuffer();
+		return StringVector::AddString(res, buffer.data(), buffer.size());
+	}
+
+	switch (geom.GetType()) {
+	case 1: {
+		auto coords = geom.GetCoords();
+		writer.Write('(');
+		writer.Write(coords[0]);
+		writer.Write(' ');
+		writer.Write(coords[1]);
+		writer.Write(')');
+	} break;
+	case 2: {
+		auto coords = geom.GetCoords();
+		const auto vert_count = geom.GetCount();
+		writer.Write('(');
+		for (uint32_t v_idx = 0; v_idx < vert_count; v_idx++) {
+			if (v_idx > 0) {
+				writer.Write(", ");
+			}
+			writer.Write(coords[v_idx * 2]);
+			writer.Write(' ');
+			writer.Write(coords[v_idx * 2 + 1]);
+		}
+		writer.Write(')');
+	} break;
+	case 3: {
+		auto rings = geom.GetChildren();
+		const auto ring_count = geom.GetCount();
+		for (uint32_t r_idx = 0; r_idx < ring_count; r_idx++) {
+			if (r_idx > 0) {
+				writer.Write(", ");
+			}
+			auto ring = rings[r_idx];
+			auto coords = ring.GetCoords();
+			const auto vert_count = ring.GetCount();
+			writer.Write('(');
+			for (uint32_t v_idx = 0; v_idx < vert_count; v_idx++) {
+				if (v_idx > 0) {
+					writer.Write(", ");
+				}
+				writer.Write(coords[v_idx * 2]);
+				writer.Write(' ');
+				writer.Write(coords[v_idx * 2 + 1]);
+			}
+			writer.Write(')');
+		}
+	} break;
+
+	default:
+		// TODO: ERROR
+		break;
+	}
+
+	const auto &buffer = writer.GetBuffer();
+	return StringVector::AddString(res, buffer.data(), buffer.size());
+}
+
+struct VectorGeometryBuffer : public VectorBuffer {
+	VectorGeometryBuffer() : VectorBuffer(VectorBufferType::GEOMETRY_BUFFER), arena(Allocator::DefaultAllocator()) {
+	}
+
+	explicit VectorGeometryBuffer(Allocator &allocator)
+	    : VectorBuffer(VectorBufferType::GEOMETRY_BUFFER), arena(allocator) {
+	}
+
+	void AddHeapReference(buffer_ptr<VectorBuffer> heap) {
+		references.push_back(std::move(heap));
+	}
+
+	ArenaAllocator &GetArena() {
+		return arena;
+	}
+
+	ArenaAllocator arena;
+	vector<buffer_ptr<VectorBuffer>> references;
+};
+
+VectorGeometryBuffer &GeometryVector::GetGeometryBuffer(Vector &vector) {
+	if (vector.GetType().InternalType() != PhysicalType::GEOMETRY) {
+		throw InternalException(
+		    "GeometryVector::GetGeometryBuffer - vector is not of internal type GEOMETRY but of type %s",
+		    vector.GetType());
+	}
+
+	if (!vector.auxiliary) {
+		auto stored_allocator = vector.buffer ? vector.buffer->GetAllocator() : nullptr;
+		if (stored_allocator) {
+			vector.auxiliary = make_buffer<VectorGeometryBuffer>(*stored_allocator);
+		} else {
+			vector.auxiliary = make_buffer<VectorGeometryBuffer>();
+		}
+	}
+	D_ASSERT(vector.auxiliary->GetBufferType() == VectorBufferType::GEOMETRY_BUFFER);
+	return static_cast<VectorGeometryBuffer &>(*vector.auxiliary);
+}
+
+// geometry_t GeometryVector::AddGeometry(Vector &vector, const char *data, uint32_t size) {
+//	auto &geom_buffer = GetGeometryBuffer(vector);
+//	return geom_buffer.AddGeometry(data, size);
+//}
+
+geometry_t GeometryVector::AddPoint(Vector &result, uint32_t count) {
+	D_ASSERT(count == 0 || count == 1);
+	auto &geom_buffer = GetGeometryBuffer(result);
+
+	if (count == 0) {
+		return geometry_t(1, nullptr, 0);
+	} else {
+		auto ptr = geom_buffer.GetArena().AllocateAligned(sizeof(double) * 2 * count);
+		return geometry_t(1, char_ptr_cast(ptr), 2);
+	}
+}
+
+geometry_t GeometryVector::AddLineString(Vector &result, uint32_t count) {
+	auto &geom_buffer = GetGeometryBuffer(result);
+
+	if (count == 0) {
+		return geometry_t(2, nullptr, 0);
+	}
+
+	const auto line_size = sizeof(double) * 2 * count;
+	auto ptr = geom_buffer.GetArena().AllocateAligned(line_size);
+	return geometry_t(2, char_ptr_cast(ptr), count);
+}
+
+geometry_t GeometryVector::AddPolygon(Vector &result, uint32_t count) {
+	auto &geom_buffer = GetGeometryBuffer(result);
+
+	if (count == 0) {
+		return geometry_t(3, nullptr, 0);
+	}
+
+	const auto polygon_size = sizeof(geometry_t) * count;
+	auto ptr = geom_buffer.GetArena().AllocateAligned(polygon_size);
+	// TODO: Placement new the arena
+	return geometry_t(3, char_ptr_cast(ptr), count);
+}
+
+void GeometryVector::AddHandle(Vector &vector, BufferHandle handle) {
+	auto &geom_buffer = GetGeometryBuffer(vector);
+	geom_buffer.AddHeapReference(make_buffer<ManagedVectorBuffer>(std::move(handle)));
+}
+
+ArenaAllocator &GeometryVector::GetArena(Vector &vector) {
+	auto &geom_buffer = GetGeometryBuffer(vector);
+	return geom_buffer.GetArena();
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// TO/FROM WKB
+//----------------------------------------------------------------------------------------------------------------------
+static geometry_t FromWKBInternal(Vector &result, BlobReader &reader) {
+	auto &geom_buffer = GeometryVector::GetGeometryBuffer(result);
+	auto &arena = geom_buffer.GetArena();
+
+	const auto byte_order = reader.Read<uint8_t>();
+
+	const auto type_id = reader.Read<uint32_t>();
+	const auto type = static_cast<uint32_t>(type_id % 1000);
+
+	switch (type) {
+	case 1: { // POINT
+		const auto coord_size = sizeof(double) * 2;
+		auto ptr = reader.Reserve(coord_size);
+
+		// Copy to arena
+		auto arena_ptr = arena.AllocateAligned(coord_size);
+		memcpy(arena_ptr, ptr, coord_size);
+
+		return geometry_t(1, char_ptr_cast(arena_ptr), 1);
+	} break;
+	case 2: {
+		// LINESTRING
+		const auto vert_count = reader.Read<uint32_t>();
+		const auto line_size = sizeof(double) * 2 * vert_count;
+		auto ptr = reader.Reserve(line_size);
+		// Copy to arena
+		auto arena_ptr = arena.AllocateAligned(line_size);
+		memcpy(arena_ptr, ptr, line_size);
+
+		return geometry_t(2, char_ptr_cast(arena_ptr), vert_count);
+	} break;
+	case 3: {
+		// POLYGON
+		const auto ring_count = reader.Read<uint32_t>();
+		const auto polygon_size = sizeof(geometry_t) * ring_count;
+		auto ptr = arena.AllocateAligned(polygon_size);
+		auto geom_ptr = char_ptr_cast(ptr);
+
+		for (uint32_t r_idx = 0; r_idx < ring_count; r_idx++) {
+			const auto vert_count = reader.Read<uint32_t>();
+			const auto line_size = sizeof(double) * 2 * vert_count;
+			auto line_ptr = reader.Reserve(line_size);
+
+			// Copy to arena
+			auto arena_line_ptr = arena.AllocateAligned(line_size);
+			memcpy(arena_line_ptr, line_ptr, line_size);
+
+			// Placement new
+			new (geom_ptr + r_idx * sizeof(geometry_t)) geometry_t(2, char_ptr_cast(arena_line_ptr), vert_count);
+		}
+		return geometry_t(3, char_ptr_cast(ptr), ring_count);
+	} break;
+	case 4:   // MULTIPOINT
+	case 5:   // MULTILINESTRING
+	case 6:   // MULTIPOLYGON
+	case 7: { // GEOMETRYCOLLECTION
+		const auto part_count = reader.Read<uint32_t>();
+		const auto part_size = sizeof(geometry_t) * part_count;
+		auto ptr = arena.AllocateAligned(part_size);
+		auto geom_ptr = char_ptr_cast(ptr);
+		for (uint32_t p_idx = 0; p_idx < part_count; p_idx++) {
+			auto child_geom = FromWKBInternal(result, reader);
+			// Placement new
+			new (geom_ptr + p_idx * sizeof(geometry_t)) geometry_t(child_geom);
+		}
+		return geometry_t(type, char_ptr_cast(ptr), part_count);
+	}
+	default:
+		throw InvalidInputException("Unsupported geometry type %d in WKB", static_cast<int>(type));
+	}
+}
+
+geometry_t Geometry::FromWKB(Vector &result, const string_t &wkb) {
+	BlobReader reader(wkb.GetData(), static_cast<uint32_t>(wkb.GetSize()));
+	auto geom = FromWKBInternal(result, reader);
+	geom.Verify();
+	return geom;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Serialization
+//----------------------------------------------------------------------------------------------------------------------
+uint32_t geometry_t::GetTotalByteSize() const {
+	auto total_size = sizeof(geometry_t);
+
+	const auto type = GetType();
+	const auto size = GetCount();
+
+	switch (type) {
+	case 1: // POINT
+		total_size += size * sizeof(double) * 2;
+		break;
+	case 2: // LINESTRING
+		total_size += size * sizeof(double) * 2;
+		break;
+	case 3:   // POLYGON
+	case 4:   // MULTIPOINT
+	case 5:   // MULTILINESTRING
+	case 6:   // MULTIPOLYGON
+	case 7: { // GEOMETRYCOLLECTION
+		auto part = GetChildren();
+		for (uint32_t i = 0; i < size; i++) {
+			total_size += part[i].GetTotalByteSize();
+		}
+	} break;
+	default:
+		break;
+	}
+	return total_size;
+}
+
+static void SerializeInternal(FixedSizeBlobWriter &writer, const geometry_t &geom) {
+	const auto type = geom.GetType();
+	const auto size = geom.GetCount();
+
+	writer.Write<uint32_t>(type);
+	writer.Write<uint32_t>(size);
+
+	writer.Write<uint64_t>(0); // TODO: Offset
+
+	if (size == 0) {
+		return;
+	}
+
+	switch (type) {
+	case 1: // POINT
+	case 2: {
+		// LINESTRING
+		const auto verts = geom.GetCoords();
+		for (uint32_t v_idx = 0; v_idx < size * 2; v_idx++) {
+			writer.Write<double>(verts[v_idx]);
+		}
+	} break;
+	case 3:   // POLYGON
+	case 4:   // MULTIPOINT
+	case 5:   // MULTILINESTRING
+	case 6:   // MULTIPOLYGON
+	case 7: { // GEOMETRYCOLLECTION
+		const auto parts = geom.GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			SerializeInternal(writer, parts[p_idx]);
+		}
+	} break;
+	}
+}
+
+void geometry_t::Serialize(char *ptr, uint32_t len) const {
+	FixedSizeBlobWriter writer(char_ptr_cast(ptr), len);
+	SerializeInternal(writer, *this);
+}
+
+string geometry_t::Serialize() const {
+	const auto total_size = GetTotalByteSize();
+	string result;
+	result.resize(total_size);
+	// TODO: Figure out something better than this, this is kinda hacky
+	Serialize(char_ptr_cast(&result[0]), total_size);
+	return result;
+}
+
+static geometry_t DeserializeInternal(BlobReader &reader, ArenaAllocator &arena) {
+	const auto type = reader.Read<uint32_t>();
+	const auto size = reader.Read<uint32_t>();
+
+	const auto offset = reader.Read<uint64_t>(); // TODO: offset
+
+	if (size == 0) {
+		return geometry_t(type, nullptr, 0);
+	}
+
+	switch (type) {
+	case 1:   // POINT
+	case 2: { // LINESTRING
+		const auto coord_size = size * sizeof(double) * 2;
+		auto ptr = reader.Reserve(coord_size);
+
+		// Copy to arena
+		auto arena_ptr = arena.AllocateAligned(coord_size);
+		memcpy(arena_ptr, ptr, coord_size);
+
+		return geometry_t(type, char_ptr_cast(arena_ptr), size);
+	} break;
+	case 3: { // POLYGON
+		const auto polygon_size = sizeof(geometry_t) * size;
+		auto ptr = arena.AllocateAligned(polygon_size);
+		auto geom_ptr = char_ptr_cast(ptr);
+
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			auto child_geom = DeserializeInternal(reader, arena);
+			// Placement new
+			new (geom_ptr + p_idx * sizeof(geometry_t)) geometry_t(child_geom);
+		}
+		return geometry_t(type, geom_ptr, size);
+	} break;
+	case 4:   // MULTIPOINT
+	case 5:   // MULTILINESTRING
+	case 6:   // MULTIPOLYGON
+	case 7: { // GEOMETRYCOLLECTION
+		const auto part_size = sizeof(geometry_t) * size;
+		auto ptr = arena.AllocateAligned(part_size);
+		auto geom_ptr = char_ptr_cast(ptr);
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			auto child_geom = DeserializeInternal(reader, arena);
+			// Placement new
+			new (geom_ptr + p_idx * sizeof(geometry_t)) geometry_t(child_geom);
+		}
+		return geometry_t(type, geom_ptr, size);
+	} break;
+	default:
+		throw InvalidInputException("Unsupported geometry type %d in WKB", static_cast<int>(type));
+	}
+}
+
+geometry_t geometry_t::Deserialize(Vector &vec, const char *ptr, uint32_t len) {
+	BlobReader reader(ptr, len);
+	auto &geom_buffer = GeometryVector::GetGeometryBuffer(vec);
+	auto geom = DeserializeInternal(reader, geom_buffer.GetArena());
+	geom.Verify();
+	return geom;
+}
+
+geometry_t geometry_t::Deserialize(Vector &vec, string &data) {
+	return Deserialize(vec, data.data(), static_cast<uint32_t>(data.size()));
+}
+
+// Deep copy
+static geometry_t DeepCopyInternal(const geometry_t &source, ArenaAllocator &arena) {
+	auto target = source;
+
+	const auto type = source.GetType();
+	const auto size = source.GetCount();
+
+	if (size == 0) {
+		return target;
+	}
+
+	switch (type) {
+	case 1:   // POINT
+	case 2: { // LINESTRING
+		const auto coord_size = size * sizeof(double) * 2;
+		auto ptr = arena.AllocateAligned(coord_size);
+		memcpy(ptr, source.GetCoords(), coord_size);
+		target.SetDataPtrUnsafe(char_ptr_cast(ptr));
+	} break;
+	case 3:   // POLYGON
+	case 4:   // MULTIPOINT
+	case 5:   // MULTILINESTRING
+	case 6:   // MULTIPOLYGON
+	case 7: { // GEOMETRYCOLLECTION
+		const auto polygon_size = sizeof(geometry_t) * size;
+		auto ptr = arena.AllocateAligned(polygon_size);
+		auto geom_ptr = char_ptr_cast(ptr);
+
+		auto source_parts = source.GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			auto child_geom = DeepCopyInternal(source_parts[p_idx], arena);
+			// Placement new
+			new (geom_ptr + p_idx * sizeof(geometry_t)) geometry_t(child_geom);
+		}
+
+		target.SetDataPtrUnsafe(char_ptr_cast(ptr));
+	} break;
+	}
+
+	return target;
+}
+
+geometry_t geometry_t::DeepCopy(ArenaAllocator &arena) const {
+	return DeepCopyInternal(*this, arena);
+}
+
+geometry_t geometry_t::DeepCopy(Vector &result) const {
+	auto &geom_buffer = GeometryVector::GetGeometryBuffer(result);
+	return DeepCopyInternal(*this, geom_buffer.GetArena());
+}
+
+void geometry_t::Verify() const {
+#ifdef D_ASSERT_IS_ENABLED
+	D_ASSERT(uintptr_t(data) % alignof(geometry_t) == 0);
+
+	const auto type = GetType();
+	const auto size = GetCount();
+
+	switch (type) {
+	case 1:   // POINT
+	case 2: { // LINESTRING
+		auto coords = GetCoords();
+		for (uint32_t v_idx = 0; v_idx < size * 2; v_idx++) {
+			D_ASSERT(coords[v_idx] > 2.0e-313 || coords[v_idx] <= 0);
+		}
+	} break;
+	case 3: {
+		auto parts = GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			D_ASSERT(parts->type == 2); // Rings must be LINESTRINGs
+			parts[p_idx].Verify();
+		}
+	} break;
+	case 4: {
+		auto parts = GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			D_ASSERT(parts[p_idx].type == 1); // MULTIPOINT parts must be POINTs
+			parts[p_idx].Verify();
+		}
+	} break;
+	case 5: {
+		auto parts = GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			D_ASSERT(parts[p_idx].type == 2); // MULTILINESTRING parts must be LINESTRINGs
+			parts[p_idx].Verify();
+		}
+	} break;
+	case 6: {
+		auto parts = GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			D_ASSERT(parts[p_idx].type == 3); // MULTIPOLYGON parts must be POLYGONs
+			parts[p_idx].Verify();
+		}
+	} break;
+	case 7: {
+		auto parts = GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			parts[p_idx].Verify();
+		}
+	} break;
+	default:
+		D_ASSERT(false);
+		break;
+	}
+#endif
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Heap Serialization
+//----------------------------------------------------------------------------------------------------------------------
+
+idx_t geometry_t::SerializeToHeapSize(const geometry_t &geom) {
+	// Count everything, except the root itself
+	return geom.GetTotalByteSize() - (sizeof(geometry_t));
+}
+
+geometry_t geometry_t::SerializeToHeap(const geometry_t &geom, data_ptr_t heap_location, idx_t heap_size) {
+	FixedSizeBlobWriter writer(char_ptr_cast(heap_location), static_cast<uint32_t>(heap_size));
+
+	const auto type = geom.GetType();
+	const auto size = geom.GetCount();
+
+	switch (type) {
+	case 1: // POINT
+	case 2: {
+		// LINESTRING
+		const auto verts = geom.GetCoords();
+		for (uint32_t v_idx = 0; v_idx < size * 2; v_idx++) {
+			writer.Write<double>(verts[v_idx]);
+		}
+	} break;
+	case 3: // POLYGON
+	case 4: // MULTIPOINT
+	case 5: // MULTILINESTRING
+	case 6: // MULTIPOLYGON
+	case 7: {
+		// GEOMETRYCOLLECTION
+		const auto parts = geom.GetChildren();
+		for (uint32_t p_idx = 0; p_idx < size; p_idx++) {
+			SerializeInternal(writer, parts[p_idx]);
+		}
+	} break;
+	default:
+		break;
+	}
+
+	// Construct the resulting geometry_t
+	return geometry_t(type, char_ptr_cast(heap_location), size);
+}
+
+static void UnswizzleInternal(geometry_t &geom, data_ptr_t base_ptr, BlobReader &reader) {
+	const auto type = reader.Read<uint32_t>();
+	const auto size = reader.Read<uint32_t>();
+	const auto offset = reader.Read<uint64_t>(); // TODO: offset
+
+	D_ASSERT(type == geom.GetType());
+	D_ASSERT(size == geom.GetCount());
+
+	geom.SetDataPtrUnsafe(char_ptr_cast(base_ptr) + reader.GetPosition());
+
+	switch (type) {
+	case 1:   // POINT
+	case 2: { // LINESTRING
+		const auto coord_size = size * sizeof(double) * 2;
+		reader.Skip(coord_size);
+	} break;
+	case 3:
+	case 4:
+	case 5:
+	case 6:
+	case 7: {
+		for (uint32_t v_idx = 0; v_idx < size; v_idx++) {
+			auto &child_geom = geom.GetChild(v_idx);
+			UnswizzleInternal(child_geom, base_ptr, reader);
+		}
+	}
+	}
+}
+
+void geometry_t::Unswizzle() {
+	const auto type = GetType();
+	const auto size = GetCount();
+	switch (type) {
+	case 1: // POINT
+	case 2: // LINESTRING
+		// Nothing to do, we already point to the double coordinates
+		break;
+	case 3:
+	case 4:
+	case 5:
+	case 6:
+	case 7: {
+		BlobReader reader(char_ptr_cast(data), SerializeToHeapSize(*this));
+		for (uint32_t v_idx = 0; v_idx < size; v_idx++) {
+			auto &child_geom = GetChild(v_idx);
+			UnswizzleInternal(child_geom, data_ptr_cast(data), reader);
+		}
+	}
+	}
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Extent
+//----------------------------------------------------------------------------------------------------------------------
+uint32_t geometry_t::GetExtent(GeometryExtent &extent) const {
+	uint32_t total_vertex_count = 0;
+
+	const auto type = GetType();
+	const auto size = GetCount();
+
+	switch (type) {
+	case 1:
+	case 2: { //
+		total_vertex_count += size;
+		for (idx_t i = 0; i < size; i++) {
+			VertexXY vertex;
+			vertex.x = GetCoords()[i * 2];
+			vertex.y = GetCoords()[i * 2 + 1];
+			extent.Extend(vertex);
+		}
+	} break;
+	case 3: { // POLYGON
+		auto rings = GetChildren();
+		for (uint32_t r_idx = 0; r_idx < size; r_idx++) {
+			total_vertex_count += rings[r_idx].GetExtent(extent);
+		}
+	} break;
+	}
+	return total_vertex_count;
+}
+
 } // namespace duckdb

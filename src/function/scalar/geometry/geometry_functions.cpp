@@ -8,7 +8,8 @@
 namespace duckdb {
 
 static void FromWKBFunction(DataChunk &input, ExpressionState &state, Vector &result) {
-	Geometry::FromBinary(input.data[0], result, input.size(), true);
+	UnaryExecutor::Execute<string_t, geometry_t>(input.data[0], result, input.size(),
+	                                             [&](const string_t &wkb) { return Geometry::FromWKB(result, wkb); });
 }
 
 ScalarFunction StGeomfromwkbFun::GetFunction() {
@@ -31,8 +32,8 @@ ScalarFunction StAswkbFun::GetFunction() {
 }
 
 static void ToWKTFunction(DataChunk &input, ExpressionState &state, Vector &result) {
-	UnaryExecutor::Execute<string_t, string_t>(input.data[0], result, input.size(),
-	                                           [&](const string_t &geom) { return Geometry::ToString(result, geom); });
+	UnaryExecutor::Execute<geometry_t, string_t>(input.data[0], result, input.size(),
+	                                             [&](const geometry_t &geom) { return Geometry::ToWKT(result, geom); });
 }
 
 ScalarFunction StAstextFun::GetFunction() {
@@ -41,13 +42,13 @@ ScalarFunction StAstextFun::GetFunction() {
 }
 
 static void IntersectsExtentFunction(DataChunk &input, ExpressionState &state, Vector &result) {
-	BinaryExecutor::Execute<string_t, string_t, bool>(
-	    input.data[0], input.data[1], result, input.size(), [](const string_t &lhs_geom, const string_t &rhs_geom) {
+	BinaryExecutor::Execute<geometry_t, geometry_t, bool>(
+	    input.data[0], input.data[1], result, input.size(), [](const geometry_t &lhs_geom, const geometry_t &rhs_geom) {
 		    auto lhs_extent = GeometryExtent::Empty();
 		    auto rhs_extent = GeometryExtent::Empty();
 
-		    const auto lhs_is_empty = Geometry::GetExtent(lhs_geom, lhs_extent) == 0;
-		    const auto rhs_is_empty = Geometry::GetExtent(rhs_geom, rhs_extent) == 0;
+		    const auto lhs_is_empty = lhs_geom.GetExtent(lhs_extent) == 0;
+		    const auto rhs_is_empty = rhs_geom.GetExtent(rhs_extent) == 0;
 
 		    if (lhs_is_empty || rhs_is_empty) {
 			    // One of the geometries is empty

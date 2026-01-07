@@ -1785,6 +1785,15 @@ const string &StringValue::Get(const Value &value) {
 	return value.value_info_->Get<StringValueInfo>().GetString();
 }
 
+const string &GeometryValue::Get(const Value &value) {
+	if (value.is_null) {
+		throw InternalException("Calling GeometryValue::Get on a NULL value");
+	}
+	D_ASSERT(value.type().id() == LogicalTypeId::GEOMETRY);
+	D_ASSERT(value.value_info_);
+	return value.value_info_->Get<StringValueInfo>().GetString();
+}
+
 date_t DateValue::Get(const Value &value) {
 	return value.GetValueUnsafe<date_t>();
 }
@@ -2139,6 +2148,10 @@ void Value::SerializeInternal(Serializer &serializer, bool serialize_type) const
 			serializer.WriteProperty(102, "value", StringValue::Get(*this));
 		}
 	} break;
+	case PhysicalType::GEOMETRY: {
+		// TODO: Serialize
+		serializer.WriteProperty(102, "value", GeometryValue::Get(*this));
+	} break;
 	case PhysicalType::LIST:
 		SerializeChildren(serializer, ListValue::GetChildren(*this), type_);
 		break;
@@ -2221,6 +2234,10 @@ Value Value::Deserialize(Deserializer &deserializer) {
 		} else {
 			new_value.value_info_ = make_shared_ptr<StringValueInfo>(str);
 		}
+	} break;
+	case PhysicalType::GEOMETRY: {
+		auto str = deserializer.ReadProperty<string>(102, "value");
+		new_value.value_info_ = make_shared_ptr<StringValueInfo>(str);
 	} break;
 	case PhysicalType::LIST: {
 		deserializer.Set<const LogicalType &>(ListType::GetChildType(type));

@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/pair.hpp"
@@ -219,6 +220,10 @@ public:
 
 	//! Update the bounding box, return number of vertices processed
 	DUCKDB_API static uint32_t GetExtent(const string_t &wkb, GeometryExtent &extent);
+
+	DUCKDB_API static geometry_t FromWKT(Vector &res, const string_t &wkt);
+	DUCKDB_API static string_t ToWKT(Vector &res, const geometry_t &geom);
+	DUCKDB_API static geometry_t FromWKB(Vector &res, const string_t &wkb);
 };
 
 } // namespace duckdb

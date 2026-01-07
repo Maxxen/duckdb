@@ -92,6 +92,9 @@ void TupleDataLayout::Initialize(vector<LogicalType> types_p, Aggregates aggrega
 		const auto physical_type = type.InternalType();
 		if (TypeIsConstantSize(physical_type) || physical_type == PhysicalType::VARCHAR) {
 			row_width += GetTypeIdSize(physical_type);
+		} else if (physical_type == PhysicalType::GEOMETRY) {
+			// TODO: align value here?
+			row_width += sizeof(geometry_t);
 		} else if (physical_type == PhysicalType::STRUCT) {
 			// Just get the size of the TupleDataLayout of the struct
 			row_width += GetStructLayout(col_idx).GetRowWidth();

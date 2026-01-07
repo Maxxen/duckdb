@@ -514,6 +514,13 @@ void Vector::SetValue(idx_t index, const Value &val) {
 		}
 		break;
 	}
+	case PhysicalType::GEOMETRY: {
+		if (!val.IsNull()) {
+			auto str = GeometryValue::Get(val);
+			reinterpret_cast<geometry_t *>(data)[index] = geometry_t::Deserialize(*this, str);
+		}
+		break;
+	}
 	case PhysicalType::STRUCT: {
 		D_ASSERT(GetVectorType() == VectorType::CONSTANT_VECTOR || GetVectorType() == VectorType::FLAT_VECTOR);
 
@@ -729,11 +736,12 @@ Value Vector::GetValueInternal(const Vector &v_p, idx_t index_p) {
 		return Value::BIGNUM(const_data_ptr_cast(str.data.GetData()), str.data.GetSize());
 	}
 	case LogicalTypeId::GEOMETRY: {
-		auto str = reinterpret_cast<string_t *>(data)[index];
+		auto geom = reinterpret_cast<geometry_t *>(data)[index];
+		auto str = geom.Serialize();
 		if (GeoType::HasCRS(type)) {
-			return Value::GEOMETRY(const_data_ptr_cast(str.GetData()), str.GetSize(), GeoType::GetCRS(type));
+			return Value::GEOMETRY(const_data_ptr_cast(str.data()), str.size(), GeoType::GetCRS(type));
 		}
-		return Value::GEOMETRY(const_data_ptr_cast(str.GetData()), str.GetSize());
+		return Value::GEOMETRY(const_data_ptr_cast(str.data()), str.size());
 	}
 	case LogicalTypeId::AGGREGATE_STATE: {
 		auto str = reinterpret_cast<string_t *>(data)[index];
@@ -1074,6 +1082,9 @@ void Vector::Flatten(idx_t count) {
 		case PhysicalType::VARCHAR:
 			TemplatedFlattenConstantVector<string_t>(data, old_data, count);
 			break;
+		case PhysicalType::GEOMETRY:
+			TemplatedFlattenConstantVector<geometry_t>(data, old_data, count);
+			break;
 		case PhysicalType::LIST: {
 			TemplatedFlattenConstantVector<list_entry_t>(data, old_data, count);
 			break;
@@ -1358,6 +1369,17 @@ void Vector::Serialize(Serializer &serializer, idx_t count, bool compressed_seri
 			});
 			break;
 		}
+		case PhysicalType::GEOMETRY: {
+			auto geoms = UnifiedVectorFormat::GetData<geometry_t>(vdata);
+
+			// Serialize data as a list
+			serializer.WriteList(102, "data", count, [&](Serializer::List &list, idx_t i) {
+				auto idx = vdata.sel->get_index(i);
+				auto str = !vdata.validity.RowIsValid(idx) ? NullValue<geometry_t>() : geoms[idx];
+				list.WriteElement(str.Serialize());
+			});
+			break;
+		}
 		case PhysicalType::STRUCT: {
 			auto &entries = StructVector::GetEntries(*this);
 
@@ -1465,6 +1487,16 @@ void Vector::Deserialize(Deserializer &deserializer, idx_t count) {
 				auto str = list.ReadElement<string>();
 				if (validity.RowIsValid(i)) {
 					strings[i] = StringVector::AddStringOrBlob(*this, str);
+				}
+			});
+			break;
+		}
+		case PhysicalType::GEOMETRY: {
+			auto geoms = FlatVector::GetData<geometry_t>(*this);
+			deserializer.ReadList(102, "data", [&](Deserializer::List &list, idx_t i) {
+				auto geom = list.ReadElement<string>();
+				if (validity.RowIsValid(i)) {
+					geoms[i] = geometry_t::Deserialize(*this, geom);
 				}
 			});
 			break;
@@ -1636,6 +1668,23 @@ void Vector::Verify(Vector &vector_p, const SelectionVector &sel_p, idx_t count)
 				auto oidx = sel->get_index(i);
 				if (validity.RowIsValid(oidx)) {
 					strings[oidx].Verify();
+				}
+			}
+			break;
+		}
+		default:
+			break;
+		}
+	}
+	if (type.id() == LogicalTypeId::GEOMETRY) {
+		switch (vtype) {
+		case VectorType::FLAT_VECTOR: {
+			auto &validity = FlatVector::Validity(*vector);
+			auto geoms = FlatVector::GetData<geometry_t>(*vector);
+			for (idx_t i = 0; i < count; i++) {
+				auto oidx = sel->get_index(i);
+				if (validity.RowIsValid(oidx)) {
+					geoms[oidx].Verify();
 				}
 			}
 			break;
