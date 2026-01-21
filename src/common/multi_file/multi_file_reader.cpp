@@ -188,9 +188,8 @@ bool MultiFileReader::ParseOption(const string &key, const Value &val, MultiFile
 				                            StructType::GetChildName(val.type(), i), child.type().ToString());
 			}
 			// for every child of the struct, get the logical type
-			LogicalType transformed_type = TransformStringToLogicalType(child.ToString(), context);
 			const string &name = StructType::GetChildName(val.type(), i);
-			options.hive_types_schema[name] = transformed_type;
+			options.hive_types_schema[name] = DBConfig::GetConfig(context).ParseLogicalType(child.ToString(), context);
 		}
 		D_ASSERT(!options.hive_types_schema.empty());
 	} else {

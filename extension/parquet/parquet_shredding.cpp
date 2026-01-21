@@ -1,6 +1,7 @@
 #include "parquet_shredding.hpp"
 #include "duckdb/common/exception/binder_exception.hpp"
 #include "duckdb/common/type_visitor.hpp"
+#include "duckdb/main/config.hpp"
 
 namespace duckdb {
 
@@ -73,7 +74,7 @@ ShreddingType ShreddingType::GetShreddingTypes(const Value &val, ClientContext &
 		throw BinderException("SHREDDING value should be of type VARCHAR, a stringified type to use for the column");
 	}
 	auto type_str = val.GetValue<string>();
-	auto logical_type = TransformStringToLogicalType(type_str, context);
+	auto logical_type = DBConfig::GetConfig(context).ParseLogicalType(type_str, context);
 
 	return ConvertShreddingTypeRecursive(logical_type);
 }

@@ -243,6 +243,8 @@ public:
 	DUCKDB_API void ResetGenericOption(idx_t setting_index);
 	DUCKDB_API optional_idx TryGetSettingIndex(const String &name,
 	                                           optional_ptr<const ConfigurationOption> &option) const;
+
+	DUCKDB_API LogicalType ParseLogicalType(const string &type, ClientContext &context);
 	static LogicalType ParseLogicalType(const string &type);
 
 	DUCKDB_API void CheckLock(const String &name);
@@ -311,6 +313,10 @@ private:
 	unique_ptr<IndexTypeSet> index_types;
 	unique_ptr<ExtensionCallbackManager> callback_manager;
 	bool is_user_config = true;
+
+	//! This has to be a function pointer to avoid pulling in a bunch of extra code in extensions
+	typedef LogicalType (*type_parser_t)(const string &, ClientContext &);
+	type_parser_t type_parser = nullptr;
 };
 
 } // namespace duckdb

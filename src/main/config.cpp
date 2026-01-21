@@ -371,6 +371,10 @@ void DBConfig::ResetGenericOption(idx_t setting_index) {
 	user_settings.ClearSetting(setting_index);
 }
 
+LogicalType DBConfig::ParseLogicalType(const string &type, ClientContext &context) {
+	return type_parser(type, context);
+}
+
 LogicalType DBConfig::ParseLogicalType(const string &type) {
 	if (StringUtil::EndsWith(type, "[]")) {
 		// list - recurse

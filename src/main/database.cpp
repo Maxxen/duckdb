@@ -56,6 +56,9 @@ DBConfig::DBConfig() {
 	http_util = make_shared_ptr<HTTPUtil>();
 	callback_manager = make_uniq<ExtensionCallbackManager>();
 	callback_manager->Register("__open_file__", OpenFileStorageExtension::Create());
+	type_parser = [](const string &type_name, ClientContext &context) {
+		return TransformStringToLogicalType(type_name, context);
+	};
 }
 
 DBConfig::DBConfig(bool read_only) : DBConfig::DBConfig() {
