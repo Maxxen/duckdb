@@ -2885,6 +2885,7 @@ indirection_expr:
 			| map_expr
 			| func_expr
 			| case_expr
+			| match_expr
 			| list_expr
 			| list_comprehension
 			| ARRAY select_with_parens
@@ -3876,6 +3877,102 @@ case_default:
 case_arg:	a_expr									{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
+
+
+match_expr: MATCH CASE match_arg match_arm_list case_default END_P
+			{
+				PGMatchExpr *m = makeNode(PGMatchExpr);
+				m->arg = (PGExpr *) $3;
+				m->arms = $4;
+				m->defresult = (PGExpr *) $5;
+				m->location = @1;
+				$$ = (PGNode *)m;
+			};
+
+match_arg: a_expr									{ $$ = $1; }
+	;
+
+match_arm_list:
+			/* There must be at least one */
+			match_arm								{ $$ = list_make1($1); }
+			| match_arm_list match_arm				{ $$ = lappend($1, $2); }
+		;
+
+match_arm: WHEN match_pattern THEN a_expr
+			{
+				PGMatchArm *w = makeNode(PGMatchArm);
+				w->pattern = (PGPattern *) $2;
+				w->result = (PGExpr *) $4;
+				w->location = @1;
+				w->guard = NULL;
+				$$ = (PGNode *)w;
+			}
+			| WHEN match_pattern IF_P a_expr THEN a_expr
+			{
+				PGMatchArm *w = makeNode(PGMatchArm);
+				w->pattern = (PGPattern *) $2;
+				w->guard = (PGExpr *) $4;
+				w->result = (PGExpr *) $6;
+				w->location = @1;
+				$$ = (PGNode *)w;
+			}
+		;
+
+match_pattern:
+	Iconst
+		{
+			PGPatternConst *p = makeNode(PGPatternConst);
+			p->value = (PGExpr *) makeIntConst($1, @1);
+			p->location = @1;
+			$$ = (PGNode *) p;
+		}
+	| '_'
+		{
+			PGPatternWildcard *p = makeNode(PGPatternWildcard);
+			p->location = @1;
+			$$ = (PGNode *) p;
+		}
+	| ColId
+		{
+			PGPatternVar *p = makeNode(PGPatternVar);
+			p->name = $1;
+			p->location = @1;
+			$$ = (PGNode *) p;
+		}
+	| '[' ']'
+		{
+			PGPatternList *p = makeNode(PGPatternList);
+			p->items = NIL;
+			p->location = @1;
+			$$ = (PGNode *) p;
+		}
+	| '[' match_pattern_list ']'
+		{
+			PGPatternList *p = makeNode(PGPatternList);
+			p->items = $2;
+			p->location = @1;
+			$$ = (PGNode *) p;
+		}
+	| '{' dict_arguments_opt_comma '}'
+      	{
+      		PGPatternStruct *p = makeNode(PGPatternStruct);
+      		p->fields = $2;
+      		p->location = @1;
+      		$$ = (PGNode *) p;
+      	}
+	| DOT_DOT
+		{
+			PGPatternRest *p = makeNode(PGPatternRest);
+			p->location = @1;
+			$$ = (PGNode *) p;
+		}
+	;
+
+match_pattern_list:
+			match_pattern								{ $$ = list_make1($1); }
+			| match_pattern_list ',' match_pattern		{ $$ = lappend($1, $3); }
+		;
+
 
 columnrefList:
 			columnref								{ $$ = list_make1($1); }

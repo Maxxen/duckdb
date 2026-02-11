@@ -148,6 +148,7 @@
 #include "duckdb/parallel/task.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/expression/lambda_expression.hpp"
+#include "duckdb/parser/expression/match_expression.hpp"
 #include "duckdb/parser/expression/parameter_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
 #include "duckdb/parser/expression/window_expression.hpp"
@@ -1754,6 +1755,7 @@ const StringUtil::EnumStringLiteral *GetExpressionClassValues() {
 		{ static_cast<uint32_t>(ExpressionClass::BETWEEN), "BETWEEN" },
 		{ static_cast<uint32_t>(ExpressionClass::LAMBDA_REF), "LAMBDA_REF" },
 		{ static_cast<uint32_t>(ExpressionClass::TYPE), "TYPE" },
+		{ static_cast<uint32_t>(ExpressionClass::MATCH), "MATCH" },
 		{ static_cast<uint32_t>(ExpressionClass::BOUND_AGGREGATE), "BOUND_AGGREGATE" },
 		{ static_cast<uint32_t>(ExpressionClass::BOUND_CASE), "BOUND_CASE" },
 		{ static_cast<uint32_t>(ExpressionClass::BOUND_CAST), "BOUND_CAST" },
@@ -1780,12 +1782,12 @@ const StringUtil::EnumStringLiteral *GetExpressionClassValues() {
 
 template<>
 const char* EnumUtil::ToChars<ExpressionClass>(ExpressionClass value) {
-	return StringUtil::EnumToString(GetExpressionClassValues(), 41, "ExpressionClass", static_cast<uint32_t>(value));
+	return StringUtil::EnumToString(GetExpressionClassValues(), 42, "ExpressionClass", static_cast<uint32_t>(value));
 }
 
 template<>
 ExpressionClass EnumUtil::FromString<ExpressionClass>(const char *value) {
-	return static_cast<ExpressionClass>(StringUtil::StringToEnum(GetExpressionClassValues(), 41, "ExpressionClass", value));
+	return static_cast<ExpressionClass>(StringUtil::StringToEnum(GetExpressionClassValues(), 42, "ExpressionClass", value));
 }
 
 const StringUtil::EnumStringLiteral *GetExpressionTypeValues() {
@@ -1845,6 +1847,7 @@ const StringUtil::EnumStringLiteral *GetExpressionTypeValues() {
 		{ static_cast<uint32_t>(ExpressionType::ARRAY_CONSTRUCTOR), "ARRAY_CONSTRUCTOR" },
 		{ static_cast<uint32_t>(ExpressionType::ARROW), "ARROW" },
 		{ static_cast<uint32_t>(ExpressionType::OPERATOR_TRY), "OPERATOR_TRY" },
+		{ static_cast<uint32_t>(ExpressionType::MATCH_EXPR), "MATCH_EXPR" },
 		{ static_cast<uint32_t>(ExpressionType::SUBQUERY), "SUBQUERY" },
 		{ static_cast<uint32_t>(ExpressionType::STAR), "STAR" },
 		{ static_cast<uint32_t>(ExpressionType::TABLE_STAR), "TABLE_STAR" },
@@ -1869,12 +1872,12 @@ const StringUtil::EnumStringLiteral *GetExpressionTypeValues() {
 
 template<>
 const char* EnumUtil::ToChars<ExpressionType>(ExpressionType value) {
-	return StringUtil::EnumToString(GetExpressionTypeValues(), 73, "ExpressionType", static_cast<uint32_t>(value));
+	return StringUtil::EnumToString(GetExpressionTypeValues(), 74, "ExpressionType", static_cast<uint32_t>(value));
 }
 
 template<>
 ExpressionType EnumUtil::FromString<ExpressionType>(const char *value) {
-	return static_cast<ExpressionType>(StringUtil::StringToEnum(GetExpressionTypeValues(), 73, "ExpressionType", value));
+	return static_cast<ExpressionType>(StringUtil::StringToEnum(GetExpressionTypeValues(), 74, "ExpressionType", value));
 }
 
 const StringUtil::EnumStringLiteral *GetExtensionABITypeValues() {
@@ -2926,6 +2929,27 @@ const char* EnumUtil::ToChars<MapInvalidReason>(MapInvalidReason value) {
 template<>
 MapInvalidReason EnumUtil::FromString<MapInvalidReason>(const char *value) {
 	return static_cast<MapInvalidReason>(StringUtil::StringToEnum(GetMapInvalidReasonValues(), 5, "MapInvalidReason", value));
+}
+
+const StringUtil::EnumStringLiteral *GetMatchPatternTypeValues() {
+	static constexpr StringUtil::EnumStringLiteral values[] {
+		{ static_cast<uint32_t>(MatchPatternType::INVALID), "INVALID" },
+		{ static_cast<uint32_t>(MatchPatternType::WILDCARD), "WILDCARD" },
+		{ static_cast<uint32_t>(MatchPatternType::IDENTIFIER), "IDENTIFIER" },
+		{ static_cast<uint32_t>(MatchPatternType::LITERAL), "LITERAL" },
+		{ static_cast<uint32_t>(MatchPatternType::LIST), "LIST" }
+	};
+	return values;
+}
+
+template<>
+const char* EnumUtil::ToChars<MatchPatternType>(MatchPatternType value) {
+	return StringUtil::EnumToString(GetMatchPatternTypeValues(), 5, "MatchPatternType", static_cast<uint32_t>(value));
+}
+
+template<>
+MatchPatternType EnumUtil::FromString<MatchPatternType>(const char *value) {
+	return static_cast<MatchPatternType>(StringUtil::StringToEnum(GetMatchPatternTypeValues(), 5, "MatchPatternType", value));
 }
 
 const StringUtil::EnumStringLiteral *GetMemoryTagValues() {

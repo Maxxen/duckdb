@@ -122,6 +122,7 @@ enum class ExpressionType : uint8_t {
 	ARRAY_CONSTRUCTOR = 156,
 	ARROW = 157,
 	OPERATOR_TRY = 158,
+	MATCH_EXPR = 159,
 
 	// -----------------------------
 	// Subquery IN/EXISTS
@@ -182,6 +183,7 @@ enum class ExpressionClass : uint8_t {
 	BETWEEN = 19,
 	LAMBDA_REF = 20,
 	TYPE = 21,
+	MATCH = 22,
 	//===--------------------------------------------------------------------===//
 	// Bound Expressions
 	//===--------------------------------------------------------------------===//

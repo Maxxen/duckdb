@@ -199,6 +199,19 @@ typedef enum PGNodeTag {
 	T_PGPivotStmt,
 	T_PGAtClause,
 	T_PGSingleArrowFunction,
+	T_PGMatchExpr,
+	T_PGMatchArm,
+
+	/*
+	 * TAGS FOR PATTERNS
+	 */
+
+	T_PGPatternWildcard,
+	T_PGPatternVar,
+	T_PGPatternConst,
+	T_PGPatternList,
+	T_PGPatternStruct,
+	T_PGPatternRest,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)

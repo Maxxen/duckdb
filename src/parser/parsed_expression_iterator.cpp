@@ -45,6 +45,15 @@ void ParsedExpressionIterator::EnumerateChildren(
 		callback(case_expr.else_expr);
 		break;
 	}
+	case ExpressionClass::MATCH: {
+		auto &match_expr = expr.Cast<MatchExpression>();
+		callback(match_expr.arg);
+		for (auto &arm : match_expr.arms) {
+			callback(arm->GetExpression());
+		}
+		callback(match_expr.else_expr);
+		break;
+	}
 	case ExpressionClass::CAST: {
 		auto &cast_expr = expr.Cast<CastExpression>();
 		callback(cast_expr.child);

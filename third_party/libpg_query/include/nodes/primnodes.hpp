@@ -905,6 +905,65 @@ typedef struct PGCaseTestExpr {
 	PGOid collation; /* collation for the substituted value */
 } PGCaseTestExpr;
 
+/*----------
+ * PGMatchExpr - a MATCH expression
+ *----------
+ */
+
+typedef struct PGPattern {
+	PGNodeTag type;
+} PGPattern;
+
+typedef struct PGPatternConst {
+	PGPattern ptrn;
+	PGExpr *value;    /* value */
+	int location;   /* token location, or -1 if unknown */
+} PGPatternConst;
+
+typedef struct PGPatternVar {
+	PGPattern ptrn;
+	char *name;     /* variable name */
+	int location;   /* token location, or -1 if unknown */
+} PGPatternVar;;
+
+typedef struct PGPatternWildcard {
+	PGPattern ptrn;
+	int location;   /* token location, or -1 if unknown */
+} PGPatternWildcard;
+
+typedef struct PGPatternRest {
+	PGPattern ptrn;
+	int location;   /* token location, or -1 if unknown */
+} PGPatternRest;;
+
+typedef struct PGPatternList {
+	PGPattern ptrn;
+	PGList *items;  /* list of PGPattern */
+	int location;   /* token location, or -1 if unknown */
+} PGPatternList;
+
+typedef struct PGPatternStruct {
+	PGPattern ptrn;
+	PGList *fields; /* list of (String, PGPattern) pairs */
+	int location;   /* token location, or -1 if unknown */
+} PGPatternStruct;
+
+typedef struct PGMatchExpr {
+	PGExpr xpr;
+	PGExpr *arg;       /* test expression */
+	PGList *arms;      /* the arguments (list of match arms clauses) */
+	PGExpr *defresult; /* the default result (ELSE clause) */
+	int location;      /* token location, or -1 if unknown */
+} PGMatchExpr;
+
+typedef struct PGMatchArm {
+	PGExpr xpr;
+	PGPattern *pattern; /* pattern */
+	PGExpr *guard;   /* guard expression, or NULL if none */
+	PGExpr *result;  /* substitution result */
+	int location;    /* token location, or -1 if unknown */
+} PGMatchArm;
+
 /*
  * PGArrayExpr - an ARRAY[] expression
  *

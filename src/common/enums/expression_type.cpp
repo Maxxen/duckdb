@@ -149,6 +149,8 @@ string ExpressionTypeToString(ExpressionType type) {
 		return "ARROW";
 	case ExpressionType::TYPE:
 		return "TYPE";
+	case ExpressionType::MATCH_EXPR:
+		return "MATCH";
 	case ExpressionType::BOUND_EXPANDED:
 		return "BOUND_EXPANDED";
 	case ExpressionType::INVALID:
@@ -200,6 +202,8 @@ string ExpressionClassToString(ExpressionClass type) {
 		return "BETWEEN";
 	case ExpressionClass::TYPE:
 		return "TYPE";
+	case ExpressionClass::MATCH:
+		return "MATCH";
 	case ExpressionClass::BOUND_AGGREGATE:
 		return "BOUND_AGGREGATE";
 	case ExpressionClass::BOUND_CASE:

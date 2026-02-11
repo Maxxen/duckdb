@@ -38,6 +38,7 @@ class MacroFunction;
 struct ParserOptions;
 struct PivotColumn;
 struct PivotColumnEntry;
+class MatchPattern;
 
 //! The transformer class is responsible for transforming the internal Postgres
 //! parser representation into the DuckDB representation
@@ -225,6 +226,8 @@ private:
 	unique_ptr<ParsedExpression> TransformBoolExpr(duckdb_libpgquery::PGBoolExpr &root);
 	//! Transform a Postgres case expression into an Expression
 	unique_ptr<ParsedExpression> TransformCase(duckdb_libpgquery::PGCaseExpr &root);
+	//! Transform a Postgres match expression into an Expression
+	unique_ptr<ParsedExpression> TransformMatch(duckdb_libpgquery::PGMatchExpr &root);
 	//! Transform a Postgres type cast into an Expression
 	unique_ptr<ParsedExpression> TransformTypeCast(duckdb_libpgquery::PGTypeCast &root);
 	//! Transform a Postgres coalesce into an Expression
@@ -375,6 +378,8 @@ private:
 	unique_ptr<MacroFunction> TransformMacroFunction(duckdb_libpgquery::PGFunctionDefinition &function);
 
 	vector<string> TransformNameList(duckdb_libpgquery::PGList &list);
+
+	unique_ptr<MatchPattern> TransformPattern(duckdb_libpgquery::PGPattern *pattern);
 
 public:
 	static void SetQueryLocation(ParsedExpression &expr, int query_location);

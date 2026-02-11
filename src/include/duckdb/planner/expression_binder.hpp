@@ -16,6 +16,7 @@
 #include "duckdb/parser/expression/lambdaref_expression.hpp"
 #include "duckdb/parser/expression/type_expression.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
+#include "duckdb/parser/expression/match_expression.hpp"
 #include "duckdb/parser/tokens.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/catalog/catalog_entry_retriever.hpp"
@@ -173,6 +174,7 @@ private:
 protected:
 	BindResult BindExpression(BetweenExpression &expr, idx_t depth);
 	BindResult BindExpression(CaseExpression &expr, idx_t depth);
+	BindResult BindExpression(MatchExpression &expr, idx_t depth);
 	BindResult BindExpression(CollateExpression &expr, idx_t depth);
 	BindResult BindExpression(CastExpression &expr, idx_t depth);
 	BindResult BindExpression(ColumnRefExpression &expr, idx_t depth, bool root_expression,

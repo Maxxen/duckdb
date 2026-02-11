@@ -66,6 +66,8 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 		return BindExpression(expr_ref.Cast<BetweenExpression>(), depth);
 	case ExpressionClass::CASE:
 		return BindExpression(expr_ref.Cast<CaseExpression>(), depth);
+	case ExpressionClass::MATCH:
+		return BindExpression(expr_ref.Cast<MatchExpression>(), depth);
 	case ExpressionClass::CAST:
 		return BindExpression(expr_ref.Cast<CastExpression>(), depth);
 	case ExpressionClass::COLLATE:
