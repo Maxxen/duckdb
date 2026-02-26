@@ -88,7 +88,7 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 	for (idx_t f_idx = 0; f_idx < functions.functions.size(); f_idx++) {
 		auto &func = functions.functions[f_idx];
 		// check the arguments of the function
-		auto bind_cost = BindFunctionCost(func, arguments);
+		auto bind_cost = BindFunctionCost(func.function, arguments);
 		if (!bind_cost.IsValid()) {
 			// auto casting was not possible
 			continue;
@@ -108,15 +108,9 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 	if (!best_function.IsValid()) {
 		// no matching function was found, throw an error
 		vector<string> candidates;
-		string catalog_name;
-		string schema_name;
+		const auto &catalog_name = functions.catalog;
+		const auto &schema_name = functions.schema;
 		for (auto &f : functions.functions) {
-			if (catalog_name.empty() && !f.catalog_name.empty()) {
-				catalog_name = f.catalog_name;
-			}
-			if (schema_name.empty() && !f.schema_name.empty()) {
-				schema_name = f.schema_name;
-			}
 			candidates.push_back(f.ToString());
 		}
 		error = ErrorData(BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments, candidates));
@@ -164,8 +158,8 @@ optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, Funct
 				throw ParameterNotResolvedException();
 			}
 		}
-		auto catalog_name = functions.functions.size() > 0 ? functions.functions[0].catalog_name : "";
-		auto schema_name = functions.functions.size() > 0 ? functions.functions[0].schema_name : "";
+		const auto &catalog_name = functions.catalog;
+		const auto &schema_name = functions.schema;
 		return MultipleCandidateException(catalog_name, schema_name, name, functions, candidate_functions, arguments,
 		                                  error);
 	}

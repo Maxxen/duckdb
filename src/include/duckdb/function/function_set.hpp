@@ -15,6 +15,33 @@
 
 namespace duckdb {
 
+class FunctionParameter {
+public:
+	LogicalType type;
+	string name;
+};
+
+template <class T>
+class FunctionSignature {
+public:
+	T function;
+
+public:
+	vector<FunctionParameter> parameters;
+
+	FunctionSignature(T function) : function(std::move(function)) {
+	}
+
+public:
+	string ToString() const {
+		return function.ToString();
+	}
+
+	bool Equal(const FunctionSignature<T> &other) {
+		return function.Equal(other.function);
+	}
+};
+
 template <class T>
 class FunctionSet {
 public:
@@ -23,11 +50,18 @@ public:
 
 	//! The name of the function set
 	string name;
+	//! The schema of the function set
+	string schema;
+	//! The catalog of the function set
+	string catalog;
 	//! The set of functions.
-	vector<T> functions;
+	vector<FunctionSignature<T>> functions;
 
 public:
 	void AddFunction(T function) {
+		functions.emplace_back(std::move(function));
+	}
+	void AddFunction(FunctionSignature<T> function) {
 		functions.push_back(std::move(function));
 	}
 	idx_t Size() {
@@ -35,11 +69,11 @@ public:
 	}
 	T GetFunctionByOffset(idx_t offset) {
 		D_ASSERT(offset < functions.size());
-		return functions[offset];
+		return functions[offset].function;
 	}
 	T &GetFunctionReferenceByOffset(idx_t offset) {
 		D_ASSERT(offset < functions.size());
-		return functions[offset];
+		return functions[offset].function;
 	}
 	bool MergeFunctionSet(FunctionSet<T> new_functions, bool override = false) {
 		D_ASSERT(!new_functions.functions.empty());

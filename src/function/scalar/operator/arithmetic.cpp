@@ -937,7 +937,7 @@ ScalarFunctionSet OperatorMultiplyFun::GetFunctions() {
 	    ScalarFunction({LogicalType::INTERVAL, LogicalType::BIGINT}, LogicalType::INTERVAL,
 	                   ScalarFunction::BinaryFunction<interval_t, int64_t, interval_t, MultiplyOperator>));
 	for (auto &func : multiply.functions) {
-		func.SetFallible();
+		func.function.SetFallible();
 	}
 
 	return multiply;
@@ -1090,7 +1090,7 @@ ScalarFunctionSet OperatorFloatDivideFun::GetFunctions() {
 	    ScalarFunction({LogicalType::INTERVAL, LogicalType::DOUBLE}, LogicalType::INTERVAL,
 	                   BinaryScalarFunctionIgnoreZero<interval_t, double, interval_t, DivideOperator>));
 	for (auto &func : fp_divide.functions) {
-		func.SetFallible();
+		func.function.SetFallible();
 	}
 	return fp_divide;
 }
@@ -1106,7 +1106,7 @@ ScalarFunctionSet OperatorIntegerDivideFun::GetFunctions() {
 		}
 	}
 	for (auto &func : full_divide.functions) {
-		func.SetFallible();
+		func.function.SetFallible();
 	}
 	return full_divide;
 }
@@ -1164,7 +1164,7 @@ ScalarFunctionSet OperatorModuloFun::GetFunctions() {
 		}
 	}
 	for (auto &func : modulo.functions) {
-		func.SetFallible();
+		func.function.SetFallible();
 	}
 
 	return modulo;
