@@ -12,10 +12,14 @@ CreateTableFunctionInfo::CreateTableFunctionInfo(TableFunction function)
 CreateTableFunctionInfo::CreateTableFunctionInfo(TableFunctionSet set)
     : CreateFunctionInfo(CatalogType::TABLE_FUNCTION_ENTRY), functions(std::move(set)) {
 	name = functions.name;
-	catalog = set.catalog;
-	schema = set.schema;
+	if (!set.catalog.empty()) {
+		catalog = set.catalog;
+	}
+	if (!set.schema.empty()) {
+		schema = set.schema;
+	}
 	for (auto &func : functions.functions) {
-		func.function.name = functions.name;
+		func.GetFunctionMutable().name = functions.name;
 	}
 	internal = true;
 }

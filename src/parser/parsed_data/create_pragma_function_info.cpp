@@ -11,6 +11,15 @@ CreatePragmaFunctionInfo::CreatePragmaFunctionInfo(PragmaFunction function)
 CreatePragmaFunctionInfo::CreatePragmaFunctionInfo(string name, PragmaFunctionSet functions_p)
     : CreateFunctionInfo(CatalogType::PRAGMA_FUNCTION_ENTRY), functions(std::move(functions_p)) {
 	this->name = std::move(name);
+	if (!functions_p.catalog.empty()) {
+		catalog = functions_p.catalog;
+	}
+	if (!functions_p.schema.empty()) {
+		schema = functions_p.schema;
+	}
+	for (auto &func : functions.functions) {
+		func.GetFunctionMutable().name = functions.name;
+	}
 	internal = true;
 }
 

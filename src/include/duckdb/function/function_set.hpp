@@ -19,15 +19,28 @@ class FunctionParameter {
 public:
 	LogicalType type;
 	string name;
+
+	const string &GetName() const {
+		return name;
+	}
+	const LogicalType &GetType() const {
+		return type;
+	}
 };
 
 template <class T>
-class FunctionSignature {
-public:
+class FunctionSet;
+
+template <class T>
+class FunctionSignature : public enable_shared_from_this<FunctionSignature<T>> {
+private:
+	// TODO: Replace this with a "property" object, that we can use to instantiate the actual function object
 	T function;
 
 public:
 	vector<FunctionParameter> parameters;
+	FunctionParameter varargs;
+	LogicalType return_type;
 
 	FunctionSignature(T function) : function(std::move(function)) {
 	}
@@ -40,6 +53,44 @@ public:
 	bool Equal(const FunctionSignature<T> &other) {
 		return function.Equal(other.function);
 	}
+
+	T Instantiate() const {
+		T result = function;
+		// TODO: Pass the properties to the function object and instantiate it properly
+		// result.SetReturnType(return_type);
+		return result;
+	}
+
+	const T &GetFunction() const {
+		return function;
+	}
+
+	T &GetFunctionMutable() {
+		return function;
+	}
+
+public:
+	bool HasVarArgs() const {
+		return varargs.type.id() != LogicalTypeId::INVALID;
+	}
+	const LogicalType &GetReturnType() const {
+		return return_type;
+	}
+	const vector<FunctionParameter> &GetParameters() const {
+		return parameters;
+	}
+
+	const string &GetFunctionName() const {
+		return parent->name;
+	}
+	const string &GetSchemaName() const {
+		return parent->schema;
+	}
+	const string &GetCatalogName() const {
+		return parent->catalog;
+	}
+
+	FunctionSet<T> *parent;
 };
 
 template <class T>
@@ -67,14 +118,17 @@ public:
 	idx_t Size() {
 		return functions.size();
 	}
-	T GetFunctionByOffset(idx_t offset) {
+
+	const FunctionSignature<T> &GetFunctionByOffset(idx_t offset) const {
 		D_ASSERT(offset < functions.size());
-		return functions[offset].function;
+		return functions[offset];
 	}
-	T &GetFunctionReferenceByOffset(idx_t offset) {
+
+	FunctionSignature<T> &GetFunctionReferenceByOffset(idx_t offset) {
 		D_ASSERT(offset < functions.size());
-		return functions[offset].function;
+		return functions[offset];
 	}
+
 	bool MergeFunctionSet(FunctionSet<T> new_functions, bool override = false) {
 		D_ASSERT(!new_functions.functions.empty());
 		for (auto &new_func : new_functions.functions) {

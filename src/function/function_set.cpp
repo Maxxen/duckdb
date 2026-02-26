@@ -21,7 +21,7 @@ ScalarFunction ScalarFunctionSet::GetFunctionByArguments(ClientContext &context,
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),
 		                        error.Message());
 	}
-	return GetFunctionByOffset(index.GetIndex());
+	return GetFunctionByOffset(index.GetIndex()).Instantiate();
 }
 
 AggregateFunctionSet::AggregateFunctionSet() : FunctionSet("") {
@@ -55,13 +55,13 @@ AggregateFunction AggregateFunctionSet::GetFunctionByArguments(ClientContext &co
 				}
 			}
 			if (is_prefix) {
-				return func.function;
+				return func.Instantiate();
 			}
 		}
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),
 		                        error.Message());
 	}
-	return GetFunctionByOffset(index.GetIndex());
+	return GetFunctionByOffset(index.GetIndex()).Instantiate();
 }
 
 TableFunctionSet::TableFunctionSet(string name) : FunctionSet(std::move(name)) {
@@ -79,7 +79,7 @@ TableFunction TableFunctionSet::GetFunctionByArguments(ClientContext &context, c
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),
 		                        error.Message());
 	}
-	return GetFunctionByOffset(index.GetIndex());
+	return GetFunctionByOffset(index.GetIndex()).Instantiate();
 }
 
 PragmaFunctionSet::PragmaFunctionSet(string name) : FunctionSet(std::move(name)) {

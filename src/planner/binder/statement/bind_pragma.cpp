@@ -55,9 +55,13 @@ unique_ptr<BoundPragmaInfo> Binder::BindPragma(PragmaInfo &info, QueryErrorConte
 		error.Throw();
 	}
 	auto bound_function = entry->functions.GetFunctionByOffset(bound_idx.GetIndex());
+
+	// TODO: Instantiate
+	auto impl = bound_function.Instantiate();
+
 	// bind and check named params
-	BindNamedParameters(bound_function.named_parameters, named_parameters, error_context, bound_function.name);
-	return make_uniq<BoundPragmaInfo>(std::move(bound_function), std::move(params), std::move(named_parameters));
+	BindNamedParameters(impl.named_parameters, named_parameters, error_context, entry->functions.name);
+	return make_uniq<BoundPragmaInfo>(std::move(impl), std::move(params), std::move(named_parameters));
 }
 
 BoundStatement Binder::Bind(PragmaStatement &stmt) {

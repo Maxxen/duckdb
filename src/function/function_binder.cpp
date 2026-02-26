@@ -88,7 +88,7 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 	for (idx_t f_idx = 0; f_idx < functions.functions.size(); f_idx++) {
 		auto &func = functions.functions[f_idx];
 		// check the arguments of the function
-		auto bind_cost = BindFunctionCost(func.function, arguments);
+		auto bind_cost = BindFunctionCost(func.GetFunction(), arguments);
 		if (!bind_cost.IsValid()) {
 			// auto casting was not possible
 			continue;
@@ -131,8 +131,8 @@ optional_idx FunctionBinder::MultipleCandidateException(const string &catalog_na
 	string call_str = Function::CallToString(catalog_name, schema_name, name, arguments);
 	string candidate_str;
 	for (auto &conf : candidate_functions) {
-		T f = functions.GetFunctionByOffset(conf);
-		candidate_str += "\t" + f.ToString() + "\n";
+		auto str = functions.GetFunctionByOffset(conf).ToString();
+		candidate_str += "\t" + str + "\n";
 	}
 	error = ErrorData(
 	    ExceptionType::BINDER,
@@ -194,8 +194,8 @@ optional_idx FunctionBinder::BindFunction(const string &name, PragmaFunctionSet 
 	auto candidate_function = functions.GetFunctionByOffset(entry.GetIndex());
 	// cast the input parameters
 	for (idx_t i = 0; i < parameters.size(); i++) {
-		auto target_type =
-		    i < candidate_function.arguments.size() ? candidate_function.arguments[i] : candidate_function.varargs;
+		const auto &target_type = i < candidate_function.parameters.size() ? candidate_function.parameters[i].GetType()
+		                                                                   : candidate_function.varargs.GetType();
 		parameters[i] = parameters[i].CastAs(context, target_type);
 	}
 	return entry;
@@ -321,7 +321,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunctionCatalogE
 	}
 
 	// found a matching function!
-	auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
+	const auto &bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
 
 	// If any of the parameters are NULL, the function will just be replaced with a NULL constant.
 	// We try to give the NULL constant the correct type, but we have to do this without binding the function,
@@ -330,7 +330,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunctionCatalogE
 	// In those cases, we default to SQLNULL.
 	const auto return_type_if_null =
 	    bound_function.GetReturnType().IsComplete() ? bound_function.GetReturnType() : LogicalType::SQLNULL;
-	if (bound_function.GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING) {
+	if (bound_function.GetFunction().GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING) {
 		for (auto &child : children) {
 			if (child->return_type == LogicalTypeId::SQLNULL) {
 				return make_uniq<BoundConstantExpression>(Value(return_type_if_null));
@@ -636,44 +636,47 @@ void FunctionBinder::CheckTemplateTypesResolved(const BaseScalarFunction &bound_
 	VerifyTemplateType(bound_function.GetReturnType(), bound_function.name);
 }
 
-unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunction bound_function,
+unique_ptr<Expression> FunctionBinder::BindScalarFunction(const FunctionSignature<ScalarFunction> &bound_function,
                                                           vector<unique_ptr<Expression>> children, bool is_operator,
                                                           optional_ptr<Binder> binder) {
+	// Get a copy of the implementation
+	auto impl = bound_function.Instantiate();
+
 	// Attempt to resolve template types, before we call the "Bind" callback.
-	ResolveTemplateTypes(bound_function, children);
+	ResolveTemplateTypes(impl, children);
 
 	unique_ptr<FunctionData> bind_info;
 
-	if (bound_function.HasBindCallback()) {
-		bind_info = bound_function.GetBindCallback()(context, bound_function, children);
-	} else if (bound_function.HasBindExtendedCallback()) {
+	if (impl.HasBindCallback()) {
+		bind_info = impl.GetBindCallback()(context, impl, children);
+	} else if (impl.HasBindExtendedCallback()) {
 		if (!binder) {
 			throw InternalException("Function '%s' has a 'bind_extended' but the FunctionBinder was created without "
 			                        "a reference to a Binder",
-			                        bound_function.name);
+			                        bound_function.GetFunctionName());
 		}
 		ScalarFunctionBindInput bind_input(*binder);
-		bind_info = bound_function.GetBindExtendedCallback()(bind_input, bound_function, children);
+		bind_info = impl.GetBindExtendedCallback()(bind_input, impl, children);
 	}
 
 	// After the "bind" callback, we verify that all template types are bound to concrete types.
-	CheckTemplateTypesResolved(bound_function);
+	CheckTemplateTypesResolved(impl);
 
-	if (bound_function.HasModifiedDatabasesCallback() && binder) {
+	if (impl.HasModifiedDatabasesCallback() && binder) {
 		auto &properties = binder->GetStatementProperties();
 		FunctionModifiedDatabasesInput input(bind_info, properties);
-		bound_function.GetModifiedDatabasesCallback()(context, input);
+		impl.GetModifiedDatabasesCallback()(context, input);
 	}
 
-	HandleCollations(context, bound_function, children);
+	HandleCollations(context, impl, children);
 
 	// check if we need to add casts to the children
-	CastToFunctionArguments(bound_function, children);
+	CastToFunctionArguments(impl, children);
 
 	auto return_type = bound_function.GetReturnType();
 	unique_ptr<Expression> result;
-	auto result_func = make_uniq<BoundFunctionExpression>(std::move(return_type), std::move(bound_function),
-	                                                      std::move(children), std::move(bind_info), is_operator);
+	auto result_func = make_uniq<BoundFunctionExpression>(std::move(return_type), std::move(impl), std::move(children),
+	                                                      std::move(bind_info), is_operator);
 	if (result_func->function.HasBindExpressionCallback()) {
 		// if a bind_expression callback is registered - call it and emit the resulting expression
 		FunctionBindExpressionInput input(context, result_func->bind_info.get(), result_func->children);

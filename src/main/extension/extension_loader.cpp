@@ -163,7 +163,7 @@ void ExtensionLoader::AddFunctionOverload(ScalarFunctionSet functions) { // NOLI
 	D_ASSERT(!functions.name.empty());
 	auto &scalar_function = GetFunction(functions.name);
 	for (auto &function : functions.functions) {
-		function.function.name = functions.name;
+		function.GetFunctionMutable().name = functions.name;
 		scalar_function.functions.AddFunction(std::move(function));
 	}
 }
@@ -171,7 +171,7 @@ void ExtensionLoader::AddFunctionOverload(ScalarFunctionSet functions) { // NOLI
 void ExtensionLoader::AddFunctionOverload(TableFunctionSet functions) { // NOLINT
 	auto &table_function = GetTableFunction(functions.name);
 	for (auto &function : functions.functions) {
-		function.function.name = functions.name;
+		function.GetFunctionMutable().name = functions.name;
 		table_function.functions.AddFunction(std::move(function));
 	}
 }

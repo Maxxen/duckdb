@@ -290,7 +290,7 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 		}
 
 		// found a matching function! bind it as an aggregate
-		auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
+		auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex()).Instantiate();
 
 		if (!bound_function.CanAggregate() && bound_function.CanWindow() && !window.arg_orders.empty()) {
 			// ORDER BY in non-aggregate window functions not supported

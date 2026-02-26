@@ -252,8 +252,8 @@ public:
 	SchemaCatalogEntry &BindCreateFunctionInfo(CreateInfo &info);
 
 	//! Check usage, and cast named parameters to their types
-	static void BindNamedParameters(named_parameter_type_map_t &types, named_parameter_map_t &values,
-	                                QueryErrorContext &error_context, string &func_name);
+	static void BindNamedParameters(const named_parameter_type_map_t &types, named_parameter_map_t &values,
+	                                QueryErrorContext &error_context, const string &func_name);
 	unique_ptr<BoundPragmaInfo> BindPragma(PragmaInfo &info, QueryErrorContext error_context);
 
 	BoundStatement Bind(TableRef &ref);

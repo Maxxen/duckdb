@@ -226,7 +226,7 @@ PhysicalPlanGenerator::PlanAsOfLoopJoin(LogicalComparisonJoin &op, PhysicalOpera
 		if (!best_function.IsValid()) {
 			return nullptr;
 		}
-		auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
+		auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex()).Instantiate();
 		auto aggr_expr = function_binder.BindAggregateFunction(bound_function, std::move(aggr_children), nullptr,
 		                                                       AggregateType::NON_DISTINCT);
 		D_ASSERT(col_type == aggr_expr->return_type);

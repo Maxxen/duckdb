@@ -12,10 +12,14 @@ CreateScalarFunctionInfo::CreateScalarFunctionInfo(ScalarFunction function)
 CreateScalarFunctionInfo::CreateScalarFunctionInfo(ScalarFunctionSet set)
     : CreateFunctionInfo(CatalogType::SCALAR_FUNCTION_ENTRY), functions(std::move(set)) {
 	name = functions.name;
-	schema = set.schema;
-	catalog = set.catalog;
+	if (!set.catalog.empty()) {
+		catalog = set.catalog;
+	}
+	if (!set.schema.empty()) {
+		schema = set.schema;
+	}
 	for (auto &func : functions.functions) {
-		func.function.name = functions.name;
+		func.GetFunctionMutable().name = functions.name;
 	}
 	internal = true;
 }

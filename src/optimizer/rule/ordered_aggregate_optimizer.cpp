@@ -84,7 +84,7 @@ unique_ptr<Expression> OrderedAggregateOptimizer::Apply(ClientContext &context, 
 		error.Throw();
 	}
 	// found a matching function!
-	auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex());
+	auto bound_function = func.functions.GetFunctionByOffset(best_function.GetIndex()).Instantiate();
 	return binder.BindAggregateFunction(bound_function, std::move(children), std::move(aggr.filter),
 	                                    aggr.IsDistinct() ? AggregateType::DISTINCT : AggregateType::NON_DISTINCT);
 }

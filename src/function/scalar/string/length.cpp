@@ -243,13 +243,18 @@ ScalarFunctionSet LengthGraphemeFun::GetFunctions() {
 
 ScalarFunctionSet ArrayLengthFun::GetFunctions() {
 	ScalarFunctionSet array_length("array_length");
-	array_length.AddFunction(
-	    ScalarFunction({LogicalType::LIST(LogicalType::ANY)}, LogicalType::BIGINT, nullptr, ArrayOrListLengthBind));
-	array_length.AddFunction(ScalarFunction({LogicalType::LIST(LogicalType::ANY), LogicalType::BIGINT},
-	                                        LogicalType::BIGINT, nullptr, ArrayOrListLengthBinaryBind));
-	for (auto &func : array_length.functions) {
-		func.function.SetFallible();
-	}
+
+	auto unary_func =
+	    ScalarFunction({LogicalType::LIST(LogicalType::ANY)}, LogicalType::BIGINT, nullptr, ArrayOrListLengthBind);
+	unary_func.SetFallible();
+
+	auto binary_func = ScalarFunction({LogicalType::LIST(LogicalType::ANY), LogicalType::BIGINT}, LogicalType::BIGINT,
+	                                  nullptr, ArrayOrListLengthBinaryBind);
+	binary_func.SetFallible();
+
+	array_length.AddFunction(std::move(unary_func));
+	array_length.AddFunction(std::move(binary_func));
+
 	return (array_length);
 }
 

@@ -359,7 +359,7 @@ unique_ptr<FunctionData> BindMinMax(ClientContext &context, AggregateFunction &f
 				throw BinderException(string("Fail to find corresponding function for collation min/max: ") +
 				                      error.Message());
 			}
-			function = func_entry.functions.GetFunctionByOffset(best_function.GetIndex());
+			function = func_entry.functions.GetFunctionByOffset(best_function.GetIndex()).Instantiate();
 
 			// Create a copied child and PushCollation for it.
 			arguments.push_back(arguments[0]->Copy());

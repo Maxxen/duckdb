@@ -152,7 +152,7 @@ struct ScalarFunctionExtractor {
 
 	static vector<Value> GetParameters(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		for (idx_t i = 0; i < entry.functions.GetFunctionByOffset(offset).arguments.size(); i++) {
+		for (idx_t i = 0; i < entry.functions.GetFunctionByOffset(offset).parameters.size(); i++) {
 			results.emplace_back("col" + to_string(i));
 		}
 		return results;
@@ -161,20 +161,24 @@ struct ScalarFunctionExtractor {
 	static Value GetParameterTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		for (idx_t i = 0; i < fun.arguments.size(); i++) {
-			results.emplace_back(fun.arguments[i].ToString());
+		for (idx_t i = 0; i < fun.parameters.size(); i++) {
+			results.emplace_back(fun.parameters[i].GetType().ToString());
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
 	static vector<LogicalType> GetParameterLogicalTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return fun.arguments;
+		vector<LogicalType> results;
+		for (auto &param : fun.parameters) {
+			results.emplace_back(param.GetType());
+		}
+		return results;
 	}
 
 	static Value GetVarArgs(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(ScalarFunctionCatalogEntry &entry, idx_t offset) {
@@ -182,12 +186,12 @@ struct ScalarFunctionExtractor {
 	}
 
 	static Value IsVolatile(ScalarFunctionCatalogEntry &entry, idx_t offset) {
-		return Value::BOOLEAN(entry.functions.GetFunctionByOffset(offset).GetStability() ==
+		return Value::BOOLEAN(entry.functions.GetFunctionByOffset(offset).GetFunction().GetStability() ==
 		                      FunctionStability::VOLATILE);
 	}
 
 	static Value ResultType(ScalarFunctionCatalogEntry &entry, idx_t offset) {
-		return FunctionStabilityToValue(entry.functions.GetFunctionByOffset(offset).GetStability());
+		return FunctionStabilityToValue(entry.functions.GetFunctionByOffset(offset).GetFunction().GetStability());
 	}
 };
 
@@ -278,7 +282,7 @@ struct AggregateFunctionExtractor {
 
 	static vector<Value> GetParameters(AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		for (idx_t i = 0; i < entry.functions.GetFunctionByOffset(offset).arguments.size(); i++) {
+		for (idx_t i = 0; i < entry.functions.GetFunctionByOffset(offset).GetParameters().size(); i++) {
 			results.emplace_back("col" + to_string(i));
 		}
 		return results;
@@ -286,21 +290,25 @@ struct AggregateFunctionExtractor {
 
 	static Value GetParameterTypes(AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		auto fun = entry.functions.GetFunctionByOffset(offset);
-		for (idx_t i = 0; i < fun.arguments.size(); i++) {
-			results.emplace_back(fun.arguments[i].ToString());
+		auto &params = entry.functions.GetFunctionByOffset(offset).GetParameters();
+		for (auto &param : params) {
+			results.emplace_back(param.GetType().ToString());
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
 	static vector<LogicalType> GetParameterLogicalTypes(AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return fun.arguments;
+		vector<LogicalType> results;
+		for (auto &param : fun.parameters) {
+			results.emplace_back(param.GetType());
+		}
+		return results;
 	}
 
 	static Value GetVarArgs(AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(AggregateFunctionCatalogEntry &entry, idx_t offset) {
@@ -308,12 +316,12 @@ struct AggregateFunctionExtractor {
 	}
 
 	static Value IsVolatile(AggregateFunctionCatalogEntry &entry, idx_t offset) {
-		return Value::BOOLEAN(entry.functions.GetFunctionByOffset(offset).GetStability() ==
+		return Value::BOOLEAN(entry.functions.GetFunctionByOffset(offset).GetFunction().GetStability() ==
 		                      FunctionStability::VOLATILE);
 	}
 
 	static Value ResultType(AggregateFunctionCatalogEntry &entry, idx_t offset) {
-		return FunctionStabilityToValue(entry.functions.GetFunctionByOffset(offset).GetStability());
+		return FunctionStabilityToValue(entry.functions.GetFunctionByOffset(offset).GetFunction().GetStability());
 	}
 };
 
@@ -460,7 +468,7 @@ struct TableFunctionExtractor {
 
 	static vector<Value> GetParameters(TableFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		auto fun = entry.functions.GetFunctionByOffset(offset);
+		const auto &fun = entry.functions.GetFunctionByOffset(offset).GetFunction();
 		for (idx_t i = 0; i < fun.arguments.size(); i++) {
 			results.emplace_back("col" + to_string(i));
 		}
@@ -472,7 +480,7 @@ struct TableFunctionExtractor {
 
 	static Value GetParameterTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		auto fun = entry.functions.GetFunctionByOffset(offset);
+		auto fun = entry.functions.GetFunctionByOffset(offset).GetFunction();
 
 		for (idx_t i = 0; i < fun.arguments.size(); i++) {
 			results.emplace_back(fun.arguments[i].ToString());
@@ -484,13 +492,17 @@ struct TableFunctionExtractor {
 	}
 
 	static vector<LogicalType> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
-		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return fun.arguments;
+		auto &fun = entry.functions.GetFunctionByOffset(offset);
+		vector<LogicalType> results;
+		for (auto &param : fun.parameters) {
+			results.emplace_back(param.GetType());
+		}
+		return results;
 	}
 
 	static Value GetVarArgs(TableFunctionCatalogEntry &entry, idx_t offset) {
-		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.ToString());
+		auto &fun = entry.functions.GetFunctionByOffset(offset);
+		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(TableFunctionCatalogEntry &entry, idx_t offset) {
@@ -521,7 +533,7 @@ struct PragmaFunctionExtractor {
 
 	static vector<Value> GetParameters(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		auto fun = entry.functions.GetFunctionByOffset(offset);
+		const auto &fun = entry.functions.GetFunctionByOffset(offset).GetFunction();
 
 		for (idx_t i = 0; i < fun.arguments.size(); i++) {
 			results.emplace_back("col" + to_string(i));
@@ -534,7 +546,7 @@ struct PragmaFunctionExtractor {
 
 	static Value GetParameterTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		auto fun = entry.functions.GetFunctionByOffset(offset);
+		auto fun = entry.functions.GetFunctionByOffset(offset).GetFunction();
 
 		for (idx_t i = 0; i < fun.arguments.size(); i++) {
 			results.emplace_back(fun.arguments[i].ToString());
@@ -547,12 +559,16 @@ struct PragmaFunctionExtractor {
 
 	static vector<LogicalType> GetParameterLogicalTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return fun.arguments;
+		vector<LogicalType> results;
+		for (auto &param : fun.parameters) {
+			results.emplace_back(param.GetType());
+		}
+		return results;
 	}
 
 	static Value GetVarArgs(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(PragmaFunctionCatalogEntry &entry, idx_t offset) {

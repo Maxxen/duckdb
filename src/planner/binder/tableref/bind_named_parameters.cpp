@@ -7,8 +7,8 @@ map<string, T> order_case_insensitive_map(const case_insensitive_map_t<T> &input
 	return map<string, T>(input_map.begin(), input_map.end());
 }
 
-void Binder::BindNamedParameters(named_parameter_type_map_t &types, named_parameter_map_t &values,
-                                 QueryErrorContext &error_context, string &func_name) {
+void Binder::BindNamedParameters(const named_parameter_type_map_t &types, named_parameter_map_t &values,
+                                 QueryErrorContext &error_context, const string &func_name) {
 	for (auto &kv : values) {
 		auto entry = types.find(kv.first);
 		if (entry == types.end()) {

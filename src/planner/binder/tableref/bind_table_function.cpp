@@ -47,14 +47,15 @@ static TableFunctionBindType GetTableFunctionBindType(TableFunctionCatalogEntry 
 	bool has_table_parameter = false;
 	for (idx_t function_idx = 0; function_idx < table_function.functions.Size(); function_idx++) {
 		const auto &function = table_function.functions.GetFunctionReferenceByOffset(function_idx);
-		for (auto &arg : function.arguments) {
-			if (arg.id() == LogicalTypeId::TABLE) {
+		for (auto &param : function.parameters) {
+			if (param.GetType().id() == LogicalTypeId::TABLE) {
 				has_table_parameter = true;
 			}
 		}
-		if (function.in_out_function) {
+		auto &impl = function.GetFunction();
+		if (impl.in_out_function) {
 			has_in_out_function = true;
-		} else if (function.function || function.bind_replace || function.bind_operator) {
+		} else if (impl.function || impl.bind_replace || impl.bind_operator) {
 			has_standard_table_function = true;
 		} else {
 			throw InternalException("Function \"%s\" has neither in_out_function nor function defined",
@@ -123,10 +124,10 @@ bool Binder::BindTableFunctionParameters(TableFunctionCatalogEntry &table_functi
 		    child->GetExpressionType() == ExpressionType::SUBQUERY) {
 			D_ASSERT(table_function.functions.Size() == 1);
 			auto fun = table_function.functions.GetFunctionByOffset(0);
-			if (table_function.functions.Size() != 1 || fun.arguments.empty()) {
+			if (table_function.functions.Size() != 1 || fun.parameters.empty()) {
 				throw BinderException(
 				    "Only table-in-out functions can have subquery parameters - %s only accepts constant parameters",
-				    fun.name);
+				    table_function.name);
 			}
 			if (seen_subquery) {
 				error = ErrorData("Table function can have at most one subquery parameter");
@@ -420,7 +421,10 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 	auto table_function = function.functions.GetFunctionByOffset(best_function_idx.GetIndex());
 
 	// now check the named parameters
-	BindNamedParameters(table_function.named_parameters, named_parameters, error_context, table_function.name);
+	// TODO: Fix this, dont store parameters in instance
+	auto impl = table_function.Instantiate();
+
+	BindNamedParameters(impl.named_parameters, named_parameters, error_context, function.name);
 
 	vector<LogicalType> input_table_types;
 	vector<string> input_table_names;
@@ -428,7 +432,7 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 	if (subquery.plan) {
 		input_table_types = subquery.types;
 		input_table_names = subquery.names;
-	} else if (table_function.in_out_function) {
+	} else if (impl.in_out_function) {
 		for (auto &param : parameters) {
 			input_table_types.push_back(param.type());
 			input_table_names.push_back(string());
@@ -437,8 +441,8 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 	if (!parameters.empty()) {
 		// cast the parameters to the type of the function
 		for (idx_t i = 0; i < arguments.size(); i++) {
-			auto target_type =
-			    i < table_function.arguments.size() ? table_function.arguments[i] : table_function.varargs;
+			const auto &target_type = i < table_function.parameters.size() ? table_function.parameters[i].GetType()
+			                                                               : table_function.varargs.GetType();
 
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST && target_type != LogicalType::TABLE) {
@@ -447,8 +451,8 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		}
 	} else if (subquery.plan) {
 		for (idx_t i = 0; i < arguments.size(); i++) {
-			auto target_type =
-			    i < table_function.arguments.size() ? table_function.arguments[i] : table_function.varargs;
+			const auto &target_type = i < table_function.parameters.size() ? table_function.parameters[i].GetType()
+			                                                               : table_function.varargs.GetType();
 
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST) {
@@ -459,7 +463,7 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 
 	BoundStatement get;
 	try {
-		get = BindTableFunctionInternal(table_function, ref, std::move(parameters), std::move(named_parameters),
+		get = BindTableFunctionInternal(impl, ref, std::move(parameters), std::move(named_parameters),
 		                                std::move(input_table_types), std::move(input_table_names));
 	} catch (std::exception &ex) {
 		error = ErrorData(ex);

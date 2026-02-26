@@ -631,7 +631,9 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 		                        error.Message());
 	}
 	auto bound_aggr = aggr.functions.GetFunctionByOffset(best_function.GetIndex());
-	if (bound_aggr.GetBindCallback()) {
+	auto impl = bound_aggr.Instantiate();
+
+	if (impl.GetBindCallback()) {
 		// FIXME: this is really hacky
 		// but the aggregate state export needs a rework around how it handles more complex aggregates anyway
 		vector<unique_ptr<Expression>> args;
@@ -639,18 +641,28 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 		for (auto &arg_type : state_type.bound_argument_types) {
 			args.push_back(make_uniq<BoundConstantExpression>(Value(arg_type)));
 		}
-		auto bind_info = bound_aggr.GetBindCallback()(context, bound_aggr, args);
+		auto bind_info = impl.GetBindCallback()(context, impl, args);
 		if (bind_info) {
 			throw BinderException("Aggregate function with bind info not supported yet in aggregate state export");
 		}
 	}
 
-	if (bound_aggr.GetReturnType() != state_type.return_type ||
-	    bound_aggr.arguments != state_type.bound_argument_types) {
+	const auto same_return_type = bound_aggr.GetReturnType() == state_type.return_type;
+	bool same_args = bound_aggr.parameters.size() == state_type.bound_argument_types.size();
+	if (same_args) {
+		for (idx_t i = 0; i < bound_aggr.parameters.size(); i++) {
+			if (bound_aggr.parameters[i].GetType() != state_type.bound_argument_types[i]) {
+				same_args = false;
+				break;
+			}
+		}
+	}
+
+	if (!same_return_type || !same_args) {
 		throw InternalException("Type mismatch for exported aggregate %s", state_type.function_name);
 	}
 
-	return make_uniq<ExportAggregateBindData>(bound_aggr, bound_aggr.GetStateSizeCallback()(bound_aggr));
+	return make_uniq<ExportAggregateBindData>(impl, impl.GetStateSizeCallback()(impl));
 }
 
 unique_ptr<FunctionData> BindAggregateState(ClientContext &context, ScalarFunction &bound_function,
