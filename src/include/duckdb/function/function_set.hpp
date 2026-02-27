@@ -29,21 +29,16 @@ public:
 };
 
 template <class T>
-class FunctionSet;
-
-template <class T>
-class FunctionSignature : public enable_shared_from_this<FunctionSignature<T>> {
-private:
-	// TODO: Replace this with a "property" object, that we can use to instantiate the actual function object
-	T function;
-
+class FunctionSignature {
 public:
-	vector<FunctionParameter> parameters;
-	FunctionParameter varargs;
-	LogicalType return_type;
 
-	FunctionSignature(T function) : function(std::move(function)) {
-	}
+	//! Construct a function signature from an existing function object.
+	//! This will automatically generate named parameters for the function based on the argument types,
+	//! and extract the return type of the function
+	//!
+	//! This constructor is here for backwards compatibility, but you should ideally construct a FunctionSignature by
+	//! directly setting the properties using the builder interface instead of passing in a function object.
+	explicit FunctionSignature(T function);
 
 public:
 	string ToString() const {
@@ -70,27 +65,33 @@ public:
 	}
 
 public:
+	const vector<FunctionParameter> &GetParameters() const {
+		return parameters;
+	}
+	void AddParameter(string name, LogicalType type) {
+		parameters.push_back({std::move(type), std::move(name)});
+	}
 	bool HasVarArgs() const {
 		return varargs.type.id() != LogicalTypeId::INVALID;
+	}
+	const FunctionParameter &GetVarArgs() const {
+		return varargs;
 	}
 	const LogicalType &GetReturnType() const {
 		return return_type;
 	}
-	const vector<FunctionParameter> &GetParameters() const {
-		return parameters;
+	void SetReturnType(LogicalType type) {
+		return_type = std::move(type);
 	}
+private:
+	// TODO: Replace this with a "property" object, that we can use to instantiate the actual function object
+	T function;
 
-	const string &GetFunctionName() const {
-		return parent->name;
-	}
-	const string &GetSchemaName() const {
-		return parent->schema;
-	}
-	const string &GetCatalogName() const {
-		return parent->catalog;
-	}
-
-	FunctionSet<T> *parent;
+	//! The parameters of the function, with their names and types.
+	//! The order of the parameters is important, as it is used for overload resolution.
+	vector<FunctionParameter> parameters;
+	FunctionParameter varargs;
+	LogicalType return_type;
 };
 
 template <class T>
@@ -109,6 +110,10 @@ public:
 	vector<FunctionSignature<T>> functions;
 
 public:
+	const string GetFunctionName() const { return name; }
+	const string GetSchemaName() const { return schema; }
+	const string GetCatalogName() const { return catalog; }
+
 	void AddFunction(T function) {
 		functions.emplace_back(std::move(function));
 	}
@@ -154,6 +159,11 @@ public:
 		return true;
 	}
 };
+
+using ScalarFunctionSignature = FunctionSignature<ScalarFunction>;
+using AggregateFunctionSignature = FunctionSignature<AggregateFunction>;
+using TableFunctionSignature = FunctionSignature<TableFunction>;
+using PragmaFunctionSignature = FunctionSignature<PragmaFunction>;
 
 class ScalarFunctionSet : public FunctionSet<ScalarFunction> {
 public:

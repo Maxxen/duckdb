@@ -3,6 +3,37 @@
 
 namespace duckdb {
 
+static void ExtractFunctionSignature(const ScalarFunction &function, ScalarFunctionSignature &signature) {
+	for (idx_t arg_idx = 0; arg_idx < function.arguments.size(); ++arg_idx) {
+		signature.AddParameter("arg" + to_string(arg_idx), function.arguments[arg_idx]);
+	}
+	signature.SetReturnType(function.GetReturnType());
+}
+
+static void ExtractFunctionSignature(const AggregateFunction &function, AggregateFunctionSignature &signature) {
+	for (idx_t arg_idx = 0; arg_idx < function.arguments.size(); ++arg_idx) {
+		signature.AddParameter("arg" + to_string(arg_idx), function.arguments[arg_idx]);
+	}
+	signature.SetReturnType(function.GetReturnType());
+}
+
+static void ExtractFunctionSignature(const TableFunction &function, TableFunctionSignature &signature) {
+	for (idx_t arg_idx = 0; arg_idx < function.arguments.size(); ++arg_idx) {
+		signature.AddParameter("arg" + to_string(arg_idx), function.arguments[arg_idx]);
+	}
+}
+
+static void ExtractFunctionSignature(const PragmaFunction &function, PragmaFunctionSignature &signature) {
+	for (idx_t arg_idx = 0; arg_idx < function.arguments.size(); ++arg_idx) {
+		signature.AddParameter("arg" + to_string(arg_idx), function.arguments[arg_idx]);
+	}
+}
+
+template <class T>
+FunctionSignature<T>::FunctionSignature(T function) : function(std::move(function)) {
+	ExtractFunctionSignature(this->function, *this);
+}
+
 ScalarFunctionSet::ScalarFunctionSet() : FunctionSet("") {
 }
 
@@ -10,7 +41,7 @@ ScalarFunctionSet::ScalarFunctionSet(string name) : FunctionSet(std::move(name))
 }
 
 ScalarFunctionSet::ScalarFunctionSet(ScalarFunction fun) : FunctionSet(std::move(fun.name)) {
-	functions.push_back(std::move(fun));
+	functions.emplace_back(std::move(fun));
 }
 
 ScalarFunction ScalarFunctionSet::GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments) {
@@ -31,7 +62,7 @@ AggregateFunctionSet::AggregateFunctionSet(string name) : FunctionSet(std::move(
 }
 
 AggregateFunctionSet::AggregateFunctionSet(AggregateFunction fun) : FunctionSet(std::move(fun.name)) {
-	functions.push_back(std::move(fun));
+	functions.emplace_back(std::move(fun));
 }
 
 AggregateFunction AggregateFunctionSet::GetFunctionByArguments(ClientContext &context,
@@ -44,12 +75,12 @@ AggregateFunction AggregateFunctionSet::GetFunctionByArguments(ClientContext &co
 		// this is used for functions such as quantile or string_agg that delete part of their arguments during bind
 		// FIXME: we should come up with a better solution here
 		for (auto &func : functions) {
-			if (arguments.size() >= func.parameters.size()) {
+			if (arguments.size() >= func.GetParameters().size()) {
 				continue;
 			}
 			bool is_prefix = true;
 			for (idx_t k = 0; k < arguments.size(); k++) {
-				if (arguments[k].id() != func.parameters[k].type.id()) {
+				if (arguments[k].id() != func.GetParameters()[k].GetType().id()) {
 					is_prefix = false;
 					break;
 				}
@@ -68,7 +99,7 @@ TableFunctionSet::TableFunctionSet(string name) : FunctionSet(std::move(name)) {
 }
 
 TableFunctionSet::TableFunctionSet(TableFunction fun) : FunctionSet(std::move(fun.name)) {
-	functions.push_back(std::move(fun));
+	functions.emplace_back(std::move(fun));
 }
 
 TableFunction TableFunctionSet::GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments) {
@@ -86,7 +117,7 @@ PragmaFunctionSet::PragmaFunctionSet(string name) : FunctionSet(std::move(name))
 }
 
 PragmaFunctionSet::PragmaFunctionSet(PragmaFunction fun) : FunctionSet(std::move(fun.name)) {
-	functions.push_back(std::move(fun));
+	functions.emplace_back(std::move(fun));
 }
 
 } // namespace duckdb

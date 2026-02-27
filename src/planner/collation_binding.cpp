@@ -10,7 +10,7 @@
 namespace duckdb {
 constexpr const char *CollateCatalogEntry::Name;
 
-bool PushVarcharCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
+static bool PushVarcharCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
                           CollationType type) {
 	if (sql_type.id() != LogicalTypeId::VARCHAR) {
 		// only VARCHAR columns require collation
@@ -67,7 +67,7 @@ bool PushVarcharCollation(ClientContext &context, unique_ptr<Expression> &source
 	return true;
 }
 
-bool PushTimeTZCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
+static bool PushTimeTZCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
                          CollationType) {
 	if (sql_type.id() != LogicalTypeId::TIME_TZ) {
 		return false;
@@ -79,7 +79,7 @@ bool PushTimeTZCollation(ClientContext &context, unique_ptr<Expression> &source,
 	if (function_entry.functions.Size() != 1) {
 		throw InternalException("timetz_byte_comparable should only have a single overload");
 	}
-	auto &scalar_function = function_entry.functions.GetFunctionReferenceByOffset(0);
+	auto scalar_function = function_entry.functions.GetFunctionByOffset(0).GetFunction();
 	vector<unique_ptr<Expression>> children;
 	children.push_back(std::move(source));
 
@@ -89,7 +89,7 @@ bool PushTimeTZCollation(ClientContext &context, unique_ptr<Expression> &source,
 	return true;
 }
 
-bool PushIntervalCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
+static bool PushIntervalCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
                            CollationType) {
 	if (sql_type.id() != LogicalTypeId::INTERVAL) {
 		return false;
@@ -100,7 +100,7 @@ bool PushIntervalCollation(ClientContext &context, unique_ptr<Expression> &sourc
 	if (function_entry.functions.Size() != 1) {
 		throw InternalException("normalized_interval should only have a single overload");
 	}
-	auto &scalar_function = function_entry.functions.GetFunctionReferenceByOffset(0);
+	auto &scalar_function = function_entry.functions.GetFunctionReferenceByOffset(0).GetFunction();
 	vector<unique_ptr<Expression>> children;
 	children.push_back(std::move(source));
 
@@ -110,7 +110,7 @@ bool PushIntervalCollation(ClientContext &context, unique_ptr<Expression> &sourc
 	return true;
 }
 
-bool PushVariantCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
+static bool PushVariantCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
                           CollationType) {
 	if (sql_type.id() != LogicalTypeId::VARIANT) {
 		return false;
@@ -121,7 +121,7 @@ bool PushVariantCollation(ClientContext &context, unique_ptr<Expression> &source
 		throw InternalException("variant_normalize should only have a single overload");
 	}
 	auto source_alias = source->GetAlias();
-	auto &scalar_function = function_entry.functions.GetFunctionReferenceByOffset(0);
+	auto scalar_function = function_entry.functions.GetFunctionByOffset(0).GetFunction();
 	vector<unique_ptr<Expression>> children;
 	children.push_back(std::move(source));
 

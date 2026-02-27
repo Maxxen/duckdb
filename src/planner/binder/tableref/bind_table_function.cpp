@@ -47,7 +47,7 @@ static TableFunctionBindType GetTableFunctionBindType(TableFunctionCatalogEntry 
 	bool has_table_parameter = false;
 	for (idx_t function_idx = 0; function_idx < table_function.functions.Size(); function_idx++) {
 		const auto &function = table_function.functions.GetFunctionReferenceByOffset(function_idx);
-		for (auto &param : function.parameters) {
+		for (auto &param : function.GetParameters()) {
 			if (param.GetType().id() == LogicalTypeId::TABLE) {
 				has_table_parameter = true;
 			}
@@ -124,7 +124,7 @@ bool Binder::BindTableFunctionParameters(TableFunctionCatalogEntry &table_functi
 		    child->GetExpressionType() == ExpressionType::SUBQUERY) {
 			D_ASSERT(table_function.functions.Size() == 1);
 			auto fun = table_function.functions.GetFunctionByOffset(0);
-			if (table_function.functions.Size() != 1 || fun.parameters.empty()) {
+			if (table_function.functions.Size() != 1 || fun.GetParameters().empty()) {
 				throw BinderException(
 				    "Only table-in-out functions can have subquery parameters - %s only accepts constant parameters",
 				    table_function.name);
@@ -441,8 +441,8 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 	if (!parameters.empty()) {
 		// cast the parameters to the type of the function
 		for (idx_t i = 0; i < arguments.size(); i++) {
-			const auto &target_type = i < table_function.parameters.size() ? table_function.parameters[i].GetType()
-			                                                               : table_function.varargs.GetType();
+			const auto &target_type = i < table_function.GetParameters().size() ? table_function.GetParameters()[i].GetType()
+			                                                               : table_function.GetVarArgs().GetType();
 
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST && target_type != LogicalType::TABLE) {
@@ -451,8 +451,8 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		}
 	} else if (subquery.plan) {
 		for (idx_t i = 0; i < arguments.size(); i++) {
-			const auto &target_type = i < table_function.parameters.size() ? table_function.parameters[i].GetType()
-			                                                               : table_function.varargs.GetType();
+			const auto &target_type = i < table_function.GetParameters().size() ? table_function.GetParameters()[i].GetType()
+			                                                               : table_function.GetVarArgs().GetType();
 
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST) {

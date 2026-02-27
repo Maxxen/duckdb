@@ -108,7 +108,7 @@ static void ExtractFunctionsFromSchema(ClientContext &context, SchemaCatalogEntr
 	            [&](CatalogEntry &entry) { result.entries.push_back(entry); });
 }
 
-unique_ptr<GlobalTableFunctionState> DuckDBFunctionsInit(ClientContext &context, TableFunctionInitInput &input) {
+static unique_ptr<GlobalTableFunctionState> DuckDBFunctionsInit(ClientContext &context, TableFunctionInitInput &input) {
 	auto result = make_uniq<DuckDBFunctionsData>();
 
 	// scan all the schemas for tables and collect them and collect them
@@ -124,7 +124,7 @@ unique_ptr<GlobalTableFunctionState> DuckDBFunctionsInit(ClientContext &context,
 	return std::move(result);
 }
 
-Value FunctionStabilityToValue(FunctionStability stability) {
+static Value FunctionStabilityToValue(FunctionStability stability) {
 	switch (stability) {
 	case FunctionStability::VOLATILE:
 		return Value("VOLATILE");
@@ -152,7 +152,7 @@ struct ScalarFunctionExtractor {
 
 	static vector<Value> GetParameters(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
-		for (idx_t i = 0; i < entry.functions.GetFunctionByOffset(offset).parameters.size(); i++) {
+		for (idx_t i = 0; i < entry.functions.GetFunctionByOffset(offset).GetParameters().size(); i++) {
 			results.emplace_back("col" + to_string(i));
 		}
 		return results;
@@ -161,8 +161,8 @@ struct ScalarFunctionExtractor {
 	static Value GetParameterTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		for (idx_t i = 0; i < fun.parameters.size(); i++) {
-			results.emplace_back(fun.parameters[i].GetType().ToString());
+		for (idx_t i = 0; i < fun.GetParameters().size(); i++) {
+			results.emplace_back(fun.GetParameters()[i].GetType().ToString());
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
@@ -170,7 +170,7 @@ struct ScalarFunctionExtractor {
 	static vector<LogicalType> GetParameterLogicalTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
 		vector<LogicalType> results;
-		for (auto &param : fun.parameters) {
+		for (auto &param : fun.GetParameters()) {
 			results.emplace_back(param.GetType());
 		}
 		return results;
@@ -178,7 +178,7 @@ struct ScalarFunctionExtractor {
 
 	static Value GetVarArgs(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.GetVarArgs().GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(ScalarFunctionCatalogEntry &entry, idx_t offset) {
@@ -300,7 +300,7 @@ struct AggregateFunctionExtractor {
 	static vector<LogicalType> GetParameterLogicalTypes(AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
 		vector<LogicalType> results;
-		for (auto &param : fun.parameters) {
+		for (auto &param : fun.GetParameters()) {
 			results.emplace_back(param.GetType());
 		}
 		return results;
@@ -308,7 +308,7 @@ struct AggregateFunctionExtractor {
 
 	static Value GetVarArgs(AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.GetVarArgs().GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(AggregateFunctionCatalogEntry &entry, idx_t offset) {
@@ -494,7 +494,7 @@ struct TableFunctionExtractor {
 	static vector<LogicalType> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
 		auto &fun = entry.functions.GetFunctionByOffset(offset);
 		vector<LogicalType> results;
-		for (auto &param : fun.parameters) {
+		for (auto &param : fun.GetParameters()) {
 			results.emplace_back(param.GetType());
 		}
 		return results;
@@ -502,7 +502,7 @@ struct TableFunctionExtractor {
 
 	static Value GetVarArgs(TableFunctionCatalogEntry &entry, idx_t offset) {
 		auto &fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.GetVarArgs().GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(TableFunctionCatalogEntry &entry, idx_t offset) {
@@ -560,7 +560,7 @@ struct PragmaFunctionExtractor {
 	static vector<LogicalType> GetParameterLogicalTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
 		vector<LogicalType> results;
-		for (auto &param : fun.parameters) {
+		for (auto &param : fun.GetParameters()) {
 			results.emplace_back(param.GetType());
 		}
 		return results;
@@ -568,7 +568,7 @@ struct PragmaFunctionExtractor {
 
 	static Value GetVarArgs(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.GetType().ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.GetVarArgs().GetType().ToString());
 	}
 
 	static Value GetMacroDefinition(PragmaFunctionCatalogEntry &entry, idx_t offset) {
@@ -662,7 +662,7 @@ static optional_idx GetFunctionDescriptionIndex(vector<FunctionDescription> &fun
 }
 
 template <class T, class OP>
-bool ExtractFunctionData(CatalogEntry &entry, idx_t function_idx, DataChunk &output, idx_t output_offset) {
+static bool ExtractFunctionData(CatalogEntry &entry, idx_t function_idx, DataChunk &output, idx_t output_offset) {
 	auto &function = entry.Cast<T>();
 	vector<LogicalType> parameter_types_vector = OP::GetParameterLogicalTypes(function, function_idx);
 	Value parameter_types_value = OP::GetParameterTypes(function, function_idx);
@@ -741,7 +741,7 @@ bool ExtractFunctionData(CatalogEntry &entry, idx_t function_idx, DataChunk &out
 	return function_idx + 1 == OP::FunctionCount(function);
 }
 
-void ExtractWindowFunctionData(ClientContext &context, const WindowFunctionDefinition *it, DataChunk &output,
+static void ExtractWindowFunctionData(ClientContext &context, const WindowFunctionDefinition *it, DataChunk &output,
                                idx_t output_offset) {
 	D_ASSERT(it && it->name != nullptr);
 	string name(it->name);
@@ -807,7 +807,7 @@ static bool Finished(const DuckDBFunctionsData &data) {
 	return false;
 }
 
-void DuckDBFunctionsFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+static void DuckDBFunctionsFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = data_p.global_state->Cast<DuckDBFunctionsData>();
 	if (Finished(data)) {
 		// finished returning values

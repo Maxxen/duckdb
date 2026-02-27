@@ -648,10 +648,11 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 	}
 
 	const auto same_return_type = bound_aggr.GetReturnType() == state_type.return_type;
-	bool same_args = bound_aggr.parameters.size() == state_type.bound_argument_types.size();
+	const auto &params = bound_aggr.GetParameters();
+	bool same_args = params.size() == state_type.bound_argument_types.size();
 	if (same_args) {
-		for (idx_t i = 0; i < bound_aggr.parameters.size(); i++) {
-			if (bound_aggr.parameters[i].GetType() != state_type.bound_argument_types[i]) {
+		for (idx_t i = 0; i < params.size(); i++) {
+			if (params[i].GetType() != state_type.bound_argument_types[i]) {
 				same_args = false;
 				break;
 			}

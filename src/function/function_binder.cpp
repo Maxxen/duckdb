@@ -194,8 +194,8 @@ optional_idx FunctionBinder::BindFunction(const string &name, PragmaFunctionSet 
 	auto candidate_function = functions.GetFunctionByOffset(entry.GetIndex());
 	// cast the input parameters
 	for (idx_t i = 0; i < parameters.size(); i++) {
-		const auto &target_type = i < candidate_function.parameters.size() ? candidate_function.parameters[i].GetType()
-		                                                                   : candidate_function.varargs.GetType();
+		const auto &target_type = i < candidate_function.GetParameters().size() ? candidate_function.GetParameters()[i].GetType()
+		                                                                   : candidate_function.GetVarArgs().GetType();
 		parameters[i] = parameters[i].CastAs(context, target_type);
 	}
 	return entry;
@@ -347,7 +347,11 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunctionCatalogE
 			}
 		}
 	}
-	return BindScalarFunction(bound_function, std::move(children), is_operator, binder);
+
+	// Instantiate the function object from the signature
+	auto function_obj = bound_function.GetFunction();
+
+	return BindScalarFunction(function_obj, std::move(children), is_operator, binder);
 }
 
 static bool RequiresCollationPropagation(const LogicalType &type) {
@@ -636,46 +640,43 @@ void FunctionBinder::CheckTemplateTypesResolved(const BaseScalarFunction &bound_
 	VerifyTemplateType(bound_function.GetReturnType(), bound_function.name);
 }
 
-unique_ptr<Expression> FunctionBinder::BindScalarFunction(const FunctionSignature<ScalarFunction> &bound_function,
+unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunction bound_function,
                                                           vector<unique_ptr<Expression>> children, bool is_operator,
                                                           optional_ptr<Binder> binder) {
 	// Get a copy of the implementation
-	auto impl = bound_function.Instantiate();
-
 	// Attempt to resolve template types, before we call the "Bind" callback.
-	ResolveTemplateTypes(impl, children);
+	ResolveTemplateTypes(bound_function, children);
 
 	unique_ptr<FunctionData> bind_info;
 
-	if (impl.HasBindCallback()) {
-		bind_info = impl.GetBindCallback()(context, impl, children);
-	} else if (impl.HasBindExtendedCallback()) {
+	if (bound_function.HasBindCallback()) {
+		bind_info = bound_function.GetBindCallback()(context, bound_function, children);
+	} else if (bound_function.HasBindExtendedCallback()) {
 		if (!binder) {
-			throw InternalException("Function '%s' has a 'bind_extended' but the FunctionBinder was created without "
-			                        "a reference to a Binder",
-			                        bound_function.GetFunctionName());
+			throw InternalException("Function has a 'bind_extended' but the FunctionBinder was created without "
+			                        "a reference to a Binder");
 		}
 		ScalarFunctionBindInput bind_input(*binder);
-		bind_info = impl.GetBindExtendedCallback()(bind_input, impl, children);
+		bind_info = bound_function.GetBindExtendedCallback()(bind_input, bound_function, children);
 	}
 
 	// After the "bind" callback, we verify that all template types are bound to concrete types.
-	CheckTemplateTypesResolved(impl);
+	CheckTemplateTypesResolved(bound_function);
 
-	if (impl.HasModifiedDatabasesCallback() && binder) {
+	if (bound_function.HasModifiedDatabasesCallback() && binder) {
 		auto &properties = binder->GetStatementProperties();
 		FunctionModifiedDatabasesInput input(bind_info, properties);
-		impl.GetModifiedDatabasesCallback()(context, input);
+		bound_function.GetModifiedDatabasesCallback()(context, input);
 	}
 
-	HandleCollations(context, impl, children);
+	HandleCollations(context, bound_function, children);
 
 	// check if we need to add casts to the children
-	CastToFunctionArguments(impl, children);
+	CastToFunctionArguments(bound_function, children);
 
 	auto return_type = bound_function.GetReturnType();
 	unique_ptr<Expression> result;
-	auto result_func = make_uniq<BoundFunctionExpression>(std::move(return_type), std::move(impl), std::move(children),
+	auto result_func = make_uniq<BoundFunctionExpression>(std::move(return_type), std::move(bound_function), std::move(children),
 	                                                      std::move(bind_info), is_operator);
 	if (result_func->function.HasBindExpressionCallback()) {
 		// if a bind_expression callback is registered - call it and emit the resulting expression
