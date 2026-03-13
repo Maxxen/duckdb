@@ -129,14 +129,14 @@ PEGTransformerFactory::TransformSeqSetIncrement(PEGTransformer &transformer, opt
 			throw InvalidInputException("Expected constant expression as child of minus function");
 		}
 		auto const_expr = unique_ptr_cast<ParsedExpression, ConstantExpression>(std::move(func_expr->children[0]));
-		const_expr->value = Value::Numeric(LogicalType::BIGINT, -const_expr->value.GetValue<hugeint_t>());
-		expr = std::move(const_expr);
+		expr = make_uniq<ConstantExpression>(
+		    Value::Numeric(LogicalType::BIGINT, -const_expr->GetValue().GetValue<hugeint_t>()));
 	}
 	if (expr->GetExpressionClass() != ExpressionClass::CONSTANT) {
 		throw ParserException("Expected constant expression.");
 	}
 	auto const_expr = expr->Cast<ConstantExpression>();
-	return make_pair("increment", make_uniq<ValueSequenceOption>(SequenceInfo::SEQ_INC, const_expr.value));
+	return make_pair("increment", make_uniq<ValueSequenceOption>(SequenceInfo::SEQ_INC, const_expr.GetValue()));
 }
 
 pair<string, unique_ptr<SequenceOption>>
@@ -155,8 +155,8 @@ PEGTransformerFactory::TransformSeqSetMinMax(PEGTransformer &transformer, option
 			throw InvalidInputException("Expected constant expression as child of minus function");
 		}
 		auto const_expr = unique_ptr_cast<ParsedExpression, ConstantExpression>(std::move(func_expr->children[0]));
-		const_expr->value = Value::Numeric(LogicalType::BIGINT, -const_expr->value.GetValue<hugeint_t>());
-		expr = std::move(const_expr);
+		expr = make_uniq<ConstantExpression>(
+		    Value::Numeric(LogicalType::BIGINT, -const_expr->GetValue().GetValue<hugeint_t>()));
 	}
 
 	if (expr->GetExpressionClass() != ExpressionClass::CONSTANT) {
@@ -164,7 +164,7 @@ PEGTransformerFactory::TransformSeqSetMinMax(PEGTransformer &transformer, option
 	}
 	auto const_expr = expr->Cast<ConstantExpression>();
 	auto seq_info = rule_name == "minvalue" ? SequenceInfo::SEQ_MIN : SequenceInfo::SEQ_MAX;
-	return make_pair(rule_name, make_uniq<ValueSequenceOption>(seq_info, const_expr.value));
+	return make_pair(rule_name, make_uniq<ValueSequenceOption>(seq_info, const_expr.GetValue()));
 }
 
 string PEGTransformerFactory::TransformSeqMinOrMax(PEGTransformer &transformer,
@@ -190,7 +190,7 @@ PEGTransformerFactory::TransformSeqStartWith(PEGTransformer &transformer, option
 		throw ParserException("Expected constant expression.");
 	}
 	auto const_expr = expr->Cast<ConstantExpression>();
-	return make_pair("start", make_uniq<ValueSequenceOption>(SequenceInfo::SEQ_START, const_expr.value));
+	return make_pair("start", make_uniq<ValueSequenceOption>(SequenceInfo::SEQ_START, const_expr.GetValue()));
 }
 
 pair<string, unique_ptr<SequenceOption>>

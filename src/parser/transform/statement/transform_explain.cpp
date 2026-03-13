@@ -42,7 +42,7 @@ unique_ptr<ExplainStatement> Transformer::TransformExplain(duckdb_libpgquery::PG
 					if (format_is_set) {
 						throw InvalidInputException("FORMAT can not be provided more than once");
 					}
-					auto val = TransformValue(*PGPointerCast<duckdb_libpgquery::PGValue>(def_elem->arg))->value;
+					auto val = TransformValue(*PGPointerCast<duckdb_libpgquery::PGValue>(def_elem->arg))->GetValue();
 					format_is_set = true;
 					explain_format = ParseFormat(val);
 				}

@@ -599,7 +599,7 @@ unique_ptr<ParsedExpression> PEGTransformerFactory::TransformArrayParensSelect(P
 				auto &constant_expr = order.expression->Cast<ConstantExpression>();
 				Value bigint_value;
 				string error;
-				if (constant_expr.value.DefaultTryCastAs(LogicalType::BIGINT, bigint_value, &error)) {
+				if (constant_expr.GetValue().DefaultTryCastAs(LogicalType::BIGINT, bigint_value, &error)) {
 					int64_t order_index = BigIntValue::Get(bigint_value);
 					idx_t positional_index = order_index < 0 ? NumericLimits<idx_t>::Maximum() : idx_t(order_index);
 					order.expression = make_uniq<PositionalReferenceExpression>(positional_index);
@@ -1354,7 +1354,7 @@ unique_ptr<ParsedExpression> PEGTransformerFactory::TransformCollateExpression(P
 		string collate_string;
 		if (collate_string_expr->GetExpressionClass() == ExpressionClass::CONSTANT) {
 			auto &const_expr = collate_string_expr->Cast<ConstantExpression>();
-			collate_string = const_expr.value.GetValue<string>();
+			collate_string = const_expr.GetValue().GetValue<string>();
 		} else if (collate_string_expr->GetExpressionClass() == ExpressionClass::COLUMN_REF) {
 			auto &col_ref = collate_string_expr->Cast<ColumnRefExpression>();
 			collate_string = StringUtil::Join(col_ref.column_names, ".");
@@ -1460,7 +1460,9 @@ unique_ptr<ParsedExpression> PEGTransformerFactory::TransformPrefixExpression(PE
 
 		if (prefix == "-" && expr->type == ExpressionType::VALUE_CONSTANT) {
 			auto &const_expr = expr->Cast<ConstantExpression>();
-			if (TryNegateValue(const_expr.value)) {
+			auto val = const_expr.GetValue();
+			if (TryNegateValue(val)) {
+				expr = make_uniq<ConstantExpression>(std::move(val));
 				continue;
 			}
 		}
@@ -1515,14 +1517,14 @@ unique_ptr<ParsedExpression> PEGTransformerFactory::TransformNumberedParameter(P
 	auto number = transformer.Transform<unique_ptr<ParsedExpression>>(list_pr.GetChild(1));
 
 	auto &const_expr = number->Cast<ConstantExpression>();
-	int32_t param_number = const_expr.value.GetValue<int32_t>();
+	int32_t param_number = const_expr.GetValue().GetValue<int32_t>();
 
 	if (param_number <= 0) {
 		throw ParserException("Parameter numbers must be greater than 0");
 	}
 
 	auto expr = make_uniq<ParameterExpression>();
-	string identifier = const_expr.value.ToString();
+	string identifier = const_expr.GetValue().ToString();
 	idx_t known_param_index = DConstants::INVALID_INDEX;
 
 	transformer.GetParam(identifier, known_param_index, PreparedParamType::POSITIONAL);
@@ -1565,7 +1567,7 @@ PEGTransformerFactory::TransformPositionalExpression(PEGTransformer &transformer
 	auto &list_pr = parse_result->Cast<ListParseResult>();
 	auto number = transformer.Transform<unique_ptr<ParsedExpression>>(list_pr.GetChild(1));
 	auto &const_expr = number->Cast<ConstantExpression>();
-	int32_t index = const_expr.value.GetValue<int32_t>();
+	int32_t index = const_expr.GetValue().GetValue<int32_t>();
 	if (index <= 0) {
 		throw ParserException("Positional index must be greater than 0");
 	}

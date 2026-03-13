@@ -21,6 +21,8 @@ public:
 public:
 	DUCKDB_API explicit ConstantExpression(Value val);
 
+	const Value &GetValue() const;
+
 	//! The constant value referenced
 	Value value;
 

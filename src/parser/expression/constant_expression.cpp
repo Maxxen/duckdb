@@ -12,6 +12,10 @@ ConstantExpression::ConstantExpression(Value val)
     : ParsedExpression(ExpressionType::VALUE_CONSTANT, ExpressionClass::CONSTANT), value(std::move(val)) {
 }
 
+const Value &ConstantExpression::GetValue() const {
+	return value;
+}
+
 string ConstantExpression::ToString() const {
 	return value.ToSQLString();
 }

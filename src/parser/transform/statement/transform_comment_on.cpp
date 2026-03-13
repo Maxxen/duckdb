@@ -50,7 +50,7 @@ unique_ptr<AlterStatement> Transformer::TransformCommentOn(duckdb_libpgquery::PG
 	if (expr->GetExpressionClass() != ExpressionClass::CONSTANT) {
 		throw NotImplementedException("Can only use constants as comments");
 	}
-	auto comment_value = expr->Cast<ConstantExpression>().value;
+	auto comment_value = expr->Cast<ConstantExpression>().GetValue();
 
 	CatalogType type = CatalogType::INVALID;
 

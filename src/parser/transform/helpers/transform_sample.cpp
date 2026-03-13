@@ -32,7 +32,7 @@ unique_ptr<SampleOptions> Transformer::TransformSampleOptions(optional_ptr<duckd
 		                      "Only constants are supported in sample clause currently");
 	}
 	auto &const_expr = sample_expression->Cast<ConstantExpression>();
-	auto &sample_value = const_expr.value;
+	auto &sample_value = const_expr.GetValue();
 	result->is_percentage = sample_size.is_percentage;
 	if (sample_size.is_percentage) {
 		// sample size is given in sample_size: use system sampling

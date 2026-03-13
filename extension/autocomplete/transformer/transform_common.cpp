@@ -101,10 +101,10 @@ int64_t PEGTransformerFactory::TransformSquareBracketsArray(PEGTransformer &tran
 		throw ParserException("Expected a constant number as array size");
 	}
 	auto &const_number = number_expr->Cast<ConstantExpression>();
-	if (!const_number.value.type().IsIntegral()) {
-		throw BinderException("Expected an integer as array bound instead of %s", const_number.value.ToString());
+	if (!const_number.GetValue().type().IsIntegral()) {
+		throw BinderException("Expected an integer as array bound instead of %s", const_number.GetValue().ToString());
 	}
-	auto number_val = const_number.value.GetValue<int64_t>();
+	auto number_val = const_number.GetValue().GetValue<int64_t>();
 	if (number_val < 0) {
 		throw ParserException("Array size must be greater than 0");
 	}
@@ -149,7 +149,7 @@ unique_ptr<ParsedExpression> PEGTransformerFactory::TransformTimeType(PEGTransfo
 		if (modifiers[0]->GetExpressionClass() != ExpressionClass::CONSTANT) {
 			throw ParserException("Expected a constant expression for timestamp precision");
 		}
-		auto timestamp_precision = modifiers[0]->Cast<ConstantExpression>().value.GetValue<int64_t>();
+		auto timestamp_precision = modifiers[0]->Cast<ConstantExpression>().GetValue().GetValue<int64_t>();
 		if (timestamp_precision > 10) {
 			throw ParserException("TIMESTAMP only supports until nano-second precision (9)");
 		}

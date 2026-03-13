@@ -172,7 +172,7 @@ unique_ptr<ParsedExpression> Transformer::TransformAExprInternal(duckdb_libpgque
 			throw NotImplementedException("Custom escape in SIMILAR TO");
 		}
 		auto &constant = similar_func.children[1]->Cast<ConstantExpression>();
-		if (!constant.value.IsNull()) {
+		if (!constant.GetValue().IsNull()) {
 			throw NotImplementedException("Custom escape in SIMILAR TO");
 		}
 		// take the child of the similar_func

@@ -71,7 +71,7 @@ unique_ptr<CreateStatement> Transformer::TransformCreateIndex(duckdb_libpgquery:
 					throw InvalidInputException("Create index option must be a constant value");
 				}
 				auto &const_expr = expr->Cast<ConstantExpression>();
-				val = const_expr.value;
+				val = const_expr.GetValue();
 			} else {
 				val = Value::BOOLEAN(true);
 			}
