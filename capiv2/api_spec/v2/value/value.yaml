@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../../../src/capigen/schema/module.schema.json
+module: value
+
+functions:
+  duckdb_v2_destroy_value:
+    summary: "Destroys the value and de-allocates all memory."
+    role: destructor
+    belongs_to: duckdb_value
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      value:
+        type: duckdb_value
+        indirection: 1
+        direction: in
+        description: "The value to destroy."
+    return_type: DUCKDB_API_CALL

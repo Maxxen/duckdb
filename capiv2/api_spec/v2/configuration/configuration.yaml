@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=../../../src/capigen/schema/module.schema.json
+module: configuration
+
+functions:
+  duckdb_v2_create_config:
+    summary: "Initializes an empty configuration object."
+    role: constructor
+    belongs_to: duckdb_config
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      out_config:
+        type: duckdb_config
+        indirection: 1
+        direction: out
+        description: "The result configuration object."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_config_count:
+    summary: "Returns the total number of configuration options available."
+    role: getter
+    belongs_to: duckdb_config
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      out_count:
+        type: idx
+        indirection: 1
+        direction: out
+        description: "The number of config options available."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_get_config_flag:
+    summary: "Obtains the name and description of a specific configuration option."
+    role: getter
+    belongs_to: duckdb_config
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      index:
+        type: idx
+        direction: in
+        description: "The index of the configuration option."
+      out_name:
+        type: char
+        indirection: 2
+        const: false
+        direction: out
+        description: "The name of the configuration flag."
+      out_description:
+        type: char
+        indirection: 2
+        const: false
+        direction: out
+        description: "A description of the configuration flag."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_set_config:
+    summary: "Sets the specified option for the specified configuration."
+    role: setter
+    belongs_to: duckdb_config
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      config:
+        type: duckdb_config
+        direction: in
+        description: "The configuration object to set the option on."
+      name:
+        type: char
+        indirection: 1
+        const: true
+        direction: in
+        description: "The name of the configuration flag to set."
+      option:
+        type: char
+        indirection: 1
+        const: true
+        direction: in
+        description: "The value to set the configuration flag to."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_destroy_config:
+    summary: "Destroys the specified configuration object."
+    role: destructor
+    belongs_to: duckdb_config
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      config:
+        type: duckdb_config
+        indirection: 1
+        direction: in
+        description: "The configuration object to destroy."
+    return_type: DUCKDB_API_CALL

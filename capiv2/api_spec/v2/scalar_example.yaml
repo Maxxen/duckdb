@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=../../src/capigen/schema/module.schema.json
+module: scalar
+handles:
+  duckdb_ctx:
+    description: An opaque context handle
+  duckdb_scalar_func:
+    description: An opaque handle to a scalar function
+  duckdb_scalar_func_bind_args:
+    description: An opaque handle to scalar function bind arguments
+  duckdb_scalar_func_init_args:
+    description: An opaque handle to scalar function init arguments
+  duckdb_scalar_func_exec_args:
+    description: An opaque handle to scalar function exec arguments
+callbacks:
+  duckdb_scalar_func_bind:
+    return_type: opaque
+    parameters:
+      context:
+        type: duckdb_ctx
+      args:
+        type: duckdb_scalar_func_bind_args
+  duckdb_scalar_func_init:
+    return_type: opaque
+    parameters:
+      context:
+        type: duckdb_ctx
+      args:
+        type: duckdb_scalar_func_init_args
+  duckdb_scalar_func_exec:
+    return_type: opaque
+    parameters:
+      context:
+        type: duckdb_ctx
+      args:
+        type: duckdb_scalar_func_exec_args
+functions:
+  duckdb_v2_scalar_function_exec_get_input:
+    summary: Get input chunk for scalar function execution
+    parameters:
+      context:
+        type: duckdb_ctx
+      args:
+        type: duckdb_scalar_func_exec_args
+      out_input:
+        type: duckdb_data_chunk
+        indirection: 1
+        direction: out
+    return_type: DUCKDB_API_CALL
+  duckdb_v2_scalar_function_exec_get_result:
+    summary: Get result vector for scalar function execution
+    parameters:
+      context:
+        type: duckdb_ctx
+      args:
+        type: duckdb_scalar_func_exec_args
+      out_result:
+        type: duckdb_vector
+        indirection: 1
+        direction: out
+    return_type: DUCKDB_API_CALL
+  duckdb_v2_scalar_function_create:
+    summary: Create a scalar function object
+    parameters:
+      context:
+        type: duckdb_ctx
+      out_function:
+        type: duckdb_scalar_func
+        indirection: 1
+        direction: out
+    return_type: DUCKDB_API_CALL
+  duckdb_v2_scalar_function_set_bind:
+    summary: Set the bind function for a scalar function
+    parameters:
+      context:
+        type: duckdb_ctx
+      function:
+        type: duckdb_scalar_func
+      bind_func:
+        type: duckdb_scalar_func_bind
+    return_type: DUCKDB_API_CALL
+    role: setter
+  duckdb_v2_scalar_function_register:
+    summary: Register a scalar function
+    parameters:
+      context:
+        type: duckdb_ctx
+      function:
+        type: duckdb_scalar_func
+    return_type: DUCKDB_API_CALL

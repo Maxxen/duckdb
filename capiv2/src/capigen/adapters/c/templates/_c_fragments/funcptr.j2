@@ -1,0 +1,5 @@
+{% from "_c_fragments/_format.j2" import format_c_type %}
+
+{%- macro render_funcptr(fp) -%}
+typedef {{ format_c_type(fp.return_base, fp.return_pointer, fp.return_const) }} (*{{ fp.template_alias }})({% if fp.params %}{% for p in fp.params %}{{ format_c_type(p.base, p.pointer, p.const) }} {{ p.name }}{{ ", " if not loop.last }}{% endfor %}{% else %}void{% endif %});
+{%- endmacro %}

@@ -1,0 +1,237 @@
+# yaml-language-server: $schema=../../../src/capigen/schema/module.schema.json
+module: database
+
+functions:
+  duckdb_v2_open:
+    summary: "Creates a new database or opens an existing database file."
+    role: constructor
+    belongs_to: duckdb_database
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      path:
+        type: char
+        indirection: 1
+        const: true
+        direction: in
+        description: "Path to the database file on disk. Both nullptr and :memory: open an in-memory database."
+      out_database:
+        type: duckdb_database
+        indirection: 1
+        direction: out
+        description: "The result database object."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_open_ext:
+    summary: "Extended version of duckdb_v2_open with configuration support."
+    role: constructor
+    belongs_to: duckdb_database
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      path:
+        type: char
+        indirection: 1
+        const: true
+        direction: in
+        description: "Path to the database file on disk. Both nullptr and :memory: open an in-memory database."
+      config:
+        type: duckdb_config
+        direction: in
+        description: "Optional configuration used to start up the database."
+      out_database:
+        type: duckdb_database
+        indirection: 1
+        direction: out
+        description: "The result database object."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_close:
+    summary: "Closes the specified database and de-allocates all memory."
+    role: destructor
+    belongs_to: duckdb_database
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      database:
+        type: duckdb_database
+        indirection: 1
+        direction: in
+        description: "The database object to shut down."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_connect:
+    summary: "Opens a connection to a database."
+    role: constructor
+    belongs_to: duckdb_connection
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      database:
+        type: duckdb_database
+        direction: in
+        description: "The database file to connect to."
+      out_connection:
+        type: duckdb_connection
+        indirection: 1
+        direction: out
+        description: "The result connection object."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_disconnect:
+    summary: "Closes the specified connection and de-allocates all memory."
+    role: destructor
+    belongs_to: duckdb_connection
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      connection:
+        type: duckdb_connection
+        indirection: 1
+        direction: in
+        description: "The connection to close."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_connection_get_client_context:
+    summary: "Retrieves the client context of the connection."
+    role: getter
+    belongs_to: duckdb_connection
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      connection:
+        type: duckdb_connection
+        direction: in
+        description: "The connection."
+      out_context:
+        type: duckdb_client_context
+        indirection: 1
+        direction: out
+        description: "The client context. Must be destroyed with duckdb_v2_destroy_client_context."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_client_context_get_connection_id:
+    summary: "Returns the connection id of the client context."
+    role: getter
+    belongs_to: duckdb_client_context
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      client_context:
+        type: duckdb_client_context
+        direction: in
+        description: "The client context."
+      out_connection_id:
+        type: idx
+        indirection: 1
+        direction: out
+        description: "The connection id."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_destroy_client_context:
+    summary: "Destroys the client context and deallocates its memory."
+    role: destructor
+    belongs_to: duckdb_client_context
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      client_context:
+        type: duckdb_client_context
+        indirection: 1
+        direction: in
+        description: "The client context to destroy."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_create_instance_cache:
+    summary: "Creates a new database instance cache."
+    role: constructor
+    belongs_to: duckdb_instance_cache
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      out_instance_cache:
+        type: duckdb_instance_cache
+        indirection: 1
+        direction: out
+        description: "The database instance cache."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_get_or_create_from_cache:
+    summary: "Creates or retrieves a database instance from the cache."
+    role: method
+    belongs_to: duckdb_instance_cache
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      instance_cache:
+        type: duckdb_instance_cache
+        direction: in
+        description: "The instance cache."
+      path:
+        type: char
+        indirection: 1
+        const: true
+        direction: in
+        description: "Path to the database file on disk."
+      config:
+        type: duckdb_config
+        direction: in
+        description: "Optional configuration used to create the database."
+      out_database:
+        type: duckdb_database
+        indirection: 1
+        direction: out
+        description: "The resulting cached database."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_destroy_instance_cache:
+    summary: "Destroys an existing database instance cache."
+    role: destructor
+    belongs_to: duckdb_instance_cache
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      instance_cache:
+        type: duckdb_instance_cache
+        indirection: 1
+        direction: in
+        description: "The instance cache to destroy."
+    return_type: DUCKDB_API_CALL
+
+  duckdb_v2_library_version:
+    summary: "Returns the version of the linked DuckDB library."
+    role: getter
+    parameters:
+      context:
+        type: duckdb_ctx
+        direction: in
+        description: "The context handle."
+      out_version:
+        type: char
+        indirection: 2
+        const: false
+        direction: out
+        description: "The version string."
+    return_type: DUCKDB_API_CALL

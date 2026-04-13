@@ -1,0 +1,339 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Schema for a v2 IDL module YAML file. Each module groups related types and functions for one area of the C API.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["module"],
+  "properties": {
+    "module": {
+      "description": "Module name. Used in the generated header as a section comment.",
+      "type": "string",
+      "examples": ["database", "query_result", "logical_type"]
+    },
+    "handles": {
+      "description": "Opaque handle types, keyed by name. Always rendered as pointer typedefs (e.g. typedef void* name_ptr).",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/HandleDefinition" }
+    },
+    "callbacks": {
+      "description": "Callback function pointer typedefs, keyed by name. Always rendered with _cb suffix.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/CallbackDefinition" }
+    },
+    "aliases": {
+      "description": "Named type aliases, keyed by name. Always rendered with _t suffix.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/AliasDefinition" }
+    },
+    "structs": {
+      "description": "Struct definitions with consumer-visible fields, keyed by struct name.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/StructDefinition" }
+    },
+    "enums": {
+      "description": "Enum definitions, keyed by enum name.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/EnumDefinition" }
+    },
+    "constants": {
+      "description": "Named constants, keyed by constant name.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/ConstantDefinition" }
+    },
+    "error_groups": {
+      "description": "Grouped error code definitions, keyed by category name.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/ErrorGroup" }
+    },
+    "functions": {
+      "description": "Function definitions, keyed by C function name.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/Function" }
+    }
+  },
+
+  "$defs": {
+    "HandleDefinition": {
+      "description": "An opaque handle type. Consumers don't know the internal structure — just a pointer.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string", "default": "" },
+        "cleanup_with": {
+          "description": "Name of the function that destroys/frees this handle.",
+          "type": "string",
+          "examples": ["duckdb_disconnect", "duckdb_destroy_result"]
+        }
+      }
+    },
+
+    "CallbackDefinition": {
+      "description": "A callback function pointer typedef (e.g. typedef void (*name_cb)(args)).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["return_type"],
+      "properties": {
+        "return_type": {
+          "description": "Return type name.",
+          "type": "string"
+        },
+        "return_pointer": {
+          "description": "Pointer indirection level on the return type.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "return_const": {
+          "description": "Whether the return type is const-qualified.",
+          "type": "boolean",
+          "default": false
+        },
+        "parameters": {
+          "description": "Map of parameter name to definition.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": { "$ref": "#/$defs/Parameter" }
+        }
+      }
+    },
+
+    "AliasDefinition": {
+      "description": "A named type alias. Maps a name to an underlying type (primitive or declared).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["underlying"],
+      "properties": {
+        "underlying": {
+          "description": "The type this aliases. A primitive name or another declared type name.",
+          "type": "string",
+          "examples": ["u32", "duckdb_error_code"]
+        },
+        "description": { "type": "string", "default": "" }
+      }
+    },
+
+    "Function": {
+      "description": "A C API function. Every function returns an error code by default and takes typed parameters.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary"],
+      "properties": {
+        "summary": {
+          "description": "One-line description of what the function does. Used in the generated doc comment.",
+          "type": "string"
+        },
+        "description": { "type": "string", "default": "" },
+        "role": {
+          "description": "Semantic role of the function relative to the type it belongs_to.",
+          "type": "string",
+          "enum": ["constructor", "destructor", "getter", "setter", "method"],
+          "default": "method"
+        },
+        "belongs_to": {
+          "description": "The type this function operates on. Used for grouping and code generation.",
+          "type": "string",
+          "examples": ["duckdb_connection", "duckdb_prepared_statement"]
+        },
+        "parameters": {
+          "description": "Map of parameter name to definition. Order is preserved and determines the signature.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": { "$ref": "#/$defs/Parameter" }
+        },
+        "return_type": {
+          "description": "Return type name. Defaults to duckdb_error_code (the v2 convention).",
+          "type": "string",
+          "default": "duckdb_error_code"
+        },
+        "return_pointer": {
+          "description": "Pointer indirection level on the return type. 0 = value, 1 = pointer, etc.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "return_const": {
+          "description": "Whether the return type is const-qualified.",
+          "type": "boolean",
+          "default": false
+        },
+        "added": {
+          "description": "API version when this function was introduced.",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "examples": ["1.2.0"]
+        },
+        "deprecated": {
+          "description": "API version when this function was deprecated.",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "examples": ["1.5.0"]
+        }
+      }
+    },
+
+    "Parameter": {
+      "description": "A function or callback parameter.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "description": "Type name — a primitive or a declared type.",
+          "type": "string",
+          "examples": ["duckdb_connection", "char", "idx", "bool"]
+        },
+        "indirection": {
+          "description": "Pointer indirection level. 0 = pass by value, 1 = pointer, 2 = pointer-to-pointer.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "const": {
+          "description": "Whether the parameter is const-qualified.",
+          "type": "boolean",
+          "default": false
+        },
+        "direction": {
+          "description": "Whether the parameter is input or output. Out parameters must have indirection >= 1.",
+          "type": "string",
+          "enum": ["in", "out"],
+          "default": "in"
+        },
+        "description": { "type": "string", "default": "" }
+      }
+    },
+
+    "StructDefinition": {
+      "description": "A C struct with consumer-visible fields. Use handles for opaque types instead.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pointer_alias": {
+          "description": "If true, generate a typedef pointer alias (e.g. typedef struct_name* struct_name_ptr).",
+          "type": "boolean",
+          "default": false
+        },
+        "fields": {
+          "description": "Struct fields, in declaration order.",
+          "type": "array",
+          "default": [],
+          "items": { "$ref": "#/$defs/StructField" }
+        }
+      }
+    },
+
+    "StructField": {
+      "description": "A single field within a struct.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "description": "Field name.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Type name — a primitive or declared type.",
+          "type": "string"
+        },
+        "pointer": {
+          "description": "Pointer indirection level.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "const": {
+          "description": "Whether the field is const-qualified.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+
+    "EnumDefinition": {
+      "description": "A C enum typedef. Values are auto-numbered from 0 unless explicitly set.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string", "default": "" },
+        "values": {
+          "description": "Map of enum member name to value/description. Order determines auto-numbering.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": { "$ref": "#/$defs/EnumValue" }
+        }
+      }
+    },
+
+    "EnumValue": {
+      "description": "A single enum member. Omit 'value' to auto-number sequentially.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "description": "Explicit integer value. If omitted, continues from the previous member.",
+          "type": "integer"
+        },
+        "description": { "type": "string", "default": "" }
+      }
+    },
+
+    "ConstantDefinition": {
+      "description": "A named constant (rendered as #define).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "description": "Constant value — an integer or string expression.",
+          "oneOf": [
+            { "type": "integer" },
+            { "type": "string" }
+          ]
+        },
+        "description": { "type": "string", "default": "" }
+      }
+    },
+
+    "ErrorGroup": {
+      "description": "A group of related error codes. The full 32-bit code is (group_id << 16) | code.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id", "entries"],
+      "properties": {
+        "group_id": {
+          "description": "Group identifier (upper 16 bits of the error code).",
+          "type": "integer"
+        },
+        "description": { "type": "string", "default": "" },
+        "entries": {
+          "description": "Error entries within this group, keyed by error code name.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/ErrorEntry" }
+        }
+      }
+    },
+
+    "ErrorEntry": {
+      "description": "A single error code within an error group.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": {
+          "description": "Error code identifier (lower 16 bits of the error code).",
+          "type": "integer"
+        },
+        "description": { "type": "string", "default": "" }
+      }
+    }
+  }
+}
