@@ -5,14 +5,14 @@ functions:
   duckdb_v2_prepare:
     summary: "Create a prepared statement object from a query."
     role: constructor
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       connection:
-        type: duckdb_connection
+        type: duckdb_v2_connection
         direction: in
         description: "The connection object."
       query:
@@ -22,39 +22,39 @@ functions:
         direction: in
         description: "The SQL query to prepare."
       out_prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         indirection: 1
         direction: out
         description: "The resulting prepared statement object."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_destroy_prepare:
     summary: "Closes the prepared statement and de-allocates all memory."
     role: destructor
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         indirection: 1
         direction: in
         description: "The prepared statement to destroy."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_prepare_error:
     summary: "Returns the error message associated with the prepared statement."
     role: getter
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement to obtain the error from."
       out_error:
@@ -63,19 +63,19 @@ functions:
         const: false
         direction: out
         description: "The error message, or nullptr if there is none."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_nparams:
     summary: "Returns the number of parameters in the prepared statement."
     role: getter
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       out_count:
@@ -83,19 +83,19 @@ functions:
         indirection: 1
         direction: out
         description: "The number of parameters."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_parameter_name:
     summary: "Returns the name used to identify the parameter."
     role: getter
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       index:
@@ -107,20 +107,20 @@ functions:
         indirection: 2
         const: false
         direction: out
-        description: "The parameter name. Must be freed with duckdb_v2_free."
-    return_type: DUCKDB_API_CALL
+        description: "The parameter name. Must be freed with duckdb_free."
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_param_type:
     summary: "Returns the parameter type for the parameter at the given index."
     role: getter
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -132,19 +132,19 @@ functions:
         indirection: 1
         direction: out
         description: "The parameter type."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_param_logical_type:
     summary: "Returns the logical type for the parameter at the given index."
     role: getter
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -152,38 +152,38 @@ functions:
         direction: in
         description: "The parameter index."
       out_type:
-        type: duckdb_logical_type
+        type: duckdb_v2_logical_type
         indirection: 1
         direction: out
-        description: "The logical type. Must be destroyed with duckdb_v2_destroy_logical_type."
-    return_type: DUCKDB_API_CALL
+        description: "The logical type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_clear_bindings:
     summary: "Clear the params bound to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_prepared_statement_type:
     summary: "Returns the statement type of the prepared statement."
     role: getter
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       stmt:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       out_type:
@@ -191,39 +191,39 @@ functions:
         indirection: 1
         direction: out
         description: "The statement type."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_execute_prepared:
     summary: "Executes the prepared statement and returns a materialized query result."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement to execute."
       out_result:
-        type: duckdb_result
+        type: duckdb_v2_result
         indirection: 1
         direction: out
         description: "The query result."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_value:
     summary: "Binds a value to the prepared statement at the specified index."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -231,22 +231,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_value
+        type: duckdb_v2_value
         direction: in
         description: "The value to bind."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_parameter_index:
     summary: "Retrieve the index of the parameter identified by name."
     role: getter
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       name:
@@ -260,19 +260,19 @@ functions:
         indirection: 1
         direction: out
         description: "The parameter index."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_boolean:
     summary: "Binds a bool value to the prepared statement at the specified index."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -283,19 +283,19 @@ functions:
         type: bool
         direction: in
         description: "The boolean value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_int8:
     summary: "Binds an int8_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -306,19 +306,19 @@ functions:
         type: i8
         direction: in
         description: "The int8_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_int16:
     summary: "Binds an int16_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -329,19 +329,19 @@ functions:
         type: i16
         direction: in
         description: "The int16_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_int32:
     summary: "Binds an int32_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -352,19 +352,19 @@ functions:
         type: i32
         direction: in
         description: "The int32_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_int64:
     summary: "Binds an int64_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -375,19 +375,19 @@ functions:
         type: i64
         direction: in
         description: "The int64_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_hugeint:
-    summary: "Binds a duckdb_hugeint value to the prepared statement."
+    summary: "Binds a duckdb_v2_hugeint value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -395,22 +395,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_hugeint
+        type: duckdb_v2_hugeint
         direction: in
         description: "The hugeint value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_uhugeint:
-    summary: "Binds a duckdb_uhugeint value to the prepared statement."
+    summary: "Binds a duckdb_v2_uhugeint value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -418,22 +418,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_uhugeint
+        type: duckdb_v2_uhugeint
         direction: in
         description: "The uhugeint value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_decimal:
-    summary: "Binds a duckdb_decimal value to the prepared statement."
+    summary: "Binds a duckdb_v2_decimal value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -441,22 +441,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_decimal
+        type: duckdb_v2_decimal
         direction: in
         description: "The decimal value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_uint8:
     summary: "Binds a uint8_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -467,19 +467,19 @@ functions:
         type: u8
         direction: in
         description: "The uint8_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_uint16:
     summary: "Binds a uint16_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -490,19 +490,19 @@ functions:
         type: u16
         direction: in
         description: "The uint16_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_uint32:
     summary: "Binds a uint32_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -513,19 +513,19 @@ functions:
         type: u32
         direction: in
         description: "The uint32_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_uint64:
     summary: "Binds a uint64_t value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -536,19 +536,19 @@ functions:
         type: u64
         direction: in
         description: "The uint64_t value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_float:
     summary: "Binds a float value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -559,19 +559,19 @@ functions:
         type: f32
         direction: in
         description: "The float value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_double:
     summary: "Binds a double value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -582,19 +582,19 @@ functions:
         type: f64
         direction: in
         description: "The double value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_date:
-    summary: "Binds a duckdb_date value to the prepared statement."
+    summary: "Binds a duckdb_v2_date value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -602,22 +602,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_date
+        type: duckdb_v2_date
         direction: in
         description: "The date value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_time:
-    summary: "Binds a duckdb_time value to the prepared statement."
+    summary: "Binds a duckdb_v2_time value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -625,22 +625,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_time
+        type: duckdb_v2_time
         direction: in
         description: "The time value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_timestamp:
-    summary: "Binds a duckdb_timestamp value to the prepared statement."
+    summary: "Binds a duckdb_v2_timestamp value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -648,22 +648,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_timestamp
+        type: duckdb_v2_timestamp
         direction: in
         description: "The timestamp value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_interval:
-    summary: "Binds a duckdb_interval value to the prepared statement."
+    summary: "Binds a duckdb_v2_interval value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -671,22 +671,22 @@ functions:
         direction: in
         description: "The parameter index."
       val:
-        type: duckdb_interval
+        type: duckdb_v2_interval
         direction: in
         description: "The interval value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_varchar:
     summary: "Binds a null-terminated varchar value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -699,19 +699,19 @@ functions:
         const: true
         direction: in
         description: "The null-terminated varchar value."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_varchar_length:
     summary: "Binds a varchar value with explicit length to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -728,19 +728,19 @@ functions:
         type: idx
         direction: in
         description: "The length of the string in bytes."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_blob:
     summary: "Binds a blob value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
@@ -757,23 +757,23 @@ functions:
         type: idx
         direction: in
         description: "The length of the blob in bytes."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_bind_null:
     summary: "Binds a NULL value to the prepared statement."
     role: method
-    belongs_to: duckdb_prepared_statement
+    belongs_to: duckdb_v2_prepared_statement
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       prepared_statement:
-        type: duckdb_prepared_statement
+        type: duckdb_v2_prepared_statement
         direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
         direction: in
         description: "The parameter index."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL

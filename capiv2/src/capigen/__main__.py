@@ -20,6 +20,11 @@ def main() -> None:
         default=str(_DEFAULT_SPEC_DIR),
         help=f"Path to API spec directory (default: {_DEFAULT_SPEC_DIR})",
     )
+    parser.add_argument(
+        "--scan-dir",
+        default=None,
+        help="Directory to scan for already-implemented functions (bridge adapter only)",
+    )
     args = parser.parse_args()
 
     spec_dir = Path(args.spec_dir)
@@ -51,7 +56,10 @@ def main() -> None:
             sys.exit(1)
 
     output_path = Path(args.output)
-    adapter.generate(modules, metadata, output_path)
+    extra_kwargs = {}
+    if args.scan_dir is not None:
+        extra_kwargs["scan_dir"] = Path(args.scan_dir)
+    adapter.generate(modules, metadata, output_path, **extra_kwargs)
 
 
 if __name__ == "__main__":

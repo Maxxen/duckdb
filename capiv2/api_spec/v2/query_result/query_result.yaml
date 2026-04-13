@@ -5,14 +5,14 @@ functions:
   duckdb_v2_query:
     summary: "Executes a SQL query and stores the materialized result."
     role: method
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       connection:
-        type: duckdb_connection
+        type: duckdb_v2_connection
         direction: in
         description: "The connection to perform the query in."
       query:
@@ -22,39 +22,39 @@ functions:
         direction: in
         description: "The SQL query to run."
       out_result:
-        type: duckdb_result
+        type: duckdb_v2_result
         indirection: 1
         direction: out
         description: "The query result."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_destroy_result:
     summary: "Closes the result and de-allocates all memory."
     role: destructor
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         indirection: 1
         direction: in
         description: "The result to destroy."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_column_name:
     summary: "Returns the column name of the specified column."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object to fetch the column name from."
       col:
@@ -67,19 +67,19 @@ functions:
         const: false
         direction: out
         description: "The column name of the specified column."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_column_type:
     summary: "Returns the column type of the specified column."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object to fetch the column type from."
       col:
@@ -91,19 +91,19 @@ functions:
         indirection: 1
         direction: out
         description: "The duckdb_type of the specified column."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_column_logical_type:
     summary: "Returns the logical column type of the specified column."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object to fetch the column type from."
       col:
@@ -111,23 +111,23 @@ functions:
         direction: in
         description: "The column index."
       out_type:
-        type: duckdb_logical_type
+        type: duckdb_v2_logical_type
         indirection: 1
         direction: out
-        description: "The logical column type. Must be destroyed with duckdb_v2_destroy_logical_type."
-    return_type: DUCKDB_API_CALL
+        description: "The logical column type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_column_count:
     summary: "Returns the number of columns present in the result."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object."
       out_column_count:
@@ -135,19 +135,19 @@ functions:
         indirection: 1
         direction: out
         description: "The number of columns."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_rows_changed:
     summary: "Returns the number of rows changed by the query."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object."
       out_rows_changed:
@@ -155,19 +155,19 @@ functions:
         indirection: 1
         direction: out
         description: "The number of rows changed."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_result_error:
     summary: "Returns the error message contained within the result."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object to fetch the error from."
       out_error:
@@ -176,19 +176,19 @@ functions:
         const: false
         direction: out
         description: "The error message, or nullptr if there is none."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_result_error_type:
     summary: "Returns the error type contained within the result."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object to fetch the error type from."
       out_error_type:
@@ -196,19 +196,19 @@ functions:
         indirection: 1
         direction: out
         description: "The error type of the result."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_result_return_type:
     summary: "Returns the return type of the given result."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object."
       out_return_type:
@@ -216,24 +216,24 @@ functions:
         indirection: 1
         direction: out
         description: "The return type."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_fetch_chunk:
     summary: "Fetches the next data chunk from a streaming result."
     role: getter
-    belongs_to: duckdb_result
+    belongs_to: duckdb_v2_result
     parameters:
       context:
-        type: duckdb_ctx
+        type: duckdb_v2_ctx
         direction: in
         description: "The context handle."
       result:
-        type: duckdb_result
+        type: duckdb_v2_result
         direction: in
         description: "The result object to fetch the chunk from."
       out_chunk:
-        type: duckdb_data_chunk
+        type: duckdb_v2_data_chunk
         indirection: 1
         direction: out
         description: "The resulting data chunk, or NULL when exhausted."
-    return_type: DUCKDB_API_CALL
+    return_type: DUCKDB_V2_API_CALL

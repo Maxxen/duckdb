@@ -6,7 +6,7 @@ error_groups:
   None:
     group_id: 0x0000
     entries:
-      DUCKDB_ERROR_NONE:
+      DUCKDB_V2_ERROR_NONE:
         code: 0x0000
         description: "Success"
 
@@ -14,10 +14,10 @@ error_groups:
     group_id: 0x0001
     description: "Input/Output and File System errors"
     entries:
-      DUCKDB_ERROR_IO_FILE_NOT_FOUND:
+      DUCKDB_V2_ERROR_IO_FILE_NOT_FOUND:
         code: 0x0001
         description: "The specified file could not be found"
-      DUCKDB_ERROR_IO_READ_FAILURE:
+      DUCKDB_V2_ERROR_IO_READ_FAILURE:
         code: 0x0002
         description: "Failed to read from the storage device"
 
@@ -25,17 +25,17 @@ error_groups:
     group_id: 0x0002
     description: "Errors related to user-provided data or parameters"
     entries:
-      DUCKDB_ERROR_EOF:
+      DUCKDB_V2_ERROR_EOF:
         code: 0x0001
         description: "Unexpected end of file reached"
-      DUCKDB_ERROR_INVALID_INPUT:
+      DUCKDB_V2_ERROR_INVALID_INPUT:
         code: 0x0002
         description: "General invalid input error"
-      DUCKDB_ERROR_INVALID_PARAMETER:
+      DUCKDB_V2_ERROR_INVALID_PARAMETER:
         code: 0x0003
         description: "A specific function parameter is malformed"
 
 constants:
-  DUCKDB_API_ERROR:
+  DUCKDB_V2_API_ERROR:
     value: "0xFFFFFFFF"
     description: "Sentinel for an unspecified internal API error"

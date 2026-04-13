@@ -1,5 +1,6 @@
 if(NOT CLANG_TIDY)
   add_subdirectory(capi)
+  add_subdirectory(capi_v2)
 endif()
 add_subdirectory(extension)
 add_subdirectory(http)
