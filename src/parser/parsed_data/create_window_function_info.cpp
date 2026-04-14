@@ -13,7 +13,7 @@ CreateWindowFunctionInfo::CreateWindowFunctionInfo(WindowFunctionSet set)
     : CreateFunctionInfo(CatalogType::WINDOW_FUNCTION_ENTRY), functions(std::move(set)) {
 	name = functions.name;
 	for (auto &func : functions.functions) {
-		func.name = functions.name;
+		func.function.name = functions.name;
 	}
 	internal = true;
 }

@@ -3,6 +3,68 @@
 
 namespace duckdb {
 
+//----------------------------------------------------------------------------------------------------------------------
+// FunctionOverload
+//----------------------------------------------------------------------------------------------------------------------
+
+template <>
+FunctionOverload<ScalarFunction>::FunctionOverload(ScalarFunction func) : function(std::move(func)) {
+	// Copy over parameters
+	for (auto &arg : func.arguments) {
+		parameters.push_back({arg});
+	}
+	varags = func.varargs;
+	return_type = func.return_type;
+}
+
+template <>
+FunctionOverload<AggregateFunction>::FunctionOverload(AggregateFunction func) : function(std::move(func)) {
+	// Copy over parameters
+	for (auto &arg : func.arguments) {
+		parameters.push_back({arg});
+	}
+	varags = func.varargs;
+	return_type = func.return_type;
+}
+
+template <>
+FunctionOverload<WindowFunction>::FunctionOverload(WindowFunction func) : function(std::move(func)) {
+	// Copy over parameters
+	for (auto &arg : func.arguments) {
+		parameters.push_back({arg});
+	}
+	varags = func.varargs;
+	return_type = func.return_type;
+}
+
+template <>
+FunctionOverload<TableFunction>::FunctionOverload(TableFunction func) : function(std::move(func)) {
+	// Copy over parameters
+	for (auto &arg : func.arguments) {
+		parameters.push_back({arg});
+	}
+	varags = func.varargs;
+	// no return type yet
+
+	// TODO: Named params
+}
+
+template <>
+FunctionOverload<PragmaFunction>::FunctionOverload(PragmaFunction func) : function(std::move(func)) {
+	// Copy over parameters
+	for (auto &arg : func.arguments) {
+		parameters.push_back({arg});
+	}
+	varags = func.varargs;
+	// no return type yet
+
+	// TODO: Named params
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// FunctionSet
+//----------------------------------------------------------------------------------------------------------------------
+
 ScalarFunctionSet::ScalarFunctionSet() : FunctionSet("") {
 }
 
@@ -44,18 +106,18 @@ AggregateFunction AggregateFunctionSet::GetFunctionByArguments(ClientContext &co
 		// this is used for functions such as quantile or string_agg that delete part of their arguments during bind
 		// FIXME: we should come up with a better solution here
 		for (auto &func : functions) {
-			if (arguments.size() >= func.arguments.size()) {
+			if (arguments.size() >= func.parameters.size()) {
 				continue;
 			}
 			bool is_prefix = true;
 			for (idx_t k = 0; k < arguments.size(); k++) {
-				if (arguments[k].id() != func.arguments[k].id()) {
+				if (arguments[k].id() != func.parameters[k].type.id()) {
 					is_prefix = false;
 					break;
 				}
 			}
 			if (is_prefix) {
-				return func;
+				return func.function;
 			}
 		}
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),

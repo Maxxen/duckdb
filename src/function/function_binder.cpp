@@ -85,7 +85,7 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 	idx_t lowest_cost = NumericLimits<idx_t>::Maximum();
 	vector<idx_t> candidate_functions;
 	for (idx_t f_idx = 0; f_idx < functions.functions.size(); f_idx++) {
-		auto &func = functions.functions[f_idx];
+		auto &func = functions.GetFunctionReferenceByOffset(f_idx);
 		// check the arguments of the function
 		auto bind_cost = BindFunctionCost(func, arguments);
 		if (!bind_cost.IsValid()) {
@@ -109,7 +109,8 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 		vector<string> candidates;
 		string catalog_name;
 		string schema_name;
-		for (auto &f : functions.functions) {
+		for (auto &fo : functions.functions) {
+			auto &f = fo.function;
 			if (catalog_name.empty() && !f.catalog_name.empty()) {
 				catalog_name = f.catalog_name;
 			}
@@ -163,8 +164,8 @@ optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, Funct
 				throw ParameterNotResolvedException();
 			}
 		}
-		auto catalog_name = functions.functions.size() > 0 ? functions.functions[0].catalog_name : "";
-		auto schema_name = functions.functions.size() > 0 ? functions.functions[0].schema_name : "";
+		auto catalog_name = functions.functions.size() > 0 ? functions.functions[0].function.catalog_name : "";
+		auto schema_name = functions.functions.size() > 0 ? functions.functions[0].function.schema_name : "";
 		return MultipleCandidateException(catalog_name, schema_name, name, functions, candidate_functions, arguments,
 		                                  error);
 	}

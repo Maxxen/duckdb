@@ -16,6 +16,53 @@
 
 namespace duckdb {
 
+class FunctionParameter {
+public:
+	LogicalType type;
+};
+
+template <class T>
+class FunctionOverload {
+public:
+	vector<FunctionParameter> parameters;
+	LogicalType varags;
+	LogicalType return_type;
+
+	T function;
+
+	FunctionOverload(T func);
+
+	bool Equal(const FunctionOverload<T> &other) const {
+		if (parameters.size() != other.parameters.size()) {
+			return false;
+		}
+		for (idx_t i = 0; i < parameters.size(); i++) {
+			if (parameters[i].type != other.parameters[i].type) {
+				return false;
+			}
+		}
+		if (varags != other.varags) {
+			return false;
+		}
+		if (return_type != other.return_type) {
+			return false;
+		}
+
+		return function.Equal(other.function);
+	}
+};
+
+template <>
+FunctionOverload<ScalarFunction>::FunctionOverload(ScalarFunction func);
+template <>
+FunctionOverload<AggregateFunction>::FunctionOverload(AggregateFunction func);
+template <>
+FunctionOverload<WindowFunction>::FunctionOverload(WindowFunction func);
+template <>
+FunctionOverload<TableFunction>::FunctionOverload(TableFunction func);
+template <>
+FunctionOverload<PragmaFunction>::FunctionOverload(PragmaFunction func);
+
 template <class T>
 class FunctionSet {
 public:
@@ -25,22 +72,27 @@ public:
 	//! The name of the function set
 	string name;
 	//! The set of functions.
-	vector<T> functions;
+	vector<FunctionOverload<T>> functions;
 
 public:
 	void AddFunction(T function) {
 		functions.push_back(std::move(function));
 	}
+
+	void AddFunction(FunctionOverload<T> function) {
+		functions.push_back(std::move(function));
+	}
+
 	idx_t Size() {
 		return functions.size();
 	}
 	T GetFunctionByOffset(idx_t offset) {
 		D_ASSERT(offset < functions.size());
-		return functions[offset];
+		return functions[offset].function;
 	}
 	T &GetFunctionReferenceByOffset(idx_t offset) {
 		D_ASSERT(offset < functions.size());
-		return functions[offset];
+		return functions[offset].function;
 	}
 	bool MergeFunctionSet(FunctionSet<T> new_functions, bool override = false) {
 		D_ASSERT(!new_functions.functions.empty());
