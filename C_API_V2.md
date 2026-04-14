@@ -31,6 +31,19 @@ test/sql/sqlite_v2/              SQLite extension SQL tests
 python_client/                   Python client (to be set up)
 ```
 
+## Getting started
+
+```bash
+git clone --recurse-submodules git@github.com:duckdb/duckdb-capi-v2.git
+cd duckdb-capi-v2
+```
+
+If you already cloned without `--recurse-submodules`:
+
+```bash
+git submodule update --init
+```
+
 ## Prerequisites
 
 Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (the Python package manager used by the generator):
