@@ -27,16 +27,15 @@ FunctionBinder::FunctionBinder(ClientContext &context_p) : binder(nullptr), cont
 FunctionBinder::FunctionBinder(Binder &binder_p) : binder(&binder_p), context(binder_p.context) {
 }
 
-template <class T>
-static optional_idx BindVarArgsFunctionCost(ClientContext &context, FunctionOverload<T> func,
+static optional_idx BindVarArgsFunctionCost(ClientContext &context, const FunctionSignature &sig,
                                             const vector<LogicalType> &arguments) {
-	if (arguments.size() < func.parameters.size()) {
+	if (arguments.size() < sig.GetParameterCount()) {
 		// not enough arguments to fulfill the non-vararg part of the function
 		return optional_idx();
 	}
 	idx_t cost = 0;
 	for (idx_t i = 0; i < arguments.size(); i++) {
-		LogicalType arg_type = i < func.parameters.size() ? func.parameters[i].type : func.varargs;
+		LogicalType arg_type = i < sig.GetParameterCount() ? sig.GetParameter(i).GetType() : sig.varargs;
 		if (arguments[i] == arg_type) {
 			// arguments match: do nothing
 			continue;
@@ -53,16 +52,15 @@ static optional_idx BindVarArgsFunctionCost(ClientContext &context, FunctionOver
 	return cost;
 }
 
-template <class T>
-static optional_idx BindFunctionCost(ClientContext &context, FunctionOverload<T> func,
+static optional_idx BindFunctionCost(ClientContext &context, const FunctionSignature &sig,
                                      const vector<LogicalType> &arguments) {
 	// TODO: Varargs
-	if (func.HasVarArgs()) {
+	if (sig.HasVarArgs()) {
 		// special case varargs function
-		return BindVarArgsFunctionCost(context, func, arguments);
+		return BindVarArgsFunctionCost(context, sig, arguments);
 	}
 
-	if (func.parameters.size() != arguments.size()) {
+	if (sig.parameters.size() != arguments.size()) {
 		// invalid argument count: check the next function
 		return optional_idx();
 	}
@@ -73,7 +71,7 @@ static optional_idx BindFunctionCost(ClientContext &context, FunctionOverload<T>
 			has_parameter = true;
 			continue;
 		}
-		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], func.parameters[i].type);
+		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], sig.GetParameter(i).GetType());
 		if (cast_cost >= 0) {
 			// we can implicitly cast, add the cost to the total cost
 			cost += idx_t(cast_cost);
@@ -99,7 +97,7 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &catalog_n
 	for (idx_t f_idx = 0; f_idx < functions.functions.size(); f_idx++) {
 		auto &func = functions.GetEntryByOffset(f_idx);
 		// check the arguments of the function
-		auto bind_cost = BindFunctionCost(context, func, arguments);
+		auto bind_cost = BindFunctionCost(context, func.GetSignature(), arguments);
 		if (!bind_cost.IsValid()) {
 			// auto casting was not possible
 			continue;

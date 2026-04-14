@@ -18,21 +18,73 @@ namespace duckdb {
 
 class FunctionParameter {
 public:
+	FunctionParameter(string name, LogicalType type) : name(std::move(name)), type(std::move(type)) {
+	}
+
+	const string &GetName() const {
+		return name;
+	}
+
+	const LogicalType &GetType() const {
+		return type;
+	}
+
+private:
+	string name;
 	LogicalType type;
 };
 
-template <class T>
-class FunctionOverload {
+class FunctionSignature {
 public:
 	vector<FunctionParameter> parameters;
 	LogicalType varargs;
 	LogicalType return_type;
 
+	const vector<FunctionParameter> &GetParameters() const {
+		return parameters;
+	}
+	idx_t GetParameterCount() const {
+		return parameters.size();
+	}
+
+	const FunctionParameter &GetParameter(idx_t idx) const {
+		D_ASSERT(idx < parameters.size());
+		return parameters[idx];
+	}
+
 	bool HasVarArgs() const {
 		return varargs.id() != LogicalTypeId::INVALID;
 	}
 
+	bool Equal(const FunctionSignature &other) const {
+		if (parameters.size() != other.parameters.size()) {
+			return false;
+		}
+		for (idx_t i = 0; i < parameters.size(); i++) {
+			// Name does not matter for function signature equality, only type
+			if (parameters[i].GetType() != other.parameters[i].GetType()) {
+				return false;
+			}
+		}
+		if (varargs != other.varargs) {
+			return false;
+		}
+		if (return_type != other.return_type) {
+			return false;
+		}
+
+		return true;
+	}
+};
+
+template <class T>
+class FunctionOverload {
+public:
 	FunctionOverload(T func);
+
+	const FunctionSignature &GetSignature() const {
+		return signature;
+	}
 
 	T &GetImplementation() {
 		return function;
@@ -47,26 +99,12 @@ public:
 	}
 
 	bool Equal(const FunctionOverload<T> &other) const {
-		if (parameters.size() != other.parameters.size()) {
-			return false;
-		}
-		for (idx_t i = 0; i < parameters.size(); i++) {
-			if (parameters[i].type != other.parameters[i].type) {
-				return false;
-			}
-		}
-		if (varargs != other.varargs) {
-			return false;
-		}
-		if (return_type != other.return_type) {
-			return false;
-		}
-
-		return function.Equal(other.function);
+		return signature.Equal(other.signature);
 	}
 
 private:
-	T function;
+	FunctionSignature signature; // binding
+	T function;                  // exec, catalog
 };
 
 // For backwards compatability, we allow constructing implicitly from a fully defined function
