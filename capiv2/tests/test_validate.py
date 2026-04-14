@@ -6,11 +6,11 @@ from capigen.validate import validate_semantics
 class TestDuplicateDetection:
     def test_duplicate_handle_across_modules(self, metadata, make_module):
         modules = [
-            make_module("a", handles={"my_handle": {}}),
-            make_module("b", handles={"my_handle": {}}),
+            make_module("a", handles={"duckdb_v2_my_handle": {}}),
+            make_module("b", handles={"duckdb_v2_my_handle": {}}),
         ]
         errors = validate_semantics(modules, metadata)
-        assert any("duplicated" in e and "my_handle" in e for e in errors)
+        assert any("duplicated" in e and "duckdb_v2_my_handle" in e for e in errors)
 
     def test_duplicate_function_across_modules(self, metadata, make_module):
         modules = [
@@ -44,16 +44,16 @@ class TestDuplicateDetection:
 
     def test_duplicate_across_construct_types(self, metadata, make_module):
         modules = [
-            make_module("a", handles={"clash": {}}),
-            make_module("b", aliases={"clash": {"underlying": "u32"}}),
+            make_module("a", handles={"duckdb_v2_clash": {}}),
+            make_module("b", aliases={"duckdb_v2_clash": {"underlying": "u32"}}),
         ]
         errors = validate_semantics(modules, metadata)
-        assert any("duplicated" in e and "clash" in e for e in errors)
+        assert any("duplicated" in e and "duckdb_v2_clash" in e for e in errors)
 
     def test_no_errors_when_names_are_unique(self, metadata, make_module):
         modules = [
-            make_module("a", handles={"handle_a": {}}),
-            make_module("b", handles={"handle_b": {}}),
+            make_module("a", handles={"duckdb_v2_handle_a": {}}),
+            make_module("b", handles={"duckdb_v2_handle_b": {}}),
         ]
         errors = validate_semantics(modules, metadata)
         assert errors == []
@@ -62,22 +62,22 @@ class TestDuplicateDetection:
 class TestTypeReferences:
     def test_unknown_alias_underlying(self, metadata, make_module):
         modules = [
-            make_module("m", aliases={"t": {"underlying": "nonexistent"}}),
+            make_module("m", aliases={"duckdb_v2_t": {"underlying": "nonexistent"}}),
         ]
         errors = validate_semantics(modules, metadata)
         assert any("Unknown underlying type 'nonexistent'" in e for e in errors)
 
     def test_alias_to_primitive(self, metadata, make_module):
         modules = [
-            make_module("m", aliases={"my_int": {"underlying": "u32"}}),
+            make_module("m", aliases={"duckdb_v2_my_int": {"underlying": "u32"}}),
         ]
         errors = validate_semantics(modules, metadata)
         assert errors == []
 
     def test_alias_to_handle(self, metadata, make_module):
         modules = [
-            make_module("common", handles={"ctx": {}}),
-            make_module("m", aliases={"my_ctx": {"underlying": "ctx"}}),
+            make_module("common", handles={"duckdb_v2_ctx": {}}),
+            make_module("m", aliases={"duckdb_v2_my_ctx": {"underlying": "duckdb_v2_ctx"}}),
         ]
         errors = validate_semantics(modules, metadata)
         assert errors == []
@@ -87,7 +87,7 @@ class TestTypeReferences:
             make_module(
                 "m",
                 structs={
-                    "s": {
+                    "duckdb_v2_s": {
                         "fields": [
                             {
                                 "name": "f",
@@ -105,15 +105,15 @@ class TestTypeReferences:
 
     def test_cross_module_type_reference_is_valid(self, metadata, make_module):
         modules = [
-            make_module("common", handles={"handle": {}}),
+            make_module("common", handles={"duckdb_v2_handle": {}}),
             make_module(
                 "other",
                 structs={
-                    "s": {
+                    "duckdb_v2_s": {
                         "fields": [
                             {
                                 "name": "h",
-                                "type": "handle",
+                                "type": "duckdb_v2_handle",
                                 "pointer": 0,
                                 "const": False,
                             }
@@ -130,7 +130,7 @@ class TestTypeReferences:
             make_module(
                 "m",
                 callbacks={
-                    "cb": {
+                    "duckdb_v2_cb": {
                         "return_type": "opaque",
                         "return_pointer": 0,
                         "return_const": False,
@@ -154,7 +154,7 @@ class TestTypeReferences:
             make_module(
                 "m",
                 callbacks={
-                    "cb": {
+                    "duckdb_v2_cb": {
                         "return_type": "missing",
                         "return_pointer": 0,
                         "return_const": False,
@@ -165,6 +165,44 @@ class TestTypeReferences:
         ]
         errors = validate_semantics(modules, metadata)
         assert any("Unknown return type 'missing'" in e for e in errors)
+
+
+class TestTypePrefix:
+    def test_handle_missing_v2_prefix_rejected(self, metadata, make_module):
+        modules = [make_module("m", handles={"duckdb_conn": {}})]
+        errors = validate_semantics(modules, metadata)
+        assert any("Type name must start with" in e and "duckdb_conn" in e for e in errors)
+
+    def test_handle_v2_prefix_accepted(self, metadata, make_module):
+        modules = [make_module("m", handles={"duckdb_v2_conn": {}})]
+        errors = validate_semantics(modules, metadata)
+        assert not any("Type name must start with" in e for e in errors)
+
+    def test_enum_missing_v2_prefix_rejected(self, metadata, make_module):
+        modules = [
+            make_module("m", enums={"DUCKDB_TYPE": {"description": "", "values": {}}}),
+        ]
+        errors = validate_semantics(modules, metadata)
+        assert any("Type name must start with" in e and "DUCKDB_TYPE" in e for e in errors)
+
+    def test_enum_v2_prefix_accepted(self, metadata, make_module):
+        modules = [
+            make_module("m", enums={"DUCKDB_V2_TYPE": {"description": "", "values": {}}}),
+        ]
+        errors = validate_semantics(modules, metadata)
+        assert not any("Type name must start with" in e for e in errors)
+
+    def test_alias_missing_v2_prefix_rejected(self, metadata, make_module):
+        modules = [make_module("m", aliases={"duckdb_idx": {"underlying": "u32"}})]
+        errors = validate_semantics(modules, metadata)
+        assert any("Type name must start with" in e and "duckdb_idx" in e for e in errors)
+
+    def test_struct_missing_v2_prefix_rejected(self, metadata, make_module):
+        modules = [
+            make_module("m", structs={"duckdb_date": {"fields": []}}),
+        ]
+        errors = validate_semantics(modules, metadata)
+        assert any("Type name must start with" in e and "duckdb_date" in e for e in errors)
 
 
 class TestFunctionPrefix:

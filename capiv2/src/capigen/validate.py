@@ -32,7 +32,14 @@ def validate_semantics(modules: list[dict], metadata: dict) -> list[str]:
                 )
             all_functions[func_name] = module_name
 
-    # Pass 1.5: enforce duckdb_v2_ prefix on all function names
+    # Pass 1.5: enforce duckdb_v2_ / DUCKDB_V2_ prefix on all names
+    for type_name, module_name in all_types.items():
+        if not type_name.startswith("duckdb_v2_") and not type_name.startswith("DUCKDB_V2_"):
+            errors.append(
+                f"{module_name}::{type_name}: Type name must start with 'duckdb_v2_' or "
+                f"'DUCKDB_V2_' (got '{type_name}')"
+            )
+
     for func_name, module_name in all_functions.items():
         if not func_name.startswith("duckdb_v2_"):
             errors.append(
