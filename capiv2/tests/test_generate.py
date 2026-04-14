@@ -14,7 +14,10 @@ from capigen.adapters.c import generate
 
 REPO_ROOT = Path(__file__).parent.parent
 SPEC_DIR = REPO_ROOT / "api_spec"
-CHECKED_IN_HEADER = REPO_ROOT.parent / "src" / "include" / "duckdb_v2.h"
+# In-tree: ../src/include/duckdb_v2.h; standalone: ./duckdb_v2.h
+_IN_TREE = REPO_ROOT.parent / "src" / "include" / "duckdb_v2.h"
+_STANDALONE = REPO_ROOT / "duckdb_v2.h"
+CHECKED_IN_HEADER = _IN_TREE if _IN_TREE.exists() else _STANDALONE
 
 
 class TestRoundTrip:
