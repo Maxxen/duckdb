@@ -1,0 +1,37 @@
+name: V2 C API
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install formatting tools
+        run: pip3 install cmake-format 'black==24.*' 'clang_format==11.0.1'
+      - name: Format check
+        run: python3 scripts/format.py --all --check --silent
+
+  generator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: cd capiv2 && uv sync && just test
+      - run: cd capiv2 && uv run capigen c -o ../src/include/duckdb_v2.h
+      - run: git diff --exit-code src/include/duckdb_v2.h
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make release
+      - name: Test V2 CAPI
+        run: ./build/release/test/unittest "[capi_v2]"
+      - name: Test JSON V2 extension
+        run: ./build/release/test/unittest "test/sql/json_v2/*"
+      - name: Test SQLite V2 extension
+        run: ./build/release/test/unittest "test/sql/sqlite_v2/*"
