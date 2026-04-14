@@ -193,7 +193,7 @@ ScalarFunctionSet AbsOperatorFun::GetFunctions() {
 		}
 	}
 	for (auto &func : abs.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return abs;
 }
@@ -1077,7 +1077,7 @@ ScalarFunctionSet LogFun::GetFunctions() {
 	funcs.AddFunction(ScalarFunction({LogicalType::DOUBLE, LogicalType::DOUBLE}, LogicalType::DOUBLE,
 	                                 ScalarFunction::BinaryFunction<double, double, double, LogBaseOperator>));
 	for (auto &function : funcs.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return funcs;
 }
@@ -1742,7 +1742,7 @@ ScalarFunctionSet LeastCommonMultipleFun::GetFunctions() {
 	    ScalarFunction({LogicalType::HUGEINT, LogicalType::HUGEINT}, LogicalType::HUGEINT,
 	                   ScalarFunction::BinaryFunction<hugeint_t, hugeint_t, hugeint_t, LeastCommonMultipleOperator>));
 	for (auto &function : funcs.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return funcs;
 }

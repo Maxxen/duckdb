@@ -213,7 +213,7 @@ BindResult BaseSelectBinder::BindWindowExpression(WindowExpression &window, idx_
 		// bind the aggregate
 		ErrorData error_aggr;
 		FunctionBinder function_binder(context);
-		auto best_function = function_binder.BindFunction(func.name, func.functions, types, error_aggr);
+		auto best_function = function_binder.BindFunction(func, types, error_aggr);
 		if (!best_function.IsValid()) {
 			error_aggr.AddQueryLocation(window);
 			error_aggr.Throw();
@@ -234,7 +234,7 @@ BindResult BaseSelectBinder::BindWindowExpression(WindowExpression &window, idx_
 		// bind the aggregate
 		ErrorData error_aggr;
 		FunctionBinder function_binder(context);
-		auto best_function = function_binder.BindFunction(func.name, func.functions, types, error_aggr);
+		auto best_function = function_binder.BindFunction(func, types, error_aggr);
 		if (!best_function.IsValid()) {
 			error_aggr.AddQueryLocation(window);
 			error_aggr.Throw();

@@ -85,7 +85,7 @@ ScalarFunctionSet ListDistanceFun::GetFunctions() {
 		AddListFoldFunction<DistanceOp>(set, type);
 	}
 	for (auto &func : set.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return set;
 }
@@ -112,7 +112,7 @@ ScalarFunctionSet ListCosineSimilarityFun::GetFunctions() {
 		AddListFoldFunction<CosineSimilarityOp>(set, type);
 	}
 	for (auto &func : set.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return set;
 }

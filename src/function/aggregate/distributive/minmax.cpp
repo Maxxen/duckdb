@@ -361,7 +361,7 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 		FunctionBinder function_binder(context);
 		vector<LogicalType> types {arguments[0]->return_type, collated_arg->return_type};
 		ErrorData error;
-		auto best_function = function_binder.BindFunction(func_entry.name, func_entry.functions, types, error);
+		auto best_function = function_binder.BindFunction(func_entry, types, error);
 		if (!best_function.IsValid()) {
 			throw BinderException(string("Fail to find corresponding function for collation min/max: ") +
 			                      error.Message());

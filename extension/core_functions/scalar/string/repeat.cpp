@@ -68,7 +68,7 @@ ScalarFunctionSet RepeatFun::GetFunctions() {
 	repeat.AddFunction(ScalarFunction({LogicalType::LIST(LogicalType::TEMPLATE("T")), LogicalType::BIGINT},
 	                                  LogicalType::LIST(LogicalType::TEMPLATE("T")), RepeatListFunction));
 	for (auto &func : repeat.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return repeat;
 }

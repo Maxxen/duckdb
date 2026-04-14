@@ -122,7 +122,9 @@ static unique_ptr<FunctionData> BindExtensionFunction(BindScalarFunctionInput &i
 	auto &catalog = Catalog::GetSystemCatalog(db);
 	auto &function_entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(context, DEFAULT_SCHEMA, bound_function.name);
 	// override the function with the extension function
-	bound_function = function_entry.functions.GetFunctionByArguments(context, bound_function.arguments);
+	bound_function = function_entry.functions.GetFunctionByArguments(context, function_entry.catalog.GetName(),
+	                                                                 function_entry.schema.name, function_entry.name,
+	                                                                 bound_function.arguments);
 	// call the original bind (if any)
 	if (!bound_function.HasBindCallback()) {
 		return nullptr;

@@ -2,6 +2,11 @@
 
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/aggregate_function_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/table_function_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/pragma_function_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/window_function_catalog_entry.hpp"
+
 #include "duckdb/common/limits.hpp"
 #include "duckdb/common/type_visitor.hpp"
 #include "duckdb/execution/expression_executor.hpp"
@@ -22,14 +27,16 @@ FunctionBinder::FunctionBinder(ClientContext &context_p) : binder(nullptr), cont
 FunctionBinder::FunctionBinder(Binder &binder_p) : binder(&binder_p), context(binder_p.context) {
 }
 
-optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
-	if (arguments.size() < func.arguments.size()) {
+template <class T>
+static optional_idx BindVarArgsFunctionCost(ClientContext &context, FunctionOverload<T> func,
+                                            const vector<LogicalType> &arguments) {
+	if (arguments.size() < func.parameters.size()) {
 		// not enough arguments to fulfill the non-vararg part of the function
 		return optional_idx();
 	}
 	idx_t cost = 0;
 	for (idx_t i = 0; i < arguments.size(); i++) {
-		LogicalType arg_type = i < func.arguments.size() ? func.arguments[i] : func.varargs;
+		LogicalType arg_type = i < func.parameters.size() ? func.parameters[i].type : func.varargs;
 		if (arguments[i] == arg_type) {
 			// arguments match: do nothing
 			continue;
@@ -46,12 +53,16 @@ optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func,
 	return cost;
 }
 
-optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
+template <class T>
+static optional_idx BindFunctionCost(ClientContext &context, FunctionOverload<T> func,
+                                     const vector<LogicalType> &arguments) {
+	// TODO: Varargs
 	if (func.HasVarArgs()) {
 		// special case varargs function
-		return BindVarArgsFunctionCost(func, arguments);
+		return BindVarArgsFunctionCost(context, func, arguments);
 	}
-	if (func.arguments.size() != arguments.size()) {
+
+	if (func.parameters.size() != arguments.size()) {
 		// invalid argument count: check the next function
 		return optional_idx();
 	}
@@ -62,7 +73,7 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 			has_parameter = true;
 			continue;
 		}
-		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], func.arguments[i]);
+		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], func.parameters[i].type);
 		if (cast_cost >= 0) {
 			// we can implicitly cast, add the cost to the total cost
 			cost += idx_t(cast_cost);
@@ -79,15 +90,16 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 }
 
 template <class T>
-vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, FunctionSet<T> &functions,
+vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &catalog_name, const string &schema_name,
+                                                         const string &name, FunctionSet<T> &functions,
                                                          const vector<LogicalType> &arguments, ErrorData &error) {
 	optional_idx best_function;
 	idx_t lowest_cost = NumericLimits<idx_t>::Maximum();
 	vector<idx_t> candidate_functions;
 	for (idx_t f_idx = 0; f_idx < functions.functions.size(); f_idx++) {
-		auto &func = functions.GetFunctionReferenceByOffset(f_idx);
+		auto &func = functions.GetEntryByOffset(f_idx);
 		// check the arguments of the function
-		auto bind_cost = BindFunctionCost(func, arguments);
+		auto bind_cost = BindFunctionCost(context, func, arguments);
 		if (!bind_cost.IsValid()) {
 			// auto casting was not possible
 			continue;
@@ -107,16 +119,7 @@ vector<idx_t> FunctionBinder::BindFunctionsFromArguments(const string &name, Fun
 	if (!best_function.IsValid()) {
 		// no matching function was found, throw an error
 		vector<string> candidates;
-		string catalog_name;
-		string schema_name;
-		for (auto &fo : functions.functions) {
-			auto &f = fo.function;
-			if (catalog_name.empty() && !f.catalog_name.empty()) {
-				catalog_name = f.catalog_name;
-			}
-			if (schema_name.empty() && !f.schema_name.empty()) {
-				schema_name = f.schema_name;
-			}
+		for (auto &f : functions.functions) {
 			candidates.push_back(f.ToString());
 		}
 		error = ErrorData(BinderException::NoMatchingFunction(catalog_name, schema_name, name, arguments, candidates));
@@ -149,9 +152,11 @@ optional_idx FunctionBinder::MultipleCandidateException(const string &catalog_na
 }
 
 template <class T>
-optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, FunctionSet<T> &functions,
+optional_idx FunctionBinder::BindFunctionFromArguments(const string &catalog_name, const string &schema_name,
+                                                       const string &name, FunctionSet<T> &functions,
                                                        const vector<LogicalType> &arguments, ErrorData &error) {
-	auto candidate_functions = BindFunctionsFromArguments<T>(name, functions, arguments, error);
+	auto candidate_functions =
+	    BindFunctionsFromArguments<T>(catalog_name, schema_name, name, functions, arguments, error);
 	if (candidate_functions.empty()) {
 		// No candidates, return an invalid index.
 		return optional_idx();
@@ -164,41 +169,43 @@ optional_idx FunctionBinder::BindFunctionFromArguments(const string &name, Funct
 				throw ParameterNotResolvedException();
 			}
 		}
-		auto catalog_name = functions.functions.size() > 0 ? functions.functions[0].function.catalog_name : "";
-		auto schema_name = functions.functions.size() > 0 ? functions.functions[0].function.schema_name : "";
 		return MultipleCandidateException(catalog_name, schema_name, name, functions, candidate_functions, arguments,
 		                                  error);
 	}
 	return candidate_functions[0];
 }
 
-optional_idx FunctionBinder::BindFunction(const string &name, ScalarFunctionSet &functions,
-                                          const vector<LogicalType> &arguments, ErrorData &error) {
-	return BindFunctionFromArguments(name, functions, arguments, error);
-}
-
-optional_idx FunctionBinder::BindFunction(const string &name, AggregateFunctionSet &functions,
-                                          const vector<LogicalType> &arguments, ErrorData &error) {
-	return BindFunctionFromArguments(name, functions, arguments, error);
-}
-
-optional_idx FunctionBinder::BindFunction(const string &name, TableFunctionSet &functions,
-                                          const vector<LogicalType> &arguments, ErrorData &error) {
-	return BindFunctionFromArguments(name, functions, arguments, error);
-}
-
-optional_idx FunctionBinder::BindFunction(const string &name, WindowFunctionSet &functions,
-                                          const vector<LogicalType> &arguments, ErrorData &error) {
-	return BindFunctionFromArguments(name, functions, arguments, error);
-}
-
-optional_idx FunctionBinder::BindFunction(const string &name, PragmaFunctionSet &functions, vector<Value> &parameters,
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          ScalarFunctionSet &functions, const vector<LogicalType> &arguments,
                                           ErrorData &error) {
+	return BindFunctionFromArguments(catalog_name, schema_name, name, functions, arguments, error);
+}
+
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          AggregateFunctionSet &functions, const vector<LogicalType> &arguments,
+                                          ErrorData &error) {
+	return BindFunctionFromArguments(catalog_name, schema_name, name, functions, arguments, error);
+}
+
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          TableFunctionSet &functions, const vector<LogicalType> &arguments,
+                                          ErrorData &error) {
+	return BindFunctionFromArguments(catalog_name, schema_name, name, functions, arguments, error);
+}
+
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          WindowFunctionSet &functions, const vector<LogicalType> &arguments,
+                                          ErrorData &error) {
+	return BindFunctionFromArguments(catalog_name, schema_name, name, functions, arguments, error);
+}
+
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          PragmaFunctionSet &functions, vector<Value> &parameters, ErrorData &error) {
 	vector<LogicalType> types;
 	for (auto &value : parameters) {
 		types.push_back(value.type());
 	}
-	auto entry = BindFunctionFromArguments(name, functions, types, error);
+	auto entry = BindFunctionFromArguments(catalog_name, schema_name, name, functions, types, error);
 	if (!entry.IsValid()) {
 		error.Throw();
 	}
@@ -212,6 +219,11 @@ optional_idx FunctionBinder::BindFunction(const string &name, PragmaFunctionSet 
 	return entry;
 }
 
+optional_idx FunctionBinder::BindFunction(PragmaFunctionCatalogEntry &entry, vector<Value> &parameters,
+                                          ErrorData &error) {
+	return BindFunction(entry.catalog.GetName(), entry.schema.name, entry.name, entry.functions, parameters, error);
+}
+
 vector<LogicalType> FunctionBinder::GetLogicalTypesFromExpressions(vector<unique_ptr<Expression>> &arguments) {
 	vector<LogicalType> types;
 	types.reserve(arguments.size());
@@ -221,22 +233,67 @@ vector<LogicalType> FunctionBinder::GetLogicalTypesFromExpressions(vector<unique
 	return types;
 }
 
-optional_idx FunctionBinder::BindFunction(const string &name, ScalarFunctionSet &functions,
-                                          vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          ScalarFunctionSet &functions, vector<unique_ptr<Expression>> &arguments,
+                                          ErrorData &error) {
 	auto types = GetLogicalTypesFromExpressions(arguments);
-	return BindFunction(name, functions, types, error);
+	return BindFunction(catalog_name, schema_name, name, functions, types, error);
 }
 
-optional_idx FunctionBinder::BindFunction(const string &name, AggregateFunctionSet &functions,
-                                          vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
-	auto types = GetLogicalTypesFromExpressions(arguments);
-	return BindFunction(name, functions, types, error);
+optional_idx FunctionBinder::BindFunction(ScalarFunctionCatalogEntry &entry, const vector<LogicalType> &arguments,
+                                          ErrorData &error) {
+	return BindFunctionFromArguments(entry.catalog.GetName(), entry.schema.name, entry.name, entry.functions, arguments,
+	                                 error);
 }
 
-optional_idx FunctionBinder::BindFunction(const string &name, TableFunctionSet &functions,
+optional_idx FunctionBinder::BindFunction(ScalarFunctionCatalogEntry &entry, vector<unique_ptr<Expression>> &arguments,
+                                          ErrorData &error) {
+	auto types = GetLogicalTypesFromExpressions(arguments);
+	return BindFunction(entry, types, error);
+}
+
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          AggregateFunctionSet &functions, vector<unique_ptr<Expression>> &arguments,
+                                          ErrorData &error) {
+	auto types = GetLogicalTypesFromExpressions(arguments);
+	return BindFunction(catalog_name, schema_name, name, functions, types, error);
+}
+
+optional_idx FunctionBinder::BindFunction(AggregateFunctionCatalogEntry &entry,
                                           vector<unique_ptr<Expression>> &arguments, ErrorData &error) {
 	auto types = GetLogicalTypesFromExpressions(arguments);
-	return BindFunction(name, functions, types, error);
+	return BindFunction(entry, types, error);
+}
+
+optional_idx FunctionBinder::BindFunction(AggregateFunctionCatalogEntry &entry, const vector<LogicalType> &arguments,
+                                          ErrorData &error) {
+	return BindFunctionFromArguments(entry.catalog.GetName(), entry.schema.name, entry.name, entry.functions, arguments,
+	                                 error);
+}
+
+optional_idx FunctionBinder::BindFunction(const string &catalog_name, const string &schema_name, const string &name,
+                                          TableFunctionSet &functions, vector<unique_ptr<Expression>> &arguments,
+                                          ErrorData &error) {
+	auto types = GetLogicalTypesFromExpressions(arguments);
+	return BindFunction(catalog_name, schema_name, name, functions, types, error);
+}
+
+optional_idx FunctionBinder::BindFunction(TableFunctionCatalogEntry &entry, vector<unique_ptr<Expression>> &arguments,
+                                          ErrorData &error) {
+	auto types = GetLogicalTypesFromExpressions(arguments);
+	return BindFunction(entry, types, error);
+}
+
+optional_idx FunctionBinder::BindFunction(TableFunctionCatalogEntry &entry, const vector<LogicalType> &arguments,
+                                          ErrorData &error) {
+	return BindFunctionFromArguments(entry.catalog.GetName(), entry.schema.name, entry.name, entry.functions, arguments,
+	                                 error);
+}
+
+optional_idx FunctionBinder::BindFunction(WindowFunctionCatalogEntry &entry, const vector<LogicalType> &arguments,
+                                          ErrorData &error) {
+	return BindFunctionFromArguments(entry.catalog.GetName(), entry.schema.name, entry.name, entry.functions, arguments,
+	                                 error);
 }
 
 enum class LogicalTypeComparisonResult : uint8_t { IDENTICAL_TYPE, TARGET_IS_ANY, DIFFERENT_TYPES };
@@ -326,7 +383,8 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(ScalarFunctionCatalogE
                                                           vector<unique_ptr<Expression>> children, ErrorData &error,
                                                           bool is_operator, optional_ptr<Binder> binder) {
 	// bind the function
-	auto best_function = BindFunction(func.name, func.functions, children, error);
+	auto best_function =
+	    BindFunction(func.catalog.GetName(), func.schema.name, func.name, func.functions, children, error);
 	if (!best_function.IsValid()) {
 		return nullptr;
 	}
@@ -739,6 +797,12 @@ unique_ptr<BoundWindowExpression> FunctionBinder::BindWindowFunction(WindowFunct
 	result->children = std::move(children);
 
 	return result;
+}
+
+template <class T>
+unique_ptr<Expression> FunctionBinder::BindFunc(const string &name, const string &schema, const string &catalog,
+                                                FunctionSet<T> &functions, vector<unique_ptr<Expression>> &args,
+                                                ErrorData &error) {
 }
 
 } // namespace duckdb

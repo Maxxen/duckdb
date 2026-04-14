@@ -183,7 +183,7 @@ ScalarFunctionSet GetIntegerIntervalFunctions() {
 	function_set.AddFunction(ScalarFunction({LogicalType::BIGINT}, LogicalType::INTERVAL,
 	                                        ScalarFunction::UnaryFunction<int64_t, interval_t, OP>));
 	for (auto &func : function_set.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return function_set;
 }

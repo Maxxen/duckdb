@@ -117,7 +117,7 @@ ScalarFunctionSet BitwiseAndFun::GetFunctions() {
 	}
 	functions.AddFunction(ScalarFunction({LogicalType::BIT, LogicalType::BIT}, LogicalType::BIT, BitwiseANDOperation));
 	for (auto &function : functions.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return functions;
 }
@@ -155,7 +155,7 @@ ScalarFunctionSet BitwiseOrFun::GetFunctions() {
 	}
 	functions.AddFunction(ScalarFunction({LogicalType::BIT, LogicalType::BIT}, LogicalType::BIT, BitwiseOROperation));
 	for (auto &function : functions.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return functions;
 }
@@ -193,7 +193,7 @@ ScalarFunctionSet BitwiseXorFun::GetFunctions() {
 	}
 	functions.AddFunction(ScalarFunction({LogicalType::BIT, LogicalType::BIT}, LogicalType::BIT, BitwiseXOROperation));
 	for (auto &function : functions.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return functions;
 }
@@ -229,7 +229,7 @@ ScalarFunctionSet BitwiseNotFun::GetFunctions() {
 	}
 	functions.AddFunction(ScalarFunction({LogicalType::BIT}, LogicalType::BIT, BitwiseNOTOperation));
 	for (auto &function : functions.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return functions;
 }
@@ -298,7 +298,7 @@ ScalarFunctionSet LeftShiftFun::GetFunctions() {
 	functions.AddFunction(
 	    ScalarFunction({LogicalType::BIT, LogicalType::INTEGER}, LogicalType::BIT, BitwiseShiftLeftOperation));
 	for (auto &function : functions.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return functions;
 }
@@ -348,7 +348,7 @@ ScalarFunctionSet RightShiftFun::GetFunctions() {
 	functions.AddFunction(
 	    ScalarFunction({LogicalType::BIT, LogicalType::INTEGER}, LogicalType::BIT, BitwiseShiftRightOperation));
 	for (auto &function : functions.functions) {
-		function.SetFallible();
+		function.GetImplementation().SetFallible();
 	}
 	return functions;
 }

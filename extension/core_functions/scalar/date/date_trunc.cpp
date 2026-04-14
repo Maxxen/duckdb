@@ -609,7 +609,7 @@ ScalarFunctionSet DateTruncFun::GetFunctions() {
 	date_trunc.AddFunction(ScalarFunction({LogicalType::VARCHAR, LogicalType::INTERVAL}, LogicalType::INTERVAL,
 	                                      DateTruncFunction<interval_t, interval_t>));
 	for (auto &func : date_trunc.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return date_trunc;
 }

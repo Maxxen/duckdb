@@ -338,15 +338,16 @@ WindowFunction LeadFun::GetTypedFunction(const LogicalType &type, idx_t nargs) {
 	auto funcs = GetLeadLagFunctionSet(Name, ExpressionType::WINDOW_LEAD);
 
 	for (auto &func : funcs.functions) {
-		if (func.parameters.size() != nargs) {
+		auto impl = func.GetImplementation();
+		if (impl.arguments.size() != nargs) {
 			continue;
 		}
 
-		func.parameters[0].type = type;
+		impl.arguments[0] = type;
 		if (nargs > 2) {
-			func.parameters[2].type = type;
+			impl.arguments[2] = type;
 		}
-		return func.function;
+		return impl;
 	}
 
 	throw InternalException("Invalid number of arguments requested for LEAD: %lld", nargs);

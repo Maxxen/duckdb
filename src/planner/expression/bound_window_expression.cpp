@@ -326,7 +326,7 @@ unique_ptr<Expression> BoundWindowExpression::Deserialize(Deserializer &deserial
 
 		FunctionBinder function_binder(*binder);
 		ErrorData error_win;
-		auto best = function_binder.BindFunction(func.name, func.functions, arguments, error_win);
+		auto best = function_binder.BindFunction(func, arguments, error_win);
 		if (!best.IsValid()) {
 			error_win.Throw();
 		}

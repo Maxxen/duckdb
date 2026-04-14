@@ -260,7 +260,7 @@ ScalarFunctionSet ListRangeFun::GetFunctions() {
 	                                     LogicalType::LIST(LogicalType::TIMESTAMP),
 	                                     ListRangeFunction<TimestampRangeInfo, false>));
 	for (auto &func : range_set.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return range_set;
 }
@@ -279,7 +279,7 @@ ScalarFunctionSet GenerateSeriesFun::GetFunctions() {
 	                                           LogicalType::LIST(LogicalType::TIMESTAMP),
 	                                           ListRangeFunction<TimestampRangeInfo, true>));
 	for (auto &func : generate_series.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return generate_series;
 }

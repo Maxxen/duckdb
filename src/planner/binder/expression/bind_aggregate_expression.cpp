@@ -256,7 +256,7 @@ BindResult BaseSelectBinder::BindAggregate(FunctionExpression &aggr, AggregateFu
 
 	// bind the aggregate
 	FunctionBinder function_binder(binder);
-	auto best_function = function_binder.BindFunction(func.name, func.functions, types, error);
+	auto best_function = function_binder.BindFunction(func, types, error);
 	if (!best_function.IsValid()) {
 		error.AddQueryLocation(aggr);
 		error.Throw();

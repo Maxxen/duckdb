@@ -25,12 +25,26 @@ template <class T>
 class FunctionOverload {
 public:
 	vector<FunctionParameter> parameters;
-	LogicalType varags;
+	LogicalType varargs;
 	LogicalType return_type;
 
-	T function;
+	bool HasVarArgs() const {
+		return varargs.id() != LogicalTypeId::INVALID;
+	}
 
 	FunctionOverload(T func);
+
+	T &GetImplementation() {
+		return function;
+	}
+
+	const T &GetImplementation() const {
+		return function;
+	}
+
+	string ToString() const {
+		return function.ToString();
+	}
 
 	bool Equal(const FunctionOverload<T> &other) const {
 		if (parameters.size() != other.parameters.size()) {
@@ -41,7 +55,7 @@ public:
 				return false;
 			}
 		}
-		if (varags != other.varags) {
+		if (varargs != other.varargs) {
 			return false;
 		}
 		if (return_type != other.return_type) {
@@ -50,8 +64,12 @@ public:
 
 		return function.Equal(other.function);
 	}
+
+private:
+	T function;
 };
 
+// For backwards compatability, we allow constructing implicitly from a fully defined function
 template <>
 FunctionOverload<ScalarFunction>::FunctionOverload(ScalarFunction func);
 template <>
@@ -86,14 +104,22 @@ public:
 	idx_t Size() {
 		return functions.size();
 	}
+
 	T GetFunctionByOffset(idx_t offset) {
 		D_ASSERT(offset < functions.size());
-		return functions[offset].function;
+		return functions[offset].GetImplementation();
 	}
+
 	T &GetFunctionReferenceByOffset(idx_t offset) {
 		D_ASSERT(offset < functions.size());
-		return functions[offset].function;
+		return functions[offset].GetImplementation();
 	}
+
+	const FunctionOverload<T> &GetEntryByOffset(idx_t offset) {
+		D_ASSERT(offset < functions.size());
+		return functions[offset];
+	}
+
 	bool MergeFunctionSet(FunctionSet<T> new_functions, bool override = false) {
 		D_ASSERT(!new_functions.functions.empty());
 		for (auto &new_func : new_functions.functions) {
@@ -126,7 +152,9 @@ public:
 	DUCKDB_API explicit ScalarFunctionSet(string name);
 	DUCKDB_API explicit ScalarFunctionSet(ScalarFunction fun);
 
-	DUCKDB_API ScalarFunction GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments);
+	DUCKDB_API ScalarFunction GetFunctionByArguments(ClientContext &context, const string &catalog_name,
+	                                                 const string &schema_name, const string &name,
+	                                                 const vector<LogicalType> &arguments);
 };
 
 class AggregateFunctionSet : public FunctionSet<AggregateFunction> {
@@ -135,7 +163,9 @@ public:
 	DUCKDB_API explicit AggregateFunctionSet(string name);
 	DUCKDB_API explicit AggregateFunctionSet(AggregateFunction fun);
 
-	DUCKDB_API AggregateFunction GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments);
+	DUCKDB_API AggregateFunction GetFunctionByArguments(ClientContext &context, const string &catalog_name,
+	                                                    const string &schema_name, const string &name,
+	                                                    const vector<LogicalType> &arguments);
 };
 
 class WindowFunctionSet : public FunctionSet<WindowFunction> {
@@ -144,7 +174,9 @@ public:
 	DUCKDB_API explicit WindowFunctionSet(string name);
 	DUCKDB_API explicit WindowFunctionSet(WindowFunction fun);
 
-	DUCKDB_API WindowFunction GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments);
+	DUCKDB_API WindowFunction GetFunctionByArguments(ClientContext &context, const string &catalog_name,
+	                                                 const string &schema_name, const string &name,
+	                                                 const vector<LogicalType> &arguments);
 };
 
 class TableFunctionSet : public FunctionSet<TableFunction> {
@@ -152,7 +184,8 @@ public:
 	DUCKDB_API explicit TableFunctionSet(string name);
 	DUCKDB_API explicit TableFunctionSet(TableFunction fun);
 
-	TableFunction GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments);
+	TableFunction GetFunctionByArguments(ClientContext &context, const string &catalog_name, const string &schema_name,
+	                                     const string &name, const vector<LogicalType> &arguments);
 };
 
 class PragmaFunctionSet : public FunctionSet<PragmaFunction> {

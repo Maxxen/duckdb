@@ -10,8 +10,8 @@ WindowFunctionCatalogEntry::WindowFunctionCatalogEntry(Catalog &catalog, SchemaC
                                                        CreateWindowFunctionInfo &info)
     : FunctionEntry(Type, catalog, schema, info), functions(info.functions) {
 	for (auto &function : functions.functions) {
-		function.function.catalog_name = catalog.GetAttached().GetName();
-		function.function.schema_name = schema.name;
+		function.GetImplementation().catalog_name = catalog.GetAttached().GetName();
+		function.GetImplementation().schema_name = schema.name;
 	}
 }
 

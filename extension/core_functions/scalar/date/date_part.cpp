@@ -1852,7 +1852,7 @@ ScalarFunctionSet GetGenericDatePartFunction(scalar_function_t date_func, scalar
 	                                        ts_stats, DATE_CACHE));
 	operator_set.AddFunction(ScalarFunction({LogicalType::INTERVAL}, LogicalType::BIGINT, std::move(interval_func)));
 	for (auto &func : operator_set.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return operator_set;
 }
@@ -2173,7 +2173,7 @@ ScalarFunctionSet QuarterFun::GetFunctions() {
 ScalarFunctionSet DayOfWeekFun::GetFunctions() {
 	auto set = GetDatePartFunction<DatePart::DayOfWeekOperator>();
 	for (auto &func : set.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return set;
 }
@@ -2208,7 +2208,7 @@ ScalarFunctionSet TimezoneFun::GetFunctions() {
 	operator_set.AddFunction(function);
 
 	for (auto &func : operator_set.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 
 	return operator_set;
@@ -2410,7 +2410,7 @@ ScalarFunctionSet DatePartFun::GetFunctions() {
 	date_part.AddFunction(StructDatePart::GetFunction<dtime_tz_t>(LogicalType::TIME_TZ));
 
 	for (auto &func : date_part.functions) {
-		func.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 
 	return date_part;

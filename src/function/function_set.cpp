@@ -13,7 +13,7 @@ FunctionOverload<ScalarFunction>::FunctionOverload(ScalarFunction func) : functi
 	for (auto &arg : func.arguments) {
 		parameters.push_back({arg});
 	}
-	varags = func.varargs;
+	varargs = func.varargs;
 	return_type = func.return_type;
 }
 
@@ -23,7 +23,7 @@ FunctionOverload<AggregateFunction>::FunctionOverload(AggregateFunction func) : 
 	for (auto &arg : func.arguments) {
 		parameters.push_back({arg});
 	}
-	varags = func.varargs;
+	varargs = func.varargs;
 	return_type = func.return_type;
 }
 
@@ -33,7 +33,7 @@ FunctionOverload<WindowFunction>::FunctionOverload(WindowFunction func) : functi
 	for (auto &arg : func.arguments) {
 		parameters.push_back({arg});
 	}
-	varags = func.varargs;
+	varargs = func.varargs;
 	return_type = func.return_type;
 }
 
@@ -43,7 +43,7 @@ FunctionOverload<TableFunction>::FunctionOverload(TableFunction func) : function
 	for (auto &arg : func.arguments) {
 		parameters.push_back({arg});
 	}
-	varags = func.varargs;
+	varargs = func.varargs;
 	// no return type yet
 
 	// TODO: Named params
@@ -55,7 +55,7 @@ FunctionOverload<PragmaFunction>::FunctionOverload(PragmaFunction func) : functi
 	for (auto &arg : func.arguments) {
 		parameters.push_back({arg});
 	}
-	varags = func.varargs;
+	varargs = func.varargs;
 	// no return type yet
 
 	// TODO: Named params
@@ -75,10 +75,12 @@ ScalarFunctionSet::ScalarFunctionSet(ScalarFunction fun) : FunctionSet(std::move
 	functions.push_back(std::move(fun));
 }
 
-ScalarFunction ScalarFunctionSet::GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments) {
+ScalarFunction ScalarFunctionSet::GetFunctionByArguments(ClientContext &context, const string &catalog_name,
+                                                         const string &schema_name, const string &name,
+                                                         const vector<LogicalType> &arguments) {
 	ErrorData error;
 	FunctionBinder binder(context);
-	auto index = binder.BindFunction(name, *this, arguments, error);
+	auto index = binder.BindFunction(catalog_name, schema_name, name, *this, arguments, error);
 	if (!index.IsValid()) {
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),
 		                        error.Message());
@@ -96,11 +98,12 @@ AggregateFunctionSet::AggregateFunctionSet(AggregateFunction fun) : FunctionSet(
 	functions.push_back(std::move(fun));
 }
 
-AggregateFunction AggregateFunctionSet::GetFunctionByArguments(ClientContext &context,
+AggregateFunction AggregateFunctionSet::GetFunctionByArguments(ClientContext &context, const string &catalog_name,
+                                                               const string &schema_name, const string &name,
                                                                const vector<LogicalType> &arguments) {
 	ErrorData error;
 	FunctionBinder binder(context);
-	auto index = binder.BindFunction(name, *this, arguments, error);
+	auto index = binder.BindFunction(catalog_name, schema_name, name, *this, arguments, error);
 	if (!index.IsValid()) {
 		// check if the arguments are a prefix of any of the arguments
 		// this is used for functions such as quantile or string_agg that delete part of their arguments during bind
@@ -117,7 +120,7 @@ AggregateFunction AggregateFunctionSet::GetFunctionByArguments(ClientContext &co
 				}
 			}
 			if (is_prefix) {
-				return func.function;
+				return func.GetImplementation();
 			}
 		}
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),
@@ -136,10 +139,12 @@ WindowFunctionSet::WindowFunctionSet(WindowFunction fun) : FunctionSet(std::move
 	functions.push_back(std::move(fun));
 }
 
-WindowFunction WindowFunctionSet::GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments) {
+WindowFunction WindowFunctionSet::GetFunctionByArguments(ClientContext &context, const string &catalog_name,
+                                                         const string &schema_name, const string &name,
+                                                         const vector<LogicalType> &arguments) {
 	ErrorData error;
 	FunctionBinder binder(context);
-	auto index = binder.BindFunction(name, *this, arguments, error);
+	auto index = binder.BindFunction(catalog_name, schema_name, name, *this, arguments, error);
 	if (!index.IsValid()) {
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),
 		                        error.Message());
@@ -154,10 +159,12 @@ TableFunctionSet::TableFunctionSet(TableFunction fun) : FunctionSet(std::move(fu
 	functions.push_back(std::move(fun));
 }
 
-TableFunction TableFunctionSet::GetFunctionByArguments(ClientContext &context, const vector<LogicalType> &arguments) {
+TableFunction TableFunctionSet::GetFunctionByArguments(ClientContext &context, const string &catalog_name,
+                                                       const string &schema_name, const string &name,
+                                                       const vector<LogicalType> &arguments) {
 	ErrorData error;
 	FunctionBinder binder(context);
-	auto index = binder.BindFunction(name, *this, arguments, error);
+	auto index = binder.BindFunction(catalog_name, schema_name, name, *this, arguments, error);
 	if (!index.IsValid()) {
 		throw InternalException("Failed to find function %s(%s)\n%s", name, StringUtil::ToString(arguments, ","),
 		                        error.Message());

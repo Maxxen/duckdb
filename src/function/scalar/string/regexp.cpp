@@ -400,7 +400,7 @@ ScalarFunctionSet RegexpMatchesFun::GetFunctions() {
 	                   RegexpMatchesFunction<RegexPartialMatch>, RegexpMatchesBind, nullptr, RegexInitLocalState,
 	                   LogicalType::INVALID, FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING));
 	for (auto &func : regexp_partial_match.functions) {
-		func.function.SetFallible();
+		func.GetImplementation().SetFallible();
 	}
 	return (regexp_partial_match);
 }

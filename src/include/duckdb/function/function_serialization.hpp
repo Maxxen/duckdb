@@ -53,7 +53,8 @@ public:
 		}
 		auto &functions = func_catalog.Cast<CATALOG_ENTRY>();
 		auto function = functions.functions.GetFunctionByArguments(
-		    context, original_arguments.empty() ? arguments : original_arguments);
+		    context, functions.catalog.GetName(), functions.schema.name, functions.name,
+		    original_arguments.empty() ? arguments : original_arguments);
 		return function;
 	}
 

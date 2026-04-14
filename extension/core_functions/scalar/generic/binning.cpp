@@ -503,9 +503,9 @@ ScalarFunctionSet EquiWidthBinsFun::GetFunctions() {
 	                    LogicalType::BIGINT, LogicalType::BOOLEAN},
 	                   LogicalType::LIST(LogicalType::ANY), UnsupportedEquiWidth, BindEquiWidthFunction));
 	for (auto &function : functions.functions) {
-		function.SetSerializeCallback(EquiWidthBinSerialize);
-		function.SetDeserializeCallback(EquiWidthBinDeserialize);
-		function.SetFallible();
+		function.GetImplementation().SetSerializeCallback(EquiWidthBinSerialize);
+		function.GetImplementation().SetDeserializeCallback(EquiWidthBinDeserialize);
+		function.GetImplementation().SetFallible();
 	}
 	return functions;
 }
