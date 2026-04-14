@@ -1190,6 +1190,241 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_bind(duckdb_v2_c
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_register(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_ptr function);
 
 /* ============================================================================
+ * MODULE: type_value
+ * ============================================================================ */
+
+/* --- Structs for type_value --- */
+
+/* --- Types for type_value --- */
+typedef void* duckdb_v2_type_ptr;
+typedef void* duckdb_v2_type_info_ptr;
+typedef void* duckdb_v2_value_info_ptr;
+
+/* --- Enums for type_value --- */
+typedef enum DUCKDB_V2_KIND {
+  DUCKDB_V2_KIND_INTEGER = 1,
+  DUCKDB_V2_KIND_STRUCT = 2,
+} DUCKDB_V2_KIND;
+
+/* --- Constants for type_value --- */
+
+/* --- Error Codes for type_value --- */
+
+/* --- Function pointer typedefs for type_value --- */
+
+/* --- Functions for type_value --- */
+/*!
+* Create a mutable type info builder
+* @param ctx 
+* @param info 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr* info);
+/*!
+* Destroy a type info builder
+* @param ctx 
+* @param info 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr* info);
+/*!
+* Set the alias name of the type to be created
+* @param ctx 
+* @param info 
+* @param name 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_set_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name);
+/*!
+* Add a named type parameter (e.g. for STRUCT/LIST/MAP)
+* @param ctx 
+* @param info 
+* @param name 
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name, duckdb_v2_type_ptr value);
+/*!
+* Add a named value parameter (e.g. for DECIMAL precision/scale)
+* @param ctx 
+* @param info 
+* @param name 
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name, duckdb_v2_value_ptr value);
+/*!
+* Create a type from a kind and optional type info (NULL for primitives)
+* @param ctx 
+* @param kind 
+* @param info 
+* @param type 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_info(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind, duckdb_v2_type_info_ptr info, duckdb_v2_type_ptr* type);
+/*!
+* Create a type from a string representation
+* @param ctx 
+* @param text 
+* @param type 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_text(duckdb_v2_ctx_ptr ctx, const char* text, duckdb_v2_type_ptr* type);
+/*!
+* Delete a type object
+* @param ctx 
+* @param type 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr* type);
+/*!
+* Get the logical type id
+* @param ctx 
+* @param type 
+* @param kind 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_kind(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, DUCKDB_V2_KIND* kind);
+/*!
+* Get the name/alias of the type
+* @param ctx 
+* @param type 
+* @param name 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char** name);
+/*!
+* Get the full text representation of the type
+* @param ctx 
+* @param type 
+* @param text 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_text(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char** text);
+/*!
+* Get the number of type parameters
+* @param ctx 
+* @param type 
+* @param out_count 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_count(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t* out_count);
+/*!
+* Get a type parameter as a value by index
+* @param ctx 
+* @param type 
+* @param index 
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, duckdb_v2_value_ptr* value);
+/*!
+* Get a type parameter as a type by index
+* @param ctx 
+* @param type 
+* @param index 
+* @param out_type 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, duckdb_v2_type_ptr* out_type);
+/*!
+* Get the name of a type parameter by index
+* @param ctx 
+* @param type 
+* @param index 
+* @param name 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, const char** name);
+/*!
+* Create a value from a type and raw data pointer
+* @param ctx 
+* @param type 
+* @param data Raw data pointer, or NULL for NULL values
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, void* data, duckdb_v2_value_ptr* value);
+/*!
+* Create a value from a kind and raw data pointer (helper for primitives)
+* @param ctx 
+* @param kind 
+* @param data 
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_kind(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind, void* data, duckdb_v2_value_ptr* value);
+/*!
+* Delete a value object
+* @param ctx 
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr* value);
+/*!
+* Create a mutable value info builder
+* @param ctx 
+* @param info 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr* info);
+/*!
+* Set the type of the value being built
+* @param ctx 
+* @param info 
+* @param type 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info, duckdb_v2_type_ptr type);
+/*!
+* Add a child value to the value being built
+* @param ctx 
+* @param info 
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info, duckdb_v2_value_ptr value);
+/*!
+* Destroy a value info builder
+* @param ctx 
+* @param info 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr* info);
+/*!
+* Get the type of a value
+* @param ctx 
+* @param value 
+* @param type 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, duckdb_v2_type_ptr* type);
+/*!
+* Get the raw data of a value (error if NULL)
+* @param ctx 
+* @param value 
+* @param data Buffer to receive the raw value data
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_data(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, void* data);
+/*!
+* Check if a value is NULL (returns 0 if not null, 1 if null)
+* @param ctx 
+* @param value 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_null(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value);
+/*!
+* Get a nested child value by index (for complex types)
+* @param ctx 
+* @param value 
+* @param index 
+* @param item 
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, uint64_t index, duckdb_v2_value_ptr* item);
+
+/* ============================================================================
  * MODULE: value
  * ============================================================================ */
 
