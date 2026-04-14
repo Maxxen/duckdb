@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: errors
+
+# Error codes are 32-bit integers: (group_id << 16) | code
+error_groups:
+  None:
+    group_id: 0x0000
+    entries:
+      DUCKDB_V2_ERROR_NONE:
+        code: 0x0000
+        description: "Success"
+
+  IO:
+    group_id: 0x0001
+    description: "Input/Output and File System errors"
+    entries:
+      DUCKDB_V2_ERROR_IO_FILE_NOT_FOUND:
+        code: 0x0001
+        description: "The specified file could not be found"
+      DUCKDB_V2_ERROR_IO_READ_FAILURE:
+        code: 0x0002
+        description: "Failed to read from the storage device"
+
+  Invalid Input:
+    group_id: 0x0002
+    description: "Errors related to user-provided data or parameters"
+    entries:
+      DUCKDB_V2_ERROR_EOF:
+        code: 0x0001
+        description: "Unexpected end of file reached"
+      DUCKDB_V2_ERROR_INVALID_INPUT:
+        code: 0x0002
+        description: "General invalid input error"
+      DUCKDB_V2_ERROR_INVALID_PARAMETER:
+        code: 0x0003
+        description: "A specific function parameter is malformed"
+
+constants:
+  DUCKDB_V2_API_ERROR:
+    value: "0xFFFFFFFF"
+    description: "Sentinel for an unspecified internal API error"

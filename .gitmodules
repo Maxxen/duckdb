@@ -1,0 +1,3 @@
+[submodule "capiv2"]
+	path = capiv2
+	url = git@github.com:duckdblabs/capiv2.git

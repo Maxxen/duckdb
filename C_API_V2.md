@@ -9,8 +9,11 @@ All V2 identifiers use a `duckdb_v2_` / `DUCKDB_V2_` prefix, so there are no sym
 ## Repository layout
 
 ```
-capiv2/                          API spec (YAML) + code generator (Python)
-  api_spec/v2/                   Module YAML files (one per API area)
+api_spec/                        API spec (YAML) -- the V2 API definition
+  metadata.yaml                  Primitives, suffixes, versions
+  v2/                            Module YAML files (one per API area)
+
+capiv2/                          Code generator (git submodule -> duckdblabs/capiv2)
   src/capigen/                   Generator: c adapter (header), bridge adapter (stubs)
   tests/                         Generator pytest suite
 
@@ -40,7 +43,7 @@ You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, a
 
 ## Making changes to the API spec
 
-The API is defined in YAML files under `capiv2/api_spec/v2/`. Each file defines a module (e.g., `database/database.yaml`, `query_result/query_result.yaml`) with handles, types, enums, and function declarations.
+The API is defined in YAML files under `api_spec/v2/`. Each file defines a module (e.g., `database/database.yaml`, `query_result/query_result.yaml`) with handles, types, enums, and function declarations.
 
 To add or modify a function, edit the relevant YAML file. Example from `database/database.yaml`:
 
@@ -81,10 +84,10 @@ cd capiv2
 uv sync
 
 # Generate the C header
-uv run capigen c -o ../src/include/duckdb_v2.h
+just run
 
 # Generate/update stub implementations (skips already-implemented functions)
-uv run capigen bridge --scan-dir ../src/main/capi_v2 -o ../src/main/capi_v2/capi_v2_stubs.cpp
+just stubs
 
 # Run the generator tests
 uv run --group dev pytest
@@ -118,7 +121,7 @@ The generated `capi_v2_stubs.cpp` contains stub implementations for all declared
 3. Add the file to `src/main/capi_v2/CMakeLists.txt`
 4. Re-run the bridge generator -- it will drop the stub for any function it finds implemented in your new file:
    ```bash
-   cd capiv2 && uv run capigen bridge --scan-dir ../src/main/capi_v2 -o ../src/main/capi_v2/capi_v2_stubs.cpp
+   cd capiv2 && just stubs
    ```
 5. Rebuild and test
 

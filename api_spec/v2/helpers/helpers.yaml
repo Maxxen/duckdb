@@ -1,0 +1,252 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: helpers
+structs:
+  duckdb_v2_date:
+    fields:
+    - name: days
+      type: i32
+  duckdb_v2_date_struct:
+    fields:
+    - name: year
+      type: i32
+    - name: month
+      type: i8
+    - name: day
+      type: i8
+  duckdb_v2_time:
+    fields:
+    - name: micros
+      type: i64
+  duckdb_v2_time_struct:
+    fields:
+    - name: hour
+      type: i8
+    - name: min
+      type: i8
+    - name: sec
+      type: i8
+    - name: micros
+      type: i32
+  duckdb_v2_time_tz:
+    fields:
+    - name: bits
+      type: u64
+  duckdb_v2_time_tz_struct:
+    fields:
+    - name: time
+      type: duckdb_v2_time_struct
+    - name: offset
+      type: i32
+  duckdb_v2_timestamp:
+    fields:
+    - name: micros
+      type: i64
+  duckdb_v2_interval:
+    fields:
+    - name: months
+      type: i32
+    - name: days
+      type: i32
+    - name: micros
+      type: i64
+  duckdb_v2_hugeint:
+    fields:
+    - name: lower
+      type: u64
+    - name: upper
+      type: i64
+  duckdb_v2_uhugeint:
+    fields:
+    - name: lower
+      type: u64
+    - name: upper
+      type: u64
+  duckdb_v2_decimal:
+    fields:
+    - name: width
+      type: u8
+    - name: scale
+      type: u8
+    - name: value
+      type: duckdb_v2_hugeint
+  duckdb_v2_list_entry:
+    fields:
+    - name: offset
+      type: u64
+    - name: length
+      type: u64
+  duckdb_v2_bignum:
+    fields:
+    - name: data
+      type: u8
+      pointer: 1
+    - name: size
+      type: idx
+    - name: is_negative
+      type: bool
+  duckdb_v2_string_t:
+    fields:
+    - name: length
+      type: u32
+    - name: data
+      type: char
+      pointer: 1
+functions:
+  duckdb_v2_free:
+    summary: Free memory allocated by duckdb_malloc or returned by other functions.
+    role: method
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      ptr:
+        type: opaque
+        indirection: 1
+        direction: in
+        description: The memory region to de-allocate.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_from_date:
+    summary: Decompose a duckdb_v2_date into year, month, and day.
+    role: getter
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      date:
+        type: duckdb_v2_date
+        direction: in
+        description: The date object.
+      out_result:
+        type: duckdb_v2_date_struct
+        indirection: 1
+        direction: out
+        description: The decomposed date struct.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_to_date:
+    summary: Re-compose a duckdb_v2_date from year, month, and day.
+    role: method
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      date:
+        type: duckdb_v2_date_struct
+        direction: in
+        description: The year, month and date stored in a duckdb_v2_date_struct.
+      out_result:
+        type: duckdb_v2_date
+        indirection: 1
+        direction: out
+        description: The duckdb_v2_date element.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_from_time:
+    summary: Decompose a duckdb_v2_time into hour, minute, second, and microsecond.
+    role: getter
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      time:
+        type: duckdb_v2_time
+        direction: in
+        description: The time object.
+      out_result:
+        type: duckdb_v2_time_struct
+        indirection: 1
+        direction: out
+        description: The decomposed time struct.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_to_time:
+    summary: Re-compose a duckdb_v2_time from hour, minute, second, and microsecond.
+    role: method
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      time:
+        type: duckdb_v2_time_struct
+        direction: in
+        description: The time struct.
+      out_result:
+        type: duckdb_v2_time
+        indirection: 1
+        direction: out
+        description: The duckdb_v2_time element.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_create_time_tz:
+    summary: Create a duckdb_v2_time_tz from micros and a timezone offset.
+    role: constructor
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      micros:
+        type: i64
+        direction: in
+        description: The microsecond component.
+      offset:
+        type: i32
+        direction: in
+        description: The timezone offset component.
+      out_result:
+        type: duckdb_v2_time_tz
+        indirection: 1
+        direction: out
+        description: The duckdb_v2_time_tz element.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_from_time_tz:
+    summary: Decompose a TIME_TZ into micros and a timezone offset.
+    role: getter
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      time_tz:
+        type: duckdb_v2_time_tz
+        direction: in
+        description: The time_tz object.
+      out_result:
+        type: duckdb_v2_time_tz_struct
+        indirection: 1
+        direction: out
+        description: The decomposed time_tz struct.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_create_timestamp:
+    summary: Re-compose a duckdb_v2_timestamp from a duckdb_v2_timestamp_struct.
+    role: constructor
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      micros:
+        type: i64
+        direction: in
+        description: The microsecond component.
+      out_result:
+        type: duckdb_v2_timestamp
+        indirection: 1
+        direction: out
+        description: The duckdb_v2_timestamp element.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_create_uuid:
+    summary: Create a UUID value.
+    role: constructor
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: The context handle.
+      out_result:
+        type: duckdb_v2_hugeint
+        indirection: 1
+        direction: out
+        description: The UUID represented as a hugeint.
+    return_type: DUCKDB_V2_API_CALL

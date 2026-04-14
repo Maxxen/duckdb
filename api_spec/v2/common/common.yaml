@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: common
+handles:
+  duckdb_v2_ctx:
+    description: An opaque context handle passed to all API functions
+  duckdb_v2_error:
+    description: An opaque handle to a detailed error instance
+  duckdb_v2_database:
+    description: An opaque handle to a DuckDB database instance
+  duckdb_v2_connection:
+    description: An opaque handle to a DuckDB connection
+  duckdb_v2_config:
+    description: An opaque handle to a DuckDB configuration object
+  duckdb_v2_instance_cache:
+    description: An opaque handle to a DuckDB instance cache
+  duckdb_v2_client_context:
+    description: An opaque handle to a client context
+  duckdb_v2_prepared_statement:
+    description: An opaque handle to a prepared statement
+  duckdb_v2_result:
+    description: An opaque handle to a query result
+  duckdb_v2_data_chunk:
+    description: An opaque handle to a data chunk
+  duckdb_v2_vector:
+    description: An opaque handle to a vector within a data chunk
+  duckdb_v2_logical_type:
+    description: An opaque handle to a logical type
+  duckdb_v2_value:
+    description: An opaque handle to a boxed value
+aliases:
+  duckdb_v2_error_kind:
+    underlying: u32
+    description: The category part of an error code (the upper 16 bits)
+  duckdb_v2_error_code:
+    underlying: u32
+    description: 'Full 32-bit error code: (group_id << 16) | code'
+  DUCKDB_V2_API_CALL:
+    underlying: duckdb_v2_error_code
+enums:
+  DUCKDB_V2_TYPE:
+    description: |
+      An enum over DuckDB's internal types.
+    values:
+      DUCKDB_V2_TYPE_INVALID:
+        value: 0
+        description: Represents an invalid or uninitialized type.
+      DUCKDB_V2_TYPE_BOOLEAN:
+        description: bool
+      DUCKDB_V2_TYPE_TINYINT:
+        description: int8_t
+      DUCKDB_V2_TYPE_SMALLINT:
+        description: ''

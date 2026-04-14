@@ -14,15 +14,6 @@ jobs:
       - name: Format check
         run: python3 scripts/format.py --all --check --silent
 
-  generator:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: cd capiv2 && uv sync && just test
-      - run: cd capiv2 && uv run capigen c -o ../src/include/duckdb_v2.h
-      - run: git diff --exit-code src/include/duckdb_v2.h
-
   build-and-test:
     runs-on: ubuntu-latest
     steps:

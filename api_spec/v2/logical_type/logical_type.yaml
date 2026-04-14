@@ -1,0 +1,382 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: logical_type
+
+functions:
+  duckdb_v2_create_logical_type:
+    summary: "Creates a logical type from a primitive duckdb_type."
+    role: constructor
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: u32
+        direction: in
+        description: "The primitive duckdb_type to create."
+      out_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: out
+        description: "The logical type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_destroy_logical_type:
+    summary: "Destroys the logical type and de-allocates all memory."
+    role: destructor
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: in
+        description: "The logical type to destroy."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_get_type_id:
+    summary: "Retrieves the duckdb_type enum of a logical type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type."
+      out_type_id:
+        type: u32
+        indirection: 1
+        direction: out
+        description: "The duckdb_type id."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_decimal_width:
+    summary: "Retrieves the width of a decimal type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      out_width:
+        type: u8
+        indirection: 1
+        direction: out
+        description: "The width of the decimal type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_decimal_scale:
+    summary: "Retrieves the scale of a decimal type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      out_scale:
+        type: u8
+        indirection: 1
+        direction: out
+        description: "The scale of the decimal type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_enum_dictionary_size:
+    summary: "Retrieves the dictionary size of the enum type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      out_size:
+        type: u32
+        indirection: 1
+        direction: out
+        description: "The dictionary size of the enum type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_enum_dictionary_value:
+    summary: "Retrieves the dictionary value at the specified position from the enum."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      index:
+        type: idx
+        direction: in
+        description: "The index in the dictionary."
+      out_value:
+        type: char
+        indirection: 2
+        const: false
+        direction: out
+        description: "The string value. Must be freed with duckdb_free."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_list_type_child_type:
+    summary: "Retrieves the child type of a LIST type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type, either LIST or MAP."
+      out_child_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: out
+        description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_array_type_child_type:
+    summary: "Retrieves the child type of an ARRAY type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type. Must be ARRAY."
+      out_child_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: out
+        description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_array_type_array_size:
+    summary: "Retrieves the fixed array size of an ARRAY type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      out_size:
+        type: idx
+        indirection: 1
+        direction: out
+        description: "The fixed number of elements in the array type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_map_type_key_type:
+    summary: "Retrieves the key type of a MAP type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      out_key_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: out
+        description: "The key type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_map_type_value_type:
+    summary: "Retrieves the value type of a MAP type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      out_value_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: out
+        description: "The value type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_struct_type_child_count:
+    summary: "Returns the number of children of a struct type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      out_count:
+        type: idx
+        indirection: 1
+        direction: out
+        description: "The number of children of the struct type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_struct_type_child_name:
+    summary: "Retrieves the name of a struct child."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      index:
+        type: idx
+        direction: in
+        description: "The child index."
+      out_name:
+        type: char
+        indirection: 2
+        const: false
+        direction: out
+        description: "The name. Must be freed with duckdb_free."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_struct_type_child_type:
+    summary: "Retrieves the child type of a struct at the specified index."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      index:
+        type: idx
+        direction: in
+        description: "The child index."
+      out_child_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: out
+        description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_union_type_member_count:
+    summary: "Returns the number of members in a union type."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type (union) object."
+      out_count:
+        type: idx
+        indirection: 1
+        direction: out
+        description: "The number of union members."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_union_type_member_name:
+    summary: "Retrieves the name of a union member."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      index:
+        type: idx
+        direction: in
+        description: "The member index."
+      out_name:
+        type: char
+        indirection: 2
+        const: false
+        direction: out
+        description: "The name. Must be freed with duckdb_free."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_union_type_member_type:
+    summary: "Retrieves the child type of a union member at the specified index."
+    role: getter
+    belongs_to: duckdb_v2_logical_type
+    parameters:
+      context:
+        type: duckdb_v2_ctx
+        direction: in
+        description: "The context handle."
+      type:
+        type: duckdb_v2_logical_type
+        direction: in
+        description: "The logical type object."
+      index:
+        type: idx
+        direction: in
+        description: "The member index."
+      out_member_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        direction: out
+        description: "The member type. Must be destroyed with duckdb_destroy_logical_type."
+    return_type: DUCKDB_V2_API_CALL

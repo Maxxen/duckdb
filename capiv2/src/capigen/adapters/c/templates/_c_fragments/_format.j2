@@ -1,3 +1,0 @@
-{% macro format_c_type(base, pointer=0, is_const=False) -%}
-{%- if is_const %}const {{- base }}{%- else -%}{{- base }}{%- endif -%}{% for _ in range(pointer) %}*{% endfor %}
-{%- endmacro %}
