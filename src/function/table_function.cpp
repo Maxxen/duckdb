@@ -59,9 +59,9 @@ TableFunction::TableFunction() : TableFunction("", {}, nullptr, nullptr, nullptr
 }
 
 bool TableFunction::operator==(const TableFunction &rhs) const {
-	return name == rhs.name && arguments == rhs.arguments && varargs == rhs.varargs && bind == rhs.bind &&
-	       bind_replace == rhs.bind_replace && bind_operator == rhs.bind_operator && init_global == rhs.init_global &&
-	       init_local == rhs.init_local && function == rhs.function && in_out_function == rhs.in_out_function &&
+	return name == rhs.name && signature == rhs.signature && bind == rhs.bind && bind_replace == rhs.bind_replace &&
+	       bind_operator == rhs.bind_operator && init_global == rhs.init_global && init_local == rhs.init_local &&
+	       function == rhs.function && in_out_function == rhs.in_out_function &&
 	       in_out_function_final == rhs.in_out_function_final && statistics == rhs.statistics &&
 	       dependency == rhs.dependency && cardinality == rhs.cardinality &&
 	       pushdown_complex_filter == rhs.pushdown_complex_filter && pushdown_expression == rhs.pushdown_expression &&
@@ -83,18 +83,8 @@ bool TableFunction::operator!=(const TableFunction &rhs) const {
 }
 
 bool TableFunction::Equal(const TableFunction &rhs) const {
-	// number of types
-	if (this->arguments.size() != rhs.arguments.size()) {
-		return false;
-	}
-	// argument types
-	for (idx_t i = 0; i < this->arguments.size(); ++i) {
-		if (this->arguments[i] != rhs.arguments[i]) {
-			return false;
-		}
-	}
-	// varargs
-	if (this->varargs != rhs.varargs) {
+	// Check sig
+	if (this->signature != rhs.signature) {
 		return false;
 	}
 

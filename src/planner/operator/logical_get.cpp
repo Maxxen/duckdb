@@ -16,7 +16,7 @@ namespace duckdb {
 LogicalGet::LogicalGet() : LogicalOperator(LogicalOperatorType::LOGICAL_GET) {
 }
 
-LogicalGet::LogicalGet(TableIndex table_index, TableFunction function, unique_ptr<FunctionData> bind_data,
+LogicalGet::LogicalGet(TableIndex table_index, BoundTableFunction function, unique_ptr<FunctionData> bind_data,
                        vector<LogicalType> returned_types, vector<string> returned_names,
                        virtual_column_map_t virtual_columns_p)
     : LogicalOperator(LogicalOperatorType::LOGICAL_GET), table_index(table_index), function(std::move(function)),
@@ -305,7 +305,7 @@ unique_ptr<LogicalOperator> LogicalGet::Deserialize(Deserializer &deserializer) 
 	deserializer.ReadPropertyWithDefault(203, "column_ids", legacy_column_ids);
 	deserializer.ReadProperty(204, "projection_ids", result->projection_ids);
 	deserializer.ReadProperty(205, "table_filters", result->table_filters);
-	auto entry = FunctionSerializer::DeserializeBase<TableFunction, TableFunctionCatalogEntry>(
+	auto entry = FunctionSerializer::DeserializeBase<BoundTableFunction, TableFunctionCatalogEntry>(
 	    deserializer, CatalogType::TABLE_FUNCTION_ENTRY);
 	result->function = entry.first;
 	auto &function = result->function;

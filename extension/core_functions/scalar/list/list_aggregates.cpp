@@ -501,7 +501,7 @@ ScalarFunction ListAggregateFun::GetFunction() {
 	                             ListAggregateFunction, ListAggregateBind, nullptr, ListAggregatesInitLocalState);
 	result.SetFallible();
 	result.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	result.varargs = LogicalType::ANY;
+	result.SetVarArgs(LogicalType::ANY);
 	result.SetSerializeCallback(ListAggregatesBindData::SerializeFunction);
 	result.SetDeserializeCallback(ListAggregatesBindData::DeserializeFunction);
 	return result;

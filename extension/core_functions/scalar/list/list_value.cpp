@@ -273,7 +273,7 @@ unique_ptr<FunctionData> UnpivotBind(BindScalarFunctionInput &input) {
 	child_type = LogicalType::NormalizeType(child_type);
 
 	// this is more for completeness reasons
-	bound_function.varargs = child_type;
+	bound_function.SetVarArgs(child_type);
 	bound_function.SetReturnType(LogicalType::LIST(child_type));
 	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
 }
@@ -303,7 +303,7 @@ ScalarFunctionSet ListValueFun::GetFunctions() {
 	auto element_type = LogicalType::TEMPLATE("T");
 	ScalarFunction value_fun({element_type}, LogicalType::LIST(element_type), ListValueFunction, nullptr,
 	                         ListValueStats);
-	value_fun.varargs = element_type;
+	value_fun.SetVarArgs(element_type);
 	value_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(value_fun);
 
@@ -312,7 +312,7 @@ ScalarFunctionSet ListValueFun::GetFunctions() {
 
 ScalarFunction UnpivotListFun::GetFunction() {
 	ScalarFunction fun("unpivot_list", {}, LogicalTypeId::LIST, ListValueFunction, UnpivotBind, ListValueStats);
-	fun.varargs = LogicalTypeId::ANY;
+	fun.SetVarArgs(LogicalTypeId::ANY);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

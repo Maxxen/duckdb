@@ -626,18 +626,20 @@ void AggregateStateCombine(DataChunk &input, ExpressionState &state_p, Vector &r
 }
 
 // Creates the bind data by resolving the underlying aggregate function from an AGGREGATE_STATE logical type.
-unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &context, SimpleFunction &function,
+template <class T = BoundAggregateFunction>
+unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &context, T &function,
                                                                vector<unique_ptr<Expression>> &arguments,
                                                                bool allow_legacy) {
+	/*
 	auto &arg_return_type = arguments[0]->return_type;
 	for (auto &arg_type : function.arguments) {
-		arg_type = arg_return_type;
+	    arg_type = arg_return_type;
 	}
 
 	if (arg_return_type.id() != LogicalTypeId::AGGREGATE_STATE &&
 	    (!allow_legacy || arg_return_type.id() != LogicalTypeId::LEGACY_AGGREGATE_STATE)) {
-		string allowed = allow_legacy ? "AGGREGATE_STATE or LEGACY_AGGREGATE_STATE" : "AGGREGATE_STATE";
-		throw BinderException("Can only %s %s, not %s", function.name, allowed, arg_return_type.ToString());
+	    string allowed = allow_legacy ? "AGGREGATE_STATE or LEGACY_AGGREGATE_STATE" : "AGGREGATE_STATE";
+	    throw BinderException("Can only %s %s, not %s", function.name, allowed, arg_return_type.ToString());
 	}
 
 	// following error states are only reachable when someone messes up creating the state_type
@@ -649,7 +651,7 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 	auto &func = Catalog::GetSystemCatalog(context).GetEntry<AggregateFunctionCatalogEntry>(context, DEFAULT_SCHEMA,
 	                                                                                        state_type.function_name);
 	if (func.type != CatalogType::AGGREGATE_FUNCTION_ENTRY) {
-		throw InternalException("Could not find aggregate %s", state_type.function_name);
+	    throw InternalException("Could not find aggregate %s", state_type.function_name);
 	}
 	auto &aggr = func.Cast<AggregateFunctionCatalogEntry>();
 
@@ -659,30 +661,32 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 	auto best_function =
 	    function_binder.BindFunction(aggr.name, aggr.functions, state_type.bound_argument_types, error);
 	if (!best_function.IsValid()) {
-		throw InternalException("Could not re-bind exported aggregate %s: %s", state_type.function_name,
-		                        error.Message());
+	    throw InternalException("Could not re-bind exported aggregate %s: %s", state_type.function_name,
+	                            error.Message());
 	}
 	auto bound_aggr = aggr.functions.GetFunctionByOffset(best_function.GetIndex());
 	if (bound_aggr.GetBindCallback()) {
-		// FIXME: this is really hacky
-		// but the aggregate state export needs a rework around how it handles more complex aggregates anyway
-		vector<unique_ptr<Expression>> args;
-		args.reserve(state_type.bound_argument_types.size());
-		for (auto &arg_type : state_type.bound_argument_types) {
-			args.push_back(make_uniq<BoundConstantExpression>(Value(arg_type)));
-		}
-		auto bind_info = bound_aggr.Bind(context, args);
-		if (bind_info) {
-			throw BinderException("Aggregate function with bind info not supported yet in aggregate state export");
-		}
+	    // FIXME: this is really hacky
+	    // but the aggregate state export needs a rework around how it handles more complex aggregates anyway
+	    vector<unique_ptr<Expression>> args;
+	    args.reserve(state_type.bound_argument_types.size());
+	    for (auto &arg_type : state_type.bound_argument_types) {
+	        args.push_back(make_uniq<BoundConstantExpression>(Value(arg_type)));
+	    }
+	    auto bind_info = bound_aggr.Bind(context, args);
+	    if (bind_info) {
+	        throw BinderException("Aggregate function with bind info not supported yet in aggregate state export");
+	    }
 	}
 
 	if (bound_aggr.GetReturnType() != state_type.return_type ||
 	    bound_aggr.arguments != state_type.bound_argument_types) {
-		throw InternalException("Type mismatch for exported aggregate %s", state_type.function_name);
+	    throw InternalException("Type mismatch for exported aggregate %s", state_type.function_name);
 	}
 
 	return make_uniq<ExportAggregateBindData>(bound_aggr, bound_aggr.GetStateSizeCallback()(bound_aggr));
+	*/
+	throw NotImplementedException("TODO: ");
 }
 
 unique_ptr<FunctionData> BindAggregateState(BindScalarFunctionInput &input) {
@@ -748,20 +752,20 @@ void ExportAggregateFinalize(Vector &state, AggregateInputData &aggr_input_data,
 }
 
 void ExportStateAggregateSerialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data_p,
-                                   const AggregateFunction &function) {
+                                   const BoundAggregateFunction &function) {
 	throw NotImplementedException("FIXME: export state serialize");
 }
 
-unique_ptr<FunctionData> ExportStateAggregateDeserialize(Deserializer &deserializer, AggregateFunction &function) {
+unique_ptr<FunctionData> ExportStateAggregateDeserialize(Deserializer &deserializer, BoundAggregateFunction &function) {
 	throw NotImplementedException("FIXME: export state deserialize");
 }
 
 void ExportStateScalarSerialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data_p,
-                                const ScalarFunction &function) {
+                                const BoundScalarFunction &function) {
 	throw NotImplementedException("FIXME: export state serialize");
 }
 
-unique_ptr<FunctionData> ExportStateScalarDeserialize(Deserializer &deserializer, ScalarFunction &function) {
+unique_ptr<FunctionData> ExportStateScalarDeserialize(Deserializer &deserializer, BoundScalarFunction &function) {
 	throw NotImplementedException("FIXME: export state deserialize");
 }
 

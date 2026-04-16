@@ -143,7 +143,7 @@ unique_ptr<FunctionData> WindowValueExecutor::Bind(BindWindowFunctionInput &inpu
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 
-	function.return_type = arguments[0]->return_type;
+	function.SetReturnType(arguments[0]->return_type);
 
 	return nullptr;
 }
@@ -304,7 +304,7 @@ unique_ptr<FunctionData> WindowLeadLagExecutor::Bind(BindWindowFunctionInput &in
 	auto &arguments = input.GetArguments();
 
 	if (arguments.size() > 2) {
-		function.arguments[2] = function.return_type;
+		function.arguments[2] = function.GetReturnType();
 	}
 
 	return nullptr;
@@ -339,13 +339,14 @@ WindowFunction LeadFun::GetTypedFunction(const LogicalType &type, idx_t nargs) {
 	auto funcs = GetLeadLagFunctionSet(Name, ExpressionType::WINDOW_LEAD);
 
 	for (auto &func : funcs.functions) {
-		if (func.arguments.size() != nargs) {
+		auto &sig = func.GetSignature();
+		if (sig.GetParameterCount() != nargs) {
 			continue;
 		}
 
-		func.arguments[0] = type;
+		sig.GetParameter(0).SetType(type);
 		if (nargs > 2) {
-			func.arguments[2] = type;
+			sig.GetParameter(2).SetType(type);
 		}
 		return func;
 	}
@@ -971,7 +972,9 @@ unique_ptr<FunctionData> WindowFillExecutor::Bind(BindWindowFunctionInput &input
 void WindowFillExecutor::Validate(ClientContext &context, WindowFunction &function,
                                   vector<unique_ptr<Expression>> &arguments, vector<OrderByNode> &orders,
                                   vector<OrderByNode> &arg_orders) {
-	BindWindowFunctionInput input(context, function, arguments);
+	BoundWindowFunction bound_function(function);
+	BindWindowFunctionInput input(context, bound_function, arguments);
+
 	WindowValueExecutor::Bind(input);
 
 	if (arg_orders.size() > 1 || (arg_orders.empty() && orders.size() != 1)) {

@@ -134,7 +134,7 @@ class QuackFunction : public TableFunction {
 public:
 	QuackFunction() {
 		name = "quack";
-		arguments.push_back(LogicalType::BIGINT);
+		GetSignature().AddParemeter("", LogicalType::BIGINT);
 		bind = QuackBind;
 		init_global = QuackInit;
 		function = QuackFunc;

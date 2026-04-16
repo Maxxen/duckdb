@@ -29,8 +29,8 @@ ScalarFunction::ScalarFunction(vector<LogicalType> arguments, LogicalType return
 }
 
 bool ScalarFunction::operator==(const ScalarFunction &rhs) const {
-	return name == rhs.name && arguments == rhs.arguments && return_type == rhs.return_type && varargs == rhs.varargs &&
-	       bind == rhs.bind && statistics == rhs.statistics && bind_lambda == rhs.bind_lambda;
+	return name == rhs.name && signature == rhs.signature && bind == rhs.bind && statistics == rhs.statistics &&
+	       bind_lambda == rhs.bind_lambda;
 }
 
 bool ScalarFunction::operator!=(const ScalarFunction &rhs) const {
@@ -38,22 +38,8 @@ bool ScalarFunction::operator!=(const ScalarFunction &rhs) const {
 }
 
 bool ScalarFunction::Equal(const ScalarFunction &rhs) const {
-	// number of types
-	if (this->arguments.size() != rhs.arguments.size()) {
-		return false;
-	}
-	// argument types
-	for (idx_t i = 0; i < this->arguments.size(); ++i) {
-		if (this->arguments[i] != rhs.arguments[i]) {
-			return false;
-		}
-	}
-	// return type
-	if (this->return_type != rhs.return_type) {
-		return false;
-	}
-	// varargs
-	if (this->varargs != rhs.varargs) {
+	// signature
+	if (this->signature != rhs.signature) {
 		return false;
 	}
 

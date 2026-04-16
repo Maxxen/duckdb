@@ -32,11 +32,112 @@ class ScalarFunctionSet;
 class ScalarFunction;
 class TableFunctionSet;
 class TableFunction;
-class SimpleFunction;
 class WindowFunction;
 class WindowFunctionSet;
 
 struct PragmaInfo;
+
+class FunctionParameter {
+public:
+	FunctionParameter(string name, LogicalType type) : name(std::move(name)), type(std::move(type)) {
+	}
+
+	const string &GetName() const {
+		return name;
+	}
+	const LogicalType &GetType() const {
+		return type;
+	}
+	void SetName(string new_name) {
+		name = std::move(new_name);
+	}
+	void SetType(LogicalType new_type) {
+		type = std::move(new_type);
+	}
+
+	string ToString() const {
+		if (name.empty()) {
+			return type.ToString();
+		} else {
+			return name + " " + type.ToString();
+		}
+	}
+	hash_t Hash() const;
+
+private:
+	string name;
+	LogicalType type;
+};
+
+class FunctionSignature {
+public:
+	FunctionSignature() = default;
+
+	FunctionSignature(const vector<LogicalType> &types) {
+		for (idx_t i = 0; i < types.size(); i++) {
+			parameters.emplace_back("arg" + to_string(i + 1), types[i]);
+		}
+	}
+
+	idx_t GetParameterCount() const {
+		return parameters.size();
+	}
+	const FunctionParameter &GetParameter(idx_t index) const {
+		return parameters[index];
+	}
+	FunctionParameter &GetParameter(idx_t index) {
+		return parameters[index];
+	}
+
+	const vector<FunctionParameter> &GetParameters() const {
+		return parameters;
+	}
+	const LogicalType &GetVarArgs() const {
+		return varargs;
+	}
+	const LogicalType &GetReturnType() const {
+		return returns;
+	}
+
+	void SetReturnType(const LogicalType &type) {
+		returns = type;
+	}
+	void SetVarArgs(const LogicalType &type) {
+		varargs = type;
+	}
+	void AddParemeter(const string &name, const LogicalType &type) {
+		parameters.emplace_back(name, type);
+	}
+
+	// TODO: Make immutable
+	LogicalType &GetVarArgs() {
+		return varargs;
+	}
+	LogicalType &GetReturnType() {
+		return returns;
+	}
+
+	// Two signatures are considered equal if they have the same parameter types, varargs and return type
+	bool operator==(const FunctionSignature &other) const {
+		if (parameters.size() != other.parameters.size()) {
+			return false;
+		}
+		for (idx_t i = 0; i < parameters.size(); i++) {
+			if (parameters[i].GetType() != other.parameters[i].GetType()) {
+				return false;
+			}
+		}
+		return varargs == other.varargs && returns == other.returns;
+	}
+	bool operator!=(const FunctionSignature &other) const {
+		return !(*this == other);
+	}
+
+private:
+	LogicalType varargs;
+	LogicalType returns;
+	vector<FunctionParameter> parameters;
+};
 
 //! The default null handling is NULL in, NULL out
 enum class FunctionNullHandling : uint8_t { DEFAULT_NULL_HANDLING = 0, SPECIAL_HANDLING = 1 };
@@ -105,6 +206,7 @@ public:
 
 	//! The name of the function
 	string name;
+
 	//! Additional Information to specify function from it's name
 	string extra_info;
 
@@ -113,6 +215,9 @@ public:
 
 	// Optional schema name of the function
 	string schema_name;
+
+	// The signature of the function
+	FunctionSignature signature;
 
 public:
 	//! Returns the formatted string name(arg1, arg2, ...)
@@ -129,32 +234,56 @@ public:
 	                                      const named_parameter_type_map_t &named_parameters);
 
 	//! Used in the bind to erase an argument from a function
-	DUCKDB_API static void EraseArgument(SimpleFunction &bound_function, vector<unique_ptr<Expression>> &arguments,
+	DUCKDB_API static void EraseArgument(Function &bound_function, vector<unique_ptr<Expression>> &arguments,
 	                                     idx_t argument_index);
-};
 
-class SimpleFunction : public Function {
-public:
-	DUCKDB_API SimpleFunction(string name, vector<LogicalType> arguments,
-	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID));
-	DUCKDB_API ~SimpleFunction() override;
+	// Signature getters/setters
+	const FunctionSignature &GetSignature() const {
+		return signature;
+	}
 
+	FunctionSignature &GetSignature() {
+		return signature;
+	}
+
+	void SetReturnType(const LogicalType &return_type) {
+		signature.SetReturnType(return_type);
+	}
+	const LogicalType &GetReturnType() const {
+		return signature.GetReturnType();
+	}
+	LogicalType &GetReturnType() {
+		return signature.GetReturnType();
+	}
+	void SetVarArgs(const LogicalType &varargs) {
+		signature.SetVarArgs(varargs);
+	}
+	const LogicalType &GetVarArgs() const {
+		return signature.GetVarArgs();
+	}
+	LogicalType &GetVarArgs() {
+		return signature.GetVarArgs();
+	}
+
+	bool HasVarArgs() const {
+		return signature.GetVarArgs().id() != LogicalTypeId::INVALID;
+	}
+
+	// Bound function only
 	//! The set of arguments of the function
-	vector<LogicalType> arguments;
+	// vector<LogicalType> arguments;
 	//! The set of original arguments of the function - only set if Function::EraseArgument is called
 	//! Used for (de)serialization purposes
-	vector<LogicalType> original_arguments;
-	//! The type of varargs to support, or LogicalTypeId::INVALID if the function does not accept variable length
-	//! arguments
-	LogicalType varargs;
+	// vector<LogicalType> original_arguments;
 
-public:
-	DUCKDB_API virtual string ToString() const;
-
-	DUCKDB_API bool HasVarArgs() const;
+	virtual string ToString() const {
+		return "TODO";
+		// return CallToString(catalog_name, schema_name, name, arguments, signature.GetVarArgs(),
+		// signature.GetReturnType());
+	}
 };
 
-class SimpleNamedParameterFunction : public SimpleFunction {
+class SimpleNamedParameterFunction : public Function {
 public:
 	DUCKDB_API SimpleNamedParameterFunction(string name, vector<LogicalType> arguments,
 	                                        LogicalType varargs = LogicalType(LogicalTypeId::INVALID));
@@ -164,11 +293,10 @@ public:
 	named_parameter_type_map_t named_parameters;
 
 public:
-	DUCKDB_API string ToString() const override;
 	DUCKDB_API bool HasNamedParameters() const;
 };
 
-class BaseScalarFunction : public SimpleFunction {
+class BaseScalarFunction : public Function {
 public:
 	DUCKDB_API BaseScalarFunction(string name, vector<LogicalType> arguments, LogicalType return_type,
 	                              FunctionStability stability,
@@ -178,16 +306,6 @@ public:
 	DUCKDB_API ~BaseScalarFunction() override;
 
 public:
-	void SetReturnType(LogicalType return_type_p) {
-		return_type = std::move(return_type_p);
-	}
-	const LogicalType &GetReturnType() const {
-		return return_type;
-	}
-	LogicalType &GetReturnType() {
-		return return_type;
-	}
-
 	FunctionStability GetStability() const {
 		return stability;
 	}
@@ -226,8 +344,6 @@ public:
 	}
 
 public:
-	//! Return type of the function
-	LogicalType return_type;
 	//! The stability of the function (see FunctionStability enum for more info)
 	FunctionStability stability;
 	//! How this function handles NULL values
@@ -244,8 +360,6 @@ public:
 
 public:
 	DUCKDB_API hash_t Hash() const;
-
-	DUCKDB_API string ToString() const override;
 };
 
 } // namespace duckdb

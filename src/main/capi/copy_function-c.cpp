@@ -729,8 +729,8 @@ void duckdb_copy_function_set_copy_from_function(duckdb_copy_function copy_funct
 			return;
 		}
 	}
-	for (const auto &argument : tf.arguments) {
-		if (duckdb::TypeVisitor::Contains(argument, duckdb::LogicalTypeId::INVALID)) {
+	for (const auto &param : tf.GetSignature().GetParameters()) {
+		if (duckdb::TypeVisitor::Contains(param.GetType(), duckdb::LogicalTypeId::INVALID)) {
 			return;
 		}
 	}

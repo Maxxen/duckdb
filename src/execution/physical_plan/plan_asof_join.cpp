@@ -237,7 +237,7 @@ PhysicalPlanGenerator::PlanAsOfLoopJoin(LogicalComparisonJoin &op, PhysicalOpera
 	}
 
 	// Add a synthetic primary integer key to the probe relation using streaming windowing.
-	auto row_number = make_uniq<WindowFunction>(RowNumberFun::GetFunction());
+	auto row_number = make_uniq<BoundWindowFunction>(RowNumberFun::GetFunction());
 	vector<unique_ptr<Expression>> window_select;
 	auto pk = make_uniq<BoundWindowExpression>(pk_type, nullptr, std::move(row_number), nullptr);
 	pk->start = WindowBoundary::UNBOUNDED_PRECEDING;
@@ -362,7 +362,8 @@ PhysicalOperator &PhysicalPlanGenerator::PlanAsOfJoin(LogicalComparisonJoin &op)
 	auto &asof_comp = op.conditions[asof_idx];
 	auto &asof_column = asof_comp.RightReference();
 	auto asof_type = asof_column->return_type;
-	auto lead2 = make_uniq<WindowFunction>(LeadFun::GetTypedFunction(asof_type, 3));
+	auto lead2 = make_uniq<BoundWindowFunction>(LeadFun::GetTypedFunction(asof_type, 3));
+
 	auto asof_end = make_uniq<BoundWindowExpression>(asof_type, nullptr, std::move(lead2), nullptr);
 	asof_end->children.emplace_back(asof_column->Copy());
 	// TODO: If infinities are not supported for a type, fake them by looking at LHS statistics?

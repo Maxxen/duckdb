@@ -574,10 +574,11 @@ static unique_ptr<Expression> ConstructStructExtractFromPath(ClientContext &cont
 		auto &key = child_types[child_index].first;
 		type_iter = child_types[child_index].second;
 
-		auto function = extract_function;
+		auto function = BoundScalarFunction(extract_function);
 		vector<unique_ptr<Expression>> arguments(2);
 		arguments[0] = (std::move(target));
 		arguments[1] = (make_uniq<BoundConstantExpression>(Value(key)));
+
 		BindScalarFunctionInput input(context, function, arguments);
 		auto bind_info = bind_callback(input);
 		auto return_type = function.GetReturnType();

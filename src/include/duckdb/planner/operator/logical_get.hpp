@@ -22,14 +22,14 @@ public:
 	static constexpr const LogicalOperatorType TYPE = LogicalOperatorType::LOGICAL_GET;
 
 public:
-	LogicalGet(TableIndex table_index, TableFunction function, unique_ptr<FunctionData> bind_data,
+	LogicalGet(TableIndex table_index, BoundTableFunction function, unique_ptr<FunctionData> bind_data,
 	           vector<LogicalType> returned_types, vector<string> returned_names,
 	           virtual_column_map_t virtual_columns = virtual_column_map_t());
 
 	//! The table index in the current bind context
 	TableIndex table_index;
 	//! The function that is called
-	TableFunction function;
+	BoundTableFunction function;
 	//! The bind data of the function
 	unique_ptr<FunctionData> bind_data;
 	//! The types of ALL columns that can be returned by the table function

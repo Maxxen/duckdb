@@ -8,6 +8,14 @@
 
 namespace duckdb {
 
+hash_t FunctionParameter::Hash() const {
+	hash_t hash = type.Hash();
+	if (!name.empty()) {
+		hash = duckdb::CombineHash(hash, duckdb::Hash(name.c_str()));
+	}
+	return hash;
+}
+
 FunctionData::~FunctionData() {
 }
 
@@ -41,31 +49,14 @@ Function::Function(string name_p) : name(std::move(name_p)) {
 Function::~Function() {
 }
 
-SimpleFunction::SimpleFunction(string name_p, vector<LogicalType> arguments_p, LogicalType varargs_p)
-    : Function(std::move(name_p)), arguments(std::move(arguments_p)), varargs(std::move(varargs_p)) {
-}
-
-SimpleFunction::~SimpleFunction() {
-}
-
-string SimpleFunction::ToString() const {
-	return Function::CallToString(catalog_name, schema_name, name, arguments, varargs);
-}
-
-bool SimpleFunction::HasVarArgs() const {
-	return varargs.id() != LogicalTypeId::INVALID;
-}
-
 SimpleNamedParameterFunction::SimpleNamedParameterFunction(string name_p, vector<LogicalType> arguments_p,
                                                            LogicalType varargs_p)
-    : SimpleFunction(std::move(name_p), std::move(arguments_p), std::move(varargs_p)) {
+    : Function(std::move(name_p)) {
+	signature = FunctionSignature(arguments_p);
+	signature.SetVarArgs(varargs_p);
 }
 
 SimpleNamedParameterFunction::~SimpleNamedParameterFunction() {
-}
-
-string SimpleNamedParameterFunction::ToString() const {
-	return Function::CallToString(catalog_name, schema_name, name, arguments, named_parameters);
 }
 
 bool SimpleNamedParameterFunction::HasNamedParameters() const {
@@ -75,16 +66,14 @@ bool SimpleNamedParameterFunction::HasNamedParameters() const {
 BaseScalarFunction::BaseScalarFunction(string name_p, vector<LogicalType> arguments_p, LogicalType return_type_p,
                                        FunctionStability stability, LogicalType varargs_p,
                                        FunctionNullHandling null_handling, FunctionErrors errors)
-    : SimpleFunction(std::move(name_p), std::move(arguments_p), std::move(varargs_p)),
-      return_type(std::move(return_type_p)), stability(stability), null_handling(null_handling), errors(errors),
+    : Function(std::move(name_p)), stability(stability), null_handling(null_handling), errors(errors),
       collation_handling(FunctionCollationHandling::PROPAGATE_COLLATIONS) {
+	signature = FunctionSignature(arguments_p);
+	signature.SetVarArgs(varargs_p);
+	signature.SetReturnType(return_type_p);
 }
 
 BaseScalarFunction::~BaseScalarFunction() {
-}
-
-string BaseScalarFunction::ToString() const {
-	return Function::CallToString(catalog_name, schema_name, name, arguments, varargs, return_type);
 }
 
 // add your initializer for new functions here
@@ -108,9 +97,9 @@ void BuiltinFunctions::Initialize() {
 }
 
 hash_t BaseScalarFunction::Hash() const {
-	hash_t hash = return_type.Hash();
-	for (auto &arg : arguments) {
-		hash = duckdb::CombineHash(hash, arg.Hash());
+	hash_t hash = signature.GetReturnType().Hash();
+	for (auto &param : signature.GetParameters()) {
+		hash = duckdb::CombineHash(hash, param.Hash());
 	}
 	return hash;
 }
@@ -164,15 +153,18 @@ string Function::CallToString(const string &catalog_name, const string &schema_n
 	return StringUtil::Format("%s%s(%s)", prefix, name, StringUtil::Join(input_arguments, ", "));
 }
 
-void Function::EraseArgument(SimpleFunction &bound_function, vector<unique_ptr<Expression>> &arguments,
+void Function::EraseArgument(Function &bound_function, vector<unique_ptr<Expression>> &arguments,
                              idx_t argument_index) {
+	/*
 	if (bound_function.original_arguments.empty()) {
-		bound_function.original_arguments = bound_function.arguments;
+	    bound_function.original_arguments = bound_function.arguments;
 	}
 	D_ASSERT(arguments.size() == bound_function.arguments.size());
 	D_ASSERT(argument_index < arguments.size());
 	arguments.erase_at(argument_index);
 	bound_function.arguments.erase_at(argument_index);
+	*/
+	throw NotImplementedException("Function::EraseArgument is not implemented yet");
 }
 
 } // namespace duckdb

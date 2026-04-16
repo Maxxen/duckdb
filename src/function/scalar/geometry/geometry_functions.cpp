@@ -129,10 +129,10 @@ static unique_ptr<FunctionData> SetCRSBind(BindScalarFunctionInput &input) {
 		// Try to convert to identify
 		const auto lookup = CoordinateReferenceSystem::TryIdentify(context, crs_str);
 		if (lookup) {
-			bound_function.return_type = LogicalType::GEOMETRY(lookup->GetDefinition());
+			bound_function.SetReturnType(LogicalType::GEOMETRY(lookup->GetDefinition()));
 		} else {
 			// Pass on the raw string (better than nothing)
-			bound_function.return_type = LogicalType::GEOMETRY(crs_str);
+			bound_function.SetReturnType(LogicalType::GEOMETRY(crs_str));
 		}
 	}
 

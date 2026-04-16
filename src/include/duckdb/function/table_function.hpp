@@ -509,4 +509,19 @@ public:
 	DUCKDB_API bool operator!=(const TableFunction &rhs) const;
 };
 
+class BoundTableFunction : public TableFunction {
+public:
+	BoundTableFunction() = default;
+	BoundTableFunction(const BoundTableFunction &other) = default;
+	BoundTableFunction(const TableFunction &function) : TableFunction(function) {
+	}
+
+	// Bound function only
+	//! The set of arguments of the function
+	vector<LogicalType> arguments;
+	//! The set of original arguments of the function - only set if Function::EraseArgument is called
+	//! Used for (de)serialization purposes
+	vector<LogicalType> original_arguments;
+};
+
 } // namespace duckdb

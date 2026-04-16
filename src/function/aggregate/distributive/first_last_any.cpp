@@ -221,7 +221,7 @@ struct FirstVectorFunction : FirstFunctionStringBase<LAST, SKIP_NULLS> {
 
 LogicalType GetFirstStateType(const AggregateFunction &function) {
 	child_list_t<LogicalType> child_types;
-	LogicalType value_type = function.arguments[0];
+	LogicalType value_type = function.GetSignature().GetParameters()[0].GetType();
 	child_types.emplace_back("value", value_type);
 	child_types.emplace_back("is_set", LogicalType::BOOLEAN);
 	child_types.emplace_back("is_null", LogicalType::BOOLEAN);
@@ -292,8 +292,8 @@ AggregateFunction GetFirstFunction(const LogicalType &type) {
 	if (type.id() == LogicalTypeId::DECIMAL) {
 		type.Verify();
 		AggregateFunction function = GetDecimalFirstFunction<LAST, SKIP_NULLS>(type);
-		function.arguments[0] = type;
-		function.SetReturnType(type);
+		function.GetSignature().GetParameter(0).SetType(type);
+		function.GetSignature().SetReturnType(type);
 		return function;
 	}
 	switch (type.InternalType()) {

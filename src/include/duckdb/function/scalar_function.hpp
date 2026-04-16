@@ -113,6 +113,7 @@ struct FunctionBindExpressionInput {
 };
 
 class BindScalarFunctionInput;
+class BoundScalarFunction;
 
 //! The scalar function type
 typedef std::function<void(DataChunk &, ExpressionState &, Vector &)> scalar_function_t;
@@ -136,8 +137,8 @@ typedef LogicalType (*bind_lambda_function_t)(ClientContext &context, const vect
 typedef void (*get_modified_databases_t)(ClientContext &context, FunctionModifiedDatabasesInput &input);
 
 typedef void (*function_serialize_t)(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
-                                     const ScalarFunction &function);
-typedef unique_ptr<FunctionData> (*function_deserialize_t)(Deserializer &deserializer, ScalarFunction &function);
+                                     const BoundScalarFunction &function);
+typedef unique_ptr<FunctionData> (*function_deserialize_t)(Deserializer &deserializer, BoundScalarFunction &function);
 
 //! The type to prune row groups based on statistics
 typedef FilterPropagateResult (*propagate_filter_t)(const FunctionStatisticsPruneInput &input);
@@ -374,9 +375,22 @@ public:
 	}
 };
 
+class BoundScalarFunction : public ScalarFunction {
+public:
+	BoundScalarFunction(const BoundScalarFunction &) = default;
+	BoundScalarFunction(const ScalarFunction &function) : ScalarFunction(function) {
+	}
+	// Bound function only
+	//! The set of arguments of the function
+	vector<LogicalType> arguments;
+	//! The set of original arguments of the function - only set if Function::EraseArgument is called
+	//! Used for (de)serialization purposes
+	vector<LogicalType> original_arguments;
+};
+
 class BindScalarFunctionInput {
 public:
-	BindScalarFunctionInput(ClientContext &context_p, ScalarFunction &bound_function_p,
+	BindScalarFunctionInput(ClientContext &context_p, BoundScalarFunction &bound_function_p,
 	                        vector<unique_ptr<Expression>> &arguments_p, optional_ptr<Binder> binder_p = nullptr)
 	    : context(context_p), bound_function(bound_function_p), arguments(arguments_p), binder(binder_p) {
 	}
@@ -384,9 +398,9 @@ public:
 	ClientContext &GetClientContext() const {
 		return context;
 	}
-	ScalarFunction &GetBoundFunction() const {
-		return bound_function;
-	}
+
+	BoundScalarFunction &GetBoundFunction() const;
+
 	vector<unique_ptr<Expression>> &GetArguments() const {
 		return arguments;
 	}
@@ -402,15 +416,17 @@ public:
 
 private:
 	ClientContext &context;
-	ScalarFunction &bound_function;
+	BoundScalarFunction &bound_function;
 	vector<unique_ptr<Expression>> &arguments;
 	optional_ptr<Binder> binder;
 };
 
 inline unique_ptr<FunctionData> ScalarFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments,
                                                      optional_ptr<Binder> binder) {
-	BindScalarFunctionInput bind_input(context, *this, arguments, binder);
-	return Bind(bind_input);
+	throw NotImplementedException("TODO");
+
+	// BindScalarFunctionInput bind_input(context, *this, arguments, binder);
+	// return Bind(bind_input);
 }
 
 } // namespace duckdb

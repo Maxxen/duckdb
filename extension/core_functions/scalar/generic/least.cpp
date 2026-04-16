@@ -229,7 +229,7 @@ unique_ptr<FunctionData> BindLeastGreatest(BindScalarFunctionInput &input) {
 		break;
 	}
 	bound_function.arguments[0] = child_type;
-	bound_function.varargs = child_type;
+	bound_function.SetVarArgs(child_type);
 	bound_function.SetReturnType(child_type);
 	return nullptr;
 }

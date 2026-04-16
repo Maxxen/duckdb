@@ -160,7 +160,7 @@ public:
 			FunctionBinder binder(context);
 
 			// Resolve templates
-			binder.ResolveTemplateTypes(function, children);
+			// binder.ResolveTemplateTypes(function, children);
 
 			if (function.HasBindCallback()) {
 				try {
@@ -173,9 +173,12 @@ public:
 			}
 
 			// Verify that all templates are bound to concrete types.
-			binder.CheckTemplateTypesResolved(function);
+			// binder.CheckTemplateTypesResolved(function);
 
-			binder.CastToFunctionArguments(function, children);
+			// binder.CastToFunctionArguments(function, children);
+
+			// TODO
+			throw NotImplementedException("TODO");
 		}
 
 		if (TypeRequiresAssignment(function.GetReturnType())) {

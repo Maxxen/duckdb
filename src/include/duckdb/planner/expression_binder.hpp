@@ -35,7 +35,6 @@ class AggregateFunctionCatalogEntry;
 class WindowFunctionCatalogEntry;
 class ScalarMacroCatalogEntry;
 class CatalogEntry;
-class SimpleFunction;
 
 struct DummyBinding;
 struct SelectBindState;

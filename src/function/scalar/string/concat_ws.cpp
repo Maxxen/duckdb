@@ -118,7 +118,7 @@ static unique_ptr<FunctionData> BindConcatWSFunction(BindScalarFunctionInput &in
 	for (auto &arg : bound_function.arguments) {
 		arg = LogicalType::VARCHAR;
 	}
-	bound_function.varargs = LogicalType::VARCHAR;
+	bound_function.SetVarArgs(LogicalType::VARCHAR);
 	return nullptr;
 }
 
@@ -133,7 +133,7 @@ ScalarFunction ConcatWsFun::GetFunction() {
 
 	ScalarFunction concat_ws = ScalarFunction("concat_ws", {LogicalType::VARCHAR, LogicalType::ANY},
 	                                          LogicalType::VARCHAR, ConcatWSFunction, BindConcatWSFunction);
-	concat_ws.varargs = LogicalType::ANY;
+	concat_ws.SetVarArgs(LogicalType::ANY);
 	concat_ws.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return ScalarFunction(concat_ws);
 }

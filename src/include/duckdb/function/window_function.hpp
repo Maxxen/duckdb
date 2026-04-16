@@ -57,28 +57,7 @@ struct WindowFunctionInfo {
 	}
 };
 
-class BindWindowFunctionInput {
-public:
-	BindWindowFunctionInput(ClientContext &context_p, WindowFunction &bound_function_p,
-	                        vector<unique_ptr<Expression>> &arguments_p)
-	    : context(context_p), bound_function(bound_function_p), arguments(arguments_p) {
-	}
-
-	ClientContext &GetClientContext() const {
-		return context;
-	}
-	WindowFunction &GetBoundFunction() const {
-		return bound_function;
-	}
-	vector<unique_ptr<Expression>> &GetArguments() const {
-		return arguments;
-	}
-
-private:
-	ClientContext &context;
-	WindowFunction &bound_function;
-	vector<unique_ptr<Expression>> &arguments;
-};
+class BindWindowFunctionInput;
 
 //! Binds the scalar function and creates the function data
 typedef unique_ptr<FunctionData> (*window_bind_function_t)(BindWindowFunctionInput &input);
@@ -145,10 +124,7 @@ public:
 	window_bind_function_t GetBindCallback() const { return bind; }
 	void SetBindCallback(window_bind_function_t callback) { bind = callback; }
 	unique_ptr<FunctionData> Bind(BindWindowFunctionInput &bind_input) { return GetBindCallback()(bind_input); }
-	unique_ptr<FunctionData> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments) {
-		BindWindowFunctionInput bind_input(context, *this, arguments);
-		return Bind(bind_input);
-	}
+	unique_ptr<FunctionData> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments);
 
 
 	bool HasValidateCallback() const { return validate != nullptr; }
@@ -233,5 +209,47 @@ public:
 		return !(*this == rhs);
 	}
 };
+
+class BoundWindowFunction : public WindowFunction {
+public:
+	BoundWindowFunction(const WindowFunction &function) : WindowFunction(function) {
+	}
+	// Bound function only
+	//! The set of arguments of the function
+	vector<LogicalType> arguments;
+	//! The set of original arguments of the function - only set if Function::EraseArgument is called
+	//! Used for (de)serialization purposes
+	vector<LogicalType> original_arguments;
+};
+
+class BindWindowFunctionInput {
+public:
+	BindWindowFunctionInput(ClientContext &context_p, BoundWindowFunction &bound_function_p,
+	                        vector<unique_ptr<Expression>> &arguments_p)
+	    : context(context_p), bound_function(bound_function_p), arguments(arguments_p) {
+	}
+
+	ClientContext &GetClientContext() const {
+		return context;
+	}
+	BoundWindowFunction &GetBoundFunction() const {
+		return bound_function;
+	}
+	vector<unique_ptr<Expression>> &GetArguments() const {
+		return arguments;
+	}
+
+private:
+	ClientContext &context;
+	BoundWindowFunction &bound_function;
+	vector<unique_ptr<Expression>> &arguments;
+};
+
+inline unique_ptr<FunctionData> WindowFunction::Bind(ClientContext &context,
+                                                     vector<unique_ptr<Expression>> &arguments) {
+	throw NotImplementedException("TODO");
+	// BindWindowFunctionInput bind_input(context, *this, arguments);
+	// return Bind(bind_input);
+}
 
 } // namespace duckdb

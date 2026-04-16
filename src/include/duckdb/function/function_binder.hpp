@@ -61,7 +61,7 @@ public:
 	                                                     bool is_operator = false,
 	                                                     optional_ptr<Binder> binder = nullptr);
 
-	DUCKDB_API unique_ptr<Expression> BindScalarFunction(ScalarFunction bound_function,
+	DUCKDB_API unique_ptr<Expression> BindScalarFunction(const ScalarFunction &bound_function,
 	                                                     vector<unique_ptr<Expression>> children,
 	                                                     bool is_operator = false,
 	                                                     optional_ptr<Binder> binder = nullptr);
@@ -82,14 +82,15 @@ public:
 	                   AggregateType aggr_type = AggregateType::NON_DISTINCT);
 
 	//! Cast a set of expressions to the arguments of this function
-	void CastToFunctionArguments(SimpleFunction &function, vector<unique_ptr<Expression>> &children);
+	void CastToFunctionArguments(const string &func_name, const vector<LogicalType> &params, const LogicalType &vararg,
+	                             vector<unique_ptr<Expression>> &arguments);
 
 	void ResolveTemplateTypes(BaseScalarFunction &bound_function, const vector<unique_ptr<Expression>> &children);
 	void CheckTemplateTypesResolved(const BaseScalarFunction &bound_function);
 
 private:
-	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
-	optional_idx BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
+	optional_idx BindVarArgsFunctionCost(const Function &func, const vector<LogicalType> &arguments);
+	optional_idx BindFunctionCost(const Function &func, const vector<LogicalType> &arguments);
 
 	template <class T>
 	vector<idx_t> BindFunctionsFromArguments(const string &name, FunctionSet<T> &functions,

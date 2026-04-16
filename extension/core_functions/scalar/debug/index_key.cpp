@@ -226,7 +226,7 @@ static void IndexKeyFunction(DataChunk &args, ExpressionState &state, Vector &re
 ScalarFunction IndexKeyFun::GetFunction() {
 	ScalarFunction fun("index_key", {LogicalTypeId::STRUCT, LogicalType::VARCHAR}, LogicalType::BLOB, IndexKeyFunction,
 	                   IndexKeyBind);
-	fun.varargs = LogicalTypeId::ANY;
+	fun.SetVarArgs(LogicalTypeId::ANY);
 	return fun;
 }
 

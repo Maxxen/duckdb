@@ -52,28 +52,8 @@ struct WindowPartitionInput {
 	InterruptState &interrupt_state;
 };
 
-class BindAggregateFunctionInput {
-public:
-	BindAggregateFunctionInput(ClientContext &context_p, AggregateFunction &bound_function_p,
-	                           vector<unique_ptr<Expression>> &arguments_p)
-	    : context(context_p), bound_function(bound_function_p), arguments(arguments_p) {
-	}
-
-	ClientContext &GetClientContext() const {
-		return context;
-	}
-	AggregateFunction &GetBoundFunction() const {
-		return bound_function;
-	}
-	vector<unique_ptr<Expression>> &GetArguments() const {
-		return arguments;
-	}
-
-private:
-	ClientContext &context;
-	AggregateFunction &bound_function;
-	vector<unique_ptr<Expression>> &arguments;
-};
+class BindAggregateFunctionInput;
+class BoundAggregateFunction;
 
 //! The type used for sizing hashed aggregate function states
 typedef idx_t (*aggregate_size_t)(const AggregateFunction &function);
@@ -109,8 +89,9 @@ typedef void (*aggregate_wininit_t)(AggregateInputData &aggr_input_data, const W
                                     data_ptr_t g_state);
 
 typedef void (*aggregate_serialize_t)(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
-                                      const AggregateFunction &function);
-typedef unique_ptr<FunctionData> (*aggregate_deserialize_t)(Deserializer &deserializer, AggregateFunction &function);
+                                      const BoundAggregateFunction &function);
+typedef unique_ptr<FunctionData> (*aggregate_deserialize_t)(Deserializer &deserializer,
+                                                            BoundAggregateFunction &function);
 
 typedef LogicalType (*aggregate_get_state_type_t)(const AggregateFunction &function);
 
@@ -213,10 +194,7 @@ public:
 	bind_aggregate_function_t GetBindCallback() const { return bind; }
 	void SetBindCallback(bind_aggregate_function_t callback) { bind = callback; }
 	unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &bind_input) { return GetBindCallback()(bind_input); }
-	unique_ptr<FunctionData> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments) {
-		BindAggregateFunctionInput bind_input(context, *this, arguments);
-		return Bind(bind_input);
-	}
+	unique_ptr<FunctionData> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments);
 
 	bool HasStateInitCallback() const { return initialize != nullptr; }
 	aggregate_initialize_t GetStateInitCallback() const { return initialize; }
@@ -474,5 +452,50 @@ public:
 		AggregateExecutor::Destroy<STATE, OP>(states, aggr_input_data, count);
 	}
 };
+
+class BoundAggregateFunction : public AggregateFunction {
+public:
+	BoundAggregateFunction(const BoundAggregateFunction &) = default;
+	BoundAggregateFunction(const AggregateFunction &function) : AggregateFunction(function) {
+	}
+	// Bound function only
+	//! The set of arguments of the function
+	vector<LogicalType> arguments;
+	//! The set of original arguments of the function - only set if Function::EraseArgument is called
+	//! Used for (de)serialization purposes
+	vector<LogicalType> original_arguments;
+};
+
+class BindAggregateFunctionInput {
+public:
+	BindAggregateFunctionInput(ClientContext &context_p, BoundAggregateFunction &bound_function_p,
+	                           vector<unique_ptr<Expression>> &arguments_p)
+	    : context(context_p), bound_function(bound_function_p), arguments(arguments_p) {
+	}
+
+	ClientContext &GetClientContext() const {
+		return context;
+	}
+	BoundAggregateFunction &GetBoundFunction() const {
+		return bound_function;
+	}
+	vector<unique_ptr<Expression>> &GetArguments() const {
+		return arguments;
+	}
+
+private:
+	ClientContext &context;
+	BoundAggregateFunction &bound_function;
+	vector<unique_ptr<Expression>> &arguments;
+};
+
+inline unique_ptr<FunctionData> AggregateFunction::Bind(ClientContext &context,
+                                                        vector<unique_ptr<Expression>> &arguments) {
+	// BindAggregateFunctionInput bind_input(context, *this, arguments);
+	// return Bind(bind_input);
+
+	// TODO!
+	throw NotImplementedException("AggregateFunction::Bind");
+}
 
 } // namespace duckdb

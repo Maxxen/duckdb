@@ -17,7 +17,7 @@ namespace duckdb {
 static vector<unique_ptr<Expression>> CreatePartitionedRowNumExpression(ClientContext &client,
                                                                         const vector<LogicalType> &types) {
 	vector<unique_ptr<Expression>> res;
-	auto rn = make_uniq<WindowFunction>(RowNumberFun::GetFunction());
+	auto rn = make_uniq<BoundWindowFunction>(RowNumberFun::GetFunction());
 	auto expr = make_uniq<BoundWindowExpression>(LogicalType::BIGINT, nullptr, std::move(rn), nullptr);
 	expr->start = WindowBoundary::UNBOUNDED_PRECEDING;
 	expr->end = WindowBoundary::UNBOUNDED_FOLLOWING;
