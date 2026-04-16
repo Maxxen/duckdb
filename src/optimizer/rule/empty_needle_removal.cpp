@@ -50,7 +50,7 @@ unique_ptr<Expression> EmptyNeedleRemovalRule::Apply(LogicalOperator &op, vector
 	// PREFIX(NULL, '') is NULL
 	// so rewrite PREFIX(x, '') to TRUE_OR_NULL(x)
 	if (needle_string.empty()) {
-		return ExpressionRewriter::ConstantOrNull(std::move(root.children[0]), Value::BOOLEAN(true));
+		return ExpressionRewriter::ConstantOrNull(GetContext(), std::move(root.children[0]), Value::BOOLEAN(true));
 	}
 	return nullptr;
 }

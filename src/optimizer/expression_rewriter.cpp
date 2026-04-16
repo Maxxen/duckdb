@@ -44,21 +44,21 @@ unique_ptr<Expression> ExpressionRewriter::ApplyRules(LogicalOperator &op, const
 	return expr;
 }
 
-unique_ptr<Expression> ExpressionRewriter::ConstantOrNull(unique_ptr<Expression> child, Value value) {
+unique_ptr<Expression> ExpressionRewriter::ConstantOrNull(ClientContext &context, unique_ptr<Expression> child,
+                                                          Value value) {
 	vector<unique_ptr<Expression>> children;
 	children.push_back(make_uniq<BoundConstantExpression>(value));
 	children.push_back(std::move(child));
-	return ConstantOrNull(std::move(children), std::move(value));
+	return ConstantOrNull(context, std::move(children), std::move(value));
 }
 
-unique_ptr<Expression> ExpressionRewriter::ConstantOrNull(vector<unique_ptr<Expression>> children, Value value) {
-	auto type = value.type();
-	auto raw = ConstantOrNullFun::GetFunction();
-	BoundScalarFunction func(raw);
-	func.arguments[0] = type;
-	func.SetReturnType(type);
+unique_ptr<Expression> ExpressionRewriter::ConstantOrNull(ClientContext &context,
+                                                          vector<unique_ptr<Expression>> children, Value value) {
 	children.insert(children.begin(), make_uniq<BoundConstantExpression>(value));
-	return make_uniq<BoundFunctionExpression>(type, func, std::move(children), ConstantOrNull::Bind(std::move(value)));
+	auto [bound_func, bound_data] = ConstantOrNullFun::GetFunction().Bind(context, children);
+
+	return make_uniq<BoundFunctionExpression>(value.type(), std::move(*bound_func), std::move(children),
+	                                          std::move(bound_data));
 }
 
 void ExpressionRewriter::VisitOperator(LogicalOperator &op) {

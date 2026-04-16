@@ -177,9 +177,7 @@ public:
 	bool HasBindCallback() const { return bind != nullptr; };
 	bind_scalar_function_t GetBindCallback() const { return bind; };
 	void SetBindCallback(bind_scalar_function_t callback) { bind = callback; }
-	unique_ptr<FunctionData> Bind(BindScalarFunctionInput &bind_input) { return GetBindCallback()(bind_input); }
-	unique_ptr<FunctionData> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments,
-		optional_ptr<Binder> binder = nullptr);
+	pair<unique_ptr<BoundScalarFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments, optional_ptr<Binder> binder = nullptr);
 
 	bool HasBindLambdaCallback() const { return bind_lambda != nullptr; }
 	bind_lambda_function_t GetBindLambdaCallback() const { return bind_lambda; }
@@ -377,8 +375,11 @@ public:
 
 class BoundScalarFunction : public ScalarFunction {
 public:
-	BoundScalarFunction(const BoundScalarFunction &) = default;
 	BoundScalarFunction(const ScalarFunction &function) : ScalarFunction(function) {
+		// Make arguments from the signature
+		for (const auto &param : function.GetSignature().GetParameters()) {
+			arguments.push_back(param.GetType());
+		}
 	}
 	// Bound function only
 	//! The set of arguments of the function
@@ -399,7 +400,9 @@ public:
 		return context;
 	}
 
-	BoundScalarFunction &GetBoundFunction() const;
+	BoundScalarFunction &GetBoundFunction() const {
+		return bound_function;
+	}
 
 	vector<unique_ptr<Expression>> &GetArguments() const {
 		return arguments;
@@ -420,13 +423,5 @@ private:
 	vector<unique_ptr<Expression>> &arguments;
 	optional_ptr<Binder> binder;
 };
-
-inline unique_ptr<FunctionData> ScalarFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments,
-                                                     optional_ptr<Binder> binder) {
-	throw NotImplementedException("TODO");
-
-	// BindScalarFunctionInput bind_input(context, *this, arguments, binder);
-	// return Bind(bind_input);
-}
 
 } // namespace duckdb

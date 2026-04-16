@@ -82,8 +82,9 @@ protected:
 class WindowFillExecutor : public WindowValueExecutor {
 public:
 	static unique_ptr<FunctionData> Bind(BindWindowFunctionInput &input);
-	static void Validate(ClientContext &context, WindowFunction &function, vector<unique_ptr<Expression>> &arguments,
-	                     vector<OrderByNode> &orders, vector<OrderByNode> &arg_orders);
+	static void Validate(ClientContext &context, BoundWindowFunction &function,
+	                     vector<unique_ptr<Expression>> &arguments, vector<OrderByNode> &orders,
+	                     vector<OrderByNode> &arg_orders);
 	static void GetSharing(WindowExecutor &executor, WindowSharedExpressions &shared);
 
 	WindowFillExecutor(BoundWindowExpression &wexpr, WindowSharedExpressions &shared)

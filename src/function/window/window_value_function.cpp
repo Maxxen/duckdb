@@ -969,10 +969,9 @@ unique_ptr<FunctionData> WindowFillExecutor::Bind(BindWindowFunctionInput &input
 	return nullptr;
 }
 
-void WindowFillExecutor::Validate(ClientContext &context, WindowFunction &function,
+void WindowFillExecutor::Validate(ClientContext &context, BoundWindowFunction &bound_function,
                                   vector<unique_ptr<Expression>> &arguments, vector<OrderByNode> &orders,
                                   vector<OrderByNode> &arg_orders) {
-	BoundWindowFunction bound_function(function);
 	BindWindowFunctionInput input(context, bound_function, arguments);
 
 	WindowValueExecutor::Bind(input);

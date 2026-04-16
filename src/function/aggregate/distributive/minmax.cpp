@@ -366,7 +366,9 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 			throw BinderException(string("Fail to find corresponding function for collation min/max: ") +
 			                      error.Message());
 		}
-		function = func_entry.functions.GetFunctionByOffset(best_function.GetIndex());
+
+		// function = func_entry.functions.GetFunctionByOffset(best_function.GetIndex());
+		throw NotImplementedException("Function copy");
 
 		// Bind function like arg_min/arg_max.
 		arguments.push_back(std::move(collated_arg));
@@ -382,15 +384,16 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 	auto name = std::move(function.name);
 
 	auto state_export_type = function.get_state_type;
-	function = GetMinMaxOperator<OP, OP_STRING, OP_VECTOR>(input_type);
-	function.SetStructStateExport(state_export_type);
-	function.name = std::move(name);
-	function.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
-	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
-	if (function.HasBindCallback()) {
-		return function.Bind(context, arguments);
-	}
-	return nullptr;
+	auto minmax_func = GetMinMaxOperator<OP, OP_STRING, OP_VECTOR>(input_type);
+
+	minmax_func.SetStructStateExport(state_export_type);
+	minmax_func.name = std::move(name);
+	minmax_func.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
+	minmax_func.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
+
+	auto [bound_func, bound_data] = minmax_func.Bind(context, arguments);
+	function = std::move(*bound_func);
+	return std::move(bound_data);
 }
 
 template <class OP, class OP_STRING, class OP_VECTOR>

@@ -30,7 +30,8 @@ struct ExportAggregateFunctionBindData : public FunctionData {
 };
 
 struct ExportAggregateFunction {
-	static unique_ptr<BoundAggregateExpression> Bind(unique_ptr<BoundAggregateExpression> child_aggregate);
+	static unique_ptr<BoundAggregateExpression> Bind(ClientContext &context,
+	                                                 unique_ptr<BoundAggregateExpression> child_aggregate);
 };
 
 } // namespace duckdb

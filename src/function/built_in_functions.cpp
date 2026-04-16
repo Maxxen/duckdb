@@ -121,14 +121,14 @@ static unique_ptr<FunctionData> BindExtensionFunction(BindScalarFunctionInput &i
 	// now find the function in the catalog
 	auto &catalog = Catalog::GetSystemCatalog(db);
 	auto &function_entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(context, DEFAULT_SCHEMA, bound_function.name);
-	// override the function with the extension function
-	bound_function = function_entry.functions.GetFunctionByArguments(context, bound_function.arguments);
-	// call the original bind (if any)
-	if (!bound_function.HasBindCallback()) {
-		return nullptr;
-	}
-	return bound_function.Bind(context, arguments);
-	;
+
+	// Bind it!
+	auto [bound_func, bound_data] =
+	    function_entry.functions.GetFunctionByArguments(context, bound_function.arguments).Bind(context, arguments);
+
+	// And override the function with the extension function
+	bound_function = std::move(*bound_func);
+	return std::move(bound_data);
 }
 
 void BuiltinFunctions::AddExtensionFunction(ScalarFunctionSet set) {

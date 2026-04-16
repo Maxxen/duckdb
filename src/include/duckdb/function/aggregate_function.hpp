@@ -193,8 +193,10 @@ public:
 	bool HasBindCallback() const { return bind != nullptr; }
 	bind_aggregate_function_t GetBindCallback() const { return bind; }
 	void SetBindCallback(bind_aggregate_function_t callback) { bind = callback; }
-	unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &bind_input) { return GetBindCallback()(bind_input); }
-	unique_ptr<FunctionData> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments);
+
+
+	pair<unique_ptr<BoundAggregateFunction>, unique_ptr<FunctionData>> Bind(BindAggregateFunctionInput &bind_input);
+	pair<unique_ptr<BoundAggregateFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments);
 
 	bool HasStateInitCallback() const { return initialize != nullptr; }
 	aggregate_initialize_t GetStateInitCallback() const { return initialize; }
@@ -455,9 +457,6 @@ public:
 
 class BoundAggregateFunction : public AggregateFunction {
 public:
-	BoundAggregateFunction(const BoundAggregateFunction &) = default;
-	BoundAggregateFunction(const AggregateFunction &function) : AggregateFunction(function) {
-	}
 	// Bound function only
 	//! The set of arguments of the function
 	vector<LogicalType> arguments;
@@ -489,8 +488,8 @@ private:
 	vector<unique_ptr<Expression>> &arguments;
 };
 
-inline unique_ptr<FunctionData> AggregateFunction::Bind(ClientContext &context,
-                                                        vector<unique_ptr<Expression>> &arguments) {
+inline pair<unique_ptr<BoundAggregateFunction>, unique_ptr<FunctionData>>
+AggregateFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments) {
 	// BindAggregateFunctionInput bind_input(context, *this, arguments);
 	// return Bind(bind_input);
 

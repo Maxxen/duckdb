@@ -68,8 +68,8 @@ unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, vector<refe
 			// if the cast is not possible then the comparison is not possible
 			// for example, if we have x + 5 = 3, where x is an unsigned number, we will get x = -2
 			// since this is not possible we can remove the entire branch here
-			return ExpressionRewriter::ConstantOrNull(std::move(arithmetic.children[arithmetic_child_index]),
-			                                          Value::BOOLEAN(false));
+			return ExpressionRewriter::ConstantOrNull(
+			    GetContext(), std::move(arithmetic.children[arithmetic_child_index]), Value::BOOLEAN(false));
 		}
 		outer_constant.value = std::move(result_value);
 	} else if (op_type == "-") {
@@ -87,8 +87,8 @@ unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, vector<refe
 				if (comparison.GetExpressionType() != ExpressionType::COMPARE_EQUAL) {
 					return nullptr;
 				}
-				return ExpressionRewriter::ConstantOrNull(std::move(arithmetic.children[arithmetic_child_index]),
-				                                          Value::BOOLEAN(false));
+				return ExpressionRewriter::ConstantOrNull(
+				    GetContext(), std::move(arithmetic.children[arithmetic_child_index]), Value::BOOLEAN(false));
 			}
 			outer_constant.value = std::move(result_value);
 		} else {
@@ -103,8 +103,8 @@ unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, vector<refe
 				if (comparison.GetExpressionType() != ExpressionType::COMPARE_EQUAL) {
 					return nullptr;
 				}
-				return ExpressionRewriter::ConstantOrNull(std::move(arithmetic.children[arithmetic_child_index]),
-				                                          Value::BOOLEAN(false));
+				return ExpressionRewriter::ConstantOrNull(
+				    GetContext(), std::move(arithmetic.children[arithmetic_child_index]), Value::BOOLEAN(false));
 			}
 			outer_constant.value = std::move(result_value);
 			// in this case, we should also flip the comparison
@@ -132,7 +132,8 @@ unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, vector<refe
 				// we know the values are not equal
 				// the result will be either FALSE or NULL (if COMPARE_EQUAL)
 				// or TRUE or NULL (if COMPARE_NOTEQUAL)
-				return ExpressionRewriter::ConstantOrNull(std::move(arithmetic.children[arithmetic_child_index]),
+				return ExpressionRewriter::ConstantOrNull(GetContext(),
+				                                          std::move(arithmetic.children[arithmetic_child_index]),
 				                                          Value::BOOLEAN(is_inequality));
 			} else {
 				// not cleanly divisible and we are doing > >= < <=, skip the simplification for now
@@ -148,8 +149,8 @@ unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, vector<refe
 		// because e.g. -128 / -1 = 128, which is out of range
 		auto result_value = Value::HUGEINT(outer_value / inner_value);
 		if (!result_value.DefaultTryCastAs(constant_type)) {
-			return ExpressionRewriter::ConstantOrNull(std::move(arithmetic.children[arithmetic_child_index]),
-			                                          Value::BOOLEAN(false));
+			return ExpressionRewriter::ConstantOrNull(
+			    GetContext(), std::move(arithmetic.children[arithmetic_child_index]), Value::BOOLEAN(false));
 		}
 		outer_constant.value = std::move(result_value);
 	}

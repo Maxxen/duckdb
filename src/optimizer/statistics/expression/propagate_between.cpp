@@ -41,7 +41,7 @@ unique_ptr<BaseStatistics> StatisticsPropagator::PropagateExpression(BoundBetwee
 		children.push_back(std::move(between.input));
 		children.push_back(std::move(between.lower));
 		children.push_back(std::move(between.upper));
-		expr_ptr = ExpressionRewriter::ConstantOrNull(std::move(children), Value::BOOLEAN(false));
+		expr_ptr = ExpressionRewriter::ConstantOrNull(context, std::move(children), Value::BOOLEAN(false));
 	} else if (lower_prune == FilterPropagateResult::FILTER_TRUE_OR_NULL &&
 	           upper_prune == FilterPropagateResult::FILTER_TRUE_OR_NULL) {
 		// both filters are true or null: replace with a true or null
@@ -49,7 +49,7 @@ unique_ptr<BaseStatistics> StatisticsPropagator::PropagateExpression(BoundBetwee
 		children.push_back(std::move(between.input));
 		children.push_back(std::move(between.lower));
 		children.push_back(std::move(between.upper));
-		expr_ptr = ExpressionRewriter::ConstantOrNull(std::move(children), Value::BOOLEAN(true));
+		expr_ptr = ExpressionRewriter::ConstantOrNull(context, std::move(children), Value::BOOLEAN(true));
 	} else if (lower_prune == FilterPropagateResult::FILTER_ALWAYS_TRUE) {
 		// lower filter is always true: replace with upper comparison
 		expr_ptr =

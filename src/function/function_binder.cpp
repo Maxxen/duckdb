@@ -666,7 +666,8 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunction &
 	unique_ptr<FunctionData> bind_info;
 
 	if (bound_function.HasBindCallback()) {
-		bind_info = bound_function.Bind(context, children, binder);
+		BindScalarFunctionInput input(context, bound_function, children, binder);
+		bind_info = bound_function.GetBindCallback()(input);
 	}
 
 	// After the "bind" callback, we verify that all template types are bound to concrete types.
@@ -693,9 +694,11 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunction &
 		FunctionBindExpressionInput input(context, result_func->bind_info.get(), result_func->children);
 		result = result_func->function.GetBindExpressionCallback()(input);
 	}
+
 	if (!result) {
 		result = std::move(result_func);
 	}
+
 	return result;
 }
 
@@ -703,6 +706,8 @@ unique_ptr<BoundAggregateExpression> FunctionBinder::BindAggregateFunction(Aggre
                                                                            vector<unique_ptr<Expression>> children,
                                                                            unique_ptr<Expression> filter,
                                                                            AggregateType aggr_type) {
+	throw NotImplementedException("BindAggregateFunction is not implemented yet!");
+	/*
 	// Make a BoundFunction out of the func
 	BoundAggregateFunction bound_function(function);
 
@@ -710,9 +715,9 @@ unique_ptr<BoundAggregateExpression> FunctionBinder::BindAggregateFunction(Aggre
 
 	unique_ptr<FunctionData> bind_info;
 	if (bound_function.HasBindCallback()) {
-		bind_info = bound_function.Bind(context, children);
-		// we may have lost some arguments in the bind
-		children.resize(MinValue(bound_function.arguments.size(), children.size()));
+	    bind_info = bound_function.Bind(context, children);
+	    // we may have lost some arguments in the bind
+	    children.resize(MinValue(bound_function.arguments.size(), children.size()));
 	}
 
 	// CheckTemplateTypesResolved(bound_function);
@@ -723,6 +728,7 @@ unique_ptr<BoundAggregateExpression> FunctionBinder::BindAggregateFunction(Aggre
 
 	return make_uniq<BoundAggregateExpression>(std::move(bound_function), std::move(children), std::move(filter),
 	                                           std::move(bind_info), aggr_type);
+	*/
 }
 
 unique_ptr<BoundWindowExpression> FunctionBinder::BindWindowFunction(WindowFunction function,
@@ -730,15 +736,16 @@ unique_ptr<BoundWindowExpression> FunctionBinder::BindWindowFunction(WindowFunct
                                                                      vector<OrderByNode> &orders,
                                                                      vector<OrderByNode> &arg_orders,
                                                                      AggregateType aggr_type) {
+	/*
 	BoundWindowFunction bound_function(function);
 
 	// ResolveTemplateTypes(bound_function, children);
 
 	unique_ptr<FunctionData> bind_info;
 	if (bound_function.HasBindCallback()) {
-		bind_info = bound_function.Bind(context, children);
-		// we may have lost some arguments in the bind
-		children.resize(MinValue(bound_function.arguments.size(), children.size()));
+	    bind_info = bound_function.Bind(context, children);
+	    // we may have lost some arguments in the bind
+	    children.resize(MinValue(bound_function.arguments.size(), children.size()));
 	}
 
 	// CheckTemplateTypesResolved(bound_function);
@@ -748,7 +755,7 @@ unique_ptr<BoundWindowExpression> FunctionBinder::BindWindowFunction(WindowFunct
 	CastToFunctionArguments(function.name, bound_function.arguments, vararg, children);
 
 	if (bound_function.HasValidateCallback()) {
-		bound_function.GetValidateCallback()(context, bound_function, children, orders, arg_orders);
+	    bound_function.GetValidateCallback()(context, bound_function, children, orders, arg_orders);
 	}
 
 	auto window = make_uniq<BoundWindowFunction>(bound_function);
@@ -757,6 +764,8 @@ unique_ptr<BoundWindowExpression> FunctionBinder::BindWindowFunction(WindowFunct
 	result->children = std::move(children);
 
 	return result;
+	*/
+	throw NotImplementedException("BindWindowFunction is not implemented yet!");
 }
 
 } // namespace duckdb

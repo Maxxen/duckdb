@@ -301,7 +301,7 @@ BindResult BaseSelectBinder::BindAggregate(FunctionExpression &aggr, AggregateFu
 	    function_binder.BindAggregateFunction(bound_function, std::move(children), std::move(bound_filter),
 	                                          aggr.distinct ? AggregateType::DISTINCT : AggregateType::NON_DISTINCT);
 	if (aggr.export_state) {
-		aggregate = ExportAggregateFunction::Bind(std::move(aggregate));
+		aggregate = ExportAggregateFunction::Bind(context, std::move(aggregate));
 	}
 	aggregate->order_bys = std::move(order_bys);
 

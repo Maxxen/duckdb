@@ -58,12 +58,13 @@ struct WindowFunctionInfo {
 };
 
 class BindWindowFunctionInput;
+class BoundWindowFunction;
 
 //! Binds the scalar function and creates the function data
 typedef unique_ptr<FunctionData> (*window_bind_function_t)(BindWindowFunctionInput &input);
 
 //! Validates the additional ordering usage.
-typedef void (*window_validate_function_t)(ClientContext &context, WindowFunction &function,
+typedef void (*window_validate_function_t)(ClientContext &context, BoundWindowFunction &function,
                                            vector<unique_ptr<Expression>> &arguments, vector<OrderByNode> &orders,
                                            vector<OrderByNode> &arg_orders);
 
@@ -123,8 +124,9 @@ public:
 	bool HasBindCallback() const { return bind != nullptr; }
 	window_bind_function_t GetBindCallback() const { return bind; }
 	void SetBindCallback(window_bind_function_t callback) { bind = callback; }
-	unique_ptr<FunctionData> Bind(BindWindowFunctionInput &bind_input) { return GetBindCallback()(bind_input); }
-	unique_ptr<FunctionData> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments);
+
+	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments);
+	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context);
 
 
 	bool HasValidateCallback() const { return validate != nullptr; }
@@ -212,8 +214,8 @@ public:
 
 class BoundWindowFunction : public WindowFunction {
 public:
-	BoundWindowFunction(const WindowFunction &function) : WindowFunction(function) {
-	}
+	~BoundWindowFunction() override = default;
+
 	// Bound function only
 	//! The set of arguments of the function
 	vector<LogicalType> arguments;
@@ -244,12 +246,5 @@ private:
 	BoundWindowFunction &bound_function;
 	vector<unique_ptr<Expression>> &arguments;
 };
-
-inline unique_ptr<FunctionData> WindowFunction::Bind(ClientContext &context,
-                                                     vector<unique_ptr<Expression>> &arguments) {
-	throw NotImplementedException("TODO");
-	// BindWindowFunctionInput bind_input(context, *this, arguments);
-	// return Bind(bind_input);
-}
 
 } // namespace duckdb

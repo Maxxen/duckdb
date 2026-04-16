@@ -634,7 +634,8 @@ static void MinMaxRangeFunc(DataChunk &args, ExpressionState &state, Vector &res
 
 // The bind callback is unused for most extensible table filters
 static unique_ptr<FunctionData> RowIdFilterBind(BindScalarFunctionInput &input) {
-	throw InternalException("rowid_filter: bind should never be called");
+	// Do nothing, the data should be set by the optimizer extension when constructing the filter expression
+	return nullptr;
 }
 
 struct RowIdFilterBindData : public FunctionData {
@@ -733,8 +734,12 @@ public:
 		// Construct the bound expression (column index 0: the filter chunk contains only the filtered column)
 		vector<unique_ptr<Expression>> children;
 		children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0));
-		auto expr = make_uniq<BoundFunctionExpression>(LogicalType::BOOLEAN, func, std::move(children),
-		                                               make_uniq<RowIdFilterBindData>(vector<int64_t> {3, 4, 5, 7, 9}));
+
+		auto [bound_func, bound_data] = func.Bind(input.context, children);
+
+		auto expr =
+		    make_uniq<BoundFunctionExpression>(LogicalType::BOOLEAN, std::move(*bound_func), std::move(children),
+		                                       make_uniq<RowIdFilterBindData>(vector<int64_t> {3, 4, 5, 7, 9}));
 
 		// Ensure ROW_ID is in the scan's column list
 		auto row_id_index = get.TryGetProjectionIndex(COLUMN_IDENTIFIER_ROW_ID);

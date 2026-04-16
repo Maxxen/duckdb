@@ -55,7 +55,7 @@ unique_ptr<Expression> EnumComparisonRule::Apply(LogicalOperator &op, vector<ref
 		vector<unique_ptr<Expression>> children;
 		children.push_back(std::move(root.left));
 		children.push_back(std::move(root.right));
-		return ExpressionRewriter::ConstantOrNull(std::move(children), Value::BOOLEAN(false));
+		return ExpressionRewriter::ConstantOrNull(GetContext(), std::move(children), Value::BOOLEAN(false));
 	}
 
 	if (!is_root || op.type != LogicalOperatorType::LOGICAL_FILTER) {

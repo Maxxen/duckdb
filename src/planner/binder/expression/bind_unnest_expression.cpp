@@ -25,10 +25,12 @@ static unique_ptr<Expression> CreateBoundStructExtract(ClientContext &context, u
 	arguments.push_back(std::move(expr));
 	arguments.push_back(make_uniq<BoundConstantExpression>(Value(key_path.back())));
 	auto extract_function = GetKeyExtractFunction();
-	auto bind_info = extract_function.Bind(context, arguments);
+
+	auto [bound_func, bound_data] = extract_function.Bind(context, arguments);
+
 	auto return_type = extract_function.GetReturnType();
-	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(extract_function), std::move(arguments),
-	                                                 std::move(bind_info));
+	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(*bound_func), std::move(arguments),
+	                                                 std::move(bound_data));
 
 	if (keep_parent_names) {
 		auto alias = StringUtil::Join(key_path, ".");
@@ -48,10 +50,11 @@ static unique_ptr<Expression> CreateBoundStructExtractIndex(ClientContext &conte
 	arguments.push_back(std::move(expr));
 	arguments.push_back(make_uniq<BoundConstantExpression>(Value::BIGINT(int64_t(key))));
 	auto extract_function = GetIndexExtractFunction();
-	auto bind_info = extract_function.Bind(context, arguments);
+	auto [bound_func, bound_data] = extract_function.Bind(context, arguments);
 	auto return_type = extract_function.GetReturnType();
-	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(extract_function), std::move(arguments),
-	                                                 std::move(bind_info));
+	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(*bound_func), std::move(arguments),
+	                                                 std::move(bound_data));
+
 	result->SetAlias("element" + to_string(key));
 	return std::move(result);
 }

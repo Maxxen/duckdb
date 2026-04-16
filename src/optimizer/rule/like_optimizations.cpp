@@ -143,8 +143,11 @@ unique_ptr<Expression> LikeOptimizationRule::ApplyRule(BoundFunctionExpression &
                                                        string pattern, bool is_not_like) {
 	// replace LIKE by an optimized function
 	unique_ptr<Expression> result;
-	auto new_function =
-	    make_uniq<BoundFunctionExpression>(expr.return_type, std::move(function), std::move(expr.children), nullptr);
+
+	auto [bound_func, bound_data] = function.Bind(GetContext(), expr.children);
+
+	auto new_function = make_uniq<BoundFunctionExpression>(expr.return_type, std::move(*bound_func),
+	                                                       std::move(expr.children), std::move(bound_data));
 
 	// removing "%" from the pattern
 	pattern.erase(std::remove(pattern.begin(), pattern.end(), '%'), pattern.end());

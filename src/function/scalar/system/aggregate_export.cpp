@@ -856,7 +856,7 @@ void CombineAggrFinalize(Vector &state, AggregateInputData &aggr_input_data, Vec
 } // namespace
 
 unique_ptr<BoundAggregateExpression>
-ExportAggregateFunction::Bind(unique_ptr<BoundAggregateExpression> child_aggregate) {
+ExportAggregateFunction::Bind(ClientContext &context, unique_ptr<BoundAggregateExpression> child_aggregate) {
 	auto &bound_function = child_aggregate->function;
 	if (!bound_function.HasStateCombineCallback()) {
 		throw BinderException("Cannot use EXPORT_STATE for non-combinable function %s", bound_function.name);
@@ -901,7 +901,9 @@ ExportAggregateFunction::Bind(unique_ptr<BoundAggregateExpression> child_aggrega
 	export_function.SetSerializeCallback(ExportStateAggregateSerialize);
 	export_function.SetDeserializeCallback(ExportStateAggregateDeserialize);
 
-	return make_uniq<BoundAggregateExpression>(export_function, std::move(child_aggregate->children),
+	auto [bound_func, bound_data] = export_function.Bind(context, child_aggregate->children);
+
+	return make_uniq<BoundAggregateExpression>(std::move(*bound_func), std::move(child_aggregate->children),
 	                                           std::move(child_aggregate->filter), std::move(export_bind_data),
 	                                           child_aggregate->aggr_type);
 }
