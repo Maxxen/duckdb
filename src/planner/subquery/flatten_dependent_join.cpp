@@ -101,9 +101,7 @@ unique_ptr<LogicalOperator> FlattenDependentJoins::Decorrelate(unique_ptr<Logica
 			const auto &op_col = op.correlated_columns[op.correlated_columns.GetDelimIndex()];
 			auto window = make_uniq<LogicalWindow>(op_col.binding.table_index);
 
-			auto [bound_func, bound_data] = RowNumberFun::GetFunction().Bind(binder.context);
-			auto row_number = make_uniq<BoundWindowExpression>(LogicalType::BIGINT, nullptr, std::move(bound_func),
-			                                                   std::move(bound_data));
+			auto row_number = RowNumberFun::GetFunction().Bind(binder.context);
 
 			row_number->start = WindowBoundary::UNBOUNDED_PRECEDING;
 			row_number->end = WindowBoundary::CURRENT_ROW_ROWS;
@@ -870,9 +868,8 @@ unique_ptr<LogicalOperator> FlattenDependentJoins::PushDownDependentJoinInternal
 		auto window_index = binder.GenerateTableIndex();
 		auto window = make_uniq<LogicalWindow>(window_index);
 
-		auto [bound_func, bound_data] = RowNumberFun::GetFunction().Bind(binder.context);
-		auto row_number = make_uniq<BoundWindowExpression>(LogicalType::BIGINT, nullptr, std::move(bound_func),
-		                                                   std::move(bound_data));
+		auto row_number = RowNumberFun::GetFunction().Bind(binder.context);
+
 		auto partition_count = perform_delim ? correlated_columns.size() : 1;
 		for (idx_t i = 0; i < partition_count; i++) {
 			auto &col = correlated_columns[i];

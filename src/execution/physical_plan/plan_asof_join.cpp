@@ -239,10 +239,10 @@ PhysicalPlanGenerator::PlanAsOfLoopJoin(LogicalComparisonJoin &op, PhysicalOpera
 	}
 
 	// Add a synthetic primary integer key to the probe relation using streaming windowing.
-	auto [bound_func, bound_data] = RowNumberFun::GetFunction().Bind(context);
 
 	vector<unique_ptr<Expression>> window_select;
-	auto pk = make_uniq<BoundWindowExpression>(pk_type, nullptr, std::move(bound_func), std::move(bound_data));
+	auto pk = RowNumberFun::GetFunction().Bind(context);
+	D_ASSERT(pk->return_type == pk_type);
 	pk->start = WindowBoundary::UNBOUNDED_PRECEDING;
 	pk->end = WindowBoundary::CURRENT_ROW_ROWS;
 	pk->alias = "row_number";
@@ -394,10 +394,9 @@ PhysicalOperator &PhysicalPlanGenerator::PlanAsOfJoin(LogicalComparisonJoin &op)
 		throw InternalException("Invalid ASOF JOIN ordering for WINDOW");
 	}
 
-	auto [bound_func, bound_data] = LeadFun::GetTypedFunction(asof_type, 3).Bind(context, children);
-	auto asof_end = make_uniq<BoundWindowExpression>(asof_type, nullptr, std::move(bound_func), std::move(bound_data));
+	auto asof_end = LeadFun::GetTypedFunction(asof_type, 3).Bind(context, std::move(children));
+	D_ASSERT(asof_end->return_type == asof_type);
 
-	asof_end->children = std::move(children);
 	asof_end->partitions = std::move(partitions);
 	asof_end->orders = std::move(orders);
 	asof_end->start = WindowBoundary::UNBOUNDED_PRECEDING;

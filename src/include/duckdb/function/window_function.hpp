@@ -237,9 +237,8 @@ public:
 	                     finalize) {
 	}
 
-	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context,
-	                                                                     vector<unique_ptr<Expression>> &arguments);
-	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context);
+	unique_ptr<BoundWindowExpression> Bind(ClientContext &context,
+	                                       vector<unique_ptr<Expression>> arguments = vector<unique_ptr<Expression>>());
 };
 
 class BoundWindowFunction : public BaseWindowFunction {

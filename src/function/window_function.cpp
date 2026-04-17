@@ -3,21 +3,14 @@
 
 namespace duckdb {
 
-pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> WindowFunction::Bind(ClientContext &context) {
-	vector<unique_ptr<Expression>> arguments;
-	return Bind(context, arguments);
-}
-
-pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>>
-WindowFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments) {
+unique_ptr<BoundWindowExpression> WindowFunction::Bind(ClientContext &context,
+                                                       vector<unique_ptr<Expression>> arguments) {
 	FunctionBinder binder(context);
+	vector<OrderByNode> orders;
+	vector<OrderByNode> arg_orders;
+	AggregateType aggr_type = AggregateType::NON_DISTINCT;
 
-	// TODO: pass these things properly
-	// vector<OrderByNode> orders;
-	// vector<OrderByNode> arg_orders;
-	// binder.BindWindowFunction(*this, arguments, orders, arg_orders);
-
-	throw NotImplementedException("WindowFunction::Bind is not implemented yet!");
+	return binder.BindWindowFunction(*this, std::move(arguments), orders, arg_orders, aggr_type);
 }
 
 } // namespace duckdb

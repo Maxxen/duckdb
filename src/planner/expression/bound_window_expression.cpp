@@ -331,14 +331,12 @@ unique_ptr<Expression> BoundWindowExpression::Deserialize(Deserializer &deserial
 			error_win.Throw();
 		}
 
-		auto [bound_func, bound_data] =
-		    func.functions.GetFunctionByOffset(best.GetIndex()).Bind(context, result->children);
-
-		auto raw = func.functions.GetFunctionByOffset(best.GetIndex());
+		// TODO: Maybe return expr directly?
+		auto expr = func.functions.GetFunctionByOffset(best.GetIndex()).Bind(context, std::move(result->children));
 
 		result->type = expression_type;
-		result->bind_info = std::move(bound_data);
-		result->window = std::move(bound_func);
+		result->bind_info = std::move(expr->bind_info);
+		result->window = std::move(expr->window);
 	}
 
 	return std::move(result);
