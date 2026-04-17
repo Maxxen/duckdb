@@ -253,7 +253,9 @@ void PreventInlining::VisitExpression(unique_ptr<Expression> *expression) {
 	if (expr->GetExpressionClass() == ExpressionClass::BOUND_FUNCTION) {
 		auto &bound_function = expr->Cast<BoundFunctionExpression>();
 		// if we encounter the ErrorFun function, we still want to inline
-		if (bound_function.function == ErrorFun::GetFunction()) {
+		auto error = ErrorFun::GetFunction();
+		if (bound_function.function.name == error.name && bound_function.function.schema_name == error.schema_name &&
+		    bound_function.function.catalog_name == error.catalog_name) {
 			return;
 		}
 

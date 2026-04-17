@@ -72,13 +72,13 @@ LogicalType GetRegrSStateType(const AggregateFunction &) {
 AggregateFunction RegrSXXFun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<RegrSState, double, double, double, RegrSXXOperation>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetRegrSStateType);
+	    .SetExportTypeCallback(GetRegrSStateType);
 }
 
 AggregateFunction RegrSYYFun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<RegrSState, double, double, double, RegrSYYOperation>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetRegrSStateType);
+	    .SetExportTypeCallback(GetRegrSStateType);
 }
 
 } // namespace duckdb

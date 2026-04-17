@@ -295,7 +295,7 @@ ScalarFunctionSet ParseDirnameFun::GetFunctions() {
 	                    LogicalType::INVALID, FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING);
 	parse_dirname.AddFunction(func);
 	// separator options
-	func.arguments.emplace_back(LogicalType::VARCHAR);
+	func.GetSignature().AddParemeter("", LogicalType::VARCHAR);
 	parse_dirname.AddFunction(func);
 	return parse_dirname;
 }
@@ -306,7 +306,7 @@ ScalarFunctionSet ParseDirpathFun::GetFunctions() {
 	                    LogicalType::INVALID, FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING);
 	parse_dirpath.AddFunction(func);
 	// separator options
-	func.arguments.emplace_back(LogicalType::VARCHAR);
+	func.GetSignature().AddParemeter("", LogicalType::VARCHAR);
 	parse_dirpath.AddFunction(func);
 	return parse_dirpath;
 }
@@ -336,7 +336,7 @@ ScalarFunctionSet ParsePathFun::GetFunctions() {
 	                    LogicalType::INVALID, FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING);
 	parse_path.AddFunction(func);
 	// separator options
-	func.arguments.emplace_back(LogicalType::VARCHAR);
+	func.GetSignature().AddParemeter("", LogicalType::VARCHAR);
 	parse_path.AddFunction(func);
 	return parse_path;
 }

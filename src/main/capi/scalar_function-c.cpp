@@ -60,13 +60,13 @@ struct CScalarFunctionBindData : public FunctionData {
 };
 
 struct CScalarFunctionInternalBindInfo {
-	CScalarFunctionInternalBindInfo(ClientContext &context, ScalarFunction &bound_function,
+	CScalarFunctionInternalBindInfo(ClientContext &context, BoundScalarFunction &bound_function,
 	                                vector<unique_ptr<Expression>> &arguments, CScalarFunctionBindData &bind_data)
 	    : context(context), bound_function(bound_function), arguments(arguments), bind_data(bind_data) {
 	}
 
 	ClientContext &context;
-	ScalarFunction &bound_function;
+	BoundScalarFunction &bound_function;
 	vector<unique_ptr<Expression>> &arguments;
 	CScalarFunctionBindData &bind_data;
 
@@ -224,7 +224,7 @@ using duckdb::GetCScalarFunctionSet;
 duckdb_scalar_function duckdb_create_scalar_function() {
 	auto function = new duckdb::ScalarFunction("", {}, duckdb::LogicalType::INVALID, duckdb::CAPIScalarFunction,
 	                                           duckdb::CScalarFunctionBind);
-	function->init_local_state = duckdb::CScalarFunctionInit;
+	function->SetInitStateCallback(duckdb::CScalarFunctionInit);
 	function->SetExtraFunctionInfo<duckdb::CScalarFunctionInfo>();
 	return reinterpret_cast<duckdb_scalar_function>(function);
 }

@@ -14,10 +14,12 @@ ScalarFunction::ScalarFunction(string name, vector<LogicalType> arguments, Logic
                                LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling,
                                bind_lambda_function_t bind_lambda)
     : BaseScalarFunction(std::move(name), std::move(arguments), std::move(return_type), side_effects,
-                         std::move(varargs), null_handling),
-      function(std::move(function)), bind(bind), init_local_state(init_local_state), statistics(statistics),
-      bind_lambda(bind_lambda), bind_expression(nullptr), get_modified_databases(nullptr), serialize(nullptr),
-      deserialize(nullptr) {
+                         std::move(varargs), null_handling) {
+	this->function = std::move(function);
+	this->bind = bind;
+	this->statistics = statistics;
+	this->init_local_state = init_local_state;
+	this->bind_lambda = bind_lambda;
 }
 
 ScalarFunction::ScalarFunction(vector<LogicalType> arguments, LogicalType return_type, scalar_function_t function,

@@ -107,7 +107,7 @@ AggregateFunction BoolOrFun::GetFunction() {
 	    LogicalType(LogicalTypeId::BOOLEAN), LogicalType::BOOLEAN);
 	fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 	fun.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
-	return fun.SetStructStateExport(GetBoolAndStateType);
+	return fun.SetExportTypeCallback(GetBoolAndStateType);
 }
 
 AggregateFunction BoolAndFun::GetFunction() {
@@ -115,7 +115,7 @@ AggregateFunction BoolAndFun::GetFunction() {
 	    LogicalType(LogicalTypeId::BOOLEAN), LogicalType::BOOLEAN);
 	fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 	fun.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
-	return fun.SetStructStateExport(GetBoolAndStateType);
+	return fun.SetExportTypeCallback(GetBoolAndStateType);
 }
 
 } // namespace duckdb

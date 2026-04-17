@@ -26,7 +26,7 @@ LogicalType GetRegrSlopeStateType(const AggregateFunction &) {
 AggregateFunction RegrSlopeFun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<RegrSlopeState, double, double, double, RegrSlopeOperation>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetRegrSlopeStateType);
+	    .SetExportTypeCallback(GetRegrSlopeStateType);
 }
 
 } // namespace duckdb

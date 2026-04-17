@@ -21,7 +21,7 @@ struct SortedAggregateBindData : public FunctionData {
 	using BindInfoPtr = unique_ptr<FunctionData>;
 	using OrderBys = vector<BoundOrderByNode>;
 
-	SortedAggregateBindData(ClientContext &context, Expressions &children, AggregateFunction &aggregate,
+	SortedAggregateBindData(ClientContext &context, Expressions &children, BoundAggregateFunction &aggregate,
 	                        BindInfoPtr &bind_info, OrderBys &order_bys)
 	    : context(context), function(aggregate), bind_info(std::move(bind_info)),
 	      threshold(Settings::Get<OrderedAggregateThresholdSetting>(context)) {
@@ -128,7 +128,7 @@ struct SortedAggregateBindData : public FunctionData {
 	}
 
 	ClientContext &context;
-	AggregateFunction function;
+	BoundAggregateFunction function;
 	unique_ptr<FunctionData> bind_info;
 
 	//! The sort expressions (all references as the expressions have been computed)

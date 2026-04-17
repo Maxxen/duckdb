@@ -457,7 +457,7 @@ ScalarFunctionSet ListSliceFun::GetFunctions() {
 	fun.SetFallible();
 	ScalarFunctionSet set;
 	set.AddFunction(fun);
-	fun.arguments.push_back(LogicalType::BIGINT);
+	fun.GetSignature().AddParemeter("", LogicalType::BIGINT);
 	set.AddFunction(fun);
 	return set;
 }

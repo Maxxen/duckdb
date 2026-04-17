@@ -21,10 +21,10 @@ namespace {
 
 // aggregate state export
 struct ExportAggregateBindData : public FunctionData {
-	AggregateFunction aggr;
+	BoundAggregateFunction aggr;
 	idx_t state_size;
 
-	explicit ExportAggregateBindData(AggregateFunction aggr_p, idx_t state_size_p)
+	explicit ExportAggregateBindData(BoundAggregateFunction aggr_p, idx_t state_size_p)
 	    : aggr(std::move(aggr_p)), state_size(state_size_p) {
 	}
 
@@ -735,7 +735,7 @@ void ExportAggregateFinalize(Vector &state, AggregateInputData &aggr_input_data,
 	auto state_size = bind_data.aggregate->function.GetStateSizeCallback()(bind_data.aggregate->function);
 
 	// Note: The underlying state type should always be a struct (we have a D_ASSERT for that in `GetStateType`
-	bool should_result_as_struct = bind_data.aggregate->function.HasGetStateTypeCallback();
+	bool should_result_as_struct = bind_data.aggregate->function.HasExportTypeCallback();
 	if (should_result_as_struct) {
 		AggregateStateLayout layout(bind_data.aggregate->function.GetStateType(), state_size);
 
@@ -777,9 +777,9 @@ unique_ptr<FunctionData> CombineAggrBind(BindAggregateFunctionInput &input) {
 	auto bind_data = BindAggregateStateInternal(context, function, arguments, false);
 
 	// Copy underlying aggregate's callbacks into this function (same pattern as `ExportAggregateFunction::Bind`)
-	function.state_size = bind_data->aggr.GetStateSizeCallback();
-	function.initialize = bind_data->aggr.GetStateInitCallback();
-	function.combine = bind_data->aggr.GetStateCombineCallback();
+	function.SetStateSizeCallback(bind_data->aggr.GetStateSizeCallback());
+	function.SetStateInitCallback(bind_data->aggr.GetStateInitCallback());
+	function.SetStateCombineCallback(bind_data->aggr.GetStateCombineCallback());
 
 	function.SetReturnType(arguments[0]->return_type);
 
@@ -882,7 +882,7 @@ ExportAggregateFunction::Bind(ClientContext &context, unique_ptr<BoundAggregateE
 	                             child_aggregate->function.arguments);
 
 	LogicalType return_type;
-	if (bound_function.HasGetStateTypeCallback()) {
+	if (bound_function.HasExportTypeCallback()) {
 		LogicalType state_layout = bound_function.GetStateType();
 		auto struct_child_types = StructType::GetChildTypes(state_layout);
 		return_type = LogicalType::AGGREGATE_STATE(std::move(state_type), std::move(struct_child_types));

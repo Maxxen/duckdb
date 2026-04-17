@@ -63,19 +63,6 @@ bool SimpleNamedParameterFunction::HasNamedParameters() const {
 	return !named_parameters.empty();
 }
 
-BaseScalarFunction::BaseScalarFunction(string name_p, vector<LogicalType> arguments_p, LogicalType return_type_p,
-                                       FunctionStability stability, LogicalType varargs_p,
-                                       FunctionNullHandling null_handling, FunctionErrors errors)
-    : Function(std::move(name_p)), stability(stability), null_handling(null_handling), errors(errors),
-      collation_handling(FunctionCollationHandling::PROPAGATE_COLLATIONS) {
-	signature = FunctionSignature(arguments_p);
-	signature.SetVarArgs(varargs_p);
-	signature.SetReturnType(return_type_p);
-}
-
-BaseScalarFunction::~BaseScalarFunction() {
-}
-
 // add your initializer for new functions here
 void BuiltinFunctions::Initialize() {
 	RegisterTableScanFunctions();
@@ -165,6 +152,15 @@ void Function::EraseArgument(Function &bound_function, vector<unique_ptr<Express
 	bound_function.arguments.erase_at(argument_index);
 	*/
 	throw NotImplementedException("Function::EraseArgument is not implemented yet");
+}
+
+SimpleFunction::SimpleFunction(string name, vector<LogicalType> arguments, LogicalType return_type,
+                               FunctionStability stability, LogicalType varargs, FunctionNullHandling null_handling,
+                               FunctionErrors errors)
+    : Function(std::move(name)), stability(stability), null_handling(null_handling), errors(errors) {
+	signature = FunctionSignature(arguments);
+	signature.SetReturnType(return_type);
+	signature.SetVarArgs(varargs);
 }
 
 } // namespace duckdb

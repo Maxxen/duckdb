@@ -105,8 +105,8 @@ static unique_ptr<FunctionData> BindCRSFunction(BindScalarFunctionInput &input) 
 
 ScalarFunction StCrsFun::GetFunction() {
 	ScalarFunction geom_func({LogicalType::GEOMETRY()}, LogicalType::VARCHAR, CRSFunction, BindCRSFunction);
-	geom_func.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
-	geom_func.bind_expression = BindCRSFunctionExpression;
+	geom_func.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+	geom_func.SetBindExpressionCallback(BindCRSFunctionExpression);
 	return geom_func;
 }
 

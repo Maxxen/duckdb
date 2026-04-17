@@ -22,7 +22,7 @@ AggregateFunction RegrCountFun::GetFunction() {
 	    LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::UINTEGER);
 	regr_count.name = "regr_count";
 	regr_count.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	return regr_count.SetStructStateExport(GetRegrCountStateType);
+	return regr_count.SetExportTypeCallback(GetRegrCountStateType);
 }
 
 } // namespace duckdb

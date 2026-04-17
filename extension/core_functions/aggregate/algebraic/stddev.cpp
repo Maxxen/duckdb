@@ -19,31 +19,31 @@ LogicalType GetStddevStateType(const AggregateFunction &) {
 AggregateFunction StdDevSampFun::GetFunction() {
 	return AggregateFunction::UnaryAggregate<StddevState, double, double, STDDevSampOperation>(LogicalType::DOUBLE,
 	                                                                                           LogicalType::DOUBLE)
-	    .SetStructStateExport(GetStddevStateType);
+	    .SetExportTypeCallback(GetStddevStateType);
 }
 
 AggregateFunction StdDevPopFun::GetFunction() {
 	return AggregateFunction::UnaryAggregate<StddevState, double, double, STDDevPopOperation>(LogicalType::DOUBLE,
 	                                                                                          LogicalType::DOUBLE)
-	    .SetStructStateExport(GetStddevStateType);
+	    .SetExportTypeCallback(GetStddevStateType);
 }
 
 AggregateFunction VarPopFun::GetFunction() {
 	return AggregateFunction::UnaryAggregate<StddevState, double, double, VarPopOperation>(LogicalType::DOUBLE,
 	                                                                                       LogicalType::DOUBLE)
-	    .SetStructStateExport(GetStddevStateType);
+	    .SetExportTypeCallback(GetStddevStateType);
 }
 
 AggregateFunction VarSampFun::GetFunction() {
 	return AggregateFunction::UnaryAggregate<StddevState, double, double, VarSampOperation>(LogicalType::DOUBLE,
 	                                                                                        LogicalType::DOUBLE)
-	    .SetStructStateExport(GetStddevStateType);
+	    .SetExportTypeCallback(GetStddevStateType);
 }
 
 AggregateFunction StandardErrorOfTheMeanFun::GetFunction() {
 	return AggregateFunction::UnaryAggregate<StddevState, double, double, StandardErrorOfTheMeanOperation>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetStddevStateType);
+	    .SetExportTypeCallback(GetStddevStateType);
 }
 
 } // namespace duckdb

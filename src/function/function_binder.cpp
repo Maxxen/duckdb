@@ -384,7 +384,7 @@ static string ExtractCollation(const vector<unique_ptr<Expression>> &children) {
 	return collation;
 }
 
-static void PropagateCollations(ClientContext &, ScalarFunction &bound_function,
+static void PropagateCollations(ClientContext &, SimpleFunction &bound_function,
                                 vector<unique_ptr<Expression>> &children) {
 	if (!RequiresCollationPropagation(bound_function.GetReturnType())) {
 		// we only need to propagate if the function returns a varchar
@@ -400,7 +400,7 @@ static void PropagateCollations(ClientContext &, ScalarFunction &bound_function,
 	bound_function.SetReturnType(std::move(collation_type));
 }
 
-static void PushCollations(ClientContext &context, ScalarFunction &bound_function,
+static void PushCollations(ClientContext &context, SimpleFunction &bound_function,
                            vector<unique_ptr<Expression>> &children, CollationType type) {
 	auto collation = ExtractCollation(children);
 	if (collation.empty()) {
@@ -423,7 +423,7 @@ static void PushCollations(ClientContext &context, ScalarFunction &bound_functio
 	}
 }
 
-static void HandleCollations(ClientContext &context, ScalarFunction &bound_function,
+static void HandleCollations(ClientContext &context, SimpleFunction &bound_function,
                              vector<unique_ptr<Expression>> &children) {
 	switch (bound_function.GetCollationHandling()) {
 	case FunctionCollationHandling::IGNORE_COLLATIONS:

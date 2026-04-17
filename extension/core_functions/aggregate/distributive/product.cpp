@@ -67,7 +67,7 @@ LogicalType GetProductStateType(const AggregateFunction &function) {
 AggregateFunction ProductFun::GetFunction() {
 	return AggregateFunction::UnaryAggregate<ProductState, double, double, ProductFunction>(
 	           LogicalType(LogicalTypeId::DOUBLE), LogicalType::DOUBLE)
-	    .SetStructStateExport(GetProductStateType);
+	    .SetExportTypeCallback(GetProductStateType);
 }
 
 } // namespace duckdb

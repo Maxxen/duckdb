@@ -385,7 +385,7 @@ unique_ptr<FunctionData> HistogramBinBindFunction(BindAggregateFunctionInput &in
 		}
 	}
 
-	function = GetHistogramBinFunction<HIST>(arguments[0]->return_type);
+	function.ReplaceDefinition(GetHistogramBinFunction<HIST>(arguments[0]->return_type));
 	return nullptr;
 }
 

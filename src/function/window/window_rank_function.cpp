@@ -205,7 +205,7 @@ WindowFunction DenseRankFun::GetFunction() {
 	WindowFunction fun({}, LogicalType::BIGINT, ExpressionType::WINDOW_RANK_DENSE, nullptr,
 	                   WindowDenseRankExecutor::GetBounds, nullptr, WindowDenseRankExecutor::GetGlobal,
 	                   WindowDenseRankExecutor::GetLocal);
-	fun.can_order_by = false;
+	fun.SetSupportsOrderBy(false);
 	return fun;
 }
 

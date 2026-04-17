@@ -213,7 +213,7 @@ unique_ptr<FunctionData> HistogramBindFunction(BindAggregateFunctionInput &input
 	if (arguments[0]->return_type.id() == LogicalTypeId::UNKNOWN) {
 		throw ParameterNotResolvedException();
 	}
-	function = GetHistogramFunction<IS_ORDERED>(arguments[0]->return_type);
+	function.ReplaceDefinition(GetHistogramFunction<IS_ORDERED>(arguments[0]->return_type));
 	return make_uniq<VariableReturnBindData>(function.GetReturnType());
 }
 

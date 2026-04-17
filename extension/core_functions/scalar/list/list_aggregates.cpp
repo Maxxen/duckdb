@@ -30,7 +30,7 @@ unique_ptr<FunctionLocalState> ListAggregatesInitLocalState(ExpressionState &sta
 }
 // FIXME: benchmark the use of simple_update against using update (if applicable)
 
-unique_ptr<FunctionData> ListAggregatesBindFailure(ScalarFunction &bound_function) {
+unique_ptr<FunctionData> ListAggregatesBindFailure(BoundScalarFunction &bound_function) {
 	bound_function.arguments[0] = LogicalType::SQLNULL;
 	bound_function.SetReturnType(LogicalType::SQLNULL);
 	return make_uniq<VariableReturnBindData>(LogicalType::SQLNULL);
@@ -63,12 +63,13 @@ struct ListAggregatesBindData : public FunctionData {
 	}
 
 	static void SerializeFunction(Serializer &serializer, const optional_ptr<FunctionData> bind_data_p,
-	                              const ScalarFunction &function) {
+	                              const BoundScalarFunction &function) {
 		auto bind_data = dynamic_cast<const ListAggregatesBindData *>(bind_data_p.get());
 		serializer.WritePropertyWithDefault(100, "bind_data", bind_data, (const ListAggregatesBindData *)nullptr);
 	}
 
-	static unique_ptr<FunctionData> DeserializeFunction(Deserializer &deserializer, ScalarFunction &bound_function) {
+	static unique_ptr<FunctionData> DeserializeFunction(Deserializer &deserializer,
+	                                                    BoundScalarFunction &bound_function) {
 		auto result = deserializer.ReadPropertyWithExplicitDefault<unique_ptr<ListAggregatesBindData>>(
 		    100, "bind_data", unique_ptr<ListAggregatesBindData>(nullptr));
 		if (!result) {
@@ -380,9 +381,10 @@ void ListUniqueFunction(DataChunk &args, ExpressionState &state, Vector &result)
 }
 
 template <bool IS_AGGR = false>
-unique_ptr<FunctionData>
-ListAggregatesBindFunction(ClientContext &context, ScalarFunction &bound_function, const LogicalType &list_child_type,
-                           AggregateFunction &aggr_function, vector<unique_ptr<Expression>> &arguments) {
+unique_ptr<FunctionData> ListAggregatesBindFunction(ClientContext &context, BoundScalarFunction &bound_function,
+                                                    const LogicalType &list_child_type,
+                                                    AggregateFunction &aggr_function,
+                                                    vector<unique_ptr<Expression>> &arguments) {
 	// create the child expression and its type
 	vector<unique_ptr<Expression>> children;
 	auto expr = make_uniq<BoundConstantExpression>(Value(list_child_type));
@@ -479,7 +481,7 @@ unique_ptr<FunctionData> ListAggregatesBind(BindScalarFunctionInput &input) {
 	}
 
 	// create the unordered map histogram function
-	D_ASSERT(best_function.arguments.size() == 1);
+	D_ASSERT(best_function.GetSignature().GetParameters().size() == 1);
 	auto aggr_function = HistogramFun::GetHistogramUnorderedMap(child_type);
 	return ListAggregatesBindFunction<IS_AGGR>(context, bound_function, child_type, aggr_function, arguments);
 }

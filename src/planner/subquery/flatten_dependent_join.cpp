@@ -601,8 +601,14 @@ unique_ptr<LogicalOperator> FlattenDependentJoins::PushDownDependentJoinInternal
 				D_ASSERT(aggr.expressions[i]->GetExpressionClass() == ExpressionClass::BOUND_AGGREGATE);
 				auto &bound = aggr.expressions[i]->Cast<BoundAggregateExpression>();
 				vector<LogicalType> arguments;
-				if (bound.function == CountFunctionBase::GetFunction() ||
-				    bound.function == CountStarFun::GetFunction()) {
+
+				auto count_base = CountFunctionBase::GetFunction();
+				auto count_star = CountStarFun::GetFunction();
+
+				auto is_base = bound.function.IsBoundFrom(CountFunctionBase::GetFunction());
+				auto is_star = bound.function.IsBoundFrom(CountStarFun::GetFunction());
+
+				if (is_base || is_star) {
 					// have to replace this ColumnBinding with the CASE expression
 					replacement_map[ColumnBinding(aggr.aggregate_index, ProjectionIndex(i))] = i;
 				}

@@ -74,7 +74,7 @@ LogicalType GetRegrR2StateType(const AggregateFunction &) {
 AggregateFunction RegrR2Fun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<RegrR2State, double, double, double, RegrR2Operation>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetRegrR2StateType);
+	    .SetExportTypeCallback(GetRegrR2StateType);
 }
 
 } // namespace duckdb

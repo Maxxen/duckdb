@@ -95,77 +95,75 @@ typedef void (*window_finalize_function_t)(ExecutionContext &context, optional_p
 
 //! Serialization of the binding data (if any)
 typedef void (*window_serialize_t)(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
-                                   const WindowFunction &function);
-typedef unique_ptr<FunctionData> (*window_deserialize_t)(Deserializer &deserializer, WindowFunction &function);
+                                   const BoundWindowFunction &function);
+typedef unique_ptr<FunctionData> (*window_deserialize_t)(Deserializer &deserializer, BoundWindowFunction &function);
 
-class WindowFunction : public BaseScalarFunction { // NOLINT: work-around bug in clang-tidy
+class BaseWindowFunction : public SimpleFunction {
 public:
-	WindowFunction(const string &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
-	               ExpressionType window_enum, window_bind_function_t bind = nullptr,
-	               window_bounds_function_t bounds = nullptr, window_sharing_function_t sharing = nullptr,
-	               window_global_function_t global = nullptr, window_local_function_t local = nullptr,
-	               window_sink_function_t sink = nullptr, window_finalize_function_t finalize = nullptr)
-	    : BaseScalarFunction(name, arguments, return_type, FunctionStability::CONSISTENT,
-	                         LogicalType(LogicalTypeId::INVALID), FunctionNullHandling::DEFAULT_NULL_HANDLING),
-	      window_enum(window_enum), bind(bind), bounds(bounds), sharing(sharing), global(global), local(local),
-	      sink(sink), finalize(finalize) {
-	}
+	// Inherit base constructors
+	using SimpleFunction::SimpleFunction;
 
-	WindowFunction(const vector<LogicalType> &arguments, const LogicalType &return_type, ExpressionType window_enum,
-	               window_bind_function_t bind = nullptr, window_bounds_function_t bounds = nullptr,
-	               window_sharing_function_t sharing = nullptr, window_global_function_t global = nullptr,
-	               window_local_function_t local = nullptr, window_sink_function_t sink = nullptr,
-	               window_finalize_function_t finalize = nullptr)
-	    : WindowFunction(string(), arguments, return_type, window_enum, bind, bounds, sharing, global, local, sink,
-	                     finalize) {
-	}
-
+public:
 	// clang-format off
-	bool HasBindCallback() const { return bind != nullptr; }
-	window_bind_function_t GetBindCallback() const { return bind; }
-	void SetBindCallback(window_bind_function_t callback) { bind = callback; }
+	auto HasBindCallback() const -> bool { return bind != nullptr; }
+	auto GetBindCallback() const -> window_bind_function_t { return bind; }
+	auto SetBindCallback(window_bind_function_t value) -> void { bind = value; }
 
-	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments);
-	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context);
+	auto HasValidateCallback() const -> bool { return validate != nullptr; }
+	auto GetValidateCallback() const -> window_validate_function_t { return validate; }
+	auto SetValidateCallback(window_validate_function_t value) -> void { validate = value; }
 
+	auto HasBoundsCallback() const -> bool { return bounds != nullptr; }
+	auto GetBoundsCallback() const -> window_bounds_function_t { return bounds; }
+	auto SetBoundsCallback(window_bounds_function_t value) -> void { bounds = value; }
 
-	bool HasValidateCallback() const { return validate != nullptr; }
-	window_validate_function_t GetValidateCallback() const { return validate; }
-	void SetValidateCallback(window_validate_function_t callback) { validate = callback; }
+	auto HasSharingCallback() const -> bool { return sharing != nullptr; }
+	auto GetSharingCallback() const -> window_sharing_function_t { return sharing; }
+	auto SetSharingCallback(window_sharing_function_t value) -> void { sharing = value; }
 
-	bool HasBoundsCallback() const { return bounds != nullptr; }
-	window_bounds_function_t GetBoundsCallback() const { return bounds; }
-	void SetBoundsCallback(window_bounds_function_t callback) { bounds = callback; }
+	auto HasGlobalCallback() const -> bool { return global != nullptr; }
+	auto GetGlobalCallback() const -> window_global_function_t { return global; }
+	auto SetGlobalCallback(window_global_function_t value) -> void { global = value; }
 
-	bool HasSharingCallback() const { return sharing != nullptr; }
-	window_sharing_function_t GetSharingCallback() const { return sharing; }
-	void SetSharingCallback(window_sharing_function_t callback) { sharing = callback; }
+	auto HasLocalCallback() const -> bool { return local != nullptr; }
+	auto GetLocalCallback() const -> window_local_function_t { return local; }
+	auto SetLocalCallback(window_local_function_t value) -> void { local = value; }
 
-	bool HasGlobalCallback() const { return global != nullptr; }
-	window_global_function_t GetGlobalCallback() const { return global; }
-	void SetGlobalCallback(window_global_function_t callback) { global = callback; }
+	auto HasSinkCallback() const -> bool { return sink != nullptr; }
+	auto GetSinkCallback() const -> window_sink_function_t { return sink; }
+	auto SetSinkCallback(window_sink_function_t value) -> void { sink = value; }
 
-	bool HasLocalCallback() const { return local != nullptr; }
-	window_local_function_t GetLocalCallback() const { return local; }
-	void SetLocalCallback(window_local_function_t callback) { local = callback; }
+	auto HasFinalizeCallback() const -> bool { return finalize != nullptr; }
+	auto GetFinalizeCallback() const -> window_finalize_function_t { return finalize; }
+	auto SetFinalizeCallback(window_finalize_function_t value) -> void { finalize = value; }
 
-	bool HasSinkCallback() const { return sink != nullptr; }
-	window_sink_function_t GetSinkCallback() const { return sink; }
-	void SetSinkCallback(window_sink_function_t callback) { sink = callback; }
+	auto HasSerializationCallbacks() const -> bool { return serialize != nullptr && deserialize != nullptr; }
+	auto SetSerializeCallback(window_serialize_t value) -> void { serialize = value; }
+	auto SetDeserializeCallback(window_deserialize_t value) -> void { deserialize = value; }
+	auto GetSerializeCallback() const -> window_serialize_t { return serialize; }
+	auto GetDeserializeCallback() const -> window_deserialize_t { return deserialize; }
 
-	bool HasFinalizeCallback() const { return finalize != nullptr; }
-	window_finalize_function_t GetFinalizeCallback() const { return finalize; }
-	void SetFinalizeCallback(window_finalize_function_t callback) { finalize = callback; }
+	auto SupportsDistinct() const -> bool { return can_distinct; }
+	auto SetSupportsDistinct(bool value) -> void { can_distinct = value; }
 
-	bool HasSerializationCallbacks() const { return false; }
-	void SetSerializeCallback(window_serialize_t callback) { serialize = callback; }
-	void SetDeserializeCallback(window_deserialize_t callback) { deserialize = callback; }
-	window_serialize_t GetSerializeCallback() const { return serialize; }
-	window_deserialize_t GetDeserializeCallback() const { return deserialize; }
+	auto SupportsFilter() const -> bool { return can_filter; }
+	auto SetSupportsFilter(bool value) -> void { can_filter = value; }
+
+	auto SupportsOrderBy() const -> bool { return can_order_by; }
+	auto SetSupportsOrderBy(bool value) -> void { can_order_by = value; }
+
+	auto SupportsExclude() const -> bool { return can_exclude; }
+	auto SetSupportsExclude(bool value) -> void { can_exclude = value; }
+
+	auto SupportsIgnoreNulls() const -> bool { return can_ignore_nulls; }
+	auto SetSupportsIgnoreNulls(bool value) -> void { can_ignore_nulls = value; }
+
+	ExpressionType GetExpressionType() const { return window_enum; }
 	// clang-format on
 
+protected:
 	//! The expression enum for the window function
-	const ExpressionType window_enum;
+	ExpressionType window_enum;
 
 	//! Does the window function support DISTINCT?
 	bool can_distinct = false;
@@ -199,22 +197,55 @@ public:
 	window_serialize_t serialize = nullptr;
 	window_deserialize_t deserialize = nullptr;
 
-public:
 	//! Additional function info, passed to the bind
 	shared_ptr<WindowFunctionInfo> function_info;
 
 public:
-	bool operator==(const WindowFunction &rhs) const {
+	bool operator==(const BaseWindowFunction &rhs) const {
 		return name == rhs.name;
 	}
-	bool operator!=(const WindowFunction &rhs) const {
+	bool operator!=(const BaseWindowFunction &rhs) const {
 		return !(*this == rhs);
 	}
 };
 
-class BoundWindowFunction : public WindowFunction {
+class WindowFunction : public BaseWindowFunction { // NOLINT: work-around bug in clang-tidy
 public:
-	~BoundWindowFunction() override = default;
+	WindowFunction(const string &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
+	               ExpressionType window_enum, window_bind_function_t bind = nullptr,
+	               window_bounds_function_t bounds = nullptr, window_sharing_function_t sharing = nullptr,
+	               window_global_function_t global = nullptr, window_local_function_t local = nullptr,
+	               window_sink_function_t sink = nullptr, window_finalize_function_t finalize = nullptr)
+	    : BaseWindowFunction(name, arguments, return_type, FunctionStability::CONSISTENT,
+	                         LogicalType(LogicalTypeId::INVALID), FunctionNullHandling::DEFAULT_NULL_HANDLING) {
+		this->window_enum = window_enum;
+		this->bind = bind;
+		this->bounds = bounds;
+		this->sharing = sharing;
+		this->global = global;
+		this->local = local;
+		this->sink = sink;
+		this->finalize = finalize;
+	}
+
+	WindowFunction(const vector<LogicalType> &arguments, const LogicalType &return_type, ExpressionType window_enum,
+	               window_bind_function_t bind = nullptr, window_bounds_function_t bounds = nullptr,
+	               window_sharing_function_t sharing = nullptr, window_global_function_t global = nullptr,
+	               window_local_function_t local = nullptr, window_sink_function_t sink = nullptr,
+	               window_finalize_function_t finalize = nullptr)
+	    : WindowFunction(string(), arguments, return_type, window_enum, bind, bounds, sharing, global, local, sink,
+	                     finalize) {
+	}
+
+	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context,
+	                                                                     vector<unique_ptr<Expression>> &arguments);
+	pair<unique_ptr<BoundWindowFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context);
+};
+
+class BoundWindowFunction : public BaseWindowFunction {
+public:
+	BoundWindowFunction(const WindowFunction &function) : BaseWindowFunction(function) {
+	}
 
 	// Bound function only
 	//! The set of arguments of the function

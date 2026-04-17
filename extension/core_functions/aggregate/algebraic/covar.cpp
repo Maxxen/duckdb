@@ -19,13 +19,13 @@ LogicalType GetCovarStateType(const AggregateFunction &) {
 AggregateFunction CovarPopFun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<CovarState, double, double, double, CovarPopOperation>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetCovarStateType);
+	    .SetExportTypeCallback(GetCovarStateType);
 }
 
 AggregateFunction CovarSampFun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<CovarState, double, double, double, CovarSampOperation>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetCovarStateType);
+	    .SetExportTypeCallback(GetCovarStateType);
 }
 
 } // namespace duckdb

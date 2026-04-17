@@ -266,7 +266,7 @@ template <class T, bool LAST, bool SKIP_NULLS>
 AggregateFunction GetFirstAggregateTemplated(const LogicalType &type) {
 	auto result = AggregateFunction::UnaryAggregate<FirstState<T>, T, T, FirstFunction<LAST, SKIP_NULLS>>(type, type);
 	result.SetStateSimpleUpdateCallback(FirstFunctionSimpleUpdate<T, LAST, SKIP_NULLS>);
-	result.SetStructStateExport(GetFirstStateType);
+	result.SetExportTypeCallback(GetFirstStateType);
 	return result;
 }
 
@@ -328,12 +328,12 @@ AggregateFunction GetFirstFunction(const LogicalType &type) {
 		if (LAST) {
 			auto fun = AggregateFunction::UnaryAggregateDestructor<FirstState<string_t>, string_t, string_t,
 			                                                       FirstFunctionString<LAST, SKIP_NULLS>>(type, type);
-			fun.SetStructStateExport(GetFirstStateType);
+			fun.SetExportTypeCallback(GetFirstStateType);
 			return fun;
 		} else {
 			auto fun = AggregateFunction::UnaryAggregate<FirstState<string_t>, string_t, string_t,
 			                                             FirstFunctionString<LAST, SKIP_NULLS>>(type, type);
-			fun.SetStructStateExport(GetFirstStateType);
+			fun.SetExportTypeCallback(GetFirstStateType);
 			return fun;
 		}
 	default: {
@@ -343,7 +343,7 @@ AggregateFunction GetFirstFunction(const LogicalType &type) {
 		    {type}, type, AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>,
 		    OP::Update, AggregateFunction::StateCombine<STATE, OP>, AggregateFunction::StateVoidFinalize<STATE, OP>,
 		    nullptr, OP::Bind, LAST ? AggregateFunction::StateDestroy<STATE, OP> : nullptr, nullptr, nullptr);
-		fun.SetStructStateExport(GetFirstStateType);
+		fun.SetExportTypeCallback(GetFirstStateType);
 		return fun;
 	}
 	}

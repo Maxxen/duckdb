@@ -66,13 +66,13 @@ LogicalType GetRegrAvgStateType(const AggregateFunction &) {
 AggregateFunction RegrAvgxFun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<RegrState, double, double, double, RegrAvgXFunction>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetRegrAvgStateType);
+	    .SetExportTypeCallback(GetRegrAvgStateType);
 }
 
 AggregateFunction RegrAvgyFun::GetFunction() {
 	return AggregateFunction::BinaryAggregate<RegrState, double, double, double, RegrAvgYFunction>(
 	           LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE)
-	    .SetStructStateExport(GetRegrAvgStateType);
+	    .SetExportTypeCallback(GetRegrAvgStateType);
 }
 
 } // namespace duckdb

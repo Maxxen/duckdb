@@ -1098,7 +1098,7 @@ WindowFunction FillFun::GetFunction() {
 	fun.SetValidateCallback(WindowFillExecutor::Validate);
 
 	//! Never ignore nulls (that's the point!)
-	fun.can_ignore_nulls = false;
+	fun.SetSupportsIgnoreNulls(false);
 
 	return fun;
 }

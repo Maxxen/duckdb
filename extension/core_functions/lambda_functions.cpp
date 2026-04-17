@@ -214,7 +214,7 @@ static void ExecuteExpression(const idx_t elem_cnt, const LambdaFunctions::Colum
 //===--------------------------------------------------------------------===//
 
 void ListLambdaBindData::Serialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data_p,
-                                   const ScalarFunction &) {
+                                   const BoundScalarFunction &) {
 	auto &bind_data = bind_data_p->Cast<ListLambdaBindData>();
 	serializer.WriteProperty(100, "return_type", bind_data.return_type);
 	serializer.WritePropertyWithDefault(101, "lambda_expr", bind_data.lambda_expr, unique_ptr<Expression>());
@@ -222,7 +222,7 @@ void ListLambdaBindData::Serialize(Serializer &serializer, const optional_ptr<Fu
 	serializer.WritePropertyWithDefault<bool>(103, "has_initial", bind_data.has_initial, false);
 }
 
-unique_ptr<FunctionData> ListLambdaBindData::Deserialize(Deserializer &deserializer, ScalarFunction &) {
+unique_ptr<FunctionData> ListLambdaBindData::Deserialize(Deserializer &deserializer, BoundScalarFunction &) {
 	auto return_type = deserializer.ReadProperty<LogicalType>(100, "return_type");
 	auto lambda_expr = deserializer.ReadPropertyWithExplicitDefault<unique_ptr<Expression>>(101, "lambda_expr",
 	                                                                                        unique_ptr<Expression>());
@@ -350,7 +350,7 @@ static void ExecuteLambda(DataChunk &args, ExpressionState &state, Vector &resul
 
 unique_ptr<FunctionData> LambdaFunctions::ListLambdaPrepareBind(vector<unique_ptr<Expression>> &arguments,
                                                                 ClientContext &context,
-                                                                ScalarFunction &bound_function) {
+                                                                BoundScalarFunction &bound_function) {
 	// NULL list parameter
 	if (arguments[0]->return_type.id() == LogicalTypeId::SQLNULL) {
 		bound_function.arguments[0] = LogicalType::SQLNULL;
@@ -367,7 +367,7 @@ unique_ptr<FunctionData> LambdaFunctions::ListLambdaPrepareBind(vector<unique_pt
 	return nullptr;
 }
 
-unique_ptr<FunctionData> LambdaFunctions::ListLambdaBind(ClientContext &context, ScalarFunction &bound_function,
+unique_ptr<FunctionData> LambdaFunctions::ListLambdaBind(ClientContext &context, BoundScalarFunction &bound_function,
                                                          vector<unique_ptr<Expression>> &arguments,
                                                          const bool has_index) {
 	unique_ptr<FunctionData> bind_data = ListLambdaPrepareBind(arguments, context, bound_function);
@@ -379,7 +379,7 @@ unique_ptr<FunctionData> LambdaFunctions::ListLambdaBind(ClientContext &context,
 	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
 	auto lambda_expr = std::move(bound_lambda_expr.lambda_expr);
 	if (lambda_expr->IsVolatile()) {
-		bound_function.stability = FunctionStability::VOLATILE;
+		bound_function.SetStability(FunctionStability::VOLATILE);
 	}
 
 	return make_uniq<ListLambdaBindData>(bound_function.GetReturnType(), std::move(lambda_expr), has_index);

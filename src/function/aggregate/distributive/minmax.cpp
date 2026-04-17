@@ -383,10 +383,10 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 	}
 	auto name = std::move(function.name);
 
-	auto state_export_type = function.get_state_type;
+	auto state_export_type = function.GetExportTypeCallback();
 	auto minmax_func = GetMinMaxOperator<OP, OP_STRING, OP_VECTOR>(input_type);
 
-	minmax_func.SetStructStateExport(state_export_type);
+	minmax_func.SetExportTypeCallback(state_export_type);
 	minmax_func.name = std::move(name);
 	minmax_func.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 	minmax_func.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
@@ -487,7 +487,7 @@ void MinMaxNUpdate(Vector inputs[], AggregateInputData &aggr_input, idx_t input_
 }
 
 template <class VAL_TYPE, class COMPARATOR>
-void SpecializeMinMaxNFunction(AggregateFunction &function) {
+void SpecializeMinMaxNFunction(BoundAggregateFunction &function) {
 	using STATE = MinMaxNState<VAL_TYPE, COMPARATOR>;
 	using OP = MinMaxNOperation;
 
@@ -501,7 +501,7 @@ void SpecializeMinMaxNFunction(AggregateFunction &function) {
 }
 
 template <class COMPARATOR>
-void SpecializeMinMaxNFunction(PhysicalType arg_type, AggregateFunction &function) {
+void SpecializeMinMaxNFunction(PhysicalType arg_type, BoundAggregateFunction &function) {
 	switch (arg_type) {
 	case PhysicalType::VARCHAR:
 		SpecializeMinMaxNFunction<MinMaxStringValue, COMPARATOR>(function);
@@ -562,15 +562,15 @@ LogicalType GetExportStateType(const AggregateFunction &function) {
 //---------------------------------------------------s
 AggregateFunctionSet MinFun::GetFunctions() {
 	AggregateFunctionSet min("min");
-	min.AddFunction(MinFunction::GetFunction().SetStructStateExport(GetExportStateType));
-	min.AddFunction(GetMinMaxNFunction<LessThan>().SetStructStateExport(GetExportStateType));
+	min.AddFunction(MinFunction::GetFunction().SetExportTypeCallback(GetExportStateType));
+	min.AddFunction(GetMinMaxNFunction<LessThan>().SetExportTypeCallback(GetExportStateType));
 	return min;
 }
 
 AggregateFunctionSet MaxFun::GetFunctions() {
 	AggregateFunctionSet max("max");
-	max.AddFunction(MaxFunction::GetFunction().SetStructStateExport(GetExportStateType));
-	max.AddFunction(GetMinMaxNFunction<GreaterThan>().SetStructStateExport(GetExportStateType));
+	max.AddFunction(MaxFunction::GetFunction().SetExportTypeCallback(GetExportStateType));
+	max.AddFunction(GetMinMaxNFunction<GreaterThan>().SetExportTypeCallback(GetExportStateType));
 	return max;
 }
 
