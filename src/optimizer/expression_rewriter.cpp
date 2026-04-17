@@ -55,10 +55,7 @@ unique_ptr<Expression> ExpressionRewriter::ConstantOrNull(ClientContext &context
 unique_ptr<Expression> ExpressionRewriter::ConstantOrNull(ClientContext &context,
                                                           vector<unique_ptr<Expression>> children, Value value) {
 	children.insert(children.begin(), make_uniq<BoundConstantExpression>(value));
-	auto [bound_func, bound_data] = ConstantOrNullFun::GetFunction().Bind(context, children);
-
-	return make_uniq<BoundFunctionExpression>(value.type(), std::move(*bound_func), std::move(children),
-	                                          std::move(bound_data));
+	return ConstantOrNullFun::GetFunction().Bind(context, std::move(children));
 }
 
 void ExpressionRewriter::VisitOperator(LogicalOperator &op) {

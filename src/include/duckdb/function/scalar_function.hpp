@@ -19,6 +19,9 @@
 #include "duckdb/common/enums/filter_propagate_result.hpp"
 
 namespace duckdb {
+
+class BoundScalarFunction;
+
 struct FunctionLocalState {
 	DUCKDB_API virtual ~FunctionLocalState();
 
@@ -103,13 +106,14 @@ struct FunctionModifiedDatabasesInput {
 
 struct FunctionBindExpressionInput {
 	FunctionBindExpressionInput(ClientContext &context_p, optional_ptr<FunctionData> bind_data_p,
-	                            vector<unique_ptr<Expression>> &children_p)
-	    : context(context_p), bind_data(bind_data_p), children(children_p) {
+	                            vector<unique_ptr<Expression>> &children_p, const BoundScalarFunction &bound_function_p)
+	    : context(context_p), bind_data(bind_data_p), children(children_p), bound_function(bound_function_p) {
 	}
 
 	ClientContext &context;
 	optional_ptr<FunctionData> bind_data;
 	vector<unique_ptr<Expression>> &children;
+	const BoundScalarFunction &bound_function;
 };
 
 class BindScalarFunctionInput;
@@ -262,8 +266,8 @@ public:
 
 public:
 	// Bind this function.
-	pair<unique_ptr<BoundScalarFunction>, unique_ptr<FunctionData>>
-	Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments, optional_ptr<Binder> binder = nullptr);
+	unique_ptr<BoundFunctionExpression> Bind(ClientContext &context, vector<unique_ptr<Expression>> arguments,
+	                                         optional_ptr<Binder> binder = nullptr);
 
 public:
 	DUCKDB_API bool operator==(const ScalarFunction &rhs) const;
@@ -389,13 +393,9 @@ public:
 
 class BoundScalarFunction : public BaseScalarFunction {
 public:
-	explicit BoundScalarFunction(const ScalarFunction &function)
+	explicit BoundScalarFunction(const ScalarFunction &function, vector<LogicalType> arguments, LogicalType return_type)
 	    // Intentionally slice the ScalarFunction here, as we only want the BaseScalarFunction part of it
-	    : BaseScalarFunction(function) {
-		// Make arguments from the signature
-		for (const auto &param : function.GetSignature().GetParameters()) {
-			arguments.push_back(param.GetType());
-		}
+	    : BaseScalarFunction(function), arguments(std::move(arguments)), return_type(std::move(return_type)) {
 	}
 
 	// Bound function only
@@ -406,6 +406,16 @@ public:
 	vector<LogicalType> original_arguments;
 
 	LogicalType return_type;
+
+	const LogicalType &GetReturnType() const {
+		return return_type;
+	}
+	LogicalType &GetReturnType() {
+		return return_type;
+	}
+	void SetReturnType(const LogicalType &return_type) {
+		this->return_type = return_type;
+	}
 
 	bool operator==(const BoundScalarFunction &other) const {
 		return name == other.name && arguments == other.arguments && return_type == other.return_type;

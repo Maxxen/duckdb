@@ -735,11 +735,10 @@ public:
 		vector<unique_ptr<Expression>> children;
 		children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0));
 
-		auto [bound_func, bound_data] = func.Bind(input.context, children);
+		auto expr = func.Bind(input.context, std::move(children));
 
-		auto expr =
-		    make_uniq<BoundFunctionExpression>(LogicalType::BOOLEAN, std::move(*bound_func), std::move(children),
-		                                       make_uniq<RowIdFilterBindData>(vector<int64_t> {3, 4, 5, 7, 9}));
+		// Override bind info with specific row-ids
+		expr->bind_info = make_uniq<RowIdFilterBindData>(vector<int64_t> {3, 4, 5, 7, 9});
 
 		// Ensure ROW_ID is in the scan's column list
 		auto row_id_index = get.TryGetProjectionIndex(COLUMN_IDENTIFIER_ROW_ID);

@@ -10,8 +10,10 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_window_function_info.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/main/extension_helper.hpp"
 #include "duckdb/main/config.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -97,10 +99,10 @@ struct ExtensionFunctionInfo : public ScalarFunctionInfo {
 	string extension;
 };
 
-static unique_ptr<FunctionData> BindExtensionFunction(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
+static unique_ptr<Expression> BindExtensionFunction(FunctionBindExpressionInput &input) {
+	auto &context = input.context;
+	auto &arguments = input.children;
+	auto &bound_function = input.bound_function;
 
 	// if this is triggered we are trying to call a method that is present in an extension
 	// but the extension is not loaded
@@ -123,12 +125,9 @@ static unique_ptr<FunctionData> BindExtensionFunction(BindScalarFunctionInput &i
 	auto &function_entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(context, DEFAULT_SCHEMA, bound_function.name);
 
 	// Bind it!
-	auto [bound_func, bound_data] =
-	    function_entry.functions.GetFunctionByArguments(context, bound_function.arguments).Bind(context, arguments);
-
-	// And override the function with the extension function
-	bound_function = std::move(*bound_func);
-	return std::move(bound_data);
+	auto func = function_entry.functions.GetFunctionByArguments(context, bound_function.arguments);
+	FunctionBinder binder(context);
+	return binder.BindScalarFunction(func, std::move(arguments));
 }
 
 void BuiltinFunctions::AddExtensionFunction(ScalarFunctionSet set) {
@@ -157,9 +156,11 @@ void BuiltinFunctions::RegisterExtensionOverloads() {
 			    entry.name);
 		}
 
-		ScalarFunction function(entry.name, std::move(arguments), std::move(return_type), nullptr,
-		                        BindExtensionFunction);
+		ScalarFunction function(entry.name, std::move(arguments), std::move(return_type), nullptr, nullptr);
+
+		function.SetBindExpressionCallback(BindExtensionFunction);
 		function.SetExtraFunctionInfo<ExtensionFunctionInfo>(entry.extension);
+
 		if (current_set.name != entry.name) {
 			if (!current_set.name.empty()) {
 				// create set of functions

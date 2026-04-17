@@ -193,9 +193,7 @@ unique_ptr<Expression> RegexOptimizationRule::Apply(LogicalOperator &op, vector<
 
 		auto parameter = make_uniq<BoundConstantExpression>(Value(std::move(escaped_like_string.like_string)));
 
-		auto [bound_func, bound_data] = GetStringContains().Bind(GetContext(), root.children);
-		auto contains = make_uniq<BoundFunctionExpression>(root.return_type, std::move(*bound_func),
-		                                                   std::move(root.children), std::move(bound_data));
+		auto contains = GetStringContains().Bind(GetContext(), std::move(root.children));
 		contains->children[1] = std::move(parameter);
 
 		return std::move(contains);
@@ -215,9 +213,7 @@ unique_ptr<Expression> RegexOptimizationRule::Apply(LogicalOperator &op, vector<
 		D_ASSERT(root.children.size() == 2);
 	}
 
-	auto [bound_func, bound_data] = LikeFun::GetFunction().Bind(GetContext(), root.children);
-	auto like_expression = make_uniq<BoundFunctionExpression>(root.return_type, std::move(*bound_func),
-	                                                          std::move(root.children), std::move(bound_data));
+	auto like_expression = LikeFun::GetFunction().Bind(GetContext(), std::move(root.children));
 
 	auto parameter = make_uniq<BoundConstantExpression>(Value(std::move(like_string.like_string)));
 	like_expression->children[1] = std::move(parameter);

@@ -578,11 +578,8 @@ static unique_ptr<Expression> ConstructStructExtractFromPath(ClientContext &cont
 		arguments[0] = (std::move(target));
 		arguments[1] = (make_uniq<BoundConstantExpression>(Value(key)));
 
-		auto [bound_func, bound_data] = extract_function.Bind(context, arguments);
+		target = extract_function.Bind(context, std::move(arguments));
 
-		auto return_type = bound_func->GetReturnType();
-		target = make_uniq<BoundFunctionExpression>(return_type, std::move(*bound_func), std::move(arguments),
-		                                            std::move(bound_data));
 		if (!path_iter.get().HasChildren()) {
 			break;
 		}

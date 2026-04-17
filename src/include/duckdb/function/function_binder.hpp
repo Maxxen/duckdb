@@ -85,8 +85,8 @@ public:
 	void CastToFunctionArguments(const string &func_name, const vector<LogicalType> &params, const LogicalType &vararg,
 	                             vector<unique_ptr<Expression>> &arguments);
 
-	void ResolveTemplateTypes(BaseScalarFunction &bound_function, const vector<unique_ptr<Expression>> &children);
-	void CheckTemplateTypesResolved(const BaseScalarFunction &bound_function);
+	void ResolveTemplateTypes(BoundScalarFunction &bound_function, const vector<unique_ptr<Expression>> &children);
+	void CheckTemplateTypesResolved(const BoundScalarFunction &bound_function);
 
 private:
 	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);

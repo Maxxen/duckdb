@@ -119,7 +119,7 @@ unique_ptr<Expression> BoundFunctionExpression::Deserialize(Deserializer &deseri
 	if (entry.first.HasBindExpressionCallback()) {
 		// bind the function expression
 		auto &context = deserializer.Get<ClientContext &>();
-		auto bind_input = FunctionBindExpressionInput(context, entry.second, children);
+		auto bind_input = FunctionBindExpressionInput(context, entry.second, children, entry.first);
 		// replace the function expression with the bound expression
 		auto bound_expression = entry.first.GetBindExpressionCallback()(bind_input);
 		if (bound_expression) {

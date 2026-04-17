@@ -53,29 +53,16 @@ void ScalarFunction::NopFunction(DataChunk &input, ExpressionState &state, Vecto
 	result.Reference(input.data[0]);
 }
 
-pair<unique_ptr<BoundScalarFunction>, unique_ptr<FunctionData>>
-ScalarFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments, optional_ptr<Binder> binder) {
-	// Make a BoundFunction out of the func
-	BoundScalarFunction bound_function(*this);
+unique_ptr<BoundFunctionExpression>
+ScalarFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> arguments, optional_ptr<Binder> binder) {
+	FunctionBinder func_binder(context);
+	auto expr = func_binder.BindScalarFunction(*this, std::move(arguments), binder);
 
-	unique_ptr<FunctionData> bind_info;
-	if (bound_function.HasBindCallback()) {
-		BindScalarFunctionInput input(context, bound_function, arguments, binder);
-		bind_info = bound_function.GetBindCallback()(input);
+	if (expr->GetExpressionType() != ExpressionType::BOUND_FUNCTION) {
+		throw InvalidInputException("BindScalarFunction did not return a BoundFunctionExpression");
 	}
 
-	// After the "bind" callback, we verify that all template types are bound to concrete types.
-	// CheckTemplateTypesResolved(bound_function);
-
-	if (bound_function.HasModifiedDatabasesCallback() && binder) {
-		auto &properties = binder->GetStatementProperties();
-		FunctionModifiedDatabasesInput input(bind_info, properties);
-		bound_function.GetModifiedDatabasesCallback()(context, input);
-	}
-
-	HandleCollations(context, bound_function, arguments);
-
-	return make_pair(make_uniq<BoundScalarFunction>(bound_function), std::move(bind_info));
+	return unique_ptr_cast<Expression, BoundFunctionExpression>(std::move(expr));
 }
 
 } // namespace duckdb

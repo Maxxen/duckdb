@@ -657,45 +657,43 @@ static void SubstituteTemplateType(LogicalType &type, case_insensitive_map_t<vec
 	});
 }
 
-void FunctionBinder::ResolveTemplateTypes(BaseScalarFunction &bound_function,
+void FunctionBinder::ResolveTemplateTypes(BoundScalarFunction &bound_function,
                                           const vector<unique_ptr<Expression>> &children) {
-	/*
 	case_insensitive_map_t<vector<LogicalType>> bindings;
 	vector<reference<LogicalType>> to_substitute;
 
 	// First, we need to infer the template types from the children.
 	for (idx_t i = 0; i < bound_function.arguments.size(); i++) {
-	    auto &param = bound_function.arguments[i];
+		auto &param = bound_function.arguments[i];
 
-	    // If the parameter is not templated, we can skip it.
-	    if (param.IsTemplated()) {
-	        auto actual = ExpressionBinder::GetExpressionReturnType(*children[i]);
-	        InferTemplateType(context, param, actual, bindings, *children[i], bound_function);
+		// If the parameter is not templated, we can skip it.
+		if (param.IsTemplated()) {
+			auto actual = ExpressionBinder::GetExpressionReturnType(*children[i]);
+			InferTemplateType(context, param, actual, bindings, *children[i], bound_function);
 
-	        to_substitute.emplace_back(param);
-	    }
+			to_substitute.emplace_back(param);
+		}
 	}
 
 	// If the function has a templated varargs, we need to infer its type too
 	if (bound_function.GetVarArgs().IsTemplated()) {
-	    // All remaining children are considered varargs.
-	    for (idx_t i = bound_function.arguments.size(); i < children.size(); i++) {
-	        auto actual = ExpressionBinder::GetExpressionReturnType(*children[i]);
-	        InferTemplateType(context, bound_function.GetVarArgs(), actual, bindings, *children[i], bound_function);
-	    }
-	    to_substitute.emplace_back(bound_function.GetVarArgs());
+		// All remaining children are considered varargs.
+		for (idx_t i = bound_function.arguments.size(); i < children.size(); i++) {
+			auto actual = ExpressionBinder::GetExpressionReturnType(*children[i]);
+			InferTemplateType(context, bound_function.GetVarArgs(), actual, bindings, *children[i], bound_function);
+		}
+		to_substitute.emplace_back(bound_function.GetVarArgs());
 	}
 
 	// If the return type is templated, we need to subsitute it as well
 	if (bound_function.GetReturnType().IsTemplated()) {
-	    to_substitute.emplace_back(bound_function.GetReturnType());
+		to_substitute.emplace_back(bound_function.GetReturnType());
 	}
 
 	// Finally, substitute all template types in the bound function with their concrete types.
 	for (auto &templated_type : to_substitute) {
-	    SubstituteTemplateType(templated_type, bindings, bound_function.name);
+		SubstituteTemplateType(templated_type, bindings, bound_function.name);
 	}
-	*/
 }
 
 static void VerifyTemplateType(const LogicalType &type, const string &function_name) {
@@ -710,25 +708,35 @@ static void VerifyTemplateType(const LogicalType &type, const string &function_n
 }
 
 // Verify that all template types are bound to concrete types.
-void FunctionBinder::CheckTemplateTypesResolved(const BaseScalarFunction &bound_function) {
-	/*
+void FunctionBinder::CheckTemplateTypesResolved(const BoundScalarFunction &bound_function) {
 	for (const auto &arg : bound_function.arguments) {
-	    VerifyTemplateType(arg, bound_function.name);
+		VerifyTemplateType(arg, bound_function.name);
 	}
 	VerifyTemplateType(bound_function.GetVarArgs(), bound_function.name);
 	VerifyTemplateType(bound_function.GetReturnType(), bound_function.name);
-	*/
-	throw NotImplementedException("CheckTemplateTypesResolved is not implemented yet!");
 }
 
 unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunction &function,
                                                           vector<unique_ptr<Expression>> children, bool is_operator,
                                                           optional_ptr<Binder> binder) {
+	// Resolve argument types from signature
+	vector<LogicalType> argument_type;
+	for (idx_t arg_idx = 0; arg_idx < function.GetSignature().GetParameterCount(); arg_idx++) {
+		argument_type.push_back(function.GetSignature().GetParameter(arg_idx).GetType());
+	}
+	if (function.GetSignature().HasVarArgs()) {
+		auto &vararg = function.GetSignature().GetVarArgs();
+		for (idx_t arg_idx = function.GetSignature().GetParameterCount(); arg_idx < children.size(); arg_idx++) {
+			argument_type.push_back(vararg);
+		}
+	}
+	auto return_type = function.GetSignature().GetReturnType();
+
 	// Make a BoundFunction out of the func
-	BoundScalarFunction bound_function(function);
+	BoundScalarFunction bound_function(function, std::move(argument_type), std::move(return_type));
 
 	// Attempt to resolve template types, before we call the "Bind" callback.
-	// ResolveTemplateTypes(bound_function, children);
+	ResolveTemplateTypes(bound_function, children);
 
 	unique_ptr<FunctionData> bind_info;
 
@@ -738,7 +746,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunction &
 	}
 
 	// After the "bind" callback, we verify that all template types are bound to concrete types.
-	// CheckTemplateTypesResolved(bound_function);
+	CheckTemplateTypesResolved(bound_function);
 
 	if (bound_function.HasModifiedDatabasesCallback() && binder) {
 		auto &properties = binder->GetStatementProperties();
@@ -752,13 +760,14 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunction &
 	LogicalType vararg; // TODO:
 	CastToFunctionArguments(bound_function.name, bound_function.arguments, vararg, children);
 
-	auto return_type = bound_function.GetReturnType();
 	unique_ptr<Expression> result;
-	auto result_func = make_uniq<BoundFunctionExpression>(std::move(return_type), std::move(bound_function),
+
+	auto result_func = make_uniq<BoundFunctionExpression>(bound_function.return_type, std::move(bound_function),
 	                                                      std::move(children), std::move(bind_info), is_operator);
 	if (result_func->function.HasBindExpressionCallback()) {
 		// if a bind_expression callback is registered - call it and emit the resulting expression
-		FunctionBindExpressionInput input(context, result_func->bind_info.get(), result_func->children);
+		FunctionBindExpressionInput input(context, result_func->bind_info.get(), result_func->children,
+		                                  result_func->function);
 		result = result_func->function.GetBindExpressionCallback()(input);
 	}
 

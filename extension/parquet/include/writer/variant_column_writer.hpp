@@ -98,9 +98,7 @@ public:
 		vector<unique_ptr<Expression>> arguments;
 		arguments.push_back(unique_ptr_cast<BoundReferenceExpression, Expression>(std::move(expr)));
 
-		auto [bound_func, bound_data] = GetTransformFunction().Bind(writer.GetContext(), arguments);
-		return make_uniq<BoundFunctionExpression>(TransformedType(), std::move(*bound_func), std::move(arguments),
-		                                          std::move(bound_data), false);
+		return GetTransformFunction().Bind(writer.GetContext(), std::move(arguments));
 	}
 
 public:

@@ -186,8 +186,13 @@ public:
 		// Does this function support serializing its bound data?
 		if (!has_serialize) {
 			// No, then just rebind the function
-			auto [bound_function, bound_data] = function.Bind(context, children);
-			return make_pair(*bound_function, std::move(bound_data));
+			if constexpr (std::is_same_v<FUNC, BoundScalarFunction>) {
+				auto expr = function.Bind(context, std::move(children));
+				return make_pair(std::move(expr->function), std::move(expr->bind_info));
+			}
+			// auto [bound_function, bound_data] = function.Bind(context, children);
+			// return make_pair(*bound_function, std::move(bound_data));
+			throw NotImplementedException("Serialization function not supported");
 		}
 
 		// Otherwise, construct the bound function from its parts
