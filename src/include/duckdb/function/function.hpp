@@ -216,9 +216,6 @@ public:
 	// Optional schema name of the function
 	string schema_name;
 
-	// The signature of the function
-	FunctionSignature signature;
-
 public:
 	//! Returns the formatted string name(arg1, arg2, ...)
 	DUCKDB_API static string CallToString(const string &catalog_name, const string &schema_name, const string &name,
@@ -237,45 +234,6 @@ public:
 	DUCKDB_API static void EraseArgument(Function &bound_function, vector<unique_ptr<Expression>> &arguments,
 	                                     idx_t argument_index);
 
-	// Signature getters/setters
-	const FunctionSignature &GetSignature() const {
-		return signature;
-	}
-
-	FunctionSignature &GetSignature() {
-		return signature;
-	}
-
-	void SetReturnType(const LogicalType &return_type) {
-		signature.SetReturnType(return_type);
-	}
-	const LogicalType &GetReturnType() const {
-		return signature.GetReturnType();
-	}
-	LogicalType &GetReturnType() {
-		return signature.GetReturnType();
-	}
-	void SetVarArgs(const LogicalType &varargs) {
-		signature.SetVarArgs(varargs);
-	}
-	const LogicalType &GetVarArgs() const {
-		return signature.GetVarArgs();
-	}
-	LogicalType &GetVarArgs() {
-		return signature.GetVarArgs();
-	}
-
-	bool HasVarArgs() const {
-		return signature.GetVarArgs().id() != LogicalTypeId::INVALID;
-	}
-
-	// Bound function only
-	//! The set of arguments of the function
-	// vector<LogicalType> arguments;
-	//! The set of original arguments of the function - only set if Function::EraseArgument is called
-	//! Used for (de)serialization purposes
-	// vector<LogicalType> original_arguments;
-
 	virtual string ToString() const {
 		return "TODO";
 		// return CallToString(catalog_name, schema_name, name, arguments, signature.GetVarArgs(),
@@ -289,10 +247,21 @@ public:
 	                                        LogicalType varargs = LogicalType(LogicalTypeId::INVALID));
 	DUCKDB_API ~SimpleNamedParameterFunction() override;
 
+	//! The set of arguments of the function
+	vector<LogicalType> arguments;
+	//! The set of original arguments of the function - only set if Function::EraseArgument is called
+	//! Used for (de)serialization purposes
+	vector<LogicalType> original_arguments;
+	//! The type of varargs to support, or LogicalTypeId::INVALID if the function does not accept variable length
+	//! arguments
+	LogicalType varargs;
 	//! The named parameters of the function
 	named_parameter_type_map_t named_parameters;
 
 public:
+	DUCKDB_API bool HasVarArgs() const {
+		return varargs.id() != LogicalTypeId::INVALID;
+	}
 	DUCKDB_API bool HasNamedParameters() const;
 };
 
@@ -341,7 +310,41 @@ public:
 		stability = FunctionStability::VOLATILE;
 	}
 
+	// Signature getters/setters
+	const FunctionSignature &GetSignature() const {
+		return signature;
+	}
+
+	FunctionSignature &GetSignature() {
+		return signature;
+	}
+
+	void SetReturnType(const LogicalType &return_type) {
+		signature.SetReturnType(return_type);
+	}
+	const LogicalType &GetReturnType() const {
+		return signature.GetReturnType();
+	}
+	LogicalType &GetReturnType() {
+		return signature.GetReturnType();
+	}
+	void SetVarArgs(const LogicalType &varargs) {
+		signature.SetVarArgs(varargs);
+	}
+	const LogicalType &GetVarArgs() const {
+		return signature.GetVarArgs();
+	}
+	LogicalType &GetVarArgs() {
+		return signature.GetVarArgs();
+	}
+
+	bool HasVarArgs() const {
+		return signature.GetVarArgs().id() != LogicalTypeId::INVALID;
+	}
+
 protected:
+	// The signature of the function
+	FunctionSignature signature;
 	//! The stability of the function (see FunctionStability enum for more info)
 	FunctionStability stability;
 	//! How this function handles NULL values

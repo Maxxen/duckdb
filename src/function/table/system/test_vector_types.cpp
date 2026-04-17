@@ -293,7 +293,7 @@ static unique_ptr<FunctionData> TestVectorTypesBind(ClientContext &context, Tabl
 	return std::move(result);
 }
 
-unique_ptr<GlobalTableFunctionState> TestVectorTypesInit(ClientContext &context, TableFunctionInitInput &input) {
+static unique_ptr<GlobalTableFunctionState> TestVectorTypesInit(ClientContext &context, TableFunctionInitInput &input) {
 	auto &bind_data = input.bind_data->Cast<TestVectorBindData>();
 
 	auto result = make_uniq<TestVectorTypesData>();
@@ -322,7 +322,7 @@ unique_ptr<GlobalTableFunctionState> TestVectorTypesInit(ClientContext &context,
 	return std::move(result);
 }
 
-void TestVectorTypesFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+static void TestVectorTypesFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = data_p.global_state->Cast<TestVectorTypesData>();
 	if (data.offset >= data.entries.size()) {
 		// finished returning values
@@ -335,7 +335,7 @@ void TestVectorTypesFunction(ClientContext &context, TableFunctionInput &data_p,
 void TestVectorTypesFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction test_vector_types("test_vector_types", {LogicalType::ANY}, TestVectorTypesFunction,
 	                                TestVectorTypesBind, TestVectorTypesInit);
-	test_vector_types.SetVarArgs(LogicalType::ANY);
+	test_vector_types.varargs = LogicalType::ANY;
 	test_vector_types.named_parameters["all_flat"] = LogicalType::BOOLEAN;
 
 	set.AddFunction(std::move(test_vector_types));

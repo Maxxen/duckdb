@@ -44,8 +44,8 @@ static TableFunctionBindType GetTableFunctionBindType(TableFunctionCatalogEntry 
 	bool has_table_parameter = false;
 	for (idx_t function_idx = 0; function_idx < table_function.functions.Size(); function_idx++) {
 		const auto &function = table_function.functions.GetFunctionReferenceByOffset(function_idx);
-		for (auto &param : function.GetSignature().GetParameters()) {
-			if (param.GetType().id() == LogicalTypeId::TABLE) {
+		for (auto &arg : function.arguments) {
+			if (arg.id() == LogicalTypeId::TABLE) {
 				has_table_parameter = true;
 			}
 		}
@@ -120,7 +120,7 @@ bool Binder::BindTableFunctionParameters(TableFunctionCatalogEntry &table_functi
 		    child->GetExpressionType() == ExpressionType::SUBQUERY) {
 			D_ASSERT(table_function.functions.Size() == 1);
 			auto fun = table_function.functions.GetFunctionByOffset(0);
-			if (table_function.functions.Size() != 1 || fun.GetSignature().GetParameterCount() == 0) {
+			if (table_function.functions.Size() != 1 || fun.arguments.empty()) {
 				throw BinderException(
 				    "Only table-in-out functions can have subquery parameters - %s only accepts constant parameters",
 				    fun.name);
@@ -434,12 +434,12 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 			input_table_names.push_back(string());
 		}
 	}
-
-	auto &sig = table_function.GetSignature();
 	if (!parameters.empty()) {
 		// cast the parameters to the type of the function
 		for (idx_t i = 0; i < arguments.size(); i++) {
-			auto target_type = i < sig.GetParameterCount() ? sig.GetParameters()[i].GetType() : sig.GetVarArgs();
+			auto target_type =
+			    i < table_function.arguments.size() ? table_function.arguments[i] : table_function.varargs;
+
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST && target_type != LogicalType::TABLE) {
 				parameters[i] = parameters[i].CastAs(context, target_type);
@@ -447,7 +447,9 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		}
 	} else if (subquery.plan) {
 		for (idx_t i = 0; i < arguments.size(); i++) {
-			auto target_type = i < sig.GetParameterCount() ? sig.GetParameters()[i].GetType() : sig.GetVarArgs();
+			auto target_type =
+			    i < table_function.arguments.size() ? table_function.arguments[i] : table_function.varargs;
+
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST) {
 				input_table_types[i] = target_type;

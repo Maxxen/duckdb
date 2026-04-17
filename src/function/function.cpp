@@ -51,9 +51,7 @@ Function::~Function() {
 
 SimpleNamedParameterFunction::SimpleNamedParameterFunction(string name_p, vector<LogicalType> arguments_p,
                                                            LogicalType varargs_p)
-    : Function(std::move(name_p)) {
-	signature = FunctionSignature(arguments_p);
-	signature.SetVarArgs(varargs_p);
+    : Function(std::move(name_p)), arguments(std::move(arguments_p)), varargs(std::move(varargs_p)) {
 }
 
 SimpleNamedParameterFunction::~SimpleNamedParameterFunction() {

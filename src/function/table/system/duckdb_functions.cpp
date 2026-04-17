@@ -453,7 +453,7 @@ struct TableFunctionExtractor {
 	static vector<Value> GetParameters(TableFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
+		for (idx_t i = 0; i < fun.arguments.size(); i++) {
 			results.emplace_back("col" + to_string(i));
 		}
 		for (auto &param : fun.named_parameters) {
@@ -466,8 +466,8 @@ struct TableFunctionExtractor {
 		vector<Value> results;
 		auto fun = entry.functions.GetFunctionByOffset(offset);
 
-		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
-			results.emplace_back(fun.GetSignature().GetParameters()[i].ToString());
+		for (idx_t i = 0; i < fun.arguments.size(); i++) {
+			results.emplace_back(fun.arguments[i].ToString());
 		}
 		for (auto &param : fun.named_parameters) {
 			results.emplace_back(param.second.ToString());
@@ -477,16 +477,12 @@ struct TableFunctionExtractor {
 
 	static vector<LogicalType> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		vector<LogicalType> results;
-		for (auto &param : fun.GetSignature().GetParameters()) {
-			results.emplace_back(param.GetType());
-		}
-		return results;
+		return fun.arguments;
 	}
 
 	static Value GetVarArgs(TableFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.GetVarArgs().ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.ToString());
 	}
 
 	static Value GetMacroDefinition(TableFunctionCatalogEntry &entry, idx_t offset) {
@@ -519,7 +515,7 @@ struct PragmaFunctionExtractor {
 		vector<Value> results;
 		auto fun = entry.functions.GetFunctionByOffset(offset);
 
-		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
+		for (idx_t i = 0; i < fun.arguments.size(); i++) {
 			results.emplace_back("col" + to_string(i));
 		}
 		for (auto &param : fun.named_parameters) {
@@ -532,8 +528,8 @@ struct PragmaFunctionExtractor {
 		vector<Value> results;
 		auto fun = entry.functions.GetFunctionByOffset(offset);
 
-		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
-			results.emplace_back(fun.GetSignature().GetParameters()[i].ToString());
+		for (idx_t i = 0; i < fun.arguments.size(); i++) {
+			results.emplace_back(fun.arguments[i].ToString());
 		}
 		for (auto &param : fun.named_parameters) {
 			results.emplace_back(param.second.ToString());
@@ -543,16 +539,12 @@ struct PragmaFunctionExtractor {
 
 	static vector<LogicalType> GetParameterLogicalTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		vector<LogicalType> results;
-		for (auto &param : fun.GetSignature().GetParameters()) {
-			results.emplace_back(param.GetType());
-		}
-		return results;
+		return fun.arguments;
 	}
 
 	static Value GetVarArgs(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		auto fun = entry.functions.GetFunctionByOffset(offset);
-		return !fun.HasVarArgs() ? Value() : Value(fun.GetVarArgs().ToString());
+		return !fun.HasVarArgs() ? Value() : Value(fun.varargs.ToString());
 	}
 
 	static Value GetMacroDefinition(PragmaFunctionCatalogEntry &entry, idx_t offset) {
