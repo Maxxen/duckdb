@@ -22,69 +22,131 @@ FunctionBinder::FunctionBinder(ClientContext &context_p) : binder(nullptr), cont
 FunctionBinder::FunctionBinder(Binder &binder_p) : binder(&binder_p), context(binder_p.context) {
 }
 
-optional_idx FunctionBinder::BindVarArgsFunctionCost(const Function &func, const vector<LogicalType> &arguments) {
-	/*
-	auto &sig = func.GetSignature();
+//----------------------------------------------------------------------------------------------------------------------
+// Signature Based Function Cost Calculation
+//----------------------------------------------------------------------------------------------------------------------
+// (Scalar, Aggregate, Window)
+//
+optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
+	const auto &sig = func.GetSignature();
 
 	if (arguments.size() < sig.GetParameterCount()) {
-	    // not enough arguments to fulfill the non-vararg part of the function
-	    return optional_idx();
+		// not enough arguments to fulfill the non-vararg part of the function
+		return optional_idx();
 	}
 	idx_t cost = 0;
 	for (idx_t i = 0; i < arguments.size(); i++) {
-	    LogicalType arg_type = i < sig.GetParameterCount() ? sig.GetParameter(i).GetType() : func.GetVarArgs();
-	    if (arguments[i] == arg_type) {
-	        // arguments match: do nothing
-	        continue;
-	    }
-	    int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], arg_type);
-	    if (cast_cost >= 0) {
-	        // we can implicitly cast, add the cost to the total cost
-	        cost += idx_t(cast_cost);
-	    } else {
-	        // we can't implicitly cast: throw an error
-	        return optional_idx();
-	    }
+		LogicalType arg_type = i < sig.GetParameterCount() ? sig.GetParameter(i).GetType() : sig.GetVarArgs();
+		if (arguments[i] == arg_type) {
+			// arguments match: do nothing
+			continue;
+		}
+		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], arg_type);
+		if (cast_cost >= 0) {
+			// we can implicitly cast, add the cost to the total cost
+			cost += idx_t(cast_cost);
+		} else {
+			// we can't implicitly cast: throw an error
+			return optional_idx();
+		}
 	}
 	return cost;
-	*/
-	throw NotImplementedException("FunctionBinder::BindVarArgsFunctionCost");
 }
 
-optional_idx FunctionBinder::BindFunctionCost(const Function &func, const vector<LogicalType> &arguments) {
-	/*
-	if (func.HasVarArgs()) {
-	    // special case varargs function
-	    return BindVarArgsFunctionCost(func, arguments);
+optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments) {
+	const auto &sig = func.GetSignature();
+
+	if (sig.HasVarArgs()) {
+		// special case varargs function
+		return BindVarArgsFunctionCost(func, arguments);
 	}
-	if (func.signature.GetParameterCount() != arguments.size()) {
-	    // invalid argument count: check the next function
-	    return optional_idx();
+	if (sig.GetParameterCount() != arguments.size()) {
+		// invalid argument count: check the next function
+		return optional_idx();
 	}
 	idx_t cost = 0;
 	bool has_parameter = false;
 	for (idx_t i = 0; i < arguments.size(); i++) {
-	    if (arguments[i].id() == LogicalTypeId::UNKNOWN) {
-	        has_parameter = true;
-	        continue;
-	    }
-	    int64_t cast_cost =
-	        CastFunctionSet::ImplicitCastCost(context, arguments[i], func.GetSignature().GetParameters()[i].GetType());
-	    if (cast_cost >= 0) {
-	        // we can implicitly cast, add the cost to the total cost
-	        cost += idx_t(cast_cost);
-	    } else {
-	        // we can't implicitly cast: throw an error
-	        return optional_idx();
-	    }
+		if (arguments[i].id() == LogicalTypeId::UNKNOWN) {
+			has_parameter = true;
+			continue;
+		}
+		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], sig.GetParameters()[i].GetType());
+		if (cast_cost >= 0) {
+			// we can implicitly cast, add the cost to the total cost
+			cost += idx_t(cast_cost);
+		} else {
+			// we can't implicitly cast: throw an error
+			return optional_idx();
+		}
 	}
 	if (has_parameter) {
-	    // all arguments are implicitly castable and there is a parameter - return 0 as cost
-	    return 0;
+		// all arguments are implicitly castable and there is a parameter - return 0 as cost
+		return 0;
 	}
 	return cost;
-	*/
-	throw NotImplementedException("FunctionBinder::BindFunctionCost");
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Regular argument binding
+//----------------------------------------------------------------------------------------------------------------------
+// (Table, Pragma)
+optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleNamedParameterFunction &func,
+                                                     const vector<LogicalType> &arguments) {
+	if (arguments.size() < func.arguments.size()) {
+		// not enough arguments to fulfill the non-vararg part of the function
+		return optional_idx();
+	}
+	idx_t cost = 0;
+	for (idx_t i = 0; i < arguments.size(); i++) {
+		LogicalType arg_type = i < func.arguments.size() ? func.arguments[i] : func.varargs;
+		if (arguments[i] == arg_type) {
+			// arguments match: do nothing
+			continue;
+		}
+		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], arg_type);
+		if (cast_cost >= 0) {
+			// we can implicitly cast, add the cost to the total cost
+			cost += idx_t(cast_cost);
+		} else {
+			// we can't implicitly cast: throw an error
+			return optional_idx();
+		}
+	}
+	return cost;
+}
+
+optional_idx FunctionBinder::BindFunctionCost(const SimpleNamedParameterFunction &func,
+                                              const vector<LogicalType> &arguments) {
+	if (func.HasVarArgs()) {
+		// special case varargs function
+		return BindVarArgsFunctionCost(func, arguments);
+	}
+	if (func.arguments.size() != arguments.size()) {
+		// invalid argument count: check the next function
+		return optional_idx();
+	}
+	idx_t cost = 0;
+	bool has_parameter = false;
+	for (idx_t i = 0; i < arguments.size(); i++) {
+		if (arguments[i].id() == LogicalTypeId::UNKNOWN) {
+			has_parameter = true;
+			continue;
+		}
+		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], func.arguments[i]);
+		if (cast_cost >= 0) {
+			// we can implicitly cast, add the cost to the total cost
+			cost += idx_t(cast_cost);
+		} else {
+			// we can't implicitly cast: throw an error
+			return optional_idx();
+		}
+	}
+	if (has_parameter) {
+		// all arguments are implicitly castable and there is a parameter - return 0 as cost
+		return 0;
+	}
+	return cost;
 }
 
 template <class T>

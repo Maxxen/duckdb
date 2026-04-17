@@ -117,6 +117,10 @@ public:
 		return returns;
 	}
 
+	bool HasVarArgs() const {
+		return varargs.id() != LogicalTypeId::INVALID;
+	}
+
 	// Two signatures are considered equal if they have the same parameter types, varargs and return type
 	bool operator==(const FunctionSignature &other) const {
 		if (parameters.size() != other.parameters.size()) {
@@ -346,13 +350,13 @@ protected:
 	// The signature of the function
 	FunctionSignature signature;
 	//! The stability of the function (see FunctionStability enum for more info)
-	FunctionStability stability;
+	FunctionStability stability = FunctionStability::CONSISTENT;
 	//! How this function handles NULL values
-	FunctionNullHandling null_handling;
+	FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
 	//! Whether or not this function can throw an error
-	FunctionErrors errors;
+	FunctionErrors errors = FunctionErrors::CANNOT_ERROR;
 	//! Collation handling of the function
-	FunctionCollationHandling collation_handling;
+	FunctionCollationHandling collation_handling = FunctionCollationHandling::PROPAGATE_COLLATIONS;
 };
 
 /*

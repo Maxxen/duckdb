@@ -389,7 +389,7 @@ public:
 
 class BoundScalarFunction : public BaseScalarFunction {
 public:
-	BoundScalarFunction(const ScalarFunction &function)
+	explicit BoundScalarFunction(const ScalarFunction &function)
 	    // Intentionally slice the ScalarFunction here, as we only want the BaseScalarFunction part of it
 	    : BaseScalarFunction(function) {
 		// Make arguments from the signature

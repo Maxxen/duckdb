@@ -12,6 +12,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/common/types/variant.hpp"
 #include "duckdb/function/scalar/variant_utils.hpp"
+#include "parquet_writer.hpp"
 
 namespace duckdb {
 
@@ -97,8 +98,9 @@ public:
 		vector<unique_ptr<Expression>> arguments;
 		arguments.push_back(unique_ptr_cast<BoundReferenceExpression, Expression>(std::move(expr)));
 
-		return make_uniq<BoundFunctionExpression>(TransformedType(), GetTransformFunction(), std::move(arguments),
-		                                          nullptr, false);
+		auto [bound_func, bound_data] = GetTransformFunction().Bind(writer.GetContext(), arguments);
+		return make_uniq<BoundFunctionExpression>(TransformedType(), std::move(*bound_func), std::move(arguments),
+		                                          std::move(bound_data), false);
 	}
 
 public:

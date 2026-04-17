@@ -394,7 +394,11 @@ unique_ptr<ColumnReader> GeometryColumnReader::Create(const ParquetReader &reade
 	// TODO: Pass the actual target type here so we get the CRS information too
 	auto func = StGeomfromwkbFun::GetFunction();
 	func.name = "ST_GeomFromWKB";
-	auto read_expr = make_uniq_base<Expression, BoundFunctionExpression>(schema.type, func, std::move(args), nullptr);
+
+	auto [bound_func, bound_data] = func.Bind(context, args);
+
+	auto read_expr = make_uniq_base<Expression, BoundFunctionExpression>(schema.type, std::move(*bound_func),
+	                                                                     std::move(args), std::move(bound_data));
 	auto type_expr = BoundCastExpression::AddDefaultCastToType(std::move(read_expr), schema.type);
 	return make_uniq<ExpressionColumnReader>(context, std::move(string_reader), std::move(type_expr), schema);
 }
