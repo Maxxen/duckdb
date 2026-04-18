@@ -541,11 +541,7 @@ unique_ptr<LogicalOperator> FlattenDependentJoins::PushDownDependentJoinInternal
 				vector<unique_ptr<Expression>> aggr_children;
 				aggr_children.push_back(std::move(colref));
 
-				auto [bound_func, bound_data] = first_aggregate.Bind(binder.context, aggr_children);
-
-				auto first_fun =
-				    make_uniq<BoundAggregateExpression>(std::move(*bound_func), std::move(aggr_children), nullptr,
-				                                        std::move(bound_data), AggregateType::NON_DISTINCT);
+				auto first_fun = first_aggregate.Bind(binder.context, std::move(aggr_children));
 				aggr.expressions.push_back(std::move(first_fun));
 			}
 		} else {

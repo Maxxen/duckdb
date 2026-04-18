@@ -200,10 +200,8 @@ PhysicalPlanGenerator::PlanAsOfLoopJoin(LogicalComparisonJoin &op, PhysicalOpera
 		aggr_children.push_back(std::move(col_ref));
 
 		auto first_aggregate = FirstFunctionGetter::GetFunction(col_type);
-		auto [bound_func, bound_data] = first_aggregate.Bind(context, aggr_children);
+		auto aggr_expr = first_aggregate.Bind(context, std::move(aggr_children));
 
-		auto aggr_expr = make_uniq<BoundAggregateExpression>(std::move(*bound_func), std::move(aggr_children), nullptr,
-		                                                     std::move(bound_data), AggregateType::NON_DISTINCT);
 		D_ASSERT(col_type == aggr_expr->return_type);
 		aggregates.emplace_back(std::move(aggr_expr));
 	}
@@ -372,8 +370,6 @@ PhysicalOperator &PhysicalPlanGenerator::PlanAsOfJoin(LogicalComparisonJoin &op)
 
 	children.emplace_back(asof_column->Copy());
 
-	// auto asof_end = make_uniq<BoundWindowExpression>(asof_type, nullptr, std::move(lead2), nullptr);
-	// asof_end->children.emplace_back(asof_column->Copy());
 	// TODO: If infinities are not supported for a type, fake them by looking at LHS statistics?
 	children.emplace_back(make_uniq<BoundConstantExpression>(Value::BIGINT(1)));
 	for (auto equi_idx : equi_indexes) {

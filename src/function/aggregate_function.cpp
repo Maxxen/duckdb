@@ -1,6 +1,16 @@
 #include "duckdb/function/aggregate_function.hpp"
+#include "duckdb/function/function_binder.hpp"
+
+#include <duckdb/planner/expression/bound_aggregate_expression.hpp>
 
 namespace duckdb {
+
+unique_ptr<BoundAggregateExpression> AggregateFunction::Bind(ClientContext &context,
+                                                             vector<unique_ptr<Expression>> arguments,
+                                                             unique_ptr<Expression> filter, AggregateType aggr_type) {
+	FunctionBinder binder(context);
+	return binder.BindAggregateFunction(*this, std::move(arguments));
+}
 
 AggregateFunctionInfo::~AggregateFunctionInfo() {
 }

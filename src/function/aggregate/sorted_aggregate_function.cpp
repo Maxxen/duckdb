@@ -720,9 +720,9 @@ void FunctionBinder::BindSortedAggregate(ClientContext &context, BoundAggregateE
 	    SortedAggregateFunction::Window);
 
 	// TODO: is this correct?
-	auto [bound_ordered, bound_data] = ordered_aggregate.Bind(context, children);
+	auto ordered_expr = ordered_aggregate.Bind(context, std::move(children));
 
-	expr.function = std::move(*bound_ordered);
+	expr.function = std::move(ordered_expr->function);
 	expr.bind_info = std::move(sorted_bind);
 	expr.order_bys.reset();
 }
@@ -778,9 +778,9 @@ void FunctionBinder::BindSortedAggregate(ClientContext &context, BoundWindowExpr
 	    AggregateFunction::StateDestroy<SortedAggregateState, SortedAggregateFunction>, nullptr,
 	    SortedAggregateFunction::Window);
 
-	auto [bound_ordered, bound_data] = ordered_aggregate.Bind(context, children);
+	auto ordered_expr = ordered_aggregate.Bind(context, std::move(children));
 
-	aggregate = std::move(*bound_ordered);
+	aggregate = std::move(ordered_expr->function);
 	expr.bind_info = std::move(sorted_bind);
 	expr.arg_orders.clear();
 }

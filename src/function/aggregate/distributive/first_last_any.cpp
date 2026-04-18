@@ -356,8 +356,7 @@ unique_ptr<FunctionData> BindDecimalFirst(BindAggregateFunctionInput &input) {
 
 	auto decimal_type = arguments[0]->return_type;
 	auto name = std::move(function.name);
-	// function = GetFirstFunction<LAST, SKIP_NULLS>(decimal_type);
-	throw NotImplementedException("Function copy");
+	function.ReplaceDefinition(GetFirstFunction<LAST, SKIP_NULLS>(decimal_type));
 	function.name = std::move(name);
 	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
 	function.SetReturnType(decimal_type);

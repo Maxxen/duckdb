@@ -901,11 +901,12 @@ ExportAggregateFunction::Bind(ClientContext &context, unique_ptr<BoundAggregateE
 	export_function.SetSerializeCallback(ExportStateAggregateSerialize);
 	export_function.SetDeserializeCallback(ExportStateAggregateDeserialize);
 
-	auto [bound_func, bound_data] = export_function.Bind(context, child_aggregate->children);
+	auto result = export_function.Bind(context, std::move(child_aggregate->children),
+	                                   std::move(child_aggregate->filter), child_aggregate->aggr_type);
 
-	return make_uniq<BoundAggregateExpression>(std::move(*bound_func), std::move(child_aggregate->children),
-	                                           std::move(child_aggregate->filter), std::move(export_bind_data),
-	                                           child_aggregate->aggr_type);
+	result->bind_info = std::move(export_bind_data);
+
+	return result;
 }
 
 ExportAggregateFunctionBindData::ExportAggregateFunctionBindData(unique_ptr<Expression> aggregate_p) {

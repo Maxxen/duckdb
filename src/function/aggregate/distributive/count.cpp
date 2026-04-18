@@ -224,9 +224,7 @@ unique_ptr<BaseStatistics> CountPropagateStats(ClientContext &context, BoundAggr
                                                AggregateStatisticsInput &input) {
 	if (!expr.IsDistinct() && !input.child_stats[0].CanHaveNull()) {
 		// count on a column without null values: use count star
-
-		throw NotImplementedException("TODO: Copy function callbacks");
-		// expr.function = BoundAggregateFunction(CountStarFun::GetFunction());
+		expr.function.ReplaceDefinition(CountStarFun::GetFunction());
 		expr.function.name = "count_star";
 		expr.children.clear();
 	}

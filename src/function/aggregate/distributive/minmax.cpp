@@ -25,7 +25,7 @@ struct MinMaxState {
 };
 
 template <class OP>
-static AggregateFunction GetUnaryAggregate(LogicalType type) {
+AggregateFunction GetUnaryAggregate(LogicalType type) {
 	switch (type.InternalType()) {
 	case PhysicalType::BOOL:
 		return AggregateFunction::UnaryAggregate<MinMaxState<int8_t>, int8_t, int8_t, OP>(type, type);
@@ -307,7 +307,7 @@ struct MinOperationVector : VectorMinMaxBase<OrderType::ASCENDING> {};
 struct MaxOperationVector : VectorMinMaxBase<OrderType::DESCENDING> {};
 
 template <typename OP, typename STATE>
-static AggregateFunction GetMinMaxFunction(const LogicalType &type) {
+AggregateFunction GetMinMaxFunction(const LogicalType &type) {
 	return AggregateFunction(
 	    {type}, LogicalType::BLOB, AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>,
 	    AggregateSortKeyHelpers::UnaryUpdate<STATE, OP, OP::ORDER_TYPE, false>,
@@ -316,7 +316,7 @@ static AggregateFunction GetMinMaxFunction(const LogicalType &type) {
 }
 
 template <class OP, class OP_STRING, class OP_VECTOR>
-static AggregateFunction GetMinMaxOperator(const LogicalType &type) {
+AggregateFunction GetMinMaxOperator(const LogicalType &type) {
 	auto internal_type = type.InternalType();
 	switch (internal_type) {
 	case PhysicalType::VARCHAR:
@@ -367,8 +367,7 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 			                      error.Message());
 		}
 
-		// function = func_entry.functions.GetFunctionByOffset(best_function.GetIndex());
-		throw NotImplementedException("Function copy");
+		function.ReplaceDefinition(func_entry.functions.GetFunctionByOffset(best_function.GetIndex()));
 
 		// Bind function like arg_min/arg_max.
 		arguments.push_back(std::move(collated_arg));
@@ -391,9 +390,10 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 	minmax_func.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 	minmax_func.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
 
-	auto [bound_func, bound_data] = minmax_func.Bind(context, arguments);
-	function = std::move(*bound_func);
-	return std::move(bound_data);
+	auto expr = minmax_func.Bind(context, std::move(arguments));
+
+	function = std::move(expr->function);
+	return std::move(expr->bind_info);
 }
 
 template <class OP, class OP_STRING, class OP_VECTOR>

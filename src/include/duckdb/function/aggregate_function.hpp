@@ -362,8 +362,10 @@ public:
 	}
 
 	pair<unique_ptr<BoundAggregateFunction>, unique_ptr<FunctionData>> Bind(BindAggregateFunctionInput &bind_input);
-	pair<unique_ptr<BoundAggregateFunction>, unique_ptr<FunctionData>> Bind(ClientContext &context,
-	                                                                        vector<unique_ptr<Expression>> &arguments);
+
+	unique_ptr<BoundAggregateExpression> Bind(ClientContext &context, vector<unique_ptr<Expression>> arguments,
+	                                          unique_ptr<Expression> filter = nullptr,
+	                                          AggregateType aggr_type = AggregateType::NON_DISTINCT);
 
 public:
 	bool operator==(const AggregateFunction &rhs) const {
@@ -546,14 +548,5 @@ private:
 	BoundAggregateFunction &bound_function;
 	vector<unique_ptr<Expression>> &arguments;
 };
-
-inline pair<unique_ptr<BoundAggregateFunction>, unique_ptr<FunctionData>>
-AggregateFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> &arguments) {
-	// BindAggregateFunctionInput bind_input(context, *this, arguments);
-	// return Bind(bind_input);
-
-	// TODO!
-	throw NotImplementedException("AggregateFunction::Bind");
-}
 
 } // namespace duckdb
