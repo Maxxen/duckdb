@@ -1,4 +1,10 @@
 repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.4
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
   - repo: local
     hooks:
       - id: duckdb-format
@@ -7,3 +13,9 @@ repos:
         entry: python3 scripts/format.py HEAD --fix --noconfirm --silent
         pass_filenames: false
         always_run: true
+      - id: ty
+        name: ty (type check)
+        entry: uvx ty check
+        language: system
+        pass_filenames: false
+        types: [python]

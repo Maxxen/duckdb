@@ -1,0 +1,25 @@
+schema_version: "0.2.0"
+
+versions:
+  - "1.0.0"
+
+suffixes:
+  handles: "_ptr"
+  callbacks: "_cb"
+  aliases: "_t"
+
+primitives:
+  - name: opaque
+    c_type: void
+  - name: char
+    c_type: char
+  - name: bool
+    c_type: bool
+  - name: i32
+    c_type: int32_t
+  - name: u32
+    c_type: uint32_t
+  - name: u64
+    c_type: uint64_t
+  - name: idx
+    c_type: idx_t

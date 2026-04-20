@@ -1,0 +1,9 @@
+{% from "_c_fragments/_format.j2" import format_c_type %}
+
+{%- macro render_type(t) -%}
+  {%- if t.is_pointer -%}
+typedef {{ format_c_type(t.base) }}* {{ t.canonical_name }};
+  {%- else -%}
+typedef {{ format_c_type(t.base) }} {{ t.canonical_name }};
+  {%- endif -%}
+{%- endmacro %}
