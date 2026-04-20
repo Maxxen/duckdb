@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: duckdb-format
+        name: duckdb format (staged changes)
+        language: system
+        entry: python3 scripts/format.py HEAD --fix --noconfirm --silent
+        pass_filenames: false
+        always_run: true

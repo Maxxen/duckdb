@@ -54,6 +54,24 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, and Ninja (optional but recommended).
 
+## Pre-commit hook
+
+A pre-commit hook is configured at `.pre-commit-config.yaml` to run `scripts/format.py` on staged changes before every commit. This is the same formatter CI runs, so if the hook is installed you won't see format-check failures in CI after regenerating the header or stubs.
+
+One-time setup per clone:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+The hook shells out to `black`, `clang-format` (exact version `11.0.1`), and `cmake-format`, which must be on your PATH.
+
+- Linux: `make format_tools` installs all three.
+- macOS: `brew install clang-format@11` and `pip install 'black==24.*' cmake-format 'clang_format==11.0.1'`.
+
+When the hook modifies a staged file, pre-commit aborts the commit and prints the list of changed files — re-`git add` them and commit again. To bypass the hook for a single commit (not recommended), use `git commit --no-verify`.
+
 ## Making changes to the API spec
 
 The API is defined in YAML files under `api_spec/v2/`. Each file defines a module (e.g., `database/database.yaml`, `query_result/query_result.yaml`) with handles, types, enums, and function declarations.
