@@ -9,8 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Install formatting tools
         run: pip3 install cmake-format 'black==24.*' 'clang_format==11.0.1'
       - name: Format check
@@ -24,8 +22,6 @@ jobs:
       CXX: ccache g++
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Install tools
         run: sudo apt-get update -y -qq && sudo apt-get install -y -qq ninja-build ccache
       - uses: ./.github/actions/ccache-action

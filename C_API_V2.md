@@ -13,7 +13,7 @@ api_spec/                        API spec (YAML) -- the V2 API definition
   metadata.yaml                  Primitives, suffixes, versions
   v2/                            Module YAML files (one per API area)
 
-capiv2/                          Code generator (git submodule -> duckdblabs/capiv2)
+capigen/                         Code generator (vendored via git subtree from duckdblabs/capiv2)
   src/capigen/                   Generator: c adapter (header), bridge adapter (stubs)
   tests/                         Generator pytest suite
 
@@ -34,14 +34,8 @@ python_client/                   Python client (to be set up)
 ## Getting started
 
 ```bash
-git clone --recurse-submodules git@github.com:duckdb/duckdb-capi-v2.git
+git clone git@github.com:duckdb/duckdb-capi-v2.git
 cd duckdb-capi-v2
-```
-
-If you already cloned without `--recurse-submodules`:
-
-```bash
-git submodule update --init
 ```
 
 ## Prerequisites
@@ -102,14 +96,14 @@ functions:
 
 All function names must start with `duckdb_v2_` and all type names must start with `duckdb_v2_` or `DUCKDB_V2_`. The generator validates this and will refuse to generate if the convention is violated.
 
-See `capiv2/claude.md` for the full spec conventions.
+See `capigen/claude.md` for the full spec conventions.
 
 ## Generating the header and stubs
 
 After changing the YAML specs, regenerate the header and stubs:
 
 ```bash
-cd capiv2
+cd capigen
 
 # Install dependencies (first time only)
 uv sync
@@ -127,7 +121,7 @@ uv run --group dev pytest
 For continuous development, you can watch for changes and regenerate automatically:
 
 ```bash
-cd capiv2
+cd capigen
 just watch   # requires watchexec: cargo install watchexec-cli
 ```
 
@@ -152,7 +146,7 @@ The generated `capi_v2_stubs.cpp` contains stub implementations for all declared
 3. Add the file to `src/main/capi_v2/CMakeLists.txt`
 4. Re-run the bridge generator -- it will drop the stub for any function it finds implemented in your new file:
    ```bash
-   cd capiv2 && just stubs
+   cd capigen && just stubs
    ```
 5. Rebuild and test
 
