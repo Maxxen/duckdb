@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue10784.test
+# name: test/sql/json_v2/issues/issue10784.test
 # description: Test issue 10784 - read_json_auto has some unexpected behavior
 # group: [issues]
 

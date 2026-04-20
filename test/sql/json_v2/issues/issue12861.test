@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue12861.test
+# name: test/sql/json_v2/issues/issue12861.test
 # description: Test issue 12861 - Autodetected type of nested JSON field in read_json_auto depends on amount of null values in input
 # group: [issues]
 

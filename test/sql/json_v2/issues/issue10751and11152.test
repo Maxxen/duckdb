@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue10751and11152.test
+# name: test/sql/json_v2/issues/issue10751and11152.test
 # description: Test issue 10751 and 11152 - Duplicate keys in JSON object ignore_errors
 # group: [issues]
 

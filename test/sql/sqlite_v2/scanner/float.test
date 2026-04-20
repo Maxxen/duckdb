@@ -1,6 +1,6 @@
-# name: test/sql/scanner/float.test
+# name: test/sql/sqlite_v2/scanner/float.test
 # description: Test float
-# group: [sqlite_scanner]
+# group: [scanner]
 
 require sqlite_v2
 

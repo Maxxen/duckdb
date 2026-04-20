@@ -3,95 +3,111 @@
 
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_create_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr* out_config) {
+DUCKDB_V2_API_CALL_t duckdb_v2_create_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr *out_config) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_config_count(duckdb_v2_ctx_ptr context, idx_t* out_count) {
+DUCKDB_V2_API_CALL_t duckdb_v2_config_count(duckdb_v2_ctx_ptr context, idx_t *out_count) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_get_config_flag(duckdb_v2_ctx_ptr context, idx_t index, char** out_name, char** out_description) {
+DUCKDB_V2_API_CALL_t duckdb_v2_get_config_flag(duckdb_v2_ctx_ptr context, idx_t index, char **out_name,
+                                               char **out_description) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_set_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr config, const char* name, const char* option) {
+DUCKDB_V2_API_CALL_t duckdb_v2_set_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr config, const char *name,
+                                          const char *option) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr* config) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr *config) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_data_chunk(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr* chunk) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_data_chunk(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr *chunk) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr chunk, idx_t col_idx, duckdb_v2_vector_ptr* out_vector) {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr chunk,
+                                                     idx_t col_idx, duckdb_v2_vector_ptr *out_vector) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr chunk, idx_t* out_size) {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr chunk,
+                                                   idx_t *out_size) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_ctx_ptr context, const char* path, duckdb_v2_database_ptr* out_database) {
+DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_ctx_ptr context, const char *path, duckdb_v2_database_ptr *out_database) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_open_ext(duckdb_v2_ctx_ptr context, const char* path, duckdb_v2_config_ptr config, duckdb_v2_database_ptr* out_database) {
+DUCKDB_V2_API_CALL_t duckdb_v2_open_ext(duckdb_v2_ctx_ptr context, const char *path, duckdb_v2_config_ptr config,
+                                        duckdb_v2_database_ptr *out_database) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr* database) {
+DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr *database) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr database, duckdb_v2_connection_ptr* out_connection) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr database,
+                                       duckdb_v2_connection_ptr *out_connection) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr* connection) {
+DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr *connection) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_get_client_context(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection, duckdb_v2_client_context_ptr* out_context) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_get_client_context(duckdb_v2_ctx_ptr context,
+                                                             duckdb_v2_connection_ptr connection,
+                                                             duckdb_v2_client_context_ptr *out_context) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_client_context_get_connection_id(duckdb_v2_ctx_ptr context, duckdb_v2_client_context_ptr client_context, idx_t* out_connection_id) {
+DUCKDB_V2_API_CALL_t duckdb_v2_client_context_get_connection_id(duckdb_v2_ctx_ptr context,
+                                                                duckdb_v2_client_context_ptr client_context,
+                                                                idx_t *out_connection_id) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_client_context(duckdb_v2_ctx_ptr context, duckdb_v2_client_context_ptr* client_context) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_client_context(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_client_context_ptr *client_context) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_create_instance_cache(duckdb_v2_ctx_ptr context, duckdb_v2_instance_cache_ptr* out_instance_cache) {
+DUCKDB_V2_API_CALL_t duckdb_v2_create_instance_cache(duckdb_v2_ctx_ptr context,
+                                                     duckdb_v2_instance_cache_ptr *out_instance_cache) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_get_or_create_from_cache(duckdb_v2_ctx_ptr context, duckdb_v2_instance_cache_ptr instance_cache, const char* path, duckdb_v2_config_ptr config, duckdb_v2_database_ptr* out_database) {
+DUCKDB_V2_API_CALL_t duckdb_v2_get_or_create_from_cache(duckdb_v2_ctx_ptr context,
+                                                        duckdb_v2_instance_cache_ptr instance_cache, const char *path,
+                                                        duckdb_v2_config_ptr config,
+                                                        duckdb_v2_database_ptr *out_database) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_instance_cache(duckdb_v2_ctx_ptr context, duckdb_v2_instance_cache_ptr* instance_cache) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_instance_cache(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_instance_cache_ptr *instance_cache) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_library_version(duckdb_v2_ctx_ptr context, char** out_version) {
+DUCKDB_V2_API_CALL_t duckdb_v2_library_version(duckdb_v2_ctx_ptr context, char **out_version) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-duckdb_v2_error_code_t duckdb_v2_error_create(duckdb_v2_error_ptr* out_err) {
+duckdb_v2_error_code_t duckdb_v2_error_create(duckdb_v2_error_ptr *out_err) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-duckdb_v2_error_code_t duckdb_v2_error_get_text(duckdb_v2_error_ptr err, char** out_text) {
+duckdb_v2_error_code_t duckdb_v2_error_get_text(duckdb_v2_error_ptr err, char **out_text) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-duckdb_v2_error_code_t duckdb_v2_error_set_text(duckdb_v2_error_ptr err, char* text) {
+duckdb_v2_error_code_t duckdb_v2_error_set_text(duckdb_v2_error_ptr err, char *text) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
@@ -99,307 +115,403 @@ duckdb_v2_error_code_t duckdb_v2_error_destroy(duckdb_v2_error_ptr err) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_free(duckdb_v2_ctx_ptr context, void* ptr) {
+DUCKDB_V2_API_CALL_t duckdb_v2_free(duckdb_v2_ctx_ptr context, void *ptr) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_from_date(duckdb_v2_ctx_ptr context, duckdb_v2_date date, duckdb_v2_date_struct* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_from_date(duckdb_v2_ctx_ptr context, duckdb_v2_date date,
+                                         duckdb_v2_date_struct *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_to_date(duckdb_v2_ctx_ptr context, duckdb_v2_date_struct date, duckdb_v2_date* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_to_date(duckdb_v2_ctx_ptr context, duckdb_v2_date_struct date,
+                                       duckdb_v2_date *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_from_time(duckdb_v2_ctx_ptr context, duckdb_v2_time time, duckdb_v2_time_struct* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_from_time(duckdb_v2_ctx_ptr context, duckdb_v2_time time,
+                                         duckdb_v2_time_struct *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_to_time(duckdb_v2_ctx_ptr context, duckdb_v2_time_struct time, duckdb_v2_time* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_to_time(duckdb_v2_ctx_ptr context, duckdb_v2_time_struct time,
+                                       duckdb_v2_time *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_create_time_tz(duckdb_v2_ctx_ptr context, int64_t micros, int32_t offset, duckdb_v2_time_tz* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_create_time_tz(duckdb_v2_ctx_ptr context, int64_t micros, int32_t offset,
+                                              duckdb_v2_time_tz *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_from_time_tz(duckdb_v2_ctx_ptr context, duckdb_v2_time_tz time_tz, duckdb_v2_time_tz_struct* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_from_time_tz(duckdb_v2_ctx_ptr context, duckdb_v2_time_tz time_tz,
+                                            duckdb_v2_time_tz_struct *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_create_timestamp(duckdb_v2_ctx_ptr context, int64_t micros, duckdb_v2_timestamp* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_create_timestamp(duckdb_v2_ctx_ptr context, int64_t micros,
+                                                duckdb_v2_timestamp *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_create_uuid(duckdb_v2_ctx_ptr context, duckdb_v2_hugeint* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_create_uuid(duckdb_v2_ctx_ptr context, duckdb_v2_hugeint *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_create_logical_type(duckdb_v2_ctx_ptr context, uint32_t type, duckdb_v2_logical_type_ptr* out_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_create_logical_type(duckdb_v2_ctx_ptr context, uint32_t type,
+                                                   duckdb_v2_logical_type_ptr *out_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr* type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr *type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_get_type_id(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint32_t* out_type_id) {
+DUCKDB_V2_API_CALL_t duckdb_v2_get_type_id(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                           uint32_t *out_type_id) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_decimal_width(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint8_t* out_width) {
+DUCKDB_V2_API_CALL_t duckdb_v2_decimal_width(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                             uint8_t *out_width) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_decimal_scale(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint8_t* out_scale) {
+DUCKDB_V2_API_CALL_t duckdb_v2_decimal_scale(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                             uint8_t *out_scale) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_size(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint32_t* out_size) {
+DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_size(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                    uint32_t *out_size) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_value(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, char** out_value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_value(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                     idx_t index, char **out_value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_list_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_child_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_list_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                    duckdb_v2_logical_type_ptr *out_child_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_array_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_child_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_array_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                     duckdb_v2_logical_type_ptr *out_child_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_array_type_array_size(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t* out_size) {
+DUCKDB_V2_API_CALL_t duckdb_v2_array_type_array_size(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                     idx_t *out_size) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_map_type_key_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_key_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_map_type_key_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                 duckdb_v2_logical_type_ptr *out_key_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_map_type_value_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_value_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_map_type_value_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                   duckdb_v2_logical_type_ptr *out_value_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_count(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t* out_count) {
+DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_count(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                       idx_t *out_count) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_name(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, char** out_name) {
+DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_name(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                      idx_t index, char **out_name) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, duckdb_v2_logical_type_ptr* out_child_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                      idx_t index, duckdb_v2_logical_type_ptr *out_child_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_count(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t* out_count) {
+DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_count(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                       idx_t *out_count) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_name(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, char** out_name) {
+DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_name(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                      idx_t index, char **out_name) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, duckdb_v2_logical_type_ptr* out_member_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                      idx_t index, duckdb_v2_logical_type_ptr *out_member_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_prepare(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection, const char* query, duckdb_v2_prepared_statement_ptr* out_prepared_statement) {
+DUCKDB_V2_API_CALL_t duckdb_v2_prepare(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection,
+                                       const char *query, duckdb_v2_prepared_statement_ptr *out_prepared_statement) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_prepare(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr* prepared_statement) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_prepare(duckdb_v2_ctx_ptr context,
+                                               duckdb_v2_prepared_statement_ptr *prepared_statement) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_prepare_error(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, char** out_error) {
+DUCKDB_V2_API_CALL_t duckdb_v2_prepare_error(duckdb_v2_ctx_ptr context,
+                                             duckdb_v2_prepared_statement_ptr prepared_statement, char **out_error) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_nparams(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t* out_count) {
+DUCKDB_V2_API_CALL_t duckdb_v2_nparams(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement,
+                                       idx_t *out_count) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_parameter_name(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t index, char** out_name) {
+DUCKDB_V2_API_CALL_t duckdb_v2_parameter_name(duckdb_v2_ctx_ptr context,
+                                              duckdb_v2_prepared_statement_ptr prepared_statement, idx_t index,
+                                              char **out_name) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_param_type(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint32_t* out_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_param_type(duckdb_v2_ctx_ptr context,
+                                          duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                          uint32_t *out_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_param_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_logical_type_ptr* out_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_param_logical_type(duckdb_v2_ctx_ptr context,
+                                                  duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                                  duckdb_v2_logical_type_ptr *out_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_clear_bindings(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement) {
+DUCKDB_V2_API_CALL_t duckdb_v2_clear_bindings(duckdb_v2_ctx_ptr context,
+                                              duckdb_v2_prepared_statement_ptr prepared_statement) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_prepared_statement_type(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr stmt, uint32_t* out_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_prepared_statement_type(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr stmt,
+                                                       uint32_t *out_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_execute_prepared(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, duckdb_v2_result_ptr* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_execute_prepared(duckdb_v2_ctx_ptr context,
+                                                duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                duckdb_v2_result_ptr *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_value(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_value_ptr val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_value(duckdb_v2_ctx_ptr context,
+                                          duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                          duckdb_v2_value_ptr val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_parameter_index(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, const char* name, idx_t* out_param_idx) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_parameter_index(duckdb_v2_ctx_ptr context,
+                                                    duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                    const char *name, idx_t *out_param_idx) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_boolean(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, bool val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_boolean(duckdb_v2_ctx_ptr context,
+                                            duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                            bool val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_int8(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int8_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_int8(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement,
+                                         idx_t param_idx, int8_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_int16(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int16_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_int16(duckdb_v2_ctx_ptr context,
+                                          duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                          int16_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_int32(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int32_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_int32(duckdb_v2_ctx_ptr context,
+                                          duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                          int32_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_int64(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int64_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_int64(duckdb_v2_ctx_ptr context,
+                                          duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                          int64_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_hugeint(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_hugeint val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_hugeint(duckdb_v2_ctx_ptr context,
+                                            duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                            duckdb_v2_hugeint val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_uhugeint(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_uhugeint val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_uhugeint(duckdb_v2_ctx_ptr context,
+                                             duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                             duckdb_v2_uhugeint val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_decimal(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_decimal val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_decimal(duckdb_v2_ctx_ptr context,
+                                            duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                            duckdb_v2_decimal val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint8(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint8_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint8(duckdb_v2_ctx_ptr context,
+                                          duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                          uint8_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint16(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint16_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint16(duckdb_v2_ctx_ptr context,
+                                           duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                           uint16_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint32(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint32_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint32(duckdb_v2_ctx_ptr context,
+                                           duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                           uint32_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint64(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint64_t val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint64(duckdb_v2_ctx_ptr context,
+                                           duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                           uint64_t val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_float(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, float val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_float(duckdb_v2_ctx_ptr context,
+                                          duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                          float val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_double(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, double val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_double(duckdb_v2_ctx_ptr context,
+                                           duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                           double val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_date(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_date val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_date(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement,
+                                         idx_t param_idx, duckdb_v2_date val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_time(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_time val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_time(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement,
+                                         idx_t param_idx, duckdb_v2_time val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_timestamp(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_timestamp val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_timestamp(duckdb_v2_ctx_ptr context,
+                                              duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                              duckdb_v2_timestamp val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_interval(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_interval val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_interval(duckdb_v2_ctx_ptr context,
+                                             duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                             duckdb_v2_interval val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, const char* val) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar(duckdb_v2_ctx_ptr context,
+                                            duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                            const char *val) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar_length(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, const char* val, idx_t length) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar_length(duckdb_v2_ctx_ptr context,
+                                                   duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx,
+                                                   const char *val, idx_t length) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_blob(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, const void* data, idx_t length) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_blob(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement,
+                                         idx_t param_idx, const void *data, idx_t length) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_null(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx) {
+DUCKDB_V2_API_CALL_t duckdb_v2_bind_null(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement,
+                                         idx_t param_idx) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_query(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection, const char* query, duckdb_v2_result_ptr* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_query(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection, const char *query,
+                                     duckdb_v2_result_ptr *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_result(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr* result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_result(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr *result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_name(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col, char** out_name) {
+DUCKDB_V2_API_CALL_t duckdb_v2_column_name(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col,
+                                           char **out_name) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col, uint32_t* out_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_column_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col,
+                                           uint32_t *out_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col, duckdb_v2_logical_type_ptr* out_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_column_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col,
+                                                   duckdb_v2_logical_type_ptr *out_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_count(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t* out_column_count) {
+DUCKDB_V2_API_CALL_t duckdb_v2_column_count(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                            idx_t *out_column_count) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_rows_changed(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t* out_rows_changed) {
+DUCKDB_V2_API_CALL_t duckdb_v2_rows_changed(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                            idx_t *out_rows_changed) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_error(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, char** out_error) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_error(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, char **out_error) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_error_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, uint32_t* out_error_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_error_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                 uint32_t *out_error_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_return_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, uint32_t* out_return_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_return_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                  uint32_t *out_return_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_fetch_chunk(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, duckdb_v2_data_chunk_ptr* out_chunk) {
+DUCKDB_V2_API_CALL_t duckdb_v2_fetch_chunk(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                           duckdb_v2_data_chunk_ptr *out_chunk) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_input(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_exec_args_ptr args, duckdb_v2_data_chunk_ptr* out_input) {
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_input(duckdb_v2_ctx_ptr context,
+                                                              duckdb_v2_scalar_func_exec_args_ptr args,
+                                                              duckdb_v2_data_chunk_ptr *out_input) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_result(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_exec_args_ptr args, duckdb_v2_vector_ptr* out_result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_result(duckdb_v2_ctx_ptr context,
+                                                               duckdb_v2_scalar_func_exec_args_ptr args,
+                                                               duckdb_v2_vector_ptr *out_result) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_create(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_ptr* out_function) {
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_create(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_scalar_func_ptr *out_function) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_bind(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_ptr function, duckdb_v2_scalar_func_bind_cb bind_func) {
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_bind(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_ptr function,
+                                                        duckdb_v2_scalar_func_bind_cb bind_func) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
@@ -407,99 +519,113 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_register(duckdb_v2_ctx_ptr contex
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr* info) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr *info) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr* info) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr *info) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_info_set_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_info_set_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info,
+                                                  const char *name) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name, duckdb_v2_type_ptr value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char *name,
+                                                  duckdb_v2_type_ptr value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name, duckdb_v2_value_ptr value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info,
+                                                   const char *name, duckdb_v2_value_ptr value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_info(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind, duckdb_v2_type_info_ptr info, duckdb_v2_type_ptr* type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_info(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind,
+                                                     duckdb_v2_type_info_ptr info, duckdb_v2_type_ptr *type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_text(duckdb_v2_ctx_ptr ctx, const char* text, duckdb_v2_type_ptr* type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_text(duckdb_v2_ctx_ptr ctx, const char *text,
+                                                     duckdb_v2_type_ptr *type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr* type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr *type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_get_kind(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, DUCKDB_V2_KIND* kind) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_get_kind(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, DUCKDB_V2_KIND *kind) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_get_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char** name) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_get_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char **name) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_get_text(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char** text) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_get_text(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char **text) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_count(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t* out_count) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_count(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                    uint64_t *out_count) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, duckdb_v2_value_ptr* value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index,
+                                                    duckdb_v2_value_ptr *value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, duckdb_v2_type_ptr* out_type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index,
+                                                   duckdb_v2_type_ptr *out_type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, const char** name) {
+DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index,
+                                                   const char **name) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, void* data, duckdb_v2_value_ptr* value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, void *data,
+                                                      duckdb_v2_value_ptr *value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_kind(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind, void* data, duckdb_v2_value_ptr* value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_kind(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind, void *data,
+                                                      duckdb_v2_value_ptr *value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr* value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr *value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr* info) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr *info) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info, duckdb_v2_type_ptr type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info,
+                                                   duckdb_v2_type_ptr type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info, duckdb_v2_value_ptr value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info,
+                                                    duckdb_v2_value_ptr value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr* info) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr *info) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, duckdb_v2_type_ptr* type) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value,
+                                              duckdb_v2_type_ptr *type) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_data(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, void* data) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_data(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, void *data) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
@@ -507,38 +633,46 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_get_null(duckdb_v2_ctx_ptr ctx, duckdb_v2_v
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, uint64_t index, duckdb_v2_value_ptr* item) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, uint64_t index,
+                                               duckdb_v2_value_ptr *item) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_value(duckdb_v2_ctx_ptr context, duckdb_v2_value_ptr* value) {
+DUCKDB_V2_API_CALL_t duckdb_v2_destroy_value(duckdb_v2_ctx_ptr context, duckdb_v2_value_ptr *value) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, void** out_data) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector,
+                                               void **out_data) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_validity(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, uint64_t** out_validity) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_validity(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector,
+                                                   uint64_t **out_validity) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(duckdb_v2_ctx_ptr context, uint64_t* validity, idx_t row, bool* out_valid) {
+DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(duckdb_v2_ctx_ptr context, uint64_t *validity, idx_t row,
+                                                     bool *out_valid) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_list_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, duckdb_v2_vector_ptr* out_child) {
+DUCKDB_V2_API_CALL_t duckdb_v2_list_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector,
+                                                     duckdb_v2_vector_ptr *out_child) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_struct_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, idx_t index, duckdb_v2_vector_ptr* out_child) {
+DUCKDB_V2_API_CALL_t duckdb_v2_struct_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector,
+                                                       idx_t index, duckdb_v2_vector_ptr *out_child) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_array_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, duckdb_v2_vector_ptr* out_child) {
+DUCKDB_V2_API_CALL_t duckdb_v2_array_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector,
+                                                      duckdb_v2_vector_ptr *out_child) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_string_is_inlined(duckdb_v2_ctx_ptr context, duckdb_v2_string_t string, bool* out_inlined) {
+DUCKDB_V2_API_CALL_t duckdb_v2_string_is_inlined(duckdb_v2_ctx_ptr context, duckdb_v2_string_t string,
+                                                 bool *out_inlined) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }

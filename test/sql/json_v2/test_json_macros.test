@@ -1,6 +1,6 @@
-# name: test/sql/json/test_json_macros.test
+# name: test/sql/json_v2/test_json_macros.test
 # description: Test JSON default macro's
-# group: [json]
+# group: [json_v2]
 
 require json_v2
 

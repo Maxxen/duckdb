@@ -1,6 +1,6 @@
-# name: test/sql/json/test_json_struct_projection_pushdown.test_slow
+# name: test/sql/json_v2/test_json_struct_projection_pushdown.test_slow
 # description: Test JSON struct projection pushdown with TPC-H
-# group: [json]
+# group: [json_v2]
 
 require json_v2
 

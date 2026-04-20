@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/internal_issue3146.test
+# name: test/sql/json_v2/issues/internal_issue3146.test
 # description: Test internal issue 3146 - JSON parsing exception: Arrow datatype Map(Field ... ) not supported by Polars
 # group: [issues]
 

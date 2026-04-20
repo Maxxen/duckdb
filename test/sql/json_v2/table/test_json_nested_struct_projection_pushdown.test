@@ -1,4 +1,4 @@
-# name: test/sql/json/table/test_json_nested_struct_projection_pushdown.test
+# name: test/sql/json_v2/table/test_json_nested_struct_projection_pushdown.test
 # description: Test JSON struct projection pushdown on deeply nested data
 # group: [table]
 

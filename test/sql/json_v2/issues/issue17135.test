@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue17135.test
+# name: test/sql/json_v2/issues/issue17135.test
 # description: Test issue 17135 - read_json fails to read integers exceeding BIGINT range
 # group: [issues]
 

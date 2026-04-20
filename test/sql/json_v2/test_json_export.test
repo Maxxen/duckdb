@@ -1,6 +1,6 @@
-# name: test/sql/json/test_json_export.test
+# name: test/sql/json_v2/test_json_export.test
 # description: Test Json Export
-# group: [json]
+# group: [json_v2]
 
 require json_v2
 

@@ -1,4 +1,4 @@
-# name: test/sql/json/scalar/test_json_merge_patch_diff.test
+# name: test/sql/json_v2/scalar/test_json_merge_patch_diff.test
 # description: Test JSON merge patch diff (compute RFC 7396 merge patch from two documents)
 # group: [scalar]
 

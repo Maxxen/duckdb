@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue16570.test
+# name: test/sql/json_v2/issues/issue16570.test
 # description: Test issue 16570 - JSON type: string slice operation results in result value with JSON type, expected VARCHAR
 # group: [issues]
 

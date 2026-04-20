@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue18301.test
+# name: test/sql/json_v2/issues/issue18301.test
 # description: Test issue 18301 - DuckDB JSON Schema Inconsistency - V 1.3.2
 # group: [issues]
 

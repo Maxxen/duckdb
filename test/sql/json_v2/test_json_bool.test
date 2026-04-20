@@ -1,6 +1,6 @@
-# name: test/sql/json/test_json_bool.test
+# name: test/sql/json_v2/test_json_bool.test
 # description: Test if Json can parse bool
-# group: [json]
+# group: [json_v2]
 
 statement ok
 set custom_profiling_settings='{"optimizer_filter_pullup":true}';

@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue10866.test
+# name: test/sql/json_v2/issues/issue10866.test
 # description: Test issue 1010866 - uhugeints are truncated when imported from json data
 # group: [issues]
 

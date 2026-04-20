@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/internal_issue3197.test
+# name: test/sql/json_v2/issues/internal_issue3197.test
 # description: Test internal issue 3197 - AFL++ issue: crashes (segfault) in json reader
 # group: [issues]
 

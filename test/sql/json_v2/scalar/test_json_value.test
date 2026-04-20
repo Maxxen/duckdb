@@ -1,4 +1,4 @@
-# name: test/sql/json/scalar/test_json_value.test
+# name: test/sql/json_v2/scalar/test_json_value.test
 # description: Test JSON value
 # group: [scalar]
 

@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/large_quoted_string_constant.test
+# name: test/sql/json_v2/issues/large_quoted_string_constant.test
 # description: Issue #2986: Large string constant with quotes
 # group: [issues]
 

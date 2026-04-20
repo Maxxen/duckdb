@@ -1,4 +1,4 @@
-# name: test/sql/json/scalar/test_json_exists.test
+# name: test/sql/json_v2/scalar/test_json_exists.test
 # description: Test JSON exists
 # group: [scalar]
 

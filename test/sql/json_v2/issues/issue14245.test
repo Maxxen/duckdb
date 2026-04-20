@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue14245.test
+# name: test/sql/json_v2/issues/issue14245.test
 # description: Test issue 14245 - The JSONPointer '/'
 # group: [issues]
 

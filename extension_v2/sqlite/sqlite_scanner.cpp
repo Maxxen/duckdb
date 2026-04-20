@@ -270,7 +270,7 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
 				auto &out_vec = output.data[col_idx];
 				auto sqlite_column_type = stmt.GetType(col_idx);
 				if (sqlite_column_type == SQLITE_NULL) {
-					auto &mask = FlatVector::Validity(out_vec);
+					auto &mask = FlatVector::ValidityMutable(out_vec);
 					mask.Set(out_idx, false);
 					continue;
 				}

@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue13948.test
+# name: test/sql/json_v2/issues/issue13948.test
 # description: Test issue 13948 - Json property name with special characters produce inconsistent results with json -> 'propertyname' and json_extract
 # group: [issues]
 

@@ -1,6 +1,6 @@
-# name: test/sql/scanner/chinook.test
+# name: test/sql/sqlite_v2/scanner/chinook.test
 # description: Test chinook database
-# group: [sqlite_scanner]
+# group: [scanner]
 
 require sqlite_v2
 

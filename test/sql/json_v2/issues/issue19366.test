@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue19366.test
+# name: test/sql/json_v2/issues/issue19366.test
 # description: Test issue 19366 - 1.4.1: malformed JSON when running through view
 # group: [issues]
 

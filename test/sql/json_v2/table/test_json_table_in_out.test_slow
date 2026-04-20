@@ -1,4 +1,4 @@
-# name: test/sql/json/table/test_json_table_in_out.test_slow
+# name: test/sql/json_v2/table/test_json_table_in_out.test_slow
 # description: Test JSON table in/out functions (json_each/json_tree)
 # group: [table]
 

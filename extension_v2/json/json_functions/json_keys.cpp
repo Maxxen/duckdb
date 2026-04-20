@@ -40,19 +40,25 @@ static void ManyJSONKeysFunction(DataChunk &args, ExpressionState &state, Vector
 
 static void GetJSONKeysFunctionsInternal(ScalarFunctionSet &set, const LogicalType &input_type) {
 	set.AddFunction(ScalarFunction({input_type}, LogicalType::LIST(LogicalType::VARCHAR), UnaryJSONKeysFunction,
-	                               nullptr, nullptr, nullptr, JSONFunctionLocalState::Init));
+	                               nullptr, nullptr, JSONFunctionLocalState::Init));
 	set.AddFunction(ScalarFunction({input_type, LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR),
-	                               BinaryJSONKeysFunction, JSONReadFunctionData::Bind, nullptr, nullptr,
+	                               BinaryJSONKeysFunction, JSONReadFunctionData::Bind, nullptr,
 	                               JSONFunctionLocalState::Init));
 	set.AddFunction(ScalarFunction({input_type, LogicalType::LIST(LogicalType::VARCHAR)},
 	                               LogicalType::LIST(LogicalType::LIST(LogicalType::VARCHAR)), ManyJSONKeysFunction,
-	                               JSONReadManyFunctionData::Bind, nullptr, nullptr, JSONFunctionLocalState::Init));
+	                               JSONReadManyFunctionData::Bind, nullptr, JSONFunctionLocalState::Init));
 }
 
 ScalarFunctionSet JSONFunctions::GetKeysFunction() {
 	ScalarFunctionSet set("json_keys");
 	GetJSONKeysFunctionsInternal(set, LogicalType::VARCHAR);
 	GetJSONKeysFunctionsInternal(set, LogicalType::JSON());
+	for (auto &func : set.functions) {
+		if (func.arguments.size() == 1 && func.arguments[0].IsJSONType()) {
+			continue;
+		}
+		func.errors = FunctionErrors::CAN_THROW_RUNTIME_ERROR;
+	}
 	return set;
 }
 

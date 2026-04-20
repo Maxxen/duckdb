@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue16568.test
+# name: test/sql/json_v2/issues/issue16568.test
 # description: Test issue 16568 - Error when loading JSON files with UTF-8 Byte Order Mark (BOM)
 # group: [issues]
 

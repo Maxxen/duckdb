@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue19357.test
+# name: test/sql/json_v2/issues/issue19357.test
 # description: Test issue 19357 - Expected unified vector format of type VARCHAR, but found type INT32
 # group: [issues]
 

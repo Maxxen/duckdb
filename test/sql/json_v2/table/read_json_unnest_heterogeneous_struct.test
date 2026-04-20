@@ -1,4 +1,4 @@
-# name: test/sql/json/table/read_json_unnest_heterogeneous_struct.test
+# name: test/sql/json_v2/table/read_json_unnest_heterogeneous_struct.test
 # description: Test UNNEST of heterogeneous struct arrays from read_json_auto
 # group: [table]
 

@@ -1,4 +1,4 @@
-# name: test/sql/json/table/auto_glob_directory.test
+# name: test/sql/json_v2/table/auto_glob_directory.test
 # description: Test auto globbing a directory
 # group: [table]
 

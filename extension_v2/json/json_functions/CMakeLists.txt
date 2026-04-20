@@ -1,5 +1,5 @@
 add_library_unity(
-  duckdb_json_v2_functions
+  duckdb_json_functions
   OBJECT
   copy_json.cpp
   json_array_length.cpp
@@ -25,5 +25,5 @@ add_library_unity(
   read_json.cpp
   read_json_objects.cpp)
 set(ALL_OBJECT_FILES
-    ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_json_v2_functions>
+    ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_json_functions>
     PARENT_SCOPE)

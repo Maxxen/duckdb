@@ -1,6 +1,6 @@
-# name: test/sql/storage/attach_sqlite_view.test
-# description:
-# group: [sqlite_storage]
+# name: test/sql/sqlite_v2/storage/attach_sqlite_view.test
+# description: 
+# group: [storage]
 
 require sqlite_v2
 

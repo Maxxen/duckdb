@@ -1,6 +1,6 @@
-# name: test/sql/scanner/emptytype.test
+# name: test/sql/sqlite_v2/scanner/emptytype.test
 # description: Test emptytype
-# group: [sqlite_scanner]
+# group: [scanner]
 
 require sqlite_v2
 

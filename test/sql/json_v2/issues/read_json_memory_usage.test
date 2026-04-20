@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/read_json_memory_usage.test
+# name: test/sql/json_v2/issues/read_json_memory_usage.test
 # description: Test JSON memory usage (internal issue #1683)
 # group: [issues]
 

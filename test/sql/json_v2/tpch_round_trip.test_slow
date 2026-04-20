@@ -1,6 +1,6 @@
-# name: test/sql/json/tpch_round_trip.test_slow
+# name: test/sql/json_v2/tpch_round_trip.test_slow
 # description: TPCH JSON round trip
-# group: [json]
+# group: [json_v2]
 
 require tpch
 

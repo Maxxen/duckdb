@@ -1,4 +1,4 @@
-# name: test/sql/json/scalar/test_json_dot_syntax.test
+# name: test/sql/json_v2/scalar/test_json_dot_syntax.test
 # description: Test JSON extract with dot syntax
 # group: [scalar]
 

@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue13725.test
+# name: test/sql/json_v2/issues/issue13725.test
 # description: Test issue 13725 - Using both hive_partitioning and hive_types in read_json_objects intermittently segfaults
 # group: [issues]
 

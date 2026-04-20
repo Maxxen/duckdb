@@ -1,4 +1,4 @@
-# name: test/sql/json/table/json_multi_file_reader.test
+# name: test/sql/json_v2/table/json_multi_file_reader.test
 # description: Test MultiFileReader integration in JSON reader
 # group: [table]
 

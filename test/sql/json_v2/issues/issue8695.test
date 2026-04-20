@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue8695.test
+# name: test/sql/json_v2/issues/issue8695.test
 # description: Test issue 8695 - INTERNAL Error: Attempted to dereference unique_ptr that is NULL
 # group: [issues]
 

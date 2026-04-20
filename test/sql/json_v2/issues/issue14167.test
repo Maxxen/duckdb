@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue14167.test
+# name: test/sql/json_v2/issues/issue14167.test
 # description: Test issue 14167 - Dot notation for json field extraction is no longer working in v1.1.*
 # group: [issues]
 

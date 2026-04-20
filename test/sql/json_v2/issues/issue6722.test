@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue6722.test
+# name: test/sql/json_v2/issues/issue6722.test
 # description: Test issue 6722 - INTERNAL Error: read_json_auto and read_json(auto_detect=true) fail to handle property name case sensitivities
 # group: [issues]
 

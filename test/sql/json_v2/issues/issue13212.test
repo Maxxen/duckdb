@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue13212.test
+# name: test/sql/json_v2/issues/issue13212.test
 # description: Test issue 13212 - Trying to read an empty compressed JSON file deadlocks
 # group: [issues]
 

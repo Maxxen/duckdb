@@ -23,44 +23,45 @@ extern "C" {
 
 #ifndef DUCKDB_C_API
 #ifdef _WIN32
-  #ifdef DUCKDB_STATIC_BUILD
-    #define DUCKDB_C_API
-  #elif defined(DUCKDB_BUILD_LIBRARY) && !defined(DUCKDB_BUILD_LOADABLE_EXTENSION)
-    #define DUCKDB_C_API __declspec(dllexport)
-  #else
-    #define DUCKDB_C_API __declspec(dllimport)
-  #endif
+#ifdef DUCKDB_STATIC_BUILD
+#define DUCKDB_C_API
+#elif defined(DUCKDB_BUILD_LIBRARY) && !defined(DUCKDB_BUILD_LOADABLE_EXTENSION)
+#define DUCKDB_C_API __declspec(dllexport)
 #else
-  #if defined(__GNUC__) || defined(__clang__)
-    #define DUCKDB_C_API __attribute__((visibility("default")))
-  #else
-    #define DUCKDB_C_API
-  #endif
+#define DUCKDB_C_API __declspec(dllimport)
+#endif
+#else
+#if defined(__GNUC__) || defined(__clang__)
+#define DUCKDB_C_API __attribute__((visibility("default")))
+#else
+#define DUCKDB_C_API
+#endif
 #endif
 #endif
 
 #ifndef DUCKDB_EXTENSION_API
 #ifdef _WIN32
-  #ifdef DUCKDB_STATIC_BUILD
-    #define DUCKDB_EXTENSION_API
-  #else
-    #define DUCKDB_EXTENSION_API __declspec(dllexport)
-  #endif
+#ifdef DUCKDB_STATIC_BUILD
+#define DUCKDB_EXTENSION_API
 #else
-  #if defined(__GNUC__) || defined(__clang__)
-    #define DUCKDB_EXTENSION_API __attribute__((visibility("default")))
-  #else
-    #define DUCKDB_EXTENSION_API
-  #endif
+#define DUCKDB_EXTENSION_API __declspec(dllexport)
+#endif
+#else
+#if defined(__GNUC__) || defined(__clang__)
+#define DUCKDB_EXTENSION_API __attribute__((visibility("default")))
+#else
+#define DUCKDB_EXTENSION_API
+#endif
 #endif
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
-  #define DUCKDB_DEPRECATED __attribute__((deprecated("This function is deprecated and will be removed in a future version.")))
+#define DUCKDB_DEPRECATED                                                                                              \
+	__attribute__((deprecated("This function is deprecated and will be removed in a future version.")))
 #elif defined(_MSC_VER)
-  #define DUCKDB_DEPRECATED __declspec(deprecated("This function is deprecated and will be removed in a future version."))
+#define DUCKDB_DEPRECATED __declspec(deprecated("This function is deprecated and will be removed in a future version."))
 #else
-  #define DUCKDB_DEPRECATED
+#define DUCKDB_DEPRECATED
 #endif
 
 /* ============================================================================
@@ -70,32 +71,32 @@ extern "C" {
 /* --- Structs for common --- */
 
 /* --- Types for common --- */
-typedef void* duckdb_v2_ctx_ptr;
-typedef void* duckdb_v2_error_ptr;
-typedef void* duckdb_v2_database_ptr;
-typedef void* duckdb_v2_connection_ptr;
-typedef void* duckdb_v2_config_ptr;
-typedef void* duckdb_v2_instance_cache_ptr;
-typedef void* duckdb_v2_client_context_ptr;
-typedef void* duckdb_v2_prepared_statement_ptr;
-typedef void* duckdb_v2_result_ptr;
-typedef void* duckdb_v2_data_chunk_ptr;
-typedef void* duckdb_v2_vector_ptr;
-typedef void* duckdb_v2_logical_type_ptr;
-typedef void* duckdb_v2_value_ptr;
+typedef void *duckdb_v2_ctx_ptr;
+typedef void *duckdb_v2_error_ptr;
+typedef void *duckdb_v2_database_ptr;
+typedef void *duckdb_v2_connection_ptr;
+typedef void *duckdb_v2_config_ptr;
+typedef void *duckdb_v2_instance_cache_ptr;
+typedef void *duckdb_v2_client_context_ptr;
+typedef void *duckdb_v2_prepared_statement_ptr;
+typedef void *duckdb_v2_result_ptr;
+typedef void *duckdb_v2_data_chunk_ptr;
+typedef void *duckdb_v2_vector_ptr;
+typedef void *duckdb_v2_logical_type_ptr;
+typedef void *duckdb_v2_value_ptr;
 typedef uint32_t duckdb_v2_error_kind_t;
 typedef uint32_t duckdb_v2_error_code_t;
 typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
 
 /* --- Enums for common --- */
 typedef enum DUCKDB_V2_TYPE {
-/* Represents an invalid or uninitialized type. */
-  DUCKDB_V2_TYPE_INVALID = 0,
-/* bool */
-  DUCKDB_V2_TYPE_BOOLEAN = 1,
-/* int8_t */
-  DUCKDB_V2_TYPE_TINYINT = 2,
-  DUCKDB_V2_TYPE_SMALLINT = 3,
+	/* Represents an invalid or uninitialized type. */
+	DUCKDB_V2_TYPE_INVALID = 0,
+	/* bool */
+	DUCKDB_V2_TYPE_BOOLEAN = 1,
+	/* int8_t */
+	DUCKDB_V2_TYPE_TINYINT = 2,
+	DUCKDB_V2_TYPE_SMALLINT = 3,
 } DUCKDB_V2_TYPE;
 
 /* --- Constants for common --- */
@@ -120,11 +121,11 @@ typedef enum DUCKDB_V2_TYPE {
 #define DUCKDB_V2_API_ERROR 0xFFFFFFFF
 
 /* --- Error Codes for errors --- */
-#define DUCKDB_V2_ERROR_NONE ((0 << 16) | 0)
+#define DUCKDB_V2_ERROR_NONE              ((0 << 16) | 0)
 #define DUCKDB_V2_ERROR_IO_FILE_NOT_FOUND ((1 << 16) | 1)
-#define DUCKDB_V2_ERROR_IO_READ_FAILURE ((1 << 16) | 2)
-#define DUCKDB_V2_ERROR_EOF ((2 << 16) | 1)
-#define DUCKDB_V2_ERROR_INVALID_INPUT ((2 << 16) | 2)
+#define DUCKDB_V2_ERROR_IO_READ_FAILURE   ((1 << 16) | 2)
+#define DUCKDB_V2_ERROR_EOF               ((2 << 16) | 1)
+#define DUCKDB_V2_ERROR_INVALID_INPUT     ((2 << 16) | 2)
 #define DUCKDB_V2_ERROR_INVALID_PARAMETER ((2 << 16) | 3)
 
 /* --- Function pointer typedefs for errors --- */
@@ -149,44 +150,46 @@ typedef enum DUCKDB_V2_TYPE {
 
 /* --- Functions for configuration --- */
 /*!
-* Initializes an empty configuration object.
-* @param context The context handle.
-* @param out_config The result configuration object.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr* out_config);
+ * Initializes an empty configuration object.
+ * @param context The context handle.
+ * @param out_config The result configuration object.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr *out_config);
 /*!
-* Returns the total number of configuration options available.
-* @param context The context handle.
-* @param out_count The number of config options available.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_config_count(duckdb_v2_ctx_ptr context, idx_t* out_count);
+ * Returns the total number of configuration options available.
+ * @param context The context handle.
+ * @param out_count The number of config options available.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_config_count(duckdb_v2_ctx_ptr context, idx_t *out_count);
 /*!
-* Obtains the name and description of a specific configuration option.
-* @param context The context handle.
-* @param index The index of the configuration option.
-* @param out_name The name of the configuration flag.
-* @param out_description A description of the configuration flag.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_config_flag(duckdb_v2_ctx_ptr context, idx_t index, char** out_name, char** out_description);
+ * Obtains the name and description of a specific configuration option.
+ * @param context The context handle.
+ * @param index The index of the configuration option.
+ * @param out_name The name of the configuration flag.
+ * @param out_description A description of the configuration flag.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_config_flag(duckdb_v2_ctx_ptr context, idx_t index, char **out_name,
+                                                            char **out_description);
 /*!
-* Sets the specified option for the specified configuration.
-* @param context The context handle.
-* @param config The configuration object to set the option on.
-* @param name The name of the configuration flag to set.
-* @param option The value to set the configuration flag to.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_set_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr config, const char* name, const char* option);
+ * Sets the specified option for the specified configuration.
+ * @param context The context handle.
+ * @param config The configuration object to set the option on.
+ * @param name The name of the configuration flag to set.
+ * @param option The value to set the configuration flag to.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_set_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr config,
+                                                       const char *name, const char *option);
 /*!
-* Destroys the specified configuration object.
-* @param context The context handle.
-* @param config The configuration object to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr* config);
+ * Destroys the specified configuration object.
+ * @param context The context handle.
+ * @param config The configuration object to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_config(duckdb_v2_ctx_ptr context, duckdb_v2_config_ptr *config);
 
 /* ============================================================================
  * MODULE: data_chunk
@@ -206,29 +209,33 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_config(duckdb_v2_ctx_ptr con
 
 /* --- Functions for data_chunk --- */
 /*!
-* Destroys the data chunk and de-allocates all memory.
-* @param context The context handle.
-* @param chunk The data chunk to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_data_chunk(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr* chunk);
+ * Destroys the data chunk and de-allocates all memory.
+ * @param context The context handle.
+ * @param chunk The data chunk to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_data_chunk(duckdb_v2_ctx_ptr context,
+                                                               duckdb_v2_data_chunk_ptr *chunk);
 /*!
-* Retrieves the vector at the specified column index.
-* @param context The context handle.
-* @param chunk The data chunk to get the data from.
-* @param col_idx The column index.
-* @param out_vector The vector at the specified column index.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr chunk, idx_t col_idx, duckdb_v2_vector_ptr* out_vector);
+ * Retrieves the vector at the specified column index.
+ * @param context The context handle.
+ * @param chunk The data chunk to get the data from.
+ * @param col_idx The column index.
+ * @param out_vector The vector at the specified column index.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_ctx_ptr context,
+                                                                  duckdb_v2_data_chunk_ptr chunk, idx_t col_idx,
+                                                                  duckdb_v2_vector_ptr *out_vector);
 /*!
-* Retrieves the current number of tuples in a data chunk.
-* @param context The context handle.
-* @param chunk The data chunk.
-* @param out_size The number of tuples in the data chunk.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_ctx_ptr context, duckdb_v2_data_chunk_ptr chunk, idx_t* out_size);
+ * Retrieves the current number of tuples in a data chunk.
+ * @param context The context handle.
+ * @param chunk The data chunk.
+ * @param out_size The number of tuples in the data chunk.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_ctx_ptr context,
+                                                                duckdb_v2_data_chunk_ptr chunk, idx_t *out_size);
 
 /* ============================================================================
  * MODULE: database
@@ -248,98 +255,110 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_ctx_pt
 
 /* --- Functions for database --- */
 /*!
-* Creates a new database or opens an existing database file.
-* @param context The context handle.
-* @param path Path to the database file on disk. Both nullptr and :memory: open an in-memory database.
-* @param out_database The result database object.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_ctx_ptr context, const char* path, duckdb_v2_database_ptr* out_database);
+ * Creates a new database or opens an existing database file.
+ * @param context The context handle.
+ * @param path Path to the database file on disk. Both nullptr and :memory: open an in-memory database.
+ * @param out_database The result database object.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_ctx_ptr context, const char *path,
+                                                 duckdb_v2_database_ptr *out_database);
 /*!
-* Extended version of duckdb_open with configuration support.
-* @param context The context handle.
-* @param path Path to the database file on disk. Both nullptr and :memory: open an in-memory database.
-* @param config Optional configuration used to start up the database.
-* @param out_database The result database object.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open_ext(duckdb_v2_ctx_ptr context, const char* path, duckdb_v2_config_ptr config, duckdb_v2_database_ptr* out_database);
+ * Extended version of duckdb_open with configuration support.
+ * @param context The context handle.
+ * @param path Path to the database file on disk. Both nullptr and :memory: open an in-memory database.
+ * @param config Optional configuration used to start up the database.
+ * @param out_database The result database object.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open_ext(duckdb_v2_ctx_ptr context, const char *path,
+                                                     duckdb_v2_config_ptr config, duckdb_v2_database_ptr *out_database);
 /*!
-* Closes the specified database and de-allocates all memory.
-* @param context The context handle.
-* @param database The database object to shut down.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr* database);
+ * Closes the specified database and de-allocates all memory.
+ * @param context The context handle.
+ * @param database The database object to shut down.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr *database);
 /*!
-* Opens a connection to a database.
-* @param context The context handle.
-* @param database The database file to connect to.
-* @param out_connection The result connection object.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr database, duckdb_v2_connection_ptr* out_connection);
+ * Opens a connection to a database.
+ * @param context The context handle.
+ * @param database The database file to connect to.
+ * @param out_connection The result connection object.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_ctx_ptr context, duckdb_v2_database_ptr database,
+                                                    duckdb_v2_connection_ptr *out_connection);
 /*!
-* Closes the specified connection and de-allocates all memory.
-* @param context The context handle.
-* @param connection The connection to close.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr* connection);
+ * Closes the specified connection and de-allocates all memory.
+ * @param context The context handle.
+ * @param connection The connection to close.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr *connection);
 /*!
-* Retrieves the client context of the connection.
-* @param context The context handle.
-* @param connection The connection.
-* @param out_context The client context. Must be destroyed with duckdb_destroy_client_context.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_get_client_context(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection, duckdb_v2_client_context_ptr* out_context);
+ * Retrieves the client context of the connection.
+ * @param context The context handle.
+ * @param connection The connection.
+ * @param out_context The client context. Must be destroyed with duckdb_destroy_client_context.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_get_client_context(duckdb_v2_ctx_ptr context,
+                                                                          duckdb_v2_connection_ptr connection,
+                                                                          duckdb_v2_client_context_ptr *out_context);
 /*!
-* Returns the connection id of the client context.
-* @param context The context handle.
-* @param client_context The client context.
-* @param out_connection_id The connection id.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_client_context_get_connection_id(duckdb_v2_ctx_ptr context, duckdb_v2_client_context_ptr client_context, idx_t* out_connection_id);
+ * Returns the connection id of the client context.
+ * @param context The context handle.
+ * @param client_context The client context.
+ * @param out_connection_id The connection id.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_client_context_get_connection_id(
+    duckdb_v2_ctx_ptr context, duckdb_v2_client_context_ptr client_context, idx_t *out_connection_id);
 /*!
-* Destroys the client context and deallocates its memory.
-* @param context The context handle.
-* @param client_context The client context to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_client_context(duckdb_v2_ctx_ptr context, duckdb_v2_client_context_ptr* client_context);
+ * Destroys the client context and deallocates its memory.
+ * @param context The context handle.
+ * @param client_context The client context to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_client_context(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_client_context_ptr *client_context);
 /*!
-* Creates a new database instance cache.
-* @param context The context handle.
-* @param out_instance_cache The database instance cache.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_instance_cache(duckdb_v2_ctx_ptr context, duckdb_v2_instance_cache_ptr* out_instance_cache);
+ * Creates a new database instance cache.
+ * @param context The context handle.
+ * @param out_instance_cache The database instance cache.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_instance_cache(duckdb_v2_ctx_ptr context,
+                                                                  duckdb_v2_instance_cache_ptr *out_instance_cache);
 /*!
-* Creates or retrieves a database instance from the cache.
-* @param context The context handle.
-* @param instance_cache The instance cache.
-* @param path Path to the database file on disk.
-* @param config Optional configuration used to create the database.
-* @param out_database The resulting cached database.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_or_create_from_cache(duckdb_v2_ctx_ptr context, duckdb_v2_instance_cache_ptr instance_cache, const char* path, duckdb_v2_config_ptr config, duckdb_v2_database_ptr* out_database);
+ * Creates or retrieves a database instance from the cache.
+ * @param context The context handle.
+ * @param instance_cache The instance cache.
+ * @param path Path to the database file on disk.
+ * @param config Optional configuration used to create the database.
+ * @param out_database The resulting cached database.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_or_create_from_cache(duckdb_v2_ctx_ptr context,
+                                                                     duckdb_v2_instance_cache_ptr instance_cache,
+                                                                     const char *path, duckdb_v2_config_ptr config,
+                                                                     duckdb_v2_database_ptr *out_database);
 /*!
-* Destroys an existing database instance cache.
-* @param context The context handle.
-* @param instance_cache The instance cache to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_instance_cache(duckdb_v2_ctx_ptr context, duckdb_v2_instance_cache_ptr* instance_cache);
+ * Destroys an existing database instance cache.
+ * @param context The context handle.
+ * @param instance_cache The instance cache to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_instance_cache(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_instance_cache_ptr *instance_cache);
 /*!
-* Returns the version of the linked DuckDB library.
-* @param context The context handle.
-* @param out_version The version string.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(duckdb_v2_ctx_ptr context, char** out_version);
+ * Returns the version of the linked DuckDB library.
+ * @param context The context handle.
+ * @param out_version The version string.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(duckdb_v2_ctx_ptr context, char **out_version);
 
 /* ============================================================================
  * MODULE: error_management
@@ -365,26 +384,26 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(duckdb_v2_ctx_ptr co
 * @param out_err The pointer to receive the newly created error instance.
 * @return duckdb_v2_error_code_t
 */
-DUCKDB_C_API DUCKDB_DEPRECATED duckdb_v2_error_code_t duckdb_v2_error_create(duckdb_v2_error_ptr* out_err);
+DUCKDB_C_API DUCKDB_DEPRECATED duckdb_v2_error_code_t duckdb_v2_error_create(duckdb_v2_error_ptr *out_err);
 /*!
-* Retrieves the descriptive error message.
-* @param err The error instance to query.
-* @param out_text The pointer to receive the error message string.
-* @return duckdb_v2_error_code_t
-*/
-DUCKDB_C_API duckdb_v2_error_code_t duckdb_v2_error_get_text(duckdb_v2_error_ptr err, char** out_text);
+ * Retrieves the descriptive error message.
+ * @param err The error instance to query.
+ * @param out_text The pointer to receive the error message string.
+ * @return duckdb_v2_error_code_t
+ */
+DUCKDB_C_API duckdb_v2_error_code_t duckdb_v2_error_get_text(duckdb_v2_error_ptr err, char **out_text);
 /*!
-* Updates the descriptive message.
-* @param err The error instance to update.
-* @param text The new error message string.
-* @return duckdb_v2_error_code_t
-*/
-DUCKDB_C_API duckdb_v2_error_code_t duckdb_v2_error_set_text(duckdb_v2_error_ptr err, char* text);
+ * Updates the descriptive message.
+ * @param err The error instance to update.
+ * @param text The new error message string.
+ * @return duckdb_v2_error_code_t
+ */
+DUCKDB_C_API duckdb_v2_error_code_t duckdb_v2_error_set_text(duckdb_v2_error_ptr err, char *text);
 /*!
-* Frees the error object.
-* @param err The error instance to free.
-* @return duckdb_v2_error_code_t
-*/
+ * Frees the error object.
+ * @param err The error instance to free.
+ * @return duckdb_v2_error_code_t
+ */
 DUCKDB_C_API duckdb_v2_error_code_t duckdb_v2_error_destroy(duckdb_v2_error_ptr err);
 
 /* ============================================================================
@@ -393,62 +412,62 @@ DUCKDB_C_API duckdb_v2_error_code_t duckdb_v2_error_destroy(duckdb_v2_error_ptr 
 
 /* --- Structs for helpers --- */
 typedef struct {
-  int32_t days;
+	int32_t days;
 } duckdb_v2_date;
 typedef struct {
-  int32_t year;
-  int8_t month;
-  int8_t day;
+	int32_t year;
+	int8_t month;
+	int8_t day;
 } duckdb_v2_date_struct;
 typedef struct {
-  int64_t micros;
+	int64_t micros;
 } duckdb_v2_time;
 typedef struct {
-  int8_t hour;
-  int8_t min;
-  int8_t sec;
-  int32_t micros;
+	int8_t hour;
+	int8_t min;
+	int8_t sec;
+	int32_t micros;
 } duckdb_v2_time_struct;
 typedef struct {
-  uint64_t bits;
+	uint64_t bits;
 } duckdb_v2_time_tz;
 typedef struct {
-  duckdb_v2_time_struct time;
-  int32_t offset;
+	duckdb_v2_time_struct time;
+	int32_t offset;
 } duckdb_v2_time_tz_struct;
 typedef struct {
-  int64_t micros;
+	int64_t micros;
 } duckdb_v2_timestamp;
 typedef struct {
-  int32_t months;
-  int32_t days;
-  int64_t micros;
+	int32_t months;
+	int32_t days;
+	int64_t micros;
 } duckdb_v2_interval;
 typedef struct {
-  uint64_t lower;
-  int64_t upper;
+	uint64_t lower;
+	int64_t upper;
 } duckdb_v2_hugeint;
 typedef struct {
-  uint64_t lower;
-  uint64_t upper;
+	uint64_t lower;
+	uint64_t upper;
 } duckdb_v2_uhugeint;
 typedef struct {
-  uint8_t width;
-  uint8_t scale;
-  duckdb_v2_hugeint value;
+	uint8_t width;
+	uint8_t scale;
+	duckdb_v2_hugeint value;
 } duckdb_v2_decimal;
 typedef struct {
-  uint64_t offset;
-  uint64_t length;
+	uint64_t offset;
+	uint64_t length;
 } duckdb_v2_list_entry;
 typedef struct {
-  uint8_t* data;
-  idx_t size;
-  bool is_negative;
+	uint8_t *data;
+	idx_t size;
+	bool is_negative;
 } duckdb_v2_bignum;
 typedef struct {
-  uint32_t length;
-  char* data;
+	uint32_t length;
+	char *data;
 } duckdb_v2_string_t;
 
 /* --- Types for helpers --- */
@@ -463,76 +482,83 @@ typedef struct {
 
 /* --- Functions for helpers --- */
 /*!
-* Free memory allocated by duckdb_malloc or returned by other functions.
-* @param context The context handle.
-* @param ptr The memory region to de-allocate.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_free(duckdb_v2_ctx_ptr context, void* ptr);
+ * Free memory allocated by duckdb_malloc or returned by other functions.
+ * @param context The context handle.
+ * @param ptr The memory region to de-allocate.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_free(duckdb_v2_ctx_ptr context, void *ptr);
 /*!
-* Decompose a duckdb_v2_date into year, month, and day.
-* @param context The context handle.
-* @param date The date object.
-* @param out_result The decomposed date struct.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_from_date(duckdb_v2_ctx_ptr context, duckdb_v2_date date, duckdb_v2_date_struct* out_result);
+ * Decompose a duckdb_v2_date into year, month, and day.
+ * @param context The context handle.
+ * @param date The date object.
+ * @param out_result The decomposed date struct.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_from_date(duckdb_v2_ctx_ptr context, duckdb_v2_date date,
+                                                      duckdb_v2_date_struct *out_result);
 /*!
-* Re-compose a duckdb_v2_date from year, month, and day.
-* @param context The context handle.
-* @param date The year, month and date stored in a duckdb_v2_date_struct.
-* @param out_result The duckdb_v2_date element.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_to_date(duckdb_v2_ctx_ptr context, duckdb_v2_date_struct date, duckdb_v2_date* out_result);
+ * Re-compose a duckdb_v2_date from year, month, and day.
+ * @param context The context handle.
+ * @param date The year, month and date stored in a duckdb_v2_date_struct.
+ * @param out_result The duckdb_v2_date element.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_to_date(duckdb_v2_ctx_ptr context, duckdb_v2_date_struct date,
+                                                    duckdb_v2_date *out_result);
 /*!
-* Decompose a duckdb_v2_time into hour, minute, second, and microsecond.
-* @param context The context handle.
-* @param time The time object.
-* @param out_result The decomposed time struct.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_from_time(duckdb_v2_ctx_ptr context, duckdb_v2_time time, duckdb_v2_time_struct* out_result);
+ * Decompose a duckdb_v2_time into hour, minute, second, and microsecond.
+ * @param context The context handle.
+ * @param time The time object.
+ * @param out_result The decomposed time struct.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_from_time(duckdb_v2_ctx_ptr context, duckdb_v2_time time,
+                                                      duckdb_v2_time_struct *out_result);
 /*!
-* Re-compose a duckdb_v2_time from hour, minute, second, and microsecond.
-* @param context The context handle.
-* @param time The time struct.
-* @param out_result The duckdb_v2_time element.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_to_time(duckdb_v2_ctx_ptr context, duckdb_v2_time_struct time, duckdb_v2_time* out_result);
+ * Re-compose a duckdb_v2_time from hour, minute, second, and microsecond.
+ * @param context The context handle.
+ * @param time The time struct.
+ * @param out_result The duckdb_v2_time element.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_to_time(duckdb_v2_ctx_ptr context, duckdb_v2_time_struct time,
+                                                    duckdb_v2_time *out_result);
 /*!
-* Create a duckdb_v2_time_tz from micros and a timezone offset.
-* @param context The context handle.
-* @param micros The microsecond component.
-* @param offset The timezone offset component.
-* @param out_result The duckdb_v2_time_tz element.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_time_tz(duckdb_v2_ctx_ptr context, int64_t micros, int32_t offset, duckdb_v2_time_tz* out_result);
+ * Create a duckdb_v2_time_tz from micros and a timezone offset.
+ * @param context The context handle.
+ * @param micros The microsecond component.
+ * @param offset The timezone offset component.
+ * @param out_result The duckdb_v2_time_tz element.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_time_tz(duckdb_v2_ctx_ptr context, int64_t micros, int32_t offset,
+                                                           duckdb_v2_time_tz *out_result);
 /*!
-* Decompose a TIME_TZ into micros and a timezone offset.
-* @param context The context handle.
-* @param time_tz The time_tz object.
-* @param out_result The decomposed time_tz struct.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_from_time_tz(duckdb_v2_ctx_ptr context, duckdb_v2_time_tz time_tz, duckdb_v2_time_tz_struct* out_result);
+ * Decompose a TIME_TZ into micros and a timezone offset.
+ * @param context The context handle.
+ * @param time_tz The time_tz object.
+ * @param out_result The decomposed time_tz struct.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_from_time_tz(duckdb_v2_ctx_ptr context, duckdb_v2_time_tz time_tz,
+                                                         duckdb_v2_time_tz_struct *out_result);
 /*!
-* Re-compose a duckdb_v2_timestamp from a duckdb_v2_timestamp_struct.
-* @param context The context handle.
-* @param micros The microsecond component.
-* @param out_result The duckdb_v2_timestamp element.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_timestamp(duckdb_v2_ctx_ptr context, int64_t micros, duckdb_v2_timestamp* out_result);
+ * Re-compose a duckdb_v2_timestamp from a duckdb_v2_timestamp_struct.
+ * @param context The context handle.
+ * @param micros The microsecond component.
+ * @param out_result The duckdb_v2_timestamp element.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_timestamp(duckdb_v2_ctx_ptr context, int64_t micros,
+                                                             duckdb_v2_timestamp *out_result);
 /*!
-* Create a UUID value.
-* @param context The context handle.
-* @param out_result The UUID represented as a hugeint.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_uuid(duckdb_v2_ctx_ptr context, duckdb_v2_hugeint* out_result);
+ * Create a UUID value.
+ * @param context The context handle.
+ * @param out_result The UUID represented as a hugeint.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_uuid(duckdb_v2_ctx_ptr context, duckdb_v2_hugeint *out_result);
 
 /* ============================================================================
  * MODULE: logical_type
@@ -552,153 +578,180 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_uuid(duckdb_v2_ctx_ptr contex
 
 /* --- Functions for logical_type --- */
 /*!
-* Creates a logical type from a primitive duckdb_type.
-* @param context The context handle.
-* @param type The primitive duckdb_type to create.
-* @param out_type The logical type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_logical_type(duckdb_v2_ctx_ptr context, uint32_t type, duckdb_v2_logical_type_ptr* out_type);
+ * Creates a logical type from a primitive duckdb_type.
+ * @param context The context handle.
+ * @param type The primitive duckdb_type to create.
+ * @param out_type The logical type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_logical_type(duckdb_v2_ctx_ptr context, uint32_t type,
+                                                                duckdb_v2_logical_type_ptr *out_type);
 /*!
-* Destroys the logical type and de-allocates all memory.
-* @param context The context handle.
-* @param type The logical type to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr* type);
+ * Destroys the logical type and de-allocates all memory.
+ * @param context The context handle.
+ * @param type The logical type to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_logical_type(duckdb_v2_ctx_ptr context,
+                                                                 duckdb_v2_logical_type_ptr *type);
 /*!
-* Retrieves the duckdb_type enum of a logical type.
-* @param context The context handle.
-* @param type The logical type.
-* @param out_type_id The duckdb_type id.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_type_id(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint32_t* out_type_id);
+ * Retrieves the duckdb_type enum of a logical type.
+ * @param context The context handle.
+ * @param type The logical type.
+ * @param out_type_id The duckdb_type id.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_type_id(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                        uint32_t *out_type_id);
 /*!
-* Retrieves the width of a decimal type.
-* @param context The context handle.
-* @param type The logical type object.
-* @param out_width The width of the decimal type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_decimal_width(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint8_t* out_width);
+ * Retrieves the width of a decimal type.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param out_width The width of the decimal type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_decimal_width(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                          uint8_t *out_width);
 /*!
-* Retrieves the scale of a decimal type.
-* @param context The context handle.
-* @param type The logical type object.
-* @param out_scale The scale of the decimal type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_decimal_scale(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint8_t* out_scale);
+ * Retrieves the scale of a decimal type.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param out_scale The scale of the decimal type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_decimal_scale(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type,
+                                                          uint8_t *out_scale);
 /*!
-* Retrieves the dictionary size of the enum type.
-* @param context The context handle.
-* @param type The logical type object.
-* @param out_size The dictionary size of the enum type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_size(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, uint32_t* out_size);
+ * Retrieves the dictionary size of the enum type.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param out_size The dictionary size of the enum type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_size(duckdb_v2_ctx_ptr context,
+                                                                 duckdb_v2_logical_type_ptr type, uint32_t *out_size);
 /*!
-* Retrieves the dictionary value at the specified position from the enum.
-* @param context The context handle.
-* @param type The logical type object.
-* @param index The index in the dictionary.
-* @param out_value The string value. Must be freed with duckdb_free.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_value(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, char** out_value);
+ * Retrieves the dictionary value at the specified position from the enum.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param index The index in the dictionary.
+ * @param out_value The string value. Must be freed with duckdb_free.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_enum_dictionary_value(duckdb_v2_ctx_ptr context,
+                                                                  duckdb_v2_logical_type_ptr type, idx_t index,
+                                                                  char **out_value);
 /*!
-* Retrieves the child type of a LIST type.
-* @param context The context handle.
-* @param type The logical type, either LIST or MAP.
-* @param out_child_type The child type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_list_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_child_type);
+ * Retrieves the child type of a LIST type.
+ * @param context The context handle.
+ * @param type The logical type, either LIST or MAP.
+ * @param out_child_type The child type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_list_type_child_type(duckdb_v2_ctx_ptr context,
+                                                                 duckdb_v2_logical_type_ptr type,
+                                                                 duckdb_v2_logical_type_ptr *out_child_type);
 /*!
-* Retrieves the child type of an ARRAY type.
-* @param context The context handle.
-* @param type The logical type. Must be ARRAY.
-* @param out_child_type The child type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_array_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_child_type);
+ * Retrieves the child type of an ARRAY type.
+ * @param context The context handle.
+ * @param type The logical type. Must be ARRAY.
+ * @param out_child_type The child type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_array_type_child_type(duckdb_v2_ctx_ptr context,
+                                                                  duckdb_v2_logical_type_ptr type,
+                                                                  duckdb_v2_logical_type_ptr *out_child_type);
 /*!
-* Retrieves the fixed array size of an ARRAY type.
-* @param context The context handle.
-* @param type The logical type object.
-* @param out_size The fixed number of elements in the array type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_array_type_array_size(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t* out_size);
+ * Retrieves the fixed array size of an ARRAY type.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param out_size The fixed number of elements in the array type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_array_type_array_size(duckdb_v2_ctx_ptr context,
+                                                                  duckdb_v2_logical_type_ptr type, idx_t *out_size);
 /*!
-* Retrieves the key type of a MAP type.
-* @param context The context handle.
-* @param type The logical type object.
-* @param out_key_type The key type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_map_type_key_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_key_type);
+ * Retrieves the key type of a MAP type.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param out_key_type The key type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_map_type_key_type(duckdb_v2_ctx_ptr context,
+                                                              duckdb_v2_logical_type_ptr type,
+                                                              duckdb_v2_logical_type_ptr *out_key_type);
 /*!
-* Retrieves the value type of a MAP type.
-* @param context The context handle.
-* @param type The logical type object.
-* @param out_value_type The value type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_map_type_value_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, duckdb_v2_logical_type_ptr* out_value_type);
+ * Retrieves the value type of a MAP type.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param out_value_type The value type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_map_type_value_type(duckdb_v2_ctx_ptr context,
+                                                                duckdb_v2_logical_type_ptr type,
+                                                                duckdb_v2_logical_type_ptr *out_value_type);
 /*!
-* Returns the number of children of a struct type.
-* @param context The context handle.
-* @param type The logical type object.
-* @param out_count The number of children of the struct type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_count(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t* out_count);
+ * Returns the number of children of a struct type.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param out_count The number of children of the struct type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_count(duckdb_v2_ctx_ptr context,
+                                                                    duckdb_v2_logical_type_ptr type, idx_t *out_count);
 /*!
-* Retrieves the name of a struct child.
-* @param context The context handle.
-* @param type The logical type object.
-* @param index The child index.
-* @param out_name The name. Must be freed with duckdb_free.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_name(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, char** out_name);
+ * Retrieves the name of a struct child.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param index The child index.
+ * @param out_name The name. Must be freed with duckdb_free.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_name(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_logical_type_ptr type, idx_t index,
+                                                                   char **out_name);
 /*!
-* Retrieves the child type of a struct at the specified index.
-* @param context The context handle.
-* @param type The logical type object.
-* @param index The child index.
-* @param out_child_type The child type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, duckdb_v2_logical_type_ptr* out_child_type);
+ * Retrieves the child type of a struct at the specified index.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param index The child index.
+ * @param out_child_type The child type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_type_child_type(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_logical_type_ptr type, idx_t index,
+                                                                   duckdb_v2_logical_type_ptr *out_child_type);
 /*!
-* Returns the number of members in a union type.
-* @param context The context handle.
-* @param type The logical type (union) object.
-* @param out_count The number of union members.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_count(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t* out_count);
+ * Returns the number of members in a union type.
+ * @param context The context handle.
+ * @param type The logical type (union) object.
+ * @param out_count The number of union members.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_count(duckdb_v2_ctx_ptr context,
+                                                                    duckdb_v2_logical_type_ptr type, idx_t *out_count);
 /*!
-* Retrieves the name of a union member.
-* @param context The context handle.
-* @param type The logical type object.
-* @param index The member index.
-* @param out_name The name. Must be freed with duckdb_free.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_name(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, char** out_name);
+ * Retrieves the name of a union member.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param index The member index.
+ * @param out_name The name. Must be freed with duckdb_free.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_name(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_logical_type_ptr type, idx_t index,
+                                                                   char **out_name);
 /*!
-* Retrieves the child type of a union member at the specified index.
-* @param context The context handle.
-* @param type The logical type object.
-* @param index The member index.
-* @param out_member_type The member type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_type(duckdb_v2_ctx_ptr context, duckdb_v2_logical_type_ptr type, idx_t index, duckdb_v2_logical_type_ptr* out_member_type);
+ * Retrieves the child type of a union member at the specified index.
+ * @param context The context handle.
+ * @param type The logical type object.
+ * @param index The member index.
+ * @param out_member_type The member type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_type(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_logical_type_ptr type, idx_t index,
+                                                                   duckdb_v2_logical_type_ptr *out_member_type);
 
 /* ============================================================================
  * MODULE: prepared_statements
@@ -718,304 +771,370 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_union_type_member_type(duckdb_v2_ctx
 
 /* --- Functions for prepared_statements --- */
 /*!
-* Create a prepared statement object from a query.
-* @param context The context handle.
-* @param connection The connection object.
-* @param query The SQL query to prepare.
-* @param out_prepared_statement The resulting prepared statement object.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_prepare(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection, const char* query, duckdb_v2_prepared_statement_ptr* out_prepared_statement);
+ * Create a prepared statement object from a query.
+ * @param context The context handle.
+ * @param connection The connection object.
+ * @param query The SQL query to prepare.
+ * @param out_prepared_statement The resulting prepared statement object.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_prepare(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection,
+                                                    const char *query,
+                                                    duckdb_v2_prepared_statement_ptr *out_prepared_statement);
 /*!
-* Closes the prepared statement and de-allocates all memory.
-* @param context The context handle.
-* @param prepared_statement The prepared statement to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_prepare(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr* prepared_statement);
+ * Closes the prepared statement and de-allocates all memory.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_prepare(duckdb_v2_ctx_ptr context,
+                                                            duckdb_v2_prepared_statement_ptr *prepared_statement);
 /*!
-* Returns the error message associated with the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement to obtain the error from.
-* @param out_error The error message, or nullptr if there is none.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_prepare_error(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, char** out_error);
+ * Returns the error message associated with the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement to obtain the error from.
+ * @param out_error The error message, or nullptr if there is none.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_prepare_error(duckdb_v2_ctx_ptr context,
+                                                          duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                          char **out_error);
 /*!
-* Returns the number of parameters in the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param out_count The number of parameters.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_nparams(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t* out_count);
+ * Returns the number of parameters in the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param out_count The number of parameters.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_nparams(duckdb_v2_ctx_ptr context,
+                                                    duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                    idx_t *out_count);
 /*!
-* Returns the name used to identify the parameter.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param index The parameter index.
-* @param out_name The parameter name. Must be freed with duckdb_free.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_parameter_name(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t index, char** out_name);
+ * Returns the name used to identify the parameter.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param index The parameter index.
+ * @param out_name The parameter name. Must be freed with duckdb_free.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_parameter_name(duckdb_v2_ctx_ptr context,
+                                                           duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                           idx_t index, char **out_name);
 /*!
-* Returns the parameter type for the parameter at the given index.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param out_type The parameter type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_param_type(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint32_t* out_type);
+ * Returns the parameter type for the parameter at the given index.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param out_type The parameter type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_param_type(duckdb_v2_ctx_ptr context,
+                                                       duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                       idx_t param_idx, uint32_t *out_type);
 /*!
-* Returns the logical type for the parameter at the given index.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param out_type The logical type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_param_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_logical_type_ptr* out_type);
+ * Returns the logical type for the parameter at the given index.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param out_type The logical type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_param_logical_type(duckdb_v2_ctx_ptr context,
+                                                               duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                               idx_t param_idx, duckdb_v2_logical_type_ptr *out_type);
 /*!
-* Clear the params bound to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_clear_bindings(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement);
+ * Clear the params bound to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_clear_bindings(duckdb_v2_ctx_ptr context,
+                                                           duckdb_v2_prepared_statement_ptr prepared_statement);
 /*!
-* Returns the statement type of the prepared statement.
-* @param context The context handle.
-* @param stmt The prepared statement.
-* @param out_type The statement type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_prepared_statement_type(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr stmt, uint32_t* out_type);
+ * Returns the statement type of the prepared statement.
+ * @param context The context handle.
+ * @param stmt The prepared statement.
+ * @param out_type The statement type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_prepared_statement_type(duckdb_v2_ctx_ptr context,
+                                                                    duckdb_v2_prepared_statement_ptr stmt,
+                                                                    uint32_t *out_type);
 /*!
-* Executes the prepared statement and returns a materialized query result.
-* @param context The context handle.
-* @param prepared_statement The prepared statement to execute.
-* @param out_result The query result.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_execute_prepared(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, duckdb_v2_result_ptr* out_result);
+ * Executes the prepared statement and returns a materialized query result.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement to execute.
+ * @param out_result The query result.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_execute_prepared(duckdb_v2_ctx_ptr context,
+                                                             duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                             duckdb_v2_result_ptr *out_result);
 /*!
-* Binds a value to the prepared statement at the specified index.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The value to bind.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_value(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_value_ptr val);
+ * Binds a value to the prepared statement at the specified index.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The value to bind.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_value(duckdb_v2_ctx_ptr context,
+                                                       duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                       idx_t param_idx, duckdb_v2_value_ptr val);
 /*!
-* Retrieve the index of the parameter identified by name.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param name The parameter name.
-* @param out_param_idx The parameter index.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_parameter_index(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, const char* name, idx_t* out_param_idx);
+ * Retrieve the index of the parameter identified by name.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param name The parameter name.
+ * @param out_param_idx The parameter index.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_parameter_index(duckdb_v2_ctx_ptr context,
+                                                                 duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                                 const char *name, idx_t *out_param_idx);
 /*!
-* Binds a bool value to the prepared statement at the specified index.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The boolean value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_boolean(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, bool val);
+ * Binds a bool value to the prepared statement at the specified index.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The boolean value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_boolean(duckdb_v2_ctx_ptr context,
+                                                         duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                         idx_t param_idx, bool val);
 /*!
-* Binds an int8_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The int8_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int8(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int8_t val);
+ * Binds an int8_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The int8_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int8(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                      idx_t param_idx, int8_t val);
 /*!
-* Binds an int16_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The int16_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int16(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int16_t val);
+ * Binds an int16_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The int16_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int16(duckdb_v2_ctx_ptr context,
+                                                       duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                       idx_t param_idx, int16_t val);
 /*!
-* Binds an int32_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The int32_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int32(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int32_t val);
+ * Binds an int32_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The int32_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int32(duckdb_v2_ctx_ptr context,
+                                                       duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                       idx_t param_idx, int32_t val);
 /*!
-* Binds an int64_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The int64_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int64(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, int64_t val);
+ * Binds an int64_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The int64_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_int64(duckdb_v2_ctx_ptr context,
+                                                       duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                       idx_t param_idx, int64_t val);
 /*!
-* Binds a duckdb_v2_hugeint value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The hugeint value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_hugeint(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_hugeint val);
+ * Binds a duckdb_v2_hugeint value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The hugeint value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_hugeint(duckdb_v2_ctx_ptr context,
+                                                         duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                         idx_t param_idx, duckdb_v2_hugeint val);
 /*!
-* Binds a duckdb_v2_uhugeint value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The uhugeint value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uhugeint(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_uhugeint val);
+ * Binds a duckdb_v2_uhugeint value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The uhugeint value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uhugeint(duckdb_v2_ctx_ptr context,
+                                                          duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                          idx_t param_idx, duckdb_v2_uhugeint val);
 /*!
-* Binds a duckdb_v2_decimal value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The decimal value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_decimal(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_decimal val);
+ * Binds a duckdb_v2_decimal value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The decimal value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_decimal(duckdb_v2_ctx_ptr context,
+                                                         duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                         idx_t param_idx, duckdb_v2_decimal val);
 /*!
-* Binds a uint8_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The uint8_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint8(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint8_t val);
+ * Binds a uint8_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The uint8_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint8(duckdb_v2_ctx_ptr context,
+                                                       duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                       idx_t param_idx, uint8_t val);
 /*!
-* Binds a uint16_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The uint16_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint16(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint16_t val);
+ * Binds a uint16_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The uint16_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint16(duckdb_v2_ctx_ptr context,
+                                                        duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                        idx_t param_idx, uint16_t val);
 /*!
-* Binds a uint32_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The uint32_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint32(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint32_t val);
+ * Binds a uint32_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The uint32_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint32(duckdb_v2_ctx_ptr context,
+                                                        duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                        idx_t param_idx, uint32_t val);
 /*!
-* Binds a uint64_t value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The uint64_t value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint64(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, uint64_t val);
+ * Binds a uint64_t value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The uint64_t value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_uint64(duckdb_v2_ctx_ptr context,
+                                                        duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                        idx_t param_idx, uint64_t val);
 /*!
-* Binds a float value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The float value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_float(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, float val);
+ * Binds a float value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The float value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_float(duckdb_v2_ctx_ptr context,
+                                                       duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                       idx_t param_idx, float val);
 /*!
-* Binds a double value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The double value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_double(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, double val);
+ * Binds a double value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The double value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_double(duckdb_v2_ctx_ptr context,
+                                                        duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                        idx_t param_idx, double val);
 /*!
-* Binds a duckdb_v2_date value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The date value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_date(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_date val);
+ * Binds a duckdb_v2_date value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The date value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_date(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                      idx_t param_idx, duckdb_v2_date val);
 /*!
-* Binds a duckdb_v2_time value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The time value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_time(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_time val);
+ * Binds a duckdb_v2_time value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The time value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_time(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                      idx_t param_idx, duckdb_v2_time val);
 /*!
-* Binds a duckdb_v2_timestamp value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The timestamp value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_timestamp(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_timestamp val);
+ * Binds a duckdb_v2_timestamp value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The timestamp value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_timestamp(duckdb_v2_ctx_ptr context,
+                                                           duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                           idx_t param_idx, duckdb_v2_timestamp val);
 /*!
-* Binds a duckdb_v2_interval value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The interval value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_interval(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, duckdb_v2_interval val);
+ * Binds a duckdb_v2_interval value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The interval value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_interval(duckdb_v2_ctx_ptr context,
+                                                          duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                          idx_t param_idx, duckdb_v2_interval val);
 /*!
-* Binds a null-terminated varchar value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The null-terminated varchar value.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, const char* val);
+ * Binds a null-terminated varchar value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The null-terminated varchar value.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar(duckdb_v2_ctx_ptr context,
+                                                         duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                         idx_t param_idx, const char *val);
 /*!
-* Binds a varchar value with explicit length to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param val The varchar value.
-* @param length The length of the string in bytes.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar_length(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, const char* val, idx_t length);
+ * Binds a varchar value with explicit length to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param val The varchar value.
+ * @param length The length of the string in bytes.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_varchar_length(duckdb_v2_ctx_ptr context,
+                                                                duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                                idx_t param_idx, const char *val, idx_t length);
 /*!
-* Binds a blob value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @param data The blob data.
-* @param length The length of the blob in bytes.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_blob(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx, const void* data, idx_t length);
+ * Binds a blob value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @param data The blob data.
+ * @param length The length of the blob in bytes.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_blob(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                      idx_t param_idx, const void *data, idx_t length);
 /*!
-* Binds a NULL value to the prepared statement.
-* @param context The context handle.
-* @param prepared_statement The prepared statement.
-* @param param_idx The parameter index.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_null(duckdb_v2_ctx_ptr context, duckdb_v2_prepared_statement_ptr prepared_statement, idx_t param_idx);
+ * Binds a NULL value to the prepared statement.
+ * @param context The context handle.
+ * @param prepared_statement The prepared statement.
+ * @param param_idx The parameter index.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_null(duckdb_v2_ctx_ptr context,
+                                                      duckdb_v2_prepared_statement_ptr prepared_statement,
+                                                      idx_t param_idx);
 
 /* ============================================================================
  * MODULE: query_result
@@ -1035,96 +1154,106 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_null(duckdb_v2_ctx_ptr context,
 
 /* --- Functions for query_result --- */
 /*!
-* Executes a SQL query and stores the materialized result.
-* @param context The context handle.
-* @param connection The connection to perform the query in.
-* @param query The SQL query to run.
-* @param out_result The query result.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_query(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection, const char* query, duckdb_v2_result_ptr* out_result);
+ * Executes a SQL query and stores the materialized result.
+ * @param context The context handle.
+ * @param connection The connection to perform the query in.
+ * @param query The SQL query to run.
+ * @param out_result The query result.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_query(duckdb_v2_ctx_ptr context, duckdb_v2_connection_ptr connection,
+                                                  const char *query, duckdb_v2_result_ptr *out_result);
 /*!
-* Closes the result and de-allocates all memory.
-* @param context The context handle.
-* @param result The result to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_result(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr* result);
+ * Closes the result and de-allocates all memory.
+ * @param context The context handle.
+ * @param result The result to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_result(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr *result);
 /*!
-* Returns the column name of the specified column.
-* @param context The context handle.
-* @param result The result object to fetch the column name from.
-* @param col The column index.
-* @param out_name The column name of the specified column.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_name(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col, char** out_name);
+ * Returns the column name of the specified column.
+ * @param context The context handle.
+ * @param result The result object to fetch the column name from.
+ * @param col The column index.
+ * @param out_name The column name of the specified column.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_name(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                        idx_t col, char **out_name);
 /*!
-* Returns the column type of the specified column.
-* @param context The context handle.
-* @param result The result object to fetch the column type from.
-* @param col The column index.
-* @param out_type The duckdb_type of the specified column.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col, uint32_t* out_type);
+ * Returns the column type of the specified column.
+ * @param context The context handle.
+ * @param result The result object to fetch the column type from.
+ * @param col The column index.
+ * @param out_type The duckdb_type of the specified column.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                        idx_t col, uint32_t *out_type);
 /*!
-* Returns the logical column type of the specified column.
-* @param context The context handle.
-* @param result The result object to fetch the column type from.
-* @param col The column index.
-* @param out_type The logical column type. Must be destroyed with duckdb_destroy_logical_type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t col, duckdb_v2_logical_type_ptr* out_type);
+ * Returns the logical column type of the specified column.
+ * @param context The context handle.
+ * @param result The result object to fetch the column type from.
+ * @param col The column index.
+ * @param out_type The logical column type. Must be destroyed with duckdb_destroy_logical_type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_logical_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                                idx_t col, duckdb_v2_logical_type_ptr *out_type);
 /*!
-* Returns the number of columns present in the result.
-* @param context The context handle.
-* @param result The result object.
-* @param out_column_count The number of columns.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_count(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t* out_column_count);
+ * Returns the number of columns present in the result.
+ * @param context The context handle.
+ * @param result The result object.
+ * @param out_column_count The number of columns.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_count(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                         idx_t *out_column_count);
 /*!
-* Returns the number of rows changed by the query.
-* @param context The context handle.
-* @param result The result object.
-* @param out_rows_changed The number of rows changed.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_rows_changed(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, idx_t* out_rows_changed);
+ * Returns the number of rows changed by the query.
+ * @param context The context handle.
+ * @param result The result object.
+ * @param out_rows_changed The number of rows changed.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_rows_changed(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                         idx_t *out_rows_changed);
 /*!
-* Returns the error message contained within the result.
-* @param context The context handle.
-* @param result The result object to fetch the error from.
-* @param out_error The error message, or nullptr if there is none.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_error(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, char** out_error);
+ * Returns the error message contained within the result.
+ * @param context The context handle.
+ * @param result The result object to fetch the error from.
+ * @param out_error The error message, or nullptr if there is none.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_error(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                         char **out_error);
 /*!
-* Returns the error type contained within the result.
-* @param context The context handle.
-* @param result The result object to fetch the error type from.
-* @param out_error_type The error type of the result.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_error_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, uint32_t* out_error_type);
+ * Returns the error type contained within the result.
+ * @param context The context handle.
+ * @param result The result object to fetch the error type from.
+ * @param out_error_type The error type of the result.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_error_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                              uint32_t *out_error_type);
 /*!
-* Returns the return type of the given result.
-* @param context The context handle.
-* @param result The result object.
-* @param out_return_type The return type.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_return_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, uint32_t* out_return_type);
+ * Returns the return type of the given result.
+ * @param context The context handle.
+ * @param result The result object.
+ * @param out_return_type The return type.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_return_type(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                               uint32_t *out_return_type);
 /*!
-* Fetches the next data chunk from a streaming result.
-* @param context The context handle.
-* @param result The result object to fetch the chunk from.
-* @param out_chunk The resulting data chunk, or NULL when exhausted.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_fetch_chunk(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result, duckdb_v2_data_chunk_ptr* out_chunk);
+ * Fetches the next data chunk from a streaming result.
+ * @param context The context handle.
+ * @param result The result object to fetch the chunk from.
+ * @param out_chunk The resulting data chunk, or NULL when exhausted.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_fetch_chunk(duckdb_v2_ctx_ptr context, duckdb_v2_result_ptr result,
+                                                        duckdb_v2_data_chunk_ptr *out_chunk);
 
 /* ============================================================================
  * MODULE: scalar
@@ -1133,10 +1262,10 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_fetch_chunk(duckdb_v2_ctx_ptr contex
 /* --- Structs for scalar --- */
 
 /* --- Types for scalar --- */
-typedef void* duckdb_v2_scalar_func_ptr;
-typedef void* duckdb_v2_scalar_func_bind_args_ptr;
-typedef void* duckdb_v2_scalar_func_init_args_ptr;
-typedef void* duckdb_v2_scalar_func_exec_args_ptr;
+typedef void *duckdb_v2_scalar_func_ptr;
+typedef void *duckdb_v2_scalar_func_bind_args_ptr;
+typedef void *duckdb_v2_scalar_func_init_args_ptr;
+typedef void *duckdb_v2_scalar_func_exec_args_ptr;
 
 /* --- Enums for scalar --- */
 
@@ -1151,43 +1280,51 @@ typedef void (*duckdb_v2_scalar_func_exec_cb)(duckdb_v2_ctx_ptr context, duckdb_
 
 /* --- Functions for scalar --- */
 /*!
-* Get input chunk for scalar function execution
-* @param context 
-* @param args 
-* @param out_input 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_input(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_exec_args_ptr args, duckdb_v2_data_chunk_ptr* out_input);
+ * Get input chunk for scalar function execution
+ * @param context
+ * @param args
+ * @param out_input
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_input(duckdb_v2_ctx_ptr context,
+                                                                           duckdb_v2_scalar_func_exec_args_ptr args,
+                                                                           duckdb_v2_data_chunk_ptr *out_input);
 /*!
-* Get result vector for scalar function execution
-* @param context 
-* @param args 
-* @param out_result 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_result(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_exec_args_ptr args, duckdb_v2_vector_ptr* out_result);
+ * Get result vector for scalar function execution
+ * @param context
+ * @param args
+ * @param out_result
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_result(duckdb_v2_ctx_ptr context,
+                                                                            duckdb_v2_scalar_func_exec_args_ptr args,
+                                                                            duckdb_v2_vector_ptr *out_result);
 /*!
-* Create a scalar function object
-* @param context 
-* @param out_function 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_create(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_ptr* out_function);
+ * Create a scalar function object
+ * @param context
+ * @param out_function
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_create(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_scalar_func_ptr *out_function);
 /*!
-* Set the bind function for a scalar function
-* @param context 
-* @param function 
-* @param bind_func 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_bind(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_ptr function, duckdb_v2_scalar_func_bind_cb bind_func);
+ * Set the bind function for a scalar function
+ * @param context
+ * @param function
+ * @param bind_func
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_bind(duckdb_v2_ctx_ptr context,
+                                                                     duckdb_v2_scalar_func_ptr function,
+                                                                     duckdb_v2_scalar_func_bind_cb bind_func);
 /*!
-* Register a scalar function
-* @param context 
-* @param function 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_register(duckdb_v2_ctx_ptr context, duckdb_v2_scalar_func_ptr function);
+ * Register a scalar function
+ * @param context
+ * @param function
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_register(duckdb_v2_ctx_ptr context,
+                                                                     duckdb_v2_scalar_func_ptr function);
 
 /* ============================================================================
  * MODULE: type_value
@@ -1196,14 +1333,14 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_register(duckdb_v2_c
 /* --- Structs for type_value --- */
 
 /* --- Types for type_value --- */
-typedef void* duckdb_v2_type_ptr;
-typedef void* duckdb_v2_type_info_ptr;
-typedef void* duckdb_v2_value_info_ptr;
+typedef void *duckdb_v2_type_ptr;
+typedef void *duckdb_v2_type_info_ptr;
+typedef void *duckdb_v2_value_info_ptr;
 
 /* --- Enums for type_value --- */
 typedef enum DUCKDB_V2_KIND {
-  DUCKDB_V2_KIND_INTEGER = 1,
-  DUCKDB_V2_KIND_STRUCT = 2,
+	DUCKDB_V2_KIND_INTEGER = 1,
+	DUCKDB_V2_KIND_STRUCT = 2,
 } DUCKDB_V2_KIND;
 
 /* --- Constants for type_value --- */
@@ -1214,215 +1351,235 @@ typedef enum DUCKDB_V2_KIND {
 
 /* --- Functions for type_value --- */
 /*!
-* Create a mutable type info builder
-* @param ctx 
-* @param info 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr* info);
+ * Create a mutable type info builder
+ * @param ctx
+ * @param info
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr *info);
 /*!
-* Destroy a type info builder
-* @param ctx 
-* @param info 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr* info);
+ * Destroy a type info builder
+ * @param ctx
+ * @param info
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr *info);
 /*!
-* Set the alias name of the type to be created
-* @param ctx 
-* @param info 
-* @param name 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_set_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name);
+ * Set the alias name of the type to be created
+ * @param ctx
+ * @param info
+ * @param name
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_set_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info,
+                                                               const char *name);
 /*!
-* Add a named type parameter (e.g. for STRUCT/LIST/MAP)
-* @param ctx 
-* @param info 
-* @param name 
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name, duckdb_v2_type_ptr value);
+ * Add a named type parameter (e.g. for STRUCT/LIST/MAP)
+ * @param ctx
+ * @param info
+ * @param name
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info,
+                                                               const char *name, duckdb_v2_type_ptr value);
 /*!
-* Add a named value parameter (e.g. for DECIMAL precision/scale)
-* @param ctx 
-* @param info 
-* @param name 
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info, const char* name, duckdb_v2_value_ptr value);
+ * Add a named value parameter (e.g. for DECIMAL precision/scale)
+ * @param ctx
+ * @param info
+ * @param name
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_info_ptr info,
+                                                                const char *name, duckdb_v2_value_ptr value);
 /*!
-* Create a type from a kind and optional type info (NULL for primitives)
-* @param ctx 
-* @param kind 
-* @param info 
-* @param type 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_info(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind, duckdb_v2_type_info_ptr info, duckdb_v2_type_ptr* type);
+ * Create a type from a kind and optional type info (NULL for primitives)
+ * @param ctx
+ * @param kind
+ * @param info
+ * @param type
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_info(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind,
+                                                                  duckdb_v2_type_info_ptr info,
+                                                                  duckdb_v2_type_ptr *type);
 /*!
-* Create a type from a string representation
-* @param ctx 
-* @param text 
-* @param type 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_text(duckdb_v2_ctx_ptr ctx, const char* text, duckdb_v2_type_ptr* type);
+ * Create a type from a string representation
+ * @param ctx
+ * @param text
+ * @param type
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_create_from_text(duckdb_v2_ctx_ptr ctx, const char *text,
+                                                                  duckdb_v2_type_ptr *type);
 /*!
-* Delete a type object
-* @param ctx 
-* @param type 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr* type);
+ * Delete a type object
+ * @param ctx
+ * @param type
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr *type);
 /*!
-* Get the logical type id
-* @param ctx 
-* @param type 
-* @param kind 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_kind(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, DUCKDB_V2_KIND* kind);
+ * Get the logical type id
+ * @param ctx
+ * @param type
+ * @param kind
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_kind(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                          DUCKDB_V2_KIND *kind);
 /*!
-* Get the name/alias of the type
-* @param ctx 
-* @param type 
-* @param name 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char** name);
+ * Get the name/alias of the type
+ * @param ctx
+ * @param type
+ * @param name
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                          const char **name);
 /*!
-* Get the full text representation of the type
-* @param ctx 
-* @param type 
-* @param text 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_text(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, const char** text);
+ * Get the full text representation of the type
+ * @param ctx
+ * @param type
+ * @param text
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_text(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                          const char **text);
 /*!
-* Get the number of type parameters
-* @param ctx 
-* @param type 
-* @param out_count 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_count(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t* out_count);
+ * Get the number of type parameters
+ * @param ctx
+ * @param type
+ * @param out_count
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_count(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                                 uint64_t *out_count);
 /*!
-* Get a type parameter as a value by index
-* @param ctx 
-* @param type 
-* @param index 
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, duckdb_v2_value_ptr* value);
+ * Get a type parameter as a value by index
+ * @param ctx
+ * @param type
+ * @param index
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                                 uint64_t index, duckdb_v2_value_ptr *value);
 /*!
-* Get a type parameter as a type by index
-* @param ctx 
-* @param type 
-* @param index 
-* @param out_type 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, duckdb_v2_type_ptr* out_type);
+ * Get a type parameter as a type by index
+ * @param ctx
+ * @param type
+ * @param index
+ * @param out_type
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                                uint64_t index, duckdb_v2_type_ptr *out_type);
 /*!
-* Get the name of a type parameter by index
-* @param ctx 
-* @param type 
-* @param index 
-* @param name 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, uint64_t index, const char** name);
+ * Get the name of a type parameter by index
+ * @param ctx
+ * @param type
+ * @param index
+ * @param name
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_type_get_param_name(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                                uint64_t index, const char **name);
 /*!
-* Create a value from a type and raw data pointer
-* @param ctx 
-* @param type 
-* @param data Raw data pointer, or NULL for NULL values
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type, void* data, duckdb_v2_value_ptr* value);
+ * Create a value from a type and raw data pointer
+ * @param ctx
+ * @param type
+ * @param data Raw data pointer, or NULL for NULL values
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_type_ptr type,
+                                                                   void *data, duckdb_v2_value_ptr *value);
 /*!
-* Create a value from a kind and raw data pointer (helper for primitives)
-* @param ctx 
-* @param kind 
-* @param data 
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_kind(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind, void* data, duckdb_v2_value_ptr* value);
+ * Create a value from a kind and raw data pointer (helper for primitives)
+ * @param ctx
+ * @param kind
+ * @param data
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_kind(duckdb_v2_ctx_ptr ctx, DUCKDB_V2_KIND kind,
+                                                                   void *data, duckdb_v2_value_ptr *value);
 /*!
-* Delete a value object
-* @param ctx 
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr* value);
+ * Delete a value object
+ * @param ctx
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr *value);
 /*!
-* Create a mutable value info builder
-* @param ctx 
-* @param info 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr* info);
+ * Create a mutable value info builder
+ * @param ctx
+ * @param info
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_create(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr *info);
 /*!
-* Set the type of the value being built
-* @param ctx 
-* @param info 
-* @param type 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info, duckdb_v2_type_ptr type);
+ * Set the type of the value being built
+ * @param ctx
+ * @param info
+ * @param type
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info,
+                                                                duckdb_v2_type_ptr type);
 /*!
-* Add a child value to the value being built
-* @param ctx 
-* @param info 
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info, duckdb_v2_value_ptr value);
+ * Add a child value to the value being built
+ * @param ctx
+ * @param info
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_add_value(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr info,
+                                                                 duckdb_v2_value_ptr value);
 /*!
-* Destroy a value info builder
-* @param ctx 
-* @param info 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr* info);
+ * Destroy a value info builder
+ * @param ctx
+ * @param info
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_info_delete(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_info_ptr *info);
 /*!
-* Get the type of a value
-* @param ctx 
-* @param value 
-* @param type 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, duckdb_v2_type_ptr* type);
+ * Get the type of a value
+ * @param ctx
+ * @param value
+ * @param type
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value,
+                                                           duckdb_v2_type_ptr *type);
 /*!
-* Get the raw data of a value (error if NULL)
-* @param ctx 
-* @param value 
-* @param data Buffer to receive the raw value data
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_data(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, void* data);
+ * Get the raw data of a value (error if NULL)
+ * @param ctx
+ * @param value
+ * @param data Buffer to receive the raw value data
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_data(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value,
+                                                           void *data);
 /*!
-* Check if a value is NULL (returns 0 if not null, 1 if null)
-* @param ctx 
-* @param value 
-* @return DUCKDB_V2_API_CALL_t
-*/
+ * Check if a value is NULL (returns 0 if not null, 1 if null)
+ * @param ctx
+ * @param value
+ * @return DUCKDB_V2_API_CALL_t
+ */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_null(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value);
 /*!
-* Get a nested child value by index (for complex types)
-* @param ctx 
-* @param value 
-* @param index 
-* @param item 
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value, uint64_t index, duckdb_v2_value_ptr* item);
+ * Get a nested child value by index (for complex types)
+ * @param ctx
+ * @param value
+ * @param index
+ * @param item
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_ctx_ptr ctx, duckdb_v2_value_ptr value,
+                                                            uint64_t index, duckdb_v2_value_ptr *item);
 
 /* ============================================================================
  * MODULE: value
@@ -1442,12 +1599,12 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_ctx_ptr ct
 
 /* --- Functions for value --- */
 /*!
-* Destroys the value and de-allocates all memory.
-* @param context The context handle.
-* @param value The value to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_value(duckdb_v2_ctx_ptr context, duckdb_v2_value_ptr* value);
+ * Destroys the value and de-allocates all memory.
+ * @param context The context handle.
+ * @param value The value to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_value(duckdb_v2_ctx_ptr context, duckdb_v2_value_ptr *value);
 
 /* ============================================================================
  * MODULE: vector
@@ -1467,64 +1624,73 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_value(duckdb_v2_ctx_ptr cont
 
 /* --- Functions for vector --- */
 /*!
-* Retrieves the data pointer of the vector.
-* @param context The context handle.
-* @param vector The vector to get the data from.
-* @param out_data The data pointer.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, void** out_data);
+ * Retrieves the data pointer of the vector.
+ * @param context The context handle.
+ * @param vector The vector to get the data from.
+ * @param out_data The data pointer.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector,
+                                                            void **out_data);
 /*!
-* Retrieves the validity mask pointer of the vector.
-* @param context The context handle.
-* @param vector The vector to get the data from.
-* @param out_validity The pointer to the validity mask, or NULL if no validity mask is present.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_validity(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, uint64_t** out_validity);
+ * Retrieves the validity mask pointer of the vector.
+ * @param context The context handle.
+ * @param vector The vector to get the data from.
+ * @param out_validity The pointer to the validity mask, or NULL if no validity mask is present.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_validity(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector,
+                                                                uint64_t **out_validity);
 /*!
-* Returns whether or not a row is valid in the given validity mask.
-* @param context The context handle.
-* @param validity The validity mask, as obtained through duckdb_v2_vector_get_validity.
-* @param row The row index.
-* @param out_valid True if the row is valid, false otherwise.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(duckdb_v2_ctx_ptr context, uint64_t* validity, idx_t row, bool* out_valid);
+ * Returns whether or not a row is valid in the given validity mask.
+ * @param context The context handle.
+ * @param validity The validity mask, as obtained through duckdb_v2_vector_get_validity.
+ * @param row The row index.
+ * @param out_valid True if the row is valid, false otherwise.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(duckdb_v2_ctx_ptr context, uint64_t *validity,
+                                                                  idx_t row, bool *out_valid);
 /*!
-* Retrieves the child vector of a list vector.
-* @param context The context handle.
-* @param vector The list vector.
-* @param out_child The child vector.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_list_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, duckdb_v2_vector_ptr* out_child);
+ * Retrieves the child vector of a list vector.
+ * @param context The context handle.
+ * @param vector The list vector.
+ * @param out_child The child vector.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_list_vector_get_child(duckdb_v2_ctx_ptr context,
+                                                                  duckdb_v2_vector_ptr vector,
+                                                                  duckdb_v2_vector_ptr *out_child);
 /*!
-* Retrieves the child vector of a struct vector.
-* @param context The context handle.
-* @param vector The struct vector.
-* @param index The child index.
-* @param out_child The child vector.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, idx_t index, duckdb_v2_vector_ptr* out_child);
+ * Retrieves the child vector of a struct vector.
+ * @param context The context handle.
+ * @param vector The struct vector.
+ * @param index The child index.
+ * @param out_child The child vector.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_struct_vector_get_child(duckdb_v2_ctx_ptr context,
+                                                                    duckdb_v2_vector_ptr vector, idx_t index,
+                                                                    duckdb_v2_vector_ptr *out_child);
 /*!
-* Retrieves the child vector of an array vector.
-* @param context The context handle.
-* @param vector The array vector.
-* @param out_child The child vector.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_array_vector_get_child(duckdb_v2_ctx_ptr context, duckdb_v2_vector_ptr vector, duckdb_v2_vector_ptr* out_child);
+ * Retrieves the child vector of an array vector.
+ * @param context The context handle.
+ * @param vector The array vector.
+ * @param out_child The child vector.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_array_vector_get_child(duckdb_v2_ctx_ptr context,
+                                                                   duckdb_v2_vector_ptr vector,
+                                                                   duckdb_v2_vector_ptr *out_child);
 /*!
-* Whether or not the duckdb_v2_string_t value is inlined.
-* @param context The context handle.
-* @param string The string value.
-* @param out_inlined True if the string is inlined.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_string_is_inlined(duckdb_v2_ctx_ptr context, duckdb_v2_string_t string, bool* out_inlined);
-
+ * Whether or not the duckdb_v2_string_t value is inlined.
+ * @param context The context handle.
+ * @param string The string value.
+ * @param out_inlined True if the string is inlined.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_string_is_inlined(duckdb_v2_ctx_ptr context, duckdb_v2_string_t string,
+                                                              bool *out_inlined);
 
 #ifdef __cplusplus
 }

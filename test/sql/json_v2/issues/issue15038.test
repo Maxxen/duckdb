@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue15038.test
+# name: test/sql/json_v2/issues/issue15038.test
 # description: Test issue 15038 - TO_JSON results in weird number translation
 # group: [issues]
 

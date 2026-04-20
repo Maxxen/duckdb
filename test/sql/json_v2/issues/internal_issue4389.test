@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/internal_issue4389.test
+# name: test/sql/json_v2/issues/internal_issue4389.test
 # description: Test internal issue 4389 - auto_detect is false for COPY + JSON
 # group: [issues]
 

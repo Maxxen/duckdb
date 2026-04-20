@@ -1,4 +1,4 @@
-# name: test/sql/json/scalar/test_json_arrow_expr.test
+# name: test/sql/json_v2/scalar/test_json_arrow_expr.test
 # description: Test subquery binding of partially bound arrow expressions
 # group: [scalar]
 

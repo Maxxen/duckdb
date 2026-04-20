@@ -1,4 +1,4 @@
-# name: test/sql/json/scalar/test_json_normalize.test
+# name: test/sql/json_v2/scalar/test_json_normalize.test
 # description: Test JSON normalize
 # group: [scalar]
 

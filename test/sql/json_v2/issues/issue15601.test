@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue15601.test
+# name: test/sql/json_v2/issues/issue15601.test
 # description: Test issue 15601 - JSON reader fails with duplicate column name when reading multiple JSON files of slightly different casing
 # group: [issues]
 

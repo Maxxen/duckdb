@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue16968.test
+# name: test/sql/json_v2/issues/issue16968.test
 # description: Test issue 16968 - A not descriptive error message when value of BLOB is passed to JSON function
 # group: [issues]
 

@@ -1,4 +1,4 @@
-# name: test/sql/json/table/multi_file_hang.test
+# name: test/sql/json_v2/table/multi_file_hang.test
 # description: Test that we do not hang when reading multiple JSON files while only sampling one
 # group: [table]
 

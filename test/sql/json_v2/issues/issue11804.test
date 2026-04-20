@@ -1,4 +1,4 @@
-# name: test/sql/json/issues/issue11804.test
+# name: test/sql/json_v2/issues/issue11804.test
 # description: Test issue 11804 - json_type(...) with path does not return "NULL"
 # group: [issues]
 

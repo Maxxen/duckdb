@@ -1,6 +1,6 @@
-# name: test/sql/scanner/decimal.test
+# name: test/sql/sqlite_v2/scanner/decimal.test
 # description: Test decimal
-# group: [sqlite_scanner]
+# group: [scanner]
 
 require sqlite_v2
 

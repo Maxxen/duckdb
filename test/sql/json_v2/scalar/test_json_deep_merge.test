@@ -1,4 +1,4 @@
-# name: test/sql/json/scalar/test_json_deep_merge.test
+# name: test/sql/json_v2/scalar/test_json_deep_merge.test
 # description: Test JSON deep merge (coalescing merge: null in patch = absent, skip)
 # group: [scalar]
 
