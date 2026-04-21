@@ -1,1 +1,1 @@
-from ._duckdb import *
+from ._duckdb import *  # noqa: F403

@@ -1,10 +1,4 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.4
-    hooks:
-      - id: ruff-format
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
   - repo: local
     hooks:
       - id: duckdb-format
@@ -25,3 +19,12 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.11
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^python_client/
+      - id: ruff-format
+        files: ^python_client/
