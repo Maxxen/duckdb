@@ -512,9 +512,24 @@ public:
 
 	LogicalType return_type;
 
+	BoundAggregateFunction(const AggregateFunction &function, vector<LogicalType> arguments, LogicalType returns)
+	    : BaseAggregateFunction(function), arguments(std::move(arguments)), return_type(std::move(returns)) {
+		// Intentionally slice the AggregateFunction here, as we only want the BaseAggregateFunction part of it
+	}
+
 	bool operator==(const BoundAggregateFunction &other) const;
 	bool operator!=(const BoundAggregateFunction &other) const {
 		return !(*this == other);
+	}
+
+	const LogicalType &GetReturnType() const {
+		return return_type;
+	}
+	LogicalType &GetReturnType() {
+		return return_type;
+	}
+	void SetReturnType(const LogicalType &return_type) {
+		this->return_type = return_type;
 	}
 
 	// Is this bound function derived from the given aggregate function

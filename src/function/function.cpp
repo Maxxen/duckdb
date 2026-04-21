@@ -138,26 +138,11 @@ string Function::CallToString(const string &catalog_name, const string &schema_n
 	return StringUtil::Format("%s%s(%s)", prefix, name, StringUtil::Join(input_arguments, ", "));
 }
 
-void Function::EraseArgument(Function &bound_function, vector<unique_ptr<Expression>> &arguments,
-                             idx_t argument_index) {
-	/*
-	if (bound_function.original_arguments.empty()) {
-	    bound_function.original_arguments = bound_function.arguments;
-	}
-	D_ASSERT(arguments.size() == bound_function.arguments.size());
-	D_ASSERT(argument_index < arguments.size());
-	arguments.erase_at(argument_index);
-	bound_function.arguments.erase_at(argument_index);
-	*/
-	throw NotImplementedException("Function::EraseArgument is not implemented yet");
-}
-
 SimpleFunction::SimpleFunction(string name, vector<LogicalType> arguments, LogicalType return_type,
                                FunctionStability stability, LogicalType varargs, FunctionNullHandling null_handling,
                                FunctionErrors errors)
     : Function(std::move(name)), stability(stability), null_handling(null_handling), errors(errors) {
-	signature = FunctionSignature(arguments);
-	signature.SetReturnType(return_type);
+	signature = FunctionSignature(arguments, return_type);
 	signature.SetVarArgs(varargs);
 }
 

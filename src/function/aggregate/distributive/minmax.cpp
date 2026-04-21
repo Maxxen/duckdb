@@ -391,6 +391,7 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 	minmax_func.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
 
 	auto expr = minmax_func.Bind(context, std::move(arguments));
+	arguments = std::move(expr->children);
 
 	function = std::move(expr->function);
 	return std::move(expr->bind_info);

@@ -374,22 +374,14 @@ AggregateFunction GetFirstOperator(const LogicalType &type) {
 template <bool LAST, bool SKIP_NULLS>
 unique_ptr<FunctionData> BindFirst(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
+	auto &type = input.GetArguments()[0]->return_type;
 
-	auto input_type = arguments[0]->return_type;
-	auto name = std::move(function.name);
-	// function = GetFirstOperator<LAST, SKIP_NULLS>(input_type);
-	throw NotImplementedException("Function copy");
-
-	/*
-	function.name = std::move(name);
+	function.ReplaceDefinition(GetFirstFunction<LAST, SKIP_NULLS>(type));
 	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
-	if (function.HasBindCallback()) {
-	    return function.Bind(input.GetClientContext(), arguments);
-	} else {
-	    return nullptr;
-	}
-	*/
+	function.arguments[0] = type;
+	function.SetReturnType(type);
+
+	return nullptr;
 }
 
 template <bool LAST, bool SKIP_NULLS>

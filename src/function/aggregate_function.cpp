@@ -43,9 +43,6 @@ bool BoundAggregateFunction::operator==(const BoundAggregateFunction &other) con
 
 void BoundAggregateFunction::ReplaceDefinition(const AggregateFunction &aggregate_function) {
 	// Copy over all properties
-	name = aggregate_function.name;
-	catalog_name = aggregate_function.catalog_name;
-	schema_name = aggregate_function.schema_name;
 
 	// As well as all function callbacks
 	SetBindCallback(aggregate_function.GetBindCallback());
@@ -69,6 +66,22 @@ void BoundAggregateFunction::ReplaceDefinition(const AggregateFunction &aggregat
 
 	SetOrderDependent(aggregate_function.GetOrderDependent());
 	SetDistinctDependent(aggregate_function.GetDistinctDependent());
+
+	SetNullHandling(aggregate_function.GetNullHandling());
+	SetStability(aggregate_function.GetStability());
+	SetErrorMode(aggregate_function.GetErrorMode());
+	SetCollationHandling(aggregate_function.GetCollationHandling());
+}
+
+void Function::EraseArgument(BoundAggregateFunction &bound_function, vector<unique_ptr<Expression>> &arguments,
+                             idx_t argument_index) {
+	if (bound_function.original_arguments.empty()) {
+		bound_function.original_arguments = bound_function.arguments;
+	}
+	D_ASSERT(arguments.size() == bound_function.arguments.size());
+	D_ASSERT(argument_index < arguments.size());
+	arguments.erase_at(argument_index);
+	bound_function.arguments.erase_at(argument_index);
 }
 
 } // namespace duckdb

@@ -504,6 +504,8 @@ unique_ptr<FunctionData> BindModeAggregate(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 	function.ReplaceDefinition(GetModeAggregate(arguments[0]->return_type));
+	function.arguments[0] = arguments[0]->return_type;
+	function.return_type = arguments[0]->return_type;
 	function.name = "mode";
 	return nullptr;
 }

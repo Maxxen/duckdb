@@ -719,10 +719,9 @@ void FunctionBinder::BindSortedAggregate(ClientContext &context, BoundAggregateE
 	    nullptr, AggregateFunction::StateDestroy<SortedAggregateState, SortedAggregateFunction>, nullptr,
 	    SortedAggregateFunction::Window);
 
-	// TODO: is this correct?
-	auto ordered_expr = ordered_aggregate.Bind(context, std::move(children));
-
-	expr.function = std::move(ordered_expr->function);
+	// Construct a bound aggregate from parts
+	BoundAggregateFunction ordered_expr(ordered_aggregate, arguments, ordered_aggregate.GetReturnType());
+	expr.function = std::move(ordered_expr);
 	expr.bind_info = std::move(sorted_bind);
 	expr.order_bys.reset();
 }

@@ -86,6 +86,13 @@ public:
 	void Serialize(Serializer &serializer) const override;
 	static unique_ptr<Expression> Deserialize(Deserializer &deserializer);
 
+	BoundWindowFunction &GetFunction() {
+		return *window;
+	}
+	const BoundWindowFunction &GetFunction() const {
+		return *window;
+	}
+
 private:
 	//! Remove LEAD/LAG offset/default
 	vector<unique_ptr<Expression>> SerializedChildren(Serializer &serializer) const;

@@ -13,7 +13,8 @@ const vector<LogicalType> CMUtils::StringTypes() {
 
 // LCOV_EXCL_START
 unique_ptr<FunctionData> CMUtils::Bind(BindScalarFunctionInput &input) {
-	throw BinderException("Compressed materialization functions are for internal use only!");
+	// throw BinderException("Compressed materialization functions are for internal use only!");
+	return nullptr;
 }
 // LCOV_EXCL_STOP
 

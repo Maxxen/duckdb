@@ -58,5 +58,12 @@ public:
 
 	void Serialize(Serializer &serializer) const override;
 	static unique_ptr<Expression> Deserialize(Deserializer &deserializer);
+
+	BoundAggregateFunction &GetFunction() {
+		return function;
+	}
+	const BoundAggregateFunction &GetFunction() const {
+		return function;
+	}
 };
 } // namespace duckdb

@@ -186,67 +186,38 @@ public:
 		// Does this function support serializing its bound data?
 		if (!has_serialize) {
 			// No, then just rebind the function
-			if constexpr (std::is_same_v<FUNC, BoundScalarFunction>) {
-				auto expr = function.Bind(context, std::move(children));
-				return make_pair(std::move(expr->function), std::move(expr->bind_info));
+			try {
+				FunctionBinder binder(context);
+				FUNC bound_function(function, std::move(arguments), return_type);
+				auto bound_data = binder.ResolveFunction(bound_function, children);
+
+				if (TypeRequiresAssignment(bound_function.GetReturnType())) {
+					bound_function.SetReturnType(std::move(return_type));
+				}
+
+				return make_pair(std::move(bound_function), std::move(bound_data));
+
+			} catch (std::exception &ex) {
+				ErrorData error(ex);
+				throw SerializationException("Error during bind of function in deserialization: %s",
+				                             error.RawMessage());
 			}
-			// auto [bound_function, bound_data] = function.Bind(context, children);
-			// return make_pair(*bound_function, std::move(bound_data));
-			throw NotImplementedException("Serialization function not supported");
 		}
 
 		// Otherwise, construct the bound function from its parts
-		// deserializer.Set<const LogicalType &>(return_type);
-		// auto bound_data = FunctionDeserialize(deserializer, function);
-		// deserializer.Unset<LogicalType>();
+		FUNC bound_function(function, std::move(arguments), return_type);
+		bound_function.original_arguments = std::move(original_arguments);
 
-		// BoundWindowFunction function;
-		// function.arguments = std::move(arguments);
-		// function.original_arguments = std::move(original_arguments);
+		// Invoke deserialization function
+		deserializer.Set<const LogicalType &>(return_type);
+		auto bound_data = FunctionDeserialize(deserializer, bound_function);
+		deserializer.Unset<LogicalType>();
 
-		throw NotImplementedException("TODO: Create bound function from parts");
-
-		/*
-		auto &context = deserializer.Get<ClientContext &>();
-		auto entry = DeserializeBase<FUNC, CATALOG_ENTRY>(deserializer, catalog_type, children);
-		auto &function = entry.first;
-		auto has_serialize = entry.second;
-
-		unique_ptr<FunctionData> bind_data;
-		if (has_serialize) {
-		    deserializer.Set<const LogicalType &>(return_type);
-		    bind_data = FunctionDeserialize<FUNC>(deserializer, function);
-		    deserializer.Unset<LogicalType>();
-		} else {
-		    FunctionBinder binder(context);
-
-		    // Resolve templates
-		    // binder.ResolveTemplateTypes(function, children);
-
-		    if (function.HasBindCallback()) {
-		        try {
-		            bind_data = function.Bind(context, children);
-		        } catch (std::exception &ex) {
-		            ErrorData error(ex);
-		            throw SerializationException("Error during bind of function in deserialization: %s",
-		                                         error.RawMessage());
-		        }
-		    }
-
-		    // Verify that all templates are bound to concrete types.
-		    // binder.CheckTemplateTypesResolved(function);
-
-		    // binder.CastToFunctionArguments(function, children);
-
-		    // TODO
-		    throw NotImplementedException("TODO");
+		if (TypeRequiresAssignment(bound_function.GetReturnType())) {
+			bound_function.SetReturnType(std::move(return_type));
 		}
 
-		if (TypeRequiresAssignment(function.GetReturnType())) {
-		    function.SetReturnType(std::move(return_type));
-		}
-		return make_pair(std::move(function), std::move(bind_data));
-		*/
+		return make_pair(std::move(bound_function), std::move(bound_data));
 	}
 };
 

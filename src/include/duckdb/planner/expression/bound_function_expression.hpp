@@ -48,6 +48,13 @@ public:
 
 	void Serialize(Serializer &serializer) const override;
 	static unique_ptr<Expression> Deserialize(Deserializer &deserializer);
+
+	BoundScalarFunction &GetFunction() {
+		return function;
+	}
+	const BoundScalarFunction &GetFunction() const {
+		return function;
+	}
 };
 
 } // namespace duckdb

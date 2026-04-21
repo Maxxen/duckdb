@@ -243,7 +243,9 @@ public:
 
 class BoundWindowFunction : public BaseWindowFunction {
 public:
-	BoundWindowFunction(const WindowFunction &function) : BaseWindowFunction(function) {
+	BoundWindowFunction(const WindowFunction &function, vector<LogicalType> arguments, LogicalType returns)
+	    : BaseWindowFunction(function), arguments(std::move(arguments)), return_type(std::move(returns)) {
+		// Intentionally slice the WindowFunction here, as we only want the BaseWindowFunction part of it
 	}
 
 	// Bound function only
@@ -252,6 +254,18 @@ public:
 	//! The set of original arguments of the function - only set if Function::EraseArgument is called
 	//! Used for (de)serialization purposes
 	vector<LogicalType> original_arguments;
+
+	LogicalType return_type;
+
+	const LogicalType &GetReturnType() const {
+		return return_type;
+	}
+	LogicalType &GetReturnType() {
+		return return_type;
+	}
+	void SetReturnType(const LogicalType &return_type) {
+		this->return_type = return_type;
+	}
 };
 
 class BindWindowFunctionInput {

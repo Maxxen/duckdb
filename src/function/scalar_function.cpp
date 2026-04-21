@@ -65,4 +65,15 @@ ScalarFunction::Bind(ClientContext &context, vector<unique_ptr<Expression>> argu
 	return unique_ptr_cast<Expression, BoundFunctionExpression>(std::move(expr));
 }
 
+void Function::EraseArgument(BoundScalarFunction &bound_function, vector<unique_ptr<Expression>> &arguments,
+                             idx_t argument_index) {
+	if (bound_function.original_arguments.empty()) {
+		bound_function.original_arguments = bound_function.arguments;
+	}
+	D_ASSERT(arguments.size() == bound_function.arguments.size());
+	D_ASSERT(argument_index < arguments.size());
+	arguments.erase_at(argument_index);
+	bound_function.arguments.erase_at(argument_index);
+}
+
 } // namespace duckdb

@@ -73,7 +73,7 @@ class FunctionSignature {
 public:
 	FunctionSignature() = default;
 
-	FunctionSignature(const vector<LogicalType> &types) {
+	FunctionSignature(const vector<LogicalType> &types, LogicalType returns) : returns(returns) {
 		for (idx_t i = 0; i < types.size(); i++) {
 			parameters.emplace_back("arg" + to_string(i + 1), types[i]);
 		}
@@ -203,6 +203,10 @@ struct FunctionParameters {
 };
 
 //! Function is the base class used for any type of function (scalar, aggregate or simple function)
+class BoundAggregateFunction;
+class BoundScalarFunction;
+class BoundWindowFunction;
+
 class Function {
 public:
 	DUCKDB_API explicit Function(string name);
@@ -235,7 +239,11 @@ public:
 	                                      const named_parameter_type_map_t &named_parameters);
 
 	//! Used in the bind to erase an argument from a function
-	DUCKDB_API static void EraseArgument(Function &bound_function, vector<unique_ptr<Expression>> &arguments,
+	DUCKDB_API static void EraseArgument(BoundScalarFunction &bound_function, vector<unique_ptr<Expression>> &arguments,
+	                                     idx_t argument_index);
+	DUCKDB_API static void EraseArgument(BoundAggregateFunction &bound_function,
+	                                     vector<unique_ptr<Expression>> &arguments, idx_t argument_index);
+	DUCKDB_API static void EraseArgument(BoundWindowFunction &bound_function, vector<unique_ptr<Expression>> &arguments,
 	                                     idx_t argument_index);
 
 	virtual string ToString() const {

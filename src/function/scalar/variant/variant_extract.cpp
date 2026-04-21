@@ -312,10 +312,10 @@ ScalarFunctionSet VariantExtractFun::GetFunctions() {
 	ScalarFunction variant_extract("variant_extract", {}, variant_type, VariantExtractFunction, VariantExtractBind,
 	                               VariantExtractPropagateStats);
 
-	variant_extract.GetSignature() = FunctionSignature({variant_type, LogicalType::VARCHAR});
+	variant_extract.GetSignature() = FunctionSignature({variant_type, LogicalType::VARCHAR}, variant_type);
 	fun_set.AddFunction(variant_extract);
 
-	variant_extract.GetSignature() = FunctionSignature({variant_type, LogicalType::UINTEGER});
+	variant_extract.GetSignature() = FunctionSignature({variant_type, LogicalType::UINTEGER}, variant_type);
 	fun_set.AddFunction(variant_extract);
 	return fun_set;
 }

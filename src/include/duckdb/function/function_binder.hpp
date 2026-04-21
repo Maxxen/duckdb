@@ -81,12 +81,22 @@ public:
 	                   vector<OrderByNode> &orders, vector<OrderByNode> &arg_orders,
 	                   AggregateType aggr_type = AggregateType::NON_DISTINCT);
 
+	unique_ptr<FunctionData> ResolveFunction(BoundScalarFunction &bound_function,
+	                                         vector<unique_ptr<Expression>> &children);
+	unique_ptr<FunctionData> ResolveFunction(BoundAggregateFunction &bound_function,
+	                                         vector<unique_ptr<Expression>> &children);
+	unique_ptr<FunctionData> ResolveFunction(BoundWindowFunction &bound_function,
+	                                         vector<unique_ptr<Expression>> &children);
+
 	//! Cast a set of expressions to the arguments of this function
-	void CastToFunctionArguments(const string &func_name, const vector<LogicalType> &params, const LogicalType &vararg,
+	void CastToFunctionArguments(const string &func_name, vector<LogicalType> &params, const LogicalType &vararg,
 	                             vector<unique_ptr<Expression>> &arguments);
 
-	void ResolveTemplateTypes(BoundScalarFunction &bound_function, const vector<unique_ptr<Expression>> &children);
-	void CheckTemplateTypesResolved(const BoundScalarFunction &bound_function);
+	void ResolveTemplateTypes(vector<LogicalType> &argument_types, LogicalType &return_type,
+	                          const vector<unique_ptr<Expression>> &children, const SimpleFunction &func);
+
+	void CheckTemplateTypesResolved(const vector<LogicalType> &argument_types, const LogicalType &return_type,
+	                                const SimpleFunction &func);
 
 private:
 	optional_idx BindVarArgsFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments);
