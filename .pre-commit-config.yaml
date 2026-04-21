@@ -9,8 +9,14 @@ repos:
     hooks:
       - id: duckdb-format
         name: duckdb format (staged changes)
-        language: system
+        language: python
         entry: python3 scripts/format.py HEAD --fix --noconfirm --silent
+        additional_dependencies:
+          - cmake-format
+          - black==24.*
+          - cxxheaderparser
+          - pcpp
+          - clang_format==11.0.1
         pass_filenames: false
         always_run: true
       - id: ty

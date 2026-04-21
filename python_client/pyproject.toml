@@ -58,6 +58,9 @@ build = [
     "cmake>=3.30.0",
     "ninja>=1.10",
     "scikit_build_core>=0.12",
+    # for now, include capigen as a dependency here
+    "hatchling",  # build backend for capigen
+    "capigen @ file:///${PROJECT_ROOT}/../capigen",
 ]
 test = [ # dependencies used for running tests
     "pytest",
