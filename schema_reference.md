@@ -234,7 +234,7 @@ functions:
       out_database:
         type: duckdb_database
         indirection: 1
-        direction: out
+        kind: OUT
         description: The opened database handle
     return_type: DUCKDB_API_CALL
     added: "1.2.0"
@@ -264,5 +264,18 @@ Used by both `functions` and `callbacks`.
 | `type` | yes | — | Type name (primitive or declared) |
 | `indirection` | no | `0` | Pointer level: 0 = value, 1 = pointer, 2 = pointer-to-pointer |
 | `const` | no | `false` | Whether const-qualified |
-| `direction` | no | `"in"` | `"in"` or `"out"`. Out parameters must have indirection >= 1. |
+| `kind` | no | `"IN"` | One of: `IN`, `IN_TRANSFER`, `OUT`, `OUT_BORROW`. See semantics below. |
 | `description` | no | `""` | Documentation string |
+
+### Kind semantics
+
+`kind` combines dataflow direction (in/out) and memory ownership into a single enum. Only the four combinations below are meaningful; nonsensical pairings (e.g. an `in` param the callee must free, or an `out` param the caller doesn't own) are not expressible.
+
+| Value | Direction | Ownership | Meaning |
+|---|---|---|---|
+| `IN` (default) | input | borrowed | Callee reads through the pointer (or value); caller keeps ownership. |
+| `IN_TRANSFER` | input | transferred | Callee takes ownership; caller must NOT free. |
+| `OUT` | output | owned | Callee writes through the pointer; caller is responsible for freeing/destroying the result. Requires `indirection >= 1`. |
+| `OUT_BORROW` | output | borrowed | Callee returns a pointer into its own state; caller must NOT free. Pointer is valid only as long as the owning object lives. Requires `indirection >= 1`. |
+
+`OUT` / `OUT_BORROW` require `indirection >= 1`. Adapters should reject `OUT` / `OUT_BORROW` with `indirection: 0`.

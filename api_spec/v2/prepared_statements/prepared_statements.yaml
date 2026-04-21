@@ -9,22 +9,19 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       connection:
         type: duckdb_v2_connection
-        direction: in
         description: "The connection object."
       query:
         type: char
         indirection: 1
         const: true
-        direction: in
         description: "The SQL query to prepare."
       out_prepared_statement:
         type: duckdb_v2_prepared_statement
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The resulting prepared statement object."
     return_type: DUCKDB_V2_API_CALL
 
@@ -35,12 +32,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         indirection: 1
-        direction: in
         description: "The prepared statement to destroy."
     return_type: DUCKDB_V2_API_CALL
 
@@ -51,17 +46,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement to obtain the error from."
       out_error:
         type: char
         indirection: 2
         const: false
-        direction: out
+        kind: OUT
         description: "The error message, or nullptr if there is none."
     return_type: DUCKDB_V2_API_CALL
 
@@ -72,16 +65,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       out_count:
         type: idx
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The number of parameters."
     return_type: DUCKDB_V2_API_CALL
 
@@ -92,21 +83,18 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       index:
         type: idx
-        direction: in
         description: "The parameter index."
       out_name:
         type: char
         indirection: 2
         const: false
-        direction: out
+        kind: OUT
         description: "The parameter name. Must be freed with duckdb_free."
     return_type: DUCKDB_V2_API_CALL
 
@@ -117,20 +105,17 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       out_type:
         type: u32
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The parameter type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -141,20 +126,17 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       out_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The logical type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -165,11 +147,9 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
     return_type: DUCKDB_V2_API_CALL
 
@@ -180,16 +160,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       stmt:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       out_type:
         type: u32
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The statement type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -200,16 +178,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement to execute."
       out_result:
         type: duckdb_v2_result
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The query result."
     return_type: DUCKDB_V2_API_CALL
 
@@ -220,19 +196,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_value
-        direction: in
         description: "The value to bind."
     return_type: DUCKDB_V2_API_CALL
 
@@ -243,22 +215,19 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       name:
         type: char
         indirection: 1
         const: true
-        direction: in
         description: "The parameter name."
       out_param_idx:
         type: idx
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The parameter index."
     return_type: DUCKDB_V2_API_CALL
 
@@ -269,19 +238,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: bool
-        direction: in
         description: "The boolean value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -292,19 +257,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: i8
-        direction: in
         description: "The int8_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -315,19 +276,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: i16
-        direction: in
         description: "The int16_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -338,19 +295,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: i32
-        direction: in
         description: "The int32_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -361,19 +314,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: i64
-        direction: in
         description: "The int64_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -384,19 +333,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_hugeint
-        direction: in
         description: "The hugeint value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -407,19 +352,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_uhugeint
-        direction: in
         description: "The uhugeint value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -430,19 +371,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_decimal
-        direction: in
         description: "The decimal value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -453,19 +390,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: u8
-        direction: in
         description: "The uint8_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -476,19 +409,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: u16
-        direction: in
         description: "The uint16_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -499,19 +428,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: u32
-        direction: in
         description: "The uint32_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -522,19 +447,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: u64
-        direction: in
         description: "The uint64_t value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -545,19 +466,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: f32
-        direction: in
         description: "The float value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -568,19 +485,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: f64
-        direction: in
         description: "The double value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -591,19 +504,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_date
-        direction: in
         description: "The date value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -614,19 +523,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_time
-        direction: in
         description: "The time value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -637,19 +542,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_timestamp
-        direction: in
         description: "The timestamp value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -660,19 +561,15 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: duckdb_v2_interval
-        direction: in
         description: "The interval value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -683,21 +580,17 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: char
         indirection: 1
         const: true
-        direction: in
         description: "The null-terminated varchar value."
     return_type: DUCKDB_V2_API_CALL
 
@@ -708,25 +601,20 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       val:
         type: char
         indirection: 1
         const: true
-        direction: in
         description: "The varchar value."
       length:
         type: idx
-        direction: in
         description: "The length of the string in bytes."
     return_type: DUCKDB_V2_API_CALL
 
@@ -737,25 +625,20 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
       data:
         type: opaque
         indirection: 1
         const: true
-        direction: in
         description: "The blob data."
       length:
         type: idx
-        direction: in
         description: "The length of the blob in bytes."
     return_type: DUCKDB_V2_API_CALL
 
@@ -766,14 +649,11 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
-        direction: in
         description: "The prepared statement."
       param_idx:
         type: idx
-        direction: in
         description: "The parameter index."
     return_type: DUCKDB_V2_API_CALL

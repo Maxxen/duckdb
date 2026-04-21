@@ -141,7 +141,6 @@ class TestTypeReferences:
                                 "type": "missing",
                                 "indirection": 0,
                                 "const": False,
-                                "direction": "in",
                             }
                         },
                     }
@@ -185,7 +184,6 @@ class TestFunctionValidation:
                                 "type": "missing",
                                 "indirection": 0,
                                 "const": False,
-                                "direction": "in",
                             }
                         },
                     },

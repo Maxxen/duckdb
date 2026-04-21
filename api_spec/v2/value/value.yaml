@@ -9,11 +9,9 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       value:
         type: duckdb_v2_value
         indirection: 1
-        direction: in
         description: "The value to destroy."
     return_type: DUCKDB_V2_API_CALL

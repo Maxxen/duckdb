@@ -208,11 +208,11 @@
           "type": "boolean",
           "default": false
         },
-        "direction": {
-          "description": "Whether the parameter is input or output. Out parameters must have indirection >= 1.",
+        "kind": {
+          "description": "Parameter kind — combines direction (in/out) and ownership. 'IN' = input, callee does not retain. 'IN_TRANSFER' = input, callee takes ownership (caller must not free). 'OUT' = output, caller must free/destroy the result. 'OUT_BORROW' = output, callee retains ownership (caller must not free; valid only as long as owning object lives). Only 'OUT' / 'OUT_BORROW' require indirection >= 1.",
           "type": "string",
-          "enum": ["in", "out"],
-          "default": "in"
+          "enum": ["IN", "IN_TRANSFER", "OUT", "OUT_BORROW"],
+          "default": "IN"
         },
         "description": { "type": "string", "default": "" }
       }

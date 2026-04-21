@@ -33,7 +33,7 @@ functions:
       info:
         type: duckdb_v2_type_info
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_info_delete:
@@ -112,7 +112,7 @@ functions:
       type:
         type: duckdb_v2_type
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_create_from_text:
@@ -129,7 +129,7 @@ functions:
       type:
         type: duckdb_v2_type
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_delete:
@@ -157,7 +157,7 @@ functions:
       kind:
         type: DUCKDB_V2_KIND
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_get_name:
@@ -173,7 +173,7 @@ functions:
         type: char
         indirection: 2
         const: true
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_get_text:
@@ -189,7 +189,7 @@ functions:
         type: char
         indirection: 2
         const: true
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_get_param_count:
@@ -204,7 +204,7 @@ functions:
       out_count:
         type: u64
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_get_param_value:
@@ -221,7 +221,7 @@ functions:
       value:
         type: duckdb_v2_value
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_get_param_type:
@@ -238,7 +238,7 @@ functions:
       out_type:
         type: duckdb_v2_type
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_type_get_param_name:
@@ -256,7 +256,7 @@ functions:
         type: char
         indirection: 2
         const: true
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   # --- Value creation ---
@@ -276,7 +276,7 @@ functions:
       value:
         type: duckdb_v2_value
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_value_create_from_kind:
@@ -294,7 +294,7 @@ functions:
       value:
         type: duckdb_v2_value
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_value_delete:
@@ -320,7 +320,7 @@ functions:
       info:
         type: duckdb_v2_value_info
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_value_info_add_type:
@@ -374,7 +374,7 @@ functions:
       type:
         type: duckdb_v2_type
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL
 
   duckdb_v2_value_get_data:
@@ -417,5 +417,5 @@ functions:
       item:
         type: duckdb_v2_value
         indirection: 1
-        direction: out
+        kind: OUT
     return_type: DUCKDB_V2_API_CALL

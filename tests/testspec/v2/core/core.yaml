@@ -36,17 +36,15 @@ functions:
         type: duckdb_v2_ctx
         indirection: 0
         const: false
-        direction: in
       path:
         type: char
         indirection: 1
         const: true
-        direction: in
       out_database:
         type: duckdb_v2_database
         indirection: 1
         const: false
-        direction: out
+        kind: OUT
 
   duckdb_v2_close:
     summary: "Closes a database."
@@ -58,9 +56,7 @@ functions:
         type: duckdb_v2_ctx
         indirection: 0
         const: false
-        direction: in
       database:
         type: duckdb_v2_database
         indirection: 1
         const: false
-        direction: in

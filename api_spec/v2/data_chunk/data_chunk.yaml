@@ -9,12 +9,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       chunk:
         type: duckdb_v2_data_chunk
         indirection: 1
-        direction: in
         description: "The data chunk to destroy."
     return_type: DUCKDB_V2_API_CALL
 
@@ -25,20 +23,17 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       chunk:
         type: duckdb_v2_data_chunk
-        direction: in
         description: "The data chunk to get the data from."
       col_idx:
         type: idx
-        direction: in
         description: "The column index."
       out_vector:
         type: duckdb_v2_vector
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The vector at the specified column index."
     return_type: DUCKDB_V2_API_CALL
 
@@ -49,15 +44,13 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       chunk:
         type: duckdb_v2_data_chunk
-        direction: in
         description: "The data chunk."
       out_size:
         type: idx
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The number of tuples in the data chunk."
     return_type: DUCKDB_V2_API_CALL

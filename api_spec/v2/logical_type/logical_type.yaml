@@ -9,16 +9,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: u32
-        direction: in
         description: "The primitive duckdb_type to create."
       out_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The logical type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -29,12 +27,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: in
         description: "The logical type to destroy."
     return_type: DUCKDB_V2_API_CALL
 
@@ -45,16 +41,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type."
       out_type_id:
         type: u32
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The duckdb_type id."
     return_type: DUCKDB_V2_API_CALL
 
@@ -65,16 +59,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       out_width:
         type: u8
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The width of the decimal type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -85,16 +77,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       out_scale:
         type: u8
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The scale of the decimal type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -105,16 +95,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       out_size:
         type: u32
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The dictionary size of the enum type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -125,21 +113,18 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       index:
         type: idx
-        direction: in
         description: "The index in the dictionary."
       out_value:
         type: char
         indirection: 2
         const: false
-        direction: out
+        kind: OUT
         description: "The string value. Must be freed with duckdb_free."
     return_type: DUCKDB_V2_API_CALL
 
@@ -150,16 +135,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type, either LIST or MAP."
       out_child_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -170,16 +153,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type. Must be ARRAY."
       out_child_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -190,16 +171,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       out_size:
         type: idx
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The fixed number of elements in the array type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -210,16 +189,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       out_key_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The key type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -230,16 +207,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       out_value_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The value type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -250,16 +225,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       out_count:
         type: idx
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The number of children of the struct type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -270,21 +243,18 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       index:
         type: idx
-        direction: in
         description: "The child index."
       out_name:
         type: char
         indirection: 2
         const: false
-        direction: out
+        kind: OUT
         description: "The name. Must be freed with duckdb_free."
     return_type: DUCKDB_V2_API_CALL
 
@@ -295,20 +265,17 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       index:
         type: idx
-        direction: in
         description: "The child index."
       out_child_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
 
@@ -319,16 +286,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type (union) object."
       out_count:
         type: idx
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The number of union members."
     return_type: DUCKDB_V2_API_CALL
 
@@ -339,21 +304,18 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       index:
         type: idx
-        direction: in
         description: "The member index."
       out_name:
         type: char
         indirection: 2
         const: false
-        direction: out
+        kind: OUT
         description: "The name. Must be freed with duckdb_free."
     return_type: DUCKDB_V2_API_CALL
 
@@ -364,19 +326,16 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       type:
         type: duckdb_v2_logical_type
-        direction: in
         description: "The logical type object."
       index:
         type: idx
-        direction: in
         description: "The member index."
       out_member_type:
         type: duckdb_v2_logical_type
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The member type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL

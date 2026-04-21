@@ -12,7 +12,7 @@ functions:
       out_err:
         type: "duckdb_v2_error"
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The pointer to receive the newly created error instance."
     return_type: "duckdb_v2_error_code"
     # cleanup_with: duckdb_v2_error_destroy
@@ -26,13 +26,12 @@ functions:
     parameters:
       err:
         type: "duckdb_v2_error"
-        direction: in
         description: "The error instance to query."
       out_text:
         type: "char"
         indirection: 2
         const: false
-        direction: out
+        kind: OUT
         description: "The pointer to receive the error message string."
     return_type: "duckdb_v2_error_code"
 
@@ -43,13 +42,11 @@ functions:
     parameters:
       err:
           type: "duckdb_v2_error"
-          direction: in
           description: "The error instance to update."
       text:
         type: "char"
         indirection: 1
         const: false
-        direction: in
         description: "The new error message string."
     return_type: "duckdb_v2_error_code"
 
@@ -60,6 +57,5 @@ functions:
     parameters:
       err:
         type: "duckdb_v2_error"
-        direction: in
         description: "The error instance to free."
     return_type: "duckdb_v2_error_code"

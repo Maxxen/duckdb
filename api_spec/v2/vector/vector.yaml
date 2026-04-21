@@ -9,16 +9,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       vector:
         type: duckdb_v2_vector
-        direction: in
         description: "The vector to get the data from."
       out_data:
         type: opaque
         indirection: 2
-        direction: out
+        kind: OUT
         description: "The data pointer."
     return_type: DUCKDB_V2_API_CALL
 
@@ -29,16 +27,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       vector:
         type: duckdb_v2_vector
-        direction: in
         description: "The vector to get the data from."
       out_validity:
         type: u64
         indirection: 2
-        direction: out
+        kind: OUT
         description: "The pointer to the validity mask, or NULL if no validity mask is present."
     return_type: DUCKDB_V2_API_CALL
 
@@ -48,21 +44,18 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       validity:
         type: u64
         indirection: 1
-        direction: in
         description: "The validity mask, as obtained through duckdb_v2_vector_get_validity."
       row:
         type: idx
-        direction: in
         description: "The row index."
       out_valid:
         type: bool
         indirection: 1
-        direction: out
+        kind: OUT
         description: "True if the row is valid, false otherwise."
     return_type: DUCKDB_V2_API_CALL
 
@@ -73,16 +66,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       vector:
         type: duckdb_v2_vector
-        direction: in
         description: "The list vector."
       out_child:
         type: duckdb_v2_vector
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The child vector."
     return_type: DUCKDB_V2_API_CALL
 
@@ -93,20 +84,17 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       vector:
         type: duckdb_v2_vector
-        direction: in
         description: "The struct vector."
       index:
         type: idx
-        direction: in
         description: "The child index."
       out_child:
         type: duckdb_v2_vector
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The child vector."
     return_type: DUCKDB_V2_API_CALL
 
@@ -117,16 +105,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       vector:
         type: duckdb_v2_vector
-        direction: in
         description: "The array vector."
       out_child:
         type: duckdb_v2_vector
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The child vector."
     return_type: DUCKDB_V2_API_CALL
 
@@ -136,15 +122,13 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       string:
         type: duckdb_v2_string_t
-        direction: in
         description: "The string value."
       out_inlined:
         type: bool
         indirection: 1
-        direction: out
+        kind: OUT
         description: "True if the string is inlined."
     return_type: DUCKDB_V2_API_CALL

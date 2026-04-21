@@ -9,18 +9,16 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       path:
         type: char
         indirection: 1
         const: true
-        direction: in
         description: "Path to the database file on disk. Both nullptr and :memory: open an in-memory database."
       out_database:
         type: duckdb_v2_database
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The result database object."
     return_type: DUCKDB_V2_API_CALL
 
@@ -31,22 +29,19 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       path:
         type: char
         indirection: 1
         const: true
-        direction: in
         description: "Path to the database file on disk. Both nullptr and :memory: open an in-memory database."
       config:
         type: duckdb_v2_config
-        direction: in
         description: "Optional configuration used to start up the database."
       out_database:
         type: duckdb_v2_database
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The result database object."
     return_type: DUCKDB_V2_API_CALL
 
@@ -57,12 +52,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       database:
         type: duckdb_v2_database
         indirection: 1
-        direction: in
         description: "The database object to shut down."
     return_type: DUCKDB_V2_API_CALL
 
@@ -73,16 +66,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       database:
         type: duckdb_v2_database
-        direction: in
         description: "The database file to connect to."
       out_connection:
         type: duckdb_v2_connection
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The result connection object."
     return_type: DUCKDB_V2_API_CALL
 
@@ -93,12 +84,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       connection:
         type: duckdb_v2_connection
         indirection: 1
-        direction: in
         description: "The connection to close."
     return_type: DUCKDB_V2_API_CALL
 
@@ -109,16 +98,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       connection:
         type: duckdb_v2_connection
-        direction: in
         description: "The connection."
       out_context:
         type: duckdb_v2_client_context
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The client context. Must be destroyed with duckdb_destroy_client_context."
     return_type: DUCKDB_V2_API_CALL
 
@@ -129,16 +116,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       client_context:
         type: duckdb_v2_client_context
-        direction: in
         description: "The client context."
       out_connection_id:
         type: idx
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The connection id."
     return_type: DUCKDB_V2_API_CALL
 
@@ -149,12 +134,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       client_context:
         type: duckdb_v2_client_context
         indirection: 1
-        direction: in
         description: "The client context to destroy."
     return_type: DUCKDB_V2_API_CALL
 
@@ -165,12 +148,11 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       out_instance_cache:
         type: duckdb_v2_instance_cache
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The database instance cache."
     return_type: DUCKDB_V2_API_CALL
 
@@ -181,26 +163,22 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       instance_cache:
         type: duckdb_v2_instance_cache
-        direction: in
         description: "The instance cache."
       path:
         type: char
         indirection: 1
         const: true
-        direction: in
         description: "Path to the database file on disk."
       config:
         type: duckdb_v2_config
-        direction: in
         description: "Optional configuration used to create the database."
       out_database:
         type: duckdb_v2_database
         indirection: 1
-        direction: out
+        kind: OUT
         description: "The resulting cached database."
     return_type: DUCKDB_V2_API_CALL
 
@@ -211,12 +189,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       instance_cache:
         type: duckdb_v2_instance_cache
         indirection: 1
-        direction: in
         description: "The instance cache to destroy."
     return_type: DUCKDB_V2_API_CALL
 
@@ -226,12 +202,11 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: "The context handle."
       out_version:
         type: char
         indirection: 2
         const: false
-        direction: out
+        kind: OUT
         description: "The version string."
     return_type: DUCKDB_V2_API_CALL

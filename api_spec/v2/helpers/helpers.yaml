@@ -98,12 +98,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       ptr:
         type: opaque
         indirection: 1
-        direction: in
         description: The memory region to de-allocate.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_from_date:
@@ -112,16 +110,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       date:
         type: duckdb_v2_date
-        direction: in
         description: The date object.
       out_result:
         type: duckdb_v2_date_struct
         indirection: 1
-        direction: out
+        kind: OUT
         description: The decomposed date struct.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_to_date:
@@ -130,16 +126,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       date:
         type: duckdb_v2_date_struct
-        direction: in
         description: The year, month and date stored in a duckdb_v2_date_struct.
       out_result:
         type: duckdb_v2_date
         indirection: 1
-        direction: out
+        kind: OUT
         description: The duckdb_v2_date element.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_from_time:
@@ -148,16 +142,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       time:
         type: duckdb_v2_time
-        direction: in
         description: The time object.
       out_result:
         type: duckdb_v2_time_struct
         indirection: 1
-        direction: out
+        kind: OUT
         description: The decomposed time struct.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_to_time:
@@ -166,16 +158,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       time:
         type: duckdb_v2_time_struct
-        direction: in
         description: The time struct.
       out_result:
         type: duckdb_v2_time
         indirection: 1
-        direction: out
+        kind: OUT
         description: The duckdb_v2_time element.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_create_time_tz:
@@ -184,20 +174,17 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       micros:
         type: i64
-        direction: in
         description: The microsecond component.
       offset:
         type: i32
-        direction: in
         description: The timezone offset component.
       out_result:
         type: duckdb_v2_time_tz
         indirection: 1
-        direction: out
+        kind: OUT
         description: The duckdb_v2_time_tz element.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_from_time_tz:
@@ -206,16 +193,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       time_tz:
         type: duckdb_v2_time_tz
-        direction: in
         description: The time_tz object.
       out_result:
         type: duckdb_v2_time_tz_struct
         indirection: 1
-        direction: out
+        kind: OUT
         description: The decomposed time_tz struct.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_create_timestamp:
@@ -224,16 +209,14 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       micros:
         type: i64
-        direction: in
         description: The microsecond component.
       out_result:
         type: duckdb_v2_timestamp
         indirection: 1
-        direction: out
+        kind: OUT
         description: The duckdb_v2_timestamp element.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_create_uuid:
@@ -242,11 +225,10 @@ functions:
     parameters:
       context:
         type: duckdb_v2_ctx
-        direction: in
         description: The context handle.
       out_result:
         type: duckdb_v2_hugeint
         indirection: 1
-        direction: out
+        kind: OUT
         description: The UUID represented as a hugeint.
     return_type: DUCKDB_V2_API_CALL
