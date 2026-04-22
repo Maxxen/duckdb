@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: vector
-
 functions:
   duckdb_v2_vector_get_data:
     summary: "Retrieves the data pointer of the vector."
@@ -19,7 +18,6 @@ functions:
         kind: OUT
         description: "The data pointer."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_vector_get_validity:
     summary: "Retrieves the validity mask pointer of the vector."
     role: getter
@@ -37,7 +35,6 @@ functions:
         kind: OUT
         description: "The pointer to the validity mask, or NULL if no validity mask is present."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_validity_row_is_valid:
     summary: "Returns whether or not a row is valid in the given validity mask."
     role: getter
@@ -58,7 +55,6 @@ functions:
         kind: OUT
         description: "True if the row is valid, false otherwise."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_list_vector_get_child:
     summary: "Retrieves the child vector of a list vector."
     role: getter
@@ -76,7 +72,6 @@ functions:
         kind: OUT
         description: "The child vector."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_struct_vector_get_child:
     summary: "Retrieves the child vector of a struct vector."
     role: getter
@@ -97,7 +92,6 @@ functions:
         kind: OUT
         description: "The child vector."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_array_vector_get_child:
     summary: "Retrieves the child vector of an array vector."
     role: getter
@@ -115,7 +109,6 @@ functions:
         kind: OUT
         description: "The child vector."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_string_is_inlined:
     summary: "Whether or not the duckdb_v2_string_t value is inlined."
     role: getter

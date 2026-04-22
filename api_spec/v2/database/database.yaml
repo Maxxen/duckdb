@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: database
-
 functions:
   duckdb_v2_open:
     summary: "Creates a new database or opens an existing database file."
@@ -21,7 +20,6 @@ functions:
         kind: OUT
         description: "The result database object."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_open_ext:
     summary: "Extended version of duckdb_open with configuration support."
     role: constructor
@@ -44,7 +42,6 @@ functions:
         kind: OUT
         description: "The result database object."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_close:
     summary: "Closes the specified database and de-allocates all memory."
     role: destructor
@@ -58,7 +55,6 @@ functions:
         indirection: 1
         description: "The database object to shut down."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_connect:
     summary: "Opens a connection to a database."
     role: constructor
@@ -76,7 +72,6 @@ functions:
         kind: OUT
         description: "The result connection object."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_disconnect:
     summary: "Closes the specified connection and de-allocates all memory."
     role: destructor
@@ -90,7 +85,6 @@ functions:
         indirection: 1
         description: "The connection to close."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_connection_get_client_context:
     summary: "Retrieves the client context of the connection."
     role: getter
@@ -108,7 +102,6 @@ functions:
         kind: OUT
         description: "The client context. Must be destroyed with duckdb_destroy_client_context."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_client_context_get_connection_id:
     summary: "Returns the connection id of the client context."
     role: getter
@@ -126,7 +119,6 @@ functions:
         kind: OUT
         description: "The connection id."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_destroy_client_context:
     summary: "Destroys the client context and deallocates its memory."
     role: destructor
@@ -140,7 +132,6 @@ functions:
         indirection: 1
         description: "The client context to destroy."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_create_instance_cache:
     summary: "Creates a new database instance cache."
     role: constructor
@@ -155,7 +146,6 @@ functions:
         kind: OUT
         description: "The database instance cache."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_get_or_create_from_cache:
     summary: "Creates or retrieves a database instance from the cache."
     role: method
@@ -181,7 +171,6 @@ functions:
         kind: OUT
         description: "The resulting cached database."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_destroy_instance_cache:
     summary: "Destroys an existing database instance cache."
     role: destructor
@@ -195,7 +184,6 @@ functions:
         indirection: 1
         description: "The instance cache to destroy."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_library_version:
     summary: "Returns the version of the linked DuckDB library."
     role: getter

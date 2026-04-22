@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: logical_type
-
 functions:
   duckdb_v2_create_logical_type:
     summary: "Creates a logical type from a primitive duckdb_type."
@@ -19,7 +18,6 @@ functions:
         kind: OUT
         description: "The logical type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_destroy_logical_type:
     summary: "Destroys the logical type and de-allocates all memory."
     role: destructor
@@ -33,7 +31,6 @@ functions:
         indirection: 1
         description: "The logical type to destroy."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_get_type_id:
     summary: "Retrieves the duckdb_type enum of a logical type."
     role: getter
@@ -51,7 +48,6 @@ functions:
         kind: OUT
         description: "The duckdb_type id."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_decimal_width:
     summary: "Retrieves the width of a decimal type."
     role: getter
@@ -69,7 +65,6 @@ functions:
         kind: OUT
         description: "The width of the decimal type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_decimal_scale:
     summary: "Retrieves the scale of a decimal type."
     role: getter
@@ -87,7 +82,6 @@ functions:
         kind: OUT
         description: "The scale of the decimal type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_enum_dictionary_size:
     summary: "Retrieves the dictionary size of the enum type."
     role: getter
@@ -105,7 +99,6 @@ functions:
         kind: OUT
         description: "The dictionary size of the enum type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_enum_dictionary_value:
     summary: "Retrieves the dictionary value at the specified position from the enum."
     role: getter
@@ -127,7 +120,6 @@ functions:
         kind: OUT
         description: "The string value. Must be freed with duckdb_free."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_list_type_child_type:
     summary: "Retrieves the child type of a LIST type."
     role: getter
@@ -145,7 +137,6 @@ functions:
         kind: OUT
         description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_array_type_child_type:
     summary: "Retrieves the child type of an ARRAY type."
     role: getter
@@ -163,7 +154,6 @@ functions:
         kind: OUT
         description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_array_type_array_size:
     summary: "Retrieves the fixed array size of an ARRAY type."
     role: getter
@@ -181,7 +171,6 @@ functions:
         kind: OUT
         description: "The fixed number of elements in the array type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_map_type_key_type:
     summary: "Retrieves the key type of a MAP type."
     role: getter
@@ -199,7 +188,6 @@ functions:
         kind: OUT
         description: "The key type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_map_type_value_type:
     summary: "Retrieves the value type of a MAP type."
     role: getter
@@ -217,7 +205,6 @@ functions:
         kind: OUT
         description: "The value type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_struct_type_child_count:
     summary: "Returns the number of children of a struct type."
     role: getter
@@ -235,7 +222,6 @@ functions:
         kind: OUT
         description: "The number of children of the struct type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_struct_type_child_name:
     summary: "Retrieves the name of a struct child."
     role: getter
@@ -257,7 +243,6 @@ functions:
         kind: OUT
         description: "The name. Must be freed with duckdb_free."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_struct_type_child_type:
     summary: "Retrieves the child type of a struct at the specified index."
     role: getter
@@ -278,7 +263,6 @@ functions:
         kind: OUT
         description: "The child type. Must be destroyed with duckdb_destroy_logical_type."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_union_type_member_count:
     summary: "Returns the number of members in a union type."
     role: getter
@@ -296,7 +280,6 @@ functions:
         kind: OUT
         description: "The number of union members."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_union_type_member_name:
     summary: "Retrieves the name of a union member."
     role: getter
@@ -318,7 +301,6 @@ functions:
         kind: OUT
         description: "The name. Must be freed with duckdb_free."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_union_type_member_type:
     summary: "Retrieves the child type of a union member at the specified index."
     role: getter

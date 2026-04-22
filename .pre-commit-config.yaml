@@ -20,6 +20,22 @@ repos:
         pass_filenames: false
         types: [python]
 
+      # CI-only full-repo format check. Invoked explicitly via
+      # `pre-commit run --all-files --hook-stage manual`.
+      - id: duckdb-format-check
+        stages: [manual]
+        name: duckdb format check (all files)
+        language: python
+        entry: python3 scripts/format.py --all --check --silent
+        additional_dependencies:
+          - cmake-format
+          - black==24.*
+          - cxxheaderparser
+          - pcpp
+          - clang_format==11.0.1
+        pass_filenames: false
+        always_run: true
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.11
     hooks:
@@ -28,3 +44,16 @@ repos:
         files: ^python_client/
       - id: ruff-format
         files: ^python_client/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+        files: ^api_spec/
+
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.21.0
+    hooks:
+      - id: yamlfmt
+        files: ^(api_spec|capigen|python_client)/

@@ -3,94 +3,94 @@ module: helpers
 structs:
   duckdb_v2_date:
     fields:
-    - name: days
-      type: i32
+      - name: days
+        type: i32
   duckdb_v2_date_struct:
     fields:
-    - name: year
-      type: i32
-    - name: month
-      type: i8
-    - name: day
-      type: i8
+      - name: year
+        type: i32
+      - name: month
+        type: i8
+      - name: day
+        type: i8
   duckdb_v2_time:
     fields:
-    - name: micros
-      type: i64
+      - name: micros
+        type: i64
   duckdb_v2_time_struct:
     fields:
-    - name: hour
-      type: i8
-    - name: min
-      type: i8
-    - name: sec
-      type: i8
-    - name: micros
-      type: i32
+      - name: hour
+        type: i8
+      - name: min
+        type: i8
+      - name: sec
+        type: i8
+      - name: micros
+        type: i32
   duckdb_v2_time_tz:
     fields:
-    - name: bits
-      type: u64
+      - name: bits
+        type: u64
   duckdb_v2_time_tz_struct:
     fields:
-    - name: time
-      type: duckdb_v2_time_struct
-    - name: offset
-      type: i32
+      - name: time
+        type: duckdb_v2_time_struct
+      - name: offset
+        type: i32
   duckdb_v2_timestamp:
     fields:
-    - name: micros
-      type: i64
+      - name: micros
+        type: i64
   duckdb_v2_interval:
     fields:
-    - name: months
-      type: i32
-    - name: days
-      type: i32
-    - name: micros
-      type: i64
+      - name: months
+        type: i32
+      - name: days
+        type: i32
+      - name: micros
+        type: i64
   duckdb_v2_hugeint:
     fields:
-    - name: lower
-      type: u64
-    - name: upper
-      type: i64
+      - name: lower
+        type: u64
+      - name: upper
+        type: i64
   duckdb_v2_uhugeint:
     fields:
-    - name: lower
-      type: u64
-    - name: upper
-      type: u64
+      - name: lower
+        type: u64
+      - name: upper
+        type: u64
   duckdb_v2_decimal:
     fields:
-    - name: width
-      type: u8
-    - name: scale
-      type: u8
-    - name: value
-      type: duckdb_v2_hugeint
+      - name: width
+        type: u8
+      - name: scale
+        type: u8
+      - name: value
+        type: duckdb_v2_hugeint
   duckdb_v2_list_entry:
     fields:
-    - name: offset
-      type: u64
-    - name: length
-      type: u64
+      - name: offset
+        type: u64
+      - name: length
+        type: u64
   duckdb_v2_bignum:
     fields:
-    - name: data
-      type: u8
-      pointer: 1
-    - name: size
-      type: idx
-    - name: is_negative
-      type: bool
+      - name: data
+        type: u8
+        pointer: 1
+      - name: size
+        type: idx
+      - name: is_negative
+        type: bool
   duckdb_v2_string_t:
     fields:
-    - name: length
-      type: u32
-    - name: data
-      type: char
-      pointer: 1
+      - name: length
+        type: u32
+      - name: data
+        type: char
+        pointer: 1
 functions:
   duckdb_v2_free:
     summary: Free memory allocated by duckdb_malloc or returned by other functions.

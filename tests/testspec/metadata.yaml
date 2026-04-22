@@ -1,13 +1,10 @@
 schema_version: "0.2.0"
-
 versions:
   - "1.0.0"
-
 suffixes:
   handles: "_ptr"
   callbacks: "_cb"
   aliases: "_t"
-
 primitives:
   - name: opaque
     c_type: void

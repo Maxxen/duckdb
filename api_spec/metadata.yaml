@@ -1,17 +1,14 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/metadata.schema.json
 schema_version: "0.3.0"
-
 versions:
   - "1.2.0"
   - "1.3.0"
   - "1.4.0"
   - "1.5.0"
-
 suffixes:
   handles: "_ptr"
   callbacks: "_cb"
   aliases: "_t"
-
 primitives:
   - name: opaque
     c_type: void

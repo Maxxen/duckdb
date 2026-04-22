@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: type_value
-
 handles:
   duckdb_v2_type:
     description: An immutable, finalized logical type
@@ -11,7 +10,6 @@ handles:
   duckdb_v2_value_info:
     description: A mutable builder for constructing a value
     cleanup_with: duckdb_v2_value_info_delete
-
 enums:
   DUCKDB_V2_KIND:
     description: Logical type identifiers
@@ -20,7 +18,6 @@ enums:
         value: 1
       DUCKDB_V2_KIND_STRUCT:
         value: 2
-
 functions:
   # --- Type info (builder) ---
   duckdb_v2_type_info_create:
@@ -35,7 +32,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_info_delete:
     summary: Destroy a type info builder
     role: destructor
@@ -47,7 +43,6 @@ functions:
         type: duckdb_v2_type_info
         indirection: 1
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_info_set_name:
     summary: Set the alias name of the type to be created
     role: setter
@@ -62,7 +57,6 @@ functions:
         indirection: 1
         const: true
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_info_add_type:
     summary: Add a named type parameter (e.g. for STRUCT/LIST/MAP)
     role: method
@@ -79,7 +73,6 @@ functions:
       value:
         type: duckdb_v2_type
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_info_add_value:
     summary: Add a named value parameter (e.g. for DECIMAL precision/scale)
     role: method
@@ -96,7 +89,6 @@ functions:
       value:
         type: duckdb_v2_value
     return_type: DUCKDB_V2_API_CALL
-
   # --- Type creation ---
   duckdb_v2_type_create_from_info:
     summary: Create a type from a kind and optional type info (NULL for primitives)
@@ -114,7 +106,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_create_from_text:
     summary: Create a type from a string representation
     role: constructor
@@ -131,7 +122,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_delete:
     summary: Delete a type object
     role: destructor
@@ -143,7 +133,6 @@ functions:
         type: duckdb_v2_type
         indirection: 1
     return_type: DUCKDB_V2_API_CALL
-
   # --- Type inspection ---
   duckdb_v2_type_get_kind:
     summary: Get the logical type id
@@ -159,7 +148,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_get_name:
     summary: Get the name/alias of the type
     role: getter
@@ -175,7 +163,6 @@ functions:
         const: true
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_get_text:
     summary: Get the full text representation of the type
     role: getter
@@ -191,7 +178,6 @@ functions:
         const: true
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_get_param_count:
     summary: Get the number of type parameters
     role: getter
@@ -206,7 +192,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_get_param_value:
     summary: Get a type parameter as a value by index
     role: getter
@@ -223,7 +208,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_get_param_type:
     summary: Get a type parameter as a type by index
     role: getter
@@ -240,7 +224,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_type_get_param_name:
     summary: Get the name of a type parameter by index
     role: getter
@@ -258,7 +241,6 @@ functions:
         const: true
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   # --- Value creation ---
   duckdb_v2_value_create_from_type:
     summary: Create a value from a type and raw data pointer
@@ -278,7 +260,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_create_from_kind:
     summary: Create a value from a kind and raw data pointer (helper for primitives)
     role: constructor
@@ -296,7 +277,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_delete:
     summary: Delete a value object
     role: destructor
@@ -308,7 +288,6 @@ functions:
         type: duckdb_v2_value
         indirection: 1
     return_type: DUCKDB_V2_API_CALL
-
   # --- Value info (builder) ---
   duckdb_v2_value_info_create:
     summary: Create a mutable value info builder
@@ -322,7 +301,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_info_add_type:
     summary: Set the type of the value being built
     role: method
@@ -335,7 +313,6 @@ functions:
       type:
         type: duckdb_v2_type
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_info_add_value:
     summary: Add a child value to the value being built
     role: method
@@ -348,7 +325,6 @@ functions:
       value:
         type: duckdb_v2_value
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_info_delete:
     summary: Destroy a value info builder
     role: destructor
@@ -360,7 +336,6 @@ functions:
         type: duckdb_v2_value_info
         indirection: 1
     return_type: DUCKDB_V2_API_CALL
-
   # --- Value inspection ---
   duckdb_v2_value_get_type:
     summary: Get the type of a value
@@ -376,7 +351,6 @@ functions:
         indirection: 1
         kind: OUT
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_get_data:
     summary: Get the raw data of a value (error if NULL)
     role: getter
@@ -391,7 +365,6 @@ functions:
         indirection: 1
         description: Buffer to receive the raw value data
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_get_null:
     summary: Check if a value is NULL (returns 0 if not null, 1 if null)
     role: getter
@@ -402,7 +375,6 @@ functions:
       value:
         type: duckdb_v2_value
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_value_get_child:
     summary: Get a nested child value by index (for complex types)
     role: getter

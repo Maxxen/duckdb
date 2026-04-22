@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: data_chunk
-
 functions:
   duckdb_v2_destroy_data_chunk:
     summary: "Destroys the data chunk and de-allocates all memory."
@@ -15,7 +14,6 @@ functions:
         indirection: 1
         description: "The data chunk to destroy."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_data_chunk_get_vector:
     summary: "Retrieves the vector at the specified column index."
     role: getter
@@ -36,7 +34,6 @@ functions:
         kind: OUT
         description: "The vector at the specified column index."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_data_chunk_get_size:
     summary: "Retrieves the current number of tuples in a data chunk."
     role: getter

@@ -9,10 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install formatting tools
-        run: pip3 install cmake-format 'black==24.*' 'clang_format==11.0.1'
-      - name: Format check
-        run: python3 scripts/format.py --all --check --silent
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files --hook-stage manual
 
   build-and-test:
     runs-on: ubuntu-latest

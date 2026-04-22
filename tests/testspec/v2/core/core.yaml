@@ -1,17 +1,14 @@
 module: core
-
 handles:
   duckdb_v2_ctx:
     description: An opaque context handle
   duckdb_v2_database:
     description: An opaque handle to a database instance
-
 aliases:
   duckdb_v2_error_code:
     underlying: u32
   DUCKDB_V2_API_CALL:
     underlying: duckdb_v2_error_code
-
 enums:
   DUCKDB_V2_TYPE:
     description: Type enum
@@ -20,11 +17,9 @@ enums:
         value: 0
       DUCKDB_V2_TYPE_BOOLEAN:
         description: bool
-
 constants:
   DUCKDB_V2_API_ERROR:
     value: 0xFFFFFFFF
-
 functions:
   duckdb_v2_open:
     summary: "Opens a database."
@@ -45,7 +40,6 @@ functions:
         indirection: 1
         const: false
         kind: OUT
-
   duckdb_v2_close:
     summary: "Closes a database."
     return_type: DUCKDB_V2_API_CALL
