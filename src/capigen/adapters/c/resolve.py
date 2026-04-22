@@ -180,6 +180,7 @@ def _resolve_struct(
                 base=base,
                 pointer=f["pointer"],
                 const=f["const"],
+                array_size=f.get("array_size"),
             )
         )
 

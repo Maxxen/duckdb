@@ -103,3 +103,40 @@ class TestParameterKind:
         apply_defaults(mod, SCHEMA)
         param = mod["functions"]["duckdb_v2_f"]["parameters"]["p"]
         assert param["kind"] == "IN"
+
+
+class TestStructFieldArraySize:
+    """Struct fields may declare array_size for inline fixed-size arrays."""
+
+    def _struct_with_field(self, field):
+        return _minimal_module(
+            structs={
+                "duckdb_v2_s": {
+                    "fields": [{"name": "x", "type": "char", **field}],
+                }
+            }
+        )
+
+    def test_array_size_accepted(self):
+        mod = self._struct_with_field({"array_size": 256})
+        jsonschema.validate(mod, SCHEMA)  # should not raise
+
+    def test_array_size_with_pointer_rejected(self):
+        mod = self._struct_with_field({"array_size": 256, "pointer": 1})
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(mod, SCHEMA)
+
+    def test_array_size_zero_rejected(self):
+        mod = self._struct_with_field({"array_size": 0})
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(mod, SCHEMA)
+
+    def test_array_size_negative_rejected(self):
+        mod = self._struct_with_field({"array_size": -1})
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(mod, SCHEMA)
+
+    def test_array_size_optional(self):
+        """Fields without array_size still validate."""
+        mod = self._struct_with_field({"pointer": 1})
+        jsonschema.validate(mod, SCHEMA)  # should not raise

@@ -211,6 +211,37 @@ class TestResolveStructs:
         assert f.const is True
         assert f.pointer == 1
 
+    def test_struct_inline_array_field(self, metadata, make_module):
+        modules = [
+            make_module(
+                "m",
+                structs={
+                    "my_struct": {
+                        "fields": [
+                            {
+                                "name": "buf",
+                                "type": "char",
+                                "pointer": 0,
+                                "const": False,
+                                "array_size": 64,
+                            },
+                            {
+                                "name": "code",
+                                "type": "u32",
+                                "pointer": 0,
+                                "const": False,
+                            },
+                        ],
+                    },
+                },
+            )
+        ]
+        result = resolve_modules(modules, metadata)
+        fields = result[0].structs[0].fields
+        assert fields[0].array_size == 64
+        assert fields[0].pointer == 0
+        assert fields[1].array_size is None
+
 
 class TestResolveCallbacks:
     def test_callback(self, metadata, make_module):

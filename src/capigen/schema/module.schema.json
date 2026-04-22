@@ -261,8 +261,25 @@
           "description": "Whether the field is const-qualified.",
           "type": "boolean",
           "default": false
+        },
+        "array_size": {
+          "description": "If set, render the field as an inline fixed-size array of this length (e.g. `char name[N];`). Mutually exclusive with `pointer > 0`.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": { "type": "string", "default": "" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "array_size": { "type": "integer" } },
+            "required": ["array_size"]
+          },
+          "then": {
+            "properties": { "pointer": { "const": 0 } }
+          }
         }
-      }
+      ]
     },
 
     "EnumDefinition": {

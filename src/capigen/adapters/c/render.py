@@ -13,6 +13,7 @@ class CField:
     base: str
     pointer: int = 0
     const: bool = False
+    array_size: int | None = None
 
 
 @dataclass

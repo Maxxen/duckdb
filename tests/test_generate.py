@@ -50,6 +50,63 @@ class TestRoundTrip:
         assert out1.read_text() == out2.read_text()
 
 
+class TestInlineArrayStructRendering:
+    """Struct fields with array_size render as C fixed-size arrays."""
+
+    def _metadata(self):
+        return {
+            "schema_version": "0.2.0",
+            "versions": ["1.0.0"],
+            "suffixes": {"handles": "_ptr", "callbacks": "_cb", "aliases": "_t"},
+            "primitives": [
+                {"name": "opaque", "c_type": "void"},
+                {"name": "char", "c_type": "char"},
+                {"name": "u32", "c_type": "uint32_t"},
+            ],
+        }
+
+    def _module(self):
+        return {
+            "module": "m",
+            "handles": {},
+            "callbacks": {},
+            "aliases": {},
+            "structs": {
+                "duckdb_v2_err": {
+                    "pointer_alias": False,
+                    "fields": [
+                        {
+                            "name": "code",
+                            "type": "u32",
+                            "pointer": 0,
+                            "const": False,
+                        },
+                        {
+                            "name": "message",
+                            "type": "char",
+                            "pointer": 0,
+                            "const": False,
+                            "array_size": 64,
+                        },
+                    ],
+                },
+            },
+            "enums": {},
+            "constants": {},
+            "error_groups": {},
+            "functions": {},
+        }
+
+    def test_array_size_renders_bracket(self, tmp_path):
+        output = tmp_path / "out.h"
+        generate([self._module()], self._metadata(), output)
+        content = output.read_text()
+        # The array field should render with a bracketed size.
+        assert "char message[64];" in content
+        # The non-array field should not.
+        assert "uint32_t code;" in content
+
+
 class TestSchemaVersion:
     def test_missing_schema_version(self, tmp_path):
         """metadata.yaml without schema_version is rejected by JSON Schema validation."""
