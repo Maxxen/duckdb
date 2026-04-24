@@ -6,9 +6,6 @@ functions:
     role: method
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       connection:
         type: duckdb_v2_connection
         description: "The connection to perform the query in."
@@ -22,28 +19,32 @@ functions:
         indirection: 1
         kind: OUT
         description: "The query result."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_destroy_result:
     summary: "Closes the result and de-allocates all memory."
     role: destructor
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         indirection: 1
         description: "The result to destroy."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_column_name:
     summary: "Returns the column name of the specified column."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object to fetch the column name from."
@@ -56,15 +57,17 @@ functions:
         const: false
         kind: OUT
         description: "The column name of the specified column."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_column_type:
     summary: "Returns the column type of the specified column."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object to fetch the column type from."
@@ -76,15 +79,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The duckdb_type of the specified column."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_column_logical_type:
     summary: "Returns the logical column type of the specified column."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object to fetch the column type from."
@@ -96,15 +101,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The logical column type. Must be destroyed with duckdb_destroy_logical_type."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_column_count:
     summary: "Returns the number of columns present in the result."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object."
@@ -113,15 +120,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The number of columns."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_rows_changed:
     summary: "Returns the number of rows changed by the query."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object."
@@ -130,15 +139,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The number of rows changed."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_result_error:
     summary: "Returns the error message contained within the result."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object to fetch the error from."
@@ -148,15 +159,17 @@ functions:
         const: false
         kind: OUT
         description: "The error message, or nullptr if there is none."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_result_error_type:
     summary: "Returns the error type contained within the result."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object to fetch the error type from."
@@ -165,15 +178,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The error type of the result."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_result_return_type:
     summary: "Returns the return type of the given result."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object."
@@ -182,15 +197,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The return type."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_fetch_chunk:
     summary: "Fetches the next data chunk from a streaming result."
     role: getter
     belongs_to: duckdb_v2_result
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       result:
         type: duckdb_v2_result
         description: "The result object to fetch the chunk from."
@@ -199,4 +216,9 @@ functions:
         indirection: 1
         kind: OUT
         description: "The resulting data chunk, or NULL when exhausted."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL

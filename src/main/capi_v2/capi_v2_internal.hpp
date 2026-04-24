@@ -23,6 +23,7 @@
 #include "duckdb_v2.h"
 
 #include <cstring>
+#include <string>
 
 #ifdef _WIN32
 #ifndef strdup
@@ -46,5 +47,41 @@ struct PreparedStatementWrapperV2 {
 	bool success = true;
 	ErrorData error_data;
 };
+
+// Backing struct for the opaque duckdb_v2_error_info_ptr handle. Allocated
+// only on failure paths and only when the caller requested detail (i.e.
+// passed a non-null err out-parameter).
+struct ErrorInfoV2 {
+	std::string message;
+};
+
+// Destroy a previously-allocated error info (if any) and null the slot.
+inline void DestroyErrorInfoSlot(duckdb_v2_error_info_ptr *err) {
+	if (err && *err) {
+		delete reinterpret_cast<ErrorInfoV2 *>(*err);
+		*err = nullptr;
+	}
+}
+
+// Failure path. Allocate a fresh ErrorInfoV2 and store its pointer in *err.
+// If *err was already non-null, the previous info is destroyed first. Safe
+// to call with err == nullptr (caller opted out of detail). Always returns
+// the supplied code; the return value is authoritative regardless of err.
+inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V2_API_CALL_t code, const char *msg) {
+	if (err) {
+		DestroyErrorInfoSlot(err);
+		auto *info = new ErrorInfoV2();
+		info->message = msg ? msg : "";
+		*err = reinterpret_cast<duckdb_v2_error_info_ptr>(info);
+	}
+	return code;
+}
+
+// Success path. Ensure *err is nullptr, destroying any prior info. Safe to
+// call with err == nullptr.
+inline DUCKDB_V2_API_CALL_t ClearErrorInfo(duckdb_v2_error_info_ptr *err) {
+	DestroyErrorInfoSlot(err);
+	return DUCKDB_V2_ERROR_NONE;
+}
 
 } // namespace duckdb

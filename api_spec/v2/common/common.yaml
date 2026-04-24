@@ -1,10 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: common
 handles:
-  duckdb_v2_ctx:
-    description: An opaque context handle passed to all API functions
-  duckdb_v2_error:
-    description: An opaque handle to a detailed error instance
   duckdb_v2_database:
     description: An opaque handle to a DuckDB database instance
   duckdb_v2_connection:
@@ -27,6 +23,22 @@ handles:
     description: An opaque handle to a logical type
   duckdb_v2_value:
     description: An opaque handle to a boxed value
+  # Error reporting. Every fallible function takes a trailing
+  # `duckdb_v2_error_info_ptr *err` out-parameter.
+  #
+  # Contract:
+  #   - The return value always carries the error code and is authoritative.
+  #   - `err` is optional: callers may pass nullptr to opt out of detail.
+  #   - If the call succeeds, `*err` is left as nullptr.
+  #   - If the call fails and `err != nullptr`, the library allocates an
+  #     info handle and stores its pointer in `*err`. The caller owns it
+  #     and must destroy it with duckdb_v2_destroy_error_info.
+  #   - If `*err` is already non-null on entry, the library destroys the
+  #     previous info before writing. To preserve info across calls, detach
+  #     it first: `saved = *err; *err = nullptr;`.
+  duckdb_v2_error_info:
+    description: Opaque detail for a failed call; destroy with duckdb_v2_destroy_error_info.
+    cleanup_with: duckdb_v2_destroy_error_info
 aliases:
   duckdb_v2_error_kind:
     underlying: u32

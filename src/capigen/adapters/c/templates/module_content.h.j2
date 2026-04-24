@@ -3,11 +3,6 @@
 {% from "_c_fragments/_struct.j2" import render_struct %}
 {% from "_c_fragments/_type.j2" import render_type %}
 
-/* --- Structs for {{ module.name }} --- */
-{% for s in module.structs %}
-{{ render_struct(s) }}
-{% endfor %}
-
 /* --- Types for {{ module.name }} --- */
 {% for type in module.types %}
 {{ render_type(type) }}
@@ -22,6 +17,11 @@ typedef enum {{ enum.name }} {
   {{ value_name }} = {{ value.value }},
   {% endfor %}
 } {{ enum.name }};
+{% endfor %}
+
+/* --- Structs for {{ module.name }} --- */
+{% for s in module.structs %}
+{{ render_struct(s) }}
 {% endfor %}
 
 /* --- Constants for {{ module.name }} --- */

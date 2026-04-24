@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: error
+# Accessors and lifecycle for duckdb_v2_error_info, the opaque handle that
+# every fallible function optionally writes out when it fails.
+functions:
+  duckdb_v2_error_info_get_message:
+    summary: "Retrieves the error message associated with an error info handle."
+    description: |
+      Returns a borrowed pointer to the info's null-terminated error message.
+      The pointer is owned by the library and is valid until the info is
+      destroyed; callers must not free it and must not read it after the
+      info has been destroyed.
+    role: getter
+    belongs_to: duckdb_v2_error_info
+    parameters:
+      info:
+        type: duckdb_v2_error_info
+        description: "The error info handle to query."
+      out_message:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT
+        description: "Borrowed pointer to the null-terminated message. Owned by the library; must not be freed."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_destroy_error_info:
+    summary: "Destroys an error info handle and frees its resources."
+    description: |
+      Null-safe: calling with a null handle or a null pointer-to-handle is a
+      no-op and returns DUCKDB_V2_ERROR_NONE. On return, `*info` is set to
+      nullptr. Safe to call on any info returned by the library.
+    role: destructor
+    belongs_to: duckdb_v2_error_info
+    parameters:
+      info:
+        type: duckdb_v2_error_info
+        indirection: 1
+        description: "The error info handle to destroy. Set to nullptr on return."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL

@@ -25,45 +25,52 @@ functions:
     role: constructor
     belongs_to: duckdb_v2_type_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_type_info
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_info_delete:
     summary: Destroy a type info builder
     role: destructor
     belongs_to: duckdb_v2_type_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_type_info
         indirection: 1
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_info_set_name:
     summary: Set the alias name of the type to be created
     role: setter
     belongs_to: duckdb_v2_type_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_type_info
       name:
         type: char
         indirection: 1
         const: true
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_info_add_type:
     summary: Add a named type parameter (e.g. for STRUCT/LIST/MAP)
     role: method
     belongs_to: duckdb_v2_type_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_type_info
       name:
@@ -72,14 +79,17 @@ functions:
         const: true
       value:
         type: duckdb_v2_type
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_info_add_value:
     summary: Add a named value parameter (e.g. for DECIMAL precision/scale)
     role: method
     belongs_to: duckdb_v2_type_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_type_info
       name:
@@ -88,6 +98,11 @@ functions:
         const: true
       value:
         type: duckdb_v2_value
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   # --- Type creation ---
   duckdb_v2_type_create_from_info:
@@ -95,8 +110,6 @@ functions:
     role: constructor
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       kind:
         type: DUCKDB_V2_KIND
       info:
@@ -105,14 +118,17 @@ functions:
         type: duckdb_v2_type
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_create_from_text:
     summary: Create a type from a string representation
     role: constructor
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       text:
         type: char
         indirection: 1
@@ -121,17 +137,25 @@ functions:
         type: duckdb_v2_type
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_delete:
     summary: Delete a type object
     role: destructor
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
         indirection: 1
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   # --- Type inspection ---
   duckdb_v2_type_get_kind:
@@ -139,22 +163,23 @@ functions:
     role: getter
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       kind:
         type: DUCKDB_V2_KIND
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_get_name:
     summary: Get the name/alias of the type
     role: getter
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       name:
@@ -162,14 +187,17 @@ functions:
         indirection: 2
         const: true
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_get_text:
     summary: Get the full text representation of the type
     role: getter
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       text:
@@ -177,28 +205,34 @@ functions:
         indirection: 2
         const: true
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_get_param_count:
     summary: Get the number of type parameters
     role: getter
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       out_count:
         type: u64
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_get_param_value:
     summary: Get a type parameter as a value by index
     role: getter
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       index:
@@ -207,14 +241,17 @@ functions:
         type: duckdb_v2_value
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_get_param_type:
     summary: Get a type parameter as a type by index
     role: getter
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       index:
@@ -223,14 +260,17 @@ functions:
         type: duckdb_v2_type
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_type_get_param_name:
     summary: Get the name of a type parameter by index
     role: getter
     belongs_to: duckdb_v2_type
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       index:
@@ -240,6 +280,11 @@ functions:
         indirection: 2
         const: true
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   # --- Value creation ---
   duckdb_v2_value_create_from_type:
@@ -247,8 +292,6 @@ functions:
     role: constructor
     belongs_to: duckdb_v2_value
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       type:
         type: duckdb_v2_type
       data:
@@ -259,14 +302,17 @@ functions:
         type: duckdb_v2_value
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_create_from_kind:
     summary: Create a value from a kind and raw data pointer (helper for primitives)
     role: constructor
     belongs_to: duckdb_v2_value
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       kind:
         type: DUCKDB_V2_KIND
       data:
@@ -276,17 +322,25 @@ functions:
         type: duckdb_v2_value
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_delete:
     summary: Delete a value object
     role: destructor
     belongs_to: duckdb_v2_value
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       value:
         type: duckdb_v2_value
         indirection: 1
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   # --- Value info (builder) ---
   duckdb_v2_value_info_create:
@@ -294,47 +348,59 @@ functions:
     role: constructor
     belongs_to: duckdb_v2_value_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_value_info
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_info_add_type:
     summary: Set the type of the value being built
     role: method
     belongs_to: duckdb_v2_value_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_value_info
       type:
         type: duckdb_v2_type
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_info_add_value:
     summary: Add a child value to the value being built
     role: method
     belongs_to: duckdb_v2_value_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_value_info
       value:
         type: duckdb_v2_value
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_info_delete:
     summary: Destroy a value info builder
     role: destructor
     belongs_to: duckdb_v2_value_info
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       info:
         type: duckdb_v2_value_info
         indirection: 1
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   # --- Value inspection ---
   duckdb_v2_value_get_type:
@@ -342,46 +408,53 @@ functions:
     role: getter
     belongs_to: duckdb_v2_value
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       value:
         type: duckdb_v2_value
       type:
         type: duckdb_v2_type
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_get_data:
     summary: Get the raw data of a value (error if NULL)
     role: getter
     belongs_to: duckdb_v2_value
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       value:
         type: duckdb_v2_value
       data:
         type: opaque
         indirection: 1
         description: Buffer to receive the raw value data
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_get_null:
     summary: Check if a value is NULL (returns 0 if not null, 1 if null)
     role: getter
     belongs_to: duckdb_v2_value
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       value:
         type: duckdb_v2_value
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_value_get_child:
     summary: Get a nested child value by index (for complex types)
     role: getter
     belongs_to: duckdb_v2_value
     parameters:
-      ctx:
-        type: duckdb_v2_ctx
       value:
         type: duckdb_v2_value
       index:
@@ -390,4 +463,9 @@ functions:
         type: duckdb_v2_value
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL

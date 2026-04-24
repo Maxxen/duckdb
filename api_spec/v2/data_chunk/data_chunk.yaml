@@ -6,22 +6,21 @@ functions:
     role: destructor
     belongs_to: duckdb_v2_data_chunk
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       chunk:
         type: duckdb_v2_data_chunk
         indirection: 1
         description: "The data chunk to destroy."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_data_chunk_get_vector:
     summary: "Retrieves the vector at the specified column index."
     role: getter
     belongs_to: duckdb_v2_data_chunk
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       chunk:
         type: duckdb_v2_data_chunk
         description: "The data chunk to get the data from."
@@ -33,15 +32,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The vector at the specified column index."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_data_chunk_get_size:
     summary: "Retrieves the current number of tuples in a data chunk."
     role: getter
     belongs_to: duckdb_v2_data_chunk
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       chunk:
         type: duckdb_v2_data_chunk
         description: "The data chunk."
@@ -50,4 +51,9 @@ functions:
         indirection: 1
         kind: OUT
         description: "The number of tuples in the data chunk."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL

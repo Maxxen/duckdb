@@ -6,9 +6,6 @@ functions:
     role: constructor
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       connection:
         type: duckdb_v2_connection
         description: "The connection object."
@@ -22,28 +19,32 @@ functions:
         indirection: 1
         kind: OUT
         description: "The resulting prepared statement object."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_destroy_prepare:
     summary: "Closes the prepared statement and de-allocates all memory."
     role: destructor
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         indirection: 1
         description: "The prepared statement to destroy."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_prepare_error:
     summary: "Returns the error message associated with the prepared statement."
     role: getter
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement to obtain the error from."
@@ -53,15 +54,17 @@ functions:
         const: false
         kind: OUT
         description: "The error message, or nullptr if there is none."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_nparams:
     summary: "Returns the number of parameters in the prepared statement."
     role: getter
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -70,15 +73,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The number of parameters."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_parameter_name:
     summary: "Returns the name used to identify the parameter."
     role: getter
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -91,15 +96,17 @@ functions:
         const: false
         kind: OUT
         description: "The parameter name. Must be freed with duckdb_free."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_param_type:
     summary: "Returns the parameter type for the parameter at the given index."
     role: getter
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -111,15 +118,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The parameter type."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_param_logical_type:
     summary: "Returns the logical type for the parameter at the given index."
     role: getter
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -131,27 +140,31 @@ functions:
         indirection: 1
         kind: OUT
         description: "The logical type. Must be destroyed with duckdb_destroy_logical_type."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_clear_bindings:
     summary: "Clear the params bound to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_prepared_statement_type:
     summary: "Returns the statement type of the prepared statement."
     role: getter
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       stmt:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -160,15 +173,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The statement type."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_execute_prepared:
     summary: "Executes the prepared statement and returns a materialized query result."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement to execute."
@@ -177,15 +192,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The query result."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_value:
     summary: "Binds a value to the prepared statement at the specified index."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -195,15 +212,17 @@ functions:
       val:
         type: duckdb_v2_value
         description: "The value to bind."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_parameter_index:
     summary: "Retrieve the index of the parameter identified by name."
     role: getter
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -217,15 +236,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The parameter index."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_boolean:
     summary: "Binds a bool value to the prepared statement at the specified index."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -235,15 +256,17 @@ functions:
       val:
         type: bool
         description: "The boolean value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_int8:
     summary: "Binds an int8_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -253,15 +276,17 @@ functions:
       val:
         type: i8
         description: "The int8_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_int16:
     summary: "Binds an int16_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -271,15 +296,17 @@ functions:
       val:
         type: i16
         description: "The int16_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_int32:
     summary: "Binds an int32_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -289,15 +316,17 @@ functions:
       val:
         type: i32
         description: "The int32_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_int64:
     summary: "Binds an int64_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -307,15 +336,17 @@ functions:
       val:
         type: i64
         description: "The int64_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_hugeint:
     summary: "Binds a duckdb_v2_hugeint value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -325,15 +356,17 @@ functions:
       val:
         type: duckdb_v2_hugeint
         description: "The hugeint value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_uhugeint:
     summary: "Binds a duckdb_v2_uhugeint value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -343,15 +376,17 @@ functions:
       val:
         type: duckdb_v2_uhugeint
         description: "The uhugeint value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_decimal:
     summary: "Binds a duckdb_v2_decimal value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -361,15 +396,17 @@ functions:
       val:
         type: duckdb_v2_decimal
         description: "The decimal value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_uint8:
     summary: "Binds a uint8_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -379,15 +416,17 @@ functions:
       val:
         type: u8
         description: "The uint8_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_uint16:
     summary: "Binds a uint16_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -397,15 +436,17 @@ functions:
       val:
         type: u16
         description: "The uint16_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_uint32:
     summary: "Binds a uint32_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -415,15 +456,17 @@ functions:
       val:
         type: u32
         description: "The uint32_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_uint64:
     summary: "Binds a uint64_t value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -433,15 +476,17 @@ functions:
       val:
         type: u64
         description: "The uint64_t value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_float:
     summary: "Binds a float value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -451,15 +496,17 @@ functions:
       val:
         type: f32
         description: "The float value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_double:
     summary: "Binds a double value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -469,15 +516,17 @@ functions:
       val:
         type: f64
         description: "The double value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_date:
     summary: "Binds a duckdb_v2_date value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -487,15 +536,17 @@ functions:
       val:
         type: duckdb_v2_date
         description: "The date value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_time:
     summary: "Binds a duckdb_v2_time value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -505,15 +556,17 @@ functions:
       val:
         type: duckdb_v2_time
         description: "The time value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_timestamp:
     summary: "Binds a duckdb_v2_timestamp value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -523,15 +576,17 @@ functions:
       val:
         type: duckdb_v2_timestamp
         description: "The timestamp value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_interval:
     summary: "Binds a duckdb_v2_interval value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -541,15 +596,17 @@ functions:
       val:
         type: duckdb_v2_interval
         description: "The interval value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_varchar:
     summary: "Binds a null-terminated varchar value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -561,15 +618,17 @@ functions:
         indirection: 1
         const: true
         description: "The null-terminated varchar value."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_varchar_length:
     summary: "Binds a varchar value with explicit length to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -584,15 +643,17 @@ functions:
       length:
         type: idx
         description: "The length of the string in bytes."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_blob:
     summary: "Binds a blob value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
@@ -607,19 +668,26 @@ functions:
       length:
         type: idx
         description: "The length of the blob in bytes."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_bind_null:
     summary: "Binds a NULL value to the prepared statement."
     role: method
     belongs_to: duckdb_v2_prepared_statement
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       prepared_statement:
         type: duckdb_v2_prepared_statement
         description: "The prepared statement."
       param_idx:
         type: idx
         description: "The parameter index."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL

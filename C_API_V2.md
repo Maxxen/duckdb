@@ -98,6 +98,39 @@ All function names must start with `duckdb_v2_` and all type names must start wi
 
 See `capigen/claude.md` for the full spec conventions.
 
+## Error handling
+
+Every fallible V2 function returns a `DUCKDB_V2_API_CALL_t` error code. On success the returned value is `DUCKDB_V2_ERROR_NONE`; on failure it is a non-zero code from `api_spec/v2/common/error_codes.yaml` (or the sentinel `DUCKDB_V2_API_ERROR` for an unspecified internal failure).
+
+Functions also take a trailing `duckdb_v2_error_info_ptr *err` out-parameter that, on failure, receives an opaque handle carrying richer detail (currently the message, with room to grow).
+
+- **The return value is authoritative.** It always carries the error code, regardless of whether `err` was provided.
+- **`err` is optional — callers may pass `NULL`** on any call to opt out of detail.
+- **On success**, the library leaves `*err` as `NULL`.
+- **On failure**, if `err != NULL` the library allocates a `duckdb_v2_error_info_ptr` and stores it in `*err`. The caller owns it and must destroy it with `duckdb_v2_destroy_error_info` (null-safe).
+- **Reusing `err` across calls.** If `*err` is already non-null on entry, the library destroys the previous info before writing a new one. To preserve info across calls, detach first: `saved = *err; *err = NULL;`.
+
+The message is borrowed and valid until the info is destroyed:
+
+```c
+duckdb_v2_config_ptr cfg = NULL;
+duckdb_v2_error_info_ptr err = NULL;
+
+if (duckdb_v2_create_config(&cfg, &err) != DUCKDB_V2_ERROR_NONE) {
+    const char *msg = NULL;
+    duckdb_v2_error_info_get_message(err, &msg, NULL);
+    fprintf(stderr, "create_config failed: %s\n", msg ? msg : "(no detail)");
+    duckdb_v2_destroy_error_info(&err, NULL);
+}
+
+// Opt-out form — only the return code is inspected:
+if (duckdb_v2_create_config(&cfg, NULL) != DUCKDB_V2_ERROR_NONE) {
+    fprintf(stderr, "create_config failed\n");
+}
+```
+
+Implementations in `src/main/capi_v2/` report errors through the `SetErrorInfo` / `ClearErrorInfo` helpers in `capi_v2_internal.hpp`. Both are safe to call with `err == NULL`; `SetErrorInfo` transparently destroys any previous info in the slot before allocating a new one.
+
 ## Generating the header and stubs
 
 After changing the YAML specs, regenerate the header and stubs:

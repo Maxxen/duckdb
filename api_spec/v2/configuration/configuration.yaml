@@ -6,37 +6,38 @@ functions:
     role: constructor
     belongs_to: duckdb_v2_config
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       out_config:
         type: duckdb_v2_config
         indirection: 1
         kind: OUT
         description: "The result configuration object."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_config_count:
     summary: "Returns the total number of configuration options available."
     role: getter
     belongs_to: duckdb_v2_config
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       out_count:
         type: idx
         indirection: 1
         kind: OUT
         description: "The number of config options available."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_get_config_flag:
     summary: "Obtains the name and description of a specific configuration option."
     role: getter
     belongs_to: duckdb_v2_config
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       index:
         type: idx
         description: "The index of the configuration option."
@@ -52,15 +53,17 @@ functions:
         const: false
         kind: OUT
         description: "A description of the configuration flag."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_set_config:
     summary: "Sets the specified option for the specified configuration."
     role: setter
     belongs_to: duckdb_v2_config
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       config:
         type: duckdb_v2_config
         description: "The configuration object to set the option on."
@@ -74,17 +77,24 @@ functions:
         indirection: 1
         const: true
         description: "The value to set the configuration flag to."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_destroy_config:
     summary: "Destroys the specified configuration object."
     role: destructor
     belongs_to: duckdb_v2_config
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       config:
         type: duckdb_v2_config
         indirection: 1
         description: "The configuration object to destroy."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL

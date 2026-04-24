@@ -9,79 +9,92 @@ handles:
     description: An opaque handle to scalar function init arguments
   duckdb_v2_scalar_func_exec_args:
     description: An opaque handle to scalar function exec arguments
+# NOTE: Callbacks will eventually receive some form of invocation context so
+# they can call back into DuckDB. We haven't designed that shape yet. For now
+# they only receive the args handle; the rest will be added when we design
+# the callback side of the API.
 callbacks:
   duckdb_v2_scalar_func_bind:
     return_type: opaque
     parameters:
-      context:
-        type: duckdb_v2_ctx
       args:
         type: duckdb_v2_scalar_func_bind_args
   duckdb_v2_scalar_func_init:
     return_type: opaque
     parameters:
-      context:
-        type: duckdb_v2_ctx
       args:
         type: duckdb_v2_scalar_func_init_args
   duckdb_v2_scalar_func_exec:
     return_type: opaque
     parameters:
-      context:
-        type: duckdb_v2_ctx
       args:
         type: duckdb_v2_scalar_func_exec_args
 functions:
   duckdb_v2_scalar_function_exec_get_input:
     summary: Get input chunk for scalar function execution
     parameters:
-      context:
-        type: duckdb_v2_ctx
       args:
         type: duckdb_v2_scalar_func_exec_args
       out_input:
         type: duckdb_v2_data_chunk
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_exec_get_result:
     summary: Get result vector for scalar function execution
     parameters:
-      context:
-        type: duckdb_v2_ctx
       args:
         type: duckdb_v2_scalar_func_exec_args
       out_result:
         type: duckdb_v2_vector
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_create:
     summary: Create a scalar function object
     parameters:
-      context:
-        type: duckdb_v2_ctx
       out_function:
         type: duckdb_v2_scalar_func
         indirection: 1
         kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_set_bind:
     summary: Set the bind function for a scalar function
     parameters:
-      context:
-        type: duckdb_v2_ctx
       function:
         type: duckdb_v2_scalar_func
       bind_func:
         type: duckdb_v2_scalar_func_bind
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
     role: setter
   duckdb_v2_scalar_function_register:
     summary: Register a scalar function
     parameters:
-      context:
-        type: duckdb_v2_ctx
       function:
         type: duckdb_v2_scalar_func
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL

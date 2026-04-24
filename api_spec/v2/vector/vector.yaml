@@ -6,9 +6,6 @@ functions:
     role: getter
     belongs_to: duckdb_v2_vector
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       vector:
         type: duckdb_v2_vector
         description: "The vector to get the data from."
@@ -17,15 +14,17 @@ functions:
         indirection: 2
         kind: OUT
         description: "The data pointer."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_vector_get_validity:
     summary: "Retrieves the validity mask pointer of the vector."
     role: getter
     belongs_to: duckdb_v2_vector
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       vector:
         type: duckdb_v2_vector
         description: "The vector to get the data from."
@@ -34,14 +33,16 @@ functions:
         indirection: 2
         kind: OUT
         description: "The pointer to the validity mask, or NULL if no validity mask is present."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_validity_row_is_valid:
     summary: "Returns whether or not a row is valid in the given validity mask."
     role: getter
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       validity:
         type: u64
         indirection: 1
@@ -54,15 +55,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "True if the row is valid, false otherwise."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_list_vector_get_child:
     summary: "Retrieves the child vector of a list vector."
     role: getter
     belongs_to: duckdb_v2_vector
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       vector:
         type: duckdb_v2_vector
         description: "The list vector."
@@ -71,15 +74,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The child vector."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_struct_vector_get_child:
     summary: "Retrieves the child vector of a struct vector."
     role: getter
     belongs_to: duckdb_v2_vector
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       vector:
         type: duckdb_v2_vector
         description: "The struct vector."
@@ -91,15 +96,17 @@ functions:
         indirection: 1
         kind: OUT
         description: "The child vector."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_array_vector_get_child:
     summary: "Retrieves the child vector of an array vector."
     role: getter
     belongs_to: duckdb_v2_vector
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       vector:
         type: duckdb_v2_vector
         description: "The array vector."
@@ -108,14 +115,16 @@ functions:
         indirection: 1
         kind: OUT
         description: "The child vector."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_string_is_inlined:
     summary: "Whether or not the duckdb_v2_string_t value is inlined."
     role: getter
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       string:
         type: duckdb_v2_string_t
         description: "The string value."
@@ -124,4 +133,9 @@ functions:
         indirection: 1
         kind: OUT
         description: "True if the string is inlined."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL

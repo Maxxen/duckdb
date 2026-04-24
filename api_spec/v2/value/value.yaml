@@ -6,11 +6,13 @@ functions:
     role: destructor
     belongs_to: duckdb_v2_value
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        description: "The context handle."
       value:
         type: duckdb_v2_value
         indirection: 1
         description: "The value to destroy."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
     return_type: DUCKDB_V2_API_CALL
