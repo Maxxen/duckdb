@@ -12,10 +12,10 @@
 #include "duckdb/common/operator/decimal_cast_operators.hpp"
 #include "duckdb/common/operator/string_cast.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "yyjson.hpp"
+#include "yyjson_ext.hpp"
 #include "duckdb/common/types/blob.hpp"
 
-using namespace duckdb_yyjson; // NOLINT
+using namespace duckdb_ext_yyjson; // NOLINT
 
 namespace duckdb {
 

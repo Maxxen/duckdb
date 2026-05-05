@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 2.8.12...3.29)
 
 project(JSONExtension)
 
-include_directories(include)
+include_directories(include yyjson)
+add_subdirectory(yyjson)
 add_subdirectory(json_functions)
 
 set(JSON_EXTENSION_FILES
@@ -39,7 +40,9 @@ set(JSON_EXTENSION_FILES
 build_static_extension(json ${JSON_EXTENSION_FILES})
 set(PARAMETERS "-warnings")
 build_loadable_extension(json ${PARAMETERS} ${JSON_EXTENSION_FILES})
-target_link_libraries(json_loadable_extension duckdb_yyjson)
+
+target_link_libraries(json_loadable_extension duckdb_extension_yyjson)
+target_link_libraries(json_extension duckdb_extension_yyjson)
 
 install(
   TARGETS json_extension
