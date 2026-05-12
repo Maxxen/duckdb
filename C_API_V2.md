@@ -11,12 +11,18 @@ All V2 identifiers use a `duckdb_v2_` / `DUCKDB_V2_` prefix, so there are no sym
 ```
 api_spec/                        API spec (YAML) -- the V2 API definition
   metadata.yaml                  Primitives, suffixes, versions
-  v2/                            Module YAML files (one per API area)
+  v2/
+    common/common.yaml           Shared handles and aliases
+    common/error_codes.yaml      DUCKDB_V2_ERROR_* codes
+    error/error.yaml             Error info accessors
+    configuration/configuration.yaml  Option handle API
 
 capigen/                         Code generator (vendored via git subtree from duckdblabs/capiv2)
   src/capigen/                   Generator: c adapter (header), bridge adapter (stubs)
   tests/                         Generator pytest suite
 
+pyproject.toml                   Root Python project; declares the capigen package and dev tooling
+scripts/capi_v2_regen.sh         Regenerates header + stubs and formats the output
 src/include/duckdb_v2.h          Generated V2 C header (committed)
 src/main/capi_v2/                V2 bridge implementations (C++ -> C)
   capi_v2_internal.hpp           Internal header with wrapper structs
@@ -35,57 +41,69 @@ cd duckdb-capi-v2
 
 ## Prerequisites
 
-Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (the Python package manager used by the generator):
+Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (the Python package manager used by the generator and the formatter):
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then provision the root virtual environment, which installs `capigen` (editable) and the formatter's runtime (clang-format, black, cmake-format, …) pinned to the versions CI uses:
+
+```bash
+uv sync --group dev
 ```
 
 You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, and Ninja (optional but recommended).
 
 ## Pre-commit hook
 
-A pre-commit hook is configured at `.pre-commit-config.yaml` to run `scripts/format.py` on staged changes before every commit. This is the same formatter CI runs, so if the hook is installed you won't see format-check failures in CI after regenerating the header or stubs.
+`.pre-commit-config.yaml` configures three local hooks:
 
-One-time setup per clone:
+- **`capi-v2-regen`** — fires when any `api_spec/**/*.yaml` is staged. Calls `scripts/capi_v2_regen.sh` to regenerate the header and stubs.
+- **`duckdb-format`** — runs `scripts/format.py` on staged changes (and on the files the regen hook just produced).
+- **`ty`** — type-checks Python.
+
+One-time setup per clone (alongside `uv sync --group dev`):
 
 ```bash
-pip install pre-commit
-pre-commit install
+uv run pre-commit install
 ```
 
-The hook shells out to `black`, `clang-format` (exact version `11.0.1`), and `cmake-format`, which must be on your PATH.
-
-- Linux: `make format_tools` installs all three.
-- macOS: `brew install clang-format@11` and `pip install 'black==24.*' cmake-format 'clang_format==11.0.1'`.
-
-When the hook modifies a staged file, pre-commit aborts the commit and prints the list of changed files — re-`git add` them and commit again. To bypass the hook for a single commit (not recommended), use `git commit --no-verify`.
+When a hook modifies a staged file, pre-commit aborts the commit and prints the list of changed files — re-`git add` them and commit again. To bypass the hook for a single commit (not recommended), use `git commit --no-verify`.
 
 ## Making changes to the API spec
 
-The API is defined in YAML files under `api_spec/v2/`. Each file defines a module (e.g., `database/database.yaml`, `query_result/query_result.yaml`) with handles, types, enums, and function declarations.
+The API is defined in YAML files under `api_spec/v2/`. Each file defines a module with handles, types, enums, and function declarations.
 
-To add or modify a function, edit the relevant YAML file. Example from `database/database.yaml`:
+Edit the relevant YAML file. Example from `configuration/configuration.yaml`:
 
 ```yaml
 functions:
-  duckdb_v2_open:
-    summary: "Creates a new database or opens an existing database file."
+  duckdb_v2_option_create:
+    summary: "Creates an option handle carrying a name and a setting."
     role: constructor
-    belongs_to: duckdb_v2_database
+    belongs_to: duckdb_v2_option
     parameters:
-      context:
-        type: duckdb_v2_ctx
-        direction: in
-      path:
+      name:
         type: char
         indirection: 1
         const: true
-        direction: in
-      out_database:
-        type: duckdb_v2_database
+        description: "Null-terminated option name."
+      setting:
+        type: char
         indirection: 1
-        direction: out
+        const: true
+        description: "Null-terminated setting (string-encoded value)."
+      out_option:
+        type: duckdb_v2_option
+        indirection: 1
+        kind: OUT
+        description: "Receives the new option handle."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
 ```
 
@@ -102,25 +120,25 @@ Functions also take a trailing `duckdb_v2_error_info_ptr *err` out-parameter tha
 - **The return value is authoritative.** It always carries the error code, regardless of whether `err` was provided.
 - **`err` is optional — callers may pass `NULL`** on any call to opt out of detail.
 - **On success**, the library leaves `*err` as `NULL`.
-- **On failure**, if `err != NULL` the library allocates a `duckdb_v2_error_info_ptr` and stores it in `*err`. The caller owns it and must destroy it with `duckdb_v2_destroy_error_info` (null-safe).
+- **On failure**, if `err != NULL` the library allocates a `duckdb_v2_error_info_ptr` and stores it in `*err`. The caller owns it and must destroy it with `duckdb_v2_error_info_destroy` (null-safe).
 - **Reusing `err` across calls.** If `*err` is already non-null on entry, the library destroys the previous info before writing a new one. To preserve info across calls, detach first: `saved = *err; *err = NULL;`.
 
 The message is borrowed and valid until the info is destroyed:
 
 ```c
-duckdb_v2_config_ptr cfg = NULL;
+duckdb_v2_option_ptr opt = NULL;
 duckdb_v2_error_info_ptr err = NULL;
 
-if (duckdb_v2_create_config(&cfg, &err) != DUCKDB_V2_ERROR_NONE) {
+if (duckdb_v2_option_create("memory_limit", "1GB", &opt, &err) != DUCKDB_V2_ERROR_NONE) {
     const char *msg = NULL;
     duckdb_v2_error_info_get_message(err, &msg, NULL);
-    fprintf(stderr, "create_config failed: %s\n", msg ? msg : "(no detail)");
-    duckdb_v2_destroy_error_info(&err, NULL);
+    fprintf(stderr, "option_create failed: %s\n", msg ? msg : "(no detail)");
+    duckdb_v2_error_info_destroy(&err, NULL);
 }
 
 // Opt-out form — only the return code is inspected:
-if (duckdb_v2_create_config(&cfg, NULL) != DUCKDB_V2_ERROR_NONE) {
-    fprintf(stderr, "create_config failed\n");
+if (duckdb_v2_option_create("memory_limit", "1GB", &opt, NULL) != DUCKDB_V2_ERROR_NONE) {
+    fprintf(stderr, "option_create failed\n");
 }
 ```
 
@@ -128,32 +146,21 @@ Implementations in `src/main/capi_v2/` report errors through the `SetErrorInfo` 
 
 ## Generating the header and stubs
 
-After changing the YAML specs, regenerate the header and stubs:
+After changing the YAML specs, regenerate the header (`src/include/duckdb_v2.h`) and the bridge stubs (`src/main/capi_v2/capi_v2_stubs.cpp`):
 
 ```bash
-cd capigen
-
-# Install dependencies (first time only)
-uv sync
-
-# Generate the C header
-just run
-
-# Generate/update stub implementations (skips already-implemented functions)
-just stubs
-
-# Run the generator tests
-uv run --group dev pytest
+./scripts/capi_v2_regen.sh
 ```
 
-For continuous development, you can watch for changes and regenerate automatically:
+This runs both `capigen` adapters (`c` for the header, `bridge` for the stubs) and then formats the output via `scripts/format.py`. The same script is invoked automatically by the `capi-v2-regen` pre-commit hook whenever you stage an `api_spec/**/*.yaml` change, so committing without a manual run is also fine — the hook regenerates, the format hook re-formats, and pre-commit asks you to re-stage.
+
+To run the capigen generator's own tests:
 
 ```bash
-cd capigen
-just watch   # requires watchexec: cargo install watchexec-cli
+uv run --group dev pytest capigen/tests
 ```
 
-If you add new stub source files to `src/main/capi_v2/`, add them to `src/main/capi_v2/CMakeLists.txt`.
+If you add new bridge implementation files to `src/main/capi_v2/`, add them to `src/main/capi_v2/CMakeLists.txt`.
 
 ## Building
 
@@ -165,33 +172,31 @@ make debug    # or: make release
 
 ## Implementing stubs and running C API V2 tests
 
-The generated `capi_v2_stubs.cpp` contains stub implementations for all declared functions. Each stub returns `DUCKDB_V2_API_ERROR`. To implement a function:
+The generated `capi_v2_stubs.cpp` contains stub implementations for any declared function not yet implemented elsewhere. Each stub returns `DUCKDB_V2_API_ERROR`. To implement a function:
 
-1. Create a new `.cpp` file in `src/main/capi_v2/` (e.g., `database-v2.cpp`)
-2. Include `capi_v2_internal.hpp` and write the implementation
-3. Add the file to `src/main/capi_v2/CMakeLists.txt`
-4. Re-run the bridge generator -- it will drop the stub for any function it finds implemented in your new file:
-   ```bash
-   cd capigen && just stubs
-   ```
-5. Rebuild and test
+1. Create a new `.cpp` file in `src/main/capi_v2/` (e.g., `option-v2.cpp`).
+2. Include `capi_v2_internal.hpp` and write the implementation.
+3. Add the file to `src/main/capi_v2/CMakeLists.txt`.
+4. Re-run `./scripts/capi_v2_regen.sh` — the bridge generator will drop the stub for any function it finds implemented in your new file.
+5. Rebuild and test.
 
-Example implementation (`src/main/capi_v2/database-v2.cpp`):
+Example implementation (excerpt from `src/main/capi_v2/option-v2.cpp`):
 
 ```cpp
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_ctx_ptr context, const char *path,
-                                     duckdb_v2_database_ptr *out_database) {
-    auto wrapper = new duckdb::DatabaseWrapperV2();
-    try {
-        wrapper->database = duckdb::make_shared_ptr<duckdb::DuckDB>(path);
-    } catch (...) {
-        delete wrapper;
-        return DUCKDB_V2_API_ERROR;
+DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setting,
+                                             duckdb_v2_option_ptr *out_option,
+                                             duckdb_v2_error_info_ptr *err) {
+    if (!name || !setting || !out_option) {
+        return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
+                                    "null argument to duckdb_v2_option_create");
     }
-    *out_database = reinterpret_cast<duckdb_v2_database_ptr>(wrapper);
-    return DUCKDB_V2_ERROR_NONE;
+    auto *wrapper = new duckdb::OptionWrapperV2();
+    wrapper->name = name;
+    wrapper->setting = setting;
+    *out_option = static_cast<duckdb_v2_option_ptr>(wrapper);
+    return duckdb::ClearErrorInfo(err);
 }
 ```
 
@@ -219,5 +224,5 @@ make debug
 ## CI
 
 The `.github/workflows/v2-capi.yml` workflow runs on every push and PR. It runs two jobs:
-- `format-check` — `pre-commit run --all-files --hook-stage manual`, which invokes `scripts/format.py --all --check`.
+- `format-check` — provisions the root venv with `uv sync --group dev`, then runs `pre-commit run --all-files` (default stages: regen, ty, ruff, check-yaml, yamlfmt) followed by `pre-commit run --all-files --hook-stage manual` (full-tree `scripts/format.py --all --check`). Finally `git diff --exit-code` fails the job if the committed header or stubs are out of sync with `api_spec/`.
 - `build-and-test` — `make release`, then `./build/release/test/unittest "[capi_v2]"`. Uses ninja + ccache (via the `./.github/actions/ccache-action` composite action) for build speed.

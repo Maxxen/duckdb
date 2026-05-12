@@ -13,7 +13,17 @@ dependencies = [
 capigen = "capigen.__main__:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "pre-commit>=4.0"]
+dev = [
+    "pytest>=8.0",
+    "pre-commit>=4.0",
+    # scripts/format.py runtime: pinned to match .pre-commit-config.yaml so the
+    # formatter behaves identically inside and outside the commit hook.
+    "cmake-format",
+    "black==24.*",
+    "cxxheaderparser",
+    "pcpp",
+    "clang_format==11.0.1",
+]
 
 [build-system]
 requires = ["hatchling"]

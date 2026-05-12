@@ -9,12 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: pre-commit/action@v3.0.1
-        with:
-          extra_args: --all-files --hook-stage manual
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Provision dev environment
+        run: uv sync --group dev
+      - name: Run pre-commit (default stages)
+        run: uv run pre-commit run --all-files
+      - name: Run pre-commit (manual stage)
+        run: uv run pre-commit run --all-files --hook-stage manual
+      - name: Verify generated header and stubs match spec
+        run: git diff --exit-code
 
   build-and-test:
     runs-on: ubuntu-latest

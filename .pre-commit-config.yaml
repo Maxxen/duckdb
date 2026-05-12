@@ -1,6 +1,15 @@
 repos:
   - repo: local
     hooks:
+      # Regenerate the V2 C header and bridge stubs whenever an api_spec
+      # YAML is staged. The duckdb-format hook below then formats whatever
+      # the regen produced.
+      - id: capi-v2-regen
+        name: capi v2 regen (header + stubs)
+        language: system
+        entry: scripts/capi_v2_regen.sh
+        files: ^api_spec/.*\.ya?ml$
+        pass_filenames: false
       - id: duckdb-format
         name: duckdb format (staged changes)
         language: python
