@@ -3,16 +3,6 @@
 
 #include <cstring>
 
-TEST_CASE("V2: smoke test - open and close database", "[capi_v2]") {
-	duckdb_v2_database_ptr db = nullptr;
-	duckdb_v2_error_info_ptr err = nullptr;
-	auto rc = duckdb_v2_open(nullptr, &db, &err);
-	// Stubs return DUCKDB_V2_API_ERROR (not yet implemented)
-	REQUIRE(rc == DUCKDB_V2_API_ERROR);
-	// Stubs do not allocate an info; nothing to destroy.
-	REQUIRE(err == nullptr);
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers that bridge implementations use to honor the error-info
 // contract:
