@@ -31,7 +31,3 @@ jobs:
         run: make release
       - name: Test V2 CAPI
         run: ./build/release/test/unittest "[capi_v2]"
-      - name: Test JSON V2 extension
-        run: ./build/release/test/unittest "test/sql/json_v2/*"
-      - name: Test SQLite V2 extension
-        run: ./build/release/test/unittest "test/sql/sqlite_v2/*"

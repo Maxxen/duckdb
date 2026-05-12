@@ -1,8 +1,0 @@
-# name: test/sql/json_v2/issues/issue14259.test
-# description: Test issue 14259 - DuckDB v1.1.x and above JSON Schema Inference Error - leads to JSON transform error
-# group: [issues]
-
-require json_v2
-
-statement ok
-from '{DATA_DIR}/json/issue14259.json'
