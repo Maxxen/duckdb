@@ -16,7 +16,6 @@ repos:
         language_version: python3.12
         entry: python3 scripts/format.py HEAD --fix --noconfirm --silent
         additional_dependencies:
-          - cmake-format
           - black==24.*
           - cxxheaderparser
           - pcpp
@@ -25,7 +24,9 @@ repos:
         always_run: true
       - id: ty
         name: ty (type check)
-        entry: uvx ty check
+        # Scope to the capigen package we own; the rest of the repo's Python
+        # is upstream duckdb code that has never been type-checked.
+        entry: uvx ty check src/capigen
         language: system
         pass_filenames: false
         types: [python]
@@ -38,7 +39,6 @@ repos:
         language: python
         entry: python3 scripts/format.py --all --check --silent
         additional_dependencies:
-          - cmake-format
           - black==24.*
           - cxxheaderparser
           - pcpp
@@ -46,14 +46,32 @@ repos:
         pass_filenames: false
         always_run: true
 
+  # Fork-only Python (capigen subtree + scaffolded python_client) lives outside
+  # scripts/format.py's reach and uses ruff for both linting and formatting.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.11
     hooks:
       - id: ruff
         args: [--fix]
-        files: ^python_client/
+        files: ^(python_client|src/capigen)/
       - id: ruff-format
-        files: ^python_client/
+        files: ^(python_client|src/capigen)/
+
+  # cmakelang (cmake-format) is unmaintained and crashes on Python 3.14's
+  # stricter `re.Scanner`. pre-commit isolates the hook in its own venv with
+  # an older Python (typically 3.11/3.12), so it runs fine in this context
+  # regardless of the user's terminal Python.
+  - repo: https://github.com/cheshirekow/cmake-format-precommit
+    rev: v0.6.13
+    hooks:
+      - id: cmake-format
+        # Mirror the historical reach of scripts/format.py: only walk
+        # CMakeLists.txt under upstream's `formatted_directories`, skipping
+        # the same vendored subdirs upstream's `ignored_directories` lists.
+        # Keeps third_party/, .github/, root CMakeLists.txt, and similar
+        # untouched (upstream never formatted them).
+        files: ^(src|benchmark|test|tools|examples|extension|scripts)/.*CMakeLists\.txt$
+        exclude: ^(extension/external/|extension/tpcds/dsdgen/|extension/jemalloc/jemalloc/|extension/icu/third_party/|tools/rpkg/src/duckdb/|tools/rpkg/inst/include/cpp11/|tools/nodejs/src/duckdb/|.+/dbgen/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

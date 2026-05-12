@@ -18,7 +18,9 @@ dev = [
     "pre-commit>=4.0",
     # scripts/format.py runtime: pinned to match .pre-commit-config.yaml so the
     # formatter behaves identically inside and outside the commit hook.
-    "cmake-format",
+    # cmake-format is intentionally NOT here — it runs only via its own
+    # pre-commit hook (cheshirekow/cmake-format-precommit) in an isolated
+    # venv, so we avoid Python 3.14's re.Scanner crash without a shim.
     "black==24.*",
     "cxxheaderparser",
     "pcpp",

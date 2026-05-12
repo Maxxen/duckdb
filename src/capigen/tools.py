@@ -53,9 +53,7 @@ def topo_sort_handles(modules: list[dict]) -> list[str]:
     while remaining:
         ready = sorted(h for h, d in remaining.items() if not d)
         if not ready:
-            raise ValueError(
-                f"Cycle detected among handles: {sorted(remaining)}"
-            )
+            raise ValueError(f"Cycle detected among handles: {sorted(remaining)}")
         for h in ready:
             result.append(h)
             del remaining[h]

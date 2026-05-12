@@ -46,13 +46,6 @@ except Exception as e:
     exit(-1)
 
 cpp_format_command = 'clang-format --sort-includes=0 -style=file'
-cmake_format_command = 'cmake-format'
-
-try:
-    subprocess.check_output(('cmake-format', '--version'), text=True)
-except Exception as e:
-    print('you need to run `pip install cmake-format`', e)
-    exit(-1)
 
 extensions = [
     '.cpp',
@@ -62,7 +55,6 @@ extensions = [
     '.h',
     '.cc',
     '.hh',
-    'CMakeLists.txt',
     '.test',
     '.test_slow',
     '.test_coverage',
@@ -124,6 +116,9 @@ ignored_directories = [
     os.path.join('extension', 'jemalloc', 'jemalloc'),
     os.path.join('extension', 'icu', 'third_party'),
     os.path.join('tools', 'nodejs', 'src', 'duckdb'),
+    # Fork-only: capigen is a Python package (subtree from duckdblabs/capiv2)
+    # with its own ruff-format / ruff-check rules wired up via pre-commit.
+    os.path.join('src', 'capigen'),
 ]
 format_all = False
 check_only = True
@@ -279,7 +274,6 @@ format_commands = {
     '.h': cpp_format_command,
     '.hh': cpp_format_command,
     '.cc': cpp_format_command,
-    '.txt': cmake_format_command,
     '.py': 'black --quiet - --skip-string-normalization --line-length 120 --stdin-filename',
     '.java': cpp_format_command,
 }
@@ -429,11 +423,6 @@ def format_directory(directory):
 
 files = []
 if format_all:
-    try:
-        os.system(cmake_format_command.replace("${FILE}", "CMakeLists.txt"))
-    except:
-        pass
-
     for direct in formatted_directories:
         files += format_directory(direct)
 

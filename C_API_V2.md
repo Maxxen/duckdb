@@ -47,7 +47,7 @@ Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (th
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then provision the root virtual environment, which installs `capigen` (editable) and the formatter's runtime (clang-format, black, cmake-format, …) pinned to the versions CI uses:
+Then provision the root virtual environment, which installs `capigen` (editable) and the formatter's runtime (clang-format, black, …) pinned to the versions CI uses. `cmake-format` is deliberately not in the root venv — it runs only inside its pre-commit hook's isolated environment (see below):
 
 ```bash
 uv sync --group dev
@@ -57,10 +57,11 @@ You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, a
 
 ## Pre-commit hook
 
-`.pre-commit-config.yaml` configures three local hooks:
+`.pre-commit-config.yaml` configures four hooks that own different parts of the formatting pipeline:
 
 - **`capi-v2-regen`** — fires when any `api_spec/**/*.yaml` is staged. Calls `scripts/capi_v2_regen.sh` to regenerate the header and stubs.
-- **`duckdb-format`** — runs `scripts/format.py` on staged changes (and on the files the regen hook just produced).
+- **`duckdb-format`** — runs `scripts/format.py` on staged C/C++/Python/test changes (and on the files the regen hook just produced).
+- **`cmake-format`** — from `cheshirekow/cmake-format-precommit`. Formats `CMakeLists.txt` and `*.cmake` files. pre-commit installs it into its own isolated venv (typically Python 3.11/3.12), so it works even when your terminal runs Python 3.14 where the unmaintained `cmakelang` would otherwise crash.
 - **`ty`** — type-checks Python.
 
 One-time setup per clone (alongside `uv sync --group dev`):
