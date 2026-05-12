@@ -25,6 +25,10 @@ dev = [
     "cxxheaderparser",
     "pcpp",
     "clang_format==11.0.1",
+    # typos-cli (PyPI package name `typos`) ships a prebuilt binary; format.py
+    # invokes it as a subprocess and aborts when missing. Needed on Linux CI
+    # where there's no `brew install typos-cli` fallback.
+    "typos",
 ]
 
 [build-system]

@@ -20,6 +20,7 @@ repos:
           - cxxheaderparser
           - pcpp
           - clang_format==11.0.1
+          - typos
         pass_filenames: false
         always_run: true
       - id: ty
@@ -43,6 +44,7 @@ repos:
           - cxxheaderparser
           - pcpp
           - clang_format==11.0.1
+          - typos
         pass_filenames: false
         always_run: true
 
