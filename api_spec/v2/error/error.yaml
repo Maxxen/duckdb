@@ -20,7 +20,7 @@ functions:
         type: char
         indirection: 2
         const: true
-        kind: OUT
+        kind: OUT_BORROW
         description: "Borrowed pointer to the null-terminated message. Owned by the library; must not be freed."
       err:
         type: duckdb_v2_error_info
@@ -28,7 +28,7 @@ functions:
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_destroy_error_info:
+  duckdb_v2_error_info_destroy:
     summary: "Destroys an error info handle and frees its resources."
     description: |
       Null-safe: calling with a null handle or a null pointer-to-handle is a
@@ -45,5 +45,5 @@ functions:
         type: duckdb_v2_error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy."
     return_type: DUCKDB_V2_API_CALL

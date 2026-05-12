@@ -4,6 +4,7 @@ repos:
       - id: duckdb-format
         name: duckdb format (staged changes)
         language: python
+        language_version: python3.12
         entry: python3 scripts/format.py HEAD --fix --noconfirm --silent
         additional_dependencies:
           - cmake-format

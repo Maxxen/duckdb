@@ -24,6 +24,7 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef strdup
@@ -39,6 +40,20 @@ struct DatabaseWrapperV2 {
 
 struct ConnectionWrapperV2 {
 	shared_ptr<Connection> connection;
+};
+
+// Backing struct for the opaque duckdb_v2_option_ptr handle. Owns all
+// strings; borrowed pointers returned by accessors are valid until the
+// option is destroyed. Created via duckdb_v2_option_create with just
+// (name, setting); the metadata fields are populated by the eventual
+// database/connection get path (added in a follow-up).
+struct OptionWrapperV2 {
+	std::string name;
+	std::string setting;
+	std::string default_setting;
+	std::string description;
+	DUCKDB_V2_OPTION_TARGET_SCOPE target_scope = DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN;
+	std::vector<std::string> aliases;
 };
 
 struct PreparedStatementWrapperV2 {
@@ -58,7 +73,7 @@ struct ErrorInfoV2 {
 // Destroy a previously-allocated error info (if any) and null the slot.
 inline void DestroyErrorInfoSlot(duckdb_v2_error_info_ptr *err) {
 	if (err && *err) {
-		delete reinterpret_cast<ErrorInfoV2 *>(*err);
+		delete static_cast<ErrorInfoV2 *>(*err);
 		*err = nullptr;
 	}
 }
@@ -72,7 +87,7 @@ inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V
 		DestroyErrorInfoSlot(err);
 		auto *info = new ErrorInfoV2();
 		info->message = msg ? msg : "";
-		*err = reinterpret_cast<duckdb_v2_error_info_ptr>(info);
+		*err = static_cast<duckdb_v2_error_info_ptr>(info);
 	}
 	return code;
 }

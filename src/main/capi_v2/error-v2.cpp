@@ -6,12 +6,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_message(duckdb_v2_error_info_ptr i
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
 		                            "null argument to duckdb_v2_error_info_get_message");
 	}
-	auto *ei = reinterpret_cast<duckdb::ErrorInfoV2 *>(info);
+	auto *ei = static_cast<duckdb::ErrorInfoV2 *>(info);
 	*out_message = ei->message.c_str();
 	return duckdb::ClearErrorInfo(err);
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_error_info(duckdb_v2_error_info_ptr *info, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_ptr *info, duckdb_v2_error_info_ptr *err) {
 	// Null-safe on both parameters. Destroying a freshly-zeroed or
 	// already-destroyed info is a no-op.
 	duckdb::DestroyErrorInfoSlot(info);

@@ -78,7 +78,6 @@ typedef uint64_t idx_t;
 /* --- Types for common --- */
 typedef void *duckdb_v2_database_ptr;
 typedef void *duckdb_v2_connection_ptr;
-typedef void *duckdb_v2_config_ptr;
 typedef void *duckdb_v2_instance_cache_ptr;
 typedef void *duckdb_v2_client_context_ptr;
 typedef void *duckdb_v2_prepared_statement_ptr;
@@ -87,6 +86,7 @@ typedef void *duckdb_v2_data_chunk_ptr;
 typedef void *duckdb_v2_vector_ptr;
 typedef void *duckdb_v2_logical_type_ptr;
 typedef void *duckdb_v2_value_ptr;
+typedef void *duckdb_v2_option_ptr;
 typedef void *duckdb_v2_error_info_ptr;
 typedef uint32_t duckdb_v2_error_kind_t;
 typedef uint32_t duckdb_v2_error_code_t;
@@ -145,6 +145,26 @@ typedef enum DUCKDB_V2_TYPE {
 /* --- Types for configuration --- */
 
 /* --- Enums for configuration --- */
+typedef enum DUCKDB_V2_OPTION_TARGET_SCOPE {
+	/* Target scope is not known. */
+	DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN = 0,
+	/* May only be written at GLOBAL (database) scope. */
+	DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_ONLY = 1,
+	/* May only be written at LOCAL (session) scope. */
+	DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_ONLY = 2,
+	/* May be written at either scope; defaults to GLOBAL when unspecified. */
+	DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_DEFAULT = 3,
+	/* May be written at either scope; defaults to LOCAL when unspecified. */
+	DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_DEFAULT = 4,
+} DUCKDB_V2_OPTION_TARGET_SCOPE;
+typedef enum DUCKDB_V2_SETTING_SCOPE {
+	/* Resolve from the option's target scope. */
+	DUCKDB_V2_SETTING_SCOPE_AUTOMATIC = 0,
+	/* Write through to the database (visible to all connections). */
+	DUCKDB_V2_SETTING_SCOPE_GLOBAL = 1,
+	/* Write to the connection's session only. */
+	DUCKDB_V2_SETTING_SCOPE_LOCAL = 2,
+} DUCKDB_V2_SETTING_SCOPE;
 
 /* --- Structs for configuration --- */
 
@@ -156,52 +176,130 @@ typedef enum DUCKDB_V2_TYPE {
 
 /* --- Functions for configuration --- */
 /*!
- * Initializes an empty configuration object.
- * @param out_config The result configuration object.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * duckdb_v2_destroy_error_info.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_config(duckdb_v2_config_ptr *out_config,
+* Creates an option handle carrying a name and a setting.
+* Allocates an option with the given name and setting copied in. The
+remaining fields (description, default setting, target scope,
+aliases) stay empty / UNKNOWN until the option is resolved through
+a database/connection get (added in a follow-up). Caller destroys
+via duckdb_v2_option_destroy.
+
+* @param name Null-terminated option name.
+* @param setting Null-terminated setting (string-encoded value).
+* @param out_option Receives the new option handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setting,
+                                                          duckdb_v2_option_ptr *out_option,
                                                           duckdb_v2_error_info_ptr *err);
 /*!
- * Returns the total number of configuration options available.
- * @param out_count The number of config options available.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * duckdb_v2_destroy_error_info.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_config_count(idx_t *out_count, duckdb_v2_error_info_ptr *err);
+* Destroys an option handle.
+* Frees the handle and all owned strings. On success the slot is set
+to null. Safe to call on an already-null slot.
+
+* @param option The option handle to destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_ptr *option, duckdb_v2_error_info_ptr *err);
 /*!
- * Obtains the name and description of a specific configuration option.
- * @param index The index of the configuration option.
- * @param out_name The name of the configuration flag.
- * @param out_description A description of the configuration flag.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * duckdb_v2_destroy_error_info.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_config_flag(idx_t index, char **out_name, char **out_description,
+* Borrows the option's canonical name.
+* For options returned by a database/connection get (landing in a
+follow-up) where the user passed an alias, the canonical name is
+returned; the alias is reachable via duckdb_v2_option_get_alias.
+
+* @param option The option.
+* @param out_name Borrowed pointer to the option name. Valid until the option is destroyed.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_name(duckdb_v2_option_ptr option, const char **out_name,
                                                             duckdb_v2_error_info_ptr *err);
 /*!
- * Sets the specified option for the specified configuration.
- * @param config The configuration object to set the option on.
- * @param name The name of the configuration flag to set.
- * @param option The value to set the configuration flag to.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * duckdb_v2_destroy_error_info.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_set_config(duckdb_v2_config_ptr config, const char *name,
-                                                       const char *option, duckdb_v2_error_info_ptr *err);
+* Borrows the option's current setting (string-encoded value).
+* For options created via duckdb_v2_option_create this is the
+caller-supplied setting verbatim. For options resolved through a
+database/connection get this is the effective setting at the
+source's scope.
+
+* @param option The option.
+* @param out_setting Borrowed pointer to the setting. Valid until the option is destroyed.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_setting(duckdb_v2_option_ptr option, const char **out_setting,
+                                                               duckdb_v2_error_info_ptr *err);
 /*!
- * Destroys the specified configuration object.
- * @param config The configuration object to destroy.
+* Borrows the option's static default setting.
+* Empty string for options created via duckdb_v2_option_create until
+the option has been resolved through a database/connection get.
+
+* @param option The option.
+* @param out_default_setting Borrowed pointer to the default setting. Valid until the option is destroyed.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_default_setting(duckdb_v2_option_ptr option,
+                                                                       const char **out_default_setting,
+                                                                       duckdb_v2_error_info_ptr *err);
+/*!
+ * Borrows the option's human-readable description.
+ * Empty string for options created via duckdb_v2_option_create until the option has been resolved through a
+ * database/connection get.
+ * @param option The option.
+ * @param out_description Borrowed pointer to the description. Valid until the option is destroyed.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
  * duckdb_v2_destroy_error_info.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_config(duckdb_v2_config_ptr *config, duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_description(duckdb_v2_option_ptr option,
+                                                                   const char **out_description,
+                                                                   duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the option's target scope.
+* DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN for options created via
+duckdb_v2_option_create until the option has been resolved through
+a database/connection get, and for options whose DuckDB declaration
+carries no explicit SettingScopeTarget.
+
+* @param option The option.
+* @param out_target_scope Receives the target scope.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_target_scope(duckdb_v2_option_ptr option,
+                                                                    DUCKDB_V2_OPTION_TARGET_SCOPE *out_target_scope,
+                                                                    duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the number of aliases registered for this option.
+ * Zero for options created via duckdb_v2_option_create until the option has been resolved through a database/connection
+ * get.
+ * @param option The option.
+ * @param out_count Receives the alias count.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_destroy_error_info.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_option_ptr option, idx_t *out_count,
+                                                                   duckdb_v2_error_info_ptr *err);
+/*!
+ * Borrows the alias name at the given index.
+ * Out-of-range index returns DUCKDB_V2_ERROR_INVALID_INPUT.
+ * @param option The option.
+ * @param index The alias index, in [0, alias_count).
+ * @param out_alias Borrowed pointer to the alias. Valid until the option is destroyed.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_destroy_error_info.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_ptr option, idx_t index,
+                                                             const char **out_alias, duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: data_chunk
@@ -280,18 +378,6 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_c
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open(const char *path, duckdb_v2_database_ptr *out_database,
                                                  duckdb_v2_error_info_ptr *err);
 /*!
- * Extended version of duckdb_open with configuration support.
- * @param path Path to the database file on disk. Both nullptr and :memory: open an in-memory database.
- * @param config Optional configuration used to start up the database.
- * @param out_database The result database object.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * duckdb_v2_destroy_error_info.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open_ext(const char *path, duckdb_v2_config_ptr config,
-                                                     duckdb_v2_database_ptr *out_database,
-                                                     duckdb_v2_error_info_ptr *err);
-/*!
  * Closes the specified database and de-allocates all memory.
  * @param database The database object to shut down.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
@@ -359,20 +445,6 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_client_context(duckdb_v2_cli
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_instance_cache(duckdb_v2_instance_cache_ptr *out_instance_cache,
                                                                   duckdb_v2_error_info_ptr *err);
 /*!
- * Creates or retrieves a database instance from the cache.
- * @param instance_cache The instance cache.
- * @param path Path to the database file on disk.
- * @param config Optional configuration used to create the database.
- * @param out_database The resulting cached database.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * duckdb_v2_destroy_error_info.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_get_or_create_from_cache(duckdb_v2_instance_cache_ptr instance_cache,
-                                                                     const char *path, duckdb_v2_config_ptr config,
-                                                                     duckdb_v2_database_ptr *out_database,
-                                                                     duckdb_v2_error_info_ptr *err);
-/*!
  * Destroys an existing database instance cache.
  * @param instance_cache The instance cache to destroy.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
@@ -431,10 +503,10 @@ nullptr. Safe to call on any info returned by the library.
 
 * @param info The error info handle to destroy. Set to nullptr on return.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
-duckdb_v2_destroy_error_info.
+duckdb_v2_error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_error_info(duckdb_v2_error_info_ptr *info,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_ptr *info,
                                                                duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================

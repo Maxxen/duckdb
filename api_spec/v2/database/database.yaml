@@ -22,30 +22,6 @@ functions:
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_open_ext:
-    summary: "Extended version of duckdb_open with configuration support."
-    role: constructor
-    belongs_to: duckdb_v2_database
-    parameters:
-      path:
-        type: char
-        indirection: 1
-        const: true
-        description: "Path to the database file on disk. Both nullptr and :memory: open an in-memory database."
-      config:
-        type: duckdb_v2_config
-        description: "Optional configuration used to start up the database."
-      out_database:
-        type: duckdb_v2_database
-        indirection: 1
-        kind: OUT
-        description: "The result database object."
-      err:
-        type: duckdb_v2_error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
-    return_type: DUCKDB_V2_API_CALL
   duckdb_v2_close:
     summary: "Closes the specified database and de-allocates all memory."
     role: destructor
@@ -158,33 +134,6 @@ functions:
         indirection: 1
         kind: OUT
         description: "The database instance cache."
-      err:
-        type: duckdb_v2_error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_get_or_create_from_cache:
-    summary: "Creates or retrieves a database instance from the cache."
-    role: method
-    belongs_to: duckdb_v2_instance_cache
-    parameters:
-      instance_cache:
-        type: duckdb_v2_instance_cache
-        description: "The instance cache."
-      path:
-        type: char
-        indirection: 1
-        const: true
-        description: "Path to the database file on disk."
-      config:
-        type: duckdb_v2_config
-        description: "Optional configuration used to create the database."
-      out_database:
-        type: duckdb_v2_database
-        indirection: 1
-        kind: OUT
-        description: "The resulting cached database."
       err:
         type: duckdb_v2_error_info
         indirection: 1

@@ -1,97 +1,258 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: configuration
+# The duckdb_v2_option handle is an opaque carrier of an option's name,
+# current setting, and (when populated by a database/connection get)
+# description, default setting, target scope, and aliases. Database and
+# connection set/get against this handle land in a follow-up.
+#
+# Terminology used in this module:
+#   * option  — a named, registered config item (e.g. "memory_limit").
+#   * setting — the string-encoded value of an option at some scope.
+#   * config  — a collection of option settings (database GLOBAL or
+#               connection LOCAL).
+enums:
+  DUCKDB_V2_OPTION_TARGET_SCOPE:
+    description: |
+      The scope target of an option: where DuckDB permits its setting to
+      be written. Mirrors DuckDB's SettingScopeTarget. UNKNOWN is returned
+      for options whose declaration carries no explicit scope target
+      (legacy DUCKDB_GLOBAL / DUCKDB_LOCAL / DUCKDB_GLOBAL_LOCAL macros),
+      and for options created via duckdb_v2_option_create that have not
+      yet been resolved through a database/connection get.
+    values:
+      DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN:
+        value: 0
+        description: "Target scope is not known."
+      DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_ONLY:
+        description: "May only be written at GLOBAL (database) scope."
+      DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_ONLY:
+        description: "May only be written at LOCAL (session) scope."
+      DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_DEFAULT:
+        description: "May be written at either scope; defaults to GLOBAL when unspecified."
+      DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_DEFAULT:
+        description: "May be written at either scope; defaults to LOCAL when unspecified."
+  DUCKDB_V2_SETTING_SCOPE:
+    description: |
+      Destination scope for connection-side option writes (used by the
+      connection_option_set call landing in step 2). AUTOMATIC defers to
+      the option's target scope (mirrors SQL `SET name = value`). GLOBAL
+      writes through to the database, visible to all connections (mirrors
+      `SET GLOBAL`). LOCAL writes to the connection's session only
+      (mirrors `SET LOCAL` / `SET SESSION`).
+    values:
+      DUCKDB_V2_SETTING_SCOPE_AUTOMATIC:
+        value: 0
+        description: "Resolve from the option's target scope."
+      DUCKDB_V2_SETTING_SCOPE_GLOBAL:
+        description: "Write through to the database (visible to all connections)."
+      DUCKDB_V2_SETTING_SCOPE_LOCAL:
+        description: "Write to the connection's session only."
 functions:
-  duckdb_v2_create_config:
-    summary: "Initializes an empty configuration object."
+  duckdb_v2_option_create:
+    summary: "Creates an option handle carrying a name and a setting."
+    description: |
+      Allocates an option with the given name and setting copied in. The
+      remaining fields (description, default setting, target scope,
+      aliases) stay empty / UNKNOWN until the option is resolved through
+      a database/connection get (added in a follow-up). Caller destroys
+      via duckdb_v2_option_destroy.
     role: constructor
-    belongs_to: duckdb_v2_config
+    belongs_to: duckdb_v2_option
     parameters:
-      out_config:
-        type: duckdb_v2_config
-        indirection: 1
-        kind: OUT
-        description: "The result configuration object."
-      err:
-        type: duckdb_v2_error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_config_count:
-    summary: "Returns the total number of configuration options available."
-    role: getter
-    belongs_to: duckdb_v2_config
-    parameters:
-      out_count:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: "The number of config options available."
-      err:
-        type: duckdb_v2_error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_get_config_flag:
-    summary: "Obtains the name and description of a specific configuration option."
-    role: getter
-    belongs_to: duckdb_v2_config
-    parameters:
-      index:
-        type: idx
-        description: "The index of the configuration option."
-      out_name:
-        type: char
-        indirection: 2
-        const: false
-        kind: OUT
-        description: "The name of the configuration flag."
-      out_description:
-        type: char
-        indirection: 2
-        const: false
-        kind: OUT
-        description: "A description of the configuration flag."
-      err:
-        type: duckdb_v2_error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_set_config:
-    summary: "Sets the specified option for the specified configuration."
-    role: setter
-    belongs_to: duckdb_v2_config
-    parameters:
-      config:
-        type: duckdb_v2_config
-        description: "The configuration object to set the option on."
       name:
         type: char
         indirection: 1
         const: true
-        description: "The name of the configuration flag to set."
-      option:
+        description: "Null-terminated option name."
+      setting:
         type: char
         indirection: 1
         const: true
-        description: "The value to set the configuration flag to."
+        description: "Null-terminated setting (string-encoded value)."
+      out_option:
+        type: duckdb_v2_option
+        indirection: 1
+        kind: OUT
+        description: "Receives the new option handle."
       err:
         type: duckdb_v2_error_info
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_destroy_config:
-    summary: "Destroys the specified configuration object."
+  duckdb_v2_option_destroy:
+    summary: "Destroys an option handle."
+    description: |
+      Frees the handle and all owned strings. On success the slot is set
+      to null. Safe to call on an already-null slot.
     role: destructor
-    belongs_to: duckdb_v2_config
+    belongs_to: duckdb_v2_option
     parameters:
-      config:
-        type: duckdb_v2_config
+      option:
+        type: duckdb_v2_option
         indirection: 1
-        description: "The configuration object to destroy."
+        description: "The option handle to destroy."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_option_get_name:
+    summary: "Borrows the option's canonical name."
+    description: |
+      For options returned by a database/connection get (landing in a
+      follow-up) where the user passed an alias, the canonical name is
+      returned; the alias is reachable via duckdb_v2_option_get_alias.
+    role: getter
+    belongs_to: duckdb_v2_option
+    parameters:
+      option:
+        type: duckdb_v2_option
+        description: "The option."
+      out_name:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the option name. Valid until the option is destroyed."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_option_get_setting:
+    summary: "Borrows the option's current setting (string-encoded value)."
+    description: |
+      For options created via duckdb_v2_option_create this is the
+      caller-supplied setting verbatim. For options resolved through a
+      database/connection get this is the effective setting at the
+      source's scope.
+    role: getter
+    belongs_to: duckdb_v2_option
+    parameters:
+      option:
+        type: duckdb_v2_option
+        description: "The option."
+      out_setting:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the setting. Valid until the option is destroyed."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_option_get_default_setting:
+    summary: "Borrows the option's static default setting."
+    description: |
+      Empty string for options created via duckdb_v2_option_create until
+      the option has been resolved through a database/connection get.
+    role: getter
+    belongs_to: duckdb_v2_option
+    parameters:
+      option:
+        type: duckdb_v2_option
+        description: "The option."
+      out_default_setting:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the default setting. Valid until the option is destroyed."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_option_get_description:
+    summary: "Borrows the option's human-readable description."
+    description: "Empty string for options created via duckdb_v2_option_create until the option has been resolved through a database/connection get."
+    role: getter
+    belongs_to: duckdb_v2_option
+    parameters:
+      option:
+        type: duckdb_v2_option
+        description: "The option."
+      out_description:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the description. Valid until the option is destroyed."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_option_get_target_scope:
+    summary: "Returns the option's target scope."
+    description: |
+      DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN for options created via
+      duckdb_v2_option_create until the option has been resolved through
+      a database/connection get, and for options whose DuckDB declaration
+      carries no explicit SettingScopeTarget.
+    role: getter
+    belongs_to: duckdb_v2_option
+    parameters:
+      option:
+        type: duckdb_v2_option
+        description: "The option."
+      out_target_scope:
+        type: DUCKDB_V2_OPTION_TARGET_SCOPE
+        indirection: 1
+        kind: OUT
+        description: "Receives the target scope."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_option_get_alias_count:
+    summary: "Returns the number of aliases registered for this option."
+    description: "Zero for options created via duckdb_v2_option_create until the option has been resolved through a database/connection get."
+    role: getter
+    belongs_to: duckdb_v2_option
+    parameters:
+      option:
+        type: duckdb_v2_option
+        description: "The option."
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: "Receives the alias count."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_option_get_alias:
+    summary: "Borrows the alias name at the given index."
+    description: "Out-of-range index returns DUCKDB_V2_ERROR_INVALID_INPUT."
+    role: getter
+    belongs_to: duckdb_v2_option
+    parameters:
+      option:
+        type: duckdb_v2_option
+        description: "The option."
+      index:
+        type: idx
+        description: "The alias index, in [0, alias_count)."
+      out_alias:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the alias. Valid until the option is destroyed."
       err:
         type: duckdb_v2_error_info
         indirection: 1

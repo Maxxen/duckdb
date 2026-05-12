@@ -3,28 +3,6 @@
 
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_create_config(duckdb_v2_config_ptr *out_config, duckdb_v2_error_info_ptr *err) {
-	return DUCKDB_V2_API_ERROR; // Not yet implemented
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_config_count(idx_t *out_count, duckdb_v2_error_info_ptr *err) {
-	return DUCKDB_V2_API_ERROR; // Not yet implemented
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_get_config_flag(idx_t index, char **out_name, char **out_description,
-                                               duckdb_v2_error_info_ptr *err) {
-	return DUCKDB_V2_API_ERROR; // Not yet implemented
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_set_config(duckdb_v2_config_ptr config, const char *name, const char *option,
-                                          duckdb_v2_error_info_ptr *err) {
-	return DUCKDB_V2_API_ERROR; // Not yet implemented
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_destroy_config(duckdb_v2_config_ptr *config, duckdb_v2_error_info_ptr *err) {
-	return DUCKDB_V2_API_ERROR; // Not yet implemented
-}
-
 DUCKDB_V2_API_CALL_t duckdb_v2_destroy_data_chunk(duckdb_v2_data_chunk_ptr *chunk, duckdb_v2_error_info_ptr *err) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
@@ -41,11 +19,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_ptr chun
 
 DUCKDB_V2_API_CALL_t duckdb_v2_open(const char *path, duckdb_v2_database_ptr *out_database,
                                     duckdb_v2_error_info_ptr *err) {
-	return DUCKDB_V2_API_ERROR; // Not yet implemented
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_open_ext(const char *path, duckdb_v2_config_ptr config,
-                                        duckdb_v2_database_ptr *out_database, duckdb_v2_error_info_ptr *err) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 
@@ -81,13 +54,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_destroy_client_context(duckdb_v2_client_context_p
 
 DUCKDB_V2_API_CALL_t duckdb_v2_create_instance_cache(duckdb_v2_instance_cache_ptr *out_instance_cache,
                                                      duckdb_v2_error_info_ptr *err) {
-	return DUCKDB_V2_API_ERROR; // Not yet implemented
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_get_or_create_from_cache(duckdb_v2_instance_cache_ptr instance_cache, const char *path,
-                                                        duckdb_v2_config_ptr config,
-                                                        duckdb_v2_database_ptr *out_database,
-                                                        duckdb_v2_error_info_ptr *err) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }
 

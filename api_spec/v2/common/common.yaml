@@ -5,8 +5,6 @@ handles:
     description: An opaque handle to a DuckDB database instance
   duckdb_v2_connection:
     description: An opaque handle to a DuckDB connection
-  duckdb_v2_config:
-    description: An opaque handle to a DuckDB configuration object
   duckdb_v2_instance_cache:
     description: An opaque handle to a DuckDB instance cache
   duckdb_v2_client_context:
@@ -23,6 +21,16 @@ handles:
     description: An opaque handle to a logical type
   duckdb_v2_value:
     description: An opaque handle to a boxed value
+  duckdb_v2_option:
+    description: |
+      An opaque, owned handle to a single config option: name + setting,
+      plus optional metadata (description, default setting, target scope,
+      aliases). Created via duckdb_v2_option_create with a name and
+      setting; created by the library with full metadata when returned
+      from a database/connection get. Always destroyed by the caller via
+      duckdb_v2_option_destroy. All accessors return values valid until
+      destroy.
+    cleanup_with: duckdb_v2_option_destroy
   # Error reporting. Every fallible function takes a trailing
   # `duckdb_v2_error_info_ptr *err` out-parameter.
   #
