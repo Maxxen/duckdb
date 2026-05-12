@@ -2,7 +2,7 @@
 
 This repository is a DuckDB fork for developing and testing the V2 C API. The V1 C API remains fully functional and untouched alongside V2.
 
-The V2 API is defined declaratively in YAML specs, from which we generate both the public C header (`duckdb_v2.h`) and stub implementations. Real implementations are written manually and tested against two extension case studies (JSON, SQLite) and a Python client.
+The V2 API is defined declaratively in YAML specs, from which we generate both the public C header (`duckdb_v2.h`) and stub implementations. Real implementations are written manually and exercised through Catch2 tests; a Python client is scaffolded as an upcoming end-to-end validation surface.
 
 All V2 identifiers use a `duckdb_v2_` / `DUCKDB_V2_` prefix, so there are no symbol collisions with V1.
 
@@ -23,12 +23,7 @@ src/main/capi_v2/                V2 bridge implementations (C++ -> C)
   capi_v2_stubs.cpp              Auto-generated stubs for unimplemented functions
 test/api/capi_v2/                V2 Catch2 tests
 
-extension_v2/json/               JSON extension (copy of extension/json, registered as json_v2)
-extension_v2/sqlite/             SQLite extension (from duckdb-sqlite, registered as sqlite_v2)
-test/sql/json_v2/                JSON extension SQL tests
-test/sql/sqlite_v2/              SQLite extension SQL tests
-
-python_client/                   Python client (to be set up)
+python_client/                   Python client (scaffolded)
 ```
 
 ## Getting started
@@ -162,13 +157,11 @@ If you add new stub source files to `src/main/capi_v2/`, add them to `src/main/c
 
 ## Building
 
-The V2 capi and both V2 extensions are compiled into the standard DuckDB build:
+The V2 capi is compiled into the standard DuckDB build:
 
 ```bash
 make debug    # or: make release
 ```
-
-The V2 extensions are registered in `extension/extension_config_local.cmake`, which is checked in (unlike upstream DuckDB where it is gitignored).
 
 ## Implementing stubs and running C API V2 tests
 
@@ -210,36 +203,14 @@ Run the V2 C API tests:
 
 The test file is at `test/api/capi_v2/test_capi_v2.cpp`. Add new test cases there as you implement functions.
 
-## Making changes to extensions and running extension tests
-
-The `json_v2` and `sqlite_v2` extensions are initially identical to their upstream counterparts (using C++ internals). They will be incrementally ported to use the V2 C API.
-
-Extension sources are in `extension_v2/json/` and `extension_v2/sqlite/`. After making changes, rebuild and run tests:
-
-```bash
-# Rebuild
-make debug
-
-# Run JSON V2 extension tests
-./build/debug/test/unittest "test/sql/json_v2/*"
-
-# Run SQLite V2 extension tests
-./build/debug/test/unittest "test/sql/sqlite_v2/*"
-
-# Run a specific test
-./build/debug/test/unittest "test/sql/json_v2/scalar/test_json_extract*"
-```
-
 ## Running everything
 
 ```bash
 # Full build
 make debug
 
-# All V2 tests
+# V2 bridge tests
 ./build/debug/test/unittest "[capi_v2]"
-./build/debug/test/unittest "test/sql/json_v2/*"
-./build/debug/test/unittest "test/sql/sqlite_v2/*"
 
 # Verify V1 is unaffected
 ./build/debug/test/unittest "[capi]"
@@ -247,8 +218,6 @@ make debug
 
 ## CI
 
-The `.github/workflows/v2-capi.yml` workflow runs on every push and PR. It checks:
-- Code formatting (`scripts/format.py`)
-- Generator tests and header freshness
-- Full build with V2 capi and both extensions
-- V2 capi tests, JSON V2 tests, SQLite V2 tests
+The `.github/workflows/v2-capi.yml` workflow runs on every push and PR. It runs two jobs:
+- `format-check` — `pre-commit run --all-files --hook-stage manual`, which invokes `scripts/format.py --all --check`.
+- `build-and-test` — `make release`, then `./build/release/test/unittest "[capi_v2]"`. Uses ninja + ccache (via the `./.github/actions/ccache-action` composite action) for build speed.
