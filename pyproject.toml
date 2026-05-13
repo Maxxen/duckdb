@@ -1,16 +1,14 @@
 [project]
-name = "capigen"
+name = "duckdb-capi-v2-dev"
 version = "0.1.0"
-description = "DuckDB C API v2 header generator"
+description = "Development environment for the DuckDB C API v2 fork"
 requires-python = ">=3.12"
 dependencies = [
-    "jinja2>=3.1.6",
-    "pyyaml>=6.0.3",
-    "jsonschema>=4.23.0",
+    "capigen",
 ]
 
-[project.scripts]
-capigen = "capigen.__main__:main"
+[tool.uv.sources]
+capigen = { path = "capigen", editable = true }
 
 [dependency-groups]
 dev = [
@@ -30,7 +28,3 @@ dev = [
     # where there's no `brew install typos-cli` fallback.
     "typos",
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"

@@ -73,9 +73,7 @@ def test_handle_dependencies_ignores_self(make_module):
                 "summary": "",
                 "role": "destructor",
                 "belongs_to": "duckdb_v2_a",
-                "parameters": {
-                    "a": {"type": "duckdb_v2_a", "indirection": 1}
-                },
+                "parameters": {"a": {"type": "duckdb_v2_a", "indirection": 1}},
                 "return_type": "DUCKDB_V2_API_CALL",
             }
         },

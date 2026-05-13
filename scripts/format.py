@@ -116,9 +116,6 @@ ignored_directories = [
     os.path.join('extension', 'jemalloc', 'jemalloc'),
     os.path.join('extension', 'icu', 'third_party'),
     os.path.join('tools', 'nodejs', 'src', 'duckdb'),
-    # Fork-only: capigen is a Python package (subtree from duckdblabs/capiv2)
-    # with its own ruff-format / ruff-check rules wired up via pre-commit.
-    os.path.join('src', 'capigen'),
 ]
 format_all = False
 check_only = True

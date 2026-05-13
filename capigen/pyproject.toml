@@ -1,0 +1,17 @@
+[project]
+name = "capigen"
+version = "0.1.0"
+description = "DuckDB C API v2 header generator"
+requires-python = ">=3.12"
+dependencies = [
+    "jinja2>=3.1.6",
+    "pyyaml>=6.0.3",
+    "jsonschema>=4.23.0",
+]
+
+[project.scripts]
+capigen = "capigen.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -27,7 +27,7 @@ repos:
         name: ty (type check)
         # Scope to the capigen package we own; the rest of the repo's Python
         # is upstream duckdb code that has never been type-checked.
-        entry: uvx ty check src/capigen
+        entry: uvx ty check capigen/src/capigen
         language: system
         pass_filenames: false
         types: [python]
@@ -55,9 +55,9 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
-        files: ^(python_client|src/capigen)/
+        files: ^(python_client|capigen)/
       - id: ruff-format
-        files: ^(python_client|src/capigen)/
+        files: ^(python_client|capigen)/
 
   # cmakelang (cmake-format) is unmaintained and crashes on Python 3.14's
   # stricter `re.Scanner`. pre-commit isolates the hook in its own venv with

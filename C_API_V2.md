@@ -18,10 +18,11 @@ api_spec/                        API spec (YAML) -- the V2 API definition
     configuration/configuration.yaml  Option handle API
 
 capigen/                         Code generator (vendored via git subtree from duckdblabs/capiv2)
+  pyproject.toml                 capigen's own project metadata; installed editably into the root venv
   src/capigen/                   Generator: c adapter (header), bridge adapter (stubs)
   tests/                         Generator pytest suite
 
-pyproject.toml                   Root Python project; declares the capigen package and dev tooling
+pyproject.toml                   Root dev-environment shell; pulls in capigen as a path source and pins the formatter toolchain
 scripts/capi_v2_regen.sh         Regenerates header + stubs and formats the output
 src/include/duckdb_v2.h          Generated V2 C header (committed)
 src/main/capi_v2/                V2 bridge implementations (C++ -> C)
