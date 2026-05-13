@@ -2,3 +2,7 @@
 // Re-run: cd capiv2 && uv run capigen bridge --scan-dir ../src/main/capi_v2 -o ../src/main/capi_v2/capi_v2_stubs.cpp
 
 #include "capi_v2_internal.hpp"
+
+DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_ptr *err) {
+	return DUCKDB_V2_API_ERROR; // Not yet implemented
+}

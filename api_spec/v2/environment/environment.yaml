@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: environment
+# The environment is the required root for opening databases. Create at
+# program start; destroy at program end. Destroy refuses while any
+# database opened through it is still alive — this is the only handle in
+# V2 with strict refuse-on-destroy semantics, kept as a footgun guard
+# for the program-lifetime root.
+functions:
+  duckdb_v2_create_environment:
+    summary: "Creates the V2 environment. Call once at program start."
+    role: constructor
+    belongs_to: duckdb_v2_environment
+    parameters:
+      out_env:
+        type: duckdb_v2_environment
+        indirection: 1
+        kind: OUT
+        description: "Receives the new environment handle."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_destroy_environment:
+    summary: "Destroys the environment."
+    description: |
+      Refuses with DUCKDB_V2_ERROR_RESOURCE_IN_USE if any database opened
+      through this environment is still alive. Close outstanding
+      databases first, then retry. On success, the environment handle is
+      set to null.
+    role: destructor
+    belongs_to: duckdb_v2_environment
+    parameters:
+      env:
+        type: duckdb_v2_environment
+        indirection: 1
+        description: "The environment."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_environment_database_count:
+    summary: "Returns the number of databases currently open under the environment."
+    description: |
+      Diagnostic accessor for debugging leaked database handles when
+      duckdb_v2_destroy_environment returns DUCKDB_V2_ERROR_RESOURCE_IN_USE.
+      The value is a snapshot; it may change between this call and any
+      subsequent operation.
+    role: getter
+    belongs_to: duckdb_v2_environment
+    parameters:
+      env:
+        type: duckdb_v2_environment
+        description: "The environment."
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: "Receives the number of currently-open databases."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL

@@ -1,0 +1,160 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: connection
+functions:
+  duckdb_v2_connect:
+    summary: "Opens a connection to a database."
+    description: |
+      Each connection carries its own ClientContext and session-scoped
+      settings (LOCAL scope). Multiple connections to the same database
+      share the underlying catalog, buffer pool, and transaction manager.
+    role: constructor
+    belongs_to: duckdb_v2_connection
+    parameters:
+      db:
+        type: duckdb_v2_database
+        description: "The database to connect to."
+      out_conn:
+        type: duckdb_v2_connection
+        indirection: 1
+        kind: OUT
+        description: "Receives the new connection handle."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_disconnect:
+    summary: "Closes the connection."
+    description: |
+      Always succeeds. Releases the connection's reference on the
+      underlying DatabaseInstance; the instance survives as long as any
+      other reference (open queries, prepared statements, etc.) holds
+      it. On success, the handle is set to null.
+    role: destructor
+    belongs_to: duckdb_v2_connection
+    parameters:
+      conn:
+        type: duckdb_v2_connection
+        indirection: 1
+        description: "The connection to close."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_connection_option_set:
+    summary: "Sets a config option through the connection."
+    description: |
+      Reads name and setting from the option; other fields ignored.
+      The `scope` parameter chooses the destination, mirroring SQL:
+        - AUTOMATIC: resolved from the option's target scope (matches
+          bare `SET name = setting`).
+        - GLOBAL: writes through to the database, visible to all
+          connections (matches `SET GLOBAL`).
+        - LOCAL: writes to this connection's session only (matches
+          `SET LOCAL` / `SET SESSION`).
+      Disallowed combinations return DUCKDB_V2_ERROR_INVALID_INPUT
+      (GLOBAL × LOCAL_ONLY, LOCAL × GLOBAL_ONLY, and the legacy
+      analogues — DUCKDB_GLOBAL × LOCAL, DUCKDB_LOCAL × GLOBAL).
+      Unknown option names are rejected; for setting an option whose
+      defining extension has not yet loaded, use database scope or
+      duckdb_v2_open's startup options.
+    role: setter
+    belongs_to: duckdb_v2_connection
+    parameters:
+      conn:
+        type: duckdb_v2_connection
+        description: "The connection."
+      option:
+        type: duckdb_v2_option
+        description: "The config option to apply."
+      scope:
+        type: DUCKDB_V2_SETTING_SCOPE
+        description: "Target scope: AUTOMATIC, GLOBAL, or LOCAL."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_connection_option_get:
+    summary: "Reads a config option through the connection."
+    description: |
+      Returns the option's effective setting at the connection's scope:
+      LOCAL override (if set on this connection) → GLOBAL value → static
+      default. Other fields populated identically to the database get.
+      Aliases resolve transparently. Unknown names return
+      DUCKDB_V2_ERROR_INVALID_INPUT. Caller destroys the returned option.
+    role: getter
+    belongs_to: duckdb_v2_connection
+    parameters:
+      conn:
+        type: duckdb_v2_connection
+        description: "The connection."
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: "Null-terminated option name (canonical or alias)."
+      out_option:
+        type: duckdb_v2_option
+        indirection: 1
+        kind: OUT
+        description: "Receives the populated option handle."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_connection_option_get_count:
+    summary: "Returns the count of config options visible to this connection."
+    description: |
+      Same as duckdb_v2_database_option_get_count for the underlying
+      database (core + extensions, no aliases).
+    role: getter
+    belongs_to: duckdb_v2_connection
+    parameters:
+      conn:
+        type: duckdb_v2_connection
+        description: "The connection."
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: "Receives the option count."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_connection_option_get_by_index:
+    summary: "Reads the config option at the given index visible to this connection."
+    description: |
+      Index space: [0, core_count) addresses core options;
+      [core_count, total) addresses extension options visible from this
+      connection's database. Out-of-range index returns
+      DUCKDB_V2_ERROR_INVALID_INPUT. Caller destroys.
+    role: getter
+    belongs_to: duckdb_v2_connection
+    parameters:
+      conn:
+        type: duckdb_v2_connection
+        description: "The connection."
+      index:
+        type: idx
+        description: "The option index, in [0, option_count)."
+      out_option:
+        type: duckdb_v2_option
+        indirection: 1
+        kind: OUT
+        description: "Receives the populated option handle."
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL

@@ -76,6 +76,9 @@ typedef uint64_t idx_t;
  * ============================================================================ */
 
 /* --- Types for common --- */
+typedef void *duckdb_v2_environment_ptr;
+typedef void *duckdb_v2_database_ptr;
+typedef void *duckdb_v2_connection_ptr;
 typedef void *duckdb_v2_option_ptr;
 typedef void *duckdb_v2_error_info_ptr;
 typedef uint32_t duckdb_v2_error_kind_t;
@@ -114,6 +117,7 @@ typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
 #define DUCKDB_V2_ERROR_EOF               ((2 << 16) | 1)
 #define DUCKDB_V2_ERROR_INVALID_INPUT     ((2 << 16) | 2)
 #define DUCKDB_V2_ERROR_INVALID_PARAMETER ((2 << 16) | 3)
+#define DUCKDB_V2_ERROR_RESOURCE_IN_USE   ((3 << 16) | 1)
 
 /* --- Function pointer typedefs for errors --- */
 
@@ -281,6 +285,324 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_opt
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_ptr option, idx_t index,
                                                              const char **out_alias, duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
+ * MODULE: connection
+ * ============================================================================ */
+
+/* --- Types for connection --- */
+
+/* --- Enums for connection --- */
+
+/* --- Structs for connection --- */
+
+/* --- Constants for connection --- */
+
+/* --- Error Codes for connection --- */
+
+/* --- Function pointer typedefs for connection --- */
+
+/* --- Functions for connection --- */
+/*!
+* Opens a connection to a database.
+* Each connection carries its own ClientContext and session-scoped
+settings (LOCAL scope). Multiple connections to the same database
+share the underlying catalog, buffer pool, and transaction manager.
+
+* @param db The database to connect to.
+* @param out_conn Receives the new connection handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_ptr db, duckdb_v2_connection_ptr *out_conn,
+                                                    duckdb_v2_error_info_ptr *err);
+/*!
+* Closes the connection.
+* Always succeeds. Releases the connection's reference on the
+underlying DatabaseInstance; the instance survives as long as any
+other reference (open queries, prepared statements, etc.) holds
+it. On success, the handle is set to null.
+
+* @param conn The connection to close.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn, duckdb_v2_error_info_ptr *err);
+/*!
+* Sets a config option through the connection.
+* Reads name and setting from the option; other fields ignored.
+The `scope` parameter chooses the destination, mirroring SQL:
+  - AUTOMATIC: resolved from the option's target scope (matches
+    bare `SET name = setting`).
+  - GLOBAL: writes through to the database, visible to all
+    connections (matches `SET GLOBAL`).
+  - LOCAL: writes to this connection's session only (matches
+    `SET LOCAL` / `SET SESSION`).
+Disallowed combinations return DUCKDB_V2_ERROR_INVALID_INPUT
+(GLOBAL × LOCAL_ONLY, LOCAL × GLOBAL_ONLY, and the legacy
+analogues — DUCKDB_GLOBAL × LOCAL, DUCKDB_LOCAL × GLOBAL).
+Unknown option names are rejected; for setting an option whose
+defining extension has not yet loaded, use database scope or
+duckdb_v2_open's startup options.
+
+* @param conn The connection.
+* @param option The config option to apply.
+* @param scope Target scope: AUTOMATIC, GLOBAL, or LOCAL.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_ptr conn,
+                                                                  duckdb_v2_option_ptr option,
+                                                                  DUCKDB_V2_SETTING_SCOPE scope,
+                                                                  duckdb_v2_error_info_ptr *err);
+/*!
+* Reads a config option through the connection.
+* Returns the option's effective setting at the connection's scope:
+LOCAL override (if set on this connection) → GLOBAL value → static
+default. Other fields populated identically to the database get.
+Aliases resolve transparently. Unknown names return
+DUCKDB_V2_ERROR_INVALID_INPUT. Caller destroys the returned option.
+
+* @param conn The connection.
+* @param name Null-terminated option name (canonical or alias).
+* @param out_option Receives the populated option handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_ptr conn, const char *name,
+                                                                  duckdb_v2_option_ptr *out_option,
+                                                                  duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the count of config options visible to this connection.
+* Same as duckdb_v2_database_option_get_count for the underlying
+database (core + extensions, no aliases).
+
+* @param conn The connection.
+* @param out_count Receives the option count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_ptr conn, idx_t *out_count,
+                                                                        duckdb_v2_error_info_ptr *err);
+/*!
+* Reads the config option at the given index visible to this connection.
+* Index space: [0, core_count) addresses core options;
+[core_count, total) addresses extension options visible from this
+connection's database. Out-of-range index returns
+DUCKDB_V2_ERROR_INVALID_INPUT. Caller destroys.
+
+* @param conn The connection.
+* @param index The option index, in [0, option_count).
+* @param out_option Receives the populated option handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_ptr conn, idx_t index,
+                                                                           duckdb_v2_option_ptr *out_option,
+                                                                           duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
+ * MODULE: database
+ * ============================================================================ */
+
+/* --- Types for database --- */
+
+/* --- Enums for database --- */
+
+/* --- Structs for database --- */
+
+/* --- Constants for database --- */
+
+/* --- Error Codes for database --- */
+
+/* --- Function pointer typedefs for database --- */
+
+/* --- Functions for database --- */
+/*!
+* Opens a database under the environment.
+* `path` semantics:
+  - `nullptr`, ":memory:", or any ":memory:..." path: opens a fresh
+    in-memory database. In-memory databases are never deduplicated
+    across calls.
+  - any other path: opens the file as a database. Returns
+    DUCKDB_V2_ERROR_RESOURCE_IN_USE if the file is already open
+    under the same environment.
+
+`options` is an optional array of pre-created config option handles
+applied at construction time. The library reads name and setting
+from each handle; remaining fields are ignored. Options may include
+pre-open DBConfig settings (e.g. access_mode, memory_limit) and
+ATTACH-style storage options (e.g. BLOCK_SIZE, ENCRYPTION_KEY).
+Unknown names are accepted into DBConfig.unrecognized_options for
+later extension consumption. Pass `options=nullptr` and
+`option_count=0` to open with defaults.
+
+LOCAL_ONLY options are rejected at this scope (matches
+duckdb_v2_database_option_set).
+
+* @param env The environment.
+* @param path Path to the database. `nullptr` or any ':memory:...' path opens an in-memory database.
+* @param options Optional array of pre-created config option handles. May be `nullptr` if option_count is 0.
+* @param option_count The number of entries in the options array.
+* @param out_db Receives the new database handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_ptr env, const char *path,
+                                                 duckdb_v2_option_ptr *options, idx_t option_count,
+                                                 duckdb_v2_database_ptr *out_db, duckdb_v2_error_info_ptr *err);
+/*!
+* Closes the database.
+* Always succeeds. The underlying database instance remains alive as
+long as any connection still holds a reference; when the last
+reference drops, the instance is destroyed and its path becomes
+available for reopen. On success, the handle is set to null.
+
+* @param db The database to close.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db, duckdb_v2_error_info_ptr *err);
+/*!
+* Sets a config option on the database (GLOBAL scope).
+* Reads name and setting from the option; other fields ignored.
+Equivalent to SQL `SET GLOBAL name = setting`. Returns
+DUCKDB_V2_ERROR_INVALID_INPUT if the option is declared LOCAL_ONLY,
+or for legacy options without a global setter (DUCKDB_LOCAL).
+Unknown names are accepted and stashed in
+DBConfig.unrecognized_options for later extension consumption
+(mirrors DBConfig::SetOptionByName).
+
+* @param db The database.
+* @param option The config option to apply.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_ptr db, duckdb_v2_option_ptr option,
+                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Reads a config option from the database (GLOBAL scope) by name.
+* Allocates a fully-populated option (canonical name, current GLOBAL
+setting, default setting, description, target scope, aliases).
+Aliases resolve transparently — passing an alias returns the
+canonical option with the alias listed in its alias array. Unknown
+names return DUCKDB_V2_ERROR_INVALID_INPUT. Caller destroys the
+returned option.
+
+* @param db The database.
+* @param name Null-terminated option name (canonical or alias).
+* @param out_option Receives the populated option handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_ptr db, const char *name,
+                                                                duckdb_v2_option_ptr *out_option,
+                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the count of config options registered on the database.
+* Counts core options + extension options registered on the database.
+Aliases are NOT counted separately — each alias is reachable
+through its canonical option's alias array.
+
+* @param db The database.
+* @param out_count Receives the option count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_count(duckdb_v2_database_ptr db, idx_t *out_count,
+                                                                      duckdb_v2_error_info_ptr *err);
+/*!
+* Reads the config option at the given index from the database.
+* Index space: [0, core_count) addresses core options;
+[core_count, total) addresses extension options. Stable for the
+database while no extensions register new options. Out-of-range
+index returns DUCKDB_V2_ERROR_INVALID_INPUT. Caller destroys.
+
+* @param db The database.
+* @param index The option index, in [0, option_count).
+* @param out_option Receives the populated option handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_ptr db, idx_t index,
+                                                                         duckdb_v2_option_ptr *out_option,
+                                                                         duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the version of the linked DuckDB library.
+ * @param out_version The version string.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_destroy_error_info.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
+ * MODULE: environment
+ * ============================================================================ */
+
+/* --- Types for environment --- */
+
+/* --- Enums for environment --- */
+
+/* --- Structs for environment --- */
+
+/* --- Constants for environment --- */
+
+/* --- Error Codes for environment --- */
+
+/* --- Function pointer typedefs for environment --- */
+
+/* --- Functions for environment --- */
+/*!
+ * Creates the V2 environment. Call once at program start.
+ * @param out_env Receives the new environment handle.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_destroy_error_info.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_environment(duckdb_v2_environment_ptr *out_env,
+                                                               duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys the environment.
+* Refuses with DUCKDB_V2_ERROR_RESOURCE_IN_USE if any database opened
+through this environment is still alive. Close outstanding
+databases first, then retry. On success, the environment handle is
+set to null.
+
+* @param env The environment.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_environment(duckdb_v2_environment_ptr *env,
+                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the number of databases currently open under the environment.
+* Diagnostic accessor for debugging leaked database handles when
+duckdb_v2_destroy_environment returns DUCKDB_V2_ERROR_RESOURCE_IN_USE.
+The value is a snapshot; it may change between this call and any
+subsequent operation.
+
+* @param env The environment.
+* @param out_count Receives the number of currently-open databases.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_destroy_error_info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_environment_database_count(duckdb_v2_environment_ptr env, idx_t *out_count,
+                                                                       duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: error

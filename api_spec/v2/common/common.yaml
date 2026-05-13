@@ -1,6 +1,20 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: common
 handles:
+  duckdb_v2_environment:
+    description: |
+      An opaque handle to the V2 environment: the required root through
+      which databases are opened. Holds the shared DBInstanceCache so
+      that file-level conflicts (the same database file opened twice)
+      are detected across all databases under the same environment.
+      Destroying the environment refuses with
+      DUCKDB_V2_ERROR_RESOURCE_IN_USE while any database opened through
+      it is still alive — close those first.
+    cleanup_with: duckdb_v2_destroy_environment
+  duckdb_v2_database:
+    description: An opaque handle to a DuckDB database instance
+  duckdb_v2_connection:
+    description: An opaque handle to a DuckDB connection
   duckdb_v2_option:
     description: |
       An opaque, owned handle to a single config option: name + setting,

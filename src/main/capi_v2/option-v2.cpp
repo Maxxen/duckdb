@@ -1,13 +1,5 @@
 #include "capi_v2_internal.hpp"
 
-namespace {
-
-duckdb::OptionWrapperV2 *ToOption(duckdb_v2_option_ptr ptr) {
-	return static_cast<duckdb::OptionWrapperV2 *>(ptr);
-}
-
-} // namespace
-
 DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setting, duckdb_v2_option_ptr *out_option,
                                              duckdb_v2_error_info_ptr *err) {
 	if (!name || !setting || !out_option) {
@@ -15,10 +7,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setti
 	}
 	*out_option = nullptr;
 	try {
-		auto *wrapper = new duckdb::OptionWrapperV2();
+		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		wrapper->name = name;
 		wrapper->setting = setting;
-		*out_option = static_cast<duckdb_v2_option_ptr>(wrapper);
+		*out_option = static_cast<duckdb_v2_option_ptr>(wrapper.release());
 		return duckdb::ClearErrorInfo(err);
 	} catch (std::exception &e) {
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, e.what());
@@ -32,7 +24,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_ptr *option, duck
 		return duckdb::ClearErrorInfo(err);
 	}
 	if (*option) {
-		delete ToOption(*option);
+		delete duckdb::ToOption(*option);
 		*option = nullptr;
 	}
 	return duckdb::ClearErrorInfo(err);
@@ -43,7 +35,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_name(duckdb_v2_option_ptr option, cons
 	if (!option || !out_name) {
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null argument to duckdb_v2_option_get_name");
 	}
-	*out_name = ToOption(option)->name.c_str();
+	*out_name = duckdb::ToOption(option)->name.c_str();
 	return duckdb::ClearErrorInfo(err);
 }
 
@@ -53,7 +45,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_setting(duckdb_v2_option_ptr option, c
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
 		                            "null argument to duckdb_v2_option_get_setting");
 	}
-	*out_setting = ToOption(option)->setting.c_str();
+	*out_setting = duckdb::ToOption(option)->setting.c_str();
 	return duckdb::ClearErrorInfo(err);
 }
 
@@ -63,7 +55,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_default_setting(duckdb_v2_option_ptr o
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
 		                            "null argument to duckdb_v2_option_get_default_setting");
 	}
-	*out_default_setting = ToOption(option)->default_setting.c_str();
+	*out_default_setting = duckdb::ToOption(option)->default_setting.c_str();
 	return duckdb::ClearErrorInfo(err);
 }
 
@@ -73,7 +65,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_description(duckdb_v2_option_ptr optio
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
 		                            "null argument to duckdb_v2_option_get_description");
 	}
-	*out_description = ToOption(option)->description.c_str();
+	*out_description = duckdb::ToOption(option)->description.c_str();
 	return duckdb::ClearErrorInfo(err);
 }
 
@@ -84,7 +76,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_target_scope(duckdb_v2_option_ptr opti
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
 		                            "null argument to duckdb_v2_option_get_target_scope");
 	}
-	*out_target_scope = ToOption(option)->target_scope;
+	*out_target_scope = duckdb::ToOption(option)->target_scope;
 	return duckdb::ClearErrorInfo(err);
 }
 
@@ -94,7 +86,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_option_ptr optio
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
 		                            "null argument to duckdb_v2_option_get_alias_count");
 	}
-	*out_count = static_cast<idx_t>(ToOption(option)->aliases.size());
+	*out_count = static_cast<idx_t>(duckdb::ToOption(option)->aliases.size());
 	return duckdb::ClearErrorInfo(err);
 }
 
@@ -103,7 +95,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_ptr option, idx
 	if (!option || !out_alias) {
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null argument to duckdb_v2_option_get_alias");
 	}
-	auto *wrapper = ToOption(option);
+	auto *wrapper = duckdb::ToOption(option);
 	if (index >= wrapper->aliases.size()) {
 		*out_alias = nullptr;
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,

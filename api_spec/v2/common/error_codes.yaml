@@ -31,6 +31,13 @@ error_groups:
       DUCKDB_V2_ERROR_INVALID_PARAMETER:
         code: 0x0003
         description: "A specific function parameter is malformed"
+  Resource:
+    group_id: 0x0003
+    description: "Errors related to resource availability and lifecycle"
+    entries:
+      DUCKDB_V2_ERROR_RESOURCE_IN_USE:
+        code: 0x0001
+        description: "The requested resource is already in use (e.g. the database file is already open under this environment, or the environment still has open databases)"
 constants:
   DUCKDB_V2_API_ERROR:
     value: "0xFFFFFFFF"

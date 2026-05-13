@@ -46,6 +46,13 @@ public:
 	static void SetGenericVariable(ClientContext &context, idx_t setting_index, SetScope scope, Value target_value);
 	static SetScope GetSettingScope(const ConfigurationOption &option, SetScope variable_scope);
 
+	//! Apply a configuration option write. This path is used by SQL `SET` and the V2 C API
+	//! `*_option_set` bridges. Performs lock check, name resolution (core then extension),
+	//! autoload of an extension defining `name`, scope validation, value cast, and dispatch
+	//! (generic via set_callback + write to user settings, or legacy via set_global / set_local).
+	//! Throws on any failure (InvalidInputException / CatalogException / InternalException).
+	static void ApplyVariable(ClientContext &context, const String &name, SetScope scope, const Value &value);
+
 public:
 	String name;
 	const Value value;

@@ -35,3 +35,20 @@ jobs:
         run: make release
       - name: Test V2 CAPI
         run: ./build/release/test/unittest "[capi_v2]"
+      # The V2 *_option_set bridges delegate to PhysicalSet::ApplyVariable
+      # (extracted from PhysicalSet::GetDataInternal so SQL `SET` and the
+      # V2 C API share one path). These suites exercise that same path
+      # from the SQL side and must stay green when ApplyVariable changes.
+      - name: SQL SET regression — settings
+        # operator_memory_limit.test is excluded: its GROUP BY OOM assertion
+        # only triggers when the radix HT goes external, which requires
+        # number_of_threads > 2. ubuntu-latest runners have 2 vCPUs, so the
+        # HT stays in the GROW strategy and the query succeeds. Upstream CI
+        # passes because duckdb/duckdb runs on 4+ vCPU Namespace.so runners.
+        run: ./build/release/test/unittest "test/sql/settings/*" "exclude:test/sql/settings/operator_memory_limit.test"
+      - name: SQL SET regression — duckdb_settings table function
+        run: ./build/release/test/unittest "test/sql/table_function/duckdb_settings*"
+      # V1 C API still uses DBConfig::SetOption directly; its regression
+      # also covers the legacy paths the helper relies on.
+      - name: V1 CAPI regression
+        run: ./build/release/test/unittest "[capi]"

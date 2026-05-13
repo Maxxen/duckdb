@@ -2,14 +2,21 @@
 module: configuration
 # The duckdb_v2_option handle is an opaque carrier of an option's name,
 # current setting, and (when populated by a database/connection get)
-# description, default setting, target scope, and aliases. Database and
-# connection set/get against this handle land in a follow-up.
+# description, default setting, target scope, and aliases.
 #
 # Terminology used in this module:
 #   * option  — a named, registered config item (e.g. "memory_limit").
 #   * setting — the string-encoded value of an option at some scope.
 #   * config  — a collection of option settings (database GLOBAL or
 #               connection LOCAL).
+#
+# Implementation note: the bridge for *_option_set (database and connection)
+# delegates to PhysicalSet::ApplyVariable in DuckDB core. That helper was
+# extracted from PhysicalSet::GetDataInternal so SQL `SET` and the V2 C API
+# share a single resolution + dispatch path (lock check, core-then-extension
+# lookup with autoload, scope target validation, value cast, generic vs
+# legacy apply). When upstream changes the behavior of `SET`, V2 inherits it
+# automatically. See src/include/duckdb/execution/operator/helper/physical_set.hpp.
 enums:
   DUCKDB_V2_OPTION_TARGET_SCOPE:
     description: |
