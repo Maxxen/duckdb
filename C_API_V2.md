@@ -1,10 +1,14 @@
 # DuckDB C API V2
 
-This repository is a DuckDB fork for developing and testing the V2 C API. The V1 C API remains fully functional and untouched alongside V2.
+This repository is a DuckDB fork where we are **prototyping a new C API (V2)** alongside the upstream codebase. The existing V1 C API (`duckdb.h`) remains fully functional and untouched; V2 work lives in parallel directories (`api_spec/v2/`, `src/main/capi_v2/`, `src/include/duckdb_v2.h`, `test/api/capi_v2/`). The upstream DuckDB `README.md` and `CLAUDE.md` describe DuckDB the database; this file is the V2-specific context.
 
-The V2 API is defined declaratively in YAML specs, from which we generate both the public C header (`duckdb_v2.h`) and stub implementations. Real implementations are written manually and exercised through Catch2 tests; a Python client is scaffolded as an upcoming end-to-end validation surface.
+V2 is:
 
-All V2 identifiers use a `duckdb_v2_` / `DUCKDB_V2_` prefix, so there are no symbol collisions with V1.
+- **Prefixed** — all identifiers use `duckdb_v2_` / `DUCKDB_V2_`, so there are no symbol collisions with V1.
+- **Declarative** — the API surface is defined in YAML under `api_spec/v2/`. The public C header (`src/include/duckdb_v2.h`) and the per-function stub skeleton (`src/main/capi_v2/capi_v2_stubs.cpp`) are generated from those specs. Real implementations are hand-written next to the stubs; the generator drops a stub once it finds a matching hand-written definition.
+- **Validated** through (a) generator unit tests under `capigen/tests/` and (b) Catch2 bridge tests under `test/api/capi_v2/`. A Python client (`python_client/`, scaffolded) is planned as an end-to-end validation surface.
+
+The V2 design is still being iterated — see "Companion docs" at the bottom of this file for current design discussions and parked questions.
 
 ## Repository layout
 
@@ -146,6 +150,38 @@ if (duckdb_v2_option_create("memory_limit", "1GB", &opt, NULL) != DUCKDB_V2_ERRO
 
 Implementations in `src/main/capi_v2/` report errors through the `SetErrorInfo` / `ClearErrorInfo` helpers in `capi_v2_internal.hpp`. Both are safe to call with `err == NULL`; `SetErrorInfo` transparently destroys any previous info in the slot before allocating a new one.
 
+## V2 conventions
+
+These rules apply when writing V2 spec YAML, bridge implementations, and tests. Most have been hard-won from PR1 review; the canonical reference is `design_pr1_to_pr4.md` → "V2 conventions to carry forward". A short reminder list:
+
+- **Handle layout is load-bearing.** A V2 handle is a raw pointer to the underlying C++ object — *not* a wrapper struct — unless the wrapper is documented as load-bearing (`EnvironmentWrapperV2`, `OptionWrapperV2`, etc.). `duckdb_v2_logical_type_ptr` specifically is a `duckdb::LogicalType *`; V1 and V2 share the same `new LogicalType(...)` allocation, so V2 destroy can free a V1-built handle. Direction matters: V1 → V2 destroy is OK and exploited in PR1 tests; V2 → V1 destroy is not asserted and must not be relied on. **Do not wrap `duckdb_v2_logical_type` in a struct** — the PR1 test suite relies on the identity for V1-built composite fixtures.
+
+- **Cast helpers** (`ToEnv`, `ToDb`, `ToLogicalType`, …) live in `capi_v2_internal.hpp` next to the matching wrapper struct — not in per-module `.cpp` files.
+
+- **File-private helpers** in `src/main/capi_v2/*.cpp` go in an anonymous namespace (`namespace { … }`) inside `namespace duckdb { … }`. It is the modern C++ idiom for TU-local symbols (block-scoped, applies to types as well as functions, preferred by Core Guidelines and clang-tidy). Note: under a unity build it does *not* isolate names between concatenated files — all `namespace { … }` blocks in one TU share the same unnamed namespace, so two helpers with the same name in two `*-v2.cpp` files still collide. Name uniqueness is the actual defense.
+
+- **No exceptions across the C ABI.** Allocating sites (`new ...`, builders) wrap in `try { ... } catch (std::exception &e) { ... } catch (...) { ... }`. Both catch arms are required — a non-`std::exception` throw would otherwise abort. Non-allocating accessors are unwrapped only when the file's exception-policy comment explains why (typically: id-checks above the call make the internal `Cast<T>` unreachable). One exception to the policy: accessors that go through DuckDB internals which throw `InternalException` on shape violations (e.g. `FlatVector::GetData<T>` on a non-FLAT vector) must be wrapped, even if today's call paths feed only well-shaped inputs.
+
+- **Borrowed vs owned out-params** — use these exact words in spec descriptions. Borrowed string out-params return `NULL` for "no value" (not `""`); they are null-terminated *and* carry a length. Pin at least one `strlen(out) == len` check per module to prove both forms agree.
+
+- **Numeric enum-id round-trip.** V2 enum values are kept numerically identical to their internal counterparts (`duckdb::LogicalTypeId`, `PhysicalType`, …). If a new internal variant is added, the V2 spec must add a matching id *in the same PR* — otherwise the bridge cast silently produces an undefined enum value.
+
+- **Vocabulary.** "Vector" at the chunk/vector level; "column" only at the result-schema level — never mix. "Logical type" vs "physical type" — never swap. `LogicalTypeId` (semantic) and `PhysicalType` (storage) map many-to-many.
+
+- **Test fixture-builder ordering.** Helpers that allocate intermediate fixtures (struct/union member types, list child types) must destroy the intermediates *before* any `REQUIRE`. Catch2 throws on failure; destroys after a `REQUIRE` would otherwise be skipped, leaking. Pattern:
+
+  ```cpp
+  auto v1 = duckdb_create_struct_type(members, names, n);
+  duckdb_destroy_logical_type(&members[0]);
+  duckdb_destroy_logical_type(&members[1]);
+  REQUIRE(v1 != nullptr);
+  return V1ToV2(v1);
+  ```
+
+- **V1/V2 hybrid prototyping.** Public V2 headers stay V1-free (`duckdb_v2.h` does not include `duckdb.h`). V2 `.cpp` implementations are free to wrap V1 or internal C++ machinery — the V2 contract is what we ship, not the implementation. **Tests are the only place V1 and V2 C headers may co-exist**; tests may build composite fixtures via V1 and cast to V2 when the handle invariant above holds.
+
+- **Spec / YAML style.** One description per function, lead with the contract. Annotate enum values only where the name alone is insufficient. No forward references to in-flight PRs ("(PR4)" ages badly). No first-person editorialising ("at this moment", "for now") — state the contract; deferral rationale lives in the spec's top-of-file commentary. For VARCHAR / string types use "null-terminated byte string", not "UTF-8" — DuckDB doesn't enforce encoding.
+
 ## Generating the header and stubs
 
 After changing the YAML specs, regenerate the header (`src/include/duckdb_v2.h`) and the bridge stubs (`src/main/capi_v2/capi_v2_stubs.cpp`):
@@ -208,7 +244,18 @@ Run the V2 C API tests:
 ./build/debug/test/unittest "[capi_v2]"
 ```
 
-The test file is at `test/api/capi_v2/test_capi_v2.cpp`. Add new test cases there as you implement functions.
+The test file is at `test/api/capi_v2/test_capi_v2.cpp`. Add new test cases there as you implement functions; for a new module, add `test/api/capi_v2/test_capi_v2_<module>.cpp` and wire it into `test/api/capi_v2/CMakeLists.txt`.
+
+## Gotchas
+
+A handful of things that recur:
+
+- **V1 must remain functional.** Run the `[capi]` tests as a regression check after any non-trivial change to shared DuckDB code: `./build/debug/test/unittest "[capi]"`.
+- **YAML edits require regeneration.** The header and stubs are committed; forgetting to run `./scripts/capi_v2_regen.sh` (or letting the pre-commit hook do it) shows up as drift in `git status`.
+- **Hand-written bridges are not overwritten by stub regeneration.** The bridge adapter scans `src/main/capi_v2/` for existing implementations and skips the matching stub. If you delete or rename a function in the spec while an implementation still exists, the orphan lingers in the `.cpp` until you remove it manually.
+- **Error codes are 32-bit: `(group_id << 16) | code`.** Don't hard-code the numeric value — use the generated macro name (`DUCKDB_V2_ERROR_*`).
+- **Every declared function must return an error code** (`DUCKDB_V2_API_CALL_t` or an alias). Don't use `void` or pointer-returning signatures; results come back through out-params.
+- **Primitives are declared in `api_spec/metadata.yaml`.** If you need a new one, add it there first with its C ABI type under `c_type`.
 
 ## Running everything
 
@@ -228,3 +275,12 @@ make debug
 The `.github/workflows/v2-capi.yml` workflow runs on every push and PR. It runs two jobs:
 - `format-check` — provisions the root venv with `uv sync --group dev`, then runs `pre-commit run --all-files` (default stages: regen, ty, ruff, check-yaml, yamlfmt) followed by `pre-commit run --all-files --hook-stage manual` (full-tree `scripts/format.py --all --check`). Finally `git diff --exit-code` fails the job if the committed header or stubs are out of sync with `api_spec/`.
 - `build-and-test` — `make release`, then `./build/release/test/unittest "[capi_v2]"`. Uses ninja + ccache (via the `./.github/actions/ccache-action` composite action) for build speed.
+
+## Companion docs
+
+- **`design_pr1_to_pr4.md`** (untracked) — design decisions and cross-PR conventions for the logical-types / values / query-results / data-chunks-and-vectors PRs currently in flight. Contains the full "V2 conventions to carry forward" reference of which the section above is a summary.
+- **`ctx_centric.md`** (untracked) — parked design doc exploring a context-centric API shape. Captures the extended discussion: ctx hierarchy, caching architecture, config handling, thread safety, cross-language callback contexts, classes of objects that don't naturally belong to a single ctx. Read before making major API-shape decisions.
+- **`config_design.md`** (untracked) — design notes for the configuration / options surface that landed in PR #9.
+- **`capigen/README.md`** — generator usage from the generator's perspective (if you're hacking on capigen itself). capigen is vendored in-tree; it is not a git subtree or submodule.
+- **`capigen/claude.md`** — authoritative conventions for the YAML spec (function naming, handle conventions, role semantics).
+- **`schema_reference.md`** — top-level reference for the module-level JSON Schema (`capigen/src/capigen/schema/module.schema.json`).
