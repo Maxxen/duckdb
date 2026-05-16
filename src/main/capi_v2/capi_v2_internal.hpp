@@ -254,6 +254,7 @@ struct PreparedStatementWrapperV2 {
 // only on failure paths and only when the caller requested detail (i.e.
 // passed a non-null err out-parameter).
 struct ErrorInfoV2 {
+	DUCKDB_V2_API_CALL_t code;
 	std::string message;
 };
 
@@ -284,6 +285,135 @@ inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V
 inline DUCKDB_V2_API_CALL_t ClearErrorInfo(duckdb_v2_error_info_ptr *err) {
 	DestroyErrorInfoSlot(err);
 	return DUCKDB_V2_ERROR_NONE;
+}
+
+inline DUCKDB_V2_API_CALL_t GetErrorCodeFromExceptionType(ExceptionType type) {
+	switch (type) {
+	// Invalid Input
+	case ExceptionType::INVALID_INPUT:
+		return DUCKDB_V2_ERROR_INVALID_INPUT;
+	case ExceptionType::OUT_OF_RANGE:
+		return DUCKDB_V2_ERROR_OUT_OF_RANGE;
+	case ExceptionType::OBJECT_SIZE:
+		return DUCKDB_V2_ERROR_OBJECT_SIZE;
+	// IO
+	case ExceptionType::IO:
+		return DUCKDB_V2_ERROR_IO_GENERAL;
+	case ExceptionType::NETWORK:
+		return DUCKDB_V2_ERROR_IO_NETWORK;
+	case ExceptionType::HTTP:
+		return DUCKDB_V2_ERROR_IO_HTTP;
+	// Resource
+	case ExceptionType::OUT_OF_MEMORY:
+		return DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY;
+	case ExceptionType::CONNECTION:
+		return DUCKDB_V2_ERROR_RESOURCE_CONNECTION;
+	case ExceptionType::DEPENDENCY:
+		return DUCKDB_V2_ERROR_RESOURCE_DEPENDENCY;
+	case ExceptionType::MISSING_EXTENSION:
+		return DUCKDB_V2_ERROR_RESOURCE_MISSING_EXTENSION;
+	case ExceptionType::AUTOLOAD:
+		return DUCKDB_V2_ERROR_RESOURCE_AUTOLOAD;
+	// Type
+	case ExceptionType::CONVERSION:
+		return DUCKDB_V2_ERROR_TYPE_CONVERSION;
+	case ExceptionType::UNKNOWN_TYPE:
+		return DUCKDB_V2_ERROR_TYPE_UNKNOWN;
+	case ExceptionType::INVALID_TYPE:
+		return DUCKDB_V2_ERROR_TYPE_INVALID;
+	case ExceptionType::MISMATCH_TYPE:
+		return DUCKDB_V2_ERROR_TYPE_MISMATCH;
+	case ExceptionType::DECIMAL:
+		return DUCKDB_V2_ERROR_TYPE_DECIMAL;
+	case ExceptionType::DIVIDE_BY_ZERO:
+		return DUCKDB_V2_ERROR_TYPE_DIVIDE_BY_ZERO;
+	// Query
+	case ExceptionType::PARSER:
+		return DUCKDB_V2_ERROR_QUERY_PARSER;
+	case ExceptionType::SYNTAX:
+		return DUCKDB_V2_ERROR_QUERY_SYNTAX;
+	case ExceptionType::BINDER:
+		return DUCKDB_V2_ERROR_QUERY_BINDER;
+	case ExceptionType::PLANNER:
+		return DUCKDB_V2_ERROR_QUERY_PLANNER;
+	case ExceptionType::OPTIMIZER:
+		return DUCKDB_V2_ERROR_QUERY_OPTIMIZER;
+	case ExceptionType::EXPRESSION:
+		return DUCKDB_V2_ERROR_QUERY_EXPRESSION;
+	case ExceptionType::EXECUTOR:
+		return DUCKDB_V2_ERROR_QUERY_EXECUTOR;
+	case ExceptionType::SCHEDULER:
+		return DUCKDB_V2_ERROR_QUERY_SCHEDULER;
+	case ExceptionType::NOT_IMPLEMENTED:
+		return DUCKDB_V2_ERROR_QUERY_NOT_IMPLEMENTED;
+	case ExceptionType::PARAMETER_NOT_RESOLVED:
+		return DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_RESOLVED;
+	case ExceptionType::PARAMETER_NOT_ALLOWED:
+		return DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_ALLOWED;
+	// Database
+	case ExceptionType::CATALOG:
+		return DUCKDB_V2_ERROR_DATABASE_CATALOG;
+	case ExceptionType::TRANSACTION:
+		return DUCKDB_V2_ERROR_DATABASE_TRANSACTION;
+	case ExceptionType::CONSTRAINT:
+		return DUCKDB_V2_ERROR_DATABASE_CONSTRAINT;
+	case ExceptionType::INDEX:
+		return DUCKDB_V2_ERROR_DATABASE_INDEX;
+	case ExceptionType::SEQUENCE:
+		return DUCKDB_V2_ERROR_DATABASE_SEQUENCE;
+	case ExceptionType::STAT:
+		return DUCKDB_V2_ERROR_DATABASE_STATISTICS;
+	case ExceptionType::SERIALIZATION:
+		return DUCKDB_V2_ERROR_DATABASE_SERIALIZATION;
+	// Configuration
+	case ExceptionType::SETTINGS:
+		return DUCKDB_V2_ERROR_CONFIGURATION_SETTINGS;
+	case ExceptionType::INVALID_CONFIGURATION:
+		return DUCKDB_V2_ERROR_CONFIGURATION_INVALID;
+	case ExceptionType::PERMISSION:
+		return DUCKDB_V2_ERROR_CONFIGURATION_PERMISSION;
+	// Runtime
+	case ExceptionType::INTERNAL:
+		return DUCKDB_V2_ERROR_RUNTIME_INTERNAL;
+	case ExceptionType::FATAL:
+		return DUCKDB_V2_ERROR_RUNTIME_FATAL;
+	case ExceptionType::INTERRUPT:
+		return DUCKDB_V2_ERROR_RUNTIME_INTERRUPT;
+	case ExceptionType::NULL_POINTER:
+		return DUCKDB_V2_ERROR_RUNTIME_NULL_POINTER;
+	default:
+		return DUCKDB_V2_API_ERROR;
+	}
+}
+
+template <class T>
+DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_ptr err, T callback) {
+	auto code = static_cast<DUCKDB_V2_API_CALL_t>(DUCKDB_V2_ERROR_NONE);
+	auto text = string();
+
+	try {
+		// Invoke the callback
+		callback();
+	} catch (const duckdb::Exception &ex) {
+		ErrorData error_data(ex);
+		code = GetErrorCodeFromExceptionType(error_data.Type());
+		text = error_data.Message();
+	} catch (const std::exception &ex) {
+		code = DUCKDB_V2_API_ERROR;
+		text = ex.what();
+	} catch (...) {
+		code = DUCKDB_V2_API_ERROR;
+		text = "An unknown error occurred.";
+	}
+
+	// Pass up to the caller via the out-parameter if they provided one; otherwise swallow.
+	if (err) {
+		auto &out = *static_cast<ErrorInfoV2 *>(err);
+		out.code = code;
+		out.message = std::move(text);
+	}
+
+	return code;
 }
 
 } // namespace duckdb

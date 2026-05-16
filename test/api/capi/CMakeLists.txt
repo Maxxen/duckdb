@@ -1,6 +1,7 @@
 add_library_unity(
   test_sql_capi
   OBJECT
+  capi_v2.cpp
   capi_aggregate_functions.cpp
   capi_catalog.cpp
   capi_config_options.cpp

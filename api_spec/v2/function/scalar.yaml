@@ -1,0 +1,227 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: scalar
+
+handles:
+  duckdb_v2_scalar_function:
+    description: todo
+    cleanup_with: duckdb_v2_scalar_function_destroy
+
+  duckdb_v2_scalar_function_bind_info:
+    description: TODO
+
+  duckdb_v2_scalar_function_state_info:
+    description: TODO
+
+  duckdb_v2_scalar_function_invoke_info:
+    description: TODO
+
+
+callbacks:
+
+  duckdb_v2_scalar_function_bind:
+    return_type: void
+    parameters:
+      info:
+        type: duckdb_v2_scalar_function_bind_info
+        description: TODO
+      context:
+        type: duckdb_v2_context
+        description: TODO
+      err:
+        type: duckdb_v2_error_info
+        description: TODO
+
+  duckdb_v2_scalar_function_state:
+    return_type: void
+    parameters:
+      info:
+        type: duckdb_v2_scalar_function_state_info
+        description: TODO
+      context:
+        type: duckdb_v2_context
+        description: TODO
+      err:
+        type: duckdb_v2_error_info
+        description: TODO
+
+  duckdb_v2_scalar_function_invoke:
+    return_type: void
+    parameters:
+      info:
+        type: duckdb_v2_scalar_function_invoke_info
+        description: TODO
+      context:
+        type: duckdb_v2_context
+        description: TODO
+      err:
+        type: duckdb_v2_error_info
+        description: TODO
+
+
+
+functions:
+  duckdb_v2_scalar_function_create:
+    summary: Creates a new scalar function builder.
+    description: todo
+    parameters:
+      name:
+        type: duckdb_v2_context
+        description: Context
+      err:
+        type: duckdb_v2_error_info
+        description: TODO
+      out:
+        type: duckdb_v2_scalar_function
+        indirection: 1
+        kind: OUT
+        description: On success, receives the newly created scalar function builder. The caller owns the builder and must destroy it with duckdb_v2_scalar_function_destroy.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_set_name:
+    summary: Sets the name of a scalar function builder.
+    description: todo
+    parameters:
+      func:
+        type: duckdb_v2_scalar_function
+        description: The scalar function builder to configure.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: The null-terminated name to set for the function.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_set_bind_callback:
+    summary: Sets the bind callback for a scalar function builder.
+    description: todo
+    parameters:
+      func:
+        type: duckdb_v2_scalar_function
+        description: The scalar function builder to configure.
+      callback:
+        type: duckdb_v2_scalar_function_bind
+        description: The bind callback to set for the function.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_bind_set_data:
+    summary: Sets the user data pointer for a scalar function's bind callback.
+    description: todo
+    parameters:
+      args:
+        type: duckdb_v2_scalar_function_bind_info
+        description: The bind info handle provided to the bind callback.
+      data:
+        type: void
+        indirection: 1
+        description: Opaque pointer to user data that will be passed to the bind callback when it's invoked.
+      copy:
+        type: duckdb_v2_user_data_copy
+        description: Optional. If provided, this callback will be used to make a copy of the user data when needed (e.g. if the function is registered multiple times). If not provided, the library will copy the pointer value as-is.
+      equals:
+        type: duckdb_v2_user_data_equals
+        description: Optional. If provided, this callback will be used to compare two user data pointers for equality. If not provided, the library will compare pointer values for equality.
+      destroy:
+        type: duckdb_v2_user_data_destroy
+        description: Optional. If provided, this callback will be used to destroy the user data when it's no longer needed. If not provided, the library will not attempt to destroy the user data.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_set_state_callback:
+    summary: Sets the state callback for a scalar function builder.
+    description: todo
+    parameters:
+      func:
+        type: duckdb_v2_scalar_function
+        description: The scalar function builder to configure.
+      callback:
+        type: duckdb_v2_scalar_function_state
+        description: The state callback to set for the function.
+    return_type: DUCKDB_V2_API_CALL
+
+
+  duckdb_v2_scalar_function_state_set_data:
+    summary: Sets the user data pointer for a scalar function's state callback.
+    description: todo
+    parameters:
+      args:
+        type: duckdb_v2_scalar_function_state_info
+        description: The state info handle provided to the state callback.
+      data:
+        type: void
+        indirection: 1
+        description: Opaque pointer to user data that will be passed to the state callback when it's invoked.
+      destroy:
+        type: duckdb_v2_user_data_destroy
+        description: Optional. If provided, this callback will be used to destroy the user data when it's no longer needed. If not provided, the library will not attempt to destroy the user data.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_set_invoke_callback:
+    summary: Sets the invoke callback for a scalar function builder.
+    description: todo
+    parameters:
+      func:
+        type: duckdb_v2_scalar_function
+        description: The scalar function builder to configure.
+      callback:
+        type: duckdb_v2_scalar_function_invoke
+        description: The invoke callback to set for the function.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_invoke_get_bind_data:
+    summary: Retrieves the user data pointer for a scalar function's bind callback.
+    description: todo
+    parameters:
+      args:
+        type: duckdb_v2_scalar_function_invoke_info
+        description: The invoke info handle provided to the invoke callback.
+      err:
+        type: duckdb_v2_error_info
+        description: TODO
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: On success, receives the opaque pointer to user data that was set for the function's bind callback via duckdb_v2_scalar_function_bind_set_data. This is the same pointer that was passed to the bind callback when it was invoked for this function.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_invoke_get_state_data:
+    summary: Retrieves the user data pointer for a scalar function's state callback.
+    description: todo
+    parameters:
+      args:
+        type: duckdb_v2_scalar_function_invoke_info
+        description: The invoke info handle provided to the invoke callback.
+      err:
+        type: duckdb_v2_error_info
+        description: TODO
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: On success, receives the opaque pointer to user data that was set for the function's state callback via duckdb_v2_scalar_function_state_set_data. This is the same pointer that was passed to the state callback when it was invoked for this function.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_register:
+    summary: Registers a scalar function builder with a database, making the function available for use in queries.
+    description: todo
+    parameters:
+      context:
+        type: duckdb_v2_context
+        description: TODO
+      func:
+        type: duckdb_v2_scalar_function
+        description: The scalar function builder to register.
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info.
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_scalar_function_destroy:
+    summary: Destroys a scalar function builder, releasing its resources.
+    description: todo
+    parameters:
+      func:
+        type: duckdb_v2_scalar_function
+        description: The scalar function builder to destroy.
+    return_type: DUCKDB_V2_API_CALL

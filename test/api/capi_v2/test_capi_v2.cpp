@@ -54,9 +54,9 @@ TEST_CASE("V2: destroy_environment refuses while databases are open", "[capi_v2]
 	REQUIRE(env != nullptr); // refusal leaves env intact
 	REQUIRE(err != nullptr);
 	const char *msg = nullptr;
-	duckdb_v2_error_info_get_message(err, &msg, nullptr);
+	duckdb_v2_error_info_get_text(err, &msg);
 	REQUIRE(std::string(msg).find("still open") != std::string::npos);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 
 	duckdb_v2_close(&db, nullptr);
 	REQUIRE(duckdb_v2_destroy_environment(&env, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -92,7 +92,7 @@ TEST_CASE("V2: file-based open rejects second open of same file", "[capi_v2][db]
 	REQUIRE(duckdb_v2_open(env, path.c_str(), nullptr, 0, &db_b, &err) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
 	REQUIRE(db_b == nullptr);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 
 	duckdb_v2_close(&db_a, nullptr);
 
@@ -252,7 +252,7 @@ TEST_CASE("V2 db option: set rejects LOCAL_ONLY at GLOBAL scope", "[capi_v2][db]
 	duckdb_v2_error_info_ptr err = nullptr;
 	REQUIRE(duckdb_v2_database_option_set(fx.db, opt, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_option_destroy(&opt, nullptr);
 }
 
@@ -264,7 +264,7 @@ TEST_CASE("V2 db option: get unknown name errors", "[capi_v2][db][option]") {
 	        DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(out == nullptr);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 }
 
 TEST_CASE("V2 db option: get_count and get_by_index", "[capi_v2][db][option]") {
@@ -289,7 +289,7 @@ TEST_CASE("V2 db option: get_count and get_by_index", "[capi_v2][db][option]") {
 	duckdb_v2_error_info_ptr err = nullptr;
 	REQUIRE(duckdb_v2_database_option_get_by_index(fx.db, count + 100, &out_of_range, &err) ==
 	        DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 }
 
 TEST_CASE("V2 conn option: set LOCAL is invisible to other connections", "[capi_v2][conn][option]") {
@@ -358,7 +358,7 @@ TEST_CASE("V2 conn option: scope enforcement matches SQL", "[capi_v2][conn][opti
 	REQUIRE(duckdb_v2_connection_option_set(fx.conn, local_only, DUCKDB_V2_SETTING_SCOPE_GLOBAL, &err) ==
 	        DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_option_destroy(&local_only, nullptr);
 
 	// GLOBAL_ONLY × LOCAL: rejected. allow_community_extensions is GLOBAL_ONLY.
@@ -366,7 +366,7 @@ TEST_CASE("V2 conn option: scope enforcement matches SQL", "[capi_v2][conn][opti
 	duckdb_v2_option_create("allow_community_extensions", "false", &global_only, nullptr);
 	REQUIRE(duckdb_v2_connection_option_set(fx.conn, global_only, DUCKDB_V2_SETTING_SCOPE_LOCAL, &err) ==
 	        DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_option_destroy(&global_only, nullptr);
 }
 
@@ -434,11 +434,11 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 		REQUIRE(err != nullptr);
 
 		const char *msg = nullptr;
-		REQUIRE(duckdb_v2_error_info_get_message(err, &msg, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_error_info_get_text(err, &msg) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(msg != nullptr);
 		REQUIRE(std::string(msg) == "bad input");
 
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 		REQUIRE(err == nullptr);
 	}
 
@@ -449,11 +449,11 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 		REQUIRE(err != nullptr);
 
 		const char *msg = nullptr;
-		REQUIRE(duckdb_v2_error_info_get_message(err, &msg, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_error_info_get_text(err, &msg) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(msg != nullptr);
 		REQUIRE(msg[0] == '\0');
 
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 
 	SECTION("SetErrorInfo preserves arbitrarily long messages") {
@@ -462,10 +462,10 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 		duckdb::SetErrorInfo(&err, DUCKDB_V2_API_ERROR, long_msg.c_str());
 
 		const char *msg = nullptr;
-		duckdb_v2_error_info_get_message(err, &msg, nullptr);
+		duckdb_v2_error_info_get_text(err, &msg);
 		REQUIRE(std::strlen(msg) == long_msg.size());
 
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 
 	SECTION("SetErrorInfo with nullptr err returns the code and allocates nothing") {
@@ -480,10 +480,10 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 		REQUIRE(err != nullptr);
 
 		const char *msg = nullptr;
-		duckdb_v2_error_info_get_message(err, &msg, nullptr);
+		duckdb_v2_error_info_get_text(err, &msg);
 		REQUIRE(std::string(msg) == "second");
 
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 
 	SECTION("ClearErrorInfo frees a pre-existing info and returns NONE") {
@@ -505,12 +505,12 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 TEST_CASE("V2 error: destroy_error_info is null-safe", "[capi_v2][error]") {
 	SECTION("destroying a null handle is a no-op") {
 		duckdb_v2_error_info_ptr err = nullptr;
-		REQUIRE(duckdb_v2_error_info_destroy(&err, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_error_info_destroy(&err) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(err == nullptr);
 	}
 
 	SECTION("destroying via a null pointer-to-handle is a no-op") {
-		REQUIRE(duckdb_v2_error_info_destroy(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_error_info_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
 	}
 
 	SECTION("detach + destroy preserves info independently of the original slot") {
@@ -522,9 +522,9 @@ TEST_CASE("V2 error: destroy_error_info is null-safe", "[capi_v2][error]") {
 		err = nullptr;
 
 		const char *msg = nullptr;
-		REQUIRE(duckdb_v2_error_info_get_message(saved, &msg, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_error_info_get_text(saved, &msg) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(std::string(msg) == "boom");
-		duckdb_v2_error_info_destroy(&saved, nullptr);
+		duckdb_v2_error_info_destroy(&saved);
 		REQUIRE(saved == nullptr);
 	}
 }
@@ -565,7 +565,7 @@ TEST_CASE("V2 option: create / destroy", "[capi_v2][option]") {
 		REQUIRE(duckdb_v2_option_create(nullptr, "x", &opt, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(opt == nullptr);
 		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 
 	SECTION("create rejects null setting") {
@@ -643,7 +643,7 @@ TEST_CASE("V2 option: accessors round-trip user-supplied values", "[capi_v2][opt
 		REQUIRE(duckdb_v2_option_get_alias(opt, 0, &alias, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(alias == nullptr);
 		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 
 	duckdb_v2_option_destroy(&opt, nullptr);
@@ -744,9 +744,9 @@ TEST_CASE("V2 option: error info is populated on failure paths", "[capi_v2][opti
 		REQUIRE(duckdb_v2_option_create(nullptr, "v", &opt, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(err != nullptr);
 		const char *msg = nullptr;
-		duckdb_v2_error_info_get_message(err, &msg, nullptr);
+		duckdb_v2_error_info_get_text(err, &msg);
 		REQUIRE(std::string(msg).find("duckdb_v2_option_create") != std::string::npos);
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 
 	SECTION("get_alias out-of-range surfaces a descriptive error") {
@@ -757,9 +757,9 @@ TEST_CASE("V2 option: error info is populated on failure paths", "[capi_v2][opti
 		REQUIRE(duckdb_v2_option_get_alias(opt, 5, &alias, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(err != nullptr);
 		const char *msg = nullptr;
-		duckdb_v2_error_info_get_message(err, &msg, nullptr);
+		duckdb_v2_error_info_get_text(err, &msg);
 		REQUIRE(std::string(msg).find("out of range") != std::string::npos);
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 		duckdb_v2_option_destroy(&opt, nullptr);
 	}
 
