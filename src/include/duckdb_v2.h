@@ -820,6 +820,18 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_state_callback(
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_state_set_data(
     duckdb_v2_scalar_function_state_info_ptr args, void *data, duckdb_v2_user_data_destroy_cb destroy);
 /*!
+ * Retrieves the user data pointer for a scalar function's bind callback.
+ * todo
+ * @param args The state info handle provided to the state callback.
+ * @param err TODO
+ * @param out_data On success, receives the opaque pointer to user data that was set for the function's bind callback
+ * via duckdb_v2_scalar_function_bind_set_data. This is the same pointer that was passed to the bind callback when it
+ * was invoked for this function.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_state_get_bind_data(
+    duckdb_v2_scalar_function_state_info_ptr args, duckdb_v2_error_info_ptr err, void **out_data);
+/*!
  * Sets the invoke callback for a scalar function builder.
  * todo
  * @param func The scalar function builder to configure.

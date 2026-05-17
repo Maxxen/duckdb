@@ -4,23 +4,31 @@ typedef struct duckdb_extension *duckdb_extension_ptr;
 
 static void my_func_bind(duckdb_v2_scalar_function_bind_info_ptr info, duckdb_v2_context_ptr ctx,
                          duckdb_v2_error_info_ptr err) {
-
 	duckdb_v2_scalar_function_bind_set_data(info, (void *)0x1234, nullptr, nullptr, nullptr);
 
 	duckdb_v2_error_info_set_code(err, DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_error_info_set_text(err, "This is a custom error message from my_func_bind.");
 }
 
-static void my_func_exec(duckdb_v2_scalar_function_invoke_info_ptr info, duckdb_v2_context_ptr ctx,
-                         duckdb_v2_error_info_ptr err) {
-	duckdb_v2_error_info_set_code(err, DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_error_info_set_text(err, "This is a custom error message from my_func_exec.");
-}
-
 static void my_func_worker(duckdb_v2_scalar_function_state_info_ptr info, duckdb_v2_context_ptr ctx,
                            duckdb_v2_error_info_ptr err) {
+	void *bind_data = nullptr;
+	duckdb_v2_scalar_function_state_get_bind_data(info, err, &bind_data);
+
 	duckdb_v2_error_info_set_code(err, DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_error_info_set_text(err, "This is a custom error message from my_func_worker.");
+}
+
+static void my_func_exec(duckdb_v2_scalar_function_invoke_info_ptr info, duckdb_v2_context_ptr ctx,
+                         duckdb_v2_error_info_ptr err) {
+	void *bind_data = nullptr;
+	duckdb_v2_scalar_function_invoke_get_bind_data(info, err, &bind_data);
+
+	void *init_data = nullptr;
+	duckdb_v2_scalar_function_invoke_get_state_data(info, err, &init_data);
+
+	duckdb_v2_error_info_set_code(err, DUCKDB_V2_ERROR_INVALID_INPUT);
+	duckdb_v2_error_info_set_text(err, "This is a custom error message from my_func_exec.");
 }
 
 static void my_extension_duckdb_entry_v2(duckdb_extension_ptr loader, duckdb_v2_context_ptr ctx,

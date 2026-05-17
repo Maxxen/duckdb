@@ -49,6 +49,7 @@ struct ScalarFunctionStateDataV2 final : public FunctionLocalState {
 };
 
 struct ScalarFunctionStateInfoV2 {
+	optional_ptr<ScalarFunctionBindDataV2> bind_data = nullptr;
 	unique_ptr<ScalarFunctionStateDataV2> local_state = nullptr;
 };
 
@@ -112,6 +113,11 @@ struct ScalarFunctionV2 {
 
 		ErrorInfoV2 error_info;
 		ScalarFunctionStateInfoV2 state_args;
+
+		// Setup bind data (if provided)
+		if (auto bind_ptr = expr.bind_info.get()) {
+			state_args.bind_data = &bind_ptr->Cast<ScalarFunctionBindDataV2>();
+		}
 
 		const auto arg_ptr = reinterpret_cast<duckdb_v2_scalar_function_state_info_ptr>(&state_args);
 		const auto ctx_ptr = static_cast<duckdb_v2_context_ptr>(&state.GetContext());
@@ -253,9 +259,28 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_invoke_callback(duckdb_v2_sca
 	return DUCKDB_V2_ERROR_NONE;
 }
 
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_state_get_bind_data(duckdb_v2_scalar_function_state_info_ptr args,
+                                                                   duckdb_v2_error_info_ptr err, void **out_data) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!args) {
+			throw duckdb::InvalidInputException("State info pointer cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
+		}
+
+		const auto &info = *static_cast<duckdb::ScalarFunctionStateInfoV2 *>(args);
+
+		if (!info.bind_data) {
+			throw duckdb::InvalidInputException("No bind data found for this function invocation.");
+		}
+
+		*out_data = info.bind_data->user_data;
+	});
+}
+
 DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_invoke_get_bind_data(duckdb_v2_scalar_function_invoke_info_ptr args,
                                                                     duckdb_v2_error_info_ptr err, void **out_data) {
-
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!args) {
 			throw duckdb::InvalidInputException("Invoke info pointer cannot be null.");
