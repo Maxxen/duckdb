@@ -41,6 +41,17 @@ handles:
   duckdb_v2_error_info:
     description: Opaque detail for a failed call; destroy with duckdb_v2_destroy_error_info.
     cleanup_with: duckdb_v2_destroy_error_info
+  duckdb_v2_logical_type:
+    description: |
+      An opaque, owned handle to a logical type. Carries a type id plus any
+      kind-specific metadata (decimal width/scale, enum dictionary, list /
+      array / struct / map / union child types, alias). Read-only from the C
+      side in PR1: instances arrive either from the result schema (PR3) or
+      from logical_type_create_from_id for primitives. Composite construction
+      (CREATE_LIST/STRUCT/etc) is deferred. Always destroy via
+      duckdb_v2_logical_type_destroy. Borrowed strings returned by getters
+      are valid until destroy.
+    cleanup_with: duckdb_v2_logical_type_destroy
 aliases:
   duckdb_v2_error_kind:
     underlying: u32

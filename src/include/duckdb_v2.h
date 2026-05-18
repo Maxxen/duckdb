@@ -81,6 +81,7 @@ typedef void *duckdb_v2_database_ptr;
 typedef void *duckdb_v2_connection_ptr;
 typedef void *duckdb_v2_option_ptr;
 typedef void *duckdb_v2_error_info_ptr;
+typedef void *duckdb_v2_logical_type_ptr;
 typedef uint32_t duckdb_v2_error_kind_t;
 typedef uint32_t duckdb_v2_error_code_t;
 typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
@@ -650,6 +651,390 @@ duckdb_v2_error_info_destroy.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_ptr *info,
                                                                duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
+ * MODULE: logical_type
+ * ============================================================================ */
+
+/* --- Types for logical_type --- */
+
+/* --- Enums for logical_type --- */
+typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
+	/* Invalid / unset. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_INVALID = 0,
+	/* NULL constant type. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_SQLNULL = 1,
+	/* Unknown — used for unresolved parameter expressions. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_UNKNOWN = 2,
+	/* ANY — used for functions that accept any type. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_ANY = 3,
+	DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN = 10,
+	DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT = 11,
+	DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT = 12,
+	DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER = 13,
+	DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT = 14,
+	/* 32-bit days since epoch. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_DATE = 15,
+	/* 64-bit microseconds since midnight. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIME = 16,
+	/* 64-bit seconds since epoch. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_SEC = 17,
+	/* 64-bit milliseconds since epoch. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_MS = 18,
+	/* 64-bit microseconds since epoch. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP = 19,
+	/* 64-bit nanoseconds since epoch. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_NS = 20,
+	/* Decimal with width and scale parameters. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL = 21,
+	DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT = 22,
+	DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE = 23,
+	DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR = 25,
+	DUCKDB_V2_LOGICAL_TYPE_ID_BLOB = 26,
+	DUCKDB_V2_LOGICAL_TYPE_ID_INTERVAL = 27,
+	DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT = 28,
+	DUCKDB_V2_LOGICAL_TYPE_ID_USMALLINT = 29,
+	DUCKDB_V2_LOGICAL_TYPE_ID_UINTEGER = 30,
+	DUCKDB_V2_LOGICAL_TYPE_ID_UBIGINT = 31,
+	/* 64-bit microseconds since epoch, timezone-aware. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ = 32,
+	/* 64-bit nanoseconds since epoch, timezone-aware. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ_NS = 33,
+	/* 64-bit microseconds since midnight + 32-bit offset. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIME_TZ = 34,
+	/* 64-bit nanoseconds since midnight. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TIME_NS = 35,
+	DUCKDB_V2_LOGICAL_TYPE_ID_BIT = 36,
+	/* Arbitrary-precision integer (VARINT-encoded). */
+	DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM = 39,
+	DUCKDB_V2_LOGICAL_TYPE_ID_UHUGEINT = 49,
+	DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT = 50,
+	DUCKDB_V2_LOGICAL_TYPE_ID_UUID = 54,
+	/* Geometry (spatial extension). */
+	DUCKDB_V2_LOGICAL_TYPE_ID_GEOMETRY = 60,
+	DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT = 100,
+	DUCKDB_V2_LOGICAL_TYPE_ID_LIST = 101,
+	DUCKDB_V2_LOGICAL_TYPE_ID_MAP = 102,
+	DUCKDB_V2_LOGICAL_TYPE_ID_ENUM = 104,
+	DUCKDB_V2_LOGICAL_TYPE_ID_UNION = 107,
+	DUCKDB_V2_LOGICAL_TYPE_ID_ARRAY = 108,
+	DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT = 109,
+} DUCKDB_V2_LOGICAL_TYPE_ID;
+
+/* --- Structs for logical_type --- */
+
+/* --- Constants for logical_type --- */
+
+/* --- Error Codes for logical_type --- */
+
+/* --- Function pointer typedefs for logical_type --- */
+
+/* --- Functions for logical_type --- */
+/*!
+* Creates a logical type from a primitive type id.
+* Only primitive type ids (no kind-specific parameters) are accepted:
+BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
+FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
+VARCHAR, BLOB, BIT, BIGNUM, UUID.
+
+Returns DUCKDB_V2_ERROR_INVALID_INPUT for parameterised type ids
+(DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
+for bind-time-only ids (SQLNULL, ANY, UNKNOWN), and for INVALID.
+Composite construction is deferred to a later PR.
+
+* @param type_id The primitive type id to instantiate.
+* @param out_type Receives the new logical type handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID type_id,
+                                                                        duckdb_v2_logical_type_ptr *out_type,
+                                                                        duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a logical type handle.
+* Null-safe: passing nullptr or a slot already set to nullptr is a
+no-op. On success the slot is set to nullptr.
+
+* @param type The logical type to destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_ptr *type,
+                                                                 duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the logical type id.
+ * @param type The logical type.
+ * @param out_id Receives the type id.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_ptr type,
+                                                                DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
+                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows the logical type's alias (extension/user-defined name) if any.
+* On success, writes a borrowed null-terminated string into *out_alias
+if the type has a non-empty alias, or NULL if the type has no alias
+(or only an empty alias). For spatial types the alias is e.g.
+"POINT_2D"; for arbitrary user-defined types it is the configured
+name. A non-NULL pointer is valid until the logical type is destroyed.
+
+* @param type The logical type.
+* @param out_alias Borrowed pointer to the alias string, or NULL if the type has no alias (or only an empty alias).
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_alias(duckdb_v2_logical_type_ptr type,
+                                                                   const char **out_alias,
+                                                                   duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the width of a DECIMAL logical type.
+ * Returns DUCKDB_V2_ERROR_INVALID_INPUT if the type id is not DECIMAL.
+ * @param type
+ * @param out_width Receives the decimal width.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_width(duckdb_v2_logical_type_ptr type,
+                                                                           uint8_t *out_width,
+                                                                           duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the scale of a DECIMAL logical type.
+ * Returns DUCKDB_V2_ERROR_INVALID_INPUT if the type id is not DECIMAL.
+ * @param type
+ * @param out_scale Receives the decimal scale.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_scale(duckdb_v2_logical_type_ptr type,
+                                                                           uint8_t *out_scale,
+                                                                           duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the internal storage type id for a DECIMAL.
+* Returns one of SMALLINT, INTEGER, BIGINT, or HUGEINT, depending on
+the decimal's width. Used by callers to pick the right typed
+accessor for DECIMAL storage.
+
+* @param type
+* @param out_id Receives the internal storage type id.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_internal_type_id(duckdb_v2_logical_type_ptr type,
+                                                                                      DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
+                                                                                      duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the dictionary entry count of an ENUM logical type.
+* The size is the entry count (cardinality of the dictionary), not a
+byte size. It is returned as idx_t for ABI uniformity, but the
+effective cap is UINT32_MAX (2^32 - 1) entries: the largest physical
+index type used by ENUM storage is UINTEGER. Returns
+DUCKDB_V2_ERROR_INVALID_INPUT if the type id is not ENUM.
+
+* @param type
+* @param out_size Receives the number of entries in the enum dictionary.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_size(duckdb_v2_logical_type_ptr type, idx_t *out_size,
+                                                                       duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows the dictionary value at the given index of an ENUM.
+* Out-of-range index returns DUCKDB_V2_ERROR_INVALID_INPUT. The
+returned pointer + length describe a borrowed null-terminated byte
+string valid until the logical type is destroyed. Bytes are not
+validated as UTF-8 — VARCHAR storage holds whatever bytes were
+inserted.
+
+* @param type
+* @param index The dictionary index, in [0, enum_size).
+* @param out_value Borrowed pointer to the dictionary string.
+* @param out_length Receives the length in bytes of the dictionary string.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_value(duckdb_v2_logical_type_ptr type, idx_t index,
+                                                                        const char **out_value, idx_t *out_length,
+                                                                        duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the internal index type id for an ENUM.
+* Returns UTINYINT (dict <= 255), USMALLINT (dict <= 65535), or
+UINTEGER (larger), matching the physical storage width.
+
+* @param type
+* @param out_id Receives the internal index type id.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_internal_type_id(duckdb_v2_logical_type_ptr type,
+                                                                                   DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
+                                                                                   duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the child logical type of a LIST.
+* The returned logical type is caller-owned and must be destroyed via
+duckdb_v2_logical_type_destroy. Returns DUCKDB_V2_ERROR_INVALID_INPUT
+if the input type id is not LIST.
+
+* @param type
+* @param out_child Receives the owned child logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_list_child_type(duckdb_v2_logical_type_ptr type,
+                                                                             duckdb_v2_logical_type_ptr *out_child,
+                                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the child logical type of a fixed-size ARRAY.
+* The returned logical type is caller-owned and must be destroyed.
+Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not ARRAY.
+
+* @param type
+* @param out_child Receives the owned child logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_array_child_type(duckdb_v2_logical_type_ptr type,
+                                                                              duckdb_v2_logical_type_ptr *out_child,
+                                                                              duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the fixed size of an ARRAY logical type.
+ * Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not ARRAY.
+ * @param type
+ * @param out_size Receives the array size.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_array_size(duckdb_v2_logical_type_ptr type,
+                                                                        idx_t *out_size, duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the key logical type of a MAP.
+ * Owned by the caller. INVALID_INPUT if the input is not MAP.
+ * @param type
+ * @param out_key Receives the owned key logical type.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_map_key_type(duckdb_v2_logical_type_ptr type,
+                                                                          duckdb_v2_logical_type_ptr *out_key,
+                                                                          duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the value logical type of a MAP.
+ * Owned by the caller. INVALID_INPUT if the input is not MAP.
+ * @param type
+ * @param out_value Receives the owned value logical type.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_map_value_type(duckdb_v2_logical_type_ptr type,
+                                                                            duckdb_v2_logical_type_ptr *out_value,
+                                                                            duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the number of fields in a STRUCT logical type.
+ * Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not STRUCT.
+ * @param type
+ * @param out_count Receives the number of struct fields.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_count(duckdb_v2_logical_type_ptr type,
+                                                                                idx_t *out_count,
+                                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows the field name at the given index of a STRUCT.
+* The returned pointer + length describe a borrowed null-terminated
+name valid until the logical type is destroyed. Out-of-range index
+returns DUCKDB_V2_ERROR_INVALID_INPUT.
+
+* @param type
+* @param index The field index, in [0, struct_child_count).
+* @param out_name Borrowed pointer to the field name.
+* @param out_length Receives the byte length of the field name.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_name(duckdb_v2_logical_type_ptr type,
+                                                                               idx_t index, const char **out_name,
+                                                                               idx_t *out_length,
+                                                                               duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the field logical type at the given index of a STRUCT.
+* The returned logical type is caller-owned. Out-of-range index returns
+DUCKDB_V2_ERROR_INVALID_INPUT.
+
+* @param type
+* @param index The field index, in [0, struct_child_count).
+* @param out_child Receives the owned field logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_type(duckdb_v2_logical_type_ptr type,
+                                                                               idx_t index,
+                                                                               duckdb_v2_logical_type_ptr *out_child,
+                                                                               duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the number of members in a UNION logical type.
+ * Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not UNION.
+ * @param type
+ * @param out_count Receives the number of union members.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * duckdb_v2_error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_count(duckdb_v2_logical_type_ptr type,
+                                                                                idx_t *out_count,
+                                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows the member name at the given index of a UNION.
+* The returned pointer + length describe a borrowed null-terminated
+name valid until the logical type is destroyed. Out-of-range index
+returns DUCKDB_V2_ERROR_INVALID_INPUT.
+
+* @param type
+* @param index The member index, in [0, union_member_count).
+* @param out_name Borrowed pointer to the member name.
+* @param out_length Receives the byte length of the member name.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_name(duckdb_v2_logical_type_ptr type,
+                                                                               idx_t index, const char **out_name,
+                                                                               idx_t *out_length,
+                                                                               duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the member logical type at the given index of a UNION.
+* The returned logical type is caller-owned. Out-of-range index returns
+DUCKDB_V2_ERROR_INVALID_INPUT.
+
+* @param type
+* @param index The member index, in [0, union_member_count).
+* @param out_child Receives the owned member logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+duckdb_v2_error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_type(duckdb_v2_logical_type_ptr type,
+                                                                               idx_t index,
+                                                                               duckdb_v2_logical_type_ptr *out_child,
+                                                                               duckdb_v2_error_info_ptr *err);
 
 #ifdef __cplusplus
 }

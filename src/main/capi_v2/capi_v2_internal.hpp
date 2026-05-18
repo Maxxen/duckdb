@@ -107,6 +107,13 @@ inline ConnectionWrapperV2 *ToConn(duckdb_v2_connection_ptr ptr) {
 inline OptionWrapperV2 *ToOption(duckdb_v2_option_ptr ptr) {
 	return static_cast<OptionWrapperV2 *>(ptr);
 }
+// The logical_type handle is not wrapped — the underlying duckdb::LogicalType
+// is heap-allocated directly. The V2 test suite relies on this layout to
+// share fixtures with V1 (V1-built composites are reinterpret-cast to V2
+// handles); if a wrapper is added later, those tests must change too.
+inline LogicalType *ToLogicalType(duckdb_v2_logical_type_ptr ptr) {
+	return static_cast<LogicalType *>(ptr);
+}
 
 // Map DuckDB's SettingScopeTarget to the V2 enum. Legacy options
 // (declared via DUCKDB_GLOBAL / DUCKDB_LOCAL / DUCKDB_GLOBAL_LOCAL)

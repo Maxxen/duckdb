@@ -6,6 +6,7 @@ add_library_unity(
   database-v2.cpp
   environment-v2.cpp
   error-v2.cpp
+  logical_type-v2.cpp
   option-v2.cpp)
 
 set(ALL_OBJECT_FILES
