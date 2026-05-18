@@ -1,48 +1,28 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: scalar
-
 handles:
   duckdb_v2_scalar_function_builder:
-    description: |
-        An opaque handle to a scalar function builder. 
-        Created with `duckdb_v2_scalar_function_builder_create`, configured with the various `duckdb_v2_scalar_function_set_*` functions, and registered with `duckdb_v2_scalar_function_register`. 
-        The builder is owned by the caller and must be destroyed with `duckdb_v2_scalar_function_builder_destroy` when no longer needed.
+    description: "An opaque handle to a scalar function builder. \nCreated with `duckdb_v2_scalar_function_builder_create`, configured with the various `duckdb_v2_scalar_function_set_*` functions, and registered with `duckdb_v2_scalar_function_register`. \nThe builder is owned by the caller and must be destroyed with `duckdb_v2_scalar_function_builder_destroy` when no longer needed.\n"
     cleanup_with: duckdb_v2_scalar_function_builder_destroy
-
   duckdb_v2_scalar_function_info:
-    description: |
-      An opaque handle to a scalar function callback context. 
-      This is the type of the `info` parameter passed to scalar function callbacks (e.g. bind, state, and invoke callbacks). 
-      It provides access to information about the function and its arguments, as well as functions for setting return types and retrieving user data. 
-      The library owns this handle and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.
-
+    description: "An opaque handle to a scalar function callback context. \nThis is the type of the `info` parameter passed to scalar function callbacks (e.g. bind, state, and invoke callbacks). \nIt provides access to information about the function and its arguments, as well as functions for setting return types and retrieving user data. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
 callbacks:
-
   duckdb_v2_scalar_function_callback:
     return_type: void
     parameters:
       info:
         type: duckdb_v2_scalar_function_info
-        description: | 
-          The callback's info handle, providing access to information about the function and its arguments, as well as functions for setting return types and retrieving user data. 
-          The library owns this handle and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.
+        description: "The callback's info handle, providing access to information about the function and its arguments, as well as functions for setting return types and retrieving user data. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
       context:
         type: duckdb_v2_context
         description: The DuckDB context in which the callback is being invoked.
       err:
         type: duckdb_v2_error_info
-        description: |
-          Error info handle, provided by DuckDB. 
-          Can be used to signal failure and report error details if the callback encounters an error. 
-          On success, leave `*err` unchanged. On failure, set an appropriate error code and message in `err` and return. DuckDB will inspect the error info after the callback returns to determine whether the call succeeded or failed.
-          The error info handle is owned by DuckDB, is always valid when the callback is invoked, and must not be stored or destroyed by the callee.
-
+        description: "Error info handle, provided by DuckDB. \nCan be used to signal failure and report error details if the callback encounters an error. \nOn success, leave `*err` unchanged. On failure, set an appropriate error code and message in `err` and return. DuckDB will inspect the error info after the callback returns to determine whether the call succeeded or failed.\nThe error info handle is owned by DuckDB, is always valid when the callback is invoked, and must not be stored or destroyed by the callee.\n"
 functions:
   duckdb_v2_scalar_function_builder_create:
     summary: Creates a new scalar function.
-    description: |
-      Creates a new scalar function builder that can be configured with the various `duckdb_v2_scalar_function_set_*` functions and registered with `duckdb_v2_scalar_function_register`. 
-      On success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `duckdb_v2_scalar_function_builder_destroy` when no longer needed.
+    description: "Creates a new scalar function builder that can be configured with the various `duckdb_v2_scalar_function_set_*` functions and registered with `duckdb_v2_scalar_function_register`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `duckdb_v2_scalar_function_builder_destroy` when no longer needed.\n"
     parameters:
       name:
         type: duckdb_v2_context
@@ -56,13 +36,9 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_builder_set_name:
     summary: Sets the name of a scalar function.
-    description: | 
-      The name of a scalar function must be a null-terminated string.
-      The library make and internal copy of the provided name and does not take ownership. 
-      Failing to set a name before registration results in an error.
+    description: "The name of a scalar function must be a null-terminated string.\nThe library make and internal copy of the provided name and does not take ownership. \nFailing to set a name before registration results in an error.\n"
     parameters:
       func:
         type: duckdb_v2_scalar_function_builder
@@ -76,13 +52,9 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_builder_set_bind_callback:
     summary: Sets the bind callback for a scalar function.
-    description: |
-      The "Bind" callback is invoked during query planning and can be used to perform type resolution, argument validation, and other setup tasks. 
-      Additionally a "Bind" callback can set a "bind data" pointer which can be accessed by later callbacks (e.g. "Init" and "Exec") to share information between the planning and execution phases.
-
+    description: "The \"Bind\" callback is invoked during query planning and can be used to perform type resolution, argument validation, and other setup tasks. \nAdditionally a \"Bind\" callback can set a \"bind data\" pointer which can be accessed by later callbacks (e.g. \"Init\" and \"Exec\") to share information between the planning and execution phases.\n"
     parameters:
       func:
         type: duckdb_v2_scalar_function_builder
@@ -94,13 +66,11 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
-
   duckdb_v2_scalar_function_builder_set_init_callback:
     summary: Sets the init callback for a scalar function.
     description: |
-        The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the function.
-        It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via `duckdb_v2_scalar_function_get_init_data` to keep worker-local mutable state across invocations of the function.
+      The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the function.
+      It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via `duckdb_v2_scalar_function_get_init_data` to keep worker-local mutable state across invocations of the function.
     parameters:
       func:
         type: duckdb_v2_scalar_function_builder
@@ -112,15 +82,9 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
-
-
   duckdb_v2_scalar_function_builder_set_exec_callback:
     summary: Sets the "exec" callback for a scalar function.
-    description: |
-      The "Exec" callback is invoked during query execution to evaluate the function for each batch of input rows. 
-      This is the main callback that implements the logic of the function. 
-      Failing to set an "exec" callback before registration results in an error.
+    description: "The \"Exec\" callback is invoked during query execution to evaluate the function for each batch of input rows. \nThis is the main callback that implements the logic of the function. \nFailing to set an \"exec\" callback before registration results in an error.\n"
     parameters:
       func:
         type: duckdb_v2_scalar_function_builder
@@ -132,13 +96,9 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_builder_register:
     summary: Registers a scalar function with a database, making the function available for use in queries.
-    description: |
-        This function registers a fully configured scalar function builder with a database, making the function available for use in SQL queries executed on that database. 
-        The function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.
-        DuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.
+    description: "This function registers a fully configured scalar function builder with a database, making the function available for use in SQL queries executed on that database. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\n"
     parameters:
       context:
         type: duckdb_v2_context
@@ -150,26 +110,18 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_builder_destroy:
     summary: Destroys a scalar function, releasing its resources.
-    description: |
-      This function destroys a scalar function builder that was created with `duckdb_v2_scalar_function_builder_create`, releasing any resources associated with it. 
-      If the builder has already been registered with a database, destroying it does not affect the registered function in the database, as DuckDB makes an internal copy of the function during registration. 
-      This function is null-safe: calling it with a null pointer is a no-op and returns DUCKDB_V2_ERROR_NONE.
-      The handle is set to null on return to prevent double-destruction.
+    description: "This function destroys a scalar function builder that was created with `duckdb_v2_scalar_function_builder_create`, releasing any resources associated with it. \nIf the builder has already been registered with a database, destroying it does not affect the registered function in the database, as DuckDB makes an internal copy of the function during registration. \nThis function is null-safe: calling it with a null pointer is a no-op and returns DUCKDB_V2_ERROR_NONE.\nThe handle is set to null on return to prevent double-destruction.\n"
     parameters:
       func:
         type: duckdb_v2_scalar_function_builder
         indirection: 1
         description: The scalar function to destroy.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_builder_set_user_data:
     summary: Sets arbitrary extra data on a scalar function.
-    description: |
-      This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function. 
-      This is useful for associating custom metadata or static context with the function that can be retrieved later from callbacks via `duckdb_v2_scalar_function_get_user_data`.
+    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from callbacks via `duckdb_v2_scalar_function_get_user_data`.\n"
     parameters:
       func:
         type: duckdb_v2_scalar_function_builder
@@ -184,17 +136,11 @@ functions:
       err:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
-
     return_type: DUCKDB_V2_API_CALL
-
   ## Callback Methods
-
   duckdb_v2_scalar_function_set_bind_data:
     summary: Sets the "bind data" pointer from a scalar function's "bind" callback.
-    description: |
-      This function can only be called from within a scalar function's "bind" callback. 
-      It allows the callback to set an opaque pointer to arbitrary user data ("bind data") that will be associated with the function and accessible from later callbacks (e.g. "init" and "exec") via `duckdb_v2_scalar_function_get_bind_data`. 
-      This is useful for sharing information between the planning and execution phases, such as resolved argument types, prepared statements, or other metadata computed during binding that needs to be available during execution.
+    description: "This function can only be called from within a scalar function's \"bind\" callback. \nIt allows the callback to set an opaque pointer to arbitrary user data (\"bind data\") that will be associated with the function and accessible from later callbacks (e.g. \"init\" and \"exec\") via `duckdb_v2_scalar_function_get_bind_data`. \nThis is useful for sharing information between the planning and execution phases, such as resolved argument types, prepared statements, or other metadata computed during binding that needs to be available during execution.\n"
     parameters:
       args:
         type: duckdb_v2_scalar_function_info
@@ -216,14 +162,9 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_get_bind_data:
     summary: Retrieves the user "bind data" pointer set by a scalar function's "bind" callback.
-    description: |
-      This function can be called from any scalar function callback (e.g. "bind", "init", or "exec") to retrieve the opaque pointer to user data ("bind data") that was set for the function by its "bind" callback via `duckdb_v2_scalar_function_set_bind_data`.
-      If the "bind data" has not been set, this function reports an error.
-      The "bind data" should be treated as immutable by later callbacks (e.g. "init" and "exec") as they may be invoked concurrently during query execution. 
-      If mutability is needed, consider using `duckdb_v2_scalar_function_set_init_data` to set worker-local mutable state in the "init" callback instead.
+    description: "This function can be called from any scalar function callback (e.g. \"bind\", \"init\", or \"exec\") to retrieve the opaque pointer to user data (\"bind data\") that was set for the function by its \"bind\" callback via `duckdb_v2_scalar_function_set_bind_data`.\nIf the \"bind data\" has not been set, this function reports an error.\nThe \"bind data\" should be treated as immutable by later callbacks (e.g. \"init\" and \"exec\") as they may be invoked concurrently during query execution. \nIf mutability is needed, consider using `duckdb_v2_scalar_function_set_init_data` to set worker-local mutable state in the \"init\" callback instead.\n"
     parameters:
       args:
         type: duckdb_v2_scalar_function_info
@@ -237,8 +178,6 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
-
   duckdb_v2_scalar_function_set_init_data:
     summary: Sets the "init data" pointer from a scalar function's "init" callback.
     description: |
@@ -260,7 +199,6 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_get_init_data:
     summary: Retrieves the user "init data" pointer set by a scalar function's "init" callback.
     description: |
@@ -279,13 +217,9 @@ functions:
         type: duckdb_v2_error_info
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_scalar_function_get_user_data:
     summary: Retrieves the arbitrary user data pointer set on a scalar function.
-    description: |
-      This function retrieves the opaque pointer to arbitrary user data that was set for a scalar function via `duckdb_v2_scalar_function_builder_set_user_data`.
-      This function can be invoked from any scalar function callback (e.g. "bind", "init", or "exec"). 
-      DuckDB makes no guarantees about the mutability or thread-safety of the returned pointer; those guarantees are the responsibility of the caller when setting the user data.
+    description: "This function retrieves the opaque pointer to arbitrary user data that was set for a scalar function via `duckdb_v2_scalar_function_builder_set_user_data`.\nThis function can be invoked from any scalar function callback (e.g. \"bind\", \"init\", or \"exec\"). \nDuckDB makes no guarantees about the mutability or thread-safety of the returned pointer; those guarantees are the responsibility of the caller when setting the user data.\n"
     parameters:
       func:
         type: duckdb_v2_scalar_function_info

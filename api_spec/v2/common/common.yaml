@@ -52,10 +52,8 @@ handles:
       duckdb_v2_logical_type_destroy. Borrowed strings returned by getters
       are valid until destroy.
     cleanup_with: duckdb_v2_logical_type_destroy
-
   duckdb_v2_context:
     description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
-
 callbacks:
   duckdb_v2_user_data_equals:
     return_type: bool
@@ -74,7 +72,6 @@ callbacks:
           Opaque pointer to the second resource. The library passes this pointer
           to the equality function when it needs to compare two resources for
           equality.
-
   duckdb_v2_user_data_copy:
     return_type: opaque
     return_pointer: 1
@@ -82,23 +79,21 @@ callbacks:
       data:
         type: void
         indirection: 1
-        description: | 
-            Opaque pointer to the resource to copy. The library passes this pointer
-            to the copy function when it needs to make a copy of the resource.
-            The copy function is responsible for allocating a new copy and returning
-            its pointer; the library will eventually destroy it with the destructor.
-
+        description: |
+          Opaque pointer to the resource to copy. The library passes this pointer
+          to the copy function when it needs to make a copy of the resource.
+          The copy function is responsible for allocating a new copy and returning
+          its pointer; the library will eventually destroy it with the destructor.
   duckdb_v2_user_data_destroy:
     return_type: void
     parameters:
       data:
         type: void
         indirection: 1
-        description: | 
+        description: |
           Opaque pointer to the resource to destroy. The library passes this
           pointer to the destructor when it's time to clean up the resource.
           The destructor is responsible for freeing it.
-
 aliases:
   duckdb_v2_error_kind:
     underlying: u32

@@ -14,7 +14,6 @@ callbacks:
       err:
         type: duckdb_v2_error_info
         description: "Error handle to populate if the callback fails. The library treats any non-success code set here as a failure of the overall callback"
-
 functions:
   duckdb_v2_connect:
     summary: "Opens a connection to a database."
@@ -173,7 +172,6 @@ functions:
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_connection_execute_with_context:
     summary: "Runs a callback in a transaction with the connection's context as the active context."
     description: |

@@ -21,7 +21,6 @@ functions:
         kind: OUT
         description: "The error code associated with the info, if the call succeeds."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_error_info_get_text:
     summary: "Retrieves the error message associated with an error info handle."
     description: |
@@ -42,7 +41,6 @@ functions:
         kind: OUT_BORROW
         description: "Borrowed pointer to the null-terminated message. Owned by the library; must not be freed."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_error_info_set_code:
     summary: "Sets the error code for an error info handle."
     description: |
@@ -59,14 +57,9 @@ functions:
         type: duckdb_v2_error_code
         description: "The error code to set in the info."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_error_info_set_text:
     summary: "Sets the error code and message for an error info handle."
-    description: |
-      On success, sets the errors message to the provided value.
-      The library allocates its own copy of the message string. 
-      On failure, nothing is changed. Can accept a `nullptr` info handle: in that case,
-      the call is a no-op and returns DUCKDB_V2_ERROR_NONE.
+    description: "On success, sets the errors message to the provided value.\nThe library allocates its own copy of the message string. \nOn failure, nothing is changed. Can accept a `nullptr` info handle: in that case,\nthe call is a no-op and returns DUCKDB_V2_ERROR_NONE.\n"
     role: setter
     belongs_to: duckdb_v2_error_info
     parameters:
@@ -79,7 +72,6 @@ functions:
         const: true
         description: "Null-terminated string containing the error message to set in the info."
     return_type: DUCKDB_V2_API_CALL
-
   duckdb_v2_error_info_destroy:
     summary: "Destroys an error info handle and frees its resources."
     description: |
