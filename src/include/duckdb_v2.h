@@ -82,6 +82,7 @@ typedef void *duckdb_v2_connection_ptr;
 typedef void *duckdb_v2_option_ptr;
 typedef void *duckdb_v2_error_info_ptr;
 typedef void *duckdb_v2_logical_type_ptr;
+typedef void *duckdb_v2_context_ptr;
 typedef uint32_t duckdb_v2_error_kind_t;
 typedef uint32_t duckdb_v2_error_code_t;
 typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
@@ -95,6 +96,9 @@ typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
 /* --- Error Codes for common --- */
 
 /* --- Function pointer typedefs for common --- */
+typedef bool (*duckdb_v2_user_data_equals_cb)(void *a, void *b);
+typedef void *(*duckdb_v2_user_data_copy_cb)(void *data);
+typedef void (*duckdb_v2_user_data_destroy_cb)(void *data);
 
 /* --- Functions for common --- */
 
@@ -112,13 +116,54 @@ typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
 #define DUCKDB_V2_API_ERROR 0xFFFFFFFF
 
 /* --- Error Codes for errors --- */
-#define DUCKDB_V2_ERROR_NONE              ((0 << 16) | 0)
-#define DUCKDB_V2_ERROR_IO_FILE_NOT_FOUND ((1 << 16) | 1)
-#define DUCKDB_V2_ERROR_IO_READ_FAILURE   ((1 << 16) | 2)
-#define DUCKDB_V2_ERROR_EOF               ((2 << 16) | 1)
-#define DUCKDB_V2_ERROR_INVALID_INPUT     ((2 << 16) | 2)
-#define DUCKDB_V2_ERROR_INVALID_PARAMETER ((2 << 16) | 3)
-#define DUCKDB_V2_ERROR_RESOURCE_IN_USE   ((3 << 16) | 1)
+#define DUCKDB_V2_ERROR_NONE                         ((0 << 16) | 0)
+#define DUCKDB_V2_ERROR_IO_FILE_NOT_FOUND            ((1 << 16) | 1)
+#define DUCKDB_V2_ERROR_IO_READ_FAILURE              ((1 << 16) | 2)
+#define DUCKDB_V2_ERROR_EOF                          ((1 << 16) | 3)
+#define DUCKDB_V2_ERROR_IO_GENERAL                   ((1 << 16) | 4)
+#define DUCKDB_V2_ERROR_IO_NETWORK                   ((1 << 16) | 5)
+#define DUCKDB_V2_ERROR_IO_HTTP                      ((1 << 16) | 6)
+#define DUCKDB_V2_ERROR_INVALID_INPUT                ((2 << 16) | 2)
+#define DUCKDB_V2_ERROR_INVALID_PARAMETER            ((2 << 16) | 3)
+#define DUCKDB_V2_ERROR_OUT_OF_RANGE                 ((2 << 16) | 4)
+#define DUCKDB_V2_ERROR_OBJECT_SIZE                  ((2 << 16) | 5)
+#define DUCKDB_V2_ERROR_RESOURCE_IN_USE              ((3 << 16) | 1)
+#define DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY       ((3 << 16) | 2)
+#define DUCKDB_V2_ERROR_RESOURCE_CONNECTION          ((3 << 16) | 3)
+#define DUCKDB_V2_ERROR_RESOURCE_DEPENDENCY          ((3 << 16) | 4)
+#define DUCKDB_V2_ERROR_RESOURCE_MISSING_EXTENSION   ((3 << 16) | 5)
+#define DUCKDB_V2_ERROR_RESOURCE_AUTOLOAD            ((3 << 16) | 6)
+#define DUCKDB_V2_ERROR_TYPE_CONVERSION              ((4 << 16) | 1)
+#define DUCKDB_V2_ERROR_TYPE_UNKNOWN                 ((4 << 16) | 2)
+#define DUCKDB_V2_ERROR_TYPE_INVALID                 ((4 << 16) | 3)
+#define DUCKDB_V2_ERROR_TYPE_MISMATCH                ((4 << 16) | 4)
+#define DUCKDB_V2_ERROR_TYPE_DECIMAL                 ((4 << 16) | 5)
+#define DUCKDB_V2_ERROR_TYPE_DIVIDE_BY_ZERO          ((4 << 16) | 6)
+#define DUCKDB_V2_ERROR_QUERY_PARSER                 ((5 << 16) | 1)
+#define DUCKDB_V2_ERROR_QUERY_SYNTAX                 ((5 << 16) | 2)
+#define DUCKDB_V2_ERROR_QUERY_BINDER                 ((5 << 16) | 3)
+#define DUCKDB_V2_ERROR_QUERY_PLANNER                ((5 << 16) | 4)
+#define DUCKDB_V2_ERROR_QUERY_OPTIMIZER              ((5 << 16) | 5)
+#define DUCKDB_V2_ERROR_QUERY_EXPRESSION             ((5 << 16) | 6)
+#define DUCKDB_V2_ERROR_QUERY_EXECUTOR               ((5 << 16) | 7)
+#define DUCKDB_V2_ERROR_QUERY_SCHEDULER              ((5 << 16) | 8)
+#define DUCKDB_V2_ERROR_QUERY_NOT_IMPLEMENTED        ((5 << 16) | 9)
+#define DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_RESOLVED ((5 << 16) | 10)
+#define DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_ALLOWED  ((5 << 16) | 11)
+#define DUCKDB_V2_ERROR_DATABASE_CATALOG             ((6 << 16) | 1)
+#define DUCKDB_V2_ERROR_DATABASE_TRANSACTION         ((6 << 16) | 2)
+#define DUCKDB_V2_ERROR_DATABASE_CONSTRAINT          ((6 << 16) | 3)
+#define DUCKDB_V2_ERROR_DATABASE_INDEX               ((6 << 16) | 4)
+#define DUCKDB_V2_ERROR_DATABASE_SEQUENCE            ((6 << 16) | 5)
+#define DUCKDB_V2_ERROR_DATABASE_STATISTICS          ((6 << 16) | 6)
+#define DUCKDB_V2_ERROR_DATABASE_SERIALIZATION       ((6 << 16) | 7)
+#define DUCKDB_V2_ERROR_CONFIGURATION_SETTINGS       ((7 << 16) | 1)
+#define DUCKDB_V2_ERROR_CONFIGURATION_INVALID        ((7 << 16) | 2)
+#define DUCKDB_V2_ERROR_CONFIGURATION_PERMISSION     ((7 << 16) | 3)
+#define DUCKDB_V2_ERROR_RUNTIME_INTERNAL             ((8 << 16) | 1)
+#define DUCKDB_V2_ERROR_RUNTIME_FATAL                ((8 << 16) | 2)
+#define DUCKDB_V2_ERROR_RUNTIME_INTERRUPT            ((8 << 16) | 3)
+#define DUCKDB_V2_ERROR_RUNTIME_NULL_POINTER         ((8 << 16) | 4)
 
 /* --- Function pointer typedefs for errors --- */
 
@@ -302,6 +347,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_pt
 /* --- Error Codes for connection --- */
 
 /* --- Function pointer typedefs for connection --- */
+typedef void (*duckdb_v2_connection_callback_cb)(duckdb_v2_context_ptr context, void *user_data,
+                                                 duckdb_v2_error_info_ptr err);
 
 /* --- Functions for connection --- */
 /*!
@@ -407,6 +454,20 @@ duckdb_v2_destroy_error_info.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_ptr conn, idx_t index,
                                                                            duckdb_v2_option_ptr *out_option,
                                                                            duckdb_v2_error_info_ptr *err);
+/*!
+* Runs a callback in a transaction with the connection's context as the active context.
+* Invoke a user-provided callback within a transaction and the connection's context as the active context.
+
+* @param conn The connection.
+* @param callback The callback to invoke within the transaction.
+* @param user_data Opaque user data pointer passed to the callback.
+* @param err Optional. Error info handle to write details to if the callback fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_ptr conn,
+                                                                            duckdb_v2_connection_callback_cb callback,
+                                                                            void *user_data,
+                                                                            duckdb_v2_error_info_ptr err);
 
 /* ============================================================================
  * MODULE: database
@@ -623,6 +684,18 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_environment_database_count(duckdb_v2
 
 /* --- Functions for error --- */
 /*!
+* Retrieves the error code associated with an error info handle.
+* On success, writes the info's error code to `*out_code`. On failure
+(e.g. if `info` is invalid), leaves `*out_code` unchanged and returns
+a non-success error code.
+
+* @param info The error info handle to query.
+* @param out_code The error code associated with the info, if the call succeeds.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_code(duckdb_v2_error_info_ptr info,
+                                                                duckdb_v2_error_code_t *out_code);
+/*!
 * Retrieves the error message associated with an error info handle.
 * Returns a borrowed pointer to the info's null-terminated error message.
 The pointer is owned by the library and is valid until the info is
@@ -630,14 +703,34 @@ destroyed; callers must not free it and must not read it after the
 info has been destroyed.
 
 * @param info The error info handle to query.
-* @param out_message Borrowed pointer to the null-terminated message. Owned by the library; must not be freed.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
-duckdb_v2_destroy_error_info.
+* @param out_text Borrowed pointer to the null-terminated message. Owned by the library; must not be freed.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_message(duckdb_v2_error_info_ptr info,
-                                                                   const char **out_message,
-                                                                   duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_text(duckdb_v2_error_info_ptr info, const char **out_text);
+/*!
+* Sets the error code for an error info handle.
+* On success, sets the error code to the provided value. On failure,
+nothing is changed. Can accept a `nullptr` info handle: in that case,
+the call is a no-op and returns DUCKDB_V2_ERROR_NONE.
+
+* @param info The error info handle to set. On success, updated with the provided code.
+* @param code The error code to set in the info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_set_code(duckdb_v2_error_info_ptr info,
+                                                                duckdb_v2_error_code_t code);
+/*!
+* Sets the error code and message for an error info handle.
+* On success, sets the errors message to the provided value.
+The library allocates its own copy of the message string.
+On failure, nothing is changed. Can accept a `nullptr` info handle: in that case,
+the call is a no-op and returns DUCKDB_V2_ERROR_NONE.
+
+* @param info The error info handle to set. On success, updated with the provided message.
+* @param text Null-terminated string containing the error message to set in the info.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_set_text(duckdb_v2_error_info_ptr info, const char *text);
 /*!
 * Destroys an error info handle and frees its resources.
 * Null-safe: calling with a null handle or a null pointer-to-handle is a
@@ -645,12 +738,243 @@ no-op and returns DUCKDB_V2_ERROR_NONE. On return, `*info` is set to
 nullptr. Safe to call on any info returned by the library.
 
 * @param info The error info handle to destroy. Set to nullptr on return.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via
-duckdb_v2_error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_ptr *info,
-                                                               duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_ptr *info);
+
+/* ============================================================================
+ * MODULE: scalar
+ * ============================================================================ */
+
+/* --- Types for scalar --- */
+typedef void *duckdb_v2_scalar_function_builder_ptr;
+typedef void *duckdb_v2_scalar_function_info_ptr;
+
+/* --- Enums for scalar --- */
+
+/* --- Structs for scalar --- */
+
+/* --- Constants for scalar --- */
+
+/* --- Error Codes for scalar --- */
+
+/* --- Function pointer typedefs for scalar --- */
+typedef void (*duckdb_v2_scalar_function_callback_cb)(duckdb_v2_scalar_function_info_ptr info,
+                                                      duckdb_v2_context_ptr context, duckdb_v2_error_info_ptr err);
+
+/* --- Functions for scalar --- */
+/*!
+* Creates a new scalar function.
+* Creates a new scalar function builder that can be configured with the various `duckdb_v2_scalar_function_set_*`
+functions and registered with `duckdb_v2_scalar_function_register`. On success, returns a handle to the new builder. The
+builder is owned by the caller and must be destroyed with `duckdb_v2_scalar_function_builder_destroy` when no longer
+needed.
+
+* @param name The DuckDB context in which the function will be created.
+* @param out On success, receives the newly created scalar function builder. The caller owns the builder and must
+destroy it with `duckdb_v2_scalar_function_builder_destroy`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(duckdb_v2_context_ptr name,
+                                                                           duckdb_v2_scalar_function_builder_ptr *out,
+                                                                           duckdb_v2_error_info_ptr err);
+/*!
+* Sets the name of a scalar function.
+* The name of a scalar function must be a null-terminated string.
+The library make and internal copy of the provided name and does not take ownership.
+Failing to set a name before registration results in an error.
+
+* @param func The scalar function to configure
+* @param name The null-terminated name to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar_function_builder_ptr func,
+                                                                             const char *name,
+                                                                             duckdb_v2_error_info_ptr err);
+/*!
+* Sets the bind callback for a scalar function.
+* The "Bind" callback is invoked during query planning and can be used to perform type resolution, argument validation,
+and other setup tasks. Additionally a "Bind" callback can set a "bind data" pointer which can be accessed by later
+callbacks (e.g. "Init" and "Exec") to share information between the planning and execution phases.
+
+* @param func The scalar function to configure.
+* @param callback The bind callback to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_bind_callback(
+    duckdb_v2_scalar_function_builder_ptr func, duckdb_v2_scalar_function_callback_cb callback,
+    duckdb_v2_error_info_ptr err);
+/*!
+* Sets the init callback for a scalar function.
+* The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the
+function. It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via
+`duckdb_v2_scalar_function_get_init_data` to keep worker-local mutable state across invocations of the function.
+
+* @param func The scalar function to configure.
+* @param callback The "init callback" to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_init_callback(
+    duckdb_v2_scalar_function_builder_ptr func, duckdb_v2_scalar_function_callback_cb callback,
+    duckdb_v2_error_info_ptr err);
+/*!
+* Sets the "exec" callback for a scalar function.
+* The "Exec" callback is invoked during query execution to evaluate the function for each batch of input rows.
+This is the main callback that implements the logic of the function.
+Failing to set an "exec" callback before registration results in an error.
+
+* @param func The scalar function to configure.
+* @param callback The "exec" callback to set for the function. This is the callback that will be invoked to execute the
+function for each batch of input rows during query execution.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_exec_callback(
+    duckdb_v2_scalar_function_builder_ptr func, duckdb_v2_scalar_function_callback_cb callback,
+    duckdb_v2_error_info_ptr err);
+/*!
+* Registers a scalar function with a database, making the function available for use in queries.
+* This function registers a fully configured scalar function builder with a database, making the function available for
+use in SQL queries executed on that database. The function builder must have at least its name and exec callback set
+before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured
+function and its properties during registration, so the caller retains ownership of the builder and can safely destroy
+or modify it after registration without affecting the registered function.
+
+* @param context The DuckDB context in which to register the function.
+* @param func The scalar function to register.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_context_ptr context,
+                                                                             duckdb_v2_scalar_function_builder_ptr func,
+                                                                             duckdb_v2_error_info_ptr err);
+/*!
+* Destroys a scalar function, releasing its resources.
+* This function destroys a scalar function builder that was created with `duckdb_v2_scalar_function_builder_create`,
+releasing any resources associated with it. If the builder has already been registered with a database, destroying it
+does not affect the registered function in the database, as DuckDB makes an internal copy of the function during
+registration. This function is null-safe: calling it with a null pointer is a no-op and returns DUCKDB_V2_ERROR_NONE.
+The handle is set to null on return to prevent double-destruction.
+
+* @param func The scalar function to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_ptr *func);
+/*!
+* Sets arbitrary extra data on a scalar function.
+* This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function.
+This is useful for associating custom metadata or static context with the function that can be retrieved later from
+callbacks via `duckdb_v2_scalar_function_get_user_data`.
+
+* @param func The scalar function to configure.
+* @param data Opaque pointer to user data.
+* @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
+If not provided, the library will not attempt to destroy the user data.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar_function_builder_ptr func, void *data,
+                                                duckdb_v2_user_data_destroy_cb destroy, duckdb_v2_error_info_ptr err);
+/*!
+* Sets the "bind data" pointer from a scalar function's "bind" callback.
+* This function can only be called from within a scalar function's "bind" callback.
+It allows the callback to set an opaque pointer to arbitrary user data ("bind data") that will be associated with the
+function and accessible from later callbacks (e.g. "init" and "exec") via `duckdb_v2_scalar_function_get_bind_data`.
+This is useful for sharing information between the planning and execution phases, such as resolved argument types,
+prepared statements, or other metadata computed during binding that needs to be available during execution.
+
+* @param args The callback info handle provided to the bind callback.
+* @param data Opaque pointer to user data.
+* @param copy Optional. If provided, this callback will be used to make a copy of the "bind data" when needed. If not
+provided, the library will copy the pointer value as-is.
+* @param equals Optional. If provided, this callback will be used to compare two "bind data" pointers for equality. If
+not provided, the library will compare pointer values for equality.
+* @param destroy Optional. If provided, this callback will be used to destroy the "bind data" when it's no longer
+needed. If not provided, the library will not attempt to destroy the bind data.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_bind_data(duckdb_v2_scalar_function_info_ptr args,
+                                                                          void *data, duckdb_v2_user_data_copy_cb copy,
+                                                                          duckdb_v2_user_data_equals_cb equals,
+                                                                          duckdb_v2_user_data_destroy_cb destroy,
+                                                                          duckdb_v2_error_info_ptr err);
+/*!
+* Retrieves the user "bind data" pointer set by a scalar function's "bind" callback.
+* This function can be called from any scalar function callback (e.g. "bind", "init", or "exec") to retrieve the opaque
+pointer to user data ("bind data") that was set for the function by its "bind" callback via
+`duckdb_v2_scalar_function_set_bind_data`. If the "bind data" has not been set, this function reports an error. The
+"bind data" should be treated as immutable by later callbacks (e.g. "init" and "exec") as they may be invoked
+concurrently during query execution. If mutability is needed, consider using `duckdb_v2_scalar_function_set_init_data`
+to set worker-local mutable state in the "init" callback instead.
+
+* @param args The callback info handle provided to a scalar function callback (e.g. the "bind", "init", or "exec"
+callback).
+* @param out_data On success, receives the opaque pointer to user data that was set in the function's bind callback via
+`duckdb_v2_scalar_function_set_bind_data`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_bind_data(duckdb_v2_scalar_function_info_ptr args,
+                                                                          void **out_data,
+                                                                          duckdb_v2_error_info_ptr err);
+/*!
+* Sets the "init data" pointer from a scalar function's "init" callback.
+* This function can only be called from within a scalar function's "init" callback.
+It allows the callback to set an opaque pointer to arbitrary user data ("init data") that will be associated with the
+executing worker thread for the duration of the query and accessible from the "exec" callback via
+`duckdb_v2_scalar_function_get_init_data`. Note that the "init data" is worker-local, not _thread local_. There is no
+guarantee that the same thread will see the same "init data" across multiple invocations of the function.
+
+* @param args The callback info handle provided to the init callback.
+* @param data Opaque pointer to the user provided "init data".
+* @param destroy Optional. If provided, this callback will be used to destroy the "init data" when it's no longer
+needed. If not provided, the library will not attempt to destroy the init data.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_init_data(duckdb_v2_scalar_function_info_ptr args,
+                                                                          void *data,
+                                                                          duckdb_v2_user_data_destroy_cb destroy,
+                                                                          duckdb_v2_error_info_ptr err);
+/*!
+* Retrieves the user "init data" pointer set by a scalar function's "init" callback.
+* This function can be called from the "init" and "exec" callbacks of a scalar function to retrieve the opaque pointer
+to user data ("init data") that was set for the executing worker thread by its "init" callback via
+`duckdb_v2_scalar_function_set_init_data`. If the "init data" has not been set, this function reports an error.
+
+* @param args The callback info handle provided to a scalar function callback (e.g. the "init", or "exec" callback).
+* @param out_data On success, receives the opaque pointer to user data that was set in the function's "init" callback
+via `duckdb_v2_scalar_function_set_init_data`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_init_data(duckdb_v2_scalar_function_info_ptr args,
+                                                                          void **out_data,
+                                                                          duckdb_v2_error_info_ptr err);
+/*!
+* Retrieves the arbitrary user data pointer set on a scalar function.
+* This function retrieves the opaque pointer to arbitrary user data that was set for a scalar function via
+`duckdb_v2_scalar_function_builder_set_user_data`. This function can be invoked from any scalar function callback (e.g.
+"bind", "init", or "exec"). DuckDB makes no guarantees about the mutability or thread-safety of the returned pointer;
+those guarantees are the responsibility of the caller when setting the user data.
+
+* @param func The callback info handle provided to a scalar function callback (e.g. the "bind", "init", or "exec"
+callback).
+* @param out_data On success, receives the opaque pointer to user data that was set for the function via
+`duckdb_v2_scalar_function_builder_set_user_data`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_user_data(duckdb_v2_scalar_function_info_ptr func,
+                                                                          void **out_data,
+                                                                          duckdb_v2_error_info_ptr err);
 
 /* ============================================================================
  * MODULE: logical_type

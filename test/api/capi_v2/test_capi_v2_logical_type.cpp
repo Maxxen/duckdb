@@ -104,7 +104,7 @@ TEST_CASE("V2: logical_type create_from_id rejects parameterised ids", "[capi_v2
 		REQUIRE(duckdb_v2_logical_type_create_from_id(id, &type, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(type == nullptr);
 		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 }
 
@@ -124,7 +124,7 @@ TEST_CASE("V2: logical_type create_from_id rejects sentinel and bind-time-only i
 		REQUIRE(duckdb_v2_logical_type_create_from_id(id, &type, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(type == nullptr);
 		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err, nullptr);
+		duckdb_v2_error_info_destroy(&err);
 	}
 }
 
@@ -412,7 +412,7 @@ TEST_CASE("V2: logical_type ENUM get_value out-of-range", "[capi_v2][logical_typ
 	duckdb_v2_error_info_ptr err = nullptr;
 	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 2, &v, &len, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err, nullptr);
+	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_logical_type_destroy(&t, nullptr);
 }
 

@@ -120,3 +120,33 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connecti
 		                            "unknown error in duckdb_v2_connection_option_get_by_index");
 	}
 }
+
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_ptr conn,
+                                                               duckdb_v2_connection_callback_cb callback,
+                                                               void *user_data, duckdb_v2_error_info_ptr err) {
+	return duckdb::WithErrorHandler(nullptr, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
+		}
+		if (!callback) {
+			throw duckdb::InvalidInputException("Callback pointer cannot be null.");
+		}
+
+		auto *conn_wrapper = duckdb::ToConn(conn);
+		auto &ctx = *conn_wrapper->connection->context;
+
+		ctx.RunFunctionInTransaction([&]() {
+			duckdb::ErrorInfoV2 callback_err;
+
+			auto ctx_ptr = static_cast<duckdb_v2_context_ptr>(&ctx);
+			auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&callback_err);
+
+			callback(ctx_ptr, user_data, err_ptr);
+
+			if (callback_err.code != DUCKDB_V2_ERROR_NONE) {
+				// TODO: Throw proper exception here
+				throw duckdb::InvalidInputException(callback_err.message);
+			}
+		});
+	});
+}

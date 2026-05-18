@@ -87,7 +87,7 @@ def load_modules(spec_dir: Path) -> list[dict]:
             jsonschema.validate(data, schema)
         except jsonschema.ValidationError as e:
             raise jsonschema.ValidationError(
-                f"{path.relative_to(spec_dir)}: {e.message}"
+                f"{path.relative_to(spec_dir)}: {e.message} in {e.json_path}"
             ) from e
         apply_defaults(data, schema)
         modules.append(data)

@@ -1,5 +1,20 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: connection
+callbacks:
+  duckdb_v2_connection_callback:
+    return_type: void
+    parameters:
+      context:
+        type: duckdb_v2_context
+        description: "The connection's context active at the time of invocation."
+      user_data:
+        type: void
+        indirection: 1
+        description: "Opaque user data pointer passed through from duckdb_v2_connection_execute_with_context."
+      err:
+        type: duckdb_v2_error_info
+        description: "Error handle to populate if the callback fails. The library treats any non-success code set here as a failure of the overall callback"
+
 functions:
   duckdb_v2_connect:
     summary: "Opens a connection to a database."
@@ -157,4 +172,24 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+    return_type: DUCKDB_V2_API_CALL
+
+  duckdb_v2_connection_execute_with_context:
+    summary: "Runs a callback in a transaction with the connection's context as the active context."
+    description: |
+      Invoke a user-provided callback within a transaction and the connection's context as the active context.
+    parameters:
+      conn:
+        type: duckdb_v2_connection
+        description: "The connection."
+      callback:
+        type: duckdb_v2_connection_callback
+        description: "The callback to invoke within the transaction."
+      user_data:
+        type: void
+        indirection: 1
+        description: "Opaque user data pointer passed to the callback."
+      err:
+        type: duckdb_v2_error_info
+        description: "Optional. Error info handle to write details to if the callback fails."
     return_type: DUCKDB_V2_API_CALL
