@@ -348,7 +348,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_pt
 
 /* --- Function pointer typedefs for connection --- */
 typedef void (*duckdb_v2_connection_callback_cb)(duckdb_v2_context_ptr context, void *user_data,
-                                                 duckdb_v2_error_info_ptr err);
+                                                 duckdb_v2_error_info_ptr *err);
 
 /* --- Functions for connection --- */
 /*!
@@ -467,7 +467,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckd
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_ptr conn,
                                                                             duckdb_v2_connection_callback_cb callback,
                                                                             void *user_data,
-                                                                            duckdb_v2_error_info_ptr err);
+                                                                            duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: database
@@ -760,7 +760,7 @@ typedef void *duckdb_v2_scalar_function_info_ptr;
 
 /* --- Function pointer typedefs for scalar --- */
 typedef void (*duckdb_v2_scalar_function_callback_cb)(duckdb_v2_scalar_function_info_ptr info,
-                                                      duckdb_v2_context_ptr context, duckdb_v2_error_info_ptr err);
+                                                      duckdb_v2_context_ptr context, duckdb_v2_error_info_ptr *err);
 
 /* --- Functions for scalar --- */
 /*!
@@ -778,7 +778,7 @@ destroy it with `duckdb_v2_scalar_function_builder_destroy`.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(duckdb_v2_context_ptr name,
                                                                            duckdb_v2_scalar_function_builder_ptr *out,
-                                                                           duckdb_v2_error_info_ptr err);
+                                                                           duckdb_v2_error_info_ptr *err);
 /*!
 * Sets the name of a scalar function.
 * The name of a scalar function must be a null-terminated string.
@@ -792,7 +792,7 @@ Failing to set a name before registration results in an error.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar_function_builder_ptr func,
                                                                              const char *name,
-                                                                             duckdb_v2_error_info_ptr err);
+                                                                             duckdb_v2_error_info_ptr *err);
 /*!
 * Sets the bind callback for a scalar function.
 * The "Bind" callback is invoked during query planning and can be used to perform type resolution, argument validation,
@@ -806,7 +806,7 @@ callbacks (e.g. "Init" and "Exec") to share information between the planning and
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_bind_callback(
     duckdb_v2_scalar_function_builder_ptr func, duckdb_v2_scalar_function_callback_cb callback,
-    duckdb_v2_error_info_ptr err);
+    duckdb_v2_error_info_ptr *err);
 /*!
 * Sets the init callback for a scalar function.
 * The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the
@@ -820,7 +820,7 @@ function. It can be used to setup an "init data" pointer which can be accessed b
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_init_callback(
     duckdb_v2_scalar_function_builder_ptr func, duckdb_v2_scalar_function_callback_cb callback,
-    duckdb_v2_error_info_ptr err);
+    duckdb_v2_error_info_ptr *err);
 /*!
 * Sets the "exec" callback for a scalar function.
 * The "Exec" callback is invoked during query execution to evaluate the function for each batch of input rows.
@@ -835,7 +835,7 @@ function for each batch of input rows during query execution.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_exec_callback(
     duckdb_v2_scalar_function_builder_ptr func, duckdb_v2_scalar_function_callback_cb callback,
-    duckdb_v2_error_info_ptr err);
+    duckdb_v2_error_info_ptr *err);
 /*!
 * Registers a scalar function with a database, making the function available for use in queries.
 * This function registers a fully configured scalar function builder with a database, making the function available for
@@ -851,7 +851,7 @@ or modify it after registration without affecting the registered function.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_context_ptr context,
                                                                              duckdb_v2_scalar_function_builder_ptr func,
-                                                                             duckdb_v2_error_info_ptr err);
+                                                                             duckdb_v2_error_info_ptr *err);
 /*!
 * Destroys a scalar function, releasing its resources.
 * This function destroys a scalar function builder that was created with `duckdb_v2_scalar_function_builder_create`,
@@ -880,7 +880,7 @@ If not provided, the library will not attempt to destroy the user data.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar_function_builder_ptr func, void *data,
-                                                duckdb_v2_user_data_destroy_cb destroy, duckdb_v2_error_info_ptr err);
+                                                duckdb_v2_user_data_destroy_cb destroy, duckdb_v2_error_info_ptr *err);
 /*!
 * Sets the "bind data" pointer from a scalar function's "bind" callback.
 * This function can only be called from within a scalar function's "bind" callback.
@@ -904,7 +904,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_bind_data(duckdb
                                                                           void *data, duckdb_v2_user_data_copy_cb copy,
                                                                           duckdb_v2_user_data_equals_cb equals,
                                                                           duckdb_v2_user_data_destroy_cb destroy,
-                                                                          duckdb_v2_error_info_ptr err);
+                                                                          duckdb_v2_error_info_ptr *err);
 /*!
 * Retrieves the user "bind data" pointer set by a scalar function's "bind" callback.
 * This function can be called from any scalar function callback (e.g. "bind", "init", or "exec") to retrieve the opaque
@@ -923,7 +923,7 @@ callback).
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_bind_data(duckdb_v2_scalar_function_info_ptr args,
                                                                           void **out_data,
-                                                                          duckdb_v2_error_info_ptr err);
+                                                                          duckdb_v2_error_info_ptr *err);
 /*!
 * Sets the "init data" pointer from a scalar function's "init" callback.
 * This function can only be called from within a scalar function's "init" callback.
@@ -942,7 +942,7 @@ needed. If not provided, the library will not attempt to destroy the init data.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_set_init_data(duckdb_v2_scalar_function_info_ptr args,
                                                                           void *data,
                                                                           duckdb_v2_user_data_destroy_cb destroy,
-                                                                          duckdb_v2_error_info_ptr err);
+                                                                          duckdb_v2_error_info_ptr *err);
 /*!
 * Retrieves the user "init data" pointer set by a scalar function's "init" callback.
 * This function can be called from the "init" and "exec" callbacks of a scalar function to retrieve the opaque pointer
@@ -957,7 +957,7 @@ via `duckdb_v2_scalar_function_set_init_data`.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_init_data(duckdb_v2_scalar_function_info_ptr args,
                                                                           void **out_data,
-                                                                          duckdb_v2_error_info_ptr err);
+                                                                          duckdb_v2_error_info_ptr *err);
 /*!
 * Retrieves the arbitrary user data pointer set on a scalar function.
 * This function retrieves the opaque pointer to arbitrary user data that was set for a scalar function via
@@ -974,7 +974,7 @@ callback).
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_user_data(duckdb_v2_scalar_function_info_ptr func,
                                                                           void **out_data,
-                                                                          duckdb_v2_error_info_ptr err);
+                                                                          duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: logical_type

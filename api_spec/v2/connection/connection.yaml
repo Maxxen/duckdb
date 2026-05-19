@@ -13,6 +13,7 @@ callbacks:
         description: "Opaque user data pointer passed through from duckdb_v2_connection_execute_with_context."
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: "Error handle to populate if the callback fails. The library treats any non-success code set here as a failure of the overall callback"
 functions:
   duckdb_v2_connect:
@@ -189,5 +190,6 @@ functions:
         description: "Opaque user data pointer passed to the callback."
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: "Optional. Error info handle to write details to if the callback fails."
     return_type: DUCKDB_V2_API_CALL

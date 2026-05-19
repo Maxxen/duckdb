@@ -394,7 +394,7 @@ inline DUCKDB_V2_API_CALL_t GetErrorCodeFromExceptionType(ExceptionType type) {
 }
 
 template <class T>
-DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_ptr err, T callback) {
+DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_ptr *err, T callback) {
 	auto code = static_cast<DUCKDB_V2_API_CALL_t>(DUCKDB_V2_ERROR_NONE);
 	auto text = string();
 
@@ -415,7 +415,12 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_ptr err, T callback) 
 
 	// Pass up to the caller via the out-parameter if they provided one; otherwise swallow.
 	if (err) {
-		auto &out = *static_cast<ErrorInfoV2 *>(err);
+		if (!*err) {
+			// Allocate a new ErrorInfoV2 if the caller didn't provide one
+			*err = static_cast<duckdb_v2_error_info_ptr>(new ErrorInfoV2());
+		}
+
+		auto &out = *static_cast<ErrorInfoV2 *>(*err);
 		out.code = code;
 		out.message = std::move(text);
 	}

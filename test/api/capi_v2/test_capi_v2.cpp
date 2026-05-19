@@ -790,27 +790,26 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 
 	// Function callbacks
 	static auto bind_callback = [](duckdb_v2_scalar_function_info_ptr info, duckdb_v2_context_ptr ctx,
-	                               duckdb_v2_error_info_ptr err) {
+	                               duckdb_v2_error_info_ptr *err) {
 		/* TODO */
 	};
 
 	static auto init_callback = [](duckdb_v2_scalar_function_info_ptr info, duckdb_v2_context_ptr ctx,
-	                               duckdb_v2_error_info_ptr err) {
+	                               duckdb_v2_error_info_ptr *err) {
 		/* TODO */
 	};
 
 	static auto exec_callback = [](duckdb_v2_scalar_function_info_ptr info, duckdb_v2_context_ptr ctx,
-	                               duckdb_v2_error_info_ptr err) {
+	                               duckdb_v2_error_info_ptr *err) {
 		/* TODO */
 	};
 
 	SECTION("Basic registration and cleanup") {
-
 		// Run in transaction to get a context we can register within
 
 		duckdb_v2_connection_execute_with_context(
 		    conn,
-		    [](duckdb_v2_context_ptr ctx, void *, duckdb_v2_error_info_ptr err) {
+		    [](duckdb_v2_context_ptr ctx, void *, duckdb_v2_error_info_ptr *err) {
 			    duckdb_v2_scalar_function_builder_ptr builder = nullptr;
 			    REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
 

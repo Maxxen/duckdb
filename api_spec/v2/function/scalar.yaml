@@ -18,6 +18,7 @@ callbacks:
         description: The DuckDB context in which the callback is being invoked.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: "Error info handle, provided by DuckDB. \nCan be used to signal failure and report error details if the callback encounters an error. \nOn success, leave `*err` unchanged. On failure, set an appropriate error code and message in `err` and return. DuckDB will inspect the error info after the callback returns to determine whether the call succeeded or failed.\nThe error info handle is owned by DuckDB, is always valid when the callback is invoked, and must not be stored or destroyed by the callee.\n"
 functions:
   duckdb_v2_scalar_function_builder_create:
@@ -34,6 +35,7 @@ functions:
         description: On success, receives the newly created scalar function builder. The caller owns the builder and must destroy it with `duckdb_v2_scalar_function_builder_destroy`.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_builder_set_name:
@@ -50,6 +52,7 @@ functions:
         description: The null-terminated name to set for the function.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_builder_set_bind_callback:
@@ -64,6 +67,7 @@ functions:
         description: The bind callback to set for the function.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_builder_set_init_callback:
@@ -80,6 +84,7 @@ functions:
         description: The "init callback" to set for the function.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_builder_set_exec_callback:
@@ -94,6 +99,7 @@ functions:
         description: The "exec" callback to set for the function. This is the callback that will be invoked to execute the function for each batch of input rows during query execution.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_builder_register:
@@ -108,6 +114,7 @@ functions:
         description: The scalar function to register.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_builder_destroy:
@@ -135,6 +142,7 @@ functions:
         description: Optional. If provided, this callback will be used to destroy the user data when it's no longer needed. If not provided, the library will not attempt to destroy the user data.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   ## Callback Methods
@@ -160,6 +168,7 @@ functions:
         description: Optional. If provided, this callback will be used to destroy the "bind data" when it's no longer needed. If not provided, the library will not attempt to destroy the bind data.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_get_bind_data:
@@ -176,6 +185,7 @@ functions:
         description: On success, receives the opaque pointer to user data that was set in the function's bind callback via `duckdb_v2_scalar_function_set_bind_data`.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_set_init_data:
@@ -197,6 +207,7 @@ functions:
         description: Optional. If provided, this callback will be used to destroy the "init data" when it's no longer needed. If not provided, the library will not attempt to destroy the init data.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_get_init_data:
@@ -215,6 +226,7 @@ functions:
         description: On success, receives the opaque pointer to user data that was set in the function's "init" callback via `duckdb_v2_scalar_function_set_init_data`.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL
   duckdb_v2_scalar_function_get_user_data:
@@ -231,5 +243,6 @@ functions:
         description: On success, receives the opaque pointer to user data that was set for the function via `duckdb_v2_scalar_function_builder_set_user_data`.
       err:
         type: duckdb_v2_error_info
+        indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: DUCKDB_V2_API_CALL

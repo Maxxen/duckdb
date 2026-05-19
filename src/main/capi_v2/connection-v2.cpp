@@ -123,8 +123,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connecti
 
 DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_ptr conn,
                                                                duckdb_v2_connection_callback_cb callback,
-                                                               void *user_data, duckdb_v2_error_info_ptr err) {
-	return duckdb::WithErrorHandler(nullptr, [&]() {
+                                                               void *user_data, duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn) {
 			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
 		}
@@ -141,7 +141,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connect
 			auto ctx_ptr = static_cast<duckdb_v2_context_ptr>(&ctx);
 			auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&callback_err);
 
-			callback(ctx_ptr, user_data, err_ptr);
+			callback(ctx_ptr, user_data, &err_ptr);
 
 			if (callback_err.code != DUCKDB_V2_ERROR_NONE) {
 				// TODO: Throw proper exception here
