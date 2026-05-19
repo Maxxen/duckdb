@@ -7,8 +7,9 @@ add_library_unity(
   environment-v2.cpp
   error-v2.cpp
   logical_type-v2.cpp
-  function_scalar-v2.cpp
-  option-v2.cpp)
+  option-v2.cpp
+  value-v2.cpp
+  function_scalar-v2.cpp)
 
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_main_capi_v2>

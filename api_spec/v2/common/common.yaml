@@ -46,12 +46,23 @@ handles:
       An opaque, owned handle to a logical type. Carries a type id plus any
       kind-specific metadata (decimal width/scale, enum dictionary, list /
       array / struct / map / union child types, alias). Read-only from the C
-      side in PR1: instances arrive either from the result schema (PR3) or
-      from logical_type_create_from_id for primitives. Composite construction
-      (CREATE_LIST/STRUCT/etc) is deferred. Always destroy via
+      side today: instances arrive either from a query result schema or from
+      logical_type_create_from_id for primitives. Composite construction
+      (CREATE_LIST/STRUCT/etc) is not yet exposed. Always destroy via
       duckdb_v2_logical_type_destroy. Borrowed strings returned by getters
       are valid until destroy.
     cleanup_with: duckdb_v2_logical_type_destroy
+  duckdb_v2_value:
+    description: |
+      An opaque, owned handle to a single SQL value. Carries a logical type
+      plus a typed payload. Created via the primitive duckdb_v2_value_create_*
+      constructors. Composite construction (LIST/STRUCT/MAP/ARRAY/UNION/ENUM)
+      is not yet exposed. Always destroy via duckdb_v2_value_destroy. The
+      pointers returned by *_get_varchar / *_get_blob / *_get_bit are
+      borrowed and valid until the value is destroyed; *_get_bignum returns
+      an owned magnitude buffer the caller must free() (BIGNUM is bit-encoded
+      in storage, so the magnitude bytes are produced fresh on each call).
+    cleanup_with: duckdb_v2_value_destroy
   duckdb_v2_context:
     description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 callbacks:

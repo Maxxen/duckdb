@@ -1,10 +1,10 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: logical_type
 #
-# PR1: read-side introspection of logical types. The construction surface
-# is primitive-only (logical_type_create_from_id) until a real consumer
-# (UDF API, extension-type registration) needs composite constructors;
-# composite construction is deferred to a follow-up PR.
+# Read-side introspection of logical types. The construction surface is
+# primitive-only (logical_type_create_from_id) until a real consumer (UDF
+# API, extension-type registration) needs composite constructors; composite
+# construction is not part of this surface yet.
 #
 # Mirrors duckdb::LogicalType and the kind-specific accessors it exposes
 # internally (decimal width/scale, enum dictionary, list/array/struct/map/
@@ -144,7 +144,7 @@ functions:
       Returns DUCKDB_V2_ERROR_INVALID_INPUT for parameterised type ids
       (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
       for bind-time-only ids (SQLNULL, ANY, UNKNOWN), and for INVALID.
-      Composite construction is deferred to a later PR.
+      Composite construction is not part of this surface yet.
     role: constructor
     belongs_to: duckdb_v2_logical_type
     parameters:

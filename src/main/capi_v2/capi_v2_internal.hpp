@@ -114,6 +114,13 @@ inline OptionWrapperV2 *ToOption(duckdb_v2_option_ptr ptr) {
 inline LogicalType *ToLogicalType(duckdb_v2_logical_type_ptr ptr) {
 	return static_cast<LogicalType *>(ptr);
 }
+// Same pattern as ToLogicalType: a duckdb_v2_value_ptr is a heap-allocated
+// duckdb::Value with no wrapper. Lets V2 tests adopt V1-built values the
+// same way the logical_type bridge reuses V1 fixtures. Keep it identity —
+// do not wrap.
+inline Value *ToValue(duckdb_v2_value_ptr ptr) {
+	return static_cast<Value *>(ptr);
+}
 
 // Map DuckDB's SettingScopeTarget to the V2 enum. Legacy options
 // (declared via DUCKDB_GLOBAL / DUCKDB_LOCAL / DUCKDB_GLOBAL_LOCAL)

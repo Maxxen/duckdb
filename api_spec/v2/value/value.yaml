@@ -1,0 +1,1341 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: value
+#
+# Primitive value constructors + getters + NULL + introspection.
+#
+# Mirrors duckdb::Value. A value carries a logical type plus a typed payload.
+# Internal storage:
+#   - primitives: inline union (bool, integer widths, float/double, hugeint,
+#     interval, all date/time/timestamp variants).
+#   - varchar/blob/bit/bignum/geometry: StringValueInfo (a managed std::string).
+#   - composites (list/struct/map/array/union): NestedValueInfo (a vector of
+#     child Values). Composite construction is not part of this surface yet.
+#
+# All constructors copy their input. *_create_varchar and *_create_blob
+# take (data, len) and copy. Pass len = 0 with a null data pointer to create
+# an empty value; pass len > 0 with a null data pointer to get
+# DUCKDB_V2_ERROR_INVALID_INPUT. *_create_bit and *_create_bignum are
+# stricter: data must not be NULL and len must be >= 1, because neither
+# encoding has a valid empty form (BIT carries a mandatory padding header
+# byte; BIGNUM expresses zero as a single 0x00 magnitude byte).
+#
+# All getters return owned outputs (caller-destroyed) or borrowed pointers
+# (valid until the value handle is destroyed). The contract is documented
+# per-function.
+#
+# NULL handling for typed-payload getters. Every primitive getter
+# (value_get_bool, value_get_int*, value_get_uint*, value_get_float,
+# value_get_double, value_get_hugeint, value_get_uhugeint, value_get_varchar,
+# value_get_blob, value_get_bit, value_get_bignum, value_get_date,
+# value_get_time*, value_get_timestamp*, value_get_interval,
+# value_get_decimal, value_get_uuid) returns DUCKDB_V2_ERROR_INVALID_INPUT
+# when the value is NULL — a NULL has no typed payload to hand back. Use
+# value_is_null first (or value_get_logical_type / value_to_string, which
+# both accept NULL values).
+
+functions:
+  # -----------------------------------------------------------------------
+  # Lifecycle + NULL
+  # -----------------------------------------------------------------------
+  duckdb_v2_value_destroy:
+    summary: Destroys a value handle.
+    description: |
+      Null-safe: passing nullptr or a slot already set to nullptr is a
+      no-op. On success the slot is set to nullptr.
+    role: destructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+        indirection: 1
+        description: The value to destroy.
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_null:
+    summary: Creates a NULL value of the given logical type.
+    description: |
+      The input logical type is borrowed; the value internally copies the
+      type so the caller can destroy the logical type independently.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      type:
+        type: duckdb_v2_logical_type
+        description: The borrowed logical type to attach to the NULL value.
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+        description: Receives the new NULL value.
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  # -----------------------------------------------------------------------
+  # Primitive constructors
+  # -----------------------------------------------------------------------
+  duckdb_v2_value_create_bool:
+    summary: Creates a BOOLEAN value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: bool
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_int8:
+    summary: Creates a TINYINT value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: i8
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_int16:
+    summary: Creates a SMALLINT value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: i16
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_int32:
+    summary: Creates an INTEGER value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: i32
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_int64:
+    summary: Creates a BIGINT value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_uint8:
+    summary: Creates a UTINYINT value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: u8
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_uint16:
+    summary: Creates a USMALLINT value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: u16
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_uint32:
+    summary: Creates a UINTEGER value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: u32
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_uint64:
+    summary: Creates a UBIGINT value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: u64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_hugeint:
+    summary: Creates a HUGEINT value.
+    description: |
+      hugeint_t is a 128-bit signed integer represented as
+      (u64 lower, i64 upper).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      lower:
+        type: u64
+        description: Low 64 bits of the hugeint.
+      upper:
+        type: i64
+        description: High 64 bits of the hugeint.
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_uhugeint:
+    summary: Creates a UHUGEINT value.
+    description: |
+      uhugeint_t is a 128-bit unsigned integer represented as
+      (u64 lower, u64 upper).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      lower:
+        type: u64
+      upper:
+        type: u64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_float:
+    summary: Creates a FLOAT value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: f32
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_double:
+    summary: Creates a DOUBLE value.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      input:
+        type: f64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_varchar:
+    summary: Creates a VARCHAR value (UTF-8 string).
+    description: |
+      Copies the input. Returns DUCKDB_V2_ERROR_INVALID_INPUT if data is
+      null but length > 0, or if the bytes are not valid UTF-8.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      data:
+        type: char
+        indirection: 1
+        const: true
+        description: Pointer to UTF-8 bytes. May be null when length is 0.
+      length:
+        type: idx
+        description: Number of bytes to copy.
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_blob:
+    summary: Creates a BLOB value (uninterpreted bytes).
+    description: Copies the input. INVALID_INPUT if data is null but length > 0.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      data:
+        type: u8
+        indirection: 1
+        const: true
+        description: Pointer to byte payload. May be null when length is 0.
+      length:
+        type: idx
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_bit:
+    summary: Creates a BIT value (raw bit string with padding byte + data).
+    description: |
+      Takes the raw on-disk bit-string encoding: a single padding byte at
+      offset 0 followed by data bytes. Copies the input.
+
+      data must not be NULL and length must be >= 1. The padding header
+      byte is mandatory, so a length-0 BIT is malformed by encoding. A
+      NULL data pointer or length = 0 returns DUCKDB_V2_ERROR_INVALID_INPUT.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      data:
+        type: u8
+        indirection: 1
+        const: true
+      length:
+        type: idx
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_bignum:
+    summary: Creates a BIGNUM (arbitrary-precision integer) value from raw bytes.
+    description: |
+      Takes the magnitude bytes (big-endian) plus a sign flag. The library
+      builds the VARINT-format payload (3-byte header carrying length and
+      sign bit) internally. Fixes the V1 gap where BIGNUM values had no
+      binding-friendly constructor.
+
+      data must not be NULL and length must be >= 1. BIGNUM has no empty
+      encoding: the value zero is expressed as a single 0x00 magnitude byte
+      with is_negative = false, in the same shape as any other value. A
+      NULL data pointer or length = 0 returns DUCKDB_V2_ERROR_INVALID_INPUT.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      data:
+        type: u8
+        indirection: 1
+        const: true
+        description: Big-endian magnitude bytes.
+      length:
+        type: idx
+      is_negative:
+        type: bool
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_date:
+    summary: Creates a DATE value (days since the Unix epoch).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      days:
+        type: i32
+        description: Days since 1970-01-01.
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_time:
+    summary: Creates a TIME value (microseconds since midnight).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      micros:
+        type: i64
+        description: Microseconds since midnight.
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_time_ns:
+    summary: Creates a TIME_NS value (nanoseconds since midnight).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      nanos:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_time_tz:
+    summary: Creates a TIME_TZ value (micros since midnight + timezone offset).
+    description: |
+      Microseconds since midnight plus a timezone offset in seconds.
+      Internally packed into a 64-bit dtime_tz_t.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      micros:
+        type: i64
+        description: Microseconds since midnight.
+      offset_seconds:
+        type: i32
+        description: Timezone offset in seconds (east of UTC positive).
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_timestamp:
+    summary: Creates a TIMESTAMP value (microseconds since epoch).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      micros:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_timestamp_sec:
+    summary: Creates a TIMESTAMP_S value (seconds since epoch).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      seconds:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_timestamp_ms:
+    summary: Creates a TIMESTAMP_MS value (milliseconds since epoch).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      millis:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_timestamp_ns:
+    summary: Creates a TIMESTAMP_NS value (nanoseconds since epoch).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      nanos:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_timestamp_tz:
+    summary: Creates a TIMESTAMP_TZ value (microseconds since epoch, UTC-anchored).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      micros:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_timestamp_tz_ns:
+    summary: Creates a TIMESTAMP_TZ_NS value (nanoseconds since epoch, UTC-anchored).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      nanos:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_interval:
+    summary: Creates an INTERVAL value.
+    description: |
+      DuckDB intervals are (months, days, microseconds) triples. Months and
+      days have variable lengths (calendar arithmetic), microseconds are a
+      fixed duration.
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      months:
+        type: i32
+      days:
+        type: i32
+      micros:
+        type: i64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_decimal:
+    summary: Creates a DECIMAL value from a hugeint payload + width/scale.
+    description: |
+      DECIMAL values internally store a scaled signed integer. Pass the
+      integer as the two halves of a 128-bit signed value (the internal
+      representation widens as needed for widths above 18). For widths
+      <= 18, the lower 64 bits hold the entire value (signed).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      lower:
+        type: u64
+        description: Low 64 bits of the scaled signed integer.
+      upper:
+        type: i64
+        description: High 64 bits of the scaled signed integer.
+      width:
+        type: u8
+        description: Total digit count, in [1, 38].
+      scale:
+        type: u8
+        description: Number of fractional digits, in [0, width].
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_create_uuid:
+    summary: Creates a UUID value from its 128-bit representation.
+    description: |
+      A UUID is encoded as a hugeint internally. Pass the 128 bits as
+      (lower 64, upper 64).
+    role: constructor
+    belongs_to: duckdb_v2_value
+    parameters:
+      lower:
+        type: u64
+      upper:
+        type: u64
+      out_value:
+        type: duckdb_v2_value
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  # -----------------------------------------------------------------------
+  # Common introspection
+  # -----------------------------------------------------------------------
+  duckdb_v2_value_is_null:
+    summary: Returns whether the value is NULL.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_is_null:
+        type: bool
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_logical_type:
+    summary: Returns the logical type of the value.
+    description: |
+      The returned logical type is caller-owned (must be destroyed via
+      duckdb_v2_logical_type_destroy).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_type:
+        type: duckdb_v2_logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the owned logical type.
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_to_string:
+    summary: Renders the value as a human-readable string. Diagnostic only.
+    description: |
+      The returned char* is caller-owned and must be freed with free().
+      Mirrors duckdb::Value::ToString().
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_string:
+        type: char
+        indirection: 2
+        kind: OUT
+        description: Receives a malloc'd null-terminated string. Caller frees.
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  # -----------------------------------------------------------------------
+  # Primitive getters
+  # -----------------------------------------------------------------------
+  duckdb_v2_value_get_bool:
+    summary: Reads a BOOLEAN value.
+    description: INVALID_INPUT if the value is not BOOLEAN or is NULL.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: bool
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_int8:
+    summary: Reads a TINYINT value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: i8
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_int16:
+    summary: Reads a SMALLINT value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: i16
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_int32:
+    summary: Reads an INTEGER value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: i32
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_int64:
+    summary: Reads a BIGINT value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_uint8:
+    summary: Reads a UTINYINT value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: u8
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_uint16:
+    summary: Reads a USMALLINT value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: u16
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_uint32:
+    summary: Reads a UINTEGER value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: u32
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_uint64:
+    summary: Reads a UBIGINT value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: u64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_hugeint:
+    summary: Reads a HUGEINT value as (lower, upper) halves.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_lower:
+        type: u64
+        indirection: 1
+        kind: OUT
+      out_upper:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_uhugeint:
+    summary: Reads a UHUGEINT value as (lower, upper) halves.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_lower:
+        type: u64
+        indirection: 1
+        kind: OUT
+      out_upper:
+        type: u64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_float:
+    summary: Reads a FLOAT value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: f32
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_double:
+    summary: Reads a DOUBLE value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out:
+        type: f64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_varchar:
+    summary: Borrows the bytes of a VARCHAR value.
+    description: |
+      Returns a borrowed pointer + length. The data is valid until the
+      value is destroyed; the pointer is not null-terminated by contract
+      (use out_length).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_data:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_blob:
+    summary: Borrows the bytes of a BLOB value.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_data:
+        type: u8
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_bit:
+    summary: Borrows the raw bit-string bytes of a BIT value.
+    description: |
+      Includes the leading padding byte and the trailing data bytes — the
+      same on-disk encoding accepted by duckdb_v2_value_create_bit.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_data:
+        type: u8
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_bignum:
+    summary: Returns the magnitude bytes and sign flag of a BIGNUM value.
+    description: |
+      Returns the decoded big-endian magnitude bytes (no VARINT header)
+      and the sign flag. Caller reconstructs the integer as
+      (-1)**is_negative * unsigned_big_endian(out_data[0..out_length]).
+
+      The magnitude buffer is caller-owned and must be freed with free().
+      Allocation is required even for positive bignums (and unavoidable
+      for negative ones, where core stores the magnitude bit-inverted) —
+      the buffer is a fresh malloc'd copy in both cases.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_data:
+        type: u8
+        indirection: 2
+        kind: OUT
+        description: Receives a malloc'd buffer of magnitude bytes. Caller frees.
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the length of the magnitude buffer in bytes.
+      out_is_negative:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives true if the value is negative, false otherwise.
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_date:
+    summary: Reads a DATE value (days since the Unix epoch).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_days:
+        type: i32
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_time:
+    summary: Reads a TIME value (microseconds since midnight).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_micros:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_time_ns:
+    summary: Reads a TIME_NS value (nanoseconds since midnight).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_nanos:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_time_tz:
+    summary: Reads a TIME_TZ value as (microseconds, offset_seconds).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_micros:
+        type: i64
+        indirection: 1
+        kind: OUT
+      out_offset_seconds:
+        type: i32
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_timestamp:
+    summary: Reads a TIMESTAMP value (microseconds since epoch).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_micros:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_timestamp_sec:
+    summary: Reads a TIMESTAMP_S value (seconds since epoch).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_seconds:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_timestamp_ms:
+    summary: Reads a TIMESTAMP_MS value (milliseconds since epoch).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_millis:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_timestamp_ns:
+    summary: Reads a TIMESTAMP_NS value (nanoseconds since epoch).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_nanos:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_timestamp_tz:
+    summary: Reads a TIMESTAMP_TZ value (microseconds since epoch, UTC-anchored).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_micros:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_timestamp_tz_ns:
+    summary: Reads a TIMESTAMP_TZ_NS value (nanoseconds since epoch, UTC-anchored).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_nanos:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_interval:
+    summary: Reads an INTERVAL value as (months, days, micros).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_months:
+        type: i32
+        indirection: 1
+        kind: OUT
+      out_days:
+        type: i32
+        indirection: 1
+        kind: OUT
+      out_micros:
+        type: i64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_decimal:
+    summary: Reads a DECIMAL value as (scaled lower, scaled upper, width, scale).
+    description: |
+      Returns the underlying scaled 128-bit signed integer in two halves.
+      For widths <= 18, the value fits in the lower half (as signed int64).
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_lower:
+        type: u64
+        indirection: 1
+        kind: OUT
+      out_upper:
+        type: i64
+        indirection: 1
+        kind: OUT
+      out_width:
+        type: u8
+        indirection: 1
+        kind: OUT
+      out_scale:
+        type: u8
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
+  duckdb_v2_value_get_uuid:
+    summary: Reads a UUID value as (lower, upper) 64-bit halves.
+    role: getter
+    belongs_to: duckdb_v2_value
+    parameters:
+      value:
+        type: duckdb_v2_value
+      out_lower:
+        type: u64
+        indirection: 1
+        kind: OUT
+      out_upper:
+        type: u64
+        indirection: 1
+        kind: OUT
+      err:
+        type: duckdb_v2_error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
+    return_type: DUCKDB_V2_API_CALL
