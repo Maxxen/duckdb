@@ -7,11 +7,11 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 uv run capigen c \
-    --spec-dir api_spec \
+    --spec-dir api_spec/v2 \
     -o src/include/duckdb_v2.h
 
 uv run capigen bridge \
-    --spec-dir api_spec \
+    --spec-dir api_spec/v2 \
     --scan-dir src/main/capi_v2 \
     -o src/main/capi_v2/capi_v2_stubs.cpp
 

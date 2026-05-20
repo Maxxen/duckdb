@@ -35,6 +35,14 @@
       "type": "array",
       "items": { "$ref": "#/$defs/Primitive" },
       "uniqueItems": true
+    },
+    "prefix": {
+      "description": "String prepended to all generated C identifiers (types, functions, constants). E.g. 'duckdb_v2_' yields 'duckdb_v2_open'; uppercase form used for constants/enum values.",
+      "type": "string"
+    },
+    "options": {
+      "description": "Adapter-specific rendering options, keyed by adapter name (e.g. 'c'). Each adapter reads its own namespace.",
+      "type": "object"
     }
   },
   "$defs": {
@@ -49,6 +57,10 @@
         },
         "c_type": {
           "description": "Canonical C type name in the ABI.",
+          "type": "string"
+        },
+        "underlying": {
+          "description": "If present, the generator emits 'typedef <underlying> <c_type>;' in the header preamble before all modules.",
           "type": "string"
         }
       }

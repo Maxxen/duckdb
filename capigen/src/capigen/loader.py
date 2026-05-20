@@ -6,6 +6,8 @@ from pathlib import Path
 import yaml
 import jsonschema
 
+from .tools import sort_modules_by_deps
+
 # Schema files ship with capigen — they define what the tool understands.
 _SCHEMA_DIR = Path(__file__).parent / "schema"
 
@@ -71,6 +73,7 @@ def _copy_default(value):
 
 
 def load_metadata(spec_dir: Path) -> dict:
+    """Load and validate metadata.yaml from spec_dir."""
     schema = _load_schema("metadata.schema.json")
     data = yaml.safe_load((spec_dir / "metadata.yaml").read_text())
     jsonschema.validate(data, schema)
@@ -79,9 +82,12 @@ def load_metadata(spec_dir: Path) -> dict:
 
 
 def load_modules(spec_dir: Path) -> list[dict]:
+    """Load and validate all module YAML files from spec_dir."""
     schema = _load_schema("module.schema.json")
     modules = []
-    for path in sorted((spec_dir / "v2").rglob("*.yaml")):
+    for path in sorted(spec_dir.rglob("*.yaml")):
+        if path.name == "metadata.yaml":
+            continue
         data = yaml.safe_load(path.read_text())
         try:
             jsonschema.validate(data, schema)
@@ -91,4 +97,4 @@ def load_modules(spec_dir: Path) -> list[dict]:
             ) from e
         apply_defaults(data, schema)
         modules.append(data)
-    return modules
+    return sort_modules_by_deps(modules)

@@ -22,6 +22,8 @@ class CTypeDef:
     canonical_name: str
     base: str
     is_pointer: bool
+    tagged_struct: bool = False  # True -> implies a pointer typedef + is_pointer=True
+    description: str = ""
 
 
 @dataclass
@@ -30,6 +32,7 @@ class CStruct:
     template_alias: str
     pointer_alias: bool
     fields: list[CField]
+    description: str = ""
 
 
 @dataclass
@@ -48,6 +51,7 @@ class CFuncPtr:
     return_pointer: int
     return_const: bool
     params: list[CFuncPtrParam]
+    description: str = ""
 
 
 @dataclass

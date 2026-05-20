@@ -14,42 +14,42 @@
       "description": "Opaque handle types, keyed by name. Always rendered as pointer typedefs (e.g. typedef void* name_ptr).",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^(duckdb_v2_|DUCKDB_V2_)" },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/HandleDefinition" }
     },
     "callbacks": {
       "description": "Callback function pointer typedefs, keyed by name. Always rendered with _cb suffix.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^(duckdb_v2_|DUCKDB_V2_)" },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/CallbackDefinition" }
     },
     "aliases": {
-      "description": "Named type aliases, keyed by name. Always rendered with _t suffix.",
+      "description": "Named type aliases, keyed by unprefixed name. The generator prepends the version prefix and appends the aliases suffix from metadata.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^(duckdb_v2_|DUCKDB_V2_)" },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/AliasDefinition" }
     },
     "structs": {
       "description": "Struct definitions with consumer-visible fields, keyed by struct name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^(duckdb_v2_|DUCKDB_V2_)" },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/StructDefinition" }
     },
     "enums": {
       "description": "Enum definitions, keyed by enum name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^(duckdb_v2_|DUCKDB_V2_)" },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/EnumDefinition" }
     },
     "constants": {
       "description": "Named constants, keyed by constant name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^(duckdb_v2_|DUCKDB_V2_)" },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/ConstantDefinition" }
     },
     "error_groups": {
@@ -62,12 +62,33 @@
       "description": "Function definitions, keyed by C function name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^(duckdb_v2_|DUCKDB_V2_)" },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/Function" }
     }
   },
 
   "$defs": {
+    "StatusEntry": {
+      "description": "A single lifecycle event: [state, version, date]. State is one of: unstable, stable, frozen, deprecated, removed.",
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string",
+          "enum": ["unstable", "stable", "frozen", "deprecated", "removed"]
+        },
+        {
+          "type": "string",
+          "pattern": "^v\\d+\\.\\d+\\.\\d+$"
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+
     "HandleDefinition": {
       "description": "An opaque handle type. Consumers don't know the internal structure — just a pointer.",
       "type": "object",
@@ -78,6 +99,12 @@
           "description": "Name of the function that destroys/frees this handle.",
           "type": "string",
           "examples": ["duckdb_disconnect", "duckdb_destroy_result"]
+        },
+        "status": {
+          "description": "Lifecycle history stack, newest-first. Top entry is current status.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/StatusEntry" },
+          "default": []
         }
       }
     },
@@ -88,6 +115,7 @@
       "additionalProperties": false,
       "required": ["return_type"],
       "properties": {
+        "description": { "type": "string", "default": "" },
         "return_type": {
           "description": "Return type name.",
           "type": "string"
@@ -108,6 +136,12 @@
           "type": "object",
           "default": {},
           "additionalProperties": { "$ref": "#/$defs/Parameter" }
+        },
+        "status": {
+          "description": "Lifecycle history stack, newest-first. Top entry is current status.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/StatusEntry" },
+          "default": []
         }
       }
     },
@@ -123,7 +157,18 @@
           "type": "string",
           "examples": ["u32", "duckdb_error_code"]
         },
-        "description": { "type": "string", "default": "" }
+        "description": { "type": "string", "default": "" },
+        "qualified": {
+          "description": "If true, emitted verbatim — no prefix or suffix applied. The key IS the C name. Use for non-prefixed types (e.g. sel_t, idx_t).",
+          "type": "boolean",
+          "default": false
+        },
+        "status": {
+          "description": "Lifecycle history stack, newest-first. Top entry is current status.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/StatusEntry" },
+          "default": []
+        }
       }
     },
 
@@ -182,6 +227,17 @@
           "type": "string",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",
           "examples": ["1.5.0"]
+        },
+        "return_description": {
+          "description": "Description of the return value.",
+          "type": "string",
+          "default": ""
+        },
+        "status": {
+          "description": "Lifecycle history stack, newest-first. Top entry is current status.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/StatusEntry" },
+          "default": []
         }
       }
     },
@@ -223,6 +279,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "description": { "type": "string", "default": "" },
         "pointer_alias": {
           "description": "If true, generate a typedef pointer alias (e.g. typedef struct_name* struct_name_ptr).",
           "type": "boolean",
@@ -233,6 +290,12 @@
           "type": "array",
           "default": [],
           "items": { "$ref": "#/$defs/StructField" }
+        },
+        "status": {
+          "description": "Lifecycle history stack, newest-first. Top entry is current status.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/StatusEntry" },
+          "default": []
         }
       }
     },
@@ -293,6 +356,12 @@
           "type": "object",
           "default": {},
           "additionalProperties": { "$ref": "#/$defs/EnumValue" }
+        },
+        "status": {
+          "description": "Lifecycle history stack, newest-first. Top entry is current status.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/StatusEntry" },
+          "default": []
         }
       }
     },

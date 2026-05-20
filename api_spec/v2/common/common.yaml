@@ -1,32 +1,32 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: common
 handles:
-  duckdb_v2_environment:
+  environment:
     description: |
       An opaque handle to the V2 environment: the required root through
       which databases are opened. Holds the shared DBInstanceCache so
       that file-level conflicts (the same database file opened twice)
       are detected across all databases under the same environment.
       Destroying the environment refuses with
-      DUCKDB_V2_ERROR_RESOURCE_IN_USE while any database opened through
+      ERROR_RESOURCE_IN_USE while any database opened through
       it is still alive — close those first.
-    cleanup_with: duckdb_v2_destroy_environment
-  duckdb_v2_database:
+    cleanup_with: destroy_environment
+  database:
     description: An opaque handle to a DuckDB database instance
-  duckdb_v2_connection:
+  connection:
     description: An opaque handle to a DuckDB connection
-  duckdb_v2_option:
+  option:
     description: |
       An opaque, owned handle to a single config option: name + setting,
       plus optional metadata (description, default setting, target scope,
-      aliases). Created via duckdb_v2_option_create with a name and
+      aliases). Created via option_create with a name and
       setting; created by the library with full metadata when returned
       from a database/connection get. Always destroyed by the caller via
-      duckdb_v2_option_destroy. All accessors return values valid until
+      option_destroy. All accessors return values valid until
       destroy.
-    cleanup_with: duckdb_v2_option_destroy
+    cleanup_with: option_destroy
   # Error reporting. Every fallible function takes a trailing
-  # `duckdb_v2_error_info_ptr *err` out-parameter.
+  # `error_info_ptr *err` out-parameter.
   #
   # Contract:
   #   - The return value always carries the error code and is authoritative.
@@ -34,14 +34,14 @@ handles:
   #   - If the call succeeds, `*err` is left as nullptr.
   #   - If the call fails and `err != nullptr`, the library allocates an
   #     info handle and stores its pointer in `*err`. The caller owns it
-  #     and must destroy it with duckdb_v2_destroy_error_info.
+  #     and must destroy it with destroy_error_info.
   #   - If `*err` is already non-null on entry, the library destroys the
   #     previous info before writing. To preserve info across calls, detach
   #     it first: `saved = *err; *err = nullptr;`.
-  duckdb_v2_error_info:
-    description: Opaque detail for a failed call; destroy with duckdb_v2_destroy_error_info.
-    cleanup_with: duckdb_v2_destroy_error_info
-  duckdb_v2_logical_type:
+  error_info:
+    description: Opaque detail for a failed call; destroy with error_info_destroy.
+    cleanup_with: error_info_destroy
+  logical_type:
     description: |
       An opaque, owned handle to a logical type. Carries a type id plus any
       kind-specific metadata (decimal width/scale, enum dictionary, list /
@@ -49,24 +49,24 @@ handles:
       side today: instances arrive either from a query result schema or from
       logical_type_create_from_id for primitives. Composite construction
       (CREATE_LIST/STRUCT/etc) is not yet exposed. Always destroy via
-      duckdb_v2_logical_type_destroy. Borrowed strings returned by getters
+      logical_type_destroy. Borrowed strings returned by getters
       are valid until destroy.
-    cleanup_with: duckdb_v2_logical_type_destroy
-  duckdb_v2_value:
+    cleanup_with: logical_type_destroy
+  value:
     description: |
       An opaque, owned handle to a single SQL value. Carries a logical type
-      plus a typed payload. Created via the primitive duckdb_v2_value_create_*
+      plus a typed payload. Created via the primitive value_create_*
       constructors. Composite construction (LIST/STRUCT/MAP/ARRAY/UNION/ENUM)
-      is not yet exposed. Always destroy via duckdb_v2_value_destroy. The
+      is not yet exposed. Always destroy via value_destroy. The
       pointers returned by *_get_varchar / *_get_blob / *_get_bit are
       borrowed and valid until the value is destroyed; *_get_bignum returns
       an owned magnitude buffer the caller must free() (BIGNUM is bit-encoded
       in storage, so the magnitude bytes are produced fresh on each call).
-    cleanup_with: duckdb_v2_value_destroy
-  duckdb_v2_context:
+    cleanup_with: value_destroy
+  context:
     description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 callbacks:
-  duckdb_v2_user_data_equals:
+  user_data_equals:
     return_type: bool
     parameters:
       a:
@@ -83,7 +83,7 @@ callbacks:
           Opaque pointer to the second resource. The library passes this pointer
           to the equality function when it needs to compare two resources for
           equality.
-  duckdb_v2_user_data_copy:
+  user_data_copy:
     return_type: opaque
     return_pointer: 1
     parameters:
@@ -95,7 +95,7 @@ callbacks:
           to the copy function when it needs to make a copy of the resource.
           The copy function is responsible for allocating a new copy and returning
           its pointer; the library will eventually destroy it with the destructor.
-  duckdb_v2_user_data_destroy:
+  user_data_destroy:
     return_type: void
     parameters:
       data:
@@ -106,11 +106,11 @@ callbacks:
           pointer to the destructor when it's time to clean up the resource.
           The destructor is responsible for freeing it.
 aliases:
-  duckdb_v2_error_kind:
+  error_kind:
     underlying: u32
     description: The category part of an error code (the upper 16 bits)
-  duckdb_v2_error_code:
+  error_code:
     underlying: u32
-    description: 'Full 32-bit error code: (group_id << 16) | code'
-  DUCKDB_V2_API_CALL:
-    underlying: duckdb_v2_error_code
+    description: "Full 32-bit error code: (group_id << 16) | code"
+  API_CALL:
+    underlying: error_code

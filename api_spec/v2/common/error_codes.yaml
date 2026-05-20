@@ -5,183 +5,183 @@ error_groups:
   None:
     group_id: 0x0000
     entries:
-      DUCKDB_V2_ERROR_NONE:
+      ERROR_NONE:
         code: 0x0000
         description: "Success"
   IO:
     group_id: 0x0001
     description: "Input/Output and File System errors"
     entries:
-      DUCKDB_V2_ERROR_IO_FILE_NOT_FOUND:
+      ERROR_IO_FILE_NOT_FOUND:
         code: 0x0001
         description: "The specified file could not be found"
-      DUCKDB_V2_ERROR_IO_READ_FAILURE:
+      ERROR_IO_READ_FAILURE:
         code: 0x0002
         description: "Failed to read from the storage device"
-      DUCKDB_V2_ERROR_EOF:
+      ERROR_EOF:
         code: 0x0003
         description: "Unexpected end of file reached"
-      DUCKDB_V2_ERROR_IO_GENERAL:
+      ERROR_IO_GENERAL:
         code: 0x0004
         description: "A generic I/O error occurred while reading or writing data"
-      DUCKDB_V2_ERROR_IO_NETWORK:
+      ERROR_IO_NETWORK:
         code: 0x0005
         description: "A network-level failure occurred during an I/O operation"
-      DUCKDB_V2_ERROR_IO_HTTP:
+      ERROR_IO_HTTP:
         code: 0x0006
         description: "An HTTP request issued by the database failed"
   Invalid Input:
     group_id: 0x0002
     description: "Errors related to user-provided data or parameters"
     entries:
-      DUCKDB_V2_ERROR_INVALID_INPUT:
+      ERROR_INVALID_INPUT:
         code: 0x0002
         description: "General invalid input error"
-      DUCKDB_V2_ERROR_INVALID_PARAMETER:
+      ERROR_INVALID_PARAMETER:
         code: 0x0003
         description: "A specific function parameter is malformed"
-      DUCKDB_V2_ERROR_OUT_OF_RANGE:
+      ERROR_OUT_OF_RANGE:
         code: 0x0004
         description: "A provided value is outside the acceptable range"
-      DUCKDB_V2_ERROR_OBJECT_SIZE:
+      ERROR_OBJECT_SIZE:
         code: 0x0005
         description: "An object exceeded its maximum permitted size"
   Resource:
     group_id: 0x0003
     description: "Errors related to resource availability and lifecycle"
     entries:
-      DUCKDB_V2_ERROR_RESOURCE_IN_USE:
+      ERROR_RESOURCE_IN_USE:
         code: 0x0001
         description: "The requested resource is already in use (e.g. the database file is already open under this environment, or the environment still has open databases)"
-      DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY:
+      ERROR_RESOURCE_OUT_OF_MEMORY:
         code: 0x0002
         description: "An allocation failed because the system ran out of memory"
-      DUCKDB_V2_ERROR_RESOURCE_CONNECTION:
+      ERROR_RESOURCE_CONNECTION:
         code: 0x0003
         description: "A connection-level failure occurred (e.g. the connection has been closed or invalidated)"
-      DUCKDB_V2_ERROR_RESOURCE_DEPENDENCY:
+      ERROR_RESOURCE_DEPENDENCY:
         code: 0x0004
         description: "An operation failed because of an unresolved dependency between catalog objects"
-      DUCKDB_V2_ERROR_RESOURCE_MISSING_EXTENSION:
+      ERROR_RESOURCE_MISSING_EXTENSION:
         code: 0x0005
         description: "An extension required by the operation is not loaded"
-      DUCKDB_V2_ERROR_RESOURCE_AUTOLOAD:
+      ERROR_RESOURCE_AUTOLOAD:
         code: 0x0006
         description: "Autoloading an extension failed"
   Type:
     group_id: 0x0004
     description: "Errors related to value types, conversions, and arithmetic"
     entries:
-      DUCKDB_V2_ERROR_TYPE_CONVERSION:
+      ERROR_TYPE_CONVERSION:
         code: 0x0001
         description: "A value could not be converted to the requested type"
-      DUCKDB_V2_ERROR_TYPE_UNKNOWN:
+      ERROR_TYPE_UNKNOWN:
         code: 0x0002
         description: "An unknown or unsupported type was encountered"
-      DUCKDB_V2_ERROR_TYPE_INVALID:
+      ERROR_TYPE_INVALID:
         code: 0x0003
         description: "A type was used in a context where it is not valid"
-      DUCKDB_V2_ERROR_TYPE_MISMATCH:
+      ERROR_TYPE_MISMATCH:
         code: 0x0004
         description: "Two values or expressions have incompatible types"
-      DUCKDB_V2_ERROR_TYPE_DECIMAL:
+      ERROR_TYPE_DECIMAL:
         code: 0x0005
         description: "A decimal value is out of range or otherwise invalid"
-      DUCKDB_V2_ERROR_TYPE_DIVIDE_BY_ZERO:
+      ERROR_TYPE_DIVIDE_BY_ZERO:
         code: 0x0006
         description: "Division by zero was attempted"
   Query:
     group_id: 0x0005
     description: "Errors raised during query parsing, planning, and execution"
     entries:
-      DUCKDB_V2_ERROR_QUERY_PARSER:
+      ERROR_QUERY_PARSER:
         code: 0x0001
         description: "The query could not be parsed"
-      DUCKDB_V2_ERROR_QUERY_SYNTAX:
+      ERROR_QUERY_SYNTAX:
         code: 0x0002
         description: "The query contains a syntax error"
-      DUCKDB_V2_ERROR_QUERY_BINDER:
+      ERROR_QUERY_BINDER:
         code: 0x0003
         description: "Binding the query against the catalog failed (e.g. unknown column or table)"
-      DUCKDB_V2_ERROR_QUERY_PLANNER:
+      ERROR_QUERY_PLANNER:
         code: 0x0004
         description: "The query could not be translated into a logical plan"
-      DUCKDB_V2_ERROR_QUERY_OPTIMIZER:
+      ERROR_QUERY_OPTIMIZER:
         code: 0x0005
         description: "An error occurred during query optimization"
-      DUCKDB_V2_ERROR_QUERY_EXPRESSION:
+      ERROR_QUERY_EXPRESSION:
         code: 0x0006
         description: "An expression in the query is invalid or could not be evaluated"
-      DUCKDB_V2_ERROR_QUERY_EXECUTOR:
+      ERROR_QUERY_EXECUTOR:
         code: 0x0007
         description: "An error occurred while executing the physical plan"
-      DUCKDB_V2_ERROR_QUERY_SCHEDULER:
+      ERROR_QUERY_SCHEDULER:
         code: 0x0008
         description: "The task scheduler reported an error while running the query"
-      DUCKDB_V2_ERROR_QUERY_NOT_IMPLEMENTED:
+      ERROR_QUERY_NOT_IMPLEMENTED:
         code: 0x0009
         description: "The requested feature or operation is not implemented"
-      DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_RESOLVED:
+      ERROR_QUERY_PARAMETER_NOT_RESOLVED:
         code: 0x000A
         description: "A prepared-statement parameter has not been bound to a value"
-      DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_ALLOWED:
+      ERROR_QUERY_PARAMETER_NOT_ALLOWED:
         code: 0x000B
         description: "A prepared-statement parameter was used in a position where it is not allowed"
   Database:
     group_id: 0x0006
     description: "Errors related to catalog, transactions, and persistent state"
     entries:
-      DUCKDB_V2_ERROR_DATABASE_CATALOG:
+      ERROR_DATABASE_CATALOG:
         code: 0x0001
         description: "A catalog operation failed (e.g. object not found or already exists)"
-      DUCKDB_V2_ERROR_DATABASE_TRANSACTION:
+      ERROR_DATABASE_TRANSACTION:
         code: 0x0002
         description: "A transaction-level error occurred (e.g. conflict or aborted transaction)"
-      DUCKDB_V2_ERROR_DATABASE_CONSTRAINT:
+      ERROR_DATABASE_CONSTRAINT:
         code: 0x0003
         description: "A constraint (primary key, unique, foreign key, NOT NULL, check) was violated"
-      DUCKDB_V2_ERROR_DATABASE_INDEX:
+      ERROR_DATABASE_INDEX:
         code: 0x0004
         description: "An index operation failed"
-      DUCKDB_V2_ERROR_DATABASE_SEQUENCE:
+      ERROR_DATABASE_SEQUENCE:
         code: 0x0005
         description: "A sequence operation failed (e.g. overflow or invalid usage)"
-      DUCKDB_V2_ERROR_DATABASE_STATISTICS:
+      ERROR_DATABASE_STATISTICS:
         code: 0x0006
         description: "An error related to catalog statistics occurred"
-      DUCKDB_V2_ERROR_DATABASE_SERIALIZATION:
+      ERROR_DATABASE_SERIALIZATION:
         code: 0x0007
         description: "Serializing or deserializing a database object failed"
   Configuration:
     group_id: 0x0007
     description: "Errors related to settings, configuration, and permissions"
     entries:
-      DUCKDB_V2_ERROR_CONFIGURATION_SETTINGS:
+      ERROR_CONFIGURATION_SETTINGS:
         code: 0x0001
         description: "A settings-related error occurred (e.g. setting an unknown option)"
-      DUCKDB_V2_ERROR_CONFIGURATION_INVALID:
+      ERROR_CONFIGURATION_INVALID:
         code: 0x0002
         description: "The database configuration is invalid"
-      DUCKDB_V2_ERROR_CONFIGURATION_PERMISSION:
+      ERROR_CONFIGURATION_PERMISSION:
         code: 0x0003
         description: "The operation is not permitted under the current configuration"
   Runtime:
     group_id: 0x0008
     description: "Internal, fatal, and interrupt-level runtime errors"
     entries:
-      DUCKDB_V2_ERROR_RUNTIME_INTERNAL:
+      ERROR_RUNTIME_INTERNAL:
         code: 0x0001
         description: "An internal invariant was violated; this indicates a bug in DuckDB"
-      DUCKDB_V2_ERROR_RUNTIME_FATAL:
+      ERROR_RUNTIME_FATAL:
         code: 0x0002
         description: "A fatal error occurred; the database is no longer usable"
-      DUCKDB_V2_ERROR_RUNTIME_INTERRUPT:
+      ERROR_RUNTIME_INTERRUPT:
         code: 0x0003
         description: "The operation was interrupted (e.g. by a cancel request)"
-      DUCKDB_V2_ERROR_RUNTIME_NULL_POINTER:
+      ERROR_RUNTIME_NULL_POINTER:
         code: 0x0004
         description: "A required pointer was unexpectedly null"
 constants:
-  DUCKDB_V2_API_ERROR:
+  API_ERROR:
     value: "0xFFFFFFFF"
     description: "Sentinel for an unspecified internal API error"

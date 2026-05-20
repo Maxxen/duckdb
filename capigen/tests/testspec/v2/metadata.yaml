@@ -1,6 +1,7 @@
 schema_version: "0.2.0"
 versions:
   - "1.0.0"
+prefix: "duckdb_v2_"
 suffixes:
   handles: "_ptr"
   callbacks: "_cb"
@@ -20,3 +21,4 @@ primitives:
     c_type: uint64_t
   - name: idx
     c_type: idx_t
+    underlying: uint64_t

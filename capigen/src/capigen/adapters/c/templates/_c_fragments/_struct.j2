@@ -1,6 +1,8 @@
 {% from "_c_fragments/_format.j2" import format_c_type %}
 
 {%- macro render_struct(s) -%}
+  {%- if s.description %}//! {{ s.description | c_line_comment }}
+{% endif -%}
 typedef struct {
 {% for f in s.fields %}
   {{ format_c_type(f.base, f.pointer, f.const) }} {{ f.name }}{% if f.array_size %}[{{ f.array_size }}]{% endif %};

@@ -1,27 +1,27 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: error
-# Accessors and lifecycle for duckdb_v2_error_info, the opaque handle that
+# Accessors and lifecycle for error_info, the opaque handle that
 # every fallible function optionally writes out when it fails.
 functions:
-  duckdb_v2_error_info_get_code:
+  error_info_get_code:
     summary: "Retrieves the error code associated with an error info handle."
     description: |
       On success, writes the info's error code to `*out_code`. On failure
       (e.g. if `info` is invalid), leaves `*out_code` unchanged and returns
       a non-success error code.
     role: getter
-    belongs_to: duckdb_v2_error_info
+    belongs_to: error_info
     parameters:
       info:
-        type: duckdb_v2_error_info
+        type: error_info
         description: "The error info handle to query."
       out_code:
-        type: duckdb_v2_error_code
+        type: error_code
         indirection: 1
         kind: OUT
         description: "The error code associated with the info, if the call succeeds."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_error_info_get_text:
+    return_type: API_CALL
+  error_info_get_text:
     summary: "Retrieves the error message associated with an error info handle."
     description: |
       Returns a borrowed pointer to the info's null-terminated error message.
@@ -29,10 +29,10 @@ functions:
       destroyed; callers must not free it and must not read it after the
       info has been destroyed.
     role: getter
-    belongs_to: duckdb_v2_error_info
+    belongs_to: error_info
     parameters:
       info:
-        type: duckdb_v2_error_info
+        type: error_info
         description: "The error info handle to query."
       out_text:
         type: char
@@ -40,49 +40,49 @@ functions:
         const: true
         kind: OUT_BORROW
         description: "Borrowed pointer to the null-terminated message. Owned by the library; must not be freed."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_error_info_set_code:
+    return_type: API_CALL
+  error_info_set_code:
     summary: "Sets the error code for an error info handle."
     description: |
       On success, sets the error code to the provided value. On failure,
       nothing is changed. Can accept a `nullptr` info handle: in that case,
-      the call is a no-op and returns DUCKDB_V2_ERROR_NONE.
+      the call is a no-op and returns ERROR_NONE.
     role: setter
-    belongs_to: duckdb_v2_error_info
+    belongs_to: error_info
     parameters:
       info:
-        type: duckdb_v2_error_info
+        type: error_info
         description: "The error info handle to set. On success, updated with the provided code."
       code:
-        type: duckdb_v2_error_code
+        type: error_code
         description: "The error code to set in the info."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_error_info_set_text:
+    return_type: API_CALL
+  error_info_set_text:
     summary: "Sets the error code and message for an error info handle."
-    description: "On success, sets the errors message to the provided value.\nThe library allocates its own copy of the message string. \nOn failure, nothing is changed. Can accept a `nullptr` info handle: in that case,\nthe call is a no-op and returns DUCKDB_V2_ERROR_NONE.\n"
+    description: "On success, sets the errors message to the provided value.\nThe library allocates its own copy of the message string. \nOn failure, nothing is changed. Can accept a `nullptr` info handle: in that case,\nthe call is a no-op and returns ERROR_NONE.\n"
     role: setter
-    belongs_to: duckdb_v2_error_info
+    belongs_to: error_info
     parameters:
       info:
-        type: duckdb_v2_error_info
+        type: error_info
         description: "The error info handle to set. On success, updated with the provided message."
       text:
         type: char
         indirection: 1
         const: true
         description: "Null-terminated string containing the error message to set in the info."
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_error_info_destroy:
+    return_type: API_CALL
+  error_info_destroy:
     summary: "Destroys an error info handle and frees its resources."
     description: |
       Null-safe: calling with a null handle or a null pointer-to-handle is a
-      no-op and returns DUCKDB_V2_ERROR_NONE. On return, `*info` is set to
+      no-op and returns ERROR_NONE. On return, `*info` is set to
       nullptr. Safe to call on any info returned by the library.
     role: destructor
-    belongs_to: duckdb_v2_error_info
+    belongs_to: error_info
     parameters:
       info:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         description: "The error info handle to destroy. Set to nullptr on return."
-    return_type: DUCKDB_V2_API_CALL
+    return_type: API_CALL

@@ -2,8 +2,6 @@
 //
 //                         DuckDB
 //
-// duckdb_v2.h
-//
 //
 //===----------------------------------------------------------------------===//
 //
@@ -67,8 +65,32 @@ extern "C" {
 // General type definitions
 //===--------------------------------------------------------------------===//
 
-//! DuckDB's index type.
-typedef uint64_t idx_t;
+{% for p in metadata.get('primitives', []) if p.get('underlying') %}
+typedef {{ p.underlying }} {{ p.c_type }};
+{% endfor %}
+
+{% if metadata.get('options', {}).get('c', {}).get('emit_v1_primitive_defs', false) %}
+//! The internal representation of a VARCHAR (string_t). If the VARCHAR does not
+//! exceed 12 characters, then we inline it. Otherwise, we inline a four-byte prefix for faster
+//! string comparisons and store a pointer to the remaining characters. This is a non-
+//! owning structure, i.e., it does not have to be freed.
+typedef struct {
+	union {
+		struct {
+			uint32_t length;
+			char prefix[4];
+			char *ptr;
+		} pointer;
+		struct {
+			uint32_t length;
+			char inlined[12];
+		} inlined;
+	} value;
+} duckdb_string_t;
+
+//! The returned state of different functions. Legacy naming: values use DuckDB prefix without underscore.
+typedef enum { DuckDBSuccess = 0, DuckDBError = 1 } duckdb_state;
+{% endif %}
 
 {% for module in modules %}
 /* ============================================================================
@@ -77,6 +99,22 @@ typedef uint64_t idx_t;
 {% include "module_content.h.j2" %}
 
 {% endfor %}
+
+{% if metadata.get('options', {}).get('c', {}).get('emit_extension_api', false) %}
+//===--------------------------------------------------------------------===//
+// DuckDB extension access
+//===--------------------------------------------------------------------===//
+
+//! Passed to C API extension as a parameter to the entrypoint.
+struct duckdb_extension_access {
+	//! Indicate that an error has occurred.
+	void (*set_error)(duckdb_extension_info info, const char *error);
+	//! Fetch the database on which to register the extension.
+	duckdb_database *(*get_database)(duckdb_extension_info info);
+	//! Fetch the API struct pointer.
+	const void *(*get_api)(duckdb_extension_info info, const char *version);
+};
+{% endif %}
 
 #ifdef __cplusplus
 }

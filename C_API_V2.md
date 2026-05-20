@@ -10,6 +10,20 @@ V2 is:
 
 The V2 design is still being iterated — see "Companion docs" at the bottom of this file for current design discussions and parked questions.
 
+## Design philosophy: C ABI as the canonical product
+
+All language bindings — Rust, Python, Node.js, Julia — FFI into the C ABI; they don't
+get an alternative one. The IDL avoids raw C syntax (unions, non-typedef structs, function
+pointer fields) so specs stay readable and consumable by tooling that doesn't speak C. But
+the canonical output is always the C header. Constructs like `emit: adapter` are honest
+acknowledgments of this: "this type must exist in the C ABI; its layout is C-specific and
+inexpressible in the IDL." A Rust binding would still FFI into the same type — it just uses
+`#[repr(C)] union` on its side.
+
+The practical rule: when something can't be expressed in the IDL, it belongs in the C
+adapter/template — not because C is an afterthought, but because C is the product and the
+IDL is an abstraction layer over it.
+
 ## Repository layout
 
 ```

@@ -63,4 +63,67 @@ def topo_sort_handles(modules: list[dict]) -> list[str]:
     return result
 
 
-__all__ = ["handle_dependencies", "topo_sort_handles"]
+def sort_modules_by_deps(modules: list[dict]) -> list[dict]:
+    """Sort modules so that type declarations precede cross-module references.
+
+    Builds a module-level dependency graph: module M depends on module N if M
+    references a type (handle, alias, struct, enum, or callback) declared in N.
+    Uses Kahn's algorithm with alphabetical tie-breaking for determinism.
+    Raises ``ValueError`` on cycles.
+    """
+    decl: dict[str, str] = {}
+    for mod in modules:
+        mname = mod["module"]
+        for section in (
+            "handles",
+            "aliases",
+            "qualified_aliases",
+            "structs",
+            "enums",
+            "callbacks",
+        ):
+            for name in mod.get(section, {}):
+                decl[name] = mname
+
+    def _refs(mod: dict) -> set[str]:
+        out: set[str] = set()
+        for func in mod.get("functions", {}).values():
+            out.add(func.get("return_type", ""))
+            for p in func.get("parameters", {}).values():
+                out.add(p.get("type", ""))
+        for s in mod.get("structs", {}).values():
+            for f in s.get("fields", []):
+                out.add(f.get("type", ""))
+        for cb in mod.get("callbacks", {}).values():
+            out.add(cb.get("return_type", ""))
+            for p in cb.get("parameters", {}).values():
+                out.add(p.get("type", ""))
+        for a in mod.get("aliases", {}).values():
+            out.add(a.get("underlying", ""))
+        return out
+
+    mod_by_name = {mod["module"]: mod for mod in modules}
+    deps: dict[str, set[str]] = {mod["module"]: set() for mod in modules}
+    for mod in modules:
+        mname = mod["module"]
+        for tname in _refs(mod):
+            declaring = decl.get(tname)
+            if declaring and declaring != mname:
+                deps[mname].add(declaring)
+
+    remaining = {m: set(d) for m, d in deps.items()}
+    result: list[str] = []
+    while remaining:
+        ready = sorted(m for m, d in remaining.items() if not d)
+        if not ready:
+            raise ValueError(f"Cycle detected among modules: {sorted(remaining)}")
+        for m in ready:
+            result.append(m)
+            del remaining[m]
+        for d in remaining.values():
+            d.difference_update(ready)
+
+    return [mod_by_name[m] for m in result]
+
+
+__all__ = ["handle_dependencies", "topo_sort_handles", "sort_modules_by_deps"]

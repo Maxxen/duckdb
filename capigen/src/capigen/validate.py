@@ -15,7 +15,13 @@ def validate_semantics(modules: list[dict], metadata: dict) -> list[str]:
     for mod in modules:
         module_name = mod["module"]
 
-        for construct in ("handles", "callbacks", "aliases", "structs", "enums"):
+        for construct in (
+            "handles",
+            "callbacks",
+            "aliases",
+            "structs",
+            "enums",
+        ):
             for name in mod.get(construct, {}):
                 if name in all_types:
                     errors.append(

@@ -16,124 +16,124 @@ module: logical_type
 # *_get_list_child_type / *_get_struct_child_type / etc. are owned by the
 # caller and must be destroyed.
 #
-# The DUCKDB_V2_LOGICAL_TYPE_ID enum values mirror duckdb::LogicalTypeId
+# The LOGICAL_TYPE_ID enum values mirror duckdb::LogicalTypeId
 # integer values exactly, so the numeric round-trip matches what's stored
 # internally.
 
 enums:
-  DUCKDB_V2_LOGICAL_TYPE_ID:
+  LOGICAL_TYPE_ID:
     description: |
       Logical type identifier. Mirrors duckdb::LogicalTypeId. Values are
       kept numerically identical to the internal enum so round-tripping is
       lossless. Bind/UDF-only ids (UNKNOWN, ANY, TEMPLATE) appear here for
       completeness; they don't show up in result column types in practice.
     values:
-      DUCKDB_V2_LOGICAL_TYPE_ID_INVALID:
+      LOGICAL_TYPE_ID_INVALID:
         value: 0
         description: Invalid / unset.
-      DUCKDB_V2_LOGICAL_TYPE_ID_SQLNULL:
+      LOGICAL_TYPE_ID_SQLNULL:
         value: 1
         description: NULL constant type.
-      DUCKDB_V2_LOGICAL_TYPE_ID_UNKNOWN:
+      LOGICAL_TYPE_ID_UNKNOWN:
         value: 2
         description: Unknown — used for unresolved parameter expressions.
-      DUCKDB_V2_LOGICAL_TYPE_ID_ANY:
+      LOGICAL_TYPE_ID_ANY:
         value: 3
         description: ANY — used for functions that accept any type.
-      DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN:
+      LOGICAL_TYPE_ID_BOOLEAN:
         value: 10
-      DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT:
+      LOGICAL_TYPE_ID_TINYINT:
         value: 11
-      DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT:
+      LOGICAL_TYPE_ID_SMALLINT:
         value: 12
-      DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER:
+      LOGICAL_TYPE_ID_INTEGER:
         value: 13
-      DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT:
+      LOGICAL_TYPE_ID_BIGINT:
         value: 14
-      DUCKDB_V2_LOGICAL_TYPE_ID_DATE:
+      LOGICAL_TYPE_ID_DATE:
         value: 15
         description: 32-bit days since epoch.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIME:
+      LOGICAL_TYPE_ID_TIME:
         value: 16
         description: 64-bit microseconds since midnight.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_SEC:
+      LOGICAL_TYPE_ID_TIMESTAMP_SEC:
         value: 17
         description: 64-bit seconds since epoch.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_MS:
+      LOGICAL_TYPE_ID_TIMESTAMP_MS:
         value: 18
         description: 64-bit milliseconds since epoch.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP:
+      LOGICAL_TYPE_ID_TIMESTAMP:
         value: 19
         description: 64-bit microseconds since epoch.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_NS:
+      LOGICAL_TYPE_ID_TIMESTAMP_NS:
         value: 20
         description: 64-bit nanoseconds since epoch.
-      DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL:
+      LOGICAL_TYPE_ID_DECIMAL:
         value: 21
         description: Decimal with width and scale parameters.
-      DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT:
+      LOGICAL_TYPE_ID_FLOAT:
         value: 22
-      DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE:
+      LOGICAL_TYPE_ID_DOUBLE:
         value: 23
-      DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR:
+      LOGICAL_TYPE_ID_VARCHAR:
         value: 25
-      DUCKDB_V2_LOGICAL_TYPE_ID_BLOB:
+      LOGICAL_TYPE_ID_BLOB:
         value: 26
-      DUCKDB_V2_LOGICAL_TYPE_ID_INTERVAL:
+      LOGICAL_TYPE_ID_INTERVAL:
         value: 27
-      DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT:
+      LOGICAL_TYPE_ID_UTINYINT:
         value: 28
-      DUCKDB_V2_LOGICAL_TYPE_ID_USMALLINT:
+      LOGICAL_TYPE_ID_USMALLINT:
         value: 29
-      DUCKDB_V2_LOGICAL_TYPE_ID_UINTEGER:
+      LOGICAL_TYPE_ID_UINTEGER:
         value: 30
-      DUCKDB_V2_LOGICAL_TYPE_ID_UBIGINT:
+      LOGICAL_TYPE_ID_UBIGINT:
         value: 31
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ:
+      LOGICAL_TYPE_ID_TIMESTAMP_TZ:
         value: 32
         description: 64-bit microseconds since epoch, timezone-aware.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ_NS:
+      LOGICAL_TYPE_ID_TIMESTAMP_TZ_NS:
         value: 33
         description: 64-bit nanoseconds since epoch, timezone-aware.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIME_TZ:
+      LOGICAL_TYPE_ID_TIME_TZ:
         value: 34
         description: 64-bit microseconds since midnight + 32-bit offset.
-      DUCKDB_V2_LOGICAL_TYPE_ID_TIME_NS:
+      LOGICAL_TYPE_ID_TIME_NS:
         value: 35
         description: 64-bit nanoseconds since midnight.
-      DUCKDB_V2_LOGICAL_TYPE_ID_BIT:
+      LOGICAL_TYPE_ID_BIT:
         value: 36
-      DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM:
+      LOGICAL_TYPE_ID_BIGNUM:
         value: 39
         description: Arbitrary-precision integer (VARINT-encoded).
-      DUCKDB_V2_LOGICAL_TYPE_ID_UHUGEINT:
+      LOGICAL_TYPE_ID_UHUGEINT:
         value: 49
-      DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT:
+      LOGICAL_TYPE_ID_HUGEINT:
         value: 50
-      DUCKDB_V2_LOGICAL_TYPE_ID_UUID:
+      LOGICAL_TYPE_ID_UUID:
         value: 54
-      DUCKDB_V2_LOGICAL_TYPE_ID_GEOMETRY:
+      LOGICAL_TYPE_ID_GEOMETRY:
         value: 60
         description: Geometry (spatial extension).
-      DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT:
+      LOGICAL_TYPE_ID_STRUCT:
         value: 100
-      DUCKDB_V2_LOGICAL_TYPE_ID_LIST:
+      LOGICAL_TYPE_ID_LIST:
         value: 101
-      DUCKDB_V2_LOGICAL_TYPE_ID_MAP:
+      LOGICAL_TYPE_ID_MAP:
         value: 102
-      DUCKDB_V2_LOGICAL_TYPE_ID_ENUM:
+      LOGICAL_TYPE_ID_ENUM:
         value: 104
-      DUCKDB_V2_LOGICAL_TYPE_ID_UNION:
+      LOGICAL_TYPE_ID_UNION:
         value: 107
-      DUCKDB_V2_LOGICAL_TYPE_ID_ARRAY:
+      LOGICAL_TYPE_ID_ARRAY:
         value: 108
-      DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT:
+      LOGICAL_TYPE_ID_VARIANT:
         value: 109
 functions:
   # -----------------------------------------------------------------------
   # Lifecycle
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_create_from_id:
+  logical_type_create_from_id:
     summary: Creates a logical type from a primitive type id.
     description: |
       Only primitive type ids (no kind-specific parameters) are accepted:
@@ -141,68 +141,68 @@ functions:
       FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
       VARCHAR, BLOB, BIT, BIGNUM, UUID.
 
-      Returns DUCKDB_V2_ERROR_INVALID_INPUT for parameterised type ids
+      Returns ERROR_INVALID_INPUT for parameterised type ids
       (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
       for bind-time-only ids (SQLNULL, ANY, UNKNOWN), and for INVALID.
       Composite construction is not part of this surface yet.
     role: constructor
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type_id:
-        type: DUCKDB_V2_LOGICAL_TYPE_ID
+        type: LOGICAL_TYPE_ID
         description: The primitive type id to instantiate.
       out_type:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         kind: OUT
         description: Receives the new logical type handle.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_destroy:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_destroy:
     summary: Destroys a logical type handle.
     description: |
       Null-safe: passing nullptr or a slot already set to nullptr is a
       no-op. On success the slot is set to nullptr.
     role: destructor
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         description: The logical type to destroy.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # Common introspection
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_get_id:
+  logical_type_get_id:
     summary: Returns the logical type id.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
         description: The logical type.
       out_id:
-        type: DUCKDB_V2_LOGICAL_TYPE_ID
+        type: LOGICAL_TYPE_ID
         indirection: 1
         kind: OUT
         description: Receives the type id.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_alias:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_alias:
     summary: Borrows the logical type's alias (extension/user-defined name) if any.
     description: |
       On success, writes a borrowed null-terminated string into *out_alias
@@ -211,10 +211,10 @@ functions:
       "POINT_2D"; for arbitrary user-defined types it is the configured
       name. A non-NULL pointer is valid until the logical type is destroyed.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
         description: The logical type.
       out_alias:
         type: char
@@ -223,114 +223,114 @@ functions:
         kind: OUT_BORROW
         description: Borrowed pointer to the alias string, or NULL if the type has no alias (or only an empty alias).
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # DECIMAL
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_get_decimal_width:
+  logical_type_get_decimal_width:
     summary: Returns the width of a DECIMAL logical type.
-    description: Returns DUCKDB_V2_ERROR_INVALID_INPUT if the type id is not DECIMAL.
+    description: Returns ERROR_INVALID_INPUT if the type id is not DECIMAL.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_width:
         type: u8
         indirection: 1
         kind: OUT
         description: Receives the decimal width.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_decimal_scale:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_decimal_scale:
     summary: Returns the scale of a DECIMAL logical type.
-    description: Returns DUCKDB_V2_ERROR_INVALID_INPUT if the type id is not DECIMAL.
+    description: Returns ERROR_INVALID_INPUT if the type id is not DECIMAL.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_scale:
         type: u8
         indirection: 1
         kind: OUT
         description: Receives the decimal scale.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_decimal_internal_type_id:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_decimal_internal_type_id:
     summary: Returns the internal storage type id for a DECIMAL.
     description: |
       Returns one of SMALLINT, INTEGER, BIGINT, or HUGEINT, depending on
       the decimal's width. Used by callers to pick the right typed
       accessor for DECIMAL storage.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_id:
-        type: DUCKDB_V2_LOGICAL_TYPE_ID
+        type: LOGICAL_TYPE_ID
         indirection: 1
         kind: OUT
         description: Receives the internal storage type id.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # ENUM
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_get_enum_size:
+  logical_type_get_enum_size:
     summary: Returns the dictionary entry count of an ENUM logical type.
     description: |
       The size is the entry count (cardinality of the dictionary), not a
       byte size. It is returned as idx_t for ABI uniformity, but the
       effective cap is UINT32_MAX (2^32 - 1) entries: the largest physical
       index type used by ENUM storage is UINTEGER. Returns
-      DUCKDB_V2_ERROR_INVALID_INPUT if the type id is not ENUM.
+      ERROR_INVALID_INPUT if the type id is not ENUM.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_size:
         type: idx
         indirection: 1
         kind: OUT
         description: Receives the number of entries in the enum dictionary.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_enum_value:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_enum_value:
     summary: Borrows the dictionary value at the given index of an ENUM.
     description: |
-      Out-of-range index returns DUCKDB_V2_ERROR_INVALID_INPUT. The
+      Out-of-range index returns ERROR_INVALID_INPUT. The
       returned pointer + length describe a borrowed null-terminated byte
       string valid until the logical type is destroyed. Bytes are not
       validated as UTF-8 — VARCHAR storage holds whatever bytes were
       inserted.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       index:
         type: idx
         description: The dictionary index, in [0, enum_size).
@@ -346,171 +346,171 @@ functions:
         kind: OUT
         description: Receives the length in bytes of the dictionary string.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_enum_internal_type_id:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_enum_internal_type_id:
     summary: Returns the internal index type id for an ENUM.
     description: |
       Returns UTINYINT (dict <= 255), USMALLINT (dict <= 65535), or
       UINTEGER (larger), matching the physical storage width.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_id:
-        type: DUCKDB_V2_LOGICAL_TYPE_ID
+        type: LOGICAL_TYPE_ID
         indirection: 1
         kind: OUT
         description: Receives the internal index type id.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # LIST / ARRAY
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_get_list_child_type:
+  logical_type_get_list_child_type:
     summary: Returns the child logical type of a LIST.
     description: |
       The returned logical type is caller-owned and must be destroyed via
-      duckdb_v2_logical_type_destroy. Returns DUCKDB_V2_ERROR_INVALID_INPUT
+      logical_type_destroy. Returns ERROR_INVALID_INPUT
       if the input type id is not LIST.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_child:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         kind: OUT
         description: Receives the owned child logical type.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_array_child_type:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_array_child_type:
     summary: Returns the child logical type of a fixed-size ARRAY.
     description: |
       The returned logical type is caller-owned and must be destroyed.
-      Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not ARRAY.
+      Returns ERROR_INVALID_INPUT if the input is not ARRAY.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_child:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         kind: OUT
         description: Receives the owned child logical type.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_array_size:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_array_size:
     summary: Returns the fixed size of an ARRAY logical type.
-    description: Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not ARRAY.
+    description: Returns ERROR_INVALID_INPUT if the input is not ARRAY.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_size:
         type: idx
         indirection: 1
         kind: OUT
         description: Receives the array size.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # MAP
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_get_map_key_type:
+  logical_type_get_map_key_type:
     summary: Returns the key logical type of a MAP.
     description: Owned by the caller. INVALID_INPUT if the input is not MAP.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_key:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         kind: OUT
         description: Receives the owned key logical type.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_map_value_type:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_map_value_type:
     summary: Returns the value logical type of a MAP.
     description: Owned by the caller. INVALID_INPUT if the input is not MAP.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_value:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         kind: OUT
         description: Receives the owned value logical type.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # STRUCT
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_get_struct_child_count:
+  logical_type_get_struct_child_count:
     summary: Returns the number of fields in a STRUCT logical type.
-    description: Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not STRUCT.
+    description: Returns ERROR_INVALID_INPUT if the input is not STRUCT.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_count:
         type: idx
         indirection: 1
         kind: OUT
         description: Receives the number of struct fields.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_struct_child_name:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_struct_child_name:
     summary: Borrows the field name at the given index of a STRUCT.
     description: |
       The returned pointer + length describe a borrowed null-terminated
       name valid until the logical type is destroyed. Out-of-range index
-      returns DUCKDB_V2_ERROR_INVALID_INPUT.
+      returns ERROR_INVALID_INPUT.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       index:
         type: idx
         description: The field index, in [0, struct_child_count).
@@ -526,68 +526,68 @@ functions:
         kind: OUT
         description: Receives the byte length of the field name.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_struct_child_type:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_struct_child_type:
     summary: Returns the field logical type at the given index of a STRUCT.
     description: |
       The returned logical type is caller-owned. Out-of-range index returns
-      DUCKDB_V2_ERROR_INVALID_INPUT.
+      ERROR_INVALID_INPUT.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       index:
         type: idx
         description: The field index, in [0, struct_child_count).
       out_child:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         kind: OUT
         description: Receives the owned field logical type.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # UNION
   # -----------------------------------------------------------------------
-  duckdb_v2_logical_type_get_union_member_count:
+  logical_type_get_union_member_count:
     summary: Returns the number of members in a UNION logical type.
-    description: Returns DUCKDB_V2_ERROR_INVALID_INPUT if the input is not UNION.
+    description: Returns ERROR_INVALID_INPUT if the input is not UNION.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       out_count:
         type: idx
         indirection: 1
         kind: OUT
         description: Receives the number of union members.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_union_member_name:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_union_member_name:
     summary: Borrows the member name at the given index of a UNION.
     description: |
       The returned pointer + length describe a borrowed null-terminated
       name valid until the logical type is destroyed. Out-of-range index
-      returns DUCKDB_V2_ERROR_INVALID_INPUT.
+      returns ERROR_INVALID_INPUT.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       index:
         type: idx
         description: The member index, in [0, union_member_count).
@@ -603,32 +603,32 @@ functions:
         kind: OUT
         description: Receives the byte length of the member name.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
-  duckdb_v2_logical_type_get_union_member_type:
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_get_union_member_type:
     summary: Returns the member logical type at the given index of a UNION.
     description: |
       The returned logical type is caller-owned. Out-of-range index returns
-      DUCKDB_V2_ERROR_INVALID_INPUT.
+      ERROR_INVALID_INPUT.
     role: getter
-    belongs_to: duckdb_v2_logical_type
+    belongs_to: logical_type
     parameters:
       type:
-        type: duckdb_v2_logical_type
+        type: logical_type
       index:
         type: idx
         description: The member index, in [0, union_member_count).
       out_child:
-        type: duckdb_v2_logical_type
+        type: logical_type
         indirection: 1
         kind: OUT
         description: Receives the owned member logical type.
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy.
-    return_type: DUCKDB_V2_API_CALL
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL

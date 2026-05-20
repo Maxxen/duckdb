@@ -5,6 +5,7 @@ versions:
   - "1.3.0"
   - "1.4.0"
   - "1.5.0"
+prefix: "duckdb_v2_"
 suffixes:
   handles: "_ptr"
   callbacks: "_cb"
@@ -40,3 +41,6 @@ primitives:
     c_type: double
   - name: idx
     c_type: idx_t
+    underlying: uint64_t
+  - name: size
+    c_type: size_t

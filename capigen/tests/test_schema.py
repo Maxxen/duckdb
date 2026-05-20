@@ -1,4 +1,4 @@
-"""Tests for module.schema.json validation (prefix enforcement, etc.)."""
+"""Tests for module.schema.json validation (identifier rules, etc.)."""
 
 import json
 from pathlib import Path
@@ -17,8 +17,8 @@ def _minimal_module(**overrides):
     return mod
 
 
-class TestV2PrefixEnforcement:
-    """The schema requires all type/function keys to start with duckdb_v2_ or DUCKDB_V2_."""
+class TestPropertyNameValidation:
+    """The schema accepts any valid C identifier; rejects names that are not."""
 
     @pytest.mark.parametrize(
         "construct,entry",
@@ -35,10 +35,9 @@ class TestV2PrefixEnforcement:
             ),
         ],
     )
-    def test_missing_v2_prefix_rejected(self, construct, entry):
+    def test_non_v2_prefix_accepted(self, construct, entry):
         mod = _minimal_module(**{construct: entry})
-        with pytest.raises(jsonschema.ValidationError, match="does not match"):
-            jsonschema.validate(mod, SCHEMA)
+        jsonschema.validate(mod, SCHEMA)  # should not raise
 
     @pytest.mark.parametrize(
         "construct,entry",
@@ -58,6 +57,43 @@ class TestV2PrefixEnforcement:
     def test_v2_prefix_accepted(self, construct, entry):
         mod = _minimal_module(**{construct: entry})
         jsonschema.validate(mod, SCHEMA)  # should not raise
+
+    @pytest.mark.parametrize(
+        "construct,entry",
+        [
+            ("handles", {"1invalid": {}}),
+            ("aliases", {"bad name": {"underlying": "u32"}}),
+            ("structs", {"has-hyphen": {"fields": []}}),
+            ("enums", {"": {"values": {}}}),
+            ("constants", {"has space": {"value": 42}}),
+        ],
+    )
+    def test_invalid_identifiers_rejected(self, construct, entry):
+        mod = _minimal_module(**{construct: entry})
+        with pytest.raises(jsonschema.ValidationError, match="does not match"):
+            jsonschema.validate(mod, SCHEMA)
+
+
+class TestQualifiedAliases:
+    """aliases with qualified:true are emitted verbatim — no prefix or suffix applied."""
+
+    def test_qualified_alias_accepted(self):
+        mod = _minimal_module(
+            aliases={"sel_t": {"underlying": "u32", "qualified": True}}
+        )
+        jsonschema.validate(mod, SCHEMA)  # should not raise
+
+    def test_qualified_alias_invalid_identifier_rejected(self):
+        mod = _minimal_module(
+            aliases={"1bad": {"underlying": "u32", "qualified": True}}
+        )
+        with pytest.raises(jsonschema.ValidationError, match="does not match"):
+            jsonschema.validate(mod, SCHEMA)
+
+    def test_qualified_alias_missing_underlying_rejected(self):
+        mod = _minimal_module(aliases={"sel_t": {"qualified": True}})
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(mod, SCHEMA)
 
 
 class TestParameterKind:

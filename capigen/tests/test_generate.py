@@ -13,7 +13,7 @@ from capigen.adapters.c import generate
 
 
 REPO_ROOT = Path(__file__).parent.parent
-TESTSPEC_DIR = Path(__file__).parent / "testspec"
+TESTSPEC_DIR = Path(__file__).parent / "testspec" / "v2"
 
 
 class TestRoundTrip:
