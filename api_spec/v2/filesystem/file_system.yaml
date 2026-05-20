@@ -1,0 +1,256 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: file_system
+enums:
+  FILE_FLAG:
+    description: |
+      Flags that control how a file is opened by `duckdb_v2_file_system_open`.
+      Multiple flags can be combined by bitwise OR to specify multiple behaviors (e.g. `DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE` to open a file for writing, creating it if it doesn't exist).
+    values:
+      FILE_FLAG_INVALID:
+        value: 0x0000
+        description: Invalid or unspecified file open mode.
+      FILE_FLAG_READ:
+        value: 0x0001
+        description: Open the file with "read" capabilities.
+      FILE_FLAG_WRITE:
+        value: 0x0002
+        description: Open the file with "write" capabilities.
+      FILE_FLAG_CREATE:
+        value: 0x0004
+        description: Create a new file, or open if it already exists.
+      FILE_FLAG_CREATE_NEW:
+        value: 0x0008
+        description: Create a new file, or fail if it already exists.
+      FILE_FLAG_APPEND:
+        value: 0x0010
+        description: Open the file in "append" mode.
+handles:
+  file_system:
+    description: |
+      An opaque handle to a DuckDB file system.
+      A file system handle is obtained via `duckdb_v2_file_system_get_from_context` or `duckdb_v2_file_system_get_from_connection` and can be used to open files via `duckdb_v2_file_system_open`.
+      The handle is a non-owning reference to the file system associated with the originating context or connection; it remains valid only for the lifetime of that context or connection, and must not be destroyed by the caller.
+  file_handle:
+    description: |
+      An opaque handle to an open file, obtained from `duckdb_v2_file_system_open`.
+      The handle is owned by the caller and must be destroyed with `duckdb_v2_file_handle_destroy` when no longer needed.
+      The handle is only valid as long as the file system used to open it remains valid (e.g. the originating context or connection is still alive).
+      It can be used to read, write, seek, and otherwise manipulate the underlying file via the various `duckdb_v2_file_handle_*` functions.
+    cleanup_with: file_handle_destroy
+functions:
+  ### File System
+  file_system_get_from_context:
+    summary: Retrieves the file system associated with a DuckDB context.
+    description: |
+      Retrieves a non-owning handle to the file system associated with the given DuckDB context.
+      The returned handle remains valid only for the lifetime of the context and must not be destroyed by the caller.
+    parameters:
+      context:
+        type: context
+        description: The DuckDB context to retrieve the file system from.
+      out_file_system:
+        type: file_system
+        indirection: 1
+        kind: OUT
+        description: On success, receives a non-owning handle to the file system associated with the context. Must not be destroyed by the caller.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_system_get_from_connection:
+    summary: Retrieves the file system associated with a DuckDB connection.
+    description: |
+      Retrieves a non-owning handle to the file system associated with the given DuckDB connection.
+      The returned handle remains valid only for the lifetime of the connection and must not be destroyed by the caller.
+    parameters:
+      connection:
+        type: connection
+        description: The DuckDB connection to retrieve the file system from.
+      out_file_system:
+        type: file_system
+        indirection: 1
+        kind: OUT
+        description: On success, receives a non-owning handle to the file system associated with the connection. Must not be destroyed by the caller.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_system_open:
+    summary: Opens a file through the given file system, returning a file handle.
+    description: |
+      Opens the file at the given path through the provided file system, using the provided file flags to control how the file is opened.
+      On success, returns a handle to the open file. The handle is owned by the caller and must be destroyed with `duckdb_v2_file_handle_destroy` when no longer needed.
+      If the file cannot be opened (e.g. it does not exist, permissions are insufficient, or the flags are incompatible with the file), this function reports an error.
+    parameters:
+      file_system:
+        type: file_system
+        description: The file system to open the file through.
+      file_path:
+        type: char
+        indirection: 1
+        const: true
+        description: The null-terminated path of the file to open.
+      file_flags:
+        type: u64
+        description: The file flags controlling how the file is opened. Must be a bitwise combination of zero or more `DUCKDB_V2_FILE_FLAG` values.
+      out_file_handle:
+        type: file_handle
+        indirection: 1
+        kind: OUT
+        description: On success, receives a handle to the newly opened file. The caller owns the handle and must destroy it with `duckdb_v2_file_handle_destroy`.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  ### File Handle
+  file_handle_read:
+    summary: Reads bytes from a file handle into a caller-provided buffer.
+    description: |
+      Reads up to `buffer_size` bytes from the current position of the file into the provided buffer, advancing the file's position by the number of bytes read.
+      The actual number of bytes read is written to `bytes_read` and may be less than `buffer_size` if e.g. the end of the file is reached.
+      The file handle must have been opened with read capabilities (see `DUCKDB_V2_FILE_FLAG_READ`).
+    parameters:
+      file_handle:
+        type: file_handle
+        description: The file handle to read from.
+      buffer:
+        type: void
+        indirection: 1
+        description: Pointer to a caller-owned buffer of at least `buffer_size` bytes that will receive the data read from the file.
+      buffer_size:
+        type: i64
+        description: The maximum number of bytes to read into the buffer. Must be non-negative.
+      bytes_read:
+        type: i64
+        indirection: 1
+        kind: OUT
+        description: On success, receives the actual number of bytes read into the buffer. May be less than `buffer_size` if the end of the file was reached.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_handle_write:
+    summary: Writes bytes from a caller-provided buffer to a file handle.
+    description: |
+      Writes up to `buffer_size` bytes from the provided buffer to the current position of the file, advancing the file's position by the number of bytes written.
+      The actual number of bytes written is reported via `bytes_written`.
+      The file handle must have been opened with write capabilities (see `DUCKDB_V2_FILE_FLAG_WRITE` or `DUCKDB_V2_FILE_FLAG_APPEND`).
+    parameters:
+      file_handle:
+        type: file_handle
+        description: The file handle to write to.
+      buffer:
+        type: void
+        indirection: 1
+        description: Pointer to a caller-owned buffer of at least `buffer_size` bytes containing the data to write to the file.
+      buffer_size:
+        type: i64
+        description: The number of bytes to write from the buffer. Must be non-negative.
+      bytes_written:
+        type: i64
+        indirection: 1
+        kind: OUT
+        description: On success, receives the number of bytes actually written to the file.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_handle_tell:
+    summary: Retrieves the current read/write position of a file handle.
+    description: |
+      Retrieves the current byte offset of the file handle's read/write position, measured from the beginning of the file.
+    parameters:
+      file_handle:
+        type: file_handle
+        description: The file handle to query.
+      position:
+        type: i64
+        indirection: 1
+        kind: OUT
+        description: On success, receives the current byte offset of the file handle's read/write position, measured from the beginning of the file.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_handle_size:
+    summary: Retrieves the total size in bytes of the file backing a file handle.
+    description: |
+      Retrieves the total size in bytes of the file backing the file handle.
+    parameters:
+      file_handle:
+        type: file_handle
+        description: The file handle to query.
+      size:
+        type: i64
+        indirection: 1
+        kind: OUT
+        description: On success, receives the total size in bytes of the file backing the file handle.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_handle_seek:
+    summary: Seeks to a specific byte offset within a file handle.
+    description: |
+      Sets the file handle's read/write position to the given absolute byte offset, measured from the beginning of the file.
+      Subsequent reads and writes will start from the new position.
+    parameters:
+      file_handle:
+        type: file_handle
+        description: The file handle to seek within.
+      position:
+        type: i64
+        description: The absolute byte offset to seek to, measured from the beginning of the file. Must be non-negative.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_handle_sync:
+    summary: Flushes any buffered writes for a file handle to persistent storage.
+    description: |
+      Forces any buffered writes on the file handle to be flushed to persistent storage.
+      This is useful for ensuring durability of writes before the file is closed or the program exits.
+    parameters:
+      file_handle:
+        type: file_handle
+        description: The file handle to synchronize.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_handle_close:
+    summary: Closes the underlying file of a file handle without destroying the handle.
+    description: |
+      Closes the underlying file backing the file handle, releasing any operating-system-level resources (e.g. file descriptors) associated with it.
+      The file handle itself remains valid and must still be destroyed with `duckdb_v2_file_handle_destroy`.
+      After closing, the handle can no longer be used to read, write, seek, or otherwise manipulate the file.
+    parameters:
+      file_handle:
+        type: file_handle
+        description: The file handle to close.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  file_handle_destroy:
+    summary: Destroys a file handle, releasing its resources.
+    description: |
+      Destroys a file handle that was created with `file_system_open`, closing the underlying file if it is still open and releasing any resources associated with it.
+      This function is null-safe: calling it with a null pointer is a no-op and returns DUCKDB_V2_ERROR_NONE.
+      The handle is set to null on return to prevent double-destruction.
+    parameters:
+      file_handle:
+        type: file_handle
+        indirection: 1
+        description: The file handle to destroy.
+    return_type: API_CALL

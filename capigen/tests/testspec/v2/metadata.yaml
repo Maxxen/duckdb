@@ -19,6 +19,8 @@ primitives:
     c_type: uint32_t
   - name: u64
     c_type: uint64_t
+  - name: i64
+    c_type: int64_t
   - name: idx
     c_type: idx_t
     underlying: uint64_t

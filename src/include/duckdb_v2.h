@@ -703,6 +703,207 @@ nullptr. Safe to call on any info returned by the library.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_ptr *info);
 
 /* ============================================================================
+ * MODULE: file_system
+ * ============================================================================ */
+
+/* --- Enums for file_system --- */
+//! Flags that control how a file is opened by `duckdb_v2_file_system_open`.
+//! Multiple flags can be combined by bitwise OR to specify multiple behaviors (e.g. `DUCKDB_V2_FILE_FLAG_WRITE |
+//! DUCKDB_V2_FILE_FLAG_CREATE` to open a file for writing, creating it if it doesn't exist).
+typedef enum DUCKDB_V2_FILE_FLAG {
+	/* Invalid or unspecified file open mode. */
+	DUCKDB_V2_FILE_FLAG_INVALID = 0,
+	/* Open the file with "read" capabilities. */
+	DUCKDB_V2_FILE_FLAG_READ = 1,
+	/* Open the file with "write" capabilities. */
+	DUCKDB_V2_FILE_FLAG_WRITE = 2,
+	/* Create a new file, or open if it already exists. */
+	DUCKDB_V2_FILE_FLAG_CREATE = 4,
+	/* Create a new file, or fail if it already exists. */
+	DUCKDB_V2_FILE_FLAG_CREATE_NEW = 8,
+	/* Open the file in "append" mode. */
+	DUCKDB_V2_FILE_FLAG_APPEND = 16,
+} DUCKDB_V2_FILE_FLAG;
+
+/* --- Types for file_system --- */
+//! An opaque handle to a DuckDB file system.
+//! A file system handle is obtained via `duckdb_v2_file_system_get_from_context` or
+//! `duckdb_v2_file_system_get_from_connection` and can be used to open files via `duckdb_v2_file_system_open`. The
+//! handle is a non-owning reference to the file system associated with the originating context or connection; it
+//! remains valid only for the lifetime of that context or connection, and must not be destroyed by the caller.
+typedef void *duckdb_v2_file_system_ptr;
+
+//! An opaque handle to an open file, obtained from `duckdb_v2_file_system_open`.
+//! The handle is owned by the caller and must be destroyed with `duckdb_v2_file_handle_destroy` when no longer needed.
+//! The handle is only valid as long as the file system used to open it remains valid (e.g. the originating context or
+//! connection is still alive). It can be used to read, write, seek, and otherwise manipulate the underlying file via
+//! the various `duckdb_v2_file_handle_*` functions.
+typedef void *duckdb_v2_file_handle_ptr;
+
+/* --- Structs for file_system --- */
+
+/* --- Constants for file_system --- */
+
+/* --- Error Codes for file_system --- */
+
+/* --- Function pointer typedefs for file_system --- */
+
+/* --- Functions for file_system --- */
+/*!
+* Retrieves the file system associated with a DuckDB context.
+* Retrieves a non-owning handle to the file system associated with the given DuckDB context.
+The returned handle remains valid only for the lifetime of the context and must not be destroyed by the caller.
+
+* @param context The DuckDB context to retrieve the file system from.
+* @param out_file_system On success, receives a non-owning handle to the file system associated with the context. Must
+not be destroyed by the caller.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_context(duckdb_v2_context_ptr context,
+                                                                         duckdb_v2_file_system_ptr *out_file_system,
+                                                                         duckdb_v2_error_info_ptr *err);
+/*!
+* Retrieves the file system associated with a DuckDB connection.
+* Retrieves a non-owning handle to the file system associated with the given DuckDB connection.
+The returned handle remains valid only for the lifetime of the connection and must not be destroyed by the caller.
+
+* @param connection The DuckDB connection to retrieve the file system from.
+* @param out_file_system On success, receives a non-owning handle to the file system associated with the connection.
+Must not be destroyed by the caller.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_connection(duckdb_v2_connection_ptr connection,
+                                                                            duckdb_v2_file_system_ptr *out_file_system,
+                                                                            duckdb_v2_error_info_ptr *err);
+/*!
+* Opens a file through the given file system, returning a file handle.
+* Opens the file at the given path through the provided file system, using the provided file flags to control how the
+file is opened. On success, returns a handle to the open file. The handle is owned by the caller and must be destroyed
+with `duckdb_v2_file_handle_destroy` when no longer needed. If the file cannot be opened (e.g. it does not exist,
+permissions are insufficient, or the flags are incompatible with the file), this function reports an error.
+
+* @param file_system The file system to open the file through.
+* @param file_path The null-terminated path of the file to open.
+* @param file_flags The file flags controlling how the file is opened. Must be a bitwise combination of zero or more
+`DUCKDB_V2_FILE_FLAG` values.
+* @param out_file_handle On success, receives a handle to the newly opened file. The caller owns the handle and must
+destroy it with `duckdb_v2_file_handle_destroy`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_system_open(duckdb_v2_file_system_ptr file_system,
+                                                             const char *file_path, uint64_t file_flags,
+                                                             duckdb_v2_file_handle_ptr *out_file_handle,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Reads bytes from a file handle into a caller-provided buffer.
+* Reads up to `buffer_size` bytes from the current position of the file into the provided buffer, advancing the file's
+position by the number of bytes read. The actual number of bytes read is written to `bytes_read` and may be less than
+`buffer_size` if e.g. the end of the file is reached. The file handle must have been opened with read capabilities (see
+`DUCKDB_V2_FILE_FLAG_READ`).
+
+* @param file_handle The file handle to read from.
+* @param buffer Pointer to a caller-owned buffer of at least `buffer_size` bytes that will receive the data read from
+the file.
+* @param buffer_size The maximum number of bytes to read into the buffer. Must be non-negative.
+* @param bytes_read On success, receives the actual number of bytes read into the buffer. May be less than `buffer_size`
+if the end of the file was reached.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_read(duckdb_v2_file_handle_ptr file_handle, void *buffer,
+                                                             int64_t buffer_size, int64_t *bytes_read,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Writes bytes from a caller-provided buffer to a file handle.
+* Writes up to `buffer_size` bytes from the provided buffer to the current position of the file, advancing the file's
+position by the number of bytes written. The actual number of bytes written is reported via `bytes_written`. The file
+handle must have been opened with write capabilities (see `DUCKDB_V2_FILE_FLAG_WRITE` or `DUCKDB_V2_FILE_FLAG_APPEND`).
+
+* @param file_handle The file handle to write to.
+* @param buffer Pointer to a caller-owned buffer of at least `buffer_size` bytes containing the data to write to the
+file.
+* @param buffer_size The number of bytes to write from the buffer. Must be non-negative.
+* @param bytes_written On success, receives the number of bytes actually written to the file.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_ptr file_handle, void *buffer,
+                                                              int64_t buffer_size, int64_t *bytes_written,
+                                                              duckdb_v2_error_info_ptr *err);
+/*!
+* Retrieves the current read/write position of a file handle.
+* Retrieves the current byte offset of the file handle's read/write position, measured from the beginning of the file.
+
+* @param file_handle The file handle to query.
+* @param position On success, receives the current byte offset of the file handle's read/write position, measured from
+the beginning of the file.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_tell(duckdb_v2_file_handle_ptr file_handle, int64_t *position,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Retrieves the total size in bytes of the file backing a file handle.
+* Retrieves the total size in bytes of the file backing the file handle.
+
+* @param file_handle The file handle to query.
+* @param size On success, receives the total size in bytes of the file backing the file handle.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_size(duckdb_v2_file_handle_ptr file_handle, int64_t *size,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Seeks to a specific byte offset within a file handle.
+* Sets the file handle's read/write position to the given absolute byte offset, measured from the beginning of the file.
+Subsequent reads and writes will start from the new position.
+
+* @param file_handle The file handle to seek within.
+* @param position The absolute byte offset to seek to, measured from the beginning of the file. Must be non-negative.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_seek(duckdb_v2_file_handle_ptr file_handle, int64_t position,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Flushes any buffered writes for a file handle to persistent storage.
+* Forces any buffered writes on the file handle to be flushed to persistent storage.
+This is useful for ensuring durability of writes before the file is closed or the program exits.
+
+* @param file_handle The file handle to synchronize.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_sync(duckdb_v2_file_handle_ptr file_handle,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Closes the underlying file of a file handle without destroying the handle.
+* Closes the underlying file backing the file handle, releasing any operating-system-level resources (e.g. file
+descriptors) associated with it. The file handle itself remains valid and must still be destroyed with
+`duckdb_v2_file_handle_destroy`. After closing, the handle can no longer be used to read, write, seek, or otherwise
+manipulate the file.
+
+* @param file_handle The file handle to close.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_close(duckdb_v2_file_handle_ptr file_handle,
+                                                              duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a file handle, releasing its resources.
+* Destroys a file handle that was created with `file_system_open`, closing the underlying file if it is still open and
+releasing any resources associated with it. This function is null-safe: calling it with a null pointer is a no-op and
+returns DUCKDB_V2_ERROR_NONE. The handle is set to null on return to prevent double-destruction.
+
+* @param file_handle The file handle to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_destroy(duckdb_v2_file_handle_ptr *file_handle);
+
+/* ============================================================================
  * MODULE: logical_type
  * ============================================================================ */
 

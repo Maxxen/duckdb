@@ -6,6 +6,7 @@ add_library_unity(
   database-v2.cpp
   environment-v2.cpp
   error-v2.cpp
+  file_system-v2.cpp
   logical_type-v2.cpp
   option-v2.cpp
   value-v2.cpp
