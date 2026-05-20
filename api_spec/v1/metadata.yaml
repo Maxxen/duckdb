@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/metadata.schema.json
+schema_version: "0.3.0"
+versions:
+  - "1.2.0"
+  - "1.3.0"
+  - "1.4.0"
+  - "1.5.0"
+prefix: "duckdb_"
+suffixes:
+  handles: ""
+  callbacks: ""
+  aliases: ""
+primitives:
+  - name: void
+    c_type: void
+  - name: opaque
+    c_type: void
+  - name: char
+    c_type: char
+  - name: bool
+    c_type: bool
+  - name: i8
+    c_type: int8_t
+  - name: i16
+    c_type: int16_t
+  - name: i32
+    c_type: int32_t
+  - name: i64
+    c_type: int64_t
+  - name: u8
+    c_type: uint8_t
+  - name: u16
+    c_type: uint16_t
+  - name: u32
+    c_type: uint32_t
+  - name: u64
+    c_type: uint64_t
+  - name: f32
+    c_type: float
+  - name: f64
+    c_type: double
+  - name: idx
+    c_type: idx_t
+    underlying: uint64_t
+  - name: size
+    c_type: size_t
+  # Hand rolled types here; leverage primitive to materialize in the spec, but
+  # definition is hand-rolled in C.
+  - name: string_t
+    c_type: duckdb_string_t
+  - name: state
+    c_type: duckdb_state
+  # Arrow external defs
+  - name: ArrowSchema
+    c_type: struct ArrowSchema
+  - name: ArrowArray
+    c_type: struct ArrowArray
+options:
+  c:
+    handles:
+      # Emit "typedef struct _T { void *internal_ptr; } * T;" instead of
+      # "typedef void* T;" for handles. Required for v1 ABI compatibility.
+      default_style: tagged_struct
+      override_style:
+        task_state: void_ptr
+    # Emit struct duckdb_extension_access (plain struct with function pointer fields;
+    # not spec-expressible). duckdb_extension_info is spec-driven as a normal handle.
+    emit_extension_api: true
+    # Emit verbatim C definitions for IDL-inexpressible types. Currently: duckdb_string_t
+    # (union layout) and duckdb_state (non-standard enum member naming).
+    emit_v1_primitive_defs: true
