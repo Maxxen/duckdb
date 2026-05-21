@@ -122,6 +122,13 @@ typedef void *duckdb_v2_logical_type_ptr;
 //! in storage, so the magnitude bytes are produced fresh on each call).
 typedef void *duckdb_v2_value_ptr;
 
+//! An opaque, owned handle to the result of a query. Carries the schema
+//! (column names + logical types), the statement type, the result type
+//! (query result / changed rows / nothing), and — for materialized
+//! results — the row data accessible chunk-by-chunk. Always destroy via
+//! result_destroy.
+typedef void *duckdb_v2_result_ptr;
+
 //! The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 typedef void *duckdb_v2_context_ptr;
 
@@ -1269,6 +1276,196 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_type(d
                                                                                idx_t index,
                                                                                duckdb_v2_logical_type_ptr *out_child,
                                                                                duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
+ * MODULE: query_result
+ * ============================================================================ */
+
+/* --- Enums for query_result --- */
+//! SQL statement type for an executed query. Values mirror
+//! duckdb::StatementType numerically so the bridge cast is the
+//! identity. Every variant present in duckdb::StatementType is
+//! surfaced here; if a new internal variant is added, a matching id
+//! must land in the same change — otherwise the cast silently
+//! produces a numeric value with no matching V2 constant.
+typedef enum DUCKDB_V2_STATEMENT_TYPE {
+	DUCKDB_V2_STATEMENT_TYPE_INVALID = 0,
+	DUCKDB_V2_STATEMENT_TYPE_SELECT = 1,
+	DUCKDB_V2_STATEMENT_TYPE_INSERT = 2,
+	DUCKDB_V2_STATEMENT_TYPE_UPDATE = 3,
+	DUCKDB_V2_STATEMENT_TYPE_CREATE = 4,
+	DUCKDB_V2_STATEMENT_TYPE_DELETE = 5,
+	DUCKDB_V2_STATEMENT_TYPE_PREPARE = 6,
+	DUCKDB_V2_STATEMENT_TYPE_EXECUTE = 7,
+	DUCKDB_V2_STATEMENT_TYPE_ALTER = 8,
+	DUCKDB_V2_STATEMENT_TYPE_TRANSACTION = 9,
+	DUCKDB_V2_STATEMENT_TYPE_COPY = 10,
+	DUCKDB_V2_STATEMENT_TYPE_ANALYZE = 11,
+	DUCKDB_V2_STATEMENT_TYPE_VARIABLE_SET = 12,
+	DUCKDB_V2_STATEMENT_TYPE_CREATE_FUNC = 13,
+	DUCKDB_V2_STATEMENT_TYPE_EXPLAIN = 14,
+	DUCKDB_V2_STATEMENT_TYPE_DROP = 15,
+	DUCKDB_V2_STATEMENT_TYPE_EXPORT = 16,
+	DUCKDB_V2_STATEMENT_TYPE_PRAGMA = 17,
+	DUCKDB_V2_STATEMENT_TYPE_VACUUM = 18,
+	DUCKDB_V2_STATEMENT_TYPE_CALL = 19,
+	DUCKDB_V2_STATEMENT_TYPE_SET = 20,
+	DUCKDB_V2_STATEMENT_TYPE_LOAD = 21,
+	DUCKDB_V2_STATEMENT_TYPE_RELATION = 22,
+	DUCKDB_V2_STATEMENT_TYPE_EXTENSION = 23,
+	DUCKDB_V2_STATEMENT_TYPE_LOGICAL_PLAN = 24,
+	DUCKDB_V2_STATEMENT_TYPE_ATTACH = 25,
+	DUCKDB_V2_STATEMENT_TYPE_DETACH = 26,
+	DUCKDB_V2_STATEMENT_TYPE_MULTI = 27,
+	DUCKDB_V2_STATEMENT_TYPE_COPY_DATABASE = 28,
+	DUCKDB_V2_STATEMENT_TYPE_UPDATE_EXTENSIONS = 29,
+	DUCKDB_V2_STATEMENT_TYPE_MERGE_INTO = 30,
+} DUCKDB_V2_STATEMENT_TYPE;
+
+//! Shape of a query result. Mirrors duckdb::QueryResultType handling.
+//! QUERY_RESULT carries rows + columns; CHANGED_ROWS carries an affected
+//! row count (INSERT/UPDATE/DELETE without RETURNING); NOTHING is used
+//! for DDL and other statements with no row output.
+typedef enum DUCKDB_V2_RESULT_TYPE {
+	DUCKDB_V2_RESULT_TYPE_QUERY_RESULT = 0,
+	DUCKDB_V2_RESULT_TYPE_CHANGED_ROWS = 1,
+	DUCKDB_V2_RESULT_TYPE_NOTHING = 2,
+} DUCKDB_V2_RESULT_TYPE;
+
+/* --- Types for query_result --- */
+
+/* --- Structs for query_result --- */
+
+/* --- Constants for query_result --- */
+
+/* --- Error Codes for query_result --- */
+
+/* --- Function pointer typedefs for query_result --- */
+
+/* --- Functions for query_result --- */
+/*!
+* Runs a SQL query on the connection and returns a materialized result.
+* The SQL is executed synchronously, all rows are materialized, and a
+result handle is returned. Streaming execution is not part of this
+surface.
+
+Returns the error code, and if an error occurred and err is non-NULL, sets err.
+*out_result is set to nullptr on failure.
+
+Multi-statement input runs every statement, but only the first result
+is returned through out_result. Subsequent results are discarded.
+
+* @param conn The connection on which to execute the query.
+* @param sql Null-terminated SQL query string.
+* @param out_result Receives the new result handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_ptr conn, const char *sql,
+                                                             duckdb_v2_result_ptr *out_result,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a result handle.
+* Null-safe: passing nullptr or a slot already set to nullptr is a
+no-op. Frees all owned memory. On success the slot is set to nullptr.
+
+* @param result The result to destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_destroy(duckdb_v2_result_ptr *result, duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the shape of the result (query / changed_rows / nothing).
+* Returns the result shape: QUERY_RESULT for statements that produce
+rows (SELECT, RETURNING, EXPLAIN), CHANGED_ROWS for
+INSERT/UPDATE/DELETE without RETURNING, NOTHING for DDL and other
+statements with no row output. Always succeeds for a non-null
+result handle.
+
+* @param result
+* @param out_type
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_get_result_type(duckdb_v2_result_ptr result,
+                                                                   DUCKDB_V2_RESULT_TYPE *out_type,
+                                                                   duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the SQL statement type that produced the result.
+* Returns the duckdb::StatementType variant numerically. Always succeeds for a non-null result handle.
+
+* @param result
+* @param out_type
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_get_statement_type(duckdb_v2_result_ptr result,
+                                                                      DUCKDB_V2_STATEMENT_TYPE *out_type,
+                                                                      duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the number of result columns.
+* For QUERY_RESULT, this is the number of columns in each chunk's
+vector list. For CHANGED_ROWS and NOTHING, DuckDB emits a single
+synthetic BIGINT "Count" column — populated with the affected row
+count for CHANGED_ROWS, empty (zero rows) for NOTHING. The typed
+accessor for the CHANGED_ROWS row count is
+result_rows_changed.
+
+* @param result
+* @param out_count
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_column_count(duckdb_v2_result_ptr result, idx_t *out_count,
+                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows the name of a result column.
+* Returns a borrowed null-terminated byte string + length, valid
+until the result is destroyed. Out-of-range index returns
+ERROR_INVALID_INPUT.
+
+* @param result
+* @param index
+* @param out_name
+* @param out_length
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_ptr result, idx_t index,
+                                                               const char **out_name, idx_t *out_length,
+                                                               duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the logical type of a result column.
+* The returned logical type is caller-owned and must be destroyed via
+logical_type_destroy. Out-of-range index returns
+ERROR_INVALID_INPUT.
+
+Note: at the data-chunk level the same type is also reachable via
+vector_get_logical_type on each chunk's vector. The vector
+is the authoritative source; the result-level schema is a
+convenience.
+
+* @param result
+* @param index
+* @param out_type
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_column_logical_type(duckdb_v2_result_ptr result, idx_t index,
+                                                                       duckdb_v2_logical_type_ptr *out_type,
+                                                                       duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the number of rows affected (for INSERT/UPDATE/DELETE).
+* Only meaningful for CHANGED_ROWS results. Returns 0 for QUERY_RESULT
+and NOTHING results.
+
+* @param result
+* @param out_count
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_rows_changed(duckdb_v2_result_ptr result, idx_t *out_count,
+                                                                duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: scalar

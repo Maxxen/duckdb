@@ -1,0 +1,293 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: query_result
+#
+# Run a query and inspect its schema. Row-data access (chunks and typed
+# vector views) lives in the data_chunk and vector modules.
+#
+# The result handle carries the schema (column names + types), the statement
+# type, the result type (query / changed-rows / nothing), and, for
+# CHANGED_ROWS results, the affected row count.
+#
+# connection_query() always returns a materialized result.
+# Streaming and pending result variants are not part of this surface.
+
+enums:
+  STATEMENT_TYPE:
+    description: |
+      SQL statement type for an executed query. Values mirror
+      duckdb::StatementType numerically so the bridge cast is the
+      identity. Every variant present in duckdb::StatementType is
+      surfaced here; if a new internal variant is added, a matching id
+      must land in the same change — otherwise the cast silently
+      produces a numeric value with no matching V2 constant.
+    values:
+      STATEMENT_TYPE_INVALID:
+        value: 0
+      STATEMENT_TYPE_SELECT:
+        value: 1
+      STATEMENT_TYPE_INSERT:
+        value: 2
+      STATEMENT_TYPE_UPDATE:
+        value: 3
+      STATEMENT_TYPE_CREATE:
+        value: 4
+      STATEMENT_TYPE_DELETE:
+        value: 5
+      STATEMENT_TYPE_PREPARE:
+        value: 6
+      STATEMENT_TYPE_EXECUTE:
+        value: 7
+      STATEMENT_TYPE_ALTER:
+        value: 8
+      STATEMENT_TYPE_TRANSACTION:
+        value: 9
+      STATEMENT_TYPE_COPY:
+        value: 10
+      STATEMENT_TYPE_ANALYZE:
+        value: 11
+      STATEMENT_TYPE_VARIABLE_SET:
+        value: 12
+      STATEMENT_TYPE_CREATE_FUNC:
+        value: 13
+      STATEMENT_TYPE_EXPLAIN:
+        value: 14
+      STATEMENT_TYPE_DROP:
+        value: 15
+      STATEMENT_TYPE_EXPORT:
+        value: 16
+      STATEMENT_TYPE_PRAGMA:
+        value: 17
+      STATEMENT_TYPE_VACUUM:
+        value: 18
+      STATEMENT_TYPE_CALL:
+        value: 19
+      STATEMENT_TYPE_SET:
+        value: 20
+      STATEMENT_TYPE_LOAD:
+        value: 21
+      STATEMENT_TYPE_RELATION:
+        value: 22
+      STATEMENT_TYPE_EXTENSION:
+        value: 23
+      STATEMENT_TYPE_LOGICAL_PLAN:
+        value: 24
+      STATEMENT_TYPE_ATTACH:
+        value: 25
+      STATEMENT_TYPE_DETACH:
+        value: 26
+      STATEMENT_TYPE_MULTI:
+        value: 27
+      STATEMENT_TYPE_COPY_DATABASE:
+        value: 28
+      STATEMENT_TYPE_UPDATE_EXTENSIONS:
+        value: 29
+      STATEMENT_TYPE_MERGE_INTO:
+        value: 30
+  RESULT_TYPE:
+    description: |
+      Shape of a query result. Mirrors duckdb::QueryResultType handling.
+      QUERY_RESULT carries rows + columns; CHANGED_ROWS carries an affected
+      row count (INSERT/UPDATE/DELETE without RETURNING); NOTHING is used
+      for DDL and other statements with no row output.
+    values:
+      RESULT_TYPE_QUERY_RESULT:
+        value: 0
+      RESULT_TYPE_CHANGED_ROWS:
+        value: 1
+      RESULT_TYPE_NOTHING:
+        value: 2
+functions:
+  connection_query:
+    summary: Runs a SQL query on the connection and returns a materialized result.
+    description: |
+      The SQL is executed synchronously, all rows are materialized, and a
+      result handle is returned. Streaming execution is not part of this
+      surface.
+
+      Returns the error code, and if an error occurred and err is non-NULL, sets err.
+      *out_result is set to nullptr on failure.
+
+      Multi-statement input runs every statement, but only the first result
+      is returned through out_result. Subsequent results are discarded.
+    role: constructor
+    belongs_to: result
+    parameters:
+      conn:
+        type: connection
+        description: The connection on which to execute the query.
+      sql:
+        type: char
+        indirection: 1
+        const: true
+        description: Null-terminated SQL query string.
+      out_result:
+        type: result
+        indirection: 1
+        kind: OUT
+        description: Receives the new result handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_destroy:
+    summary: Destroys a result handle.
+    description: |
+      Null-safe: passing nullptr or a slot already set to nullptr is a
+      no-op. Frees all owned memory. On success the slot is set to nullptr.
+    role: destructor
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+        indirection: 1
+        description: The result to destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_get_result_type:
+    summary: Returns the shape of the result (query / changed_rows / nothing).
+    description: |
+      Returns the result shape: QUERY_RESULT for statements that produce
+      rows (SELECT, RETURNING, EXPLAIN), CHANGED_ROWS for
+      INSERT/UPDATE/DELETE without RETURNING, NOTHING for DDL and other
+      statements with no row output. Always succeeds for a non-null
+      result handle.
+    role: getter
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+      out_type:
+        type: RESULT_TYPE
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_get_statement_type:
+    summary: Returns the SQL statement type that produced the result.
+    description: |
+      Returns the duckdb::StatementType variant numerically. Always succeeds for a non-null result handle.
+    role: getter
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+      out_type:
+        type: STATEMENT_TYPE
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_column_count:
+    summary: Returns the number of result columns.
+    description: |
+      For QUERY_RESULT, this is the number of columns in each chunk's
+      vector list. For CHANGED_ROWS and NOTHING, DuckDB emits a single
+      synthetic BIGINT "Count" column — populated with the affected row
+      count for CHANGED_ROWS, empty (zero rows) for NOTHING. The typed
+      accessor for the CHANGED_ROWS row count is
+      result_rows_changed.
+    role: getter
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_column_name:
+    summary: Borrows the name of a result column.
+    description: |
+      Returns a borrowed null-terminated byte string + length, valid
+      until the result is destroyed. Out-of-range index returns
+      ERROR_INVALID_INPUT.
+    role: getter
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+      index:
+        type: idx
+      out_name:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_column_logical_type:
+    summary: Returns the logical type of a result column.
+    description: |
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy. Out-of-range index returns
+      ERROR_INVALID_INPUT.
+
+      Note: at the data-chunk level the same type is also reachable via
+      vector_get_logical_type on each chunk's vector. The vector
+      is the authoritative source; the result-level schema is a
+      convenience.
+    role: getter
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+      index:
+        type: idx
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_rows_changed:
+    summary: Returns the number of rows affected (for INSERT/UPDATE/DELETE).
+    description: |
+      Only meaningful for CHANGED_ROWS results. Returns 0 for QUERY_RESULT
+      and NOTHING results.
+    role: getter
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL

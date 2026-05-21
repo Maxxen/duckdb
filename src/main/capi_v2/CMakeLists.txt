@@ -10,6 +10,7 @@ add_library_unity(
   logical_type-v2.cpp
   option-v2.cpp
   value-v2.cpp
+  query_result-v2.cpp
   function_scalar-v2.cpp)
 
 set(ALL_OBJECT_FILES

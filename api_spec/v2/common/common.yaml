@@ -34,7 +34,7 @@ handles:
   #   - If the call succeeds, `*err` is left as nullptr.
   #   - If the call fails and `err != nullptr`, the library allocates an
   #     info handle and stores its pointer in `*err`. The caller owns it
-  #     and must destroy it with destroy_error_info.
+  #     and must destroy it with error_info_destroy.
   #   - If `*err` is already non-null on entry, the library destroys the
   #     previous info before writing. To preserve info across calls, detach
   #     it first: `saved = *err; *err = nullptr;`.
@@ -63,6 +63,14 @@ handles:
       an owned magnitude buffer the caller must free() (BIGNUM is bit-encoded
       in storage, so the magnitude bytes are produced fresh on each call).
     cleanup_with: value_destroy
+  result:
+    description: |
+      An opaque, owned handle to the result of a query. Carries the schema
+      (column names + logical types), the statement type, the result type
+      (query result / changed rows / nothing), and — for materialized
+      results — the row data accessible chunk-by-chunk. Always destroy via
+      result_destroy.
+    cleanup_with: result_destroy
   context:
     description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 callbacks:
@@ -111,6 +119,6 @@ aliases:
     description: The category part of an error code (the upper 16 bits)
   error_code:
     underlying: u32
-    description: "Full 32-bit error code: (group_id << 16) | code"
+    description: 'Full 32-bit error code: (group_id << 16) | code'
   API_CALL:
     underlying: error_code

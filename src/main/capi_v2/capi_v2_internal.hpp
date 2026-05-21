@@ -121,6 +121,17 @@ inline LogicalType *ToLogicalType(duckdb_v2_logical_type_ptr ptr) {
 inline Value *ToValue(duckdb_v2_value_ptr ptr) {
 	return static_cast<Value *>(ptr);
 }
+// duckdb_v2_result_ptr is a heap-allocated duckdb::MaterializedQueryResult
+// with no wrapper. The V2 result surface today is materialized-only, by
+// construction: connection_query is the sole producer and uses
+// Connection::Query(const string &) which returns
+// unique_ptr<MaterializedQueryResult>. If a future entrypoint produces a
+// streaming or pending QueryResult, this cast must change — the bridge
+// should either gain a wrapper that tags the variant, or split into
+// per-shape handle types.
+inline MaterializedQueryResult *ToResult(duckdb_v2_result_ptr ptr) {
+	return static_cast<MaterializedQueryResult *>(ptr);
+}
 
 // Map DuckDB's SettingScopeTarget to the V2 enum. Legacy options
 // (declared via DUCKDB_GLOBAL / DUCKDB_LOCAL / DUCKDB_GLOBAL_LOCAL)
