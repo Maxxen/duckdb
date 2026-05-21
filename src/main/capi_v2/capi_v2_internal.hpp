@@ -13,6 +13,9 @@
 #include "duckdb.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
+#include "duckdb/common/types/vector.hpp"
+#include "duckdb/common/types/string_type.hpp"
+#include "duckdb/common/types/bignum.hpp"
 #include "duckdb/main/appender.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -131,6 +134,38 @@ inline Value *ToValue(duckdb_v2_value_ptr ptr) {
 // per-shape handle types.
 inline MaterializedQueryResult *ToResult(duckdb_v2_result_ptr ptr) {
 	return static_cast<MaterializedQueryResult *>(ptr);
+}
+// duckdb_v2_data_chunk_ptr is a heap-allocated duckdb::DataChunk with no
+// wrapper. Cardinality flows through the API explicitly; no per-chunk
+// state needs caching. duckdb_v2_data_chunk_destroy deletes through this
+// cast.
+inline DataChunk *ToDataChunk(duckdb_v2_data_chunk_ptr ptr) {
+	return static_cast<DataChunk *>(ptr);
+}
+// duckdb_v2_vector_ptr is a borrowed duckdb::Vector. Top-level vectors
+// point into the owning DataChunk's data[]; nested children point into
+// core's ListVector / ArrayVector / StructVector / etc storage. No
+// wrapper — vector_get_view extracts (data, validity, sel) directly via
+// the matching FlatVector / ConstantVector / DictionaryVector core
+// helpers, without caching a UnifiedVectorFormat.
+inline Vector *ToVector(duckdb_v2_vector_ptr ptr) {
+	return static_cast<Vector *>(ptr);
+}
+
+// Map core's VectorType to the V2 surface. FSST / SEQUENCE / SHREDDED
+// collapse into OTHER — V2's untyped view rejects those kinds and
+// requires an explicit duckdb_v2_vector_flatten first.
+inline DUCKDB_V2_VECTOR_TYPE MapVectorType(VectorType vt) {
+	switch (vt) {
+	case VectorType::FLAT_VECTOR:
+		return DUCKDB_V2_VECTOR_TYPE_FLAT;
+	case VectorType::CONSTANT_VECTOR:
+		return DUCKDB_V2_VECTOR_TYPE_CONSTANT;
+	case VectorType::DICTIONARY_VECTOR:
+		return DUCKDB_V2_VECTOR_TYPE_DICTIONARY;
+	default:
+		return DUCKDB_V2_VECTOR_TYPE_OTHER;
+	}
 }
 
 // Map DuckDB's SettingScopeTarget to the V2 enum. Legacy options
@@ -310,6 +345,42 @@ inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V
 inline DUCKDB_V2_API_CALL_t ClearErrorInfo(duckdb_v2_error_info_ptr *err) {
 	DestroyErrorInfoSlot(err);
 	return DUCKDB_V2_ERROR_NONE;
+}
+
+// Shared BIGNUM magnitude/sign decoder. Used by both
+// duckdb_v2_value_get_bignum (PR2 value-side) and duckdb_v2_bignum_decode
+// (PR4 vector-side) so the magnitude reconstruction + sign extraction
+// lives in exactly one place. Allocates an owned buffer with malloc
+// (caller frees with free()).
+inline DUCKDB_V2_API_CALL_t DecodeBignumStringT(const string_t &storage, uint8_t **out_data, idx_t *out_length,
+                                                bool *out_is_negative, const char *function_name,
+                                                duckdb_v2_error_info_ptr *err) {
+	*out_data = nullptr;
+	*out_length = 0;
+	*out_is_negative = false;
+	try {
+		vector<uint8_t> magnitude;
+		bool is_negative = false;
+		Bignum::GetByteArray(magnitude, is_negative, storage);
+		auto alloc = magnitude.empty() ? size_t {1} : magnitude.size();
+		auto *buf = static_cast<uint8_t *>(std::malloc(alloc));
+		if (!buf) {
+			std::string msg = std::string(function_name) + ": malloc failed";
+			return SetErrorInfo(err, DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY, msg.c_str());
+		}
+		if (!magnitude.empty()) {
+			std::memcpy(buf, magnitude.data(), magnitude.size());
+		}
+		*out_data = buf;
+		*out_length = magnitude.size();
+		*out_is_negative = is_negative;
+		return ClearErrorInfo(err);
+	} catch (std::exception &e) {
+		return SetErrorInfo(err, DUCKDB_V2_API_ERROR, e.what());
+	} catch (...) {
+		std::string msg = std::string("unknown error in ") + function_name;
+		return SetErrorInfo(err, DUCKDB_V2_API_ERROR, msg.c_str());
+	}
 }
 
 inline DUCKDB_V2_API_CALL_t GetErrorCodeFromExceptionType(ExceptionType type) {

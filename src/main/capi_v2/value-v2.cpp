@@ -702,34 +702,16 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bignum(duckdb_v2_value_ptr value, uint8
 	if (!out_data || !out_length || !out_is_negative) {
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null argument to duckdb_v2_value_get_bignum");
 	}
-	*out_data = nullptr;
-	*out_length = 0;
-	*out_is_negative = false;
 	auto pre = duckdb::CheckTypedGetter(value, duckdb::LogicalTypeId::BIGNUM, "duckdb_v2_value_get_bignum", err);
 	if (pre != DUCKDB_V2_ERROR_NONE) {
+		*out_data = nullptr;
+		*out_length = 0;
+		*out_is_negative = false;
 		return pre;
 	}
-	try {
-		auto &str = duckdb::StringValue::Get(*duckdb::ToValue(value));
-		duckdb::vector<uint8_t> magnitude;
-		bool is_negative = false;
-		duckdb::Bignum::GetByteArray(magnitude, is_negative, duckdb::string_t(str));
-		auto *buf = static_cast<uint8_t *>(std::malloc(magnitude.empty() ? 1 : magnitude.size()));
-		if (!buf) {
-			return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, "malloc failed in duckdb_v2_value_get_bignum");
-		}
-		if (!magnitude.empty()) {
-			std::memcpy(buf, magnitude.data(), magnitude.size());
-		}
-		*out_data = buf;
-		*out_length = magnitude.size();
-		*out_is_negative = is_negative;
-		return duckdb::ClearErrorInfo(err);
-	} catch (std::exception &e) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, e.what());
-	} catch (...) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, "unknown error in duckdb_v2_value_get_bignum");
-	}
+	auto &str = duckdb::StringValue::Get(*duckdb::ToValue(value));
+	return duckdb::DecodeBignumStringT(duckdb::string_t(str), out_data, out_length, out_is_negative,
+	                                   "duckdb_v2_value_get_bignum", err);
 }
 
 // ---------------------------------------------------------------------------

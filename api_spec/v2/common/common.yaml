@@ -71,8 +71,50 @@ handles:
       results — the row data accessible chunk-by-chunk. Always destroy via
       result_destroy.
     cleanup_with: result_destroy
+  data_chunk:
+    description: |
+      An opaque, owned handle to a data chunk: a set of vectors of equal
+      logical length plus a cardinality (row count). Each vector carries
+      its own logical type. Chunks are fetched from a materialized result
+      via result_get_chunk and must be destroyed by the caller.
+
+      Lifetime is fully independent of the producing result, connection,
+      and database: result_get_chunk copies the chunk's data into a fresh
+      allocator-backed buffer, so the chunk (and the vectors and view
+      pointers borrowed from it) remain valid until data_chunk_destroy
+      — even if the result, connection, or database is destroyed first.
+      Borrowed vectors and view pointers all share this lifetime; they
+      die with the chunk, not with the producer.
+    cleanup_with: data_chunk_destroy
+  vector:
+    description: |
+      A borrowed handle to a vector within a data chunk. Carries one
+      logical column's worth of values for the chunk. Lifetime is bound to
+      the owning chunk; do not destroy. Use vector_get_view to read in a
+      unified-format shape (data + validity + selection) per kind; the
+      row count comes from the caller's context (the chunk for top-level
+      vectors; parent geometry for nested children).
   context:
     description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
+structs:
+  string_t:
+    description: |
+      Opaque 16-byte storage for a string-backed value (VARCHAR / BLOB
+      / BIT / BIGNUM). Only the struct's size (16 bytes) and alignment
+      (8 bytes, from `uint64_t _opaque[2]`) are committed as ABI; the
+      field layout (inline-vs-pointer dispatch mirroring
+      duckdb::string_t) lives privately inside the bridge decoders.
+      Callers MUST go through the matching <kind>_decode bridge to
+      read bytes — varchar_decode for VARCHAR storage, blob_decode for
+      BLOB, bit_decode for BIT, bignum_decode for BIGNUM. Reading
+      `_opaque` directly is undefined behaviour. The 8-byte alignment
+      matches duckdb::string_t's `alignof` so the bridge's
+      reinterpret_cast is well-defined even when callers
+      stack/heap-allocate a string_t and hand a pointer to it.
+    fields:
+      - name: _opaque
+        type: u64
+        array_size: 2
 callbacks:
   user_data_equals:
     return_type: bool
@@ -122,3 +164,6 @@ aliases:
     description: 'Full 32-bit error code: (group_id << 16) | code'
   API_CALL:
     underlying: error_code
+  sel:
+    underlying: u32
+    description: Selection-vector entry. Mirrors duckdb::sel_t.

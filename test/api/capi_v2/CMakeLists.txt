@@ -4,6 +4,7 @@ add_library_unity(
   test_sql_capi_v2
   OBJECT
   test_capi_v2.cpp
+  test_capi_v2_data_chunk.cpp
   test_capi_v2_logical_type.cpp
   test_capi_v2_query_result.cpp
   test_capi_v2_value.cpp

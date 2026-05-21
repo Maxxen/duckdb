@@ -129,6 +129,27 @@ typedef void *duckdb_v2_value_ptr;
 //! result_destroy.
 typedef void *duckdb_v2_result_ptr;
 
+//! An opaque, owned handle to a data chunk: a set of vectors of equal
+//! logical length plus a cardinality (row count). Each vector carries
+//! its own logical type. Chunks are fetched from a materialized result
+//! via result_get_chunk and must be destroyed by the caller.
+//! Lifetime is fully independent of the producing result, connection,
+//! and database: result_get_chunk copies the chunk's data into a fresh
+//! allocator-backed buffer, so the chunk (and the vectors and view
+//! pointers borrowed from it) remain valid until data_chunk_destroy
+//! — even if the result, connection, or database is destroyed first.
+//! Borrowed vectors and view pointers all share this lifetime; they
+//! die with the chunk, not with the producer.
+typedef void *duckdb_v2_data_chunk_ptr;
+
+//! A borrowed handle to a vector within a data chunk. Carries one
+//! logical column's worth of values for the chunk. Lifetime is bound to
+//! the owning chunk; do not destroy. Use vector_get_view to read in a
+//! unified-format shape (data + validity + selection) per kind; the
+//! row count comes from the caller's context (the chunk for top-level
+//! vectors; parent geometry for nested children).
+typedef void *duckdb_v2_vector_ptr;
+
 //! The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 typedef void *duckdb_v2_context_ptr;
 
@@ -140,7 +161,25 @@ typedef uint32_t duckdb_v2_error_code_t;
 
 typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
 
+//! Selection-vector entry. Mirrors duckdb::sel_t.
+typedef uint32_t duckdb_v2_sel_t;
+
 /* --- Structs for common --- */
+//! Opaque 16-byte storage for a string-backed value (VARCHAR / BLOB
+//! / BIT / BIGNUM). Only the struct's size (16 bytes) and alignment
+//! (8 bytes, from `uint64_t _opaque[2]`) are committed as ABI; the
+//! field layout (inline-vs-pointer dispatch mirroring
+//! duckdb::string_t) lives privately inside the bridge decoders.
+//! Callers MUST go through the matching <kind>_decode bridge to
+//! read bytes — varchar_decode for VARCHAR storage, blob_decode for
+//! BLOB, bit_decode for BIT, bignum_decode for BIGNUM. Reading
+//! `_opaque` directly is undefined behaviour. The 8-byte alignment
+//! matches duckdb::string_t's `alignof` so the bridge's
+//! reinterpret_cast is well-defined even when callers
+//! stack/heap-allocate a string_t and hand a pointer to it.
+typedef struct {
+	uint64_t _opaque[2];
+} duckdb_v2_string_t;
 
 /* --- Constants for common --- */
 
@@ -445,6 +484,100 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_opt
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_ptr option, idx_t index,
                                                              const char **out_alias, duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
+ * MODULE: data_chunk
+ * ============================================================================ */
+
+/* --- Enums for data_chunk --- */
+
+/* --- Types for data_chunk --- */
+
+/* --- Structs for data_chunk --- */
+
+/* --- Constants for data_chunk --- */
+
+/* --- Error Codes for data_chunk --- */
+
+/* --- Function pointer typedefs for data_chunk --- */
+
+/* --- Functions for data_chunk --- */
+/*!
+* Returns the number of data chunks in a materialized result.
+* For QUERY_RESULT results, returns the chunk count. For CHANGED_ROWS
+or NOTHING results, returns 0.
+
+* @param result
+* @param out_count
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_chunk_count(duckdb_v2_result_ptr result, idx_t *out_count,
+                                                               duckdb_v2_error_info_ptr *err);
+/*!
+* Retrieves a data chunk from a materialized result.
+* Returns a caller-owned chunk. Each chunk holds a vector per
+result column with a chunk-size-bounded row count (the chunk
+size is fixed at the library's compile time). Out-of-range
+index returns ERROR_INVALID_INPUT. Returns ERROR_INVALID_INPUT
+if the result is not a QUERY_RESULT (CHANGED_ROWS / NOTHING
+results have no row data).
+
+* @param result
+* @param index The chunk index, in [0, result_chunk_count).
+* @param out_chunk Receives the new chunk handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_get_chunk(duckdb_v2_result_ptr result, idx_t index,
+                                                             duckdb_v2_data_chunk_ptr *out_chunk,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a data chunk handle.
+* Null-safe. On success the slot is set to nullptr. Any vectors
+previously borrowed from this chunk become invalid.
+
+* @param chunk
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_ptr *chunk,
+                                                               duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the row count of a data chunk.
+ * @param chunk
+ * @param out_size
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_ptr chunk, idx_t *out_size,
+                                                                duckdb_v2_error_info_ptr *err);
+/*!
+ * Returns the number of vectors in a data chunk.
+ * Equals the column count of the producing result.
+ * @param chunk
+ * @param out_count
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector_count(duckdb_v2_data_chunk_ptr chunk,
+                                                                        idx_t *out_count,
+                                                                        duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows the vector at the given index in a data chunk.
+* Returns a borrowed vector handle valid until the chunk is destroyed.
+Do not call destroy_* on it. Out-of-range index returns
+ERROR_INVALID_INPUT.
+
+* @param chunk
+* @param index The vector index, in [0, vector_count).
+* @param out_vector Receives the borrowed vector handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_data_chunk_ptr chunk, idx_t index,
+                                                                  duckdb_v2_vector_ptr *out_vector,
+                                                                  duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: database
@@ -2428,6 +2561,300 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_decimal(duckdb_v2_value_pt
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uuid(duckdb_v2_value_ptr value, uint64_t *out_lower,
                                                            uint64_t *out_upper, duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
+ * MODULE: vector
+ * ============================================================================ */
+
+/* --- Enums for vector --- */
+//! Internal representation of a vector. Mirrors duckdb::VectorType
+//! with FSST / SEQUENCE / SHREDDED collapsed into OTHER — the
+//! view-getter rejects those and requires an explicit vector_flatten
+//! first. OTHER is the 0-value so a zero-initialised out-param reads
+//! as "unspecified / needs flatten" rather than silently looking
+//! like FLAT.
+typedef enum DUCKDB_V2_VECTOR_TYPE {
+	/* Default for zero-init. Covers FSST / SEQUENCE / SHREDDED — call vector_flatten first. */
+	DUCKDB_V2_VECTOR_TYPE_OTHER = 0,
+	/* Standard per-row storage. */
+	DUCKDB_V2_VECTOR_TYPE_FLAT = 1,
+	/* A single value applies to every row in the vector. */
+	DUCKDB_V2_VECTOR_TYPE_CONSTANT = 2,
+	/* Data + selection vector indirection into another vector. */
+	DUCKDB_V2_VECTOR_TYPE_DICTIONARY = 3,
+} DUCKDB_V2_VECTOR_TYPE;
+
+/* --- Types for vector --- */
+//! VARCHAR storage. Decode via varchar_decode.
+typedef duckdb_v2_string_t duckdb_v2_varchar_t;
+
+//! BLOB storage. Decode via blob_decode.
+typedef duckdb_v2_string_t duckdb_v2_blob_t;
+
+//! BIT storage. Decode via bit_decode.
+typedef duckdb_v2_string_t duckdb_v2_bit_t;
+
+//! BIGNUM storage. Decode via bignum_decode.
+typedef duckdb_v2_string_t duckdb_v2_bignum_t;
+
+/* --- Structs for vector --- */
+typedef struct {
+	const void *data;
+	const uint64_t *validity;
+	const duckdb_v2_sel_t *sel;
+} duckdb_v2_vector_view;
+
+typedef struct {
+	idx_t offset;
+	idx_t length;
+} duckdb_v2_list_entry;
+
+typedef struct {
+	uint64_t lower;
+	int64_t upper;
+} duckdb_v2_hugeint_t;
+
+typedef struct {
+	uint64_t lower;
+	uint64_t upper;
+} duckdb_v2_uhugeint_t;
+
+typedef struct {
+	int32_t months;
+	int32_t days;
+	int64_t micros;
+} duckdb_v2_interval_t;
+
+/* --- Constants for vector --- */
+
+/* --- Error Codes for vector --- */
+
+/* --- Function pointer typedefs for vector --- */
+
+/* --- Functions for vector --- */
+/*!
+* Returns the logical type of a vector.
+* The returned logical type is caller-owned and must be destroyed via
+logical_type_destroy.
+
+* @param vector
+* @param out_type
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_logical_type(duckdb_v2_vector_ptr vector,
+                                                                    duckdb_v2_logical_type_ptr *out_type,
+                                                                    duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the internal representation kind (flat / constant / dict).
+* Returns VECTOR_TYPE_OTHER for FSST / SEQUENCE / SHREDDED vectors;
+callers must vector_flatten first before reading via vector_get_view.
+
+* @param vector
+* @param out_type
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_vector_type(duckdb_v2_vector_ptr vector,
+                                                                   DUCKDB_V2_VECTOR_TYPE *out_type,
+                                                                   duckdb_v2_error_info_ptr *err);
+/*!
+* Forces a vector into FLAT representation in place.
+* No-op for FLAT vectors. For CONSTANT / DICTIONARY / FSST / SEQUENCE /
+SHREDDED vectors, materialises the per-row data and updates the
+vector's internal representation to FLAT. Use before vector_get_view
+if you'd rather not handle CONSTANT / DICTIONARY semantics in the
+view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
+
+* @param vector
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_ptr vector, duckdb_v2_error_info_ptr *err);
+/*!
+* Reads a vector as a unified-format view (data + validity + sel).
+* Populates out_view with borrowed pointers valid until the owning
+chunk is destroyed. Row count and per-kind view.data semantics
+live in the module docstring. Rejects VECTOR_TYPE_OTHER — call
+vector_flatten first.
+
+Side effect on DICTIONARY vectors: the dictionary's underlying
+child is flattened in place if it isn't already FLAT (matching
+duckdb::DictionaryBuffer::ToUnifiedFormat). The parent vector
+stays DICTIONARY; only the underlying child's storage shape
+changes. Any pointers a caller previously borrowed into that
+child (e.g. from a prior vector_get_view on a vector that
+aliases the same buffer) are invalidated. This is the one
+mutation vector_get_view performs — see also vector_flatten,
+which materialises the whole vector to FLAT.
+
+* @param vector
+* @param out_view
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector,
+                                                            duckdb_v2_vector_view *out_view,
+                                                            duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the number of child vectors a nested vector exposes.
+* For LIST / ARRAY returns 1; for MAP returns 2 (keys, values); for
+STRUCT returns the field count; for UNION returns member_count +
+1 (tag plus members); 0 for any non-nested kind. The per-kind
+index convention is documented on the module.
+
+* @param vector
+* @param out_count
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child_count(duckdb_v2_vector_ptr vector, idx_t *out_count,
+                                                                   duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows a child vector by index.
+* Index convention follows the module docstring. The returned
+child Vector is borrowed; lifetime is the owning chunk's. Returns
+ERROR_INVALID_INPUT if the vector has no children, or if index
+is out of range.
+
+* @param vector
+* @param index The child index, in [0, vector_get_child_count(vec)).
+* @param out_child
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx_t index,
+                                                             duckdb_v2_vector_ptr *out_child,
+                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* For a LIST or MAP vector, returns the row count of its child vector(s).
+* For LIST, returns the row count of the elements child. For MAP,
+returns the count of K/V pairs (= the parallel row count of both
+the [0] keys and [1] values children). Equivalent to the upper
+bound `max(entries[i].offset + entries[i].length)` across valid
+parent rows, but tracked in O(1) on the parent vector. Per-row
+read loops don't need this number — iterate parent rows and
+address the child via `entries[row].{offset, length}`. Returns
+ERROR_INVALID_INPUT for vectors whose logical type is not LIST
+or MAP.
+
+* @param vector
+* @param out_size
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_list_get_size(duckdb_v2_vector_ptr vector, idx_t *out_size,
+                                                                 duckdb_v2_error_info_ptr *err);
+/*!
+* Reads the bytes + length of a VARCHAR value from its storage.
+* out_data receives a borrowed pointer into the VARCHAR's underlying
+bytes; out_length receives the byte length. The pointer is valid
+for as long as the enclosing value's owning chunk is alive — for
+short (inlined) strings the bytes physically live inside the
+varchar_t value, so callers that need a pointer outliving the
+value must memcpy.
+
+* @param varchar Pointer to the VARCHAR storage.
+* @param out_data Receives a borrowed pointer to the bytes.
+* @param out_length Receives the byte length.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_varchar_decode(const duckdb_v2_varchar_t *varchar, const char **out_data,
+                                                           idx_t *out_length, duckdb_v2_error_info_ptr *err);
+/*!
+* Reads the bytes + length of a BLOB value from its storage.
+* Identical contract to varchar_decode but typed for raw bytes
+rather than text.
+
+* @param blob Pointer to the BLOB storage.
+* @param out_data Receives a borrowed pointer to the bytes.
+* @param out_length Receives the byte length.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_blob_decode(const duckdb_v2_blob_t *blob, const uint8_t **out_data,
+                                                        idx_t *out_length, duckdb_v2_error_info_ptr *err);
+/*!
+* Reads the bytes + length + padding-bits of a BIT value.
+* The on-disk encoding is [padding_byte | data_bytes]: byte 0 is the
+number of leading bits in the first data byte that are NOT part
+of the bit string (0 if the bit count is a multiple of 8). out_data
+receives a borrowed pointer to the data bytes (one past the
+padding byte), out_length the number of data bytes, and
+out_padding_bits the padding count. Pointer lifetime is the owning
+chunk.
+
+Bit-position contract: bit n (0-indexed, leftmost bit of the bit
+string first) is read as:
+
+    bit_index = n + out_padding_bits
+    byte      = out_data[bit_index / 8]
+    value     = (byte >> (7 - (bit_index % 8))) & 1
+
+The value of bits in the `out_padding_bits` positions is
+unspecified (the bit-extraction formula masks them out).
+
+* @param bit Pointer to the BIT storage.
+* @param out_data Receives a borrowed pointer to the data bytes (skipping the padding byte).
+* @param out_length Receives the number of data bytes.
+* @param out_padding_bits Receives the number of unused trailing bits in the last data byte.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bit_decode(const duckdb_v2_bit_t *bit, const uint8_t **out_data,
+                                                       idx_t *out_length, uint8_t *out_padding_bits,
+                                                       duckdb_v2_error_info_ptr *err);
+/*!
+* Decodes a BIGNUM value into a fresh magnitude buffer + sign flag.
+* Allocates a malloc'd buffer of big-endian magnitude bytes and
+returns it via out_data; caller frees with free(). out_is_negative
+receives the sign flag; reconstruct the integer as
+(-1)**out_is_negative * unsigned_big_endian(out_data[0..out_length]).
+The allocation is unavoidable: negative bignums store the magnitude
+bit-inverted on-disk, so the magnitude bytes don't exist as a
+contiguous slice we could borrow.
+
+* @param bignum Pointer to the BIGNUM storage.
+* @param out_data Receives a malloc'd buffer of magnitude bytes. Caller frees.
+* @param out_length Receives the length of the magnitude buffer in bytes.
+* @param out_is_negative Receives true if the value is negative, false otherwise.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bignum_decode(const duckdb_v2_bignum_t *bignum, uint8_t **out_data,
+                                                          idx_t *out_length, bool *out_is_negative,
+                                                          duckdb_v2_error_info_ptr *err);
+/*!
+* Resolves a logical row index through a selection vector.
+* Returns `sel ? sel[i] : i` via out. The `sel == NULL` identity
+convention matches duckdb::UnifiedVectorFormat: FLAT vectors carry
+a NULL sel, CONSTANT vectors a non-null zero singleton, DICTIONARY
+vectors their own sel. Consumers in tight loops can inline the
+expression themselves to skip the bridge call.
+
+* @param sel The selection vector pointer; may be NULL (means identity).
+* @param i The logical row index.
+* @param out Receives the physical row index: `sel ? sel[i] : i`.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_sel_at(const duckdb_v2_sel_t *sel, idx_t i, idx_t *out,
+                                                   duckdb_v2_error_info_ptr *err);
+/*!
+* Returns whether a row is valid (not NULL) in a validity mask.
+* Equivalent to `validity == NULL || (validity[row >> 6] & (1 << (row & 63)))`.
+Returns true when validity is NULL (the all-valid fast path). Row
+is the physical row index (post-selection).
+
+* @param validity The validity mask pointer; may be NULL (means all valid).
+* @param row The physical row index (post-selection).
+* @param out_is_valid
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(const uint64_t *validity, idx_t row,
+                                                                  bool *out_is_valid, duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: connection

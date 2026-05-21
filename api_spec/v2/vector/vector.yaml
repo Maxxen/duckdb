@@ -1,0 +1,573 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: vector
+#
+# Read-side vector access.
+#
+# Mirrors duckdb::Vector + UnifiedVectorFormat. Every vector exposes one
+# untyped read view via vector_get_view:
+#
+#   typedef struct {
+#       const void           *data;
+#       const uint64_t       *validity;
+#       const sel_t          *sel;
+#   } vector_view;
+#
+# The view is a pure pointer triple. No row count: row count is the
+# caller's context, not the vector's. Sources per level:
+#
+#   - top-level vector borrowed from a chunk → data_chunk_get_size(chunk)
+#   - LIST or MAP child                      → vector_list_get_size(parent)
+#   - ARRAY child                            → parent_count * logical_type_get_array_size(array_type)
+#   - STRUCT or UNION child                  → parent's row count (children are parallel)
+#
+# Iteration is uniform across FLAT / CONSTANT / DICTIONARY:
+#
+#   for (idx_t i = 0; i < row_count; i++) {
+#       idx_t idx; sel_at(view.sel, i, &idx, NULL);
+#       bool valid; validity_row_is_valid(view.validity, idx, &valid, NULL);
+#       if (!valid) continue;
+#       /* read via the appropriately-typed cast of view.data */
+#   }
+#
+# view.data semantics by kind (caller dispatches on logical type).
+# Storage units for temporal kinds — DATE is days since 1970-01-01,
+# TIME / TIMESTAMP / TIMESTAMP_MS / TIMESTAMP_NS variants are signed
+# offsets in their named unit (us / ms / ns) since the epoch — match
+# core; the logical type module has the full table.
+#
+#   - primitives (BOOL, INT*, UINT*, FLOAT, DOUBLE, DATE, TIME*, TIMESTAMP*)
+#     → typed leaf array (cast to const T *)
+#   - HUGEINT / UUID / DECIMAL128 → cast to const hugeint_t *
+#     (decimal width+scale via logical_type_get_decimal_*; uuid stores
+#     the 128-bit value in hugeint layout)
+#   - UHUGEINT → const uhugeint_t *
+#   - INTERVAL → const interval_t * (months, days, micros)
+#   - DECIMAL16/32/64 → typed leaf array (i16/i32/i64); width+scale via
+#     logical_type_get_decimal_*
+#   - ENUM (u8/u16/u32) → typed leaf array of dictionary indices;
+#     resolve via logical_type_get_enum_value
+#   - VARCHAR / BLOB / BIT / BIGNUM → const string_t * (typed via the
+#     varchar_t / blob_t / bit_t / bignum_t aliases). Decode via the
+#     per-kind bridge decoder (varchar_decode / blob_decode / bit_decode
+#     return borrowed pointers with lifetime = owning chunk;
+#     bignum_decode returns an owned magnitude buffer the caller frees).
+#     string_t is opaque to the public ABI — only the 16-byte size is
+#     committed so callers can stride arr[row]; the layout is private
+#     to the bridge.
+#   - LIST / MAP → const list_entry * (per-row {offset, length})
+#   - ARRAY / STRUCT / UNION → unspecified, typically NULL; the parent
+#     vector carries no per-row leaf data. Descend into children via
+#     the generic structural accessors below.
+#
+# Selection vector contract matches duckdb::UnifiedVectorFormat:
+#   - FLAT       → view.sel == NULL (identity)
+#   - CONSTANT   → view.sel non-null, the zero singleton
+#   - DICTIONARY → view.sel non-null, the dictionary's own sel
+#
+# The sel_at(sel, i, &out, err) bridge helper returns `sel ? sel[i] : i`.
+# Consumers in tight loops who want zero-overhead can write that
+# expression inline themselves — the `sel == NULL` identity convention
+# is part of the V2 contract.
+#
+# Nested-kind navigation is uniform via two generic accessors:
+#
+#   vector_get_child_count(vec, &out_count, err)
+#   vector_get_child(vec, index, &out_child, err)
+#
+# Per-kind index convention:
+#   LIST    → 1 child:  [0] = elements
+#   MAP     → 2 children: [0] = keys, [1] = values
+#               (V2 hides MAP's internal LIST<STRUCT(K,V)>)
+#   ARRAY   → 1 child:  [0] = elements
+#   STRUCT  → N children: [i] = field i
+#   UNION   → N+1 children: [0] = tag, [1..N] = members
+#   others  → 0
+#
+# The "how many fields / how many members" questions are answered by
+# PR1's logical_type_get_struct_child_count / _get_union_member_count,
+# not by vector-side accessors.
+#
+# View constructor rejects FSST / SEQUENCE / SHREDDED vectors (kind
+# VECTOR_TYPE_OTHER). Call vector_flatten first.
+#
+# Layout typedefs:
+#   hugeint_t / uhugeint_t / interval_t / list_entry are declared as
+#   plain structs with visible fields — callers read those fields
+#   directly. string_t (declared in common.yaml) is an opaque 16-byte
+#   struct: only the size is part of the ABI so callers can stride
+#   arr[row]; the inline-vs-pointer dispatch lives entirely inside the
+#   bridge decoders. The four kind aliases (varchar_t / blob_t / bit_t
+#   / bignum_t) are semantic-marker typedefs of string_t.
+
+structs:
+  vector_view:
+    fields:
+      - {name: data, type: opaque, pointer: 1, const: true}
+      - {name: validity, type: u64, pointer: 1, const: true}
+      - {name: sel, type: sel, pointer: 1, const: true}
+  list_entry:
+    fields:
+      - {name: offset, type: idx}
+      - {name: length, type: idx}
+  hugeint_t:
+    fields:
+      - {name: lower, type: u64}
+      - {name: upper, type: i64}
+  uhugeint_t:
+    fields:
+      - {name: lower, type: u64}
+      - {name: upper, type: u64}
+  interval_t:
+    fields:
+      - {name: months, type: i32}
+      - {name: days, type: i32}
+      - {name: micros, type: i64}
+aliases:
+  varchar:
+    underlying: string_t
+    description: VARCHAR storage. Decode via varchar_decode.
+  blob:
+    underlying: string_t
+    description: BLOB storage. Decode via blob_decode.
+  bit:
+    underlying: string_t
+    description: BIT storage. Decode via bit_decode.
+  bignum:
+    underlying: string_t
+    description: BIGNUM storage. Decode via bignum_decode.
+enums:
+  VECTOR_TYPE:
+    description: |
+      Internal representation of a vector. Mirrors duckdb::VectorType
+      with FSST / SEQUENCE / SHREDDED collapsed into OTHER — the
+      view-getter rejects those and requires an explicit vector_flatten
+      first. OTHER is the 0-value so a zero-initialised out-param reads
+      as "unspecified / needs flatten" rather than silently looking
+      like FLAT.
+    values:
+      VECTOR_TYPE_OTHER:
+        value: 0
+        description: Default for zero-init. Covers FSST / SEQUENCE / SHREDDED — call vector_flatten first.
+      VECTOR_TYPE_FLAT:
+        value: 1
+        description: Standard per-row storage.
+      VECTOR_TYPE_CONSTANT:
+        value: 2
+        description: A single value applies to every row in the vector.
+      VECTOR_TYPE_DICTIONARY:
+        value: 3
+        description: Data + selection vector indirection into another vector.
+functions:
+  # -----------------------------------------------------------------------
+  # Vector-level introspection
+  # -----------------------------------------------------------------------
+  vector_get_logical_type:
+    summary: Returns the logical type of a vector.
+    description: |
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_get_vector_type:
+    summary: Returns the internal representation kind (flat / constant / dict).
+    description: |
+      Returns VECTOR_TYPE_OTHER for FSST / SEQUENCE / SHREDDED vectors;
+      callers must vector_flatten first before reading via vector_get_view.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      out_type:
+        type: VECTOR_TYPE
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_flatten:
+    summary: Forces a vector into FLAT representation in place.
+    description: |
+      No-op for FLAT vectors. For CONSTANT / DICTIONARY / FSST / SEQUENCE /
+      SHREDDED vectors, materialises the per-row data and updates the
+      vector's internal representation to FLAT. Use before vector_get_view
+      if you'd rather not handle CONSTANT / DICTIONARY semantics in the
+      view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
+    role: method
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # The view-getter
+  # -----------------------------------------------------------------------
+  vector_get_view:
+    summary: Reads a vector as a unified-format view (data + validity + sel).
+    description: |
+      Populates out_view with borrowed pointers valid until the owning
+      chunk is destroyed. Row count and per-kind view.data semantics
+      live in the module docstring. Rejects VECTOR_TYPE_OTHER — call
+      vector_flatten first.
+
+      Side effect on DICTIONARY vectors: the dictionary's underlying
+      child is flattened in place if it isn't already FLAT (matching
+      duckdb::DictionaryBuffer::ToUnifiedFormat). The parent vector
+      stays DICTIONARY; only the underlying child's storage shape
+      changes. Any pointers a caller previously borrowed into that
+      child (e.g. from a prior vector_get_view on a vector that
+      aliases the same buffer) are invalidated. This is the one
+      mutation vector_get_view performs — see also vector_flatten,
+      which materialises the whole vector to FLAT.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      out_view:
+        type: vector_view
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # Generic structural accessors for nested kinds
+  #
+  # Per-kind index convention (see also the module docstring):
+  #   LIST    → 1 child:  [0] = elements
+  #   MAP     → 2 children: [0] = keys, [1] = values
+  #   ARRAY   → 1 child:  [0] = elements
+  #   STRUCT  → N children: [i] = field i
+  #   UNION   → N+1 children: [0] = tag, [1..N] = members
+  #   others  → 0
+  #
+  # The child Vector returned by get_child is borrowed; its lifetime
+  # is the owning chunk's. The child's row count is NOT returned here
+  # — see the module docstring's row-count table for the per-level
+  # source. LIST/MAP get a dedicated O(1) child-row-count accessor
+  # below; other nested kinds derive their child row count from parent
+  # geometry (parent_count * array_size for ARRAY, parent_count for
+  # STRUCT / UNION children).
+  # -----------------------------------------------------------------------
+  vector_get_child_count:
+    summary: Returns the number of child vectors a nested vector exposes.
+    description: |
+      For LIST / ARRAY returns 1; for MAP returns 2 (keys, values); for
+      STRUCT returns the field count; for UNION returns member_count +
+      1 (tag plus members); 0 for any non-nested kind. The per-kind
+      index convention is documented on the module.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_get_child:
+    summary: Borrows a child vector by index.
+    description: |
+      Index convention follows the module docstring. The returned
+      child Vector is borrowed; lifetime is the owning chunk's. Returns
+      ERROR_INVALID_INPUT if the vector has no children, or if index
+      is out of range.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      index:
+        type: idx
+        description: The child index, in [0, vector_get_child_count(vec)).
+      out_child:
+        type: vector
+        indirection: 1
+        kind: OUT_BORROW
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # LIST/MAP child-row-count
+  # -----------------------------------------------------------------------
+  vector_list_get_size:
+    summary: For a LIST or MAP vector, returns the row count of its child vector(s).
+    description: |
+      For LIST, returns the row count of the elements child. For MAP,
+      returns the count of K/V pairs (= the parallel row count of both
+      the [0] keys and [1] values children). Equivalent to the upper
+      bound `max(entries[i].offset + entries[i].length)` across valid
+      parent rows, but tracked in O(1) on the parent vector. Per-row
+      read loops don't need this number — iterate parent rows and
+      address the child via `entries[row].{offset, length}`. Returns
+      ERROR_INVALID_INPUT for vectors whose logical type is not LIST
+      or MAP.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      out_size:
+        type: idx
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # String-backed kind decoders
+  #
+  # All four are bridge functions. varchar/blob/bit return borrowed
+  # pointers + lengths whose lifetime is the owning chunk. bignum
+  # allocates an owned magnitude buffer because storage stores negatives
+  # bit-inverted — the contiguous magnitude bytes don't exist on disk.
+  # -----------------------------------------------------------------------
+  varchar_decode:
+    summary: Reads the bytes + length of a VARCHAR value from its storage.
+    description: |
+      out_data receives a borrowed pointer into the VARCHAR's underlying
+      bytes; out_length receives the byte length. The pointer is valid
+      for as long as the enclosing value's owning chunk is alive — for
+      short (inlined) strings the bytes physically live inside the
+      varchar_t value, so callers that need a pointer outliving the
+      value must memcpy.
+    parameters:
+      varchar:
+        type: varchar
+        indirection: 1
+        const: true
+        description: Pointer to the VARCHAR storage.
+      out_data:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Receives a borrowed pointer to the bytes.
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the byte length.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  blob_decode:
+    summary: Reads the bytes + length of a BLOB value from its storage.
+    description: |
+      Identical contract to varchar_decode but typed for raw bytes
+      rather than text.
+    parameters:
+      blob:
+        type: blob
+        indirection: 1
+        const: true
+        description: Pointer to the BLOB storage.
+      out_data:
+        type: u8
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Receives a borrowed pointer to the bytes.
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the byte length.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  bit_decode:
+    summary: Reads the bytes + length + padding-bits of a BIT value.
+    description: |
+      The on-disk encoding is [padding_byte | data_bytes]: byte 0 is the
+      number of leading bits in the first data byte that are NOT part
+      of the bit string (0 if the bit count is a multiple of 8). out_data
+      receives a borrowed pointer to the data bytes (one past the
+      padding byte), out_length the number of data bytes, and
+      out_padding_bits the padding count. Pointer lifetime is the owning
+      chunk.
+
+      Bit-position contract: bit n (0-indexed, leftmost bit of the bit
+      string first) is read as:
+
+          bit_index = n + out_padding_bits
+          byte      = out_data[bit_index / 8]
+          value     = (byte >> (7 - (bit_index % 8))) & 1
+
+      The value of bits in the `out_padding_bits` positions is
+      unspecified (the bit-extraction formula masks them out).
+    parameters:
+      bit:
+        type: bit
+        indirection: 1
+        const: true
+        description: Pointer to the BIT storage.
+      out_data:
+        type: u8
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Receives a borrowed pointer to the data bytes (skipping the padding byte).
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of data bytes.
+      out_padding_bits:
+        type: u8
+        indirection: 1
+        kind: OUT
+        description: Receives the number of unused trailing bits in the last data byte.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  bignum_decode:
+    summary: Decodes a BIGNUM value into a fresh magnitude buffer + sign flag.
+    description: |
+      Allocates a malloc'd buffer of big-endian magnitude bytes and
+      returns it via out_data; caller frees with free(). out_is_negative
+      receives the sign flag; reconstruct the integer as
+      (-1)**out_is_negative * unsigned_big_endian(out_data[0..out_length]).
+      The allocation is unavoidable: negative bignums store the magnitude
+      bit-inverted on-disk, so the magnitude bytes don't exist as a
+      contiguous slice we could borrow.
+    parameters:
+      bignum:
+        type: bignum
+        indirection: 1
+        const: true
+        description: Pointer to the BIGNUM storage.
+      out_data:
+        type: u8
+        indirection: 2
+        kind: OUT
+        description: Receives a malloc'd buffer of magnitude bytes. Caller frees.
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the length of the magnitude buffer in bytes.
+      out_is_negative:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives true if the value is negative, false otherwise.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # Per-row helpers
+  #
+  # sel_at and validity_row_is_valid are standalone: they take raw
+  # pointers (a sel array, a validity bitmap), not a vector handle.
+  # That's why they have no `belongs_to: vector` — the asymmetry with
+  # the other vector_* entries is intentional. Both are bridge
+  # functions; the dynamic-library boundary cost is small versus the
+  # interop costs the target audience already pays, and consumers in
+  # tight loops can inline the bodies themselves (see §3 of the design
+  # doc's Open Questions).
+  # -----------------------------------------------------------------------
+  sel_at:
+    summary: Resolves a logical row index through a selection vector.
+    description: |
+      Returns `sel ? sel[i] : i` via out. The `sel == NULL` identity
+      convention matches duckdb::UnifiedVectorFormat: FLAT vectors carry
+      a NULL sel, CONSTANT vectors a non-null zero singleton, DICTIONARY
+      vectors their own sel. Consumers in tight loops can inline the
+      expression themselves to skip the bridge call.
+    role: getter
+    parameters:
+      sel:
+        type: sel
+        indirection: 1
+        const: true
+        description: The selection vector pointer; may be NULL (means identity).
+      i:
+        type: idx
+        description: The logical row index.
+      out:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: "Receives the physical row index: `sel ? sel[i] : i`."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  validity_row_is_valid:
+    summary: Returns whether a row is valid (not NULL) in a validity mask.
+    description: |
+      Equivalent to `validity == NULL || (validity[row >> 6] & (1 << (row & 63)))`.
+      Returns true when validity is NULL (the all-valid fast path). Row
+      is the physical row index (post-selection).
+    role: getter
+    parameters:
+      validity:
+        type: u64
+        indirection: 1
+        const: true
+        description: The validity mask pointer; may be NULL (means all valid).
+      row:
+        type: idx
+        description: The physical row index (post-selection).
+      out_is_valid:
+        type: bool
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
