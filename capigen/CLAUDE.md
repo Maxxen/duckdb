@@ -86,8 +86,9 @@ Each module YAML file can contain these top-level sections:
 - module-specific handles go in the module file.
 
 ### aliases
-- use for named type aliases: `duckdb_error_code: {underlying: u32}`
+- use for named type aliases: `error_code: {underlying: u32}` → `duckdb_v2_error_code_t`
 - can alias primitives or other declared types.
+- set `qualified: true` to emit the alias verbatim — see "Qualified aliases" below.
 
 ### functions
 - Each legacy function becomes a `functions` entry.
@@ -113,9 +114,187 @@ Primitives define the type vocabulary with their C ABI names (`c_type`).
 Ensure there are entries for: opaque (void), bool, char, i8-i64, u8-u64, f32/f64, idx (idx_t)
 
 ### common handles in common/common.yaml
-- duckdb_connection, duckdb_data_chunk, duckdb_vector, duckdb_logical_type, duckdb_value
+- `connection`, `data_chunk`, `vector`, `logical_type`, `value` (declared unprefixed; the prefix is applied at generation time — see "Prefix application" below).
 
 > Errors are reported via the `duckdb_v2_error` struct passed as the trailing `err` parameter to every fallible function. Do not create `duckdb_v2_error` as a handle or define getter/setter functions for it — it is a plain struct that the caller stack-allocates.
+
+## Spec-language reference
+
+This section documents schema features that go beyond bare type declarations.
+Each is opt-in; defaults preserve the simplest possible output.
+
+### Descriptions
+
+`description:` is accepted on `handles`, `aliases`, `structs`, `callbacks`,
+`enums`, `enum values`, `constants`, `error_groups`, `error entries`, and
+`function`/`parameter` definitions. On `handles`, `aliases`, and `structs`,
+the C adapter renders the description as `//!`-prefixed Doxygen lines
+immediately above the generated `typedef`. Multi-line descriptions (YAML
+block scalars with `|`) become one `//!` line per non-empty input line —
+leading and trailing whitespace on each line is stripped.
+
+YAML:
+
+```yaml
+handles:
+  connection:
+    description: An opaque handle to a DuckDB connection
+  environment:
+    description: |
+      An opaque handle to the V2 environment: the required root through
+      which databases are opened.
+```
+
+Generated C output (with `prefix: "duckdb_v2_"`):
+
+```c
+//! An opaque handle to a DuckDB connection
+typedef void *duckdb_v2_connection_ptr;
+
+//! An opaque handle to the V2 environment: the required root through
+//! which databases are opened.
+typedef void *duckdb_v2_environment_ptr;
+```
+
+The same `//!`-line treatment applies to structs (above the `typedef
+struct { ... }`) and aliases (above the alias `typedef`). The filter that
+emits the lines is `_c_line_comment`, registered in
+`capigen/src/capigen/adapters/c/__init__.py`. Templates that consume it:
+`_c_fragments/_type.j2`, `_c_fragments/_struct.j2`.
+
+Caveat: an empty `description:` (or one containing only whitespace) emits
+nothing — no leading `//!` blank line. Keep description text self-contained;
+it is the only user-facing documentation surface for the type.
+
+### Prefix application
+
+`metadata.yaml` declares a top-level `prefix:` string that is prepended to
+every generated C identifier. Module YAML files MUST NOT bake the prefix
+into type or function names — declare them bare and let the generator
+apply the prefix.
+
+YAML (`api_spec/v2/metadata.yaml`):
+
+```yaml
+prefix: "duckdb_v2_"
+```
+
+YAML (a module):
+
+```yaml
+handles:
+  connection: {}     # → duckdb_v2_connection_ptr
+aliases:
+  error_code: { underlying: u32 }   # → duckdb_v2_error_code_t
+  API_CALL:    { underlying: error_code }  # → DUCKDB_V2_API_CALL_t
+enums:
+  ERROR_KIND: {}     # → DUCKDB_V2_ERROR_KIND
+constants:
+  API_ERROR: { value: "0xFFFFFFFF" }  # → DUCKDB_V2_API_ERROR
+functions:
+  open: { ... }      # → duckdb_v2_open
+```
+
+Casing rules (`_apply_prefix` in `capigen/src/capigen/adapters/c/resolve.py`):
+
+- For `handles`, `callbacks`, `aliases`, `structs`, the prefix is applied
+  literally if the declared name starts with a lowercase letter, and
+  uppercased if the declared name starts with an uppercase letter. This
+  keeps `connection` → `duckdb_v2_connection_ptr` while `API_CALL` →
+  `DUCKDB_V2_API_CALL_t` reads as a single SCREAMING_SNAKE identifier.
+- For `enums`, `constants`, `error_groups`, enum members, and error entry
+  names, the prefix is ALWAYS uppercased — these are member/macro names
+  by convention even when the spec writer used lowercase characters in
+  the bare name.
+
+Setting `prefix: ""` (or omitting it) disables prefixing entirely; the
+declared names become the canonical C names verbatim.
+
+### Handle styles (`void_ptr` vs `tagged_struct`)
+
+By default, a handle generates as an opaque `void *` typedef:
+
+```c
+typedef void *duckdb_v2_connection_ptr;
+```
+
+For handles where you want stronger type discipline at the C level (the
+compiler refuses to silently convert between unrelated handle pointers),
+opt into the `tagged_struct` style. It generates a one-field forward-
+declared struct whose canonical name is a pointer-to-that-struct:
+
+```c
+typedef struct _duckdb_v2_connection {
+    void *internal_ptr;
+} *duckdb_v2_connection_ptr;
+```
+
+The `internal_ptr` field is what the bridge stores into; from the
+consumer's perspective the handle is still passed around as an opaque
+pointer, but `duckdb_v2_connection_ptr` and `duckdb_v2_database_ptr` are
+now distinct compiler-level types.
+
+Configuration lives in `metadata.yaml` under the C-adapter namespace:
+
+```yaml
+options:
+  c:
+    handles:
+      default_style: tagged_struct     # one of: void_ptr (default), tagged_struct
+      override_style:                  # optional per-handle opt-out/opt-in
+        error_info: void_ptr           # this handle stays a plain void* typedef
+```
+
+`default_style` sets the style for every handle. `override_style` is a
+map from bare handle name (the YAML key, not the canonical C name) to an
+alternative style. Only `void_ptr` is honoured as an override value; any
+other value silently inherits `default_style`.
+
+The schema currently validates only the top-level shape of `options:`
+(free-form object); typos under `options.c.handles.*` will not be caught
+by JSON Schema validation. Verify by inspecting the generated header.
+
+Caveat: changing a handle's style is an ABI break — the typedef name is
+the same but the underlying type identity is not. Decide per-handle at
+introduction time.
+
+### Qualified aliases
+
+By default, an alias `foo: { underlying: u32 }` generates
+`typedef <underlying> duckdb_v2_foo_t;` (prefix prepended, alias suffix
+appended). Set `qualified: true` to skip both: the YAML key becomes the
+C name verbatim.
+
+YAML:
+
+```yaml
+aliases:
+  idx_t:
+    underlying: u64
+    qualified: true
+```
+
+Generated C:
+
+```c
+typedef uint64_t idx_t;
+```
+
+Use this when the alias name is already defined in another header or
+external library and you want capigen to mirror it without renaming.
+Common cases: `idx_t`, `sel_t`, `size_t`-like primitives that DuckDB core
+exports under a fixed name.
+
+Caveats:
+- A qualified alias must still declare its `underlying` type. The
+  `qualified` flag only affects the C name on the left-hand side of the
+  generated `typedef` — not the right-hand side.
+- The qualified alias is registered in the cross-module type registry
+  under its verbatim name. Other modules referencing it must use the
+  same verbatim name as the `type:` or `underlying:` value.
+- Because the YAML key is treated as a C identifier, it must match the
+  schema's identifier regex (`^[A-Za-z_][A-Za-z0-9_]*$`) — letters,
+  digits, and underscores; no leading digit.
 
 ## Validation/sanity pipeline
 

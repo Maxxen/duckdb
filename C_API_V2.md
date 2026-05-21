@@ -129,7 +129,7 @@ functions:
 
 All function names must start with `duckdb_v2_` and all type names must start with `duckdb_v2_` or `DUCKDB_V2_`. The generator validates this and will refuse to generate if the convention is violated.
 
-See `capigen/claude.md` for the full spec conventions.
+See `capigen/CLAUDE.md` for the full spec conventions.
 
 ## Error handling
 
@@ -206,12 +206,12 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
 
 - **String-backed kinds use kind-specific bridge decoders, never a string-helper surface.** The four decoders (`duckdb_v2_varchar_decode`, `_blob_decode`, `_bit_decode`, `_bignum_decode`) are the only legitimate way to read a VARCHAR / BLOB / BIT / BIGNUM value. All four are bridge functions; the BIGNUM decoder shares an internal `DecodeBignumStringT` helper with `value_get_bignum` so the magnitude/sign decode lives in one place. `duckdb_v2_string_t` is opaque to the public ABI — only the size (16 bytes) and alignment (8 bytes, declared as `uint64_t _opaque[2]`) are committed so callers can stride `arr[row]` and the bridge's cast to `duckdb::string_t *` stays well-aligned; the layout is private to the bridge. The universal `duckdb_v2_string_*` helpers are deliberately NOT exposed.
 
-- **The spec schema has grown beyond bare declarations.** During PR4 land capigen acquired several new spec-level capabilities. Use them rather than hand-rolling equivalents:
+- **The spec schema has grown beyond bare declarations.** Use these capigen features rather than hand-rolling equivalents:
   - `description:` on `handles` / `aliases` / `structs` (rendered as `//!` comments via `_c_line_comment`) — don't put per-handle docs in the function descriptions that mention them.
-  - `prefix:` in `metadata.yaml` — the IDL is now prefix-free; `duckdb_v2_` is applied at generation time. New module YAML should not bake the prefix into type/function names.
+  - `prefix:` in `metadata.yaml` — the IDL is prefix-free; `duckdb_v2_` is applied at generation time. New module YAML must not bake the prefix into type/function names.
   - `tagged_struct` handle style (alternative to `void *` typedef; per-handle `override_style` map for opting in/out) — choose deliberately when adding new handles.
   - `qualified` flag on aliases — lets an alias reference an external type name unchanged (no prefix, no `_t` suffix).
-  - See `capigen/CLAUDE.md` for the authoritative schema reference. A separate PR (tracked) is going to write a proper user-facing guide for these features.
+  - See `capigen/claude.md` (Spec-language reference section) for YAML syntax, generated-C output, and caveats per feature.
 
 ## Generating the header and stubs
 
