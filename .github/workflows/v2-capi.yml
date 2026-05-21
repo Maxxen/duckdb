@@ -65,4 +65,4 @@ jobs:
         # number_of_threads > 2. ubuntu-latest runners have 2 vCPUs, so the
         # HT stays in the GROW strategy and the query succeeds. Upstream CI
         # passes because duckdb/duckdb runs on 4+ vCPU Namespace.so runners.
-        run: make unittest_relassert T='"test/sql/table_function/duckdb_settings*","test/sql/settings/*",exclude:test/sql/settings/operator_memory_limit.test'
+        run: make unittest_relassert T='"test/sql/table_function/duckdb_settings*","[reset]","[settings]" "~test/sql/settings/operator_memory_limit.test"'

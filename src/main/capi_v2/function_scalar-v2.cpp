@@ -430,6 +430,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_
 			return;
 		}
 		static_cast<duckdb::ScalarFunctionV2 *>(*func)->~ScalarFunctionV2();
+		delete static_cast<duckdb::ScalarFunctionV2 *>(*func);
 		*func = nullptr;
 	});
 }
