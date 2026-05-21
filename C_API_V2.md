@@ -123,7 +123,7 @@ functions:
         type: duckdb_v2_error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy."
     return_type: DUCKDB_V2_API_CALL
 ```
 

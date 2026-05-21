@@ -502,7 +502,7 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 	}
 }
 
-TEST_CASE("V2 error: destroy_error_info is null-safe", "[capi_v2][error]") {
+TEST_CASE("V2 error: error_info_destroy is null-safe", "[capi_v2][error]") {
 	SECTION("destroying a null handle is a no-op") {
 		duckdb_v2_error_info_ptr err = nullptr;
 		REQUIRE(duckdb_v2_error_info_destroy(&err) == DUCKDB_V2_ERROR_NONE);

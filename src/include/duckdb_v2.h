@@ -380,7 +380,7 @@ via option_destroy.
 * @param name Null-terminated option name.
 * @param setting Null-terminated setting (string-encoded value).
 * @param out_option Receives the new option handle.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setting,
@@ -392,7 +392,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, cons
 to null. Safe to call on an already-null slot.
 
 * @param option The option handle to destroy.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_ptr *option, duckdb_v2_error_info_ptr *err);
@@ -404,7 +404,7 @@ returned; the alias is reachable via option_get_alias.
 
 * @param option The option.
 * @param out_name Borrowed pointer to the option name. Valid until the option is destroyed.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_name(duckdb_v2_option_ptr option, const char **out_name,
@@ -418,7 +418,7 @@ source's scope.
 
 * @param option The option.
 * @param out_setting Borrowed pointer to the setting. Valid until the option is destroyed.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_setting(duckdb_v2_option_ptr option, const char **out_setting,
@@ -430,7 +430,7 @@ the option has been resolved through a database/connection get.
 
 * @param option The option.
 * @param out_default_setting Borrowed pointer to the default setting. Valid until the option is destroyed.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_default_setting(duckdb_v2_option_ptr option,
@@ -442,7 +442,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_default_setting(duckdb_v2
  * get.
  * @param option The option.
  * @param out_description Borrowed pointer to the description. Valid until the option is destroyed.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_description(duckdb_v2_option_ptr option,
@@ -457,7 +457,7 @@ carries no explicit SettingScopeTarget.
 
 * @param option The option.
 * @param out_target_scope Receives the target scope.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_target_scope(duckdb_v2_option_ptr option,
@@ -468,7 +468,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_target_scope(duckdb_v2_op
  * Zero for options created via option_create until the option has been resolved through a database/connection get.
  * @param option The option.
  * @param out_count Receives the alias count.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_option_ptr option, idx_t *out_count,
@@ -479,7 +479,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_opt
  * @param option The option.
  * @param index The alias index, in [0, alias_count).
  * @param out_alias Borrowed pointer to the alias. Valid until the option is destroyed.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_ptr option, idx_t index,
@@ -623,7 +623,7 @@ database_option_set).
 * @param options Optional array of pre-created config option handles. May be `nullptr` if option_count is 0.
 * @param option_count The number of entries in the options array.
 * @param out_db Receives the new database handle.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_ptr env, const char *path,
@@ -637,7 +637,7 @@ reference drops, the instance is destroyed and its path becomes
 available for reopen. On success, the handle is set to null.
 
 * @param db The database to close.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db, duckdb_v2_error_info_ptr *err);
@@ -653,7 +653,7 @@ DBConfig.unrecognized_options for later extension consumption
 
 * @param db The database.
 * @param option The config option to apply.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_ptr db, duckdb_v2_option_ptr option,
@@ -670,7 +670,7 @@ returned option.
 * @param db The database.
 * @param name Null-terminated option name (canonical or alias).
 * @param out_option Receives the populated option handle.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_ptr db, const char *name,
@@ -684,7 +684,7 @@ through its canonical option's alias array.
 
 * @param db The database.
 * @param out_count Receives the option count.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_count(duckdb_v2_database_ptr db, idx_t *out_count,
@@ -699,7 +699,7 @@ index returns ERROR_INVALID_INPUT. Caller destroys.
 * @param db The database.
 * @param index The option index, in [0, option_count).
 * @param out_option Receives the populated option handle.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_ptr db, idx_t index,
@@ -708,7 +708,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_
 /*!
  * Returns the version of the linked DuckDB library.
  * @param out_version The version string.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_ptr *err);
@@ -733,7 +733,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, 
 /*!
  * Creates the V2 environment. Call once at program start.
  * @param out_env Receives the new environment handle.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_create_environment(duckdb_v2_environment_ptr *out_env,
@@ -746,7 +746,7 @@ databases first, then retry. On success, the environment handle is
 set to null.
 
 * @param env The environment.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_environment(duckdb_v2_environment_ptr *env,
@@ -760,7 +760,7 @@ subsequent operation.
 
 * @param env The environment.
 * @param out_count Receives the number of currently-open databases.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_environment_database_count(duckdb_v2_environment_ptr env, idx_t *out_count,
@@ -2883,7 +2883,7 @@ share the underlying catalog, buffer pool, and transaction manager.
 
 * @param db The database to connect to.
 * @param out_conn Receives the new connection handle.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_ptr db, duckdb_v2_connection_ptr *out_conn,
@@ -2896,7 +2896,7 @@ other reference (open queries, prepared statements, etc.) holds
 it. On success, the handle is set to null.
 
 * @param conn The connection to close.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn, duckdb_v2_error_info_ptr *err);
@@ -2920,7 +2920,7 @@ open's startup options.
 * @param conn The connection.
 * @param option The config option to apply.
 * @param scope Target scope: AUTOMATIC, GLOBAL, or LOCAL.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_ptr conn,
@@ -2938,7 +2938,7 @@ ERROR_INVALID_INPUT. Caller destroys the returned option.
 * @param conn The connection.
 * @param name Null-terminated option name (canonical or alias).
 * @param out_option Receives the populated option handle.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_ptr conn, const char *name,
@@ -2951,7 +2951,7 @@ database (core + extensions, no aliases).
 
 * @param conn The connection.
 * @param out_count Receives the option count.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_ptr conn, idx_t *out_count,
@@ -2966,7 +2966,7 @@ ERROR_INVALID_INPUT. Caller destroys.
 * @param conn The connection.
 * @param index The option index, in [0, option_count).
 * @param out_option Receives the populated option handle.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_ptr conn, idx_t index,

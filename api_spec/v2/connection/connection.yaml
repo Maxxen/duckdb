@@ -37,7 +37,7 @@ functions:
         type: error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   disconnect:
     summary: "Closes the connection."
@@ -57,7 +57,7 @@ functions:
         type: error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   connection_option_set:
     summary: "Sets a config option through the connection."
@@ -92,7 +92,7 @@ functions:
         type: error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   connection_option_get:
     summary: "Reads a config option through the connection."
@@ -122,7 +122,7 @@ functions:
         type: error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   connection_option_get_count:
     summary: "Returns the count of config options visible to this connection."
@@ -144,7 +144,7 @@ functions:
         type: error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   connection_option_get_by_index:
     summary: "Reads the config option at the given index visible to this connection."
@@ -171,7 +171,7 @@ functions:
         type: error_info
         indirection: 1
         kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via destroy_error_info."
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   connection_execute_with_context:
     summary: "Runs a callback in a transaction with the connection's context as the active context."
