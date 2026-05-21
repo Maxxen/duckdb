@@ -89,6 +89,9 @@ typedef struct {
 //! The returned state of different functions. Legacy naming: values use DuckDB prefix without underscore.
 typedef enum { DuckDBSuccess = 0, DuckDBError = 1 } duckdb_state;
 
+struct ArrowSchema;
+struct ArrowArray;
+
 /* ============================================================================
  * MODULE: common_enums
  * ============================================================================ */
