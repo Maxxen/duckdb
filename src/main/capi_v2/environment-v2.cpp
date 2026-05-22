@@ -1,22 +1,20 @@
 #include "capi_v2_internal.hpp"
 
 DUCKDB_V2_API_CALL_t duckdb_v2_create_environment(duckdb_v2_environment_ptr *out_env, duckdb_v2_error_info_ptr *err) {
-	if (!out_env) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null out_env in duckdb_v2_create_environment");
-	}
-	*out_env = nullptr;
-	try {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!out_env) {
+			throw duckdb::InvalidInputException("null out_env in duckdb_v2_create_environment");
+		}
+		*out_env = nullptr;
 		auto wrapper = duckdb::make_uniq<duckdb::EnvironmentWrapperV2>();
 		wrapper->cache = duckdb::make_uniq<duckdb::DBInstanceCache>();
 		*out_env = static_cast<duckdb_v2_environment_ptr>(wrapper.release());
-		return duckdb::ClearErrorInfo(err);
-	} catch (std::exception &e) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, e.what());
-	} catch (...) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, "unknown error in duckdb_v2_create_environment");
-	}
+	});
 }
 
+// destroy_environment keeps a manual return path so the open-databases case
+// can surface as RESOURCE_IN_USE — there is no ExceptionType that maps to
+// that V2 code, so routing it through WithErrorHandler would degrade it.
 DUCKDB_V2_API_CALL_t duckdb_v2_destroy_environment(duckdb_v2_environment_ptr *env, duckdb_v2_error_info_ptr *err) {
 	if (!env) {
 		return duckdb::ClearErrorInfo(err);
@@ -37,11 +35,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_destroy_environment(duckdb_v2_environment_ptr *en
 
 DUCKDB_V2_API_CALL_t duckdb_v2_environment_database_count(duckdb_v2_environment_ptr env, idx_t *out_count,
                                                           duckdb_v2_error_info_ptr *err) {
-	if (!env || !out_count) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
-		                            "null argument to duckdb_v2_environment_database_count");
-	}
-	auto *wrapper = duckdb::ToEnv(env);
-	*out_count = static_cast<idx_t>(wrapper->open_database_count.load(std::memory_order_acquire));
-	return duckdb::ClearErrorInfo(err);
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!env || !out_count) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_environment_database_count");
+		}
+		auto *wrapper = duckdb::ToEnv(env);
+		*out_count = static_cast<idx_t>(wrapper->open_database_count.load(std::memory_order_acquire));
+	});
 }

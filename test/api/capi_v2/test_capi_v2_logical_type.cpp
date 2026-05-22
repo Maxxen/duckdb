@@ -135,7 +135,8 @@ TEST_CASE("V2: logical_type create_from_id null out param", "[capi_v2][logical_t
 
 TEST_CASE("V2: logical_type create_from_id clears pre-existing err on success", "[capi_v2][logical_type][lifecycle]") {
 	// Belt-and-braces check of the error-info contract: on success the
-	// library destroys any prior info in *err and leaves it nullptr.
+	// library resets the slot's code/message in place. *err itself stays
+	// non-null; the caller still owns destroy.
 	duckdb_v2_error_info_ptr err = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL, nullptr, &err) ==
 	        DUCKDB_V2_ERROR_INVALID_INPUT);
@@ -143,7 +144,11 @@ TEST_CASE("V2: logical_type create_from_id clears pre-existing err on success", 
 
 	duckdb_v2_logical_type_ptr t = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, &err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(err == nullptr);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+	duckdb_v2_error_info_get_code(err, &code);
+	REQUIRE(code == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_logical_type_destroy(&t, nullptr);
 }
 

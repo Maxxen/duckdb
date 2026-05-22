@@ -213,7 +213,7 @@ TEST_CASE("V2: connection_query surfaces parser error and leaves out_result null
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_error_info_ptr err = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELEKT 1", &r, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELEKT 1", &r, &err) == DUCKDB_V2_ERROR_QUERY_PARSER);
 	REQUIRE(r == nullptr);
 	REQUIRE(err != nullptr);
 
@@ -230,7 +230,7 @@ TEST_CASE("V2: connection_query binder error (unknown table)", "[capi_v2][query_
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_error_info_ptr err = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT * FROM no_such_table", &r, &err) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	REQUIRE(r == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -240,7 +240,7 @@ TEST_CASE("V2: connection_query failure tolerates err == nullptr", "[capi_v2][qu
 	V2QueryFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fx.conn, "BADSQL", &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_connection_query(fx.conn, "BADSQL", &r, nullptr) == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	REQUIRE(r == nullptr);
 }
 
@@ -375,11 +375,15 @@ TEST_CASE("V2: connection_query clears pre-existing err on success", "[capi_v2][
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_error_info_ptr err = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fx.conn, "BADSQL", &r, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_connection_query(fx.conn, "BADSQL", &r, &err) == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	REQUIRE(err != nullptr);
 
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 1", &r, &err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(err == nullptr);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+	duckdb_v2_error_info_get_code(err, &code);
+	REQUIRE(code == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_result_destroy(&r, nullptr);
 }
 

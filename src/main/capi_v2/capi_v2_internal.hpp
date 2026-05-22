@@ -318,32 +318,38 @@ struct ErrorInfoV2 {
 	std::string message;
 };
 
-// Destroy a previously-allocated error info (if any) and null the slot.
-inline void DestroyErrorInfoSlot(duckdb_v2_error_info_ptr *err) {
-	if (err && *err) {
-		delete static_cast<ErrorInfoV2 *>(*err);
-		*err = nullptr;
-	}
-}
-
-// Failure path. Allocate a fresh ErrorInfoV2 and store its pointer in *err.
-// If *err was already non-null, the previous info is destroyed first. Safe
-// to call with err == nullptr (caller opted out of detail). Always returns
-// the supplied code; the return value is authoritative regardless of err.
+// Failure path. Ensure *err holds an ErrorInfoV2 (lazy-allocate if the slot
+// is empty), then write code + message in place. Reuses any pre-existing
+// slot content — which may be heap-allocated by a prior call OR caller-
+// owned / trampoline-owned stack memory. Never destroys the slot. Safe to
+// call with err == nullptr (caller opted out of detail). Returns the
+// supplied code; the return value is authoritative regardless of err.
+//
+// Slot cleanup is the caller's job. External callers destroy via
+// `error_info_destroy` on slots they own; callbacks must NEVER destroy the
+// err slot handed to them by the library (the slot's storage may live on
+// the library's stack).
 inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V2_API_CALL_t code, const char *msg) {
 	if (err) {
-		DestroyErrorInfoSlot(err);
-		auto *info = new ErrorInfoV2();
-		info->message = msg ? msg : "";
-		*err = static_cast<duckdb_v2_error_info_ptr>(info);
+		if (!*err) {
+			*err = static_cast<duckdb_v2_error_info_ptr>(new ErrorInfoV2());
+		}
+		auto &info = *static_cast<ErrorInfoV2 *>(*err);
+		info.code = code;
+		info.message = msg ? msg : "";
 	}
 	return code;
 }
 
-// Success path. Ensure *err is nullptr, destroying any prior info. Safe to
-// call with err == nullptr.
+// Success path. Clear any existing info in *err in place (code = NONE,
+// empty message) — never destroys the slot. Safe to call with
+// err == nullptr.
 inline DUCKDB_V2_API_CALL_t ClearErrorInfo(duckdb_v2_error_info_ptr *err) {
-	DestroyErrorInfoSlot(err);
+	if (err && *err) {
+		auto &info = *static_cast<ErrorInfoV2 *>(*err);
+		info.code = DUCKDB_V2_ERROR_NONE;
+		info.message.clear();
+	}
 	return DUCKDB_V2_ERROR_NONE;
 }
 

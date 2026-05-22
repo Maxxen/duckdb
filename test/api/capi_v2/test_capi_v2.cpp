@@ -486,14 +486,24 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 		duckdb_v2_error_info_destroy(&err);
 	}
 
-	SECTION("ClearErrorInfo frees a pre-existing info and returns NONE") {
+	SECTION("ClearErrorInfo resets a pre-existing info in place and returns NONE") {
 		duckdb_v2_error_info_ptr err = nullptr;
 		duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INVALID_INPUT, "stale");
 		REQUIRE(err != nullptr);
 
 		auto rc = duckdb::ClearErrorInfo(&err);
 		REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(err == nullptr);
+		// In-place clear: *err stays non-null, code resets to NONE,
+		// message is emptied. Caller still owns destroy.
+		REQUIRE(err != nullptr);
+		duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+		duckdb_v2_error_info_get_code(err, &code);
+		REQUIRE(code == DUCKDB_V2_ERROR_NONE);
+		const char *msg = nullptr;
+		duckdb_v2_error_info_get_text(err, &msg);
+		REQUIRE(std::string(msg).empty());
+
+		duckdb_v2_error_info_destroy(&err);
 	}
 
 	SECTION("ClearErrorInfo with nullptr err returns NONE and does not crash") {
@@ -527,6 +537,82 @@ TEST_CASE("V2 error: error_info_destroy is null-safe", "[capi_v2][error]") {
 		duckdb_v2_error_info_destroy(&saved);
 		REQUIRE(saved == nullptr);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// WithErrorHandler is the universal err-translation primitive used at every
+// V2 bridge entry point. The slot it writes to is reused in place across
+// calls — lazy-allocated on first use, never destroyed by the library. End
+// of slot lifetime is the caller's job (`error_info_destroy`).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("V2 error: WithErrorHandler success clears the err slot in place", "[capi_v2][error]") {
+	duckdb_v2_environment_ptr env = nullptr;
+	duckdb_v2_create_environment(&env, nullptr);
+	duckdb_v2_database_ptr db = nullptr;
+	duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
+	duckdb_v2_connection_ptr conn = nullptr;
+	duckdb_v2_connect(db, &conn, nullptr);
+
+	duckdb_v2_error_info_ptr err = nullptr;
+
+	// Seed the slot with a failure: null connection is invalid input. The
+	// library lazy-allocates the info on first use.
+	duckdb_v2_file_system_ptr fs = nullptr;
+	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(err != nullptr);
+
+	// Run a successful call through the same WithErrorHandler-wrapped bridge
+	// with the same `err` pointer. The slot is reused in place; the code
+	// resets to NONE and the message is cleared. `*err` itself stays
+	// non-null — the library does not destroy.
+	REQUIRE(duckdb_v2_file_system_get_from_connection(conn, &fs, &err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+	duckdb_v2_error_info_get_code(err, &code);
+	REQUIRE(code == DUCKDB_V2_ERROR_NONE);
+	const char *msg = nullptr;
+	duckdb_v2_error_info_get_text(err, &msg);
+	REQUIRE(std::string(msg).empty());
+	REQUIRE(fs != nullptr);
+
+	duckdb_v2_error_info_destroy(&err);
+	REQUIRE(err == nullptr);
+
+	duckdb_v2_disconnect(&conn, nullptr);
+	duckdb_v2_close(&db, nullptr);
+	duckdb_v2_destroy_environment(&env, nullptr);
+}
+
+TEST_CASE("V2 error: WithErrorHandler failure overwrites the prior message in the slot", "[capi_v2][error]") {
+	duckdb_v2_error_info_ptr err = nullptr;
+
+	// First failing call: null out_file_system yields
+	// "Output file system pointer cannot be null."
+	duckdb_v2_file_system_ptr *no_out = nullptr;
+	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, no_out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(err != nullptr);
+	{
+		const char *msg = nullptr;
+		duckdb_v2_error_info_get_text(err, &msg);
+		REQUIRE(std::string(msg).find("Output file system pointer") != std::string::npos);
+	}
+
+	// Second failing call: out_file_system is valid but connection is null,
+	// yielding "Connection pointer cannot be null." The slot is reused; the
+	// message is overwritten in place. No reallocation, no destroy.
+	duckdb_v2_file_system_ptr fs = nullptr;
+	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(err != nullptr);
+	{
+		const char *msg = nullptr;
+		duckdb_v2_error_info_get_text(err, &msg);
+		REQUIRE(std::string(msg).find("Connection pointer") != std::string::npos);
+		REQUIRE(std::string(msg).find("Output file system pointer") == std::string::npos);
+	}
+
+	duckdb_v2_error_info_destroy(&err);
+	REQUIRE(err == nullptr);
 }
 
 // ---------------------------------------------------------------------------

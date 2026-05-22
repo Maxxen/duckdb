@@ -88,7 +88,6 @@ struct ScalarFunctionV2 {
 
 		D_ASSERT(info.bind_cb);
 
-		ErrorInfoV2 error_info;
 		ScalarFunctionCallbackInfoV2 cb_info(ScalarFunctionCallbackTypeV2::BIND, input.GetBoundFunction().GetName());
 
 		cb_info.user_data = info.user_data;
@@ -96,12 +95,12 @@ struct ScalarFunctionV2 {
 		const auto arg_ptr = static_cast<duckdb_v2_scalar_function_info_ptr>(&cb_info);
 		const auto ctx_ptr = static_cast<duckdb_v2_context_ptr>(&input.GetClientContext());
 
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&error_info);
-
+		ErrorInfoV2 err {};
+		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
 		info.bind_cb(arg_ptr, ctx_ptr, &err_ptr);
 
-		if (error_info.code != DUCKDB_V2_ERROR_NONE) {
-			throw BinderException(error_info.message);
+		if (err.code != DUCKDB_V2_ERROR_NONE) {
+			throw BinderException(err.message);
 		}
 
 		// If the user set the bind data, move it out here
@@ -118,7 +117,6 @@ struct ScalarFunctionV2 {
 
 		D_ASSERT(info.init_cb);
 
-		ErrorInfoV2 error_info;
 		ScalarFunctionCallbackInfoV2 cb_info(ScalarFunctionCallbackTypeV2::INIT, expr.function.GetName());
 
 		cb_info.user_data = info.user_data;
@@ -131,12 +129,12 @@ struct ScalarFunctionV2 {
 		const auto arg_ptr = static_cast<duckdb_v2_scalar_function_info_ptr>(&cb_info);
 		const auto ctx_ptr = static_cast<duckdb_v2_context_ptr>(&state.GetContext());
 
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&error_info);
-
+		ErrorInfoV2 err {};
+		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
 		info.init_cb(arg_ptr, ctx_ptr, &err_ptr);
 
-		if (error_info.code != DUCKDB_V2_ERROR_NONE) {
-			throw InvalidInputException(error_info.message);
+		if (err.code != DUCKDB_V2_ERROR_NONE) {
+			throw InvalidInputException(err.message);
 		}
 
 		// If the user set the local state, move it out here
@@ -153,7 +151,6 @@ struct ScalarFunctionV2 {
 
 		D_ASSERT(info.exec_cb);
 
-		ErrorInfoV2 error_info;
 		ScalarFunctionCallbackInfoV2 cb_info(ScalarFunctionCallbackTypeV2::EXEC, expr.function.GetName());
 
 		cb_info.user_data = info.user_data;
@@ -172,12 +169,12 @@ struct ScalarFunctionV2 {
 		const auto arg_ptr = static_cast<duckdb_v2_scalar_function_info_ptr>(&cb_info);
 		const auto ctx_ptr = static_cast<duckdb_v2_context_ptr>(&state.GetContext());
 
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&error_info);
-
+		ErrorInfoV2 err {};
+		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
 		info.exec_cb(arg_ptr, ctx_ptr, &err_ptr);
 
-		if (error_info.code != DUCKDB_V2_ERROR_NONE) {
-			throw InvalidInputException(error_info.message);
+		if (err.code != DUCKDB_V2_ERROR_NONE) {
+			throw InvalidInputException(err.message);
 		}
 
 		// TODO: populate result vector based on exec args

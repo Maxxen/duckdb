@@ -1262,10 +1262,17 @@ TEST_CASE("V2: err is cleared on subsequent success", "[capi_v2][data_chunk]") {
 	REQUIRE(err != nullptr); // populated on failure
 	duckdb_v2_result_destroy(&r1, nullptr);
 
-	// Succeeding call reusing the same err slot: clears *err.
+	// Succeeding call reusing the same err slot: in-place clear (code=NONE,
+	// message=""). *err stays non-null; caller still owns destroy.
 	duckdb_v2_result_ptr r2 = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 1", &r2, &err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(err == nullptr); // cleared
+	REQUIRE(err != nullptr);
+	{
+		duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+		duckdb_v2_error_info_get_code(err, &code);
+		REQUIRE(code == DUCKDB_V2_ERROR_NONE);
+	}
+	duckdb_v2_error_info_destroy(&err);
 
 	duckdb_v2_result_destroy(&r2, nullptr);
 }

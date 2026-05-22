@@ -164,6 +164,18 @@ if (duckdb_v2_option_create("memory_limit", "1GB", &opt, NULL) != DUCKDB_V2_ERRO
 
 Implementations in `src/main/capi_v2/` report errors through the `SetErrorInfo` / `ClearErrorInfo` helpers in `capi_v2_internal.hpp`. Both are safe to call with `err == NULL`; `SetErrorInfo` transparently destroys any previous info in the slot before allocating a new one.
 
+### One uniform model: every `err` is a slot
+
+The err semantics are the same wherever they appear — at external entry points, inside callback parameters, anywhere. `err` is always `error_info_ptr *err`: a pointer-to-handle out-parameter (a "slot"). The library writes a heap-allocated `error_info` into the slot on failure when the slot is non-null; sets `*err = NULL` on success; destroys any prior content before writing. There is no second pattern, no "info handle vs slot" distinction, no translation layer between callbacks and the rest of the API.
+
+Two consequences of the uniform model:
+
+- **Inside a callback, propagating an error from a downstream V2 call is trivial.** Pass the same `err` slot through to the nested call; the nested call populates it on failure exactly the way it populates any other slot. The callback inspects whether it now holds an info (non-null) and either returns (the trampoline will see the populated slot and act on it) or unwinds further.
+
+- **Inside a callback, initiating a custom error is a single call** to the public helper `duckdb_v2_error_info_signal(err, code, message)`. The helper allocates a fresh `error_info`, sets its code and message, and stores its pointer in the slot — destroying any prior content first. Returns the supplied `code` so callbacks may write `return duckdb_v2_error_info_signal(...)` from a function returning `API_CALL`.
+
+The `WithErrorHandler` template in `capi_v2_internal.hpp` is the bridge-level helper for external entry points: it wraps a lambda with try/catch, translates thrown DuckDB exceptions to V2 error codes via `GetErrorCodeFromExceptionType`, and routes through `SetErrorInfo`/`ClearErrorInfo`. Callback trampolines (e.g. inside `connection_execute_with_context` or the scalar-function bind/init/exec bridges) do their own explicit local-slot inspection and translate via a thrown DuckDB exception that the outer `WithErrorHandler` catches.
+
 ## V2 conventions
 
 These rules apply when writing V2 spec YAML, bridge implementations, and tests. Most have been hard-won from PR1 review; the canonical reference is `design_pr1_to_pr4.md` → "V2 conventions to carry forward". A short reminder list:

@@ -32,7 +32,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_error_info_set_code(duckdb_v2_error_info_ptr info
 		return DUCKDB_V2_ERROR_INVALID_INPUT;
 	}
 	auto *ei = static_cast<duckdb::ErrorInfoV2 *>(info);
-	ei->message = "Error code: " + std::to_string(code);
+	ei->code = code;
 	return DUCKDB_V2_ERROR_NONE;
 }
 
