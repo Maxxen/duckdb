@@ -14,7 +14,7 @@
 //     the chunk's data[] for top-level vectors; into core's
 //     ListVector/ArrayVector/StructVector/etc storage for nested
 //     children). Lifetime is the owning chunk's.
-//   - duckdb_v2_vector_view carries borrowed (data, validity, sel)
+//   - duckdb_v2_vector_view carries borrowed (data, validity, sel, count)
 //     pointers valid until the owning chunk is destroyed. view.sel ==
 //     NULL means identity (FLAT-vector UVF semantics). validity ==
 //     NULL means all-valid. There is NO count field on the view — the
@@ -106,7 +106,8 @@ TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(size == 1); // row count comes from the chunk, not the view
+	REQUIRE(size == 1);
+	REQUIRE(view.count == size); // view count matches chunk size
 	REQUIRE(view.data != nullptr);
 	const int32_t *data = static_cast<const int32_t *>(view.data);
 	REQUIRE(data[SelAt(view.sel, 0)] == 42);
@@ -558,7 +559,7 @@ TEST_CASE("V2: LIST<INTEGER> via get_child + entries", "[capi_v2][data_chunk]") 
 
 	// list_get_size returns the total number of elements across all parent rows.
 	idx_t list_size = 0;
-	REQUIRE(duckdb_v2_vector_list_get_size(lvec, &list_size, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_count(child, &list_size, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(list_size == 6); // 3 + 2 + 1
 
 	duckdb_v2_vector_view cview {};
@@ -679,9 +680,6 @@ TEST_CASE("V2: ARRAY(INTEGER, 3) via get_child", "[capi_v2][data_chunk]") {
 	REQUIRE(duckdb_v2_vector_get_child_count(avec, &nch, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(nch == 1);
 
-	idx_t reject = 0;
-	REQUIRE(duckdb_v2_vector_list_get_size(avec, &reject, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-
 	duckdb_v2_vector_ptr child = nullptr;
 	REQUIRE(duckdb_v2_vector_get_child(avec, 0, &child, nullptr) == DUCKDB_V2_ERROR_NONE);
 
@@ -742,11 +740,6 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 	REQUIRE(duckdb_v2_vector_get_child_count(mvec, &nch, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(nch == 2);
 
-	// list_get_size returns the K/V pair count = sum of valid list lengths.
-	idx_t map_size = 0;
-	REQUIRE(duckdb_v2_vector_list_get_size(mvec, &map_size, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(map_size == 3); // 2 + 1 entries
-
 	// Parent's view.data is list_entry[] (one entry per parent row).
 	duckdb_v2_vector_view mview {};
 	duckdb_v2_vector_get_view(mvec, &mview, nullptr);
@@ -756,6 +749,14 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 	duckdb_v2_vector_ptr values = nullptr;
 	REQUIRE(duckdb_v2_vector_get_child(mvec, 0, &keys, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vector_get_child(mvec, 1, &values, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	// row count of children returns the K/V pair count = sum of valid list lengths.
+	idx_t map_size = 0;
+	REQUIRE(duckdb_v2_vector_get_count(keys, &map_size, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(map_size == 3); // 2 + 1 entries
+
+	REQUIRE(duckdb_v2_vector_get_count(values, &map_size, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(map_size == 3); // 2 + 1 entries
 
 	duckdb_v2_vector_view kview {};
 	duckdb_v2_vector_view vview {};
@@ -973,13 +974,6 @@ TEST_CASE("V2: generic accessors handle non-nested vectors", "[capi_v2][data_chu
 	REQUIRE(child == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
-
-	// list_get_size rejects on non-LIST/MAP.
-	idx_t sz = 99;
-	duckdb_v2_error_info_ptr err2 = nullptr;
-	REQUIRE(duckdb_v2_vector_list_get_size(vec, &sz, &err2) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(err2 != nullptr);
-	duckdb_v2_error_info_destroy(&err2);
 
 	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
 	duckdb_v2_result_destroy(&r, nullptr);

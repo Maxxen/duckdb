@@ -121,6 +121,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector, duck
 			out_view->data = duckdb::FlatVector::GetData(*vec);
 			out_view->validity = duckdb::FlatVector::Validity(*vec).GetData();
 			out_view->sel = nullptr; // identity (UVF semantics)
+			out_view->count = vec->size();
 			break;
 		}
 		case duckdb::VectorType::CONSTANT_VECTOR: {
@@ -128,6 +129,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector, duck
 			out_view->validity = duckdb::ConstantVector::Validity(*vec).GetData();
 			out_view->sel =
 			    reinterpret_cast<const duckdb_v2_sel_t *>(duckdb::ConstantVector::ZeroSelectionVector()->data());
+			out_view->count = vec->size();
 			break;
 		}
 		case duckdb::VectorType::DICTIONARY_VECTOR: {
@@ -142,6 +144,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector, duck
 			out_view->data = duckdb::FlatVector::GetData(child);
 			out_view->validity = duckdb::FlatVector::Validity(child).GetData();
 			out_view->sel = reinterpret_cast<const duckdb_v2_sel_t *>(duckdb::DictionaryVector::SelVector(*vec).data());
+			out_view->count = vec->size();
 			break;
 		}
 		default:
@@ -287,29 +290,18 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 }
 
 // ---------------------------------------------------------------------------
-// LIST/MAP child-row-count
+// Generic row-count
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_list_get_size(duckdb_v2_vector_ptr vector, idx_t *out_size,
-                                                    duckdb_v2_error_info_ptr *err) {
-	if (!vector || !out_size) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
-		                            "null argument to duckdb_v2_vector_list_get_size");
-	}
-	auto *vec = duckdb::ToVector(vector);
-	auto id = vec->GetType().id();
-	if (id != duckdb::LogicalTypeId::LIST && id != duckdb::LogicalTypeId::MAP) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
-		                            "duckdb_v2_vector_list_get_size: vector is not a LIST or MAP");
-	}
-	try {
-		*out_size = duckdb::ListVector::GetListSize(*vec);
-		return duckdb::ClearErrorInfo(err);
-	} catch (std::exception &e) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, e.what());
-	} catch (...) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, "unknown error in duckdb_v2_vector_list_get_size");
-	}
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_count(duckdb_v2_vector_ptr vector, idx_t *out_count,
+                                                duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector || !out_count) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_count");
+		}
+		auto *vec = duckdb::ToVector(vector);
+		*out_count = vec->size();
+	});
 }
 
 // ---------------------------------------------------------------------------

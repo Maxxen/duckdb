@@ -2602,6 +2602,7 @@ typedef struct {
 	const void *data;
 	const uint64_t *validity;
 	const duckdb_v2_sel_t *sel;
+	idx_t count;
 } duckdb_v2_vector_view;
 
 typedef struct {
@@ -2672,11 +2673,10 @@ view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_ptr vector, duckdb_v2_error_info_ptr *err);
 /*!
-* Reads a vector as a unified-format view (data + validity + sel).
+* Reads a vector as a unified-format view (data + validity + sel + count).
 * Populates out_view with borrowed pointers valid until the owning
-chunk is destroyed. Row count and per-kind view.data semantics
-live in the module docstring. Rejects VECTOR_TYPE_OTHER — call
-vector_flatten first.
+chunk is destroyed. Per-kind view.data semantics live in the module docstring.
+Rejects VECTOR_TYPE_OTHER — call vector_flatten first.
 
 Side effect on DICTIONARY vectors: the dictionary's underlying
 child is flattened in place if it isn't already FLAT (matching
@@ -2696,6 +2696,19 @@ which materialises the whole vector to FLAT.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector,
                                                             duckdb_v2_vector_view *out_view,
                                                             duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the number of elements in a vector.
+* The count is the number of logical elements represented by the vector, which for nested kinds may differ from
+the number of elements of their child vectors. E.g. an ARRAY vector with count 10 and an 'array size' of 3 has 10
+logical elements but its single child vector has 30 elements.
+
+* @param vector
+* @param out_count
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_count(duckdb_v2_vector_ptr vector, idx_t *out_count,
+                                                             duckdb_v2_error_info_ptr *err);
 /*!
 * Returns the number of child vectors a nested vector exposes.
 * For LIST / ARRAY returns 1; for MAP returns 2 (keys, values); for
@@ -2726,25 +2739,6 @@ is out of range.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx_t index,
                                                              duckdb_v2_vector_ptr *out_child,
                                                              duckdb_v2_error_info_ptr *err);
-/*!
-* For a LIST or MAP vector, returns the row count of its child vector(s).
-* For LIST, returns the row count of the elements child. For MAP,
-returns the count of K/V pairs (= the parallel row count of both
-the [0] keys and [1] values children). Equivalent to the upper
-bound `max(entries[i].offset + entries[i].length)` across valid
-parent rows, but tracked in O(1) on the parent vector. Per-row
-read loops don't need this number — iterate parent rows and
-address the child via `entries[row].{offset, length}`. Returns
-ERROR_INVALID_INPUT for vectors whose logical type is not LIST
-or MAP.
-
-* @param vector
-* @param out_size
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_list_get_size(duckdb_v2_vector_ptr vector, idx_t *out_size,
-                                                                 duckdb_v2_error_info_ptr *err);
 /*!
 * Reads the bytes + length of a VARCHAR value from its storage.
 * out_data receives a borrowed pointer into the VARCHAR's underlying
