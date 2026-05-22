@@ -430,7 +430,7 @@ TEST_CASE("V2: statement_type numeric round-trip for higher-numbered values", "[
 // ===========================================================================
 
 TEST_CASE("V2: STATEMENT_TYPE has no gaps vs duckdb::StatementType", "[capi_v2][query_result]") {
-	constexpr auto highest_known = static_cast<uint8_t>(duckdb::StatementType::MERGE_INTO_STATEMENT);
+	constexpr auto highest_known = static_cast<uint8_t>(duckdb::StatementType::DISCONNECT_STATEMENT);
 	auto probe = static_cast<duckdb::StatementType>(highest_known + 1);
 	REQUIRE_THROWS_AS(duckdb::EnumUtil::ToString(probe), duckdb::NotImplementedException);
 }
