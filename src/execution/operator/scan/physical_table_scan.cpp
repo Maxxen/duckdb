@@ -313,7 +313,7 @@ string PhysicalTableScan::GetFilterInfo(const TableFilterSet &filter_set) const 
 	bool first_item = true;
 	for (auto &f : filter_set) {
 		auto filter_idx = f.GetIndex();
-		auto &filter = f.Filter();
+		auto &filter = f.Filter().Cast<ExpressionFilter>();
 		if (filter_idx < names.size()) {
 			if (!first_item) {
 				filters_info += "\n";
@@ -425,6 +425,24 @@ InsertionOrderPreservingMap<string> PhysicalTableScan::ExtraSourceParams(GlobalS
 	TableFunctionDynamicToStringInput input(function, bind_data.get(), state.local_state.get(),
 	                                        gstate.global_state.get());
 	return function.dynamic_to_string(input);
+}
+
+void PhysicalTableScan::GetMetrics(ClientContext &context, GlobalSourceState &gstate_p, LocalSourceState &lstate,
+                                   const profiler_settings_t &requested_metrics, profiler_metrics_t &metrics) const {
+	if (!function.get_metrics && !function.rows_scanned) {
+		return;
+	}
+	auto &gstate = gstate_p.Cast<TableScanGlobalSourceState>();
+	auto &state = lstate.Cast<TableScanLocalSourceState>();
+	if (function.get_metrics) {
+		function.get_metrics(context, bind_data.get(), *gstate.global_state, *state.local_state, requested_metrics,
+		                     metrics);
+		return;
+	}
+	if (requested_metrics.find(MetricType::OPERATOR_ROWS_SCANNED) != requested_metrics.end()) {
+		metrics[MetricType::OPERATOR_ROWS_SCANNED] =
+		    Value::UBIGINT(function.rows_scanned(*gstate.global_state, *state.local_state));
+	}
 }
 
 optional_idx PhysicalTableScan::GetRowsScanned(GlobalSourceState &gstate_p, LocalSourceState &lstate) const {
