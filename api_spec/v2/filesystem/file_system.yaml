@@ -145,6 +145,7 @@ functions:
         description: The file handle to write to.
       buffer:
         type: void
+        const: true
         indirection: 1
         description: Pointer to a caller-owned buffer of at least `buffer_size` bytes containing the data to write to the file.
       buffer_size:

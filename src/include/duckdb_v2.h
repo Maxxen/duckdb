@@ -970,7 +970,7 @@ file.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_ptr file_handle, void *buffer,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_ptr file_handle, const void *buffer,
                                                               int64_t buffer_size, int64_t *bytes_written,
                                                               duckdb_v2_error_info_ptr *err);
 /*!
@@ -1749,6 +1749,33 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar_function_builder_ptr func, void *data,
                                                 duckdb_v2_user_data_destroy_cb destroy, duckdb_v2_error_info_ptr *err);
 /*!
+* Adds a parameter to a scalar function.
+* Adds a parameter to a scalar function with the specified name and type.
+The parameter name must be a null-terminated string. The library makes an internal copy of the provided name and type,
+and does not take ownership of either.
+
+* @param func The scalar function to configure.
+* @param name The null-terminated name of the parameter to add.
+* @param type The type of the parameter to add.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_ptr func, const char *name,
+                                                duckdb_v2_logical_type_ptr type, duckdb_v2_error_info_ptr *err);
+/*!
+* Sets the return type of a scalar function.
+* Sets the return type of a scalar function. The library makes an internal copy of the provided type and does not take
+ownership of it. Failing to set a return type before registration results in an error.
+
+* @param func The scalar function to configure.
+* @param type The return type to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_return_type(
+    duckdb_v2_scalar_function_builder_ptr func, duckdb_v2_logical_type_ptr type, duckdb_v2_error_info_ptr *err);
+/*!
 * Sets the "bind data" pointer from a scalar function's "bind" callback.
 * This function can only be called from within a scalar function's "bind" callback.
 It allows the callback to set an opaque pointer to arbitrary user data ("bind data") that will be associated with the
@@ -1842,6 +1869,38 @@ callback).
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_user_data(duckdb_v2_scalar_function_info_ptr func,
                                                                           void **out_data,
                                                                           duckdb_v2_error_info_ptr *err);
+/*!
+* Retrieves the input data chunk for the current invocation of a scalar function.
+* This function retrieves the input data chunk for the current invocation of a scalar function.
+The input chunk contains vectors for each argument passed to the function, with one row per input row for the current
+batch. The input chunk is owned by DuckDB and is only valid for the duration of the current invocation of the "exec"
+callback; it must not be destroyed, stored or used after the callback returns. This function can only be called from
+within the "exec" callback of a scalar function.
+
+* @param func The callback info handle provided to a scalar function callback (e.g. the "bind", "init", or "exec"
+callback).
+* @param out_chunk On success, receives the borrowed input data chunk for the current invocation of the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_input_chunk(duckdb_v2_scalar_function_info_ptr func,
+                                                                            duckdb_v2_data_chunk_ptr *out_chunk,
+                                                                            duckdb_v2_error_info_ptr *err);
+/*!
+* Retrieves the vector in which a scalar function should write its result values for the current invocation.
+* This function retrieves the vector in which a scalar function should write its result values for the current
+invocation. This function can only be called from within the "exec" callback of a scalar function.
+
+* @param func The callback info handle provided to a scalar function callback (e.g. the "bind", "init", or "exec"
+callback).
+* @param out_vector On success, receives the vector in which the function should write its result values for the current
+invocation.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_result_vector(duckdb_v2_scalar_function_info_ptr func,
+                                                                              duckdb_v2_vector_ptr *out_vector,
+                                                                              duckdb_v2_error_info_ptr *err);
 
 /* ============================================================================
  * MODULE: value
@@ -2709,6 +2768,19 @@ logical elements but its single child vector has 30 elements.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_count(duckdb_v2_vector_ptr vector, idx_t *out_count,
                                                              duckdb_v2_error_info_ptr *err);
+/*!
+* For a FLAT or CONSTANT vector, returns a mutable pointer to the data.
+* Returns ERROR_INVALID_INPUT if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning
+chunk is destroyed; callers must not mutate the vector's storage shape (e.g. by flattening) while using the
+pointer.
+
+* @param vector
+* @param out_data Receives a mutable pointer to the data.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data_mutable(duckdb_v2_vector_ptr vector, void **out_data,
+                                                                    duckdb_v2_error_info_ptr *err);
 /*!
 * Returns the number of child vectors a nested vector exposes.
 * For LIST / ARRAY returns 1; for MAP returns 2 (keys, values); for

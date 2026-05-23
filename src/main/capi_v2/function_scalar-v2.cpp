@@ -62,6 +62,9 @@ struct ScalarFunctionCallbackInfoV2 {
 
 	unique_ptr<ScalarFunctionStateDataV2> set_local_state = nullptr;
 	optional_ptr<ScalarFunctionStateDataV2> get_local_state = nullptr;
+
+	optional_ptr<DataChunk> get_exec_args = nullptr;
+	optional_ptr<Vector> get_exec_result = nullptr;
 };
 
 struct ScalarFunctionV2 {
@@ -82,6 +85,9 @@ struct ScalarFunctionV2 {
 
 	RuntimeInfo info;
 	string name;
+
+	vector<pair<string, LogicalType>> parameters;
+	LogicalType return_type;
 
 	static auto BindCallback(BindScalarFunctionInput &input) -> unique_ptr<FunctionData> {
 		const auto &info = input.GetBoundFunction().GetExtraFunctionInfo().Cast<RuntimeInfo>();
@@ -153,6 +159,9 @@ struct ScalarFunctionV2 {
 
 		ScalarFunctionCallbackInfoV2 cb_info(ScalarFunctionCallbackTypeV2::EXEC, expr.function.GetName());
 
+		cb_info.get_exec_args = &args;
+		cb_info.get_exec_result = &result;
+
 		cb_info.user_data = info.user_data;
 
 		// Setup bind data (if provided)
@@ -176,9 +185,6 @@ struct ScalarFunctionV2 {
 		if (err.code != DUCKDB_V2_ERROR_NONE) {
 			throw InvalidInputException(err.message);
 		}
-
-		// TODO: populate result vector based on exec args
-		ConstantVector::Reference(result, Value::INTEGER(42), count_t(args.size()));
 	}
 };
 
@@ -215,6 +221,52 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar
 		}
 
 		static_cast<duckdb::ScalarFunctionV2 *>(func)->name = name;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_ptr func,
+                                                                     const char *name, duckdb_v2_logical_type_ptr type,
+                                                                     duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function pointer cannot be null.");
+		}
+		if (!name) {
+			throw duckdb::InvalidInputException("Parameter name cannot be null.");
+		}
+		if (strlen(name) == 0) {
+			throw duckdb::InvalidInputException("Parameter name cannot be empty.");
+		}
+		if (!type) {
+			throw duckdb::InvalidInputException("Parameter type pointer cannot be null.");
+		}
+
+		const auto &ltype = *static_cast<duckdb::LogicalType *>(type);
+		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("Parameter type cannot be invalid.");
+		}
+
+		auto &builder = *static_cast<duckdb::ScalarFunctionV2 *>(func);
+		builder.parameters.emplace_back(name, ltype);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_ptr func,
+                                                                       duckdb_v2_logical_type_ptr type,
+                                                                       duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function pointer cannot be null.");
+		}
+		if (!type) {
+			throw duckdb::InvalidInputException("Return type pointer cannot be null.");
+		}
+		const auto &ltype = *static_cast<duckdb::LogicalType *>(type);
+		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("Return type cannot be invalid.");
+		}
+		auto &builder = *static_cast<duckdb::ScalarFunctionV2 *>(func);
+		builder.return_type = ltype;
 	});
 }
 
@@ -392,8 +444,20 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 			throw duckdb::InvalidInputException("Exec callback must be set for the function.");
 		}
 
-		duckdb::ScalarFunction function(builder.name, {}, duckdb::LogicalType::INTEGER,
-		                                duckdb::ScalarFunctionV2::ExecCallback);
+		if (builder.return_type.id() == duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("Return type must be set for the function.");
+		}
+
+		if (!builder.return_type.IsComplete()) {
+			throw duckdb::InvalidInputException("Return type must be a fully defined concrete type");
+		}
+
+		duckdb::ScalarFunction function(builder.name, {}, builder.return_type, duckdb::ScalarFunctionV2::ExecCallback);
+
+		// Set the signature
+		for (const auto &[param_name, param_type] : builder.parameters) {
+			function.GetSignature().AddParameter(param_name, param_type);
+		}
 
 		if (builder.info.bind_cb) {
 			function.SetBindCallback(duckdb::ScalarFunctionV2::BindCallback);
@@ -426,8 +490,52 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_
 		if (!*func) {
 			return;
 		}
-		static_cast<duckdb::ScalarFunctionV2 *>(*func)->~ScalarFunctionV2();
 		delete static_cast<duckdb::ScalarFunctionV2 *>(*func);
 		*func = nullptr;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_input_chunk(duckdb_v2_scalar_function_info_ptr func,
+                                                               duckdb_v2_data_chunk_ptr *out_chunk,
+                                                               duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function info pointer cannot be null.");
+		}
+		if (!out_chunk) {
+			throw duckdb::InvalidInputException("Output chunk pointer cannot be null.");
+		}
+		auto &cb_info = *static_cast<duckdb::ScalarFunctionCallbackInfoV2 *>(func);
+
+		if (cb_info.type != duckdb::ScalarFunctionCallbackTypeV2::EXEC) {
+			throw duckdb::InvalidInputException("Input chunk can only be accessed from the exec callback.");
+		}
+
+		D_ASSERT(cb_info.get_exec_args); // Argument info should always be available for exec callback
+
+		*out_chunk = static_cast<duckdb_v2_data_chunk_ptr>(cb_info.get_exec_args.get());
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_result_vector(duckdb_v2_scalar_function_info_ptr func,
+                                                                 duckdb_v2_vector_ptr *out_vector,
+                                                                 duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function info pointer cannot be null.");
+		}
+		if (!out_vector) {
+			throw duckdb::InvalidInputException("Output vector pointer cannot be null.");
+		}
+
+		auto &cb_info = *static_cast<duckdb::ScalarFunctionCallbackInfoV2 *>(func);
+
+		if (cb_info.type != duckdb::ScalarFunctionCallbackTypeV2::EXEC) {
+			throw duckdb::InvalidInputException("Result vector can only be accessed from the exec callback.");
+		}
+
+		D_ASSERT(cb_info.get_exec_result); // Result vector should always be available for exec callback
+
+		*out_vector = static_cast<duckdb_v2_vector_ptr>(cb_info.get_exec_result.get());
 	});
 }

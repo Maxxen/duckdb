@@ -257,6 +257,28 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   # -----------------------------------------------------------------------
+  # Mutable Access
+  # -----------------------------------------------------------------------
+  vector_get_data_mutable:
+    summary: For a FLAT or CONSTANT vector, returns a mutable pointer to the data.
+    description: "Returns ERROR_INVALID_INPUT if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning \nchunk is destroyed; callers must not mutate the vector's storage shape (e.g. by flattening) while using the \npointer.\n"
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives a mutable pointer to the data.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
   # Generic structural accessors for nested kinds
   #
   # Per-kind index convention (see also the module docstring):

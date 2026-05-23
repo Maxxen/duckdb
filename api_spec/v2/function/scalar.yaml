@@ -145,6 +145,44 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: API_CALL
+  # TODO: Make this more involved.
+  scalar_function_builder_add_parameter:
+    summary: Adds a parameter to a scalar function.
+    description: "Adds a parameter to a scalar function with the specified name and type. \nThe parameter name must be a null-terminated string. The library makes an internal copy of the provided name and type, and does not take ownership of either.\n"
+    parameters:
+      func:
+        type: scalar_function_builder
+        description: The scalar function to configure.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: The null-terminated name of the parameter to add.
+      type:
+        type: logical_type
+        description: The type of the parameter to add.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_builder_set_return_type:
+    summary: Sets the return type of a scalar function.
+    description: |
+      Sets the return type of a scalar function. The library makes an internal copy of the provided type and does not take ownership of it.
+      Failing to set a return type before registration results in an error.
+    parameters:
+      func:
+        type: scalar_function_builder
+        description: The scalar function to configure.
+      type:
+        type: logical_type
+        description: The return type to set for the function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
   ## Callback Methods
   scalar_function_set_bind_data:
     summary: Sets the "bind data" pointer from a scalar function's "bind" callback.
@@ -241,6 +279,42 @@ functions:
         indirection: 2
         kind: OUT
         description: On success, receives the opaque pointer to user data that was set for the function via `scalar_function_builder_set_user_data`.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_get_input_chunk:
+    summary: Retrieves the input data chunk for the current invocation of a scalar function.
+    description: "This function retrieves the input data chunk for the current invocation of a scalar function. \nThe input chunk contains vectors for each argument passed to the function, with one row per input row for the current batch.\nThe input chunk is owned by DuckDB and is only valid for the duration of the current invocation of the \"exec\" callback; it must not be destroyed, stored or used after the callback returns.\nThis function can only be called from within the \"exec\" callback of a scalar function.\n"
+    parameters:
+      func:
+        type: scalar_function_info
+        description: The callback info handle provided to a scalar function callback (e.g. the "bind", "init", or "exec" callback).
+      out_chunk:
+        type: data_chunk
+        indirection: 1
+        kind: OUT
+        description: On success, receives the borrowed input data chunk for the current invocation of the function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_get_result_vector:
+    summary: Retrieves the vector in which a scalar function should write its result values for the current invocation.
+    description: |
+      This function retrieves the vector in which a scalar function should write its result values for the current invocation.
+      This function can only be called from within the "exec" callback of a scalar function.
+    parameters:
+      func:
+        type: scalar_function_info
+        description: The callback info handle provided to a scalar function callback (e.g. the "bind", "init", or "exec" callback).
+      out_vector:
+        type: vector
+        indirection: 1
+        kind: OUT
+        description: On success, receives the vector in which the function should write its result values for the current invocation.
       err:
         type: error_info
         indirection: 1

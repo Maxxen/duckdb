@@ -314,7 +314,7 @@ struct PreparedStatementWrapperV2 {
 // only on failure paths and only when the caller requested detail (i.e.
 // passed a non-null err out-parameter).
 struct ErrorInfoV2 {
-	DUCKDB_V2_API_CALL_t code;
+	DUCKDB_V2_API_CALL_t code = DUCKDB_V2_ERROR_NONE;
 	std::string message;
 };
 

@@ -123,6 +123,30 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector, duck
 }
 
 // ---------------------------------------------------------------------------
+// Mutable Accessors
+// ---------------------------------------------------------------------------
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data_mutable(duckdb_v2_vector_ptr vector, void **out_data,
+                                                       duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector) {
+			throw duckdb::InvalidInputException("Vector pointer cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
+		}
+		auto *vec = duckdb::ToVector(vector);
+
+		const auto vec_type = vec->GetVectorType();
+		if (vec_type != duckdb::VectorType::FLAT_VECTOR && vec_type != duckdb::VectorType::CONSTANT_VECTOR) {
+			throw duckdb::InvalidInputException("Mutable data access is only supported for FLAT_VECTOR and "
+			                                    "CONSTANT_VECTOR types. Please flatten the vector first.");
+		}
+		// We can get unsafe here cause we've already verified the vector type
+		*out_data = duckdb::FlatVector::GetDataMutableUnsafe(*vec);
+	});
+}
+
+// ---------------------------------------------------------------------------
 // Generic structural accessors for nested kinds
 //
 // Per-kind child counts:

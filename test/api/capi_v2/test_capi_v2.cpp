@@ -887,7 +887,37 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 
 	static auto exec_callback = [](duckdb_v2_scalar_function_info_ptr info, duckdb_v2_context_ptr ctx,
 	                               duckdb_v2_error_info_ptr *err) {
-		/* TODO */
+		duckdb_v2_data_chunk_ptr chunk = nullptr;
+
+		duckdb_v2_vector_ptr lhs_vec = nullptr;
+		duckdb_v2_vector_ptr rhs_vec = nullptr;
+		duckdb_v2_vector_ptr out_vec;
+
+		duckdb_v2_scalar_function_get_input_chunk(info, &chunk, err);
+
+		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &lhs_vec, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 1, &rhs_vec, err) == DUCKDB_V2_ERROR_NONE);
+
+		REQUIRE(duckdb_v2_scalar_function_get_result_vector(info, &out_vec, err) == DUCKDB_V2_ERROR_NONE);
+
+		duckdb_v2_vector_view lhs_view;
+		duckdb_v2_vector_view rhs_view;
+
+		REQUIRE(duckdb_v2_vector_get_view(lhs_vec, &lhs_view, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_vector_get_view(rhs_vec, &rhs_view, err) == DUCKDB_V2_ERROR_NONE);
+
+		const auto lhs_data = static_cast<const int32_t *>(lhs_view.data);
+		const auto rhs_data = static_cast<const int32_t *>(rhs_view.data);
+
+		int32_t *out_data = nullptr;
+		REQUIRE(duckdb_v2_vector_get_data_mutable(out_vec, (void **)&out_data, err) == DUCKDB_V2_ERROR_NONE);
+
+		for (idx_t i = 0; i < lhs_view.count; i++) {
+			const auto lhs_idx = lhs_view.sel ? lhs_view.sel[i] : i;
+			const auto rhs_idx = rhs_view.sel ? rhs_view.sel[i] : i;
+
+			out_data[i] = lhs_data[lhs_idx] + rhs_data[rhs_idx];
+		}
 	};
 
 	SECTION("Basic registration and cleanup") {
@@ -898,6 +928,20 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 		    [](duckdb_v2_context_ptr ctx, void *, duckdb_v2_error_info_ptr *err) {
 			    duckdb_v2_scalar_function_builder_ptr builder = nullptr;
 			    REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+
+			    // Make type
+			    duckdb_v2_logical_type_ptr type = nullptr;
+			    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
+			            DUCKDB_V2_ERROR_NONE);
+
+			    // Setup parameters
+			    REQUIRE(duckdb_v2_scalar_function_builder_add_parameter(builder, "a", type, err) ==
+			            DUCKDB_V2_ERROR_NONE);
+			    REQUIRE(duckdb_v2_scalar_function_builder_add_parameter(builder, "b", type, err) ==
+			            DUCKDB_V2_ERROR_NONE);
+
+			    // Also add return type
+			    REQUIRE(duckdb_v2_scalar_function_builder_set_return_type(builder, type, err) == DUCKDB_V2_ERROR_NONE);
 
 			    // Setup function callbacks
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, "my_func", err) == DUCKDB_V2_ERROR_NONE);
@@ -931,13 +975,31 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 			    REQUIRE(duckdb_v2_scalar_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
 			    REQUIRE(builder == nullptr);
 			    REQUIRE(duckdb_v2_scalar_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
+
+			    duckdb_v2_logical_type_destroy(&type, nullptr);
 		    },
 		    nullptr, nullptr);
 	}
 
-	// TODO: We don't have any way to invoke the function yet, so we can't test the callbacks
+	// Now get the result
+	duckdb_v2_result_ptr result = nullptr;
+	REQUIRE(duckdb_v2_connection_query(conn, "SELECT my_func(1, 2)", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_data_chunk_ptr chunk = nullptr;
+	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_ptr result_vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &result_vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_view result_view;
+	REQUIRE(duckdb_v2_vector_get_view(result_vec, &result_view, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(result_view.count == 1);
+
+	REQUIRE((static_cast<const int32_t *>(result_view.data))[0] == 3);
 
 	// Cleanup
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_result_destroy(&result, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_disconnect(&conn, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(conn == nullptr);
 	duckdb_v2_close(&db, nullptr);

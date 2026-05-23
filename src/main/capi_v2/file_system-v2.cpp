@@ -107,7 +107,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_read(duckdb_v2_file_handle_ptr file_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_ptr file_handle, void *buffer,
+DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_ptr file_handle, const void *buffer,
                                                  int64_t buffer_size, int64_t *bytes_written,
                                                  duckdb_v2_error_info_ptr *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -124,7 +124,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_ptr file_
 
 		const auto buffer_size_unsigned = duckdb::UnsafeNumericCast<idx_t>(buffer_size);
 
-		*bytes_written = duckdb::UnsafeNumericCast<int64_t>(handle.Write(buffer, buffer_size_unsigned));
+		*bytes_written =
+		    duckdb::UnsafeNumericCast<int64_t>(handle.Write(const_cast<void *>(buffer), buffer_size_unsigned));
 	});
 }
 

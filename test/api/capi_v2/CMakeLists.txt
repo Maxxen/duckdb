@@ -8,7 +8,9 @@ add_library_unity(
   test_capi_v2_logical_type.cpp
   test_capi_v2_query_result.cpp
   test_capi_v2_value.cpp
-  test_capi_v2_file_system.cpp)
+  test_capi_v2_file_system.cpp
+  cpp_api/cpp_api.cpp
+  cpp_api/test_cpp_api.cpp)
 
 set(UNITTEST_OBJECT_FILES
     ${UNITTEST_OBJECT_FILES} $<TARGET_OBJECTS:test_sql_capi_v2>
