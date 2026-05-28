@@ -99,11 +99,6 @@ functions:
         type: option
         indirection: 1
         description: "The option handle to destroy."
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   option_get_name:
     summary: "Borrows the option's canonical name."

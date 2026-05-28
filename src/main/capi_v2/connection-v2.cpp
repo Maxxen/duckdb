@@ -14,8 +14,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_ptr db, duckdb_v2_conn
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn, duckdb_v2_error_info_ptr *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
+DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn) {
+	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!conn) {
 			return;
 		}

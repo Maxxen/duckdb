@@ -53,11 +53,6 @@ functions:
         type: connection
         indirection: 1
         description: "The connection to close."
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   connection_option_set:
     summary: "Sets a config option through the connection."

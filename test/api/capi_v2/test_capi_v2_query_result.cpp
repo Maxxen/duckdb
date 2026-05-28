@@ -38,9 +38,9 @@ struct V2QueryFixture {
 		duckdb_v2_connect(db, &conn, nullptr);
 	}
 	~V2QueryFixture() {
-		duckdb_v2_disconnect(&conn, nullptr);
-		duckdb_v2_close(&db, nullptr);
-		duckdb_v2_destroy_environment(&env, nullptr);
+		duckdb_v2_disconnect(&conn);
+		duckdb_v2_close(&db);
+		duckdb_v2_destroy_environment(&env);
 	}
 };
 
@@ -81,13 +81,13 @@ TEST_CASE("V2: connection_query SELECT returns QUERY_RESULT with INTEGER column"
 	DUCKDB_V2_LOGICAL_TYPE_ID lt_id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	duckdb_v2_logical_type_get_id(lt, &lt_id, nullptr);
 	REQUIRE(lt_id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_logical_type_destroy(&lt);
 
 	idx_t changed = 99;
 	REQUIRE(duckdb_v2_result_rows_changed(r, &changed, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(changed == 0); // SELECT never reports changed rows
 
-	REQUIRE(duckdb_v2_result_destroy(&r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_result_destroy(&r) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(r == nullptr);
 }
 
@@ -125,10 +125,10 @@ TEST_CASE("V2: connection_query multi-column SELECT", "[capi_v2][query_result]")
 		DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 		duckdb_v2_logical_type_get_id(lt, &id, nullptr);
 		REQUIRE(id == expected[i].id);
-		duckdb_v2_logical_type_destroy(&lt, nullptr);
+		duckdb_v2_logical_type_destroy(&lt);
 	}
 
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -140,7 +140,7 @@ TEST_CASE("V2: INSERT / UPDATE / DELETE return CHANGED_ROWS with rows_changed", 
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
-	duckdb_v2_result_destroy(&setup, nullptr);
+	duckdb_v2_result_destroy(&setup);
 
 	// INSERT three rows.
 	duckdb_v2_result_ptr ins = nullptr;
@@ -158,7 +158,7 @@ TEST_CASE("V2: INSERT / UPDATE / DELETE return CHANGED_ROWS with rows_changed", 
 	idx_t changed = 0;
 	duckdb_v2_result_rows_changed(ins, &changed, nullptr);
 	REQUIRE(changed == 3);
-	duckdb_v2_result_destroy(&ins, nullptr);
+	duckdb_v2_result_destroy(&ins);
 
 	// UPDATE two rows.
 	duckdb_v2_result_ptr upd = nullptr;
@@ -167,7 +167,7 @@ TEST_CASE("V2: INSERT / UPDATE / DELETE return CHANGED_ROWS with rows_changed", 
 	REQUIRE(st == DUCKDB_V2_STATEMENT_TYPE_UPDATE);
 	duckdb_v2_result_rows_changed(upd, &changed, nullptr);
 	REQUIRE(changed == 2);
-	duckdb_v2_result_destroy(&upd, nullptr);
+	duckdb_v2_result_destroy(&upd);
 
 	// DELETE one row.
 	duckdb_v2_result_ptr del = nullptr;
@@ -176,7 +176,7 @@ TEST_CASE("V2: INSERT / UPDATE / DELETE return CHANGED_ROWS with rows_changed", 
 	REQUIRE(st == DUCKDB_V2_STATEMENT_TYPE_DELETE);
 	duckdb_v2_result_rows_changed(del, &changed, nullptr);
 	REQUIRE(changed == 1);
-	duckdb_v2_result_destroy(&del, nullptr);
+	duckdb_v2_result_destroy(&del);
 }
 
 // ===========================================================================
@@ -201,7 +201,7 @@ TEST_CASE("V2: DDL returns NOTHING with rows_changed = 0", "[capi_v2][query_resu
 	duckdb_v2_result_rows_changed(r, &changed, nullptr);
 	REQUIRE(changed == 0);
 
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -266,7 +266,7 @@ TEST_CASE("V2: result_column_name borrow stays valid until destroy", "[capi_v2][
 	REQUIRE(first == second);
 	REQUIRE(first_len == second_len);
 
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -282,7 +282,7 @@ TEST_CASE("V2: result_column_logical_type is owned and outlives the result", "[c
 	duckdb_v2_logical_type_ptr lt = nullptr;
 	REQUIRE(duckdb_v2_result_column_logical_type(r, 0, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 
 	// The handle is still valid after the result is gone — the
 	// LogicalType copy is self-contained.
@@ -290,7 +290,7 @@ TEST_CASE("V2: result_column_logical_type is owned and outlives the result", "[c
 	REQUIRE(duckdb_v2_logical_type_get_id(lt, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_logical_type_destroy(&lt);
 }
 
 // ===========================================================================
@@ -314,7 +314,7 @@ TEST_CASE("V2: result_column_name out-of-range index", "[capi_v2][query_result]"
 	REQUIRE(duckdb_v2_result_column_logical_type(r, 2, &lt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(lt == nullptr);
 
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -331,9 +331,9 @@ TEST_CASE("V2: connection_query null-arg rejection", "[capi_v2][query_result]") 
 }
 
 TEST_CASE("V2: result_destroy is null-safe", "[capi_v2][query_result]") {
-	REQUIRE(duckdb_v2_result_destroy(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_result_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_result_ptr already_null = nullptr;
-	REQUIRE(duckdb_v2_result_destroy(&already_null, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_result_destroy(&already_null) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(already_null == nullptr);
 }
 
@@ -363,14 +363,14 @@ TEST_CASE("V2: result accessors reject null handle and null out-params", "[capi_
 	REQUIRE(duckdb_v2_result_column_name(r, 0, &name, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_column_logical_type(r, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_rows_changed(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
-// Belt-and-braces: a failing call followed by a succeeding call clears *err.
+// Belt-and-braces: a succeeding call leaves a pre-existing *err untouched.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query clears pre-existing err on success", "[capi_v2][query_result]") {
+TEST_CASE("V2: connection_query leaves pre-existing err untouched on success", "[capi_v2][query_result]") {
 	V2QueryFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
@@ -380,11 +380,11 @@ TEST_CASE("V2: connection_query clears pre-existing err on success", "[capi_v2][
 
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 1", &r, &err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_get_code(err, &code);
-	REQUIRE(code == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(code == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	duckdb_v2_error_info_destroy(&err);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -401,7 +401,7 @@ TEST_CASE("V2: statement_type numeric round-trip for higher-numbered values", "[
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
-	duckdb_v2_result_destroy(&setup, nullptr);
+	duckdb_v2_result_destroy(&setup);
 
 	struct Case {
 		const char *sql;
@@ -419,7 +419,7 @@ TEST_CASE("V2: statement_type numeric round-trip for higher-numbered values", "[
 		DUCKDB_V2_STATEMENT_TYPE st = DUCKDB_V2_STATEMENT_TYPE_INVALID;
 		duckdb_v2_result_get_statement_type(r, &st, nullptr);
 		REQUIRE(st == c.expected);
-		duckdb_v2_result_destroy(&r, nullptr);
+		duckdb_v2_result_destroy(&r);
 	}
 }
 
@@ -449,11 +449,11 @@ TEST_CASE("V2: rows_changed returns 0 when WHERE filter matches nothing", "[capi
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
-	duckdb_v2_result_destroy(&setup, nullptr);
+	duckdb_v2_result_destroy(&setup);
 
 	duckdb_v2_result_ptr ins = nullptr;
 	duckdb_v2_connection_query(fx.conn, "INSERT INTO t VALUES (1), (2)", &ins, nullptr);
-	duckdb_v2_result_destroy(&ins, nullptr);
+	duckdb_v2_result_destroy(&ins);
 
 	duckdb_v2_result_ptr upd = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "UPDATE t SET i = i WHERE 1=0", &upd, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -463,13 +463,13 @@ TEST_CASE("V2: rows_changed returns 0 when WHERE filter matches nothing", "[capi
 	idx_t changed = 99;
 	duckdb_v2_result_rows_changed(upd, &changed, nullptr);
 	REQUIRE(changed == 0);
-	duckdb_v2_result_destroy(&upd, nullptr);
+	duckdb_v2_result_destroy(&upd);
 
 	duckdb_v2_result_ptr del = nullptr;
 	duckdb_v2_connection_query(fx.conn, "DELETE FROM t WHERE 1=0", &del, nullptr);
 	duckdb_v2_result_rows_changed(del, &changed, nullptr);
 	REQUIRE(changed == 0);
-	duckdb_v2_result_destroy(&del, nullptr);
+	duckdb_v2_result_destroy(&del);
 }
 
 // ===========================================================================
@@ -484,7 +484,7 @@ TEST_CASE("V2: CHANGED_ROWS exposes synthetic count column via column accessors"
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
-	duckdb_v2_result_destroy(&setup, nullptr);
+	duckdb_v2_result_destroy(&setup);
 
 	duckdb_v2_result_ptr ins = nullptr;
 	duckdb_v2_connection_query(fx.conn, "INSERT INTO t VALUES (1)", &ins, nullptr);
@@ -507,9 +507,9 @@ TEST_CASE("V2: CHANGED_ROWS exposes synthetic count column via column accessors"
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	duckdb_v2_logical_type_get_id(lt, &id, nullptr);
 	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_logical_type_destroy(&lt);
 
-	duckdb_v2_result_destroy(&ins, nullptr);
+	duckdb_v2_result_destroy(&ins);
 }
 
 // ===========================================================================
@@ -538,7 +538,7 @@ TEST_CASE("V2: NOTHING result exposes the synthetic Count column with zero rows"
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	duckdb_v2_logical_type_get_id(lt, &id, nullptr);
 	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_logical_type_destroy(&lt);
 
 	// rows_changed reports 0 for NOTHING regardless of the column shape.
 	idx_t changed = 99;
@@ -551,7 +551,7 @@ TEST_CASE("V2: NOTHING result exposes the synthetic Count column with zero rows"
 	REQUIRE(duckdb_v2_result_column_logical_type(r, 1, &lt_oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(lt_oor == nullptr);
 
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -580,14 +580,14 @@ TEST_CASE("V2: results are independent — destroying one leaves the other usabl
 	REQUIRE(std::string(name_b, len_b) == "bb");
 
 	// Destroy a; b's borrowed name pointer must still be valid.
-	duckdb_v2_result_destroy(&a, nullptr);
+	duckdb_v2_result_destroy(&a);
 
 	const char *name_b_after = nullptr;
 	idx_t len_b_after = 0;
 	REQUIRE(duckdb_v2_result_column_name(b, 0, &name_b_after, &len_b_after, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(std::string(name_b_after, len_b_after) == "bb");
 
-	duckdb_v2_result_destroy(&b, nullptr);
+	duckdb_v2_result_destroy(&b);
 }
 
 // ===========================================================================
@@ -614,7 +614,7 @@ TEST_CASE("V2: empty / whitespace-only SQL succeeds with an empty result", "[cap
 		duckdb_v2_result_column_count(r, &cols, nullptr);
 		REQUIRE(cols == 0);
 
-		duckdb_v2_result_destroy(&r, nullptr);
+		duckdb_v2_result_destroy(&r);
 	}
 }
 
@@ -647,5 +647,5 @@ TEST_CASE("V2: multi-statement SQL returns the first result", "[capi_v2][query_r
 	duckdb_v2_result_column_name(r, 0, &name, &len, nullptr);
 	REQUIRE(std::string(name, len) == "first_col");
 
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }

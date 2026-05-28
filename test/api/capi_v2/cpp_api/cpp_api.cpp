@@ -69,7 +69,7 @@ Environment::Environment() : detail::Handle() {
 }
 
 Environment::~Environment() {
-	duckdb_v2_destroy_environment(&impl, nullptr);
+	duckdb_v2_destroy_environment(&impl);
 }
 
 size_t Environment::GetOpenDatabaseCount() const {
@@ -132,7 +132,7 @@ std::string_view DatabaseOption::GetAliasByIndex(size_t index) const {
 }
 
 DatabaseOption::~DatabaseOption() {
-	duckdb_v2_option_destroy(&impl, nullptr);
+	duckdb_v2_option_destroy(&impl);
 }
 
 //---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ Database::Database(void *impl) : detail::Handle(impl) {
 }
 
 Database::~Database() {
-	duckdb_v2_close(&impl, nullptr);
+	duckdb_v2_close(&impl);
 }
 
 size_t Database::GetOptionCount() const {
@@ -176,7 +176,7 @@ Connection::Connection(void *impl) : detail::Handle(impl) {
 }
 
 Connection::~Connection() {
-	duckdb_v2_disconnect(&impl, nullptr);
+	duckdb_v2_disconnect(&impl);
 }
 
 size_t Connection::GetOptionCount() const {
@@ -331,7 +331,7 @@ LogicalType LogicalType::VARCHAR() {
 }
 
 LogicalType::~LogicalType() {
-	duckdb_v2_logical_type_destroy(&impl, nullptr);
+	duckdb_v2_logical_type_destroy(&impl);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -380,7 +380,7 @@ DataChunk::DataChunk(void *impl, bool owned) : detail::Handle(impl), owned(owned
 
 DataChunk::~DataChunk() {
 	if (owned) {
-		duckdb_v2_data_chunk_destroy(&impl, nullptr);
+		duckdb_v2_data_chunk_destroy(&impl);
 	}
 }
 
@@ -410,7 +410,7 @@ QueryResult::QueryResult(void *impl) : detail::Handle(impl) {
 }
 
 QueryResult::~QueryResult() {
-	duckdb_v2_result_destroy(&impl, nullptr);
+	duckdb_v2_result_destroy(&impl);
 }
 
 auto QueryResult::GetColumnCount() const -> idx_t {

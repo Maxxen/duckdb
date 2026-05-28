@@ -174,11 +174,6 @@ functions:
         type: logical_type
         indirection: 1
         description: The logical type to destroy.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   # -----------------------------------------------------------------------
   # Common introspection

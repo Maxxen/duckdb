@@ -107,8 +107,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYP
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_ptr *type, duckdb_v2_error_info_ptr *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_ptr *type) {
+	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!type) {
 			return;
 		}

@@ -66,11 +66,6 @@ functions:
         type: database
         indirection: 1
         description: "The database to close."
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
   database_option_set:
     summary: "Sets a config option on the database (GLOBAL scope)."

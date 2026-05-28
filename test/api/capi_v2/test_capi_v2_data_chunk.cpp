@@ -55,9 +55,9 @@ struct V2ChunkFixture {
 		duckdb_v2_connect(db, &conn, nullptr);
 	}
 	~V2ChunkFixture() {
-		duckdb_v2_disconnect(&conn, nullptr);
-		duckdb_v2_close(&db, nullptr);
-		duckdb_v2_destroy_environment(&env, nullptr);
+		duckdb_v2_disconnect(&conn);
+		duckdb_v2_close(&db);
+		duckdb_v2_destroy_environment(&env);
 	}
 };
 
@@ -102,7 +102,7 @@ TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	duckdb_v2_logical_type_get_id(lt, &id, nullptr);
 	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_logical_type_destroy(&lt);
 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -112,9 +112,9 @@ TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
 	const int32_t *data = static_cast<const int32_t *>(view.data);
 	REQUIRE(data[SelAt(view.sel, 0)] == 42);
 
-	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(chunk == nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -172,8 +172,8 @@ TEST_CASE("V2: INTEGER vector with NULL — validity + identity sel", "[capi_v2]
 	duckdb_v2_validity_row_is_valid(nullptr, 12345, &is_valid, nullptr);
 	REQUIRE(is_valid);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -246,8 +246,8 @@ TEST_CASE("V2: primitive view round-trips across many types", "[capi_v2][data_ch
 		REQUIRE(data[SelAt(view.sel, 0)] > 0);
 	});
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -295,8 +295,8 @@ TEST_CASE("V2: HUGEINT + INTERVAL via layout typedefs", "[capi_v2][data_chunk]")
 	REQUIRE(idata[iidx].days == 4);
 	REQUIRE(idata[iidx].micros == 5);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -340,8 +340,8 @@ TEST_CASE("V2: VARCHAR via varchar_decode (inlined + pointer forms)", "[capi_v2]
 	REQUIRE(s1_len == 50);
 	REQUIRE(std::string(s1_data, s1_len) == std::string(50, 'x'));
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -377,8 +377,8 @@ TEST_CASE("V2: BLOB via blob_decode", "[capi_v2][data_chunk]") {
 	REQUIRE(data[2] == 0xBE);
 	REQUIRE(data[3] == 0xEF);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -438,8 +438,8 @@ TEST_CASE("V2: BIT via bit_decode", "[capi_v2][data_chunk]") {
 	REQUIRE(string_bit_6 == 0);
 	REQUIRE(string_bit_7 == 1);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -518,8 +518,8 @@ TEST_CASE("V2: BIGNUM via bignum_decode (positive + negative)", "[capi_v2][data_
 	REQUIRE(mag1[1] == 0x00);
 	free(mag1);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -577,8 +577,8 @@ TEST_CASE("V2: LIST<INTEGER> via get_child + entries", "[capi_v2][data_chunk]") 
 		}
 	}
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -644,8 +644,8 @@ TEST_CASE("V2: STRUCT(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]")
 	REQUIRE(duckdb_v2_vector_get_child(svec, 99, &oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(oor == nullptr);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -707,8 +707,8 @@ TEST_CASE("V2: ARRAY(INTEGER, 3) via get_child", "[capi_v2][data_chunk]") {
 		}
 	}
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -797,8 +797,8 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 	REQUIRE(duckdb_v2_vector_get_child(mvec, 2, &oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(oor == nullptr);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -814,10 +814,10 @@ TEST_CASE("V2: UNION(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") 
 	// Set up via a temp table so the UNION type is bound consistently
 	// across both inserted rows.
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE u_t (u UNION(i INTEGER, s VARCHAR))", &r, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 	duckdb_v2_connection_query(fx.conn, "INSERT INTO u_t VALUES (union_value(i := 42)), (union_value(s := 'hello'))",
 	                           &r, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_result_destroy(&r);
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT u FROM u_t", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_ptr chunk = nullptr;
@@ -880,8 +880,8 @@ TEST_CASE("V2: UNION(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") 
 	duckdb_v2_vector_get_view(uvec, &uview, nullptr);
 	REQUIRE(uview.data == nullptr);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -943,8 +943,8 @@ TEST_CASE("V2: DECIMAL read across internal widths", "[capi_v2][data_chunk]") {
 		REQUIRE(d[SelAt(view.sel, 0)].upper > 0);
 	}
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -975,8 +975,8 @@ TEST_CASE("V2: generic accessors handle non-nested vectors", "[capi_v2][data_chu
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -1203,8 +1203,8 @@ TEST_CASE("V2: chunk null-arg + out-of-range rejection", "[capi_v2][data_chunk]"
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 99, &vec, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(vec == nullptr);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
-	duckdb_v2_result_destroy(&r, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
 }
 
 // ===========================================================================
@@ -1225,7 +1225,7 @@ TEST_CASE("V2: result_get_chunk rejects non-QUERY_RESULT", "[capi_v2][data_chunk
 		duckdb_v2_data_chunk_ptr chunk = reinterpret_cast<duckdb_v2_data_chunk_ptr>(0x1); // poison
 		REQUIRE(duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(chunk == nullptr);
-		duckdb_v2_result_destroy(&r, nullptr);
+		duckdb_v2_result_destroy(&r);
 	}
 
 	// INSERT produces a CHANGED_ROWS result.
@@ -1239,17 +1239,17 @@ TEST_CASE("V2: result_get_chunk rejects non-QUERY_RESULT", "[capi_v2][data_chunk
 		duckdb_v2_data_chunk_ptr chunk = reinterpret_cast<duckdb_v2_data_chunk_ptr>(0x1);
 		REQUIRE(duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(chunk == nullptr);
-		duckdb_v2_result_destroy(&r, nullptr);
+		duckdb_v2_result_destroy(&r);
 	}
 }
 
 // ===========================================================================
-// PR convention from PR3: a failing call followed by a succeeding call
-// clears *err. The library destroys any prior info before writing a new
-// one (on failure) or NULL (on success).
+// A successful call does NOT clear a pre-existing *err. The return code is
+// authoritative; the library leaves the slot untouched on success, so a
+// stale info from an earlier failure survives until the caller clears it.
 // ===========================================================================
 
-TEST_CASE("V2: err is cleared on subsequent success", "[capi_v2][data_chunk]") {
+TEST_CASE("V2: success leaves a pre-existing err untouched", "[capi_v2][data_chunk]") {
 	V2ChunkFixture fx;
 
 	duckdb_v2_error_info_ptr err = nullptr;
@@ -1260,21 +1260,22 @@ TEST_CASE("V2: err is cleared on subsequent success", "[capi_v2][data_chunk]") {
 	duckdb_v2_data_chunk_ptr chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(r1, 0, &chunk, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr); // populated on failure
-	duckdb_v2_result_destroy(&r1, nullptr);
+	duckdb_v2_result_destroy(&r1);
 
-	// Succeeding call reusing the same err slot: in-place clear (code=NONE,
-	// message=""). *err stays non-null; caller still owns destroy.
+	// Succeeding call reusing the same err slot: the slot is left untouched.
+	// The stale failure info is still there; the return code is what tells
+	// the caller the call succeeded.
 	duckdb_v2_result_ptr r2 = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 1", &r2, &err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(err != nullptr);
 	{
-		duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+		duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_NONE;
 		duckdb_v2_error_info_get_code(err, &code);
-		REQUIRE(code == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(code == DUCKDB_V2_ERROR_INVALID_INPUT);
 	}
 	duckdb_v2_error_info_destroy(&err);
 
-	duckdb_v2_result_destroy(&r2, nullptr);
+	duckdb_v2_result_destroy(&r2);
 }
 
 // ===========================================================================
@@ -1305,10 +1306,10 @@ TEST_CASE("V2: data_chunk outlives result + connection + database", "[capi_v2][d
 		REQUIRE(duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		// Tear everything down except the chunk itself.
-		duckdb_v2_result_destroy(&r, nullptr);
-		duckdb_v2_disconnect(&conn, nullptr);
-		duckdb_v2_close(&db, nullptr);
-		duckdb_v2_destroy_environment(&env, nullptr);
+		duckdb_v2_result_destroy(&r);
+		duckdb_v2_disconnect(&conn);
+		duckdb_v2_close(&db);
+		duckdb_v2_destroy_environment(&env);
 	}
 
 	// The chunk and its borrowed vectors must still read cleanly.
@@ -1326,13 +1327,13 @@ TEST_CASE("V2: data_chunk outlives result + connection + database", "[capi_v2][d
 	REQUIRE(data[SelAt(view.sel, 1)] == 2);
 	REQUIRE(data[SelAt(view.sel, 2)] == 3);
 
-	duckdb_v2_data_chunk_destroy(&chunk, nullptr);
+	duckdb_v2_data_chunk_destroy(&chunk);
 }
 
 TEST_CASE("V2: data_chunk_destroy is null-safe", "[capi_v2][data_chunk]") {
-	REQUIRE(duckdb_v2_data_chunk_destroy(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_data_chunk_ptr already_null = nullptr;
-	REQUIRE(duckdb_v2_data_chunk_destroy(&already_null, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_destroy(&already_null) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(already_null == nullptr);
 }
 

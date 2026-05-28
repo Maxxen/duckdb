@@ -341,18 +341,6 @@ inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V
 	return code;
 }
 
-// Success path. Clear any existing info in *err in place (code = NONE,
-// empty message) — never destroys the slot. Safe to call with
-// err == nullptr.
-inline DUCKDB_V2_API_CALL_t ClearErrorInfo(duckdb_v2_error_info_ptr *err) {
-	if (err && *err) {
-		auto &info = *static_cast<ErrorInfoV2 *>(*err);
-		info.code = DUCKDB_V2_ERROR_NONE;
-		info.message.clear();
-	}
-	return DUCKDB_V2_ERROR_NONE;
-}
-
 // Shared BIGNUM magnitude/sign decoder. Used by both
 // duckdb_v2_value_get_bignum (PR2 value-side) and duckdb_v2_bignum_decode
 // (PR4 vector-side) so the magnitude reconstruction + sign extraction
@@ -380,7 +368,7 @@ inline DUCKDB_V2_API_CALL_t DecodeBignumStringT(const string_t &storage, uint8_t
 		*out_data = buf;
 		*out_length = magnitude.size();
 		*out_is_negative = is_negative;
-		return ClearErrorInfo(err);
+		return DUCKDB_V2_ERROR_NONE;
 	} catch (std::exception &e) {
 		return SetErrorInfo(err, DUCKDB_V2_API_ERROR, e.what());
 	} catch (...) {
@@ -508,13 +496,20 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_ptr *err, T callback)
 		text = "An unknown error occurred.";
 	}
 
-	// Pass up to the caller via the out-parameter if they provided one; otherwise swallow.
+	// Success leaves the slot untouched: the return code is authoritative, and
+	// writing on every successful call (allocating one on first use) is pure
+	// overhead. A stale info from an earlier failure may therefore survive a
+	// later successful call — that is fine, because the caller keys off the
+	// return code, not the slot, and reads *err only after a failing return.
+	if (code == DUCKDB_V2_ERROR_NONE) {
+		return code;
+	}
+
+	// Failure: report detail through the slot if the caller provided one.
 	if (err) {
 		if (!*err) {
-			// Allocate a new ErrorInfoV2 if the caller didn't provide one
 			*err = static_cast<duckdb_v2_error_info_ptr>(new ErrorInfoV2());
 		}
-
 		auto &out = *static_cast<ErrorInfoV2 *>(*err);
 		out.code = code;
 		out.message = std::move(text);

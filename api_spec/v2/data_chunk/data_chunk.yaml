@@ -82,11 +82,6 @@ functions:
       chunk:
         type: data_chunk
         indirection: 1
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   data_chunk_get_size:
     summary: Returns the row count of a data chunk.

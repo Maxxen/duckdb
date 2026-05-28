@@ -26,9 +26,9 @@ struct FsFixture {
 		duckdb_v2_connect(db, &conn, nullptr);
 	}
 	~FsFixture() {
-		duckdb_v2_disconnect(&conn, nullptr);
-		duckdb_v2_close(&db, nullptr);
-		duckdb_v2_destroy_environment(&env, nullptr);
+		duckdb_v2_disconnect(&conn);
+		duckdb_v2_close(&db);
+		duckdb_v2_destroy_environment(&env);
 	}
 };
 

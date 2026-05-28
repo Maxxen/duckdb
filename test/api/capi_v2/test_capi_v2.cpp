@@ -17,7 +17,7 @@ TEST_CASE("V2: env create / destroy", "[capi_v2][env]") {
 	idx_t count = 99;
 	REQUIRE(duckdb_v2_environment_database_count(env, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(count == 0);
-	REQUIRE(duckdb_v2_destroy_environment(&env, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_destroy_environment(&env) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(env == nullptr);
 }
 
@@ -33,13 +33,13 @@ TEST_CASE("V2: open / close in-memory database", "[capi_v2][db]") {
 	duckdb_v2_environment_database_count(env, &count, nullptr);
 	REQUIRE(count == 1);
 
-	REQUIRE(duckdb_v2_close(&db, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_close(&db) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(db == nullptr);
 
 	duckdb_v2_environment_database_count(env, &count, nullptr);
 	REQUIRE(count == 0);
 
-	duckdb_v2_destroy_environment(&env, nullptr);
+	duckdb_v2_destroy_environment(&env);
 }
 
 TEST_CASE("V2: destroy_environment refuses while databases are open", "[capi_v2][env]") {
@@ -49,17 +49,11 @@ TEST_CASE("V2: destroy_environment refuses while databases are open", "[capi_v2]
 	duckdb_v2_database_ptr db = nullptr;
 	duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
 
-	duckdb_v2_error_info_ptr err = nullptr;
-	REQUIRE(duckdb_v2_destroy_environment(&env, &err) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
+	REQUIRE(duckdb_v2_destroy_environment(&env) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
 	REQUIRE(env != nullptr); // refusal leaves env intact
-	REQUIRE(err != nullptr);
-	const char *msg = nullptr;
-	duckdb_v2_error_info_get_text(err, &msg);
-	REQUIRE(std::string(msg).find("still open") != std::string::npos);
-	duckdb_v2_error_info_destroy(&err);
 
-	duckdb_v2_close(&db, nullptr);
-	REQUIRE(duckdb_v2_destroy_environment(&env, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_close(&db);
+	REQUIRE(duckdb_v2_destroy_environment(&env) == DUCKDB_V2_ERROR_NONE);
 }
 
 TEST_CASE("V2: open with pre-open option handles", "[capi_v2][db][option]") {
@@ -73,9 +67,9 @@ TEST_CASE("V2: open with pre-open option handles", "[capi_v2][db][option]") {
 	duckdb_v2_database_ptr db = nullptr;
 	REQUIRE(duckdb_v2_open(env, nullptr, opts, 1, &db, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_close(&db, nullptr);
-	duckdb_v2_option_destroy(&opt, nullptr);
-	duckdb_v2_destroy_environment(&env, nullptr);
+	duckdb_v2_close(&db);
+	duckdb_v2_option_destroy(&opt);
+	duckdb_v2_destroy_environment(&env);
 }
 
 TEST_CASE("V2: file-based open rejects second open of same file", "[capi_v2][db]") {
@@ -94,13 +88,13 @@ TEST_CASE("V2: file-based open rejects second open of same file", "[capi_v2][db]
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 
-	duckdb_v2_close(&db_a, nullptr);
+	duckdb_v2_close(&db_a);
 
 	// After close, reopen succeeds (the path slot is freed).
 	REQUIRE(duckdb_v2_open(env, path.c_str(), nullptr, 0, &db_b, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_close(&db_b, nullptr);
+	duckdb_v2_close(&db_b);
 
-	duckdb_v2_destroy_environment(&env, nullptr);
+	duckdb_v2_destroy_environment(&env);
 	duckdb::DeleteDatabase(path);
 }
 
@@ -114,11 +108,11 @@ TEST_CASE("V2: connect / disconnect", "[capi_v2][conn]") {
 	duckdb_v2_connection_ptr conn = nullptr;
 	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(conn != nullptr);
-	REQUIRE(duckdb_v2_disconnect(&conn, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_disconnect(&conn) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(conn == nullptr);
 
-	duckdb_v2_close(&db, nullptr);
-	duckdb_v2_destroy_environment(&env, nullptr);
+	duckdb_v2_close(&db);
+	duckdb_v2_destroy_environment(&env);
 }
 
 TEST_CASE("V2: null-arg validation on env / db / conn entrypoints", "[capi_v2][env][db][conn]") {
@@ -126,7 +120,7 @@ TEST_CASE("V2: null-arg validation on env / db / conn entrypoints", "[capi_v2][e
 		REQUIRE(duckdb_v2_create_environment(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	}
 	SECTION("destroy_environment with null pointer-to-handle is a no-op") {
-		REQUIRE(duckdb_v2_destroy_environment(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_destroy_environment(nullptr) == DUCKDB_V2_ERROR_NONE);
 	}
 	SECTION("open rejects null env") {
 		duckdb_v2_database_ptr db = nullptr;
@@ -136,24 +130,24 @@ TEST_CASE("V2: null-arg validation on env / db / conn entrypoints", "[capi_v2][e
 		duckdb_v2_environment_ptr env = nullptr;
 		duckdb_v2_create_environment(&env, nullptr);
 		REQUIRE(duckdb_v2_open(env, nullptr, nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		duckdb_v2_destroy_environment(&env, nullptr);
+		duckdb_v2_destroy_environment(&env);
 	}
 	SECTION("open rejects option_count > 0 with null options") {
 		duckdb_v2_environment_ptr env = nullptr;
 		duckdb_v2_create_environment(&env, nullptr);
 		duckdb_v2_database_ptr db = nullptr;
 		REQUIRE(duckdb_v2_open(env, nullptr, nullptr, 1, &db, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		duckdb_v2_destroy_environment(&env, nullptr);
+		duckdb_v2_destroy_environment(&env);
 	}
 	SECTION("close with null pointer-to-handle is a no-op") {
-		REQUIRE(duckdb_v2_close(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_close(nullptr) == DUCKDB_V2_ERROR_NONE);
 	}
 	SECTION("connect rejects null db") {
 		duckdb_v2_connection_ptr conn = nullptr;
 		REQUIRE(duckdb_v2_connect(nullptr, &conn, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	}
 	SECTION("disconnect with null pointer-to-handle is a no-op") {
-		REQUIRE(duckdb_v2_disconnect(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_disconnect(nullptr) == DUCKDB_V2_ERROR_NONE);
 	}
 }
 
@@ -179,9 +173,9 @@ struct V2Fixture {
 		duckdb_v2_connect(db, &conn, nullptr);
 	}
 	~V2Fixture() {
-		duckdb_v2_disconnect(&conn, nullptr);
-		duckdb_v2_close(&db, nullptr);
-		duckdb_v2_destroy_environment(&env, nullptr);
+		duckdb_v2_disconnect(&conn);
+		duckdb_v2_close(&db);
+		duckdb_v2_destroy_environment(&env);
 	}
 };
 
@@ -196,12 +190,12 @@ TEST_CASE("V2 db option: set + get round-trip", "[capi_v2][db][option]") {
 	const char *before_setting = nullptr;
 	duckdb_v2_option_get_setting(before, &before_setting, nullptr);
 	std::string default_value = before_setting ? before_setting : "";
-	duckdb_v2_option_destroy(&before, nullptr);
+	duckdb_v2_option_destroy(&before);
 
 	duckdb_v2_option_ptr in_opt = nullptr;
 	duckdb_v2_option_create("memory_limit", "1GB", &in_opt, nullptr);
 	REQUIRE(duckdb_v2_database_option_set(fx.db, in_opt, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_option_destroy(&in_opt, nullptr);
+	duckdb_v2_option_destroy(&in_opt);
 
 	duckdb_v2_option_ptr after = nullptr;
 	REQUIRE(duckdb_v2_database_option_get(fx.db, "memory_limit", &after, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -209,7 +203,7 @@ TEST_CASE("V2 db option: set + get round-trip", "[capi_v2][db][option]") {
 	duckdb_v2_option_get_setting(after, &after_setting, nullptr);
 	REQUIRE(after_setting != nullptr);
 	REQUIRE(std::string(after_setting) != default_value); // mutation visible
-	duckdb_v2_option_destroy(&after, nullptr);
+	duckdb_v2_option_destroy(&after);
 }
 
 TEST_CASE("V2 db option: get populates description and aliases", "[capi_v2][db][option]") {
@@ -241,7 +235,7 @@ TEST_CASE("V2 db option: get populates description and aliases", "[capi_v2][db][
 	REQUIRE(desc != nullptr);
 	REQUIRE(desc[0] != '\0');
 
-	duckdb_v2_option_destroy(&opt, nullptr);
+	duckdb_v2_option_destroy(&opt);
 }
 
 TEST_CASE("V2 db option: set rejects LOCAL_ONLY at GLOBAL scope", "[capi_v2][db][option]") {
@@ -253,7 +247,7 @@ TEST_CASE("V2 db option: set rejects LOCAL_ONLY at GLOBAL scope", "[capi_v2][db]
 	REQUIRE(duckdb_v2_database_option_set(fx.db, opt, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
-	duckdb_v2_option_destroy(&opt, nullptr);
+	duckdb_v2_option_destroy(&opt);
 }
 
 TEST_CASE("V2 db option: get unknown name errors", "[capi_v2][db][option]") {
@@ -282,7 +276,7 @@ TEST_CASE("V2 db option: get_count and get_by_index", "[capi_v2][db][option]") {
 		duckdb_v2_option_get_name(opt, &name, nullptr);
 		REQUIRE(name != nullptr);
 		REQUIRE(name[0] != '\0');
-		duckdb_v2_option_destroy(&opt, nullptr);
+		duckdb_v2_option_destroy(&opt);
 	}
 
 	duckdb_v2_option_ptr out_of_range = nullptr;
@@ -302,14 +296,14 @@ TEST_CASE("V2 conn option: set LOCAL is invisible to other connections", "[capi_
 	duckdb_v2_option_create("max_execution_time", "5000", &opt, nullptr);
 	REQUIRE(duckdb_v2_connection_option_set(fx.conn, opt, DUCKDB_V2_SETTING_SCOPE_LOCAL, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_option_destroy(&opt, nullptr);
+	duckdb_v2_option_destroy(&opt);
 
 	duckdb_v2_option_ptr on_fx = nullptr;
 	duckdb_v2_connection_option_get(fx.conn, "max_execution_time", &on_fx, nullptr);
 	const char *fx_setting = nullptr;
 	duckdb_v2_option_get_setting(on_fx, &fx_setting, nullptr);
 	REQUIRE(std::string(fx_setting) == "5000");
-	duckdb_v2_option_destroy(&on_fx, nullptr);
+	duckdb_v2_option_destroy(&on_fx);
 
 	duckdb_v2_option_ptr on_other = nullptr;
 	duckdb_v2_connection_option_get(other, "max_execution_time", &on_other, nullptr);
@@ -317,9 +311,9 @@ TEST_CASE("V2 conn option: set LOCAL is invisible to other connections", "[capi_
 	duckdb_v2_option_get_setting(on_other, &other_setting, nullptr);
 	// The other connection sees the static default ("0"), not "5000".
 	REQUIRE(std::string(other_setting) != "5000");
-	duckdb_v2_option_destroy(&on_other, nullptr);
+	duckdb_v2_option_destroy(&on_other);
 
-	duckdb_v2_disconnect(&other, nullptr);
+	duckdb_v2_disconnect(&other);
 }
 
 TEST_CASE("V2 conn option: set GLOBAL is visible everywhere", "[capi_v2][conn][option]") {
@@ -331,7 +325,7 @@ TEST_CASE("V2 conn option: set GLOBAL is visible everywhere", "[capi_v2][conn][o
 	duckdb_v2_option_create("memory_limit", "2GB", &opt, nullptr);
 	REQUIRE(duckdb_v2_connection_option_set(fx.conn, opt, DUCKDB_V2_SETTING_SCOPE_GLOBAL, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_option_destroy(&opt, nullptr);
+	duckdb_v2_option_destroy(&opt);
 
 	std::string fx_setting, other_setting;
 	for (auto target : {fx.conn, other}) {
@@ -340,12 +334,12 @@ TEST_CASE("V2 conn option: set GLOBAL is visible everywhere", "[capi_v2][conn][o
 		const char *setting = nullptr;
 		duckdb_v2_option_get_setting(seen, &setting, nullptr);
 		(target == fx.conn ? fx_setting : other_setting) = setting ? setting : "";
-		duckdb_v2_option_destroy(&seen, nullptr);
+		duckdb_v2_option_destroy(&seen);
 	}
 	REQUIRE(!fx_setting.empty());
 	REQUIRE(fx_setting == other_setting); // GLOBAL write seen identically by both
 
-	duckdb_v2_disconnect(&other, nullptr);
+	duckdb_v2_disconnect(&other);
 }
 
 TEST_CASE("V2 conn option: scope enforcement matches SQL", "[capi_v2][conn][option]") {
@@ -359,7 +353,7 @@ TEST_CASE("V2 conn option: scope enforcement matches SQL", "[capi_v2][conn][opti
 	        DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
-	duckdb_v2_option_destroy(&local_only, nullptr);
+	duckdb_v2_option_destroy(&local_only);
 
 	// GLOBAL_ONLY × LOCAL: rejected. allow_community_extensions is GLOBAL_ONLY.
 	duckdb_v2_option_ptr global_only = nullptr;
@@ -367,7 +361,7 @@ TEST_CASE("V2 conn option: scope enforcement matches SQL", "[capi_v2][conn][opti
 	REQUIRE(duckdb_v2_connection_option_set(fx.conn, global_only, DUCKDB_V2_SETTING_SCOPE_LOCAL, &err) ==
 	        DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_error_info_destroy(&err);
-	duckdb_v2_option_destroy(&global_only, nullptr);
+	duckdb_v2_option_destroy(&global_only);
 }
 
 TEST_CASE("V2 conn option: AUTOMATIC scope mirrors bare SQL `SET`", "[capi_v2][conn][option]") {
@@ -378,7 +372,7 @@ TEST_CASE("V2 conn option: AUTOMATIC scope mirrors bare SQL `SET`", "[capi_v2][c
 	duckdb_v2_option_create("max_execution_time", "5000", &local, nullptr);
 	REQUIRE(duckdb_v2_connection_option_set(fx.conn, local, DUCKDB_V2_SETTING_SCOPE_AUTOMATIC, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_option_destroy(&local, nullptr);
+	duckdb_v2_option_destroy(&local);
 }
 
 TEST_CASE("V2 db/conn option: open with options applies them at GLOBAL scope", "[capi_v2][db][option]") {
@@ -406,27 +400,27 @@ TEST_CASE("V2 db/conn option: open with options applies them at GLOBAL scope", "
 	const char *def_setting = nullptr;
 	duckdb_v2_option_get_setting(def_opt, &def_setting, nullptr);
 	REQUIRE(std::string(setting) != std::string(def_setting ? def_setting : ""));
-	duckdb_v2_option_destroy(&def_opt, nullptr);
-	duckdb_v2_close(&db_default, nullptr);
-	duckdb_v2_option_destroy(&seen, nullptr);
+	duckdb_v2_option_destroy(&def_opt);
+	duckdb_v2_close(&db_default);
+	duckdb_v2_option_destroy(&seen);
 
-	duckdb_v2_option_destroy(&o1, nullptr);
-	duckdb_v2_close(&db, nullptr);
-	duckdb_v2_destroy_environment(&env, nullptr);
+	duckdb_v2_option_destroy(&o1);
+	duckdb_v2_close(&db);
+	duckdb_v2_destroy_environment(&env);
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers that bridge implementations use to honor the error-info
-// contract:
+// Internal helper that bridge implementations use to report failures:
 //
 //   - The return value always carries the error code (authoritative).
-//   - If `err` is non-null, `SetErrorInfo` allocates a fresh info on failure
-//     (destroying any previous one first) and `ClearErrorInfo` frees any
-//     previous info on success, leaving *err == nullptr.
-//   - Both helpers are safe to call with err == nullptr.
+//   - If `err` is non-null, `SetErrorInfo` writes the info into the slot
+//     (lazy-allocating on first use, overwriting in place thereafter).
+//   - There is no success-path helper: successful calls leave the slot
+//     untouched. Callers that reuse a slot must clear it themselves.
+//   - SetErrorInfo is safe to call with err == nullptr.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]") {
+TEST_CASE("V2 error: SetErrorInfo helper", "[capi_v2][error]") {
 	SECTION("SetErrorInfo allocates an info and returns the code") {
 		duckdb_v2_error_info_ptr err = nullptr;
 		auto rc = duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INVALID_INPUT, "bad input");
@@ -485,31 +479,6 @@ TEST_CASE("V2 error: SetErrorInfo / ClearErrorInfo helpers", "[capi_v2][error]")
 
 		duckdb_v2_error_info_destroy(&err);
 	}
-
-	SECTION("ClearErrorInfo resets a pre-existing info in place and returns NONE") {
-		duckdb_v2_error_info_ptr err = nullptr;
-		duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INVALID_INPUT, "stale");
-		REQUIRE(err != nullptr);
-
-		auto rc = duckdb::ClearErrorInfo(&err);
-		REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-		// In-place clear: *err stays non-null, code resets to NONE,
-		// message is emptied. Caller still owns destroy.
-		REQUIRE(err != nullptr);
-		duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
-		duckdb_v2_error_info_get_code(err, &code);
-		REQUIRE(code == DUCKDB_V2_ERROR_NONE);
-		const char *msg = nullptr;
-		duckdb_v2_error_info_get_text(err, &msg);
-		REQUIRE(std::string(msg).empty());
-
-		duckdb_v2_error_info_destroy(&err);
-	}
-
-	SECTION("ClearErrorInfo with nullptr err returns NONE and does not crash") {
-		auto rc = duckdb::ClearErrorInfo(nullptr);
-		REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	}
 }
 
 TEST_CASE("V2 error: error_info_destroy is null-safe", "[capi_v2][error]") {
@@ -541,12 +510,13 @@ TEST_CASE("V2 error: error_info_destroy is null-safe", "[capi_v2][error]") {
 
 // ---------------------------------------------------------------------------
 // WithErrorHandler is the universal err-translation primitive used at every
-// V2 bridge entry point. The slot it writes to is reused in place across
-// calls — lazy-allocated on first use, never destroyed by the library. End
-// of slot lifetime is the caller's job (`error_info_destroy`).
+// V2 bridge entry point. It writes the slot only on failure (lazy-allocating
+// on first use, overwriting in place thereafter); a successful call leaves
+// the slot untouched. End of slot lifetime is the caller's job
+// (`error_info_destroy`).
 // ---------------------------------------------------------------------------
 
-TEST_CASE("V2 error: WithErrorHandler success clears the err slot in place", "[capi_v2][error]") {
+TEST_CASE("V2 error: WithErrorHandler success leaves the err slot untouched", "[capi_v2][error]") {
 	duckdb_v2_environment_ptr env = nullptr;
 	duckdb_v2_create_environment(&env, nullptr);
 	duckdb_v2_database_ptr db = nullptr;
@@ -554,34 +524,32 @@ TEST_CASE("V2 error: WithErrorHandler success clears the err slot in place", "[c
 	duckdb_v2_connection_ptr conn = nullptr;
 	duckdb_v2_connect(db, &conn, nullptr);
 
+	// A successful call with a fresh (null) slot does not allocate: the return
+	// code is authoritative, so the library never touches the slot on success.
 	duckdb_v2_error_info_ptr err = nullptr;
-
-	// Seed the slot with a failure: null connection is invalid input. The
-	// library lazy-allocates the info on first use.
 	duckdb_v2_file_system_ptr fs = nullptr;
+	REQUIRE(duckdb_v2_file_system_get_from_connection(conn, &fs, &err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(err == nullptr);
+	REQUIRE(fs != nullptr);
+
+	// Seed the slot with a failure, then make a successful call reusing the
+	// same slot. The stale info is NOT cleared — success leaves it as-is, and
+	// it is the caller's responsibility to clear before relying on it again.
 	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
 
-	// Run a successful call through the same WithErrorHandler-wrapped bridge
-	// with the same `err` pointer. The slot is reused in place; the code
-	// resets to NONE and the message is cleared. `*err` itself stays
-	// non-null — the library does not destroy.
 	REQUIRE(duckdb_v2_file_system_get_from_connection(conn, &fs, &err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(err != nullptr);
-	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_INVALID_INPUT;
+	REQUIRE(err != nullptr); // untouched: the failure's info still sits in the slot
+	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_get_code(err, &code);
-	REQUIRE(code == DUCKDB_V2_ERROR_NONE);
-	const char *msg = nullptr;
-	duckdb_v2_error_info_get_text(err, &msg);
-	REQUIRE(std::string(msg).empty());
-	REQUIRE(fs != nullptr);
+	REQUIRE(code == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	duckdb_v2_error_info_destroy(&err);
 	REQUIRE(err == nullptr);
 
-	duckdb_v2_disconnect(&conn, nullptr);
-	duckdb_v2_close(&db, nullptr);
-	duckdb_v2_destroy_environment(&env, nullptr);
+	duckdb_v2_disconnect(&conn);
+	duckdb_v2_close(&db);
+	duckdb_v2_destroy_environment(&env);
 }
 
 TEST_CASE("V2 error: WithErrorHandler failure overwrites the prior message in the slot", "[capi_v2][error]") {
@@ -627,7 +595,7 @@ TEST_CASE("V2 option: create / destroy", "[capi_v2][option]") {
 		duckdb_v2_option_ptr opt = nullptr;
 		REQUIRE(duckdb_v2_option_create("memory_limit", "1GB", &opt, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(opt != nullptr);
-		REQUIRE(duckdb_v2_option_destroy(&opt, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_option_destroy(&opt) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(opt == nullptr);
 	}
 
@@ -642,7 +610,7 @@ TEST_CASE("V2 option: create / destroy", "[capi_v2][option]") {
 		REQUIRE(setting != nullptr);
 		REQUIRE(name[0] == '\0');
 		REQUIRE(setting[0] == '\0');
-		duckdb_v2_option_destroy(&opt, nullptr);
+		duckdb_v2_option_destroy(&opt);
 	}
 
 	SECTION("create rejects null name") {
@@ -665,19 +633,19 @@ TEST_CASE("V2 option: create / destroy", "[capi_v2][option]") {
 	}
 
 	SECTION("destroy with null pointer-to-handle is a no-op") {
-		REQUIRE(duckdb_v2_option_destroy(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_option_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
 	}
 
 	SECTION("destroy on already-null slot is a no-op") {
 		duckdb_v2_option_ptr opt = nullptr;
-		REQUIRE(duckdb_v2_option_destroy(&opt, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_option_destroy(&opt) == DUCKDB_V2_ERROR_NONE);
 	}
 
 	SECTION("double destroy is safe (slot was nulled by first destroy)") {
 		duckdb_v2_option_ptr opt = nullptr;
 		duckdb_v2_option_create("memory_limit", "1GB", &opt, nullptr);
-		REQUIRE(duckdb_v2_option_destroy(&opt, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_option_destroy(&opt, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_option_destroy(&opt) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_option_destroy(&opt) == DUCKDB_V2_ERROR_NONE);
 	}
 }
 
@@ -732,7 +700,7 @@ TEST_CASE("V2 option: accessors round-trip user-supplied values", "[capi_v2][opt
 		duckdb_v2_error_info_destroy(&err);
 	}
 
-	duckdb_v2_option_destroy(&opt, nullptr);
+	duckdb_v2_option_destroy(&opt);
 }
 
 TEST_CASE("V2 option: accessor null-arg validation", "[capi_v2][option]") {
@@ -777,7 +745,7 @@ TEST_CASE("V2 option: accessor null-arg validation", "[capi_v2][option]") {
 		REQUIRE(duckdb_v2_option_get_alias(nullptr, 0, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	}
 
-	duckdb_v2_option_destroy(&opt, nullptr);
+	duckdb_v2_option_destroy(&opt);
 }
 
 TEST_CASE("V2 option: handles are independent", "[capi_v2][option]") {
@@ -795,7 +763,7 @@ TEST_CASE("V2 option: handles are independent", "[capi_v2][option]") {
 	REQUIRE(std::string(name_a) == "memory_limit");
 	REQUIRE(std::string(name_b) == "threads");
 
-	duckdb_v2_option_destroy(&a, nullptr);
+	duckdb_v2_option_destroy(&a);
 	REQUIRE(a == nullptr);
 
 	// b's accessors still work after a's destruction.
@@ -803,7 +771,7 @@ TEST_CASE("V2 option: handles are independent", "[capi_v2][option]") {
 	REQUIRE(duckdb_v2_option_get_name(b, &still_b, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(std::string(still_b) == "threads");
 
-	duckdb_v2_option_destroy(&b, nullptr);
+	duckdb_v2_option_destroy(&b);
 }
 
 TEST_CASE("V2 option: borrowed pointers stay valid until destroy", "[capi_v2][option]") {
@@ -820,7 +788,7 @@ TEST_CASE("V2 option: borrowed pointers stay valid until destroy", "[capi_v2][op
 	REQUIRE(first_name == second_name);
 	REQUIRE(std::string(first_name) == "foo");
 
-	duckdb_v2_option_destroy(&opt, nullptr);
+	duckdb_v2_option_destroy(&opt);
 }
 
 TEST_CASE("V2 option: error info is populated on failure paths", "[capi_v2][option]") {
@@ -846,7 +814,7 @@ TEST_CASE("V2 option: error info is populated on failure paths", "[capi_v2][opti
 		duckdb_v2_error_info_get_text(err, &msg);
 		REQUIRE(std::string(msg).find("out of range") != std::string::npos);
 		duckdb_v2_error_info_destroy(&err);
-		duckdb_v2_option_destroy(&opt, nullptr);
+		duckdb_v2_option_destroy(&opt);
 	}
 
 	SECTION("err == nullptr is tolerated on every failure path") {
@@ -855,7 +823,7 @@ TEST_CASE("V2 option: error info is populated on failure paths", "[capi_v2][opti
 		duckdb_v2_option_create("k", "v", &opt, nullptr);
 		const char *alias = nullptr;
 		REQUIRE(duckdb_v2_option_get_alias(opt, 99, &alias, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		duckdb_v2_option_destroy(&opt, nullptr);
+		duckdb_v2_option_destroy(&opt);
 	}
 }
 
@@ -976,7 +944,7 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 			    REQUIRE(builder == nullptr);
 			    REQUIRE(duckdb_v2_scalar_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
 
-			    duckdb_v2_logical_type_destroy(&type, nullptr);
+			    duckdb_v2_logical_type_destroy(&type);
 		    },
 		    nullptr, nullptr);
 	}
@@ -998,10 +966,10 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 	REQUIRE((static_cast<const int32_t *>(result_view.data))[0] == 3);
 
 	// Cleanup
-	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_result_destroy(&result, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_disconnect(&conn, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_result_destroy(&result) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_disconnect(&conn) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(conn == nullptr);
-	duckdb_v2_close(&db, nullptr);
-	duckdb_v2_destroy_environment(&env, nullptr);
+	duckdb_v2_close(&db);
+	duckdb_v2_destroy_environment(&env);
 }

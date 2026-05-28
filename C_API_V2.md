@@ -135,13 +135,22 @@ See `capigen/CLAUDE.md` for the full spec conventions.
 
 Every fallible V2 function returns a `DUCKDB_V2_API_CALL_t` error code. On success the returned value is `DUCKDB_V2_ERROR_NONE`; on failure it is a non-zero code from `api_spec/v2/common/error_codes.yaml` (or the sentinel `DUCKDB_V2_API_ERROR` for an unspecified internal failure).
 
-Functions also take a trailing `duckdb_v2_error_info_ptr *err` out-parameter that, on failure, receives an opaque handle carrying richer detail (currently the message, with room to grow).
+Fallible functions also take a trailing `duckdb_v2_error_info_ptr *err` out-parameter that, on failure, receives an opaque handle carrying richer detail (currently the message, with room to grow). Destructors are the exception — see below.
 
-- **The return value is authoritative.** It always carries the error code, regardless of whether `err` was provided.
+- **The return value is authoritative.** It always carries the error code, regardless of whether `err` was provided. Always check the return code — never infer success or failure from the state of `*err`.
 - **`err` is optional — callers may pass `NULL`** on any call to opt out of detail.
-- **On success**, the library leaves `*err` as `NULL`.
-- **On failure**, if `err != NULL` the library allocates a `duckdb_v2_error_info_ptr` and stores it in `*err`. The caller owns it and must destroy it with `duckdb_v2_error_info_destroy` (null-safe).
-- **Reusing `err` across calls.** If `*err` is already non-null on entry, the library destroys the previous info before writing a new one. To preserve info across calls, detach first: `saved = *err; *err = NULL;`.
+- **The library writes the slot only on failure; success leaves it untouched.** On a failing call with `err != NULL` the info is lazy-allocated on the slot's first use and overwritten in place thereafter. On a successful call the library does *nothing* to the slot — it neither allocates, clears, nor nulls it. (Writing on every successful call would force an allocation per call for no benefit, since the return code already says "success".)
+- **On failure**, if `err != NULL` the slot holds an info carrying the code and message. The caller owns the slot and must destroy it once with `duckdb_v2_error_info_destroy` (null-safe).
+- **Read `*err` only after a failing return.** Because success never touches the slot, a stale info from an earlier failure can survive a later successful call. This is harmless as long as you key off the return code (which you must) and read `*err` only when the immediately preceding call returned a non-`NONE` code. There is no "clear" step and no clear function — the slot is not state you reset between calls.
+- **The only lifecycle duty is to destroy once.** Reuse the same `err` variable across as many calls as you like; when you are done (typically after consuming a failure's detail), call `duckdb_v2_error_info_destroy(&err)`, which frees the info and re-nulls the slot. To keep an info alive past a destroy of the slot, detach it first: `saved = *err; *err = NULL;`.
+
+### Destructors are infallible and take no `err`
+
+Destructors — `duckdb_v2_close`, `duckdb_v2_disconnect`, `duckdb_v2_destroy_environment`, `duckdb_v2_option_destroy`, `duckdb_v2_value_destroy`, `duckdb_v2_logical_type_destroy`, `duckdb_v2_data_chunk_destroy`, `duckdb_v2_result_destroy`, `duckdb_v2_error_info_destroy`, `duckdb_v2_file_handle_destroy`, `duckdb_v2_scalar_function_builder_destroy` — take only their handle slot and **no `err` out-parameter**. `duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_ptr *func)` is the canonical shape.
+
+- They are **null-safe**: a null pointer-to-handle, or a slot already set to `NULL`, is a no-op.
+- On return the handle slot is set to `NULL` to prevent double-free.
+- They still return `DUCKDB_V2_API_CALL_t`, so the return value remains the channel for the rare refusal that is genuinely actionable — e.g. `duckdb_v2_destroy_environment` returns `DUCKDB_V2_ERROR_RESOURCE_IN_USE` (and leaves the handle intact) while databases opened through it are still alive. Without an `err` slot there is no message detail for these cases; the code alone is the contract.
 
 The message is borrowed and valid until the info is destroyed:
 
@@ -151,9 +160,9 @@ duckdb_v2_error_info_ptr err = NULL;
 
 if (duckdb_v2_option_create("memory_limit", "1GB", &opt, &err) != DUCKDB_V2_ERROR_NONE) {
     const char *msg = NULL;
-    duckdb_v2_error_info_get_message(err, &msg, NULL);
+    duckdb_v2_error_info_get_text(err, &msg);
     fprintf(stderr, "option_create failed: %s\n", msg ? msg : "(no detail)");
-    duckdb_v2_error_info_destroy(&err, NULL);
+    duckdb_v2_error_info_destroy(&err);
 }
 
 // Opt-out form — only the return code is inspected:
@@ -162,19 +171,19 @@ if (duckdb_v2_option_create("memory_limit", "1GB", &opt, NULL) != DUCKDB_V2_ERRO
 }
 ```
 
-Implementations in `src/main/capi_v2/` report errors through the `SetErrorInfo` / `ClearErrorInfo` helpers in `capi_v2_internal.hpp`. Both are safe to call with `err == NULL`; `SetErrorInfo` transparently destroys any previous info in the slot before allocating a new one.
+Implementations in `src/main/capi_v2/` report failures through the `SetErrorInfo` helper in `capi_v2_internal.hpp`: it lazy-allocates an info in the slot if empty and otherwise overwrites the existing one in place, never destroys the slot (end-of-life is the caller's job via `error_info_destroy`), and is safe to call with `err == NULL`. There is no success-path helper — successful returns simply leave the slot alone and `return DUCKDB_V2_ERROR_NONE`. Most entry points don't call `SetErrorInfo` directly: they wrap their body in the `WithErrorHandler` template (below), which catches and writes the slot only on failure.
 
 ### One uniform model: every `err` is a slot
 
-The err semantics are the same wherever they appear — at external entry points, inside callback parameters, anywhere. `err` is always `error_info_ptr *err`: a pointer-to-handle out-parameter (a "slot"). The library writes a heap-allocated `error_info` into the slot on failure when the slot is non-null; sets `*err = NULL` on success; destroys any prior content before writing. There is no second pattern, no "info handle vs slot" distinction, no translation layer between callbacks and the rest of the API.
+The err semantics are the same wherever they appear — at external entry points, inside callback parameters, anywhere. `err` is always `error_info_ptr *err`: a pointer-to-handle out-parameter (a "slot"). The library writes an `error_info` into the slot only on failure when the slot is non-null; on success it leaves the slot untouched, and it never destroys the slot. The backing `error_info` may live on the heap (external entry points lazy-allocate one) or on the library's stack (callback trampolines hand the callback a slot pointing at a stack-allocated info). There is no second pattern, no "info handle vs slot" distinction, no translation layer between callbacks and the rest of the API.
 
 Two consequences of the uniform model:
 
-- **Inside a callback, propagating an error from a downstream V2 call is trivial.** Pass the same `err` slot through to the nested call; the nested call populates it on failure exactly the way it populates any other slot. The callback inspects whether it now holds an info (non-null) and either returns (the trampoline will see the populated slot and act on it) or unwinds further.
+- **Inside a callback, propagating an error from a downstream V2 call is trivial.** Pass the same `err` slot through to the nested call; the nested call populates it on failure exactly the way it populates any other slot. The callback inspects whether it now holds an error code and either returns (the trampoline will see the populated slot and act on it) or unwinds further.
 
-- **Inside a callback, initiating a custom error is a single call** to the public helper `duckdb_v2_error_info_signal(err, code, message)`. The helper allocates a fresh `error_info`, sets its code and message, and stores its pointer in the slot — destroying any prior content first. Returns the supplied `code` so callbacks may write `return duckdb_v2_error_info_signal(...)` from a function returning `API_CALL`.
+- **Inside a callback, initiating a custom error** is done through the public setters on the handle DuckDB provides: `duckdb_v2_error_info_set_code(*err, code)` and `duckdb_v2_error_info_set_text(*err, message)`. In a callback `*err` is always a valid handle owned by DuckDB; the callee sets its code and message and returns. **The callee must never destroy the handle** — its storage may be on the library's stack. After the callback returns, the trampoline reads the code and, if it is not `DUCKDB_V2_ERROR_NONE`, raises a DuckDB exception that the outer `WithErrorHandler` translates back into the V2 error code.
 
-The `WithErrorHandler` template in `capi_v2_internal.hpp` is the bridge-level helper for external entry points: it wraps a lambda with try/catch, translates thrown DuckDB exceptions to V2 error codes via `GetErrorCodeFromExceptionType`, and routes through `SetErrorInfo`/`ClearErrorInfo`. Callback trampolines (e.g. inside `connection_execute_with_context` or the scalar-function bind/init/exec bridges) do their own explicit local-slot inspection and translate via a thrown DuckDB exception that the outer `WithErrorHandler` catches.
+The `WithErrorHandler` template in `capi_v2_internal.hpp` is the bridge-level helper for external entry points: it wraps a lambda with try/catch, translates thrown DuckDB exceptions to V2 error codes via `GetErrorCodeFromExceptionType`, and writes the resulting code/message into the slot **only on failure** (lazy-allocating on first use, never destroying); on success it returns `DUCKDB_V2_ERROR_NONE` and leaves the slot untouched. Callback trampolines (e.g. inside `connection_execute_with_context` or the scalar-function bind/init/exec bridges) allocate a stack `ErrorInfoV2`, hand the callback a slot pointing at it, inspect its code after the callback returns, and translate a set code into a thrown DuckDB exception that the outer `WithErrorHandler` catches.
 
 ## V2 conventions
 
@@ -223,7 +232,7 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
   - `prefix:` in `metadata.yaml` — the IDL is prefix-free; `duckdb_v2_` is applied at generation time. New module YAML must not bake the prefix into type/function names.
   - `tagged_struct` handle style (alternative to `void *` typedef; per-handle `override_style` map for opting in/out) — choose deliberately when adding new handles.
   - `qualified` flag on aliases — lets an alias reference an external type name unchanged (no prefix, no `_t` suffix).
-  - See `capigen/claude.md` (Spec-language reference section) for YAML syntax, generated-C output, and caveats per feature.
+  - See `capigen/CLAUDE.md` (Spec-language reference section) for YAML syntax, generated-C output, and caveats per feature.
 
 ## Generating the header and stubs
 
@@ -269,15 +278,16 @@ Example implementation (excerpt from `src/main/capi_v2/option-v2.cpp`):
 DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setting,
                                              duckdb_v2_option_ptr *out_option,
                                              duckdb_v2_error_info_ptr *err) {
-    if (!name || !setting || !out_option) {
-        return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
-                                    "null argument to duckdb_v2_option_create");
-    }
-    auto *wrapper = new duckdb::OptionWrapperV2();
-    wrapper->name = name;
-    wrapper->setting = setting;
-    *out_option = static_cast<duckdb_v2_option_ptr>(wrapper);
-    return duckdb::ClearErrorInfo(err);
+    return duckdb::WithErrorHandler(err, [&]() {
+        if (!name || !setting || !out_option) {
+            throw duckdb::InvalidInputException("null argument to duckdb_v2_option_create");
+        }
+        *out_option = nullptr;
+        auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
+        wrapper->name = name;
+        wrapper->setting = setting;
+        *out_option = static_cast<duckdb_v2_option_ptr>(wrapper.release());
+    });
 }
 ```
 
@@ -327,5 +337,5 @@ The `.github/workflows/v2-capi.yml` workflow runs on every push and PR. It runs 
 - **`ctx_centric.md`** (untracked) — parked design doc exploring a context-centric API shape. Captures the extended discussion: ctx hierarchy, caching architecture, config handling, thread safety, cross-language callback contexts, classes of objects that don't naturally belong to a single ctx. Read before making major API-shape decisions.
 - **`config_design.md`** (untracked) — design notes for the configuration / options surface that landed in PR #9.
 - **`capigen/README.md`** — generator usage from the generator's perspective (if you're hacking on capigen itself). capigen is vendored in-tree; it is not a git subtree or submodule.
-- **`capigen/claude.md`** — authoritative conventions for the YAML spec (function naming, handle conventions, role semantics).
+- **`capigen/CLAUDE.md`** — authoritative conventions for the YAML spec (function naming, handle conventions, role semantics).
 - **`schema_reference.md`** — top-level reference for the module-level JSON Schema (`capigen/src/capigen/schema/module.schema.json`).

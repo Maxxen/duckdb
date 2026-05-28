@@ -143,11 +143,6 @@ functions:
         type: result
         indirection: 1
         description: The result to destroy.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   result_get_result_type:
     summary: Returns the shape of the result (query / changed_rows / nothing).

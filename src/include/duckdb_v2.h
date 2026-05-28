@@ -392,10 +392,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, cons
 to null. Safe to call on an already-null slot.
 
 * @param option The option handle to destroy.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_ptr *option, duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_ptr *option);
 /*!
 * Borrows the option's canonical name.
 * For options returned by a database/connection get (landing in a
@@ -538,11 +537,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_get_chunk(duckdb_v2_result_pt
 previously borrowed from this chunk become invalid.
 
 * @param chunk
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_ptr *chunk,
-                                                               duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_ptr *chunk);
 /*!
  * Returns the row count of a data chunk.
  * @param chunk
@@ -637,10 +634,9 @@ reference drops, the instance is destroyed and its path becomes
 available for reopen. On success, the handle is set to null.
 
 * @param db The database to close.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db, duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db);
 /*!
 * Sets a config option on the database (GLOBAL scope).
 * Reads name and setting from the option; other fields ignored.
@@ -746,11 +742,9 @@ databases first, then retry. On success, the environment handle is
 set to null.
 
 * @param env The environment.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_environment(duckdb_v2_environment_ptr *env,
-                                                                duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_destroy_environment(duckdb_v2_environment_ptr *env);
 /*!
 * Returns the number of databases currently open under the environment.
 * Diagnostic accessor for debugging leaked database handles when
@@ -1151,11 +1145,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V
 no-op. On success the slot is set to nullptr.
 
 * @param type The logical type to destroy.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_ptr *type,
-                                                                 duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_ptr *type);
 /*!
  * Returns the logical type id.
  * @param type The logical type.
@@ -1503,10 +1495,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connectio
 no-op. Frees all owned memory. On success the slot is set to nullptr.
 
 * @param result The result to destroy.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_destroy(duckdb_v2_result_ptr *result, duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_destroy(duckdb_v2_result_ptr *result);
 /*!
 * Returns the shape of the result (query / changed_rows / nothing).
 * Returns the result shape: QUERY_RESULT for statements that produce
@@ -1925,10 +1916,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_result_vector(du
 no-op. On success the slot is set to nullptr.
 
 * @param value The value to destroy.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_destroy(duckdb_v2_value_ptr *value, duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_destroy(duckdb_v2_value_ptr *value);
 /*!
 * Creates a NULL value of the given logical type.
 * The input logical type is borrowed; the value internally copies the
@@ -2962,10 +2952,9 @@ other reference (open queries, prepared statements, etc.) holds
 it. On success, the handle is set to null.
 
 * @param conn The connection to close.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn, duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn);
 /*!
 * Sets a config option through the connection.
 * Reads name and setting from the option; other fields ignored.

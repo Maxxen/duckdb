@@ -14,8 +14,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setti
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_ptr *option, duckdb_v2_error_info_ptr *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
+DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_ptr *option) {
+	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!option) {
 			return;
 		}

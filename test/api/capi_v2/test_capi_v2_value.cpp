@@ -31,9 +31,9 @@ static duckdb_v2_value_ptr V1ValueToV2(duckdb_value v) {
 // ===========================================================================
 
 TEST_CASE("V2: value destroy is null-safe", "[capi_v2][value][lifecycle]") {
-	REQUIRE(duckdb_v2_value_destroy(nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_value_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_ptr already_null = nullptr;
-	REQUIRE(duckdb_v2_value_destroy(&already_null, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_value_destroy(&already_null) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(already_null == nullptr);
 }
 
@@ -51,7 +51,7 @@ TEST_CASE("V2: value_create_null carries the borrowed type", "[capi_v2][value][n
 	REQUIRE(v != nullptr);
 
 	// Input type is borrowed: destroying it must not affect the NULL value.
-	REQUIRE(duckdb_v2_logical_type_destroy(&int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_logical_type_destroy(&int_type) == DUCKDB_V2_ERROR_NONE);
 
 	bool is_null = false;
 	REQUIRE(duckdb_v2_value_is_null(v, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -64,9 +64,9 @@ TEST_CASE("V2: value_create_null carries the borrowed type", "[capi_v2][value][n
 	REQUIRE(duckdb_v2_logical_type_get_id(out_type, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	// Caller owns the returned logical type.
-	REQUIRE(duckdb_v2_logical_type_destroy(&out_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_logical_type_destroy(&out_type) == DUCKDB_V2_ERROR_NONE);
 
-	REQUIRE(duckdb_v2_value_destroy(&v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_value_destroy(&v) == DUCKDB_V2_ERROR_NONE);
 }
 
 TEST_CASE("V2: value_create_null rejects null type / null out", "[capi_v2][value][null]") {
@@ -77,7 +77,7 @@ TEST_CASE("V2: value_create_null rejects null type / null out", "[capi_v2][value
 	duckdb_v2_logical_type_ptr int_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
 	REQUIRE(duckdb_v2_value_create_null(int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_logical_type_destroy(&int_type, nullptr);
+	duckdb_v2_logical_type_destroy(&int_type);
 }
 
 TEST_CASE("V2: value_is_null distinguishes NULL from non-NULL", "[capi_v2][value][null]") {
@@ -86,7 +86,7 @@ TEST_CASE("V2: value_is_null distinguishes NULL from non-NULL", "[capi_v2][value
 	bool is_null = true;
 	REQUIRE(duckdb_v2_value_is_null(v, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(!is_null);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: value_is_null / value_get_logical_type / value_destroy null guards", "[capi_v2][value][null]") {
@@ -101,7 +101,7 @@ TEST_CASE("V2: value_is_null / value_get_logical_type / value_destroy null guard
 	duckdb_v2_value_create_int32(1, &v, nullptr);
 	REQUIRE(duckdb_v2_value_is_null(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_value_get_logical_type(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 // ===========================================================================
@@ -117,13 +117,13 @@ TEST_CASE("V2: bool round-trip + reject wrong type + reject NULL", "[capi_v2][va
 		duckdb_v2_logical_type_ptr lt = nullptr;
 		duckdb_v2_value_get_logical_type(v, &lt, nullptr);
 		duckdb_v2_logical_type_get_id(lt, &id, nullptr);
-		duckdb_v2_logical_type_destroy(&lt, nullptr);
+		duckdb_v2_logical_type_destroy(&lt);
 		REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN);
 
 		bool out = !input;
 		REQUIRE(duckdb_v2_value_get_bool(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(out == input);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 
 	// Wrong type: TINYINT value, BOOL getter.
@@ -131,7 +131,7 @@ TEST_CASE("V2: bool round-trip + reject wrong type + reject NULL", "[capi_v2][va
 	duckdb_v2_value_create_int8(1, &ti, nullptr);
 	bool out = false;
 	REQUIRE(duckdb_v2_value_get_bool(ti, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&ti, nullptr);
+	duckdb_v2_value_destroy(&ti);
 
 	// NULL of BOOLEAN: typed getter must refuse rather than read garbage.
 	duckdb_v2_logical_type_ptr bool_lt = nullptr;
@@ -139,8 +139,8 @@ TEST_CASE("V2: bool round-trip + reject wrong type + reject NULL", "[capi_v2][va
 	duckdb_v2_value_ptr nb = nullptr;
 	duckdb_v2_value_create_null(bool_lt, &nb, nullptr);
 	REQUIRE(duckdb_v2_value_get_bool(nb, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&nb, nullptr);
-	duckdb_v2_logical_type_destroy(&bool_lt, nullptr);
+	duckdb_v2_value_destroy(&nb);
+	duckdb_v2_logical_type_destroy(&bool_lt);
 }
 
 // Helper: assert a typed-payload getter rejects a wrong-id value and a NULL
@@ -150,15 +150,15 @@ static void RejectWrongTypeAndNull(CreateOther create_other_value, Getter getter
                                    DUCKDB_V2_LOGICAL_TYPE_ID id_for_null) {
 	duckdb_v2_value_ptr other = create_other_value();
 	REQUIRE(getter(other, &out_storage, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&other, nullptr);
+	duckdb_v2_value_destroy(&other);
 
 	duckdb_v2_logical_type_ptr lt = nullptr;
 	duckdb_v2_logical_type_create_from_id(id_for_null, &lt, nullptr);
 	duckdb_v2_value_ptr nv = nullptr;
 	duckdb_v2_value_create_null(lt, &nv, nullptr);
 	REQUIRE(getter(nv, &out_storage, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&nv, nullptr);
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_value_destroy(&nv);
+	duckdb_v2_logical_type_destroy(&lt);
 }
 
 TEST_CASE("V2: signed integer round-trips", "[capi_v2][value][int]") {
@@ -168,7 +168,7 @@ TEST_CASE("V2: signed integer round-trips", "[capi_v2][value][int]") {
 		int8_t out = 0;
 		REQUIRE(duckdb_v2_value_get_int8(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(out == -42);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -176,7 +176,7 @@ TEST_CASE("V2: signed integer round-trips", "[capi_v2][value][int]") {
 		int16_t out = 0;
 		duckdb_v2_value_get_int16(v, &out, nullptr);
 		REQUIRE(out == -30000);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -184,7 +184,7 @@ TEST_CASE("V2: signed integer round-trips", "[capi_v2][value][int]") {
 		int32_t out = 0;
 		duckdb_v2_value_get_int32(v, &out, nullptr);
 		REQUIRE(out == -1234567);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -192,7 +192,7 @@ TEST_CASE("V2: signed integer round-trips", "[capi_v2][value][int]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_int64(v, &out, nullptr);
 		REQUIRE(out == int64_t(-9000000000LL));
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -203,7 +203,7 @@ TEST_CASE("V2: unsigned integer round-trips", "[capi_v2][value][uint]") {
 		uint8_t out = 0;
 		duckdb_v2_value_get_uint8(v, &out, nullptr);
 		REQUIRE(out == 200);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -211,7 +211,7 @@ TEST_CASE("V2: unsigned integer round-trips", "[capi_v2][value][uint]") {
 		uint16_t out = 0;
 		duckdb_v2_value_get_uint16(v, &out, nullptr);
 		REQUIRE(out == 60000);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -219,7 +219,7 @@ TEST_CASE("V2: unsigned integer round-trips", "[capi_v2][value][uint]") {
 		uint32_t out = 0;
 		duckdb_v2_value_get_uint32(v, &out, nullptr);
 		REQUIRE(out == 4000000000u);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -227,7 +227,7 @@ TEST_CASE("V2: unsigned integer round-trips", "[capi_v2][value][uint]") {
 		uint64_t out = 0;
 		duckdb_v2_value_get_uint64(v, &out, nullptr);
 		REQUIRE(out == 9000000000000000000ULL);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -259,15 +259,15 @@ static void RejectHugeintShapedGetter(CreateOther create_other, Getter getter, D
 	int64_t hi = 0;
 	duckdb_v2_value_ptr other = create_other();
 	REQUIRE(getter(other, &lo, &hi, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&other, nullptr);
+	duckdb_v2_value_destroy(&other);
 
 	duckdb_v2_logical_type_ptr lt = nullptr;
 	duckdb_v2_logical_type_create_from_id(id_for_null, &lt, nullptr);
 	duckdb_v2_value_ptr nv = nullptr;
 	duckdb_v2_value_create_null(lt, &nv, nullptr);
 	REQUIRE(getter(nv, &lo, &hi, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&nv, nullptr);
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_value_destroy(&nv);
+	duckdb_v2_logical_type_destroy(&lt);
 }
 
 TEST_CASE("V2: float / double / hugeint / uhugeint wrong-type and NULL rejection", "[capi_v2][value][float][hugeint]") {
@@ -303,14 +303,14 @@ TEST_CASE("V2: float / double / hugeint / uhugeint wrong-type and NULL rejection
 	duckdb_v2_value_ptr other = nullptr;
 	duckdb_v2_value_create_int32(0, &other, nullptr);
 	REQUIRE(duckdb_v2_value_get_uhugeint(other, &lo, &hi, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&other, nullptr);
+	duckdb_v2_value_destroy(&other);
 	duckdb_v2_logical_type_ptr lt = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_UHUGEINT, &lt, nullptr);
 	duckdb_v2_value_ptr nv = nullptr;
 	duckdb_v2_value_create_null(lt, &nv, nullptr);
 	REQUIRE(duckdb_v2_value_get_uhugeint(nv, &lo, &hi, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&nv, nullptr);
-	duckdb_v2_logical_type_destroy(&lt, nullptr);
+	duckdb_v2_value_destroy(&nv);
+	duckdb_v2_logical_type_destroy(&lt);
 }
 
 TEST_CASE("V2: hugeint / uhugeint round-trip", "[capi_v2][value][hugeint]") {
@@ -324,7 +324,7 @@ TEST_CASE("V2: hugeint / uhugeint round-trip", "[capi_v2][value][hugeint]") {
 		REQUIRE(duckdb_v2_value_get_hugeint(v, &lo, &hi, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(lo == 0x0123456789abcdefULL);
 		REQUIRE(hi == int64_t(-1));
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -335,7 +335,7 @@ TEST_CASE("V2: hugeint / uhugeint round-trip", "[capi_v2][value][hugeint]") {
 		REQUIRE(duckdb_v2_value_get_uhugeint(v, &lo, &hi, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(lo == 0xfedcba9876543210ULL);
 		REQUIRE(hi == 0x0123456789abcdefULL);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 
 	// Wrong type rejection.
@@ -346,7 +346,7 @@ TEST_CASE("V2: hugeint / uhugeint round-trip", "[capi_v2][value][hugeint]") {
 	REQUIRE(duckdb_v2_value_get_hugeint(i, &lo, &hi, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	uint64_t hi_u = 0;
 	REQUIRE(duckdb_v2_value_get_uhugeint(i, &lo, &hi_u, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&i, nullptr);
+	duckdb_v2_value_destroy(&i);
 }
 
 TEST_CASE("V2: float / double round-trip", "[capi_v2][value][float]") {
@@ -356,7 +356,7 @@ TEST_CASE("V2: float / double round-trip", "[capi_v2][value][float]") {
 		float out = 0.0f;
 		REQUIRE(duckdb_v2_value_get_float(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(out == 3.5f);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -364,7 +364,7 @@ TEST_CASE("V2: float / double round-trip", "[capi_v2][value][float]") {
 		double out = 0.0;
 		REQUIRE(duckdb_v2_value_get_double(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(out == 2.71828);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -392,7 +392,7 @@ TEST_CASE("V2: varchar round-trip with embedded NUL + borrow lifetime", "[capi_v
 	REQUIRE(len_again == len);
 	REQUIRE(std::memcmp(borrowed, borrowed_again, len) == 0);
 
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: varchar empty (length=0, data may be null)", "[capi_v2][value][varchar]") {
@@ -409,7 +409,7 @@ TEST_CASE("V2: varchar empty (length=0, data may be null)", "[capi_v2][value][va
 	REQUIRE(borrowed != nullptr);
 	REQUIRE(borrowed[0] == '\0');
 
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: varchar empty with non-null data ignores the byte at data", "[capi_v2][value][varchar]") {
@@ -423,7 +423,7 @@ TEST_CASE("V2: varchar empty with non-null data ignores the byte at data", "[cap
 	idx_t len = 99;
 	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(len == 0);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: varchar rejects null data with positive length", "[capi_v2][value][varchar]") {
@@ -453,15 +453,15 @@ TEST_CASE("V2: varchar getter rejects non-VARCHAR and NULL VARCHAR", "[capi_v2][
 	const char *p = nullptr;
 	idx_t len = 0;
 	REQUIRE(duckdb_v2_value_get_varchar(i, &p, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&i, nullptr);
+	duckdb_v2_value_destroy(&i);
 
 	duckdb_v2_logical_type_ptr vc = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &vc, nullptr);
 	duckdb_v2_value_ptr nv = nullptr;
 	duckdb_v2_value_create_null(vc, &nv, nullptr);
 	REQUIRE(duckdb_v2_value_get_varchar(nv, &p, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&nv, nullptr);
-	duckdb_v2_logical_type_destroy(&vc, nullptr);
+	duckdb_v2_value_destroy(&nv);
+	duckdb_v2_logical_type_destroy(&vc);
 }
 
 TEST_CASE("V2: varchar V1-built value round-trips through V2 getter / destroy",
@@ -477,7 +477,7 @@ TEST_CASE("V2: varchar V1-built value round-trips through V2 getter / destroy",
 	REQUIRE(len == 6);
 	REQUIRE(std::string(borrowed, len) == "héllo");
 
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 // ===========================================================================
@@ -494,7 +494,7 @@ TEST_CASE("V2: blob round-trip with raw bytes including NUL", "[capi_v2][value][
 	REQUIRE(duckdb_v2_value_get_blob(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(len == 4);
 	REQUIRE(std::memcmp(borrowed, raw, 4) == 0);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: blob empty + reject null with positive length", "[capi_v2][value][blob]") {
@@ -504,7 +504,7 @@ TEST_CASE("V2: blob empty + reject null with positive length", "[capi_v2][value]
 	idx_t len = 99;
 	REQUIRE(duckdb_v2_value_get_blob(v, &p, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(len == 0);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 
 	REQUIRE(duckdb_v2_value_create_blob(nullptr, 8, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(v == nullptr);
@@ -522,7 +522,7 @@ TEST_CASE("V2: bit round-trip preserves padding byte + data bytes", "[capi_v2][v
 	REQUIRE(duckdb_v2_value_get_bit(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(len == 3);
 	REQUIRE(std::memcmp(borrowed, raw, 3) == 0);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: bit boundary inputs are pass-through (core is permissive)", "[capi_v2][value][bit]") {
@@ -541,7 +541,7 @@ TEST_CASE("V2: bit boundary inputs are pass-through (core is permissive)", "[cap
 		REQUIRE(duckdb_v2_value_get_bit(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(len == 1);
 		REQUIRE(borrowed[0] == 0x00);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		const uint8_t weird_padding[] = {0xff, 0xaa};
@@ -552,7 +552,7 @@ TEST_CASE("V2: bit boundary inputs are pass-through (core is permissive)", "[cap
 		REQUIRE(duckdb_v2_value_get_bit(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(len == 2);
 		REQUIRE(std::memcmp(borrowed, weird_padding, 2) == 0);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -587,7 +587,7 @@ TEST_CASE("V2: V1-built blob / bit / bignum round-trip through V2", "[capi_v2][v
 		REQUIRE(duckdb_v2_value_get_blob(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(len == 4);
 		REQUIRE(std::memcmp(borrowed, bytes, 4) == 0);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		// V1 duckdb_bit and duckdb_bignum take a non-const uint8_t * field; we
@@ -601,7 +601,7 @@ TEST_CASE("V2: V1-built blob / bit / bignum round-trip through V2", "[capi_v2][v
 		REQUIRE(duckdb_v2_value_get_bit(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(len == 3);
 		REQUIRE(std::memcmp(borrowed, bytes, 3) == 0);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		uint8_t magnitude[] = {0x12, 0x34, 0x56};
@@ -616,7 +616,7 @@ TEST_CASE("V2: V1-built blob / bit / bignum round-trip through V2", "[capi_v2][v
 		REQUIRE(is_negative);
 		REQUIRE(std::memcmp(out_data, magnitude, 3) == 0);
 		free(out_data);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -639,7 +639,7 @@ TEST_CASE("V2: bignum positive round-trip (magnitude bytes match)", "[capi_v2][v
 	REQUIRE(!is_negative);
 	REQUIRE(std::memcmp(out_data, magnitude, 3) == 0);
 	free(out_data);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: bignum negative round-trip (magnitude bytes match, sign flag set)", "[capi_v2][value][bignum]") {
@@ -657,7 +657,7 @@ TEST_CASE("V2: bignum negative round-trip (magnitude bytes match, sign flag set)
 	REQUIRE(is_negative);
 	REQUIRE(std::memcmp(out_data, magnitude, 3) == 0);
 	free(out_data);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: bignum multi-byte negative round-trip (high-bit + trailing zero)", "[capi_v2][value][bignum]") {
@@ -678,7 +678,7 @@ TEST_CASE("V2: bignum multi-byte negative round-trip (high-bit + trailing zero)"
 	REQUIRE(out_data[0] == 0x80);
 	REQUIRE(out_data[1] == 0x00);
 	free(out_data);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: bignum zero is one 0x00 byte (explicit form)", "[capi_v2][value][bignum]") {
@@ -696,7 +696,7 @@ TEST_CASE("V2: bignum zero is one 0x00 byte (explicit form)", "[capi_v2][value][
 	REQUIRE(!is_negative);
 	REQUIRE(out_data[0] == 0x00);
 	free(out_data);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: bignum constructor rejects null data and zero length", "[capi_v2][value][bignum]") {
@@ -724,7 +724,7 @@ TEST_CASE("V2: bignum getter rejects non-BIGNUM and NULL BIGNUM", "[capi_v2][val
 	bool neg = false;
 	REQUIRE(duckdb_v2_value_get_bignum(i, &out_data, &len, &neg, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(out_data == nullptr);
-	duckdb_v2_value_destroy(&i, nullptr);
+	duckdb_v2_value_destroy(&i);
 
 	duckdb_v2_logical_type_ptr bn_lt = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM, &bn_lt, nullptr);
@@ -732,8 +732,8 @@ TEST_CASE("V2: bignum getter rejects non-BIGNUM and NULL BIGNUM", "[capi_v2][val
 	duckdb_v2_value_create_null(bn_lt, &nv, nullptr);
 	REQUIRE(duckdb_v2_value_get_bignum(nv, &out_data, &len, &neg, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(out_data == nullptr);
-	duckdb_v2_value_destroy(&nv, nullptr);
-	duckdb_v2_logical_type_destroy(&bn_lt, nullptr);
+	duckdb_v2_value_destroy(&nv);
+	duckdb_v2_logical_type_destroy(&bn_lt);
 }
 
 // ===========================================================================
@@ -746,7 +746,7 @@ TEST_CASE("V2: date round-trip", "[capi_v2][value][date]") {
 	int32_t out = 0;
 	REQUIRE(duckdb_v2_value_get_date(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(out == 20000);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: time / time_ns round-trip", "[capi_v2][value][time]") {
@@ -756,7 +756,7 @@ TEST_CASE("V2: time / time_ns round-trip", "[capi_v2][value][time]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_time(v, &out, nullptr);
 		REQUIRE(out == 12345678);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -764,7 +764,7 @@ TEST_CASE("V2: time / time_ns round-trip", "[capi_v2][value][time]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_time_ns(v, &out, nullptr);
 		REQUIRE(out == int64_t(1234567890));
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -780,7 +780,7 @@ TEST_CASE("V2: time_tz round-trip preserves (micros, offset_seconds)", "[capi_v2
 	REQUIRE(duckdb_v2_value_get_time_tz(v, &out_micros, &out_off, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(out_micros == micros);
 	REQUIRE(out_off == offset);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: timestamp variants round-trip", "[capi_v2][value][timestamp]") {
@@ -796,7 +796,7 @@ TEST_CASE("V2: timestamp variants round-trip", "[capi_v2][value][timestamp]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_timestamp(v, &out, nullptr);
 		REQUIRE(out == payload);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -804,7 +804,7 @@ TEST_CASE("V2: timestamp variants round-trip", "[capi_v2][value][timestamp]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_timestamp_sec(v, &out, nullptr);
 		REQUIRE(out == 1700000000);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -812,7 +812,7 @@ TEST_CASE("V2: timestamp variants round-trip", "[capi_v2][value][timestamp]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_timestamp_ms(v, &out, nullptr);
 		REQUIRE(out == 1700000000123LL);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -820,7 +820,7 @@ TEST_CASE("V2: timestamp variants round-trip", "[capi_v2][value][timestamp]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_timestamp_ns(v, &out, nullptr);
 		REQUIRE(out == payload * 1000LL);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -828,7 +828,7 @@ TEST_CASE("V2: timestamp variants round-trip", "[capi_v2][value][timestamp]") {
 		int64_t out = 0;
 		duckdb_v2_value_get_timestamp_tz(v, &out, nullptr);
 		REQUIRE(out == payload);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		duckdb_v2_value_ptr v = nullptr;
@@ -842,9 +842,9 @@ TEST_CASE("V2: timestamp variants round-trip", "[capi_v2][value][timestamp]") {
 		duckdb_v2_value_ptr tz = nullptr;
 		duckdb_v2_value_create_timestamp_tz(payload, &tz, nullptr);
 		REQUIRE(duckdb_v2_value_get_timestamp_tz_ns(tz, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		duckdb_v2_value_destroy(&tz, nullptr);
+		duckdb_v2_value_destroy(&tz);
 
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -858,7 +858,7 @@ TEST_CASE("V2: interval round-trip", "[capi_v2][value][interval]") {
 	REQUIRE(months == 1);
 	REQUIRE(days == 2);
 	REQUIRE(micros == 3000000);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 // ===========================================================================
@@ -894,7 +894,7 @@ TEST_CASE("V2: decimal round-trip across all internal widths", "[capi_v2][value]
 		REQUIRE(out_hi == upper);
 		REQUIRE(out_w == c.width);
 		REQUIRE(out_s == c.scale);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -915,7 +915,7 @@ TEST_CASE("V2: decimal with hugeint payload (width >= 19)", "[capi_v2][value][de
 	REQUIRE(out_hi == upper);
 	REQUIRE(out_w == 38);
 	REQUIRE(out_s == 10);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: decimal getter rejects non-DECIMAL", "[capi_v2][value][decimal]") {
@@ -926,7 +926,7 @@ TEST_CASE("V2: decimal getter rejects non-DECIMAL", "[capi_v2][value][decimal]")
 	uint8_t w = 0;
 	uint8_t s = 0;
 	REQUIRE(duckdb_v2_value_get_decimal(v, &lo, &hi, &w, &s, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: decimal dispatches on width (small payload, large width = HUGEINT physical)",
@@ -945,7 +945,7 @@ TEST_CASE("V2: decimal dispatches on width (small payload, large width = HUGEINT
 	REQUIRE(hi == 0);
 	REQUIRE(w == 38);
 	REQUIRE(s == 0);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: decimal int64 boundary (width=18, max-magnitude payload)", "[capi_v2][value][decimal][dispatch]") {
@@ -964,7 +964,7 @@ TEST_CASE("V2: decimal int64 boundary (width=18, max-magnitude payload)", "[capi
 	REQUIRE(lo == uint64_t(signed_payload));
 	REQUIRE(hi == 0);
 	REQUIRE(w == 18);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: decimal rejects payload that doesn't fit chosen width", "[capi_v2][value][decimal][dispatch]") {
@@ -997,7 +997,7 @@ TEST_CASE("V2: uuid round-trip", "[capi_v2][value][uuid]") {
 	REQUIRE(duckdb_v2_value_get_uuid(v, &out_lo, &out_hi, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(out_lo == lower);
 	REQUIRE(out_hi == upper);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 // ===========================================================================
@@ -1013,7 +1013,7 @@ TEST_CASE("V2: value_to_string for primitives", "[capi_v2][value][to_string]") {
 		REQUIRE(out != nullptr);
 		REQUIRE(std::string(out) == "42");
 		free(out);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		// NULL value renders as "NULL".
@@ -1025,8 +1025,8 @@ TEST_CASE("V2: value_to_string for primitives", "[capi_v2][value][to_string]") {
 		REQUIRE(duckdb_v2_value_to_string(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(std::string(out) == "NULL");
 		free(out);
-		duckdb_v2_value_destroy(&v, nullptr);
-		duckdb_v2_logical_type_destroy(&lt, nullptr);
+		duckdb_v2_value_destroy(&v);
+		duckdb_v2_logical_type_destroy(&lt);
 	}
 	{
 		// VARCHAR renders as the raw bytes (no SQL quoting — ToString, not
@@ -1038,7 +1038,7 @@ TEST_CASE("V2: value_to_string for primitives", "[capi_v2][value][to_string]") {
 		REQUIRE(duckdb_v2_value_to_string(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(std::string(out) == "hi");
 		free(out);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		// DECIMAL renders with scale-aware decimal point.
@@ -1048,7 +1048,7 @@ TEST_CASE("V2: value_to_string for primitives", "[capi_v2][value][to_string]") {
 		REQUIRE(duckdb_v2_value_to_string(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(std::string(out) == "123.45");
 		free(out);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 	{
 		// BIGNUM renders as a base-10 integer string.
@@ -1059,7 +1059,7 @@ TEST_CASE("V2: value_to_string for primitives", "[capi_v2][value][to_string]") {
 		REQUIRE(duckdb_v2_value_to_string(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(std::string(out) == "256");
 		free(out);
-		duckdb_v2_value_destroy(&v, nullptr);
+		duckdb_v2_value_destroy(&v);
 	}
 }
 
@@ -1070,7 +1070,7 @@ TEST_CASE("V2: value_to_string null handle / null out", "[capi_v2][value][to_str
 	duckdb_v2_value_ptr v = nullptr;
 	duckdb_v2_value_create_int32(1, &v, nullptr);
 	REQUIRE(duckdb_v2_value_to_string(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_value_destroy(&v, nullptr);
+	duckdb_v2_value_destroy(&v);
 }
 
 // ===========================================================================

@@ -51,7 +51,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_ptr env, const char *p
 		wrapper->environment = env_wrapper;
 		env_wrapper->open_database_count.fetch_add(1, std::memory_order_release);
 		*out_db = static_cast<duckdb_v2_database_ptr>(wrapper.release());
-		return duckdb::ClearErrorInfo(err);
+		return DUCKDB_V2_ERROR_NONE;
 	} catch (std::exception &e) {
 		if (IsUniqueFileHandleConflict(e.what())) {
 			return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_RESOURCE_IN_USE, e.what());
@@ -62,8 +62,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_ptr env, const char *p
 	}
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db, duckdb_v2_error_info_ptr *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
+DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db) {
+	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!db) {
 			return;
 		}

@@ -41,8 +41,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_get_chunk(duckdb_v2_result_ptr result, idx
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_ptr *chunk, duckdb_v2_error_info_ptr *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_ptr *chunk) {
+	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!chunk) {
 			return;
 		}

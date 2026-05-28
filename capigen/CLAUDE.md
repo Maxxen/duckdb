@@ -50,12 +50,14 @@ Each module YAML file can contain these top-level sections:
 1. Every function must return an error code as the first-level return type.
    - legacy `duckdb_state`, `duckdb_error` map to `DUCKDB_V2_API_CALL` in v2.
 
-2. **Every fallible function takes a `duckdb_v2_error_info *err` as its LAST parameter** (with `kind: OUT`, `indirection: 1`, i.e. a pointer-to-handle out-parameter).
+2. **Every fallible function takes a `duckdb_v2_error_info *err` as its LAST parameter** (with `kind: OUT`, `indirection: 1`, i.e. a pointer-to-handle out-parameter). Destructors are the exception — they are infallible and take no `err` (see rule 2a).
    - `duckdb_v2_error_info` is an opaque handle declared in `api_spec/v2/common/common.yaml`. On failure the library allocates an info and writes its pointer into `*err`; the caller owns it.
-   - Contract: the return value always carries the error code and is authoritative. `err` is optional — callers may pass `nullptr` to opt out of detail. On success the library leaves `*err == nullptr`. On failure, if `err != nullptr`, the library allocates an info and stores it in `*err`; the caller destroys it with `duckdb_v2_error_info_destroy`. If `*err` is already non-null on entry, the library destroys the previous info before writing a new one — callers who want to preserve info across calls must detach first.
+   - Contract: the return value always carries the error code and is authoritative — never infer success or failure from the state of `*err`. `err` is optional — callers may pass `nullptr` to opt out of detail. On failure, if `err != nullptr`, the library writes an info into the slot (lazy-allocating on the slot's first use, overwriting in place thereafter) and the caller destroys it with `duckdb_v2_error_info_destroy`. On success the library leaves the slot untouched — it does not allocate, clear, or null it, so a stale info from an earlier failure may survive a later successful call. Read `*err` only after a failing return; there is no "clear" step and no clear function.
    - Canonical `err` parameter description in YAML: `"Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy."`
-   - Implementations must tolerate `err == nullptr` on every path — use the `SetErrorInfo` / `ClearErrorInfo` helpers in `capi_v2_internal.hpp`, which already guard on null and manage replace-and-free semantics.
+   - Implementations must tolerate `err == nullptr` on every path — use the `SetErrorInfo` helper in `capi_v2_internal.hpp` (failure path only; guards on null, lazy-allocates or overwrites in place, never destroys). Most entry points don't call it directly: they wrap their body in the `WithErrorHandler` template, which catches and writes the slot only on failure.
    - There is no longer a context handle. The first parameter is the primary subject of the call (the object being operated on) if any; otherwise skip straight to the arguments.
+
+2a. **Destructors (`role: destructor`) are infallible and take no `err` parameter** — only their handle slot. They still return `DUCKDB_V2_API_CALL_t`, are null-safe (a null slot or already-null handle is a no-op), and null the slot on return to prevent double-free. The canonical shape is `duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_ptr *func)`. A destructor that can genuinely refuse (e.g. `duckdb_v2_destroy_environment` → `RESOURCE_IN_USE` while databases are open) reports that through the return code alone — without an `err` slot there is no message detail.
 
 3. For functions that need to return data, use an `out` pointer parameter before the trailing `err` parameter.
    - Example: `duckdb_logical_type *out_type` becomes `out_type` typed pointer with `kind: OUT`.
@@ -116,7 +118,7 @@ Ensure there are entries for: opaque (void), bool, char, i8-i64, u8-u64, f32/f64
 ### common handles in common/common.yaml
 - `connection`, `data_chunk`, `vector`, `logical_type`, `value` (declared unprefixed; the prefix is applied at generation time — see "Prefix application" below).
 
-> Errors are reported via the `duckdb_v2_error` struct passed as the trailing `err` parameter to every fallible function. Do not create `duckdb_v2_error` as a handle or define getter/setter functions for it — it is a plain struct that the caller stack-allocates.
+> Errors are reported via the `duckdb_v2_error_info` opaque handle passed as the trailing `err` parameter to every fallible function — a pointer-to-handle "slot" (`error_info_ptr *err`). It is library-allocated on failure and destroyed by the caller via `duckdb_v2_error_info_destroy`; its code and message are read through `duckdb_v2_error_info_get_code` / `_get_text` and set (in callbacks) via `duckdb_v2_error_info_set_code` / `_set_text`. It is NOT a caller-stack-allocated plain struct.
 
 ## Spec-language reference
 

@@ -75,8 +75,8 @@ DUCKDB_V2_API_CALL_t GetStringBytes(duckdb_v2_value_ptr value, LogicalTypeId exp
 // Lifecycle + NULL
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_destroy(duckdb_v2_value_ptr *value, duckdb_v2_error_info_ptr *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_destroy(duckdb_v2_value_ptr *value) {
+	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!value) {
 			return;
 		}
