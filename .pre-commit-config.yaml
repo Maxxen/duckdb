@@ -66,13 +66,13 @@ repos:
         files: ^(python_client|capigen)/
 
   # cmakelang (cmake-format) is unmaintained and crashes on Python 3.14's
-  # stricter `re.Scanner`. pre-commit isolates the hook in its own venv with
-  # an older Python (typically 3.11/3.12), so it runs fine in this context
-  # regardless of the user's terminal Python.
+  # stricter `re.Scanner`. Pin the hook's isolated venv to python3.12 so it
+  # never picks up a 3.14 interpreter (matches the duckdb-format hook above).
   - repo: https://github.com/cheshirekow/cmake-format-precommit
     rev: v0.6.13
     hooks:
       - id: cmake-format
+        language_version: python3.12
         # Mirror the historical reach of scripts/format.py: only walk
         # CMakeLists.txt under upstream's `formatted_directories`, skipping
         # the same vendored subdirs upstream's `ignored_directories` lists.

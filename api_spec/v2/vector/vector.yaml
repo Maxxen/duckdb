@@ -195,25 +195,6 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  vector_flatten:
-    summary: Forces a vector into FLAT representation in place.
-    description: |
-      No-op for FLAT vectors. For CONSTANT / DICTIONARY / FSST / SEQUENCE /
-      SHREDDED vectors, materialises the per-row data and updates the
-      vector's internal representation to FLAT. Use before vector_get_view
-      if you'd rather not handle CONSTANT / DICTIONARY semantics in the
-      view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
-    role: method
-    belongs_to: vector
-    parameters:
-      vector:
-        type: vector
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
   # -----------------------------------------------------------------------
   # The view-getter
   # -----------------------------------------------------------------------
@@ -238,18 +219,36 @@ functions:
   # -----------------------------------------------------------------------
   # Generic vector size
   # -----------------------------------------------------------------------
-  vector_get_count:
-    summary: Returns the number of elements in a vector.
-    description: "The count is the number of logical elements represented by the vector, which for nested kinds may differ from\nthe number of elements of their child vectors. E.g. an ARRAY vector with count 10 and an 'array size' of 3 has 10 \nlogical elements but its single child vector has 30 elements.\n"
+  vector_get_size:
+    summary: Returns the number of elements in the vector.
+    description: "The size is the number of logical elements represented by the vector, which for nested kinds may differ from\nthe number of elements of their child vectors. E.g. an ARRAY vector with size 10 and an 'array size' of 3 has 10 \nlogical elements but its single child vector has 30 elements.\n"
     role: getter
     belongs_to: vector
     parameters:
       vector:
         type: vector
-      out_count:
+      out_size:
         type: idx
         indirection: 1
         kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_set_size:
+    summary: Sets the number of elements in the vector.
+    description: |
+      Sets how many elements are present in the vector.
+    role: setter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      size:
+        type: idx
+        description: The new logical size of the child vector.
       err:
         type: error_info
         indirection: 1
@@ -272,6 +271,154 @@ functions:
         indirection: 2
         kind: OUT
         description: Receives a mutable pointer to the data.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # Vector type setup
+  # -----------------------------------------------------------------------
+  vector_flatten:
+    summary: Forces a vector into FLAT representation in place.
+    description: |
+      No-op for FLAT vectors. For CONSTANT / DICTIONARY / FSST / SEQUENCE /
+      SHREDDED vectors, materialises the per-row data and updates the
+      vector's internal representation to FLAT. Use before vector_get_view
+      if you'd rather not handle CONSTANT / DICTIONARY semantics in the
+      view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
+    role: method
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_make_constant:
+    summary: Turns the vector into a constant vector with the given Value.
+    description: |
+      After this call the vector holds a single value that applies to every
+      logical row. Write the value via vector_get_data_mutable (which
+      returns a pointer to the single element). For STRUCT vectors the
+      type change propagates to all children.
+    role: method
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      value:
+        type: value
+      count:
+        type: idx
+        description: The number of elements in the vector.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_make_sequence:
+    summary: Sets a vector to a SEQUENCE representation.
+    description: |
+      After this call the vector represents an arithmetic sequence
+      start, start+increment, start+2*increment, ... for count elements.
+      No data pointer is needed; the sequence is fully described by
+      the three parameters.
+    role: method
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      start:
+        type: i64
+        description: The first value of the sequence.
+      increment:
+        type: i64
+        description: The step between consecutive values.
+      count:
+        type: idx
+        description: The number of elements in the sequence.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # Validity (mutable)
+  # -----------------------------------------------------------------------
+  vector_flat_get_validity_mutable:
+    summary: Returns a mutable pointer to the validity mask of a FLAT vector.
+    description: |
+      Lazily allocates the validity mask if it has not been allocated yet.
+      The returned pointer is always non-null. Each uint64_t word covers
+      64 rows; bit N of word W represents row W*64+N. A set bit means
+      valid (not NULL); a cleared bit means NULL.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      out_validity:
+        type: u64
+        indirection: 2
+        kind: OUT
+        description: Receives a mutable pointer to the validity mask.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_constant_set_valid:
+    summary: Sets the validity for a CONSTANT vector.
+    description: Either true / false.
+    role: setter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      validity:
+        type: bool
+        description: Validity of the vector.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # String writing
+  # -----------------------------------------------------------------------
+  vector_assign_string:
+    summary: Writes a string value into a vector at the given row index.
+    description: |
+      Copies the bytes into the vector's string heap and writes the
+      resulting handle into the data array at the given index. Works for
+      any string-backed logical type (VARCHAR, BLOB, BIT, BIGNUM). No
+      encoding validation is performed. The vector must be FLAT or
+      CONSTANT.
+    role: setter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      index:
+        type: idx
+        description: The row index to write to.
+      data:
+        type: char
+        indirection: 1
+        const: true
+        description: Pointer to the bytes to copy.
+      length:
+        type: idx
+        description: Number of bytes to copy.
       err:
         type: error_info
         indirection: 1

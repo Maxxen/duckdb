@@ -7,6 +7,7 @@
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
 #include "duckdb/common/vector/map_vector.hpp"
+#include "duckdb/common/vector/string_vector.hpp"
 #include "duckdb/common/vector/struct_vector.hpp"
 #include "duckdb/common/vector/union_vector.hpp"
 
@@ -147,6 +148,105 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data_mutable(duckdb_v2_vector_ptr vect
 }
 
 // ---------------------------------------------------------------------------
+// Vector type setup
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_constant(duckdb_v2_vector_ptr vector, duckdb_v2_value_ptr value, idx_t count,
+                                                    duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector) {
+			throw duckdb::InvalidInputException("Vector cannot be null.");
+		}
+		if (!value) {
+			throw duckdb::InvalidInputException("Value cannot be null.");
+		}
+		duckdb::ConstantVector::Reference(*duckdb::ToVector(vector), *duckdb::ToValue(value), duckdb::count_t(count));
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_sequence(duckdb_v2_vector_ptr vector, int64_t start, int64_t increment,
+                                                    idx_t count, duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_make_sequence");
+		}
+		duckdb::ToVector(vector)->Sequence(start, increment, count);
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Validity (mutable)
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_flat_get_validity_mutable(duckdb_v2_vector_ptr vector, uint64_t **out_validity,
+                                                                duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector || !out_validity) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_flat_get_validity_mutable");
+		}
+		auto *vec = duckdb::ToVector(vector);
+		if (vec->GetVectorType() != duckdb::VectorType::FLAT_VECTOR) {
+			throw duckdb::InvalidInputException(
+			    "duckdb_v2_vector_flat_get_validity_mutable: only supported for FLAT vectors");
+		}
+		auto &validity = duckdb::FlatVector::ValidityMutable(*vec);
+		validity.EnsureWritable();
+		*out_validity = validity.GetData();
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_ptr vector, bool validity,
+                                                         duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_constant_set_valid");
+		}
+		auto *vec = duckdb::ToVector(vector);
+		if (vec->GetVectorType() != duckdb::VectorType::CONSTANT_VECTOR) {
+			throw duckdb::InvalidInputException(
+			    "duckdb_v2_vector_constant_set_valid: only supported for CONSTANT vectors");
+		}
+		duckdb::ConstantVector::SetNull(*vec, !validity);
+	});
+}
+// ---------------------------------------------------------------------------
+// String writing
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_ptr vector, idx_t index, const char *data,
+                                                    idx_t length, duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector || !data) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_assign_string");
+		}
+		auto *vec = duckdb::ToVector(vector);
+		if (vec->GetType().InternalType() != duckdb::PhysicalType::VARCHAR) {
+			throw duckdb::InvalidInputException("duckdb_v2_vector_assign_string: vector is not a string-backed type");
+		}
+		auto vt = vec->GetVectorType();
+		if (vt != duckdb::VectorType::FLAT_VECTOR && vt != duckdb::VectorType::CONSTANT_VECTOR) {
+			throw duckdb::InvalidInputException(
+			    "duckdb_v2_vector_assign_string: only supported for FLAT and CONSTANT vectors");
+		}
+		if (vt == duckdb::VectorType::CONSTANT_VECTOR && index != 0) {
+			throw duckdb::InvalidInputException(
+			    "duckdb_v2_vector_assign_string: CONSTANT vector only supports index 0");
+		}
+		if (length > duckdb::NumericLimits<uint32_t>::Maximum()) {
+			throw duckdb::InvalidInputException("duckdb_v2_vector_assign_string: string length exceeds maximum (%u)",
+			                                    duckdb::NumericLimits<uint32_t>::Maximum());
+		}
+		auto val = duckdb::string_t(data, duckdb::NumericCast<uint32_t>(length));
+		if (val.IsInlined()) {
+			duckdb::FlatVector::GetDataMutableUnsafe<duckdb::string_t>(*vec)[index] = val;
+		} else {
+			auto &heap = duckdb::StringVector::GetStringHeap(*vec);
+			duckdb::FlatVector::GetDataMutableUnsafe<duckdb::string_t>(*vec)[index] = heap.AddBlobToHeap(data, length);
+		}
+	});
+}
+
+// ---------------------------------------------------------------------------
 // Generic structural accessors for nested kinds
 //
 // Per-kind child counts:
@@ -265,14 +365,29 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 // Generic row-count
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_count(duckdb_v2_vector_ptr vector, idx_t *out_count,
-                                                duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_size(duckdb_v2_vector_ptr vector, idx_t *out_size,
+                                               duckdb_v2_error_info_ptr *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!vector || !out_count) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_count");
+		if (!vector || !out_size) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_size");
 		}
 		auto *vec = duckdb::ToVector(vector);
-		*out_count = vec->size();
+		*out_size = vec->size();
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_ptr vector, idx_t size, duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_set_size");
+		}
+		auto *vec = duckdb::ToVector(vector);
+		// Grow the underlying buffer first so the new logical size fits; constant vectors
+		// carry a single physical element and must not be reserved against.
+		if (vec->GetVectorType() == duckdb::VectorType::FLAT_VECTOR) {
+			vec->Reserve(size);
+		}
+		duckdb::FlatVector::SetSize(*vec, size);
 	});
 }
 

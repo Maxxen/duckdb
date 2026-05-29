@@ -1,6 +1,5 @@
-#include "catch.hpp"
+#include "capi_v2_test_helpers.hpp"
 #include "capi_v2_internal.hpp"
-#include "duckdb.h" // V1 C API -- used only to build composite-type fixtures.
 
 #include <cstring>
 #include <string>
@@ -35,12 +34,6 @@
 //   a new variant used by DECIMAL or ENUM storage, the V2 enum spec must
 //   add a matching id and these guards become reachable.
 // ---------------------------------------------------------------------------
-
-static duckdb_v2_logical_type_ptr V1ToV2(duckdb_logical_type t) {
-	// Both V1 and V2 handles are void * aliases pointing at the same
-	// new duckdb::LogicalType(...) allocation, so this is the identity cast.
-	return static_cast<duckdb_v2_logical_type_ptr>(t);
-}
 
 // ===========================================================================
 // Lifecycle: create_from_id / destroy

@@ -502,6 +502,22 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_pt
 
 /* --- Functions for data_chunk --- */
 /*!
+* Creates an empty data chunk with the given column types.
+* Allocates a new DataChunk with one FLAT vector per element of the
+types array, each initialized to default capacity. Each vector's
+size starts at 0; set it via vector_set_size after populating the
+vector. Caller owns the result and must destroy it via data_chunk_destroy.
+
+* @param types Pointer to an array of logical_type handles, one per column.
+* @param column_count Number of elements in the types array.
+* @param out_chunk Receives the new chunk handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_ptr *types,
+                                                              idx_t column_count, duckdb_v2_data_chunk_ptr *out_chunk,
+                                                              duckdb_v2_error_info_ptr *err);
+/*!
 * Returns the number of data chunks in a materialized result.
 * For QUERY_RESULT results, returns the chunk count. For CHANGED_ROWS
 or NOTHING results, returns 0.
@@ -3004,19 +3020,6 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_vector_type(duckdb_v2_vec
                                                                    DUCKDB_V2_VECTOR_TYPE *out_type,
                                                                    duckdb_v2_error_info_ptr *err);
 /*!
-* Forces a vector into FLAT representation in place.
-* No-op for FLAT vectors. For CONSTANT / DICTIONARY / FSST / SEQUENCE /
-SHREDDED vectors, materialises the per-row data and updates the
-vector's internal representation to FLAT. Use before vector_get_view
-if you'd rather not handle CONSTANT / DICTIONARY semantics in the
-view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
-
-* @param vector
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_ptr vector, duckdb_v2_error_info_ptr *err);
-/*!
 * Reads a vector as a unified-format view (data + validity + sel + count).
 * Populates out_view with borrowed pointers valid until the owning
 chunk is destroyed. Per-kind view.data semantics live in the module docstring.
@@ -3041,18 +3044,29 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr
                                                             duckdb_v2_vector_view *out_view,
                                                             duckdb_v2_error_info_ptr *err);
 /*!
-* Returns the number of elements in a vector.
-* The count is the number of logical elements represented by the vector, which for nested kinds may differ from
-the number of elements of their child vectors. E.g. an ARRAY vector with count 10 and an 'array size' of 3 has 10
+* Returns the number of elements in the vector.
+* The size is the number of logical elements represented by the vector, which for nested kinds may differ from
+the number of elements of their child vectors. E.g. an ARRAY vector with size 10 and an 'array size' of 3 has 10
 logical elements but its single child vector has 30 elements.
 
 * @param vector
-* @param out_count
+* @param out_size
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_count(duckdb_v2_vector_ptr vector, idx_t *out_count,
-                                                             duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_size(duckdb_v2_vector_ptr vector, idx_t *out_size,
+                                                            duckdb_v2_error_info_ptr *err);
+/*!
+* Sets the number of elements in the vector.
+* Sets how many elements are present in the vector.
+
+* @param vector
+* @param size The new logical size of the child vector.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_ptr vector, idx_t size,
+                                                            duckdb_v2_error_info_ptr *err);
 /*!
 * For a FLAT or CONSTANT vector, returns a mutable pointer to the data.
 * Returns ERROR_INVALID_INPUT if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning
@@ -3066,6 +3080,94 @@ pointer.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data_mutable(duckdb_v2_vector_ptr vector, void **out_data,
                                                                     duckdb_v2_error_info_ptr *err);
+/*!
+* Forces a vector into FLAT representation in place.
+* No-op for FLAT vectors. For CONSTANT / DICTIONARY / FSST / SEQUENCE /
+SHREDDED vectors, materialises the per-row data and updates the
+vector's internal representation to FLAT. Use before vector_get_view
+if you'd rather not handle CONSTANT / DICTIONARY semantics in the
+view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
+
+* @param vector
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_ptr vector, duckdb_v2_error_info_ptr *err);
+/*!
+* Turns the vector into a constant vector with the given Value.
+* After this call the vector holds a single value that applies to every
+logical row. Write the value via vector_get_data_mutable (which
+returns a pointer to the single element). For STRUCT vectors the
+type change propagates to all children.
+
+* @param vector
+* @param value
+* @param count The number of elements in the vector.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_constant(duckdb_v2_vector_ptr vector, duckdb_v2_value_ptr value,
+                                                                 idx_t count, duckdb_v2_error_info_ptr *err);
+/*!
+* Sets a vector to a SEQUENCE representation.
+* After this call the vector represents an arithmetic sequence
+start, start+increment, start+2*increment, ... for count elements.
+No data pointer is needed; the sequence is fully described by
+the three parameters.
+
+* @param vector
+* @param start The first value of the sequence.
+* @param increment The step between consecutive values.
+* @param count The number of elements in the sequence.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_sequence(duckdb_v2_vector_ptr vector, int64_t start,
+                                                                 int64_t increment, idx_t count,
+                                                                 duckdb_v2_error_info_ptr *err);
+/*!
+* Returns a mutable pointer to the validity mask of a FLAT vector.
+* Lazily allocates the validity mask if it has not been allocated yet.
+The returned pointer is always non-null. Each uint64_t word covers
+64 rows; bit N of word W represents row W*64+N. A set bit means
+valid (not NULL); a cleared bit means NULL.
+
+* @param vector
+* @param out_validity Receives a mutable pointer to the validity mask.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_flat_get_validity_mutable(duckdb_v2_vector_ptr vector,
+                                                                             uint64_t **out_validity,
+                                                                             duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets the validity for a CONSTANT vector.
+ * Either true / false.
+ * @param vector
+ * @param validity Validity of the vector.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_ptr vector, bool validity,
+                                                                      duckdb_v2_error_info_ptr *err);
+/*!
+* Writes a string value into a vector at the given row index.
+* Copies the bytes into the vector's string heap and writes the
+resulting handle into the data array at the given index. Works for
+any string-backed logical type (VARCHAR, BLOB, BIT, BIGNUM). No
+encoding validation is performed. The vector must be FLAT or
+CONSTANT.
+
+* @param vector
+* @param index The row index to write to.
+* @param data Pointer to the bytes to copy.
+* @param length Number of bytes to copy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_ptr vector, idx_t index,
+                                                                 const char *data, idx_t length,
+                                                                 duckdb_v2_error_info_ptr *err);
 /*!
 * Returns the number of child vectors a nested vector exposes.
 * For LIST / ARRAY returns 1; for MAP returns 2 (keys, values); for

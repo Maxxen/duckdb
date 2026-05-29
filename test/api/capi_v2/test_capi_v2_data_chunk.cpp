@@ -1,4 +1,4 @@
-#include "catch.hpp"
+#include "capi_v2_test_helpers.hpp"
 #include "capi_v2_internal.hpp"
 
 #include <cstring>
@@ -6,42 +6,9 @@
 
 // ---------------------------------------------------------------------------
 // V2 data_chunk + vector tests — the read surface for row data.
-//
-// INVARIANTS THIS FILE RELIES ON:
-//   - duckdb_v2_data_chunk_ptr is a heap-allocated duckdb::DataChunk.
-//     duckdb_v2_data_chunk_destroy deletes through that cast.
-//   - duckdb_v2_vector_ptr is a borrowed duckdb::Vector pointer (into
-//     the chunk's data[] for top-level vectors; into core's
-//     ListVector/ArrayVector/StructVector/etc storage for nested
-//     children). Lifetime is the owning chunk's.
-//   - duckdb_v2_vector_view carries borrowed (data, validity, sel, count)
-//     pointers valid until the owning chunk is destroyed. view.sel ==
-//     NULL means identity (FLAT-vector UVF semantics). validity ==
-//     NULL means all-valid. There is NO count field on the view — the
-//     row count is the caller's context (chunk size for top-level,
-//     parent geometry for nested children).
-//   - Structural descent uses the generic accessors
-//     duckdb_v2_vector_get_child_count + duckdb_v2_vector_get_child.
-//     LIST/MAP child row count comes from duckdb_v2_vector_list_get_size.
-//   - duckdb_v2_sel_at(sel, i, &out, err) is the bridge form; the
-//     test-file-local SelAt() helper below wraps it for inline use.
-//   - USAGE CONTRACT: i is the logical row index; sel_at(view.sel, i)
-//     is the physical position in view.data AND view.validity. Always
-//     index both arrays through the sel-resolved position. Reading
-//     data[i] / validity[i] directly only works for FLAT vectors
-//     (identity sel) and is wrong for CONSTANT / DICTIONARY.
 // ---------------------------------------------------------------------------
 
 namespace {
-
-// Thin wrapper around the bridge sel_at, used to keep test call sites
-// readable. Exercises the bridge form (return code + out-param) on
-// every call.
-idx_t SelAt(const duckdb_v2_sel_t *sel, idx_t i) {
-	idx_t out = 0;
-	REQUIRE(duckdb_v2_sel_at(sel, i, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	return out;
-}
 
 // Tiny RAII helper for env + db + conn; mirrors V2QueryFixture in
 // test_capi_v2_query_result.cpp.
@@ -559,7 +526,7 @@ TEST_CASE("V2: LIST<INTEGER> via get_child + entries", "[capi_v2][data_chunk]") 
 
 	// list_get_size returns the total number of elements across all parent rows.
 	idx_t list_size = 0;
-	REQUIRE(duckdb_v2_vector_get_count(child, &list_size, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_size(child, &list_size, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(list_size == 6); // 3 + 2 + 1
 
 	duckdb_v2_vector_view cview {};
@@ -752,10 +719,10 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 
 	// row count of children returns the K/V pair count = sum of valid list lengths.
 	idx_t map_size = 0;
-	REQUIRE(duckdb_v2_vector_get_count(keys, &map_size, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_size(keys, &map_size, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(map_size == 3); // 2 + 1 entries
 
-	REQUIRE(duckdb_v2_vector_get_count(values, &map_size, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_size(values, &map_size, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(map_size == 3); // 2 + 1 entries
 
 	duckdb_v2_vector_view kview {};

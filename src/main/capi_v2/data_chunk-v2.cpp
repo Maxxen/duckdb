@@ -2,7 +2,40 @@
 
 #include "duckdb/common/allocator.hpp"
 #include "duckdb/common/types/column/column_data_collection.hpp"
+#include "duckdb/common/types/vector_cache.hpp"
 #include "duckdb/main/materialized_query_result.hpp"
+
+// ---------------------------------------------------------------------------
+// DataChunk construction
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_ptr *types, idx_t column_count,
+                                                 duckdb_v2_data_chunk_ptr *out_chunk, duckdb_v2_error_info_ptr *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!out_chunk) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_create");
+		}
+		*out_chunk = nullptr;
+		if (!types) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_create");
+		}
+		duckdb::vector<duckdb::LogicalType> logical_types;
+		logical_types.reserve(column_count);
+		for (idx_t i = 0; i < column_count; i++) {
+			if (!types[i]) {
+				throw duckdb::InvalidInputException("null logical type at index %llu", i);
+			}
+			logical_types.push_back(*duckdb::ToLogicalType(types[i]));
+		}
+		auto chunk = duckdb::make_uniq<duckdb::DataChunk>();
+		chunk->Initialize(duckdb::Allocator::DefaultAllocator(), logical_types);
+		*out_chunk = static_cast<duckdb_v2_data_chunk_ptr>(chunk.release());
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Result-side accessors
+// ---------------------------------------------------------------------------
 
 DUCKDB_V2_API_CALL_t duckdb_v2_result_chunk_count(duckdb_v2_result_ptr result, idx_t *out_count,
                                                   duckdb_v2_error_info_ptr *err) {

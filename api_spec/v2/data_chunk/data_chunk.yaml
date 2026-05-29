@@ -18,6 +18,38 @@ module: data_chunk
 
 functions:
   # -----------------------------------------------------------------------
+  # DataChunk construction
+  # -----------------------------------------------------------------------
+  data_chunk_create:
+    summary: Creates an empty data chunk with the given column types.
+    description: |
+      Allocates a new DataChunk with one FLAT vector per element of the
+      types array, each initialized to default capacity. Each vector's
+      size starts at 0; set it via vector_set_size after populating the
+      vector. Caller owns the result and must destroy it via data_chunk_destroy.
+    role: constructor
+    belongs_to: data_chunk
+    parameters:
+      types:
+        type: logical_type
+        indirection: 1
+        const: true
+        description: Pointer to an array of logical_type handles, one per column.
+      column_count:
+        type: idx
+        description: Number of elements in the types array.
+      out_chunk:
+        type: data_chunk
+        indirection: 1
+        kind: OUT
+        description: Receives the new chunk handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
   # Result-side accessors (extend the result handle's surface)
   # -----------------------------------------------------------------------
   result_chunk_count:
