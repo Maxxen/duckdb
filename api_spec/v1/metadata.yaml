@@ -46,7 +46,7 @@ primitives:
     c_type: size_t
   # Hand rolled types here; leverage primitive to materialize in the spec, but
   # definition is hand-rolled in C.
-  - name: string_t
+  - name: duckdb_string_t
     c_type: duckdb_string_t
   - name: state
     c_type: duckdb_state

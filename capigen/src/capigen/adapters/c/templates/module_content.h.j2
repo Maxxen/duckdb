@@ -16,15 +16,15 @@
 
 {% endfor %}
 
-/* --- Types for {{ module.name }} --- */
-{% for type in module.types %}
-{{ render_type(type) }}
-
-{% endfor %}
-
 /* --- Structs for {{ module.name }} --- */
 {% for s in module.structs %}
 {{ render_struct(s) }}
+
+{% endfor %}
+
+/* --- Types for {{ module.name }} --- */
+{% for type in module.types %}
+{{ render_type(type) }}
 
 {% endfor %}
 
@@ -52,7 +52,7 @@
 /* --- Functions for {{ module.name }} --- */
 {% set dep_enc = metadata.get('options', {}).get('c', {}).get('deprecated_encoding', 'guarded') %}
 {% for func_name, func in module.functions.items() %}
-{% if not (func.deprecated and dep_enc == 'none') %}
+{% if not func.static_inline and not (func.deprecated and dep_enc == 'none') %}
 {% if func.deprecated %}
 #ifndef DUCKDB_API_NO_DEPRECATED
 {% endif %}

@@ -65,10 +65,6 @@ extern "C" {
 // General type definitions
 //===--------------------------------------------------------------------===//
 
-{% for p in metadata.get('primitives', []) if p.get('underlying') %}
-typedef {{ p.underlying }} {{ p.c_type }};
-{% endfor %}
-
 {% if metadata.get('options', {}).get('c', {}).get('emit_v1_primitive_defs', false) %}
 //! The internal representation of a VARCHAR (string_t). If the VARCHAR does not
 //! exceed 12 characters, then we inline it. Otherwise, we inline a four-byte prefix for faster
@@ -96,7 +92,12 @@ typedef enum duckdb_state {
 
 struct ArrowSchema;
 struct ArrowArray;
+
 {% endif %}
+
+{% for p in metadata.get('primitives', []) if p.get('underlying') %}
+typedef {{ p.underlying }} {{ p.c_type }};
+{% endfor %}
 
 {% for module in modules %}
 /* ============================================================================
@@ -105,6 +106,10 @@ struct ArrowArray;
 {% include "module_content.h.j2" %}
 
 {% endfor %}
+
+{% if metadata.get('prefix') == 'duckdb_v2_' %}
+{% include 'duckdb_v2_inline_functions.h' %}
+{% endif %}
 
 {% if metadata.get('options', {}).get('c', {}).get('emit_extension_api', false) %}
 //===--------------------------------------------------------------------===//

@@ -223,6 +223,7 @@ def _resolve_alias(
             canonical_name=name,
             base=base,
             is_pointer=False,
+            is_qualified=True,
             description=a.get("description", ""),
         )
     prefixed = _apply_prefix(prefix, name)
@@ -344,6 +345,7 @@ def _resolve_function(
         description=func.get("description") or None,
         deprecated=deprecated,
         return_c=return_c,
+        static_inline=bool(func.get("static_inline", False)),
         parameters=params,
     )
 

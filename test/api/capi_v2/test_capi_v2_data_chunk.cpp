@@ -1355,7 +1355,7 @@ TEST_CASE("V2: sel_at identity + null-arg", "[capi_v2][data_chunk]") {
 }
 
 TEST_CASE("V2: string decoders reject null arguments", "[capi_v2][data_chunk]") {
-	duckdb_v2_string_t storage {};
+	duckdb_v2_string storage {};
 	const char *cdata = nullptr;
 	const uint8_t *bdata = nullptr;
 	uint8_t *odata = nullptr;

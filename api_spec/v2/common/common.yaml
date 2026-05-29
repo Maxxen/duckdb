@@ -97,9 +97,9 @@ handles:
   context:
     description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 structs:
-  string_t:
+  string:
     description: |
-      Opaque 16-byte storage for a string-backed value (VARCHAR / BLOB
+      Opaque 16-byte storage for a byte-backed value (VARCHAR / BLOB
       / BIT / BIGNUM). Only the struct's size (16 bytes) and alignment
       (8 bytes, from `uint64_t _opaque[2]`) are committed as ABI; the
       field layout (inline-vs-pointer dispatch mirroring
@@ -167,3 +167,15 @@ aliases:
   sel:
     underlying: u32
     description: Selection-vector entry. Mirrors duckdb::sel_t.
+  varchar:
+    underlying: string
+    description: VARCHAR storage. Decode via varchar_decode.
+  blob:
+    underlying: string
+    description: BLOB storage. Decode via blob_decode.
+  bit:
+    underlying: string
+    description: BIT storage. Decode via bit_decode.
+  bignum:
+    underlying: string
+    description: BIGNUM storage. Decode via bignum_decode.

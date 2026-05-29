@@ -1,0 +1,305 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: common-helpers
+functions:
+  string_is_inlined:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Whether or not the string value is inlined.
+    parameters:
+      string:
+        type: string
+        indirection: 1
+        const: true
+      out_inlined:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Set to true if the string data is stored inline (no separate allocation).
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: |-
+      Whether or not the string value is inlined.
+      This means that the data of the string does not have a separate allocation.
+  string_get_length:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get the length of a string.
+    parameters:
+      string:
+        type: string
+        indirection: 1
+        const: true
+        description: The string to get the length of.
+      out_length:
+        type: u32
+        indirection: 1
+        kind: OUT
+        description: The length of the string.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get the length of a string.
+  string_get_data:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get a pointer to the string data.
+    parameters:
+      string:
+        type: string
+        indirection: 1
+        const: true
+        description: The string to get a data pointer for.
+      out_data:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the string data. Valid for the lifetime of the string value."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get a pointer to the string data.
+  varchar_is_inlined:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Whether or not the VARCHAR data is inlined.
+    parameters:
+      string:
+        type: varchar
+        indirection: 1
+        const: true
+      out_inlined:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Set to true if the string data is stored inline (no separate allocation).
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Whether or not the VARCHAR data is inlined.
+  varchar_get_length:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get the length of a VARCHAR data.
+    parameters:
+      string:
+        type: varchar
+        indirection: 1
+        const: true
+        description: The VARCHAR data to get the length of.
+      out_length:
+        type: u32
+        indirection: 1
+        kind: OUT
+        description: The length of the VARCHAR data.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get the length of a VARCHAR data.
+  varchar_get_data:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get a pointer to the VARCHAR data.
+    parameters:
+      string:
+        type: varchar
+        indirection: 1
+        const: true
+        description: The VARCHAR data to get a data pointer for.
+      out_data:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the VARCHAR data. Valid for the lifetime of the string data."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get a pointer to the VARCHAR data.
+  blob_is_inlined:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Whether or not the BLOB value is inlined.
+    parameters:
+      blob:
+        type: blob
+        indirection: 1
+        const: true
+      out_inlined:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Set to true if the blob data is stored inline (no separate allocation).
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Whether or not the BLOB value is inlined.
+  blob_get_length:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get the byte length of a BLOB value.
+    parameters:
+      blob:
+        type: blob
+        indirection: 1
+        const: true
+        description: The BLOB value to get the length of.
+      out_length:
+        type: u32
+        indirection: 1
+        kind: OUT
+        description: The byte length of the BLOB value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get the byte length of a BLOB value.
+  blob_get_data:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get a pointer to the BLOB data.
+    parameters:
+      blob:
+        type: blob
+        indirection: 1
+        const: true
+        description: The BLOB value to get a data pointer for.
+      out_data:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the BLOB data. Valid for the lifetime of the blob value."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get a pointer to the BLOB data.
+  bit_padding:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get the number of padding bits in a BIT value.
+    parameters:
+      bit:
+        type: bit
+        indirection: 1
+        const: true
+        description: The BIT value to inspect.
+      out_padding:
+        type: u8
+        indirection: 1
+        kind: OUT
+        description: "Number of padding bits (0-7) in the first byte."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get the number of padding bits (0-7) stored in the first byte of a BIT value.
+  bit_count:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get the number of bits in a BIT value.
+    parameters:
+      bit:
+        type: bit
+        indirection: 1
+        const: true
+        description: The BIT value to measure.
+      out_count:
+        type: u64
+        indirection: 1
+        kind: OUT
+        description: The number of bits in the BIT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get the number of bits in a BIT value.
+  bit_get_data:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Get a pointer to the BIT payload data.
+    parameters:
+      bit:
+        type: bit
+        indirection: 1
+        const: true
+        description: The BIT value to get a data pointer for.
+      out_data:
+        type: u8
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: "Borrowed pointer to the bit payload (data[0] is the padding byte; data[1..] is the bit data). Valid for the lifetime of the bit value."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: Get a pointer to the BIT payload data. The first byte is the padding count; the bit data follows.
+  bignum_is_negative:
+    status:
+      - ["frozen", "v1.5.4", "2026-05-18"]
+    summary: Whether a BIGNUM value is negative.
+    parameters:
+      bignum:
+        type: bignum
+        indirection: 1
+        const: true
+        description: The BIGNUM value to inspect.
+      out_negative:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Set to true if the BIGNUM value is negative.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+    static_inline: true
+    description: "Whether a BIGNUM value is negative. Sign encoding: the MSB of data[0] clear = negative, set = positive."

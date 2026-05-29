@@ -315,7 +315,7 @@ functions:
     summary: Whether or not the duckdb_string_t value is inlined.
     parameters:
       string:
-        type: string_t
+        type: duckdb_string_t
     return_type: bool
     description: |-
       Whether or not the duckdb_string_t value is inlined.
@@ -323,27 +323,27 @@ functions:
   string_t_length:
     status:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Get the string length of a string_t
+    summary: Get the length of a string
     parameters:
       string:
-        type: string_t
+        type: duckdb_string_t
         description: The string to get the length of.
     return_type: u32
-    description: Get the string length of a string_t
+    description: Get the length of a string
     return_description: The length.
   string_t_data:
     status:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Get a pointer to the string data of a string_t
+    summary: Get a pointer to the string data of a string
     parameters:
       string:
-        type: string_t
+        type: duckdb_string_t
         indirection: 1
         description: The string to get the pointer to.
     return_type: char
     return_pointer: 1
     return_const: true
-    description: Get a pointer to the string data of a string_t
+    description: Get a pointer to the string data of a string
     return_description: The pointer.
   valid_utf8_check:
     status:

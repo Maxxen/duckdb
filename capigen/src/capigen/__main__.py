@@ -69,7 +69,7 @@ def main() -> None:
             sys.exit(1)
 
     output_path = Path(args.output)
-    extra_kwargs = {}
+    extra_kwargs: dict = {}
     if args.scan_dir is not None:
         extra_kwargs["scan_dir"] = Path(args.scan_dir)
     adapter.generate(modules, metadata, output_path, **extra_kwargs)

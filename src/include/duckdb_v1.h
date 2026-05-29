@@ -66,8 +66,6 @@ extern "C" {
 // General type definitions
 //===--------------------------------------------------------------------===//
 
-typedef uint64_t idx_t;
-
 //! The internal representation of a VARCHAR (string_t). If the VARCHAR does not
 //! exceed 12 characters, then we inline it. Otherwise, we inline a four-byte prefix for faster
 //! string comparisons and store a pointer to the remaining characters. This is a non-
@@ -91,6 +89,8 @@ typedef enum duckdb_state { DuckDBSuccess = 0, DuckDBError = 1 } duckdb_state;
 
 struct ArrowSchema;
 struct ArrowArray;
+
+typedef uint64_t idx_t;
 
 /* ============================================================================
  * MODULE: common_enums
@@ -327,11 +327,11 @@ typedef enum duckdb_catalog_entry_type {
 	DUCKDB_CATALOG_ENTRY_TYPE_DATABASE = 9,
 } duckdb_catalog_entry_type;
 
+/* --- Structs for common_enums --- */
+
 /* --- Types for common_enums --- */
 //! Alias for the DUCKDB_TYPE enum.
 typedef DUCKDB_TYPE duckdb_type;
-
-/* --- Structs for common_enums --- */
 
 /* --- Constants for common_enums --- */
 
@@ -346,8 +346,6 @@ typedef DUCKDB_TYPE duckdb_type;
  * ============================================================================ */
 
 /* --- Enums for common_types --- */
-
-/* --- Types for common_types --- */
 
 /* --- Structs for common_types --- */
 //! DATE is stored as days since 1970-01-01.
@@ -500,6 +498,8 @@ typedef struct {
 	void *internal_data;
 } duckdb_result;
 
+/* --- Types for common_types --- */
+
 /* --- Constants for common_types --- */
 
 /* --- Error Codes for common_types --- */
@@ -513,6 +513,8 @@ typedef struct {
  * ============================================================================ */
 
 /* --- Enums for common_handles --- */
+
+/* --- Structs for common_handles --- */
 
 /* --- Types for common_handles --- */
 //! A database instance cache. Must be destroyed with duckdb_destroy_instance_cache.
@@ -765,9 +767,10 @@ typedef struct _duckdb_extension_info {
 } * duckdb_extension_info;
 
 //! Type definition for the data pointers of selection vectors.
+#ifndef DUCKDB_TYPEDEF_SEL_T
+#define DUCKDB_TYPEDEF_SEL_T
 typedef uint32_t sel_t;
-
-/* --- Structs for common_handles --- */
+#endif
 
 /* --- Constants for common_handles --- */
 
@@ -850,9 +853,9 @@ typedef void (*duckdb_copy_function_global_init_t)(duckdb_copy_function_global_i
 
 /* --- Enums for datetime_helpers --- */
 
-/* --- Types for datetime_helpers --- */
-
 /* --- Structs for datetime_helpers --- */
+
+/* --- Types for datetime_helpers --- */
 
 /* --- Constants for datetime_helpers --- */
 
@@ -1012,9 +1015,9 @@ DUCKDB_C_API double duckdb_decimal_to_double(duckdb_decimal val);
 
 /* --- Enums for aggregate_function --- */
 
-/* --- Types for aggregate_function --- */
-
 /* --- Structs for aggregate_function --- */
+
+/* --- Types for aggregate_function --- */
 
 /* --- Constants for aggregate_function --- */
 
@@ -1182,9 +1185,9 @@ DUCKDB_C_API duckdb_state duckdb_register_aggregate_function_set(duckdb_connecti
 
 /* --- Enums for appender --- */
 
-/* --- Types for appender --- */
-
 /* --- Structs for appender --- */
+
+/* --- Types for appender --- */
 
 /* --- Constants for appender --- */
 
@@ -1566,9 +1569,9 @@ DUCKDB_C_API const char *duckdb_appender_error(duckdb_appender appender);
 
 /* --- Enums for arrow --- */
 
-/* --- Types for arrow --- */
-
 /* --- Structs for arrow --- */
+
+/* --- Types for arrow --- */
 
 /* --- Constants for arrow --- */
 
@@ -1805,9 +1808,9 @@ DUCKDB_C_API duckdb_state duckdb_arrow_array_scan(duckdb_connection connection, 
 
 /* --- Enums for cast_function --- */
 
-/* --- Types for cast_function --- */
-
 /* --- Structs for cast_function --- */
+
+/* --- Types for cast_function --- */
 
 /* --- Constants for cast_function --- */
 
@@ -1922,9 +1925,9 @@ DUCKDB_C_API void duckdb_destroy_cast_function(duckdb_cast_function *cast_functi
 
 /* --- Enums for catalog --- */
 
-/* --- Types for catalog --- */
-
 /* --- Structs for catalog --- */
+
+/* --- Types for catalog --- */
 
 /* --- Constants for catalog --- */
 
@@ -2005,9 +2008,9 @@ DUCKDB_C_API void duckdb_destroy_catalog_entry(duckdb_catalog_entry *entry);
 
 /* --- Enums for config_option --- */
 
-/* --- Types for config_option --- */
-
 /* --- Structs for config_option --- */
+
+/* --- Types for config_option --- */
 
 /* --- Constants for config_option --- */
 
@@ -2140,9 +2143,9 @@ DUCKDB_C_API duckdb_profiling_info duckdb_profiling_info_get_child(duckdb_profil
 
 /* --- Enums for connection --- */
 
-/* --- Types for connection --- */
-
 /* --- Structs for connection --- */
+
+/* --- Types for connection --- */
 
 /* --- Constants for connection --- */
 
@@ -2238,9 +2241,9 @@ DUCKDB_C_API duckdb_value duckdb_get_table_names(duckdb_connection connection, c
 
 /* --- Enums for copy_function --- */
 
-/* --- Types for copy_function --- */
-
 /* --- Structs for copy_function --- */
+
+/* --- Types for copy_function --- */
 
 /* --- Constants for copy_function --- */
 
@@ -2541,9 +2544,9 @@ DUCKDB_C_API void duckdb_copy_function_set_copy_from_function(duckdb_copy_functi
 
 /* --- Enums for data_chunk --- */
 
-/* --- Types for data_chunk --- */
-
 /* --- Structs for data_chunk --- */
+
+/* --- Types for data_chunk --- */
 
 /* --- Constants for data_chunk --- */
 
@@ -2617,9 +2620,9 @@ DUCKDB_C_API void duckdb_data_chunk_set_size(duckdb_data_chunk chunk, idx_t size
 
 /* --- Enums for database --- */
 
-/* --- Types for database --- */
-
 /* --- Structs for database --- */
+
+/* --- Types for database --- */
 
 /* --- Constants for database --- */
 
@@ -2762,9 +2765,9 @@ DUCKDB_C_API void duckdb_destroy_config(duckdb_config *config);
 
 /* --- Enums for expression --- */
 
-/* --- Types for expression --- */
-
 /* --- Structs for expression --- */
+
+/* --- Types for expression --- */
 
 /* --- Constants for expression --- */
 
@@ -2811,9 +2814,9 @@ DUCKDB_C_API duckdb_error_data duckdb_expression_fold(duckdb_client_context cont
 
 /* --- Enums for file_system --- */
 
-/* --- Types for file_system --- */
-
 /* --- Structs for file_system --- */
+
+/* --- Types for file_system --- */
 
 /* --- Constants for file_system --- */
 
@@ -2954,9 +2957,9 @@ DUCKDB_C_API duckdb_state duckdb_file_handle_close(duckdb_file_handle file_handl
 
 /* --- Enums for log_storage --- */
 
-/* --- Types for log_storage --- */
-
 /* --- Structs for log_storage --- */
+
+/* --- Types for log_storage --- */
 
 /* --- Constants for log_storage --- */
 
@@ -3020,9 +3023,9 @@ DUCKDB_C_API duckdb_state duckdb_register_log_storage(duckdb_database database, 
 
 /* --- Enums for logical_type --- */
 
-/* --- Types for logical_type --- */
-
 /* --- Structs for logical_type --- */
+
+/* --- Types for logical_type --- */
 
 /* --- Constants for logical_type --- */
 
@@ -3305,9 +3308,9 @@ DUCKDB_C_API char *duckdb_geometry_type_get_crs(duckdb_logical_type type);
 
 /* --- Enums for pending --- */
 
-/* --- Types for pending --- */
-
 /* --- Structs for pending --- */
+
+/* --- Types for pending --- */
 
 /* --- Constants for pending --- */
 
@@ -3398,9 +3401,9 @@ DUCKDB_C_API bool duckdb_pending_execution_is_finished(duckdb_pending_state pend
 
 /* --- Enums for prepared_statement --- */
 
-/* --- Types for prepared_statement --- */
-
 /* --- Structs for prepared_statement --- */
+
+/* --- Types for prepared_statement --- */
 
 /* --- Constants for prepared_statement --- */
 
@@ -3890,9 +3893,9 @@ DUCKDB_C_API duckdb_state duckdb_pending_prepared_streaming(duckdb_prepared_stat
 
 /* --- Enums for query --- */
 
-/* --- Types for query --- */
-
 /* --- Structs for query --- */
+
+/* --- Types for query --- */
 
 /* --- Constants for query --- */
 
@@ -4089,15 +4092,15 @@ This means that the data of the string does not have a separate allocation.
 */
 DUCKDB_C_API bool duckdb_string_is_inlined(duckdb_string_t string);
 /*!
- * Get the string length of a string_t
- * Get the string length of a string_t
+ * Get the length of a string
+ * Get the length of a string
  * @param string The string to get the length of.
  * @return uint32_t
  */
 DUCKDB_C_API uint32_t duckdb_string_t_length(duckdb_string_t string);
 /*!
- * Get a pointer to the string data of a string_t
- * Get a pointer to the string data of a string_t
+ * Get a pointer to the string data of a string
+ * Get a pointer to the string data of a string
  * @param string The string to get the pointer to.
  * @return const char*
  */
@@ -4225,9 +4228,9 @@ DUCKDB_C_API duckdb_data_chunk duckdb_stream_fetch_chunk(duckdb_result result);
 
 /* --- Enums for replacement_scan --- */
 
-/* --- Types for replacement_scan --- */
-
 /* --- Structs for replacement_scan --- */
+
+/* --- Types for replacement_scan --- */
 
 /* --- Constants for replacement_scan --- */
 
@@ -4280,9 +4283,9 @@ DUCKDB_C_API void duckdb_replacement_scan_set_error(duckdb_replacement_scan_info
 
 /* --- Enums for scalar_function --- */
 
-/* --- Types for scalar_function --- */
-
 /* --- Structs for scalar_function --- */
+
+/* --- Types for scalar_function --- */
 
 /* --- Constants for scalar_function --- */
 
@@ -4584,9 +4587,9 @@ DUCKDB_C_API void *duckdb_scalar_function_init_get_extra_info(duckdb_init_info i
 
 /* --- Enums for table_description --- */
 
-/* --- Types for table_description --- */
-
 /* --- Structs for table_description --- */
+
+/* --- Types for table_description --- */
 
 /* --- Constants for table_description --- */
 
@@ -4679,9 +4682,9 @@ DUCKDB_C_API duckdb_logical_type duckdb_table_description_get_column_type(duckdb
 
 /* --- Enums for table_function --- */
 
-/* --- Types for table_function --- */
-
 /* --- Structs for table_function --- */
+
+/* --- Types for table_function --- */
 
 /* --- Constants for table_function --- */
 
@@ -5025,9 +5028,9 @@ DUCKDB_C_API duckdb_logical_type duckdb_table_function_bind_get_result_column_ty
 
 /* --- Enums for threading --- */
 
-/* --- Types for threading --- */
-
 /* --- Structs for threading --- */
+
+/* --- Types for threading --- */
 
 /* --- Constants for threading --- */
 
@@ -5118,9 +5121,9 @@ DUCKDB_C_API bool duckdb_execution_is_finished(duckdb_connection con);
 
 /* --- Enums for value --- */
 
-/* --- Types for value --- */
-
 /* --- Structs for value --- */
+
+/* --- Types for value --- */
 
 /* --- Constants for value --- */
 
@@ -5984,9 +5987,9 @@ DUCKDB_C_API bool duckdb_value_is_null(duckdb_result *result, idx_t col, idx_t r
 
 /* --- Enums for vector --- */
 
-/* --- Types for vector --- */
-
 /* --- Structs for vector --- */
+
+/* --- Types for vector --- */
 
 /* --- Constants for vector --- */
 

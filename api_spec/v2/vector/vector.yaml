@@ -116,19 +116,6 @@ structs:
       - {name: months, type: i32}
       - {name: days, type: i32}
       - {name: micros, type: i64}
-aliases:
-  varchar:
-    underlying: string_t
-    description: VARCHAR storage. Decode via varchar_decode.
-  blob:
-    underlying: string_t
-    description: BLOB storage. Decode via blob_decode.
-  bit:
-    underlying: string_t
-    description: BIT storage. Decode via bit_decode.
-  bignum:
-    underlying: string_t
-    description: BIGNUM storage. Decode via bignum_decode.
 enums:
   VECTOR_TYPE:
     description: |

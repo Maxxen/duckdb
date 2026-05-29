@@ -3,70 +3,105 @@
   "description": "Schema for a v2 IDL module YAML file. Each module groups related types and functions for one area of the C API.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["module"],
+  "required": [
+    "module"
+  ],
   "properties": {
     "module": {
       "description": "Module name. Used in the generated header as a section comment.",
       "type": "string",
-      "examples": ["database", "query_result", "logical_type"]
+      "examples": [
+        "database",
+        "query_result",
+        "logical_type"
+      ]
     },
     "handles": {
       "description": "Opaque handle types, keyed by name. Always rendered as pointer typedefs (e.g. typedef void* name_ptr).",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-      "additionalProperties": { "$ref": "#/$defs/HandleDefinition" }
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/HandleDefinition"
+      }
     },
     "callbacks": {
       "description": "Callback function pointer typedefs, keyed by name. Always rendered with _cb suffix.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-      "additionalProperties": { "$ref": "#/$defs/CallbackDefinition" }
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/CallbackDefinition"
+      }
     },
     "aliases": {
       "description": "Named type aliases, keyed by unprefixed name. The generator prepends the version prefix and appends the aliases suffix from metadata.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-      "additionalProperties": { "$ref": "#/$defs/AliasDefinition" }
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/AliasDefinition"
+      }
     },
     "structs": {
       "description": "Struct definitions with consumer-visible fields, keyed by struct name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-      "additionalProperties": { "$ref": "#/$defs/StructDefinition" }
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/StructDefinition"
+      }
     },
     "enums": {
       "description": "Enum definitions, keyed by enum name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-      "additionalProperties": { "$ref": "#/$defs/EnumDefinition" }
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/EnumDefinition"
+      }
     },
     "constants": {
       "description": "Named constants, keyed by constant name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-      "additionalProperties": { "$ref": "#/$defs/ConstantDefinition" }
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/ConstantDefinition"
+      }
     },
     "error_groups": {
       "description": "Grouped error code definitions, keyed by category name.",
       "type": "object",
       "default": {},
-      "additionalProperties": { "$ref": "#/$defs/ErrorGroup" }
+      "additionalProperties": {
+        "$ref": "#/$defs/ErrorGroup"
+      }
     },
     "functions": {
       "description": "Function definitions, keyed by C function name.",
       "type": "object",
       "default": {},
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-      "additionalProperties": { "$ref": "#/$defs/Function" }
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Function"
+      }
     }
   },
-
   "$defs": {
     "StatusEntry": {
       "description": "A single lifecycle event: [state, version, date]. State is one of: unstable, stable, frozen, deprecated, removed.",
@@ -74,7 +109,13 @@
       "prefixItems": [
         {
           "type": "string",
-          "enum": ["unstable", "stable", "frozen", "deprecated", "removed"]
+          "enum": [
+            "unstable",
+            "stable",
+            "frozen",
+            "deprecated",
+            "removed"
+          ]
         },
         {
           "type": "string",
@@ -88,34 +129,45 @@
       "minItems": 3,
       "maxItems": 3
     },
-
     "HandleDefinition": {
       "description": "An opaque handle type. Consumers don't know the internal structure — just a pointer.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "description": { "type": "string", "default": "" },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
         "cleanup_with": {
           "description": "Name of the function that destroys/frees this handle.",
           "type": "string",
-          "examples": ["duckdb_disconnect", "duckdb_destroy_result"]
+          "examples": [
+            "duckdb_disconnect",
+            "duckdb_destroy_result"
+          ]
         },
         "status": {
           "description": "Lifecycle history stack, newest-first. Top entry is current status.",
           "type": "array",
-          "items": { "$ref": "#/$defs/StatusEntry" },
+          "items": {
+            "$ref": "#/$defs/StatusEntry"
+          },
           "default": []
         }
       }
     },
-
     "CallbackDefinition": {
       "description": "A callback function pointer typedef (e.g. typedef void (*name_cb)(args)).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["return_type"],
+      "required": [
+        "return_type"
+      ],
       "properties": {
-        "description": { "type": "string", "default": "" },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
         "return_type": {
           "description": "Return type name.",
           "type": "string"
@@ -135,29 +187,40 @@
           "description": "Map of parameter name to definition.",
           "type": "object",
           "default": {},
-          "additionalProperties": { "$ref": "#/$defs/Parameter" }
+          "additionalProperties": {
+            "$ref": "#/$defs/Parameter"
+          }
         },
         "status": {
           "description": "Lifecycle history stack, newest-first. Top entry is current status.",
           "type": "array",
-          "items": { "$ref": "#/$defs/StatusEntry" },
+          "items": {
+            "$ref": "#/$defs/StatusEntry"
+          },
           "default": []
         }
       }
     },
-
     "AliasDefinition": {
       "description": "A named type alias. Maps a name to an underlying type (primitive or declared).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["underlying"],
+      "required": [
+        "underlying"
+      ],
       "properties": {
         "underlying": {
           "description": "The type this aliases. A primitive name or another declared type name.",
           "type": "string",
-          "examples": ["u32", "duckdb_error_code"]
+          "examples": [
+            "u32",
+            "duckdb_error_code"
+          ]
         },
-        "description": { "type": "string", "default": "" },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
         "qualified": {
           "description": "If true, emitted verbatim — no prefix or suffix applied. The key IS the C name. Use for non-prefixed types (e.g. sel_t, idx_t).",
           "type": "boolean",
@@ -166,39 +229,56 @@
         "status": {
           "description": "Lifecycle history stack, newest-first. Top entry is current status.",
           "type": "array",
-          "items": { "$ref": "#/$defs/StatusEntry" },
+          "items": {
+            "$ref": "#/$defs/StatusEntry"
+          },
           "default": []
         }
       }
     },
-
     "Function": {
       "description": "A C API function. Every function returns an error code by default and takes typed parameters.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary"],
+      "required": [
+        "summary"
+      ],
       "properties": {
         "summary": {
           "description": "One-line description of what the function does. Used in the generated doc comment.",
           "type": "string"
         },
-        "description": { "type": "string", "default": "" },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
         "role": {
           "description": "Semantic role of the function relative to the type it belongs_to.",
           "type": "string",
-          "enum": ["constructor", "destructor", "getter", "setter", "method"],
+          "enum": [
+            "constructor",
+            "destructor",
+            "getter",
+            "setter",
+            "method"
+          ],
           "default": "method"
         },
         "belongs_to": {
           "description": "The type this function operates on. Used for grouping and code generation.",
           "type": "string",
-          "examples": ["duckdb_connection", "duckdb_prepared_statement"]
+          "examples": [
+            "duckdb_connection",
+            "duckdb_prepared_statement"
+          ]
         },
         "parameters": {
           "description": "Map of parameter name to definition. Order is preserved and determines the signature.",
           "type": "object",
           "default": {},
-          "additionalProperties": { "$ref": "#/$defs/Parameter" }
+          "additionalProperties": {
+            "$ref": "#/$defs/Parameter"
+          }
         },
         "return_type": {
           "description": "Return type name. Defaults to duckdb_error_code (the v2 convention).",
@@ -220,13 +300,17 @@
           "description": "API version when this function was introduced.",
           "type": "string",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",
-          "examples": ["1.2.0"]
+          "examples": [
+            "1.2.0"
+          ]
         },
         "deprecated": {
           "description": "API version when this function was deprecated.",
           "type": "string",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",
-          "examples": ["1.5.0"]
+          "examples": [
+            "1.5.0"
+          ]
         },
         "return_description": {
           "description": "Description of the return value.",
@@ -236,22 +320,35 @@
         "status": {
           "description": "Lifecycle history stack, newest-first. Top entry is current status.",
           "type": "array",
-          "items": { "$ref": "#/$defs/StatusEntry" },
+          "items": {
+            "$ref": "#/$defs/StatusEntry"
+          },
           "default": []
+        },
+        "static_inline": {
+          "description": "If true, the function is implemented as a static inline in the generated header.",
+          "type": "boolean",
+          "default": false
         }
       }
     },
-
     "Parameter": {
       "description": "A function or callback parameter.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "description": "Type name — a primitive or a declared type.",
           "type": "string",
-          "examples": ["duckdb_connection", "char", "idx", "bool"]
+          "examples": [
+            "duckdb_connection",
+            "char",
+            "idx",
+            "bool"
+          ]
         },
         "indirection": {
           "description": "Pointer indirection level. 0 = pass by value, 1 = pointer, 2 = pointer-to-pointer.",
@@ -267,19 +364,29 @@
         "kind": {
           "description": "Parameter kind — combines direction (in/out) and ownership. 'IN' = input, callee does not retain. 'IN_TRANSFER' = input, callee takes ownership (caller must not free). 'OUT' = output, caller must free/destroy the result. 'OUT_BORROW' = output, callee retains ownership (caller must not free; valid only as long as owning object lives). Only 'OUT' / 'OUT_BORROW' require indirection >= 1.",
           "type": "string",
-          "enum": ["IN", "IN_TRANSFER", "OUT", "OUT_BORROW"],
+          "enum": [
+            "IN",
+            "IN_TRANSFER",
+            "OUT",
+            "OUT_BORROW"
+          ],
           "default": "IN"
         },
-        "description": { "type": "string", "default": "" }
+        "description": {
+          "type": "string",
+          "default": ""
+        }
       }
     },
-
     "StructDefinition": {
       "description": "A C struct with consumer-visible fields. Use handles for opaque types instead.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "description": { "type": "string", "default": "" },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
         "pointer_alias": {
           "description": "If true, generate a typedef pointer alias (e.g. typedef struct_name* struct_name_ptr).",
           "type": "boolean",
@@ -289,22 +396,28 @@
           "description": "Struct fields, in declaration order.",
           "type": "array",
           "default": [],
-          "items": { "$ref": "#/$defs/StructField" }
+          "items": {
+            "$ref": "#/$defs/StructField"
+          }
         },
         "status": {
           "description": "Lifecycle history stack, newest-first. Top entry is current status.",
           "type": "array",
-          "items": { "$ref": "#/$defs/StatusEntry" },
+          "items": {
+            "$ref": "#/$defs/StatusEntry"
+          },
           "default": []
         }
       }
     },
-
     "StructField": {
       "description": "A single field within a struct.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type"],
+      "required": [
+        "name",
+        "type"
+      ],
       "properties": {
         "name": {
           "description": "Field name.",
@@ -330,42 +443,60 @@
           "type": "integer",
           "minimum": 1
         },
-        "description": { "type": "string", "default": "" }
+        "description": {
+          "type": "string",
+          "default": ""
+        }
       },
       "allOf": [
         {
           "if": {
-            "properties": { "array_size": { "type": "integer" } },
-            "required": ["array_size"]
+            "properties": {
+              "array_size": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "array_size"
+            ]
           },
           "then": {
-            "properties": { "pointer": { "const": 0 } }
+            "properties": {
+              "pointer": {
+                "const": 0
+              }
+            }
           }
         }
       ]
     },
-
     "EnumDefinition": {
       "description": "A C enum typedef. Values are auto-numbered from 0 unless explicitly set.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "description": { "type": "string", "default": "" },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
         "values": {
           "description": "Map of enum member name to value/description. Order determines auto-numbering.",
           "type": "object",
           "default": {},
-          "additionalProperties": { "$ref": "#/$defs/EnumValue" }
+          "additionalProperties": {
+            "$ref": "#/$defs/EnumValue"
+          }
         },
         "status": {
           "description": "Lifecycle history stack, newest-first. Top entry is current status.",
           "type": "array",
-          "items": { "$ref": "#/$defs/StatusEntry" },
+          "items": {
+            "$ref": "#/$defs/StatusEntry"
+          },
           "default": []
         }
       }
     },
-
     "EnumValue": {
       "description": "A single enum member. Omit 'value' to auto-number sequentially.",
       "type": "object",
@@ -375,57 +506,79 @@
           "description": "Explicit integer value. If omitted, continues from the previous member.",
           "type": "integer"
         },
-        "description": { "type": "string", "default": "" }
+        "description": {
+          "type": "string",
+          "default": ""
+        }
       }
     },
-
     "ConstantDefinition": {
       "description": "A named constant (rendered as #define).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["value"],
+      "required": [
+        "value"
+      ],
       "properties": {
         "value": {
           "description": "Constant value — an integer or string expression.",
           "oneOf": [
-            { "type": "integer" },
-            { "type": "string" }
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
           ]
         },
-        "description": { "type": "string", "default": "" }
+        "description": {
+          "type": "string",
+          "default": ""
+        }
       }
     },
-
     "ErrorGroup": {
       "description": "A group of related error codes. The full 32-bit code is (group_id << 16) | code.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["group_id", "entries"],
+      "required": [
+        "group_id",
+        "entries"
+      ],
       "properties": {
         "group_id": {
           "description": "Group identifier (upper 16 bits of the error code).",
           "type": "integer"
         },
-        "description": { "type": "string", "default": "" },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
         "entries": {
           "description": "Error entries within this group, keyed by error code name.",
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/ErrorEntry" }
+          "additionalProperties": {
+            "$ref": "#/$defs/ErrorEntry"
+          }
         }
       }
     },
-
     "ErrorEntry": {
       "description": "A single error code within an error group.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["code"],
+      "required": [
+        "code"
+      ],
       "properties": {
         "code": {
           "description": "Error code identifier (lower 16 bits of the error code).",
           "type": "integer"
         },
-        "description": { "type": "string", "default": "" }
+        "description": {
+          "type": "string",
+          "default": ""
+        }
       }
     }
   }

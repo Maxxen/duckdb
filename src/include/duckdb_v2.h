@@ -74,6 +74,23 @@ typedef uint64_t idx_t;
 
 /* --- Enums for common --- */
 
+/* --- Structs for common --- */
+//! Opaque 16-byte storage for a byte-backed value (VARCHAR / BLOB
+//! / BIT / BIGNUM). Only the struct's size (16 bytes) and alignment
+//! (8 bytes, from `uint64_t _opaque[2]`) are committed as ABI; the
+//! field layout (inline-vs-pointer dispatch mirroring
+//! duckdb::string_t) lives privately inside the bridge decoders.
+//! Callers MUST go through the matching <kind>_decode bridge to
+//! read bytes — varchar_decode for VARCHAR storage, blob_decode for
+//! BLOB, bit_decode for BIT, bignum_decode for BIGNUM. Reading
+//! `_opaque` directly is undefined behaviour. The 8-byte alignment
+//! matches duckdb::string_t's `alignof` so the bridge's
+//! reinterpret_cast is well-defined even when callers
+//! stack/heap-allocate a string_t and hand a pointer to it.
+typedef struct {
+	uint64_t _opaque[2];
+} duckdb_v2_string;
+
 /* --- Types for common --- */
 //! An opaque handle to the V2 environment: the required root through
 //! which databases are opened. Holds the shared DBInstanceCache so
@@ -164,22 +181,17 @@ typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
 //! Selection-vector entry. Mirrors duckdb::sel_t.
 typedef uint32_t duckdb_v2_sel_t;
 
-/* --- Structs for common --- */
-//! Opaque 16-byte storage for a string-backed value (VARCHAR / BLOB
-//! / BIT / BIGNUM). Only the struct's size (16 bytes) and alignment
-//! (8 bytes, from `uint64_t _opaque[2]`) are committed as ABI; the
-//! field layout (inline-vs-pointer dispatch mirroring
-//! duckdb::string_t) lives privately inside the bridge decoders.
-//! Callers MUST go through the matching <kind>_decode bridge to
-//! read bytes — varchar_decode for VARCHAR storage, blob_decode for
-//! BLOB, bit_decode for BIT, bignum_decode for BIGNUM. Reading
-//! `_opaque` directly is undefined behaviour. The 8-byte alignment
-//! matches duckdb::string_t's `alignof` so the bridge's
-//! reinterpret_cast is well-defined even when callers
-//! stack/heap-allocate a string_t and hand a pointer to it.
-typedef struct {
-	uint64_t _opaque[2];
-} duckdb_v2_string_t;
+//! VARCHAR storage. Decode via varchar_decode.
+typedef duckdb_v2_string duckdb_v2_varchar_t;
+
+//! BLOB storage. Decode via blob_decode.
+typedef duckdb_v2_string duckdb_v2_blob_t;
+
+//! BIT storage. Decode via bit_decode.
+typedef duckdb_v2_string duckdb_v2_bit_t;
+
+//! BIGNUM storage. Decode via bignum_decode.
+typedef duckdb_v2_string duckdb_v2_bignum_t;
 
 /* --- Constants for common --- */
 
@@ -200,9 +212,9 @@ typedef void (*duckdb_v2_user_data_destroy_cb)(void *data);
 
 /* --- Enums for errors --- */
 
-/* --- Types for errors --- */
-
 /* --- Structs for errors --- */
+
+/* --- Types for errors --- */
 
 /* --- Constants for errors --- */
 //! Sentinel for an unspecified internal API error
@@ -320,6 +332,24 @@ typedef void (*duckdb_v2_user_data_destroy_cb)(void *data);
 /* --- Functions for errors --- */
 
 /* ============================================================================
+ * MODULE: common-helpers
+ * ============================================================================ */
+
+/* --- Enums for common-helpers --- */
+
+/* --- Structs for common-helpers --- */
+
+/* --- Types for common-helpers --- */
+
+/* --- Constants for common-helpers --- */
+
+/* --- Error Codes for common-helpers --- */
+
+/* --- Function pointer typedefs for common-helpers --- */
+
+/* --- Functions for common-helpers --- */
+
+/* ============================================================================
  * MODULE: configuration
  * ============================================================================ */
 
@@ -358,9 +388,9 @@ typedef enum DUCKDB_V2_SETTING_SCOPE {
 	DUCKDB_V2_SETTING_SCOPE_LOCAL = 2,
 } DUCKDB_V2_SETTING_SCOPE;
 
-/* --- Types for configuration --- */
-
 /* --- Structs for configuration --- */
+
+/* --- Types for configuration --- */
 
 /* --- Constants for configuration --- */
 
@@ -490,9 +520,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_pt
 
 /* --- Enums for data_chunk --- */
 
-/* --- Types for data_chunk --- */
-
 /* --- Structs for data_chunk --- */
+
+/* --- Types for data_chunk --- */
 
 /* --- Constants for data_chunk --- */
 
@@ -598,9 +628,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_data
 
 /* --- Enums for database --- */
 
-/* --- Types for database --- */
-
 /* --- Structs for database --- */
+
+/* --- Types for database --- */
 
 /* --- Constants for database --- */
 
@@ -731,9 +761,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, 
 
 /* --- Enums for environment --- */
 
-/* --- Types for environment --- */
-
 /* --- Structs for environment --- */
+
+/* --- Types for environment --- */
 
 /* --- Constants for environment --- */
 
@@ -782,9 +812,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_environment_database_count(duckdb_v2
 
 /* --- Enums for error --- */
 
-/* --- Types for error --- */
-
 /* --- Structs for error --- */
+
+/* --- Types for error --- */
 
 /* --- Constants for error --- */
 
@@ -991,6 +1021,8 @@ typedef enum DUCKDB_V2_EXPRESSION_TYPE {
 	DUCKDB_V2_EXPRESSION_TYPE_BOUND_EXPANDED = 234,
 } DUCKDB_V2_EXPRESSION_TYPE;
 
+/* --- Structs for expression --- */
+
 /* --- Types for expression --- */
 //! A borrowed handle to a bound expression node within the engine's plan.
 //! Read-only; never owned or destroyed by the caller. Valid only for the
@@ -998,8 +1030,6 @@ typedef enum DUCKDB_V2_EXPRESSION_TYPE {
 //! bind callback); do not store it past the callback's return. Children
 //! borrowed via expression_get_child share the same lifetime.
 typedef void *duckdb_v2_expression_ptr;
-
-/* --- Structs for expression --- */
 
 /* --- Constants for expression --- */
 
@@ -1170,6 +1200,8 @@ typedef enum DUCKDB_V2_FILE_FLAG {
 	DUCKDB_V2_FILE_FLAG_APPEND = 16,
 } DUCKDB_V2_FILE_FLAG;
 
+/* --- Structs for file_system --- */
+
 /* --- Types for file_system --- */
 //! An opaque handle to a DuckDB file system.
 //! A file system handle is obtained via `duckdb_v2_file_system_get_from_context` or
@@ -1184,8 +1216,6 @@ typedef void *duckdb_v2_file_system_ptr;
 //! connection is still alive). It can be used to read, write, seek, and otherwise manipulate the underlying file via
 //! the various `duckdb_v2_file_handle_*` functions.
 typedef void *duckdb_v2_file_handle_ptr;
-
-/* --- Structs for file_system --- */
 
 /* --- Constants for file_system --- */
 
@@ -1419,9 +1449,9 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 	DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT = 109,
 } DUCKDB_V2_LOGICAL_TYPE_ID;
 
-/* --- Types for logical_type --- */
-
 /* --- Structs for logical_type --- */
+
+/* --- Types for logical_type --- */
 
 /* --- Constants for logical_type --- */
 
@@ -1768,9 +1798,9 @@ typedef enum DUCKDB_V2_RESULT_TYPE {
 	DUCKDB_V2_RESULT_TYPE_NOTHING = 2,
 } DUCKDB_V2_RESULT_TYPE;
 
-/* --- Types for query_result --- */
-
 /* --- Structs for query_result --- */
+
+/* --- Types for query_result --- */
 
 /* --- Constants for query_result --- */
 
@@ -1908,6 +1938,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_rows_changed(duckdb_v2_result
 
 /* --- Enums for scalar --- */
 
+/* --- Structs for scalar --- */
+
 /* --- Types for scalar --- */
 //! An opaque handle to a scalar function builder.
 //! Created with `scalar_function_builder_create`, configured with the various `scalar_function_set_*` functions, and
@@ -1921,8 +1953,6 @@ typedef void *duckdb_v2_scalar_function_builder_ptr;
 //! return types and retrieving user data. The library owns this handle and guarantees its validity only for the
 //! duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.
 typedef void *duckdb_v2_scalar_function_info_ptr;
-
-/* --- Structs for scalar --- */
 
 /* --- Constants for scalar --- */
 
@@ -2210,9 +2240,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_get_result_vector(du
 
 /* --- Enums for value --- */
 
-/* --- Types for value --- */
-
 /* --- Structs for value --- */
+
+/* --- Types for value --- */
 
 /* --- Constants for value --- */
 
@@ -2944,19 +2974,6 @@ typedef enum DUCKDB_V2_VECTOR_TYPE {
 	DUCKDB_V2_VECTOR_TYPE_DICTIONARY = 3,
 } DUCKDB_V2_VECTOR_TYPE;
 
-/* --- Types for vector --- */
-//! VARCHAR storage. Decode via varchar_decode.
-typedef duckdb_v2_string_t duckdb_v2_varchar_t;
-
-//! BLOB storage. Decode via blob_decode.
-typedef duckdb_v2_string_t duckdb_v2_blob_t;
-
-//! BIT storage. Decode via bit_decode.
-typedef duckdb_v2_string_t duckdb_v2_bit_t;
-
-//! BIGNUM storage. Decode via bignum_decode.
-typedef duckdb_v2_string_t duckdb_v2_bignum_t;
-
 /* --- Structs for vector --- */
 typedef struct {
 	const void *data;
@@ -2985,6 +3002,8 @@ typedef struct {
 	int32_t days;
 	int64_t micros;
 } duckdb_v2_interval_t;
+
+/* --- Types for vector --- */
 
 /* --- Constants for vector --- */
 
@@ -3315,9 +3334,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(const uint64_t
 
 /* --- Enums for connection --- */
 
-/* --- Types for connection --- */
-
 /* --- Structs for connection --- */
+
+/* --- Types for connection --- */
 
 /* --- Constants for connection --- */
 
@@ -3438,6 +3457,160 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duck
                                                                             duckdb_v2_connection_callback_cb callback,
                                                                             void *user_data,
                                                                             duckdb_v2_error_info_ptr *err);
+
+#ifndef DUCKDB_V2_INLINE_FUNCTIONS_H
+#define DUCKDB_V2_INLINE_FUNCTIONS_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/* Internal mirror of duckdb::string_t's C ABI layout. Fixed structure;
+   access only via the duckdb_v2_string_* helpers — do not read fields
+   directly. Only sizeof == 16 and alignof == 8 are committed as ABI. */
+struct duckdb_v2_impl_string {
+	union {
+		struct {
+			uint32_t length;
+			char prefix[4];
+			char *ptr;
+		} pointer;
+		struct {
+			uint32_t length;
+			char inlined[12];
+		} inlined;
+	} value;
+};
+
+#define DUCKDB_V2_IMPL_STRING_INLINE_MAX 12u
+
+_Static_assert(sizeof(duckdb_v2_string) == sizeof(struct duckdb_v2_impl_string),
+               "duckdb_v2_string and duckdb_v2_impl_string must have the same size");
+
+//===--------------------------------------------------------------------===//
+// duckdb_v2_string helpers
+//===--------------------------------------------------------------------===//
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_string_is_inlined(const duckdb_v2_string *string, bool *out_inlined,
+                                                               duckdb_v2_error_info_ptr *err) {
+	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)string;
+	*out_inlined = p->value.inlined.length <= DUCKDB_V2_IMPL_STRING_INLINE_MAX;
+	return DUCKDB_V2_ERROR_NONE;
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_string_get_length(const duckdb_v2_string *string, uint32_t *out_length,
+                                                               duckdb_v2_error_info_ptr *err) {
+	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)string;
+	*out_length = p->value.inlined.length;
+	return DUCKDB_V2_ERROR_NONE;
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_string_get_data(const duckdb_v2_string *string, const char **out_data,
+                                                             duckdb_v2_error_info_ptr *err) {
+	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)string;
+	*out_data =
+	    p->value.inlined.length <= DUCKDB_V2_IMPL_STRING_INLINE_MAX ? p->value.inlined.inlined : p->value.pointer.ptr;
+	return DUCKDB_V2_ERROR_NONE;
+}
+
+//===--------------------------------------------------------------------===//
+// duckdb_v2_varchar_t helpers (same layout as string)
+//===--------------------------------------------------------------------===//
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_varchar_is_inlined(const duckdb_v2_varchar_t *s, bool *out_inlined,
+                                                                duckdb_v2_error_info_ptr *err) {
+	return duckdb_v2_string_is_inlined(s, out_inlined, err);
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_varchar_get_length(const duckdb_v2_varchar_t *s, uint32_t *out_length,
+                                                                duckdb_v2_error_info_ptr *err) {
+	return duckdb_v2_string_get_length(s, out_length, err);
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_varchar_get_data(const duckdb_v2_varchar_t *s, const char **out_data,
+                                                              duckdb_v2_error_info_ptr *err) {
+	return duckdb_v2_string_get_data(s, out_data, err);
+}
+
+//===--------------------------------------------------------------------===//
+// duckdb_v2_blob_t helpers (same layout as string; byte-typed accessors)
+//===--------------------------------------------------------------------===//
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_blob_is_inlined(const duckdb_v2_blob_t *b, bool *out_inlined,
+                                                             duckdb_v2_error_info_ptr *err) {
+	return duckdb_v2_string_is_inlined(b, out_inlined, err);
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_blob_get_length(const duckdb_v2_blob_t *b, uint32_t *out_length,
+                                                             duckdb_v2_error_info_ptr *err) {
+	return duckdb_v2_string_get_length(b, out_length, err);
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_blob_get_data(const duckdb_v2_blob_t *b, const char **out_data,
+                                                           duckdb_v2_error_info_ptr *err) {
+	return duckdb_v2_string_get_data(b, out_data, err);
+}
+
+//===--------------------------------------------------------------------===//
+// duckdb_v2_bit_t helpers
+// Encoding: data[0] = padding bit count (0-7); data[1..] = bit payload.
+//===--------------------------------------------------------------------===//
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_padding(const duckdb_v2_bit_t *b, uint8_t *out_padding,
+                                                         duckdb_v2_error_info_ptr *err) {
+	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)b;
+	uint32_t len = p->value.inlined.length;
+	if (len == 0) {
+		*out_padding = 0;
+		return DUCKDB_V2_ERROR_NONE;
+	}
+	const char *data = len <= DUCKDB_V2_IMPL_STRING_INLINE_MAX ? p->value.inlined.inlined : p->value.pointer.ptr;
+	*out_padding = (uint8_t)data[0];
+	return DUCKDB_V2_ERROR_NONE;
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_count(const duckdb_v2_bit_t *b, uint64_t *out_count,
+                                                       duckdb_v2_error_info_ptr *err) {
+	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)b;
+	uint32_t len = p->value.inlined.length;
+	if (len == 0) {
+		*out_count = 0;
+		return DUCKDB_V2_ERROR_NONE;
+	}
+	const char *data = len <= DUCKDB_V2_IMPL_STRING_INLINE_MAX ? p->value.inlined.inlined : p->value.pointer.ptr;
+	*out_count = (uint64_t)(len - 1) * 8 - (uint8_t)data[0];
+	return DUCKDB_V2_ERROR_NONE;
+}
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_get_data(const duckdb_v2_bit_t *b, const uint8_t **out_data,
+                                                          duckdb_v2_error_info_ptr *err) {
+	const char *raw = NULL;
+	DUCKDB_V2_API_CALL_t rc = duckdb_v2_string_get_data(b, &raw, err);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return rc;
+	}
+	*out_data = (const uint8_t *)raw + 1;
+	return DUCKDB_V2_ERROR_NONE;
+}
+
+//===--------------------------------------------------------------------===//
+// duckdb_v2_bignum_t helpers
+// Sign encoding: MSB of data[0] clear = negative, set = positive.
+//===--------------------------------------------------------------------===//
+
+static inline DUCKDB_V2_API_CALL_t duckdb_v2_bignum_is_negative(const duckdb_v2_bignum_t *b, bool *out_negative,
+                                                                duckdb_v2_error_info_ptr *err) {
+	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)b;
+	uint32_t len = p->value.inlined.length;
+	if (len == 0) {
+		*out_negative = false;
+		return DUCKDB_V2_ERROR_NONE;
+	}
+	const char *data = len <= DUCKDB_V2_IMPL_STRING_INLINE_MAX ? p->value.inlined.inlined : p->value.pointer.ptr;
+	*out_negative = ((uint8_t)data[0] & 0x80) == 0;
+	return DUCKDB_V2_ERROR_NONE;
+}
+
+#endif /* DUCKDB_V2_INLINE_FUNCTIONS_H */
 
 #ifdef __cplusplus
 }

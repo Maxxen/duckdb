@@ -29,7 +29,10 @@ def _scan_implemented_functions(scan_dir: Path) -> set[str]:
 
 
 def generate(
-    modules: list[dict], metadata: dict, output_path: Path, scan_dir: Path | None = None
+    modules: list[dict],
+    metadata: dict,
+    output_path: Path,
+    scan_dir: Path | None = None,
 ) -> None:
     """Generate C++ stub file for unimplemented V2 C API functions."""
     render_modules = resolve_modules(modules, metadata)
@@ -49,7 +52,7 @@ def generate(
     stub_count = 0
     for mod in render_modules:
         for fname, func in mod.functions.items():
-            if fname in implemented:
+            if fname in implemented or func.static_inline:
                 continue
 
             # Build parameter list

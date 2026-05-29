@@ -9,6 +9,11 @@ typedef struct _{{ t.name }} {
 } * {{ t.canonical_name }};
   {%- elif t.is_pointer -%}
 typedef {{ format_c_type(t.base) }}* {{ t.canonical_name }};
+  {%- elif t.is_qualified -%}
+#ifndef DUCKDB_TYPEDEF_{{ t.canonical_name | upper }}
+#define DUCKDB_TYPEDEF_{{ t.canonical_name | upper }}
+typedef {{ format_c_type(t.base) }} {{ t.canonical_name }};
+#endif
   {%- else -%}
 typedef {{ format_c_type(t.base) }} {{ t.canonical_name }};
   {%- endif -%}

@@ -23,6 +23,7 @@ class CTypeDef:
     base: str
     is_pointer: bool
     tagged_struct: bool = False  # True -> implies a pointer typedef + is_pointer=True
+    is_qualified: bool = False
     description: str = ""
 
 
@@ -68,6 +69,7 @@ class CFunction:
     description: str | None
     deprecated: str | None
     return_c: str
+    static_inline: bool = False
     parameters: dict[str, CParam] = field(default_factory=dict)
 
 
