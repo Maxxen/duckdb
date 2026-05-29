@@ -151,6 +151,14 @@ inline DataChunk *ToDataChunk(duckdb_v2_data_chunk_ptr ptr) {
 inline Vector *ToVector(duckdb_v2_vector_ptr ptr) {
 	return static_cast<Vector *>(ptr);
 }
+// duckdb_v2_expression_ptr is a borrowed duckdb::Expression living inside the
+// engine's plan. No wrapper — accessors read directly off the Expression and
+// its bound subclasses. The handle is read-only and never destroyed by the
+// caller; children borrowed via expression_get_child share the parent's
+// lifetime and are likewise unwrapped Expression pointers.
+inline Expression *ToExpression(duckdb_v2_expression_ptr ptr) {
+	return static_cast<Expression *>(ptr);
+}
 
 // Map core's VectorType to the V2 surface. FSST / SEQUENCE / SHREDDED
 // collapse into OTHER — V2's untyped view rejects those kinds and

@@ -837,6 +837,301 @@ nullptr. Safe to call on any info returned by the library.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_ptr *info);
 
 /* ============================================================================
+ * MODULE: expression
+ * ============================================================================ */
+
+/* --- Enums for expression --- */
+//! The class of a bound expression node — selects which class-specific
+//! accessors are valid. Mirrors duckdb::ExpressionClass; values are kept
+//! numerically identical to the internal enum. Parsed (unbound) classes
+//! are included for completeness, but only BOUND_* classes appear in the
+//! bound trees this API exposes.
+typedef enum DUCKDB_V2_EXPRESSION_CLASS {
+	/* Invalid / unset. */
+	DUCKDB_V2_EXPRESSION_CLASS_INVALID = 0,
+	DUCKDB_V2_EXPRESSION_CLASS_AGGREGATE = 1,
+	DUCKDB_V2_EXPRESSION_CLASS_CASE = 2,
+	DUCKDB_V2_EXPRESSION_CLASS_CAST = 3,
+	DUCKDB_V2_EXPRESSION_CLASS_COLUMN_REF = 4,
+	DUCKDB_V2_EXPRESSION_CLASS_COMPARISON = 5,
+	DUCKDB_V2_EXPRESSION_CLASS_CONJUNCTION = 6,
+	DUCKDB_V2_EXPRESSION_CLASS_CONSTANT = 7,
+	DUCKDB_V2_EXPRESSION_CLASS_DEFAULT = 8,
+	DUCKDB_V2_EXPRESSION_CLASS_FUNCTION = 9,
+	DUCKDB_V2_EXPRESSION_CLASS_OPERATOR = 10,
+	DUCKDB_V2_EXPRESSION_CLASS_STAR = 11,
+	DUCKDB_V2_EXPRESSION_CLASS_SUBQUERY = 13,
+	DUCKDB_V2_EXPRESSION_CLASS_WINDOW = 14,
+	DUCKDB_V2_EXPRESSION_CLASS_PARAMETER = 15,
+	DUCKDB_V2_EXPRESSION_CLASS_COLLATE = 16,
+	DUCKDB_V2_EXPRESSION_CLASS_LAMBDA = 17,
+	DUCKDB_V2_EXPRESSION_CLASS_POSITIONAL_REFERENCE = 18,
+	DUCKDB_V2_EXPRESSION_CLASS_BETWEEN = 19,
+	DUCKDB_V2_EXPRESSION_CLASS_LAMBDA_REF = 20,
+	DUCKDB_V2_EXPRESSION_CLASS_TYPE = 21,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_AGGREGATE = 25,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_CASE = 26,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_CAST = 27,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_COLUMN_REF = 28,
+	/* Legacy — comparisons are now BOUND_FUNCTION. */
+	DUCKDB_V2_EXPRESSION_CLASS_LEGACY_BOUND_COMPARISON = 29,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_CONJUNCTION = 30,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_CONSTANT = 31,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_DEFAULT = 32,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_FUNCTION = 33,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_OPERATOR = 34,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_PARAMETER = 35,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_REF = 36,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_SUBQUERY = 37,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_WINDOW = 38,
+	DUCKDB_V2_EXPRESSION_CLASS_LEGACY_BOUND_BETWEEN = 39,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_UNNEST = 40,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_LAMBDA = 41,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_LAMBDA_REF = 42,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_EXPRESSION = 50,
+	DUCKDB_V2_EXPRESSION_CLASS_BOUND_EXPANDED = 51,
+} DUCKDB_V2_EXPRESSION_CLASS;
+
+//! The semantic operation of an expression node (e.g. COMPARE_EQUAL,
+//! CONJUNCTION_AND). Two nodes of the same class are distinguished by this
+//! type. Mirrors duckdb::ExpressionType; values are kept numerically
+//! identical to the internal enum. The full set is exposed for round-trip
+//! completeness; only a subset arises in the bound trees this API exposes.
+typedef enum DUCKDB_V2_EXPRESSION_TYPE {
+	/* Invalid / unset. */
+	DUCKDB_V2_EXPRESSION_TYPE_INVALID = 0,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_CAST = 12,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_NOT = 13,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_IS_NULL = 14,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_IS_NOT_NULL = 15,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_UNPACK = 16,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_EQUAL = 25,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_NOTEQUAL = 26,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_LESSTHAN = 27,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_GREATERTHAN = 28,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_LESSTHANOREQUALTO = 29,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_GREATERTHANOREQUALTO = 30,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_IN = 35,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_NOT_IN = 36,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_DISTINCT_FROM = 37,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_BETWEEN = 38,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_NOT_BETWEEN = 39,
+	DUCKDB_V2_EXPRESSION_TYPE_COMPARE_NOT_DISTINCT_FROM = 40,
+	DUCKDB_V2_EXPRESSION_TYPE_CONJUNCTION_AND = 50,
+	DUCKDB_V2_EXPRESSION_TYPE_CONJUNCTION_OR = 51,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_CONSTANT = 75,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_PARAMETER = 76,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_TUPLE = 77,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_TUPLE_ADDRESS = 78,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_NULL = 79,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_VECTOR = 80,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_SCALAR = 81,
+	DUCKDB_V2_EXPRESSION_TYPE_VALUE_DEFAULT = 82,
+	DUCKDB_V2_EXPRESSION_TYPE_AGGREGATE = 100,
+	DUCKDB_V2_EXPRESSION_TYPE_BOUND_AGGREGATE = 101,
+	DUCKDB_V2_EXPRESSION_TYPE_GROUPING_FUNCTION = 102,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_AGGREGATE = 110,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_FUNCTION = 111,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_RANK = 120,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_RANK_DENSE = 121,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_NTILE = 122,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_PERCENT_RANK = 123,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_CUME_DIST = 124,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_ROW_NUMBER = 125,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_FIRST_VALUE = 130,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_LAST_VALUE = 131,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_LEAD = 132,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_LAG = 133,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_NTH_VALUE = 134,
+	DUCKDB_V2_EXPRESSION_TYPE_WINDOW_FILL = 135,
+	DUCKDB_V2_EXPRESSION_TYPE_FUNCTION = 140,
+	DUCKDB_V2_EXPRESSION_TYPE_BOUND_FUNCTION = 141,
+	DUCKDB_V2_EXPRESSION_TYPE_CASE_EXPR = 150,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_NULLIF = 151,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_COALESCE = 152,
+	DUCKDB_V2_EXPRESSION_TYPE_ARRAY_EXTRACT = 153,
+	DUCKDB_V2_EXPRESSION_TYPE_ARRAY_SLICE = 154,
+	DUCKDB_V2_EXPRESSION_TYPE_STRUCT_EXTRACT = 155,
+	DUCKDB_V2_EXPRESSION_TYPE_ARRAY_CONSTRUCTOR = 156,
+	DUCKDB_V2_EXPRESSION_TYPE_ARROW = 157,
+	DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_TRY = 158,
+	DUCKDB_V2_EXPRESSION_TYPE_SUBQUERY = 175,
+	DUCKDB_V2_EXPRESSION_TYPE_STAR = 200,
+	DUCKDB_V2_EXPRESSION_TYPE_TABLE_STAR = 201,
+	DUCKDB_V2_EXPRESSION_TYPE_PLACEHOLDER = 202,
+	DUCKDB_V2_EXPRESSION_TYPE_COLUMN_REF = 203,
+	DUCKDB_V2_EXPRESSION_TYPE_FUNCTION_REF = 204,
+	DUCKDB_V2_EXPRESSION_TYPE_TABLE_REF = 205,
+	DUCKDB_V2_EXPRESSION_TYPE_LAMBDA_REF = 206,
+	DUCKDB_V2_EXPRESSION_TYPE_TYPE = 207,
+	DUCKDB_V2_EXPRESSION_TYPE_CAST = 225,
+	DUCKDB_V2_EXPRESSION_TYPE_BOUND_REF = 227,
+	DUCKDB_V2_EXPRESSION_TYPE_BOUND_COLUMN_REF = 228,
+	DUCKDB_V2_EXPRESSION_TYPE_BOUND_UNNEST = 229,
+	DUCKDB_V2_EXPRESSION_TYPE_COLLATE = 230,
+	DUCKDB_V2_EXPRESSION_TYPE_LAMBDA = 231,
+	DUCKDB_V2_EXPRESSION_TYPE_POSITIONAL_REFERENCE = 232,
+	DUCKDB_V2_EXPRESSION_TYPE_BOUND_LAMBDA_REF = 233,
+	DUCKDB_V2_EXPRESSION_TYPE_BOUND_EXPANDED = 234,
+} DUCKDB_V2_EXPRESSION_TYPE;
+
+/* --- Types for expression --- */
+//! A borrowed handle to a bound expression node within the engine's plan.
+//! Read-only; never owned or destroyed by the caller. Valid only for the
+//! duration of the callback that hands it out (e.g. a filter-pushdown or
+//! bind callback); do not store it past the callback's return. Children
+//! borrowed via expression_get_child share the same lifetime.
+typedef void *duckdb_v2_expression_ptr;
+
+/* --- Structs for expression --- */
+
+/* --- Constants for expression --- */
+
+/* --- Error Codes for expression --- */
+
+/* --- Function pointer typedefs for expression --- */
+
+/* --- Functions for expression --- */
+/*!
+* Returns the class of a bound expression.
+* The expression class can be used to determine which class-specific accessors are valid (get_function_name
+for function-like classes; get_constant_value for BOUND_CONSTANT; get_reference_index for BOUND_REF).
+
+* @param expression The expression to inspect.
+* @param out_class Receives the expression class.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_class(duckdb_v2_expression_ptr expression,
+                                                                 DUCKDB_V2_EXPRESSION_CLASS *out_class,
+                                                                 duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the semantic operation type of a bound expression.
+* Distinguishes two nodes of the same class (e.g. COMPARE_EQUAL versus
+COMPARE_GREATERTHAN on two BOUND_FUNCTION nodes). Never fails on class
+grounds.
+
+* @param expression The expression to inspect.
+* @param out_type Receives the expression type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_type(duckdb_v2_expression_ptr expression,
+                                                                DUCKDB_V2_EXPRESSION_TYPE *out_type,
+                                                                duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the logical type of the expression's result.
+* The returned logical type is caller-owned and must be destroyed via logical_type_destroy.
+
+* @param expression The expression to inspect.
+* @param out_type Receives the owned result logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_return_type(duckdb_v2_expression_ptr expression,
+                                                                       duckdb_v2_logical_type_ptr *out_type,
+                                                                       duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the number of child expressions.
+* Total over every bound class that has children. Leaves (BOUND_CONSTANT, BOUND_REF) report 0, BOUND_CAST reports 1,
+and nested nodes report their full fan-out (including hidden children such as a CASE's when/then/else or an
+aggregate's filter and order keys). Never fails on bound classes.
+
+* @param expression The expression to inspect.
+* @param out_count Receives the child count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child_count(duckdb_v2_expression_ptr expression,
+                                                                       idx_t *out_count, duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows a child expression by index.
+* Child order follows the engine's ExpressionIterator. Returns
+ERROR_INVALID_INPUT if index is out of range (>= the count from
+expression_get_child_count), which includes every index on a leaf
+expression. The returned handle is borrowed and shares the parent's
+lifetime; do not destroy it.
+
+* @param expression The parent expression.
+* @param index Zero-based child index.
+* @param out_child Receives a borrowed child expression handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child(duckdb_v2_expression_ptr expression, idx_t index,
+                                                                 duckdb_v2_expression_ptr *out_child,
+                                                                 duckdb_v2_error_info_ptr *err);
+/*!
+* Borrows the function name of a BOUND_FUNCTION expression.
+* Returns the bound scalar function's registered name. For comparison
+operators this is an internal symbol such as "__comparison" — dispatch on
+expression_get_type for the semantic operator (e.g. COMPARE_EQUAL).
+Returns ERROR_INVALID_INPUT if the expression class is not BOUND_FUNCTION.
+On success, writes a borrowed null-terminated byte string into *out_name,
+valid for the expression handle's lifetime.
+
+* @param expression The expression to inspect.
+* @param out_name Borrowed pointer to the null-terminated function name.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_function_name(duckdb_v2_expression_ptr expression,
+                                                                         const char **out_name,
+                                                                         duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the value of a BOUND_CONSTANT expression.
+* The returned value is caller-owned and must be destroyed via
+value_destroy. Returns ERROR_INVALID_INPUT if the expression class is
+not BOUND_CONSTANT.
+
+* @param expression The expression to inspect.
+* @param out_value Receives the owned constant value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_constant_value(duckdb_v2_expression_ptr expression,
+                                                                          duckdb_v2_value_ptr *out_value,
+                                                                          duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the column binding of a BOUND_COLUMN_REF expression.
+* A BOUND_COLUMN_REF identifies a column logically, by binding — this is
+the representation seen during binding and optimization, including
+table-function filter pushdown (columns only become physical BOUND_REF
+slots after physical planning). The binding is {table_index,
+column_index}; column_index is relative to the producing operator's
+output (e.g. a scan's projected columns). Each out-param is optional:
+pass NULL to skip a field. Returns ERROR_INVALID_INPUT if the expression
+class is not BOUND_COLUMN_REF.
+
+* @param expression The expression to inspect.
+* @param out_table_index Optional. Receives the binding's table index (binding namespace id).
+* @param out_column_index Optional. Receives the binding's column index within the producing operator's output.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_column_binding(duckdb_v2_expression_ptr expression,
+                                                                          idx_t *out_table_index,
+                                                                          idx_t *out_column_index,
+                                                                          duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the physical column index of a BOUND_REF expression.
+* The index identifies the column within the expression's input DataChunk.
+BOUND_REF is the execution-stage column representation assigned after
+physical planning; binding/optimization-stage trees (e.g. filter
+pushdown) carry BOUND_COLUMN_REF instead — see
+expression_get_column_binding. Returns ERROR_INVALID_INPUT if the
+expression class is not BOUND_REF.
+
+* @param expression The expression to inspect.
+* @param out_index Receives the physical column index.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_reference_index(duckdb_v2_expression_ptr expression,
+                                                                           idx_t *out_index,
+                                                                           duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
  * MODULE: file_system
  * ============================================================================ */
 

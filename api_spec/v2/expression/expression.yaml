@@ -1,0 +1,549 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: expression
+#
+# Read-side introspection of bound expression trees. A duckdb_v2_expression
+# is a borrowed handle to a duckdb::Expression living inside the engine's
+# plan; it is never owned or destroyed by the caller. Handles arrive through
+# a consumer that hands them out (e.g. table-function filter pushdown or
+# scalar-function bind-time argument inspection); this module ships the
+# handle plus its accessors standalone.
+#
+# SCOPE: bound expressions only. duckdb_v2_expression is duckdb::Expression —
+# the post-binding tree. Parser-level / unbound expressions
+# (duckdb::ParsedExpression) are a separate internal hierarchy and are out of
+# scope for this surface. Consequently get_class only ever yields the BOUND_*
+# values (plus the misc BOUND_EXPRESSION / BOUND_EXPANDED); the parsed-class
+# values exist in EXPRESSION_CLASS purely for numeric fidelity with
+# duckdb::ExpressionClass and are never returned here. Switch on the BOUND_*
+# values: columns are BOUND_COLUMN_REF (not the parsed COLUMN_REF), constants
+# are BOUND_CONSTANT (not CONSTANT), and so on.
+#
+# Design: ONE generic handle, not a type hierarchy.
+#   - get_class / get_type / get_return_type are meaningful for every bound
+#     class and never fail on class grounds.
+#   - get_child_count / get_child traverse children via the engine's own
+#     ExpressionIterator, so they are total over every bound class (including
+#     the children of nodes this module otherwise doesn't model — case,
+#     aggregate, window, etc.). Child order follows the iterator.
+# The class-specific accessors return ERROR_INVALID_INPUT when called on a
+# class they do not apply to:
+#   - get_function_name  : BOUND_FUNCTION only (the registered function name;
+#                          an internal symbol like "__comparison" for
+#                          comparisons — dispatch on get_type for the operator).
+#   - get_constant_value : BOUND_CONSTANT only.
+#   - get_column_binding : BOUND_COLUMN_REF only (the logical {table, column}
+#                          binding seen during binding / optimization, incl.
+#                          filter pushdown).
+#   - get_reference_index: BOUND_REF only (the physical DataChunk slot assigned
+#                          after physical planning — not what pushdown sees).
+# We deliberately did not introduce narrowed sub-handles
+# (expression_as_function / _as_constant / _as_reference): with so few
+# class-specific accessors a narrowing gate fails the same way, at the same
+# call site, as the direct accessor. Revisit when the class-specific surface
+# grows (cast try_cast / target type, aggregate distinct / filter, function
+# bind-info).
+#
+# The EXPRESSION_CLASS and EXPRESSION_TYPE enums mirror duckdb::ExpressionClass
+# and duckdb::ExpressionType integer values exactly, so the numeric round-trip
+# matches what's stored internally.
+
+enums:
+  EXPRESSION_CLASS:
+    description: |
+      The class of a bound expression node — selects which class-specific
+      accessors are valid. Mirrors duckdb::ExpressionClass; values are kept
+      numerically identical to the internal enum. Parsed (unbound) classes
+      are included for completeness, but only BOUND_* classes appear in the
+      bound trees this API exposes.
+    values:
+      EXPRESSION_CLASS_INVALID:
+        value: 0
+        description: Invalid / unset.
+      EXPRESSION_CLASS_AGGREGATE:
+        value: 1
+      EXPRESSION_CLASS_CASE:
+        value: 2
+      EXPRESSION_CLASS_CAST:
+        value: 3
+      EXPRESSION_CLASS_COLUMN_REF:
+        value: 4
+      EXPRESSION_CLASS_COMPARISON:
+        value: 5
+      EXPRESSION_CLASS_CONJUNCTION:
+        value: 6
+      EXPRESSION_CLASS_CONSTANT:
+        value: 7
+      EXPRESSION_CLASS_DEFAULT:
+        value: 8
+      EXPRESSION_CLASS_FUNCTION:
+        value: 9
+      EXPRESSION_CLASS_OPERATOR:
+        value: 10
+      EXPRESSION_CLASS_STAR:
+        value: 11
+      EXPRESSION_CLASS_SUBQUERY:
+        value: 13
+      EXPRESSION_CLASS_WINDOW:
+        value: 14
+      EXPRESSION_CLASS_PARAMETER:
+        value: 15
+      EXPRESSION_CLASS_COLLATE:
+        value: 16
+      EXPRESSION_CLASS_LAMBDA:
+        value: 17
+      EXPRESSION_CLASS_POSITIONAL_REFERENCE:
+        value: 18
+      EXPRESSION_CLASS_BETWEEN:
+        value: 19
+      EXPRESSION_CLASS_LAMBDA_REF:
+        value: 20
+      EXPRESSION_CLASS_TYPE:
+        value: 21
+      EXPRESSION_CLASS_BOUND_AGGREGATE:
+        value: 25
+      EXPRESSION_CLASS_BOUND_CASE:
+        value: 26
+      EXPRESSION_CLASS_BOUND_CAST:
+        value: 27
+      EXPRESSION_CLASS_BOUND_COLUMN_REF:
+        value: 28
+      EXPRESSION_CLASS_LEGACY_BOUND_COMPARISON:
+        value: 29
+        description: Legacy — comparisons are now BOUND_FUNCTION.
+      EXPRESSION_CLASS_BOUND_CONJUNCTION:
+        value: 30
+      EXPRESSION_CLASS_BOUND_CONSTANT:
+        value: 31
+      EXPRESSION_CLASS_BOUND_DEFAULT:
+        value: 32
+      EXPRESSION_CLASS_BOUND_FUNCTION:
+        value: 33
+      EXPRESSION_CLASS_BOUND_OPERATOR:
+        value: 34
+      EXPRESSION_CLASS_BOUND_PARAMETER:
+        value: 35
+      EXPRESSION_CLASS_BOUND_REF:
+        value: 36
+      EXPRESSION_CLASS_BOUND_SUBQUERY:
+        value: 37
+      EXPRESSION_CLASS_BOUND_WINDOW:
+        value: 38
+      EXPRESSION_CLASS_LEGACY_BOUND_BETWEEN:
+        value: 39
+      EXPRESSION_CLASS_BOUND_UNNEST:
+        value: 40
+      EXPRESSION_CLASS_BOUND_LAMBDA:
+        value: 41
+      EXPRESSION_CLASS_BOUND_LAMBDA_REF:
+        value: 42
+      EXPRESSION_CLASS_BOUND_EXPRESSION:
+        value: 50
+      EXPRESSION_CLASS_BOUND_EXPANDED:
+        value: 51
+  EXPRESSION_TYPE:
+    description: |
+      The semantic operation of an expression node (e.g. COMPARE_EQUAL,
+      CONJUNCTION_AND). Two nodes of the same class are distinguished by this
+      type. Mirrors duckdb::ExpressionType; values are kept numerically
+      identical to the internal enum. The full set is exposed for round-trip
+      completeness; only a subset arises in the bound trees this API exposes.
+    values:
+      EXPRESSION_TYPE_INVALID:
+        value: 0
+        description: Invalid / unset.
+      EXPRESSION_TYPE_OPERATOR_CAST:
+        value: 12
+      EXPRESSION_TYPE_OPERATOR_NOT:
+        value: 13
+      EXPRESSION_TYPE_OPERATOR_IS_NULL:
+        value: 14
+      EXPRESSION_TYPE_OPERATOR_IS_NOT_NULL:
+        value: 15
+      EXPRESSION_TYPE_OPERATOR_UNPACK:
+        value: 16
+      EXPRESSION_TYPE_COMPARE_EQUAL:
+        value: 25
+      EXPRESSION_TYPE_COMPARE_NOTEQUAL:
+        value: 26
+      EXPRESSION_TYPE_COMPARE_LESSTHAN:
+        value: 27
+      EXPRESSION_TYPE_COMPARE_GREATERTHAN:
+        value: 28
+      EXPRESSION_TYPE_COMPARE_LESSTHANOREQUALTO:
+        value: 29
+      EXPRESSION_TYPE_COMPARE_GREATERTHANOREQUALTO:
+        value: 30
+      EXPRESSION_TYPE_COMPARE_IN:
+        value: 35
+      EXPRESSION_TYPE_COMPARE_NOT_IN:
+        value: 36
+      EXPRESSION_TYPE_COMPARE_DISTINCT_FROM:
+        value: 37
+      EXPRESSION_TYPE_COMPARE_BETWEEN:
+        value: 38
+      EXPRESSION_TYPE_COMPARE_NOT_BETWEEN:
+        value: 39
+      EXPRESSION_TYPE_COMPARE_NOT_DISTINCT_FROM:
+        value: 40
+      EXPRESSION_TYPE_CONJUNCTION_AND:
+        value: 50
+      EXPRESSION_TYPE_CONJUNCTION_OR:
+        value: 51
+      EXPRESSION_TYPE_VALUE_CONSTANT:
+        value: 75
+      EXPRESSION_TYPE_VALUE_PARAMETER:
+        value: 76
+      EXPRESSION_TYPE_VALUE_TUPLE:
+        value: 77
+      EXPRESSION_TYPE_VALUE_TUPLE_ADDRESS:
+        value: 78
+      EXPRESSION_TYPE_VALUE_NULL:
+        value: 79
+      EXPRESSION_TYPE_VALUE_VECTOR:
+        value: 80
+      EXPRESSION_TYPE_VALUE_SCALAR:
+        value: 81
+      EXPRESSION_TYPE_VALUE_DEFAULT:
+        value: 82
+      EXPRESSION_TYPE_AGGREGATE:
+        value: 100
+      EXPRESSION_TYPE_BOUND_AGGREGATE:
+        value: 101
+      EXPRESSION_TYPE_GROUPING_FUNCTION:
+        value: 102
+      EXPRESSION_TYPE_WINDOW_AGGREGATE:
+        value: 110
+      EXPRESSION_TYPE_WINDOW_FUNCTION:
+        value: 111
+      EXPRESSION_TYPE_WINDOW_RANK:
+        value: 120
+      EXPRESSION_TYPE_WINDOW_RANK_DENSE:
+        value: 121
+      EXPRESSION_TYPE_WINDOW_NTILE:
+        value: 122
+      EXPRESSION_TYPE_WINDOW_PERCENT_RANK:
+        value: 123
+      EXPRESSION_TYPE_WINDOW_CUME_DIST:
+        value: 124
+      EXPRESSION_TYPE_WINDOW_ROW_NUMBER:
+        value: 125
+      EXPRESSION_TYPE_WINDOW_FIRST_VALUE:
+        value: 130
+      EXPRESSION_TYPE_WINDOW_LAST_VALUE:
+        value: 131
+      EXPRESSION_TYPE_WINDOW_LEAD:
+        value: 132
+      EXPRESSION_TYPE_WINDOW_LAG:
+        value: 133
+      EXPRESSION_TYPE_WINDOW_NTH_VALUE:
+        value: 134
+      EXPRESSION_TYPE_WINDOW_FILL:
+        value: 135
+      EXPRESSION_TYPE_FUNCTION:
+        value: 140
+      EXPRESSION_TYPE_BOUND_FUNCTION:
+        value: 141
+      EXPRESSION_TYPE_CASE_EXPR:
+        value: 150
+      EXPRESSION_TYPE_OPERATOR_NULLIF:
+        value: 151
+      EXPRESSION_TYPE_OPERATOR_COALESCE:
+        value: 152
+      EXPRESSION_TYPE_ARRAY_EXTRACT:
+        value: 153
+      EXPRESSION_TYPE_ARRAY_SLICE:
+        value: 154
+      EXPRESSION_TYPE_STRUCT_EXTRACT:
+        value: 155
+      EXPRESSION_TYPE_ARRAY_CONSTRUCTOR:
+        value: 156
+      EXPRESSION_TYPE_ARROW:
+        value: 157
+      EXPRESSION_TYPE_OPERATOR_TRY:
+        value: 158
+      EXPRESSION_TYPE_SUBQUERY:
+        value: 175
+      EXPRESSION_TYPE_STAR:
+        value: 200
+      EXPRESSION_TYPE_TABLE_STAR:
+        value: 201
+      EXPRESSION_TYPE_PLACEHOLDER:
+        value: 202
+      EXPRESSION_TYPE_COLUMN_REF:
+        value: 203
+      EXPRESSION_TYPE_FUNCTION_REF:
+        value: 204
+      EXPRESSION_TYPE_TABLE_REF:
+        value: 205
+      EXPRESSION_TYPE_LAMBDA_REF:
+        value: 206
+      EXPRESSION_TYPE_TYPE:
+        value: 207
+      EXPRESSION_TYPE_CAST:
+        value: 225
+      EXPRESSION_TYPE_BOUND_REF:
+        value: 227
+      EXPRESSION_TYPE_BOUND_COLUMN_REF:
+        value: 228
+      EXPRESSION_TYPE_BOUND_UNNEST:
+        value: 229
+      EXPRESSION_TYPE_COLLATE:
+        value: 230
+      EXPRESSION_TYPE_LAMBDA:
+        value: 231
+      EXPRESSION_TYPE_POSITIONAL_REFERENCE:
+        value: 232
+      EXPRESSION_TYPE_BOUND_LAMBDA_REF:
+        value: 233
+      EXPRESSION_TYPE_BOUND_EXPANDED:
+        value: 234
+handles:
+  expression:
+    description: |
+      A borrowed handle to a bound expression node within the engine's plan.
+      Read-only; never owned or destroyed by the caller. Valid only for the
+      duration of the callback that hands it out (e.g. a filter-pushdown or
+      bind callback); do not store it past the callback's return. Children
+      borrowed via expression_get_child share the same lifetime.
+functions:
+  # -----------------------------------------------------------------------
+  # Universal introspection — valid for every expression class.
+  # -----------------------------------------------------------------------
+  expression_get_class:
+    summary: Returns the class of a bound expression.
+    description: |
+      The expression class can be used to determine which class-specific accessors are valid (get_function_name
+      for function-like classes; get_constant_value for BOUND_CONSTANT; get_reference_index for BOUND_REF).
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_class:
+        type: EXPRESSION_CLASS
+        indirection: 1
+        kind: OUT
+        description: Receives the expression class.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  expression_get_type:
+    summary: Returns the semantic operation type of a bound expression.
+    description: |
+      Distinguishes two nodes of the same class (e.g. COMPARE_EQUAL versus
+      COMPARE_GREATERTHAN on two BOUND_FUNCTION nodes). Never fails on class
+      grounds.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_type:
+        type: EXPRESSION_TYPE
+        indirection: 1
+        kind: OUT
+        description: Receives the expression type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  expression_get_return_type:
+    summary: Returns the logical type of the expression's result.
+    description: |
+      The returned logical type is caller-owned and must be destroyed via logical_type_destroy.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the owned result logical type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  expression_get_child_count:
+    summary: Returns the number of child expressions.
+    description: |
+      Total over every bound class that has children. Leaves (BOUND_CONSTANT, BOUND_REF) report 0, BOUND_CAST reports 1,
+      and nested nodes report their full fan-out (including hidden children such as a CASE's when/then/else or an
+      aggregate's filter and order keys). Never fails on bound classes.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the child count.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  expression_get_child:
+    summary: Borrows a child expression by index.
+    description: |
+      Child order follows the engine's ExpressionIterator. Returns
+      ERROR_INVALID_INPUT if index is out of range (>= the count from
+      expression_get_child_count), which includes every index on a leaf
+      expression. The returned handle is borrowed and shares the parent's
+      lifetime; do not destroy it.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The parent expression.
+      index:
+        type: idx
+        description: Zero-based child index.
+      out_child:
+        type: expression
+        indirection: 1
+        kind: OUT_BORROW
+        description: Receives a borrowed child expression handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # BOUND_FUNCTION.
+  # -----------------------------------------------------------------------
+  expression_get_function_name:
+    summary: Borrows the function name of a BOUND_FUNCTION expression.
+    description: |
+      Returns the bound scalar function's registered name. For comparison
+      operators this is an internal symbol such as "__comparison" — dispatch on
+      expression_get_type for the semantic operator (e.g. COMPARE_EQUAL).
+      Returns ERROR_INVALID_INPUT if the expression class is not BOUND_FUNCTION.
+      On success, writes a borrowed null-terminated byte string into *out_name,
+      valid for the expression handle's lifetime.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_name:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Borrowed pointer to the null-terminated function name.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # BOUND_CONSTANT.
+  # -----------------------------------------------------------------------
+  expression_get_constant_value:
+    summary: Returns the value of a BOUND_CONSTANT expression.
+    description: |
+      The returned value is caller-owned and must be destroyed via
+      value_destroy. Returns ERROR_INVALID_INPUT if the expression class is
+      not BOUND_CONSTANT.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned constant value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # BOUND_COLUMN_REF.
+  # -----------------------------------------------------------------------
+  expression_get_column_binding:
+    summary: Returns the column binding of a BOUND_COLUMN_REF expression.
+    description: |
+      A BOUND_COLUMN_REF identifies a column logically, by binding — this is
+      the representation seen during binding and optimization, including
+      table-function filter pushdown (columns only become physical BOUND_REF
+      slots after physical planning). The binding is {table_index,
+      column_index}; column_index is relative to the producing operator's
+      output (e.g. a scan's projected columns). Each out-param is optional:
+      pass NULL to skip a field. Returns ERROR_INVALID_INPUT if the expression
+      class is not BOUND_COLUMN_REF.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_table_index:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Optional. Receives the binding's table index (binding namespace id).
+      out_column_index:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Optional. Receives the binding's column index within the producing operator's output.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # BOUND_REF.
+  # -----------------------------------------------------------------------
+  expression_get_reference_index:
+    summary: Returns the physical column index of a BOUND_REF expression.
+    description: |
+      The index identifies the column within the expression's input DataChunk.
+      BOUND_REF is the execution-stage column representation assigned after
+      physical planning; binding/optimization-stage trees (e.g. filter
+      pushdown) carry BOUND_COLUMN_REF instead — see
+      expression_get_column_binding. Returns ERROR_INVALID_INPUT if the
+      expression class is not BOUND_REF.
+    role: getter
+    belongs_to: expression
+    parameters:
+      expression:
+        type: expression
+        description: The expression to inspect.
+      out_index:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the physical column index.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
