@@ -5,6 +5,8 @@
 {% endif -%}
 typedef struct {
 {% for f in s.fields %}
+  {%- if f.description %}//! {{ f.description | c_line_comment }}
+  {% endif -%}
   {{ format_c_type(f.base, f.pointer, f.const) }} {{ f.name }}{% if f.array_size %}[{{ f.array_size }}]{% endif %};
 {% endfor %}
 }{{ "*" if s.pointer_alias else "" }} {{ s.template_alias }};

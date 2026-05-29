@@ -398,9 +398,9 @@ private:
 	ExecCallback exec_callback = nullptr;
 
 public:
-	class BindArgs;
-
 	class BindInput {
+		friend detail::Factory;
+
 	public:
 		template <class T, class... ARGS>
 		void SetBindData(ARGS &&... args) {
@@ -414,20 +414,20 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
-		explicit BindInput(BindArgs &args) : args(args) {
+	private:
+		explicit BindInput(void *args) : args(args) {
 		}
 
-	private:
-		BindArgs &args;
+		void *args;
 
 		void SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
 		                         void (*destructor)(void *));
 		void *GetBindDataInternal() const;
 	};
 
-	class InitArgs;
-
 	class InitInput {
+		friend detail::Factory;
+
 	public:
 		template <class T, class... ARGS>
 		void SetWorkerState(ARGS &&... args) {
@@ -447,20 +447,20 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
-		explicit InitInput(InitArgs &args) : args(args) {
+	private:
+		explicit InitInput(void *args) : args(args) {
 		}
 
-	private:
-		InitArgs &args;
+		void *args;
 
 		void SetWorkerStateInternal(void *data, void (*destructor)(void *));
 		void *GetWorkerStateInternal() const;
 		void *GetBindDataInternal() const;
 	};
 
-	class ExecArgs;
-
 	class ExecInput {
+		friend detail::Factory;
+
 	public:
 		template <class T>
 		auto GetBindData() const -> const T & {
@@ -476,11 +476,11 @@ public:
 		auto GetInputChunk() const -> DataChunk;
 		auto GetResultVector() const -> Vector;
 
-		explicit ExecInput(ExecArgs &args) : args(args) {
+	private:
+		explicit ExecInput(void *args) : args(args) {
 		}
 
-	private:
-		ExecArgs &args;
+		void *args;
 
 		void *GetBindDataInternal() const;
 		void *GetWorkerStateInternal() const;

@@ -14,6 +14,7 @@ class CField:
     pointer: int = 0
     const: bool = False
     array_size: int | None = None
+    description: str = ""
 
 
 @dataclass

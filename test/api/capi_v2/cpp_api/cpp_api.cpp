@@ -477,21 +477,6 @@ auto ScalarFunction::SetReturnType(const LogicalType &type) & -> ScalarFunction 
 	return *this;
 }
 
-class ScalarFunction::BindArgs {
-public:
-	duckdb_v2_scalar_function_info_ptr info = nullptr;
-};
-
-class ScalarFunction::InitArgs {
-public:
-	duckdb_v2_scalar_function_info_ptr info = nullptr;
-};
-
-class ScalarFunction::ExecArgs {
-public:
-	duckdb_v2_scalar_function_info_ptr info = nullptr;
-};
-
 struct ScalarFunctionInfo {
 	ScalarFunction::BindCallback bind_callback = nullptr;
 	ScalarFunction::InitCallback init_callback = nullptr;
@@ -499,53 +484,47 @@ struct ScalarFunctionInfo {
 };
 
 void *ScalarFunction::BindInput::GetBindDataInternal() const {
-	void *out_data = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_get_bind_data, args.info, &out_data);
-	return out_data;
+	return static_cast<duckdb_v2_scalar_function_bind_args *>(args)->out_bind_data;
 }
 
 void ScalarFunction::BindInput::SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
                                                     void (*destructor)(void *)) {
-	CheckedAPICall(duckdb_v2_scalar_function_set_bind_data, args.info, data, copy, equals, destructor);
+	duckdb_v2_scalar_function_bind_args *args_struct = static_cast<duckdb_v2_scalar_function_bind_args *>(args);
+	args_struct->out_bind_data = data;
+	args_struct->out_bind_data_copy = copy;
+	args_struct->out_bind_data_equality = equals;
+	args_struct->out_bind_data_destructor = destructor;
 }
 
 void *ScalarFunction::InitInput::GetBindDataInternal() const {
-	void *out_data = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_get_bind_data, args.info, &out_data);
-	return out_data;
+	return static_cast<duckdb_v2_scalar_function_init_args *>(args)->bind_data;
 }
 
 void *ScalarFunction::InitInput::GetWorkerStateInternal() const {
-	void *out_data = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_get_init_data, args.info, &out_data);
-	return out_data;
+	return static_cast<duckdb_v2_scalar_function_init_args *>(args)->out_init_data;
 }
 
 void ScalarFunction::InitInput::SetWorkerStateInternal(void *data, void (*destructor)(void *)) {
-	CheckedAPICall(duckdb_v2_scalar_function_set_init_data, args.info, data, destructor);
+	auto args_struct = static_cast<duckdb_v2_scalar_function_init_args *>(args);
+	args_struct->out_init_data = data;
+	args_struct->out_init_data_destructor = destructor;
 }
 
 void *ScalarFunction::ExecInput::GetBindDataInternal() const {
-	void *out_data = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_get_bind_data, args.info, &out_data);
-	return out_data;
+	return static_cast<duckdb_v2_scalar_function_exec_args *>(args)->bind_data;
 }
 
 void *ScalarFunction::ExecInput::GetWorkerStateInternal() const {
-	void *out_data = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_get_init_data, args.info, &out_data);
-	return out_data;
+	return static_cast<duckdb_v2_scalar_function_exec_args *>(args)->init_data;
 }
 
 auto ScalarFunction::ExecInput::GetInputChunk() const -> DataChunk {
-	duckdb_v2_data_chunk_ptr chunk = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_get_input_chunk, args.info, &chunk);
+	auto chunk = static_cast<duckdb_v2_scalar_function_exec_args *>(args)->input;
 	return detail::Factory::Make<DataChunk>(chunk, false);
 }
 
 auto ScalarFunction::ExecInput::GetResultVector() const -> Vector {
-	duckdb_v2_vector_ptr vec = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_get_result_vector, args.info, &vec);
+	auto vec = static_cast<duckdb_v2_scalar_function_exec_args *>(args)->result;
 	return detail::Factory::Make<Vector>(vec);
 }
 
@@ -560,17 +539,11 @@ auto ScalarFunction::SetBindCallback(BindCallback callback) & -> ScalarFunction 
 		return *this;
 	}
 
-	static auto trampoline = [](duckdb_v2_scalar_function_info_ptr info, duckdb_v2_context_ptr ctx,
-	                            duckdb_v2_error_info_ptr *err) {
+	static auto trampoline = [](duckdb_v2_scalar_function_bind_args *args, duckdb_v2_error_info_ptr *err) {
 		WithExceptionGuard(err, [&]() {
-			void *user_data;
-			CheckedAPICall(duckdb_v2_scalar_function_get_user_data, info, &user_data);
+			const auto &function = *static_cast<ScalarFunctionInfo *>(args->user_data);
 
-			const auto &function = *static_cast<ScalarFunctionInfo *>(user_data);
-
-			BindArgs args {info};
-
-			BindInput input(args);
+			auto input = detail::Factory::Make<BindInput>(args);
 
 			// Now call the user callback
 			function.bind_callback(input);
@@ -595,17 +568,11 @@ auto ScalarFunction::SetInitCallback(InitCallback callback) & -> ScalarFunction 
 		return *this;
 	}
 
-	static auto trampoline = [](duckdb_v2_scalar_function_info_ptr info, duckdb_v2_context_ptr ctx,
-	                            duckdb_v2_error_info_ptr *err) {
+	static auto trampoline = [](duckdb_v2_scalar_function_init_args *args, duckdb_v2_error_info_ptr *err) {
 		WithExceptionGuard(err, [&]() {
-			void *user_data;
-			CheckedAPICall(duckdb_v2_scalar_function_get_user_data, info, &user_data);
+			const auto &function = *static_cast<ScalarFunctionInfo *>(args->user_data);
 
-			const auto &function = *static_cast<ScalarFunctionInfo *>(user_data);
-
-			InitArgs args {info};
-
-			InitInput input(args);
+			auto input = detail::Factory::Make<InitInput>(args);
 
 			// Now call the user callback
 			function.init_callback(input);
@@ -630,17 +597,11 @@ auto ScalarFunction::SetExecCallback(ExecCallback callback) & -> ScalarFunction 
 		return *this;
 	}
 
-	static auto trampoline = [](duckdb_v2_scalar_function_info_ptr info, duckdb_v2_context_ptr ctx,
-	                            duckdb_v2_error_info_ptr *err) {
+	static auto trampoline = [](duckdb_v2_scalar_function_exec_args *args, duckdb_v2_error_info_ptr *err) {
 		WithExceptionGuard(err, [&]() {
-			void *user_data;
-			CheckedAPICall(duckdb_v2_scalar_function_get_user_data, info, &user_data);
+			const auto &function = *static_cast<ScalarFunctionInfo *>(args->user_data);
 
-			const auto &function = *static_cast<ScalarFunctionInfo *>(user_data);
-
-			ExecArgs args {info};
-
-			ExecInput input(args);
+			auto input = detail::Factory::Make<ExecInput>(args);
 
 			// Now call the user callback
 			function.exec_callback(input);

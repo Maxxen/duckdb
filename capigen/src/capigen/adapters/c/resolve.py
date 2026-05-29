@@ -262,6 +262,7 @@ def _resolve_struct(
                 pointer=f["pointer"],
                 const=f["const"],
                 array_size=f.get("array_size"),
+                description=f.get("description", ""),
             )
         )
 
