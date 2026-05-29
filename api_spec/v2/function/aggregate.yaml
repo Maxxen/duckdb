@@ -1,0 +1,313 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: aggregate
+handles:
+  aggregate_function_builder:
+    description: "An opaque handle representing a builder for defining and registering a custom aggregate function in DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation callbacks. After configuring the builder, you can register the function with DuckDB to make it available for use in SQL queries."
+    cleanup_with: aggregate_function_builder_destroy
+# Callback Structs
+structs:
+  aggregate_function_size_args:
+    fields:
+      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
+      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: out_size, type: idx, description: "The size of the aggregate state for a single row, in bytes. The callback should write the required size to this field on success."}
+  aggregate_function_init_args:
+    fields:
+      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
+      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: state, type: void, pointer: 1, description: "Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the size returned by the size callback, and is initialized to zero. The callback should initialize this state on success."}
+  aggregate_function_update_args:
+    fields:
+      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
+      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: count, type: idx, description: "The number of rows in the current batch being processed. This is the size of the `input` data chunk and the number of aggregate states pointed to by `state`."}
+      - {name: input, type: data_chunk, description: "The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument passed to the aggregate function, with one row per input row for the current batch."}
+      - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers, where each pointer points to the aggregate state for a single row. The callback should apply updates to these states based on the input data on success."}
+  aggregate_function_combine_args:
+    fields:
+      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
+      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: count, type: idx, description: "The number of source and target states to combine. This is the size of the `sources` and `targets` arrays."}
+      - {name: sources, type: void, pointer: 2, description: "Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an aggregate state that should be combined into the destination state."}
+      - {name: targets, type: void, pointer: 2, description: "Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an aggregate state that should be updated with the combined results from the source states."}
+  aggregate_function_finalize_args:
+    fields:
+      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
+      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: count, type: idx, description: "The number of rows in the current batch being finalized. This is the size of the `state` array and the number of result vectors pointed to by `result`."}
+      - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers, where each pointer points to the aggregate state for a single row."}
+      - {name: result, type: vector, description: "The vector in which the function should write its result values for the current batch of rows being finalized."}
+      - {name: result_offset, type: idx, description: "The offset in the result vector at which to start writing results for the current batch. This is used when finalizing multiple batches of rows into a single result vector."}
+  aggregate_function_destroy_args:
+    fields:
+      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
+      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: count, type: idx, description: "The number of aggregate states to destroy. This is the size of the `states` array."}
+      - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an aggregate state that should be destroyed and have its resources freed."}
+callbacks:
+  aggregate_function_size_callback:
+    return_type: void
+    parameters:
+      args:
+        type: aggregate_function_size_args
+        indirection: 1
+      err:
+        type: error_info
+        indirection: 1
+        description: Error info handle to write details to if the call fails.
+  aggregate_function_init_callback:
+    return_type: void
+    parameters:
+      args:
+        type: aggregate_function_init_args
+        indirection: 1
+      err:
+        type: error_info
+        indirection: 1
+        description: Error info handle to write details to if the call fails.
+  aggregate_function_update_callback:
+    return_type: void
+    parameters:
+      args:
+        type: aggregate_function_update_args
+        indirection: 1
+      err:
+        type: error_info
+        indirection: 1
+        description: Error info handle to write details to if the call fails.
+  aggregate_function_combine_callback:
+    return_type: void
+    parameters:
+      args:
+        type: aggregate_function_combine_args
+        indirection: 1
+      err:
+        type: error_info
+        indirection: 1
+        description: Error info handle to write details to if the call fails.
+  aggregate_function_finalize_callback:
+    return_type: void
+    parameters:
+      args:
+        type: aggregate_function_finalize_args
+        indirection: 1
+      err:
+        type: error_info
+        indirection: 1
+        description: Error info handle to write details to if the call fails.
+  aggregate_function_destroy_callback:
+    return_type: void
+    parameters:
+      args:
+        type: aggregate_function_destroy_args
+        indirection: 1
+      err:
+        type: error_info
+        indirection: 1
+        description: Error info handle to write details to if the call fails.
+functions:
+  # Builder Functions
+  aggregate_function_builder_create:
+    summary: Creates a new aggregate function builder
+    description: "Creates a new aggregate function builder that can be used to define and register a custom aggregate function in DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation callbacks."
+    parameters:
+      context:
+        type: context
+        description: The DuckDB context in which to create the aggregate function builder.
+      out:
+        type: aggregate_function_builder
+        indirection: 1
+        kind: OUT
+        description: On success, receives the newly created aggregate function builder. The caller owns the builder and must destroy it with `aggregate_function_builder_destroy`.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_destroy:
+    summary: Destroys an aggregate function builder
+    description: "Destroys an aggregate function builder that was created with `aggregate_function_builder_create`. This should be called to free resources associated with the builder when it is no longer needed."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        indirection: 1
+        description: The aggregate function builder to destroy. After this call, the builder handle is invalid and should not be used.
+    return_type: API_CALL
+  aggregate_function_builder_set_name:
+    summary: Sets the name of the aggregate function being built
+    description: "Sets the name of the aggregate function being defined by the builder. This is the name that will be used to call the function in SQL queries."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the name.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: The null-terminated name to set for the function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_add_parameter:
+    summary: Adds a parameter to a aggregate function.
+    description: "Adds a parameter to a aggregate function with the specified name and type. \nThe parameter name must be a null-terminated string. The library makes an internal copy of the provided name and type, and does not take ownership of either.\n"
+    parameters:
+      func:
+        type: aggregate_function_builder
+        description: The aggregate function to configure.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: The null-terminated name of the parameter to add.
+      type:
+        type: logical_type
+        description: The type of the parameter to add.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_return_type:
+    summary: Sets the return type of a aggregate function.
+    description: |
+      Sets the return type of a aggregate function. The library makes an internal copy of the provided type and does not take ownership of it.
+      Failing to set a return type before registration results in an error.
+    parameters:
+      func:
+        type: aggregate_function_builder
+        description: The aggregate function to configure.
+      type:
+        type: logical_type
+        description: The return type to set for the function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_size_callback:
+    summary: Sets the size callback for the aggregate function being built
+    description: "Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB to determine how much memory to allocate for each aggregate state."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the size callback.
+      callback:
+        type: aggregate_function_size_callback
+        description: The size callback function to set for the aggregate function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_init_callback:
+    summary: Sets the init callback for the aggregate function being built
+    description: "Sets the init callback for the aggregate function being defined by the builder. The init callback is called by DuckDB to initialize the aggregate state for a single state before any updates are applied."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the init callback.
+      callback:
+        type: aggregate_function_init_callback
+        description: The init callback function to set for the aggregate function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_update_callback:
+    summary: Sets the update callback for the aggregate function being built
+    description: "Sets the update callback for the aggregate function being defined by the builder. The update callback is called by DuckDB to apply a batch of input rows to a batch of aggregate states."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the update callback.
+      callback:
+        type: aggregate_function_update_callback
+        description: The update callback function to set for the aggregate function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_combine_callback:
+    summary: Sets the combine callback for the aggregate function being built
+    description: "Sets the combine callback for the aggregate function being defined by the builder. The combine callback is called by DuckDB to combine batches of source aggregate states into batches of destination aggregate states, such as when merging partial aggregates in a parallel execution."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the combine callback.
+      callback:
+        type: aggregate_function_combine_callback
+        description: The combine callback function to set for the aggregate function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_finalize_callback:
+    summary: Sets the finalize callback for the aggregate function being built
+    description: "Sets the finalize callback for the aggregate function being defined by the builder. The finalize callback is called by DuckDB to finalize a batch of aggregate states into a batch of result values, such as when producing the final output of an aggregate function."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the finalize callback.
+      callback:
+        type: aggregate_function_finalize_callback
+        description: The finalize callback function to set for the aggregate function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_destroy_callback:
+    summary: Sets the destroy callback for the aggregate function being built
+    description: "Sets the destroy callback for the aggregate function being defined by the builder. The destroy callback is called by DuckDB to destroy a batch of aggregate states and free their resources, such as when cleaning up after an aggregate function has finished processing."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the destroy callback.
+      callback:
+        type: aggregate_function_destroy_callback
+        description: The destroy callback function to set for the aggregate function.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_set_user_data:
+    summary: Sets user data for the aggregate function being built
+    description: "Sets a user data pointer for the aggregate function being defined by the builder. This pointer is passed to all of the function's callbacks and can be used to store context or state needed by the callbacks."
+    parameters:
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder for which to set the user data.
+      data:
+        type: void
+        indirection: 1
+        description: The user data pointer to set for the aggregate function. This pointer is passed to all of the function's callbacks and can be used to store context or state needed by the callbacks.
+      destroy:
+        type: user_data_destroy
+        description: Optional. If provided, this callback will be used to destroy the user data when it's no longer needed. If not provided, the library will not attempt to destroy the user data.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_register:
+    summary: Registers the aggregate function being built
+    description: "Registers the aggregate function defined by the builder with DuckDB, making it available for use in SQL queries."
+    parameters:
+      context:
+        type: context
+        description: The DuckDB context in which to register the function.
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder to register.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL

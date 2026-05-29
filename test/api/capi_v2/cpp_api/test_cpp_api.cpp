@@ -74,6 +74,76 @@ TEST_CASE("Stable C++-API: Basic", "[cpp_api]") {
 	REQUIRE(data[0] == 3);
 }
 
+TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+
+	auto db = env.Open(":memory:");
+
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		AggregateFunction aggregate(ctx);
+
+		aggregate.SetName("MyAggregate")
+		    .AddParameter("a", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSizeCallback([](AggregateFunction::SizeInput &input) { input.Reserve<int32_t>(); })
+		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
+		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
+			    auto &chunk = input.GetInputChunk();
+			    auto vector = chunk.GetVector(0);
+
+			    vector.Flatten();
+
+			    const auto count = input.GetStateCount();
+			    const auto array = input.GetStateArray<int32_t>();
+			    const auto vdata = vector.GetDataMutable<const int32_t>();
+
+			    for (idx_t i = 0; i < count; i++) {
+				    *array[i] += vdata[i];
+			    }
+		    })
+		    .SetCombineCallback([](AggregateFunction::CombineInput &input) {
+			    const auto count = input.GetStateCount();
+
+			    const auto source = input.GetSourceStateArray<int32_t>();
+			    const auto target = input.GetTargetStateArray<int32_t>();
+
+			    for (idx_t i = 0; i < count; i++) {
+				    *target[i] += *source[i];
+			    }
+		    })
+		    .SetFinalizeCallback([](AggregateFunction::FinalizeInput &input) {
+			    const auto count = input.GetStateCount();
+			    const auto array = input.GetStateArray<int32_t>();
+			    const auto offset = input.GetResultOffset();
+
+			    auto &vector = input.GetResultVector();
+			    const auto result = vector.GetDataMutable<int32_t>();
+
+			    for (idx_t i = 0; i < count; i++) {
+				    result[offset + i] = *array[i] * 2; // Just to make it a bit more interesting than a plain sum
+			    }
+		    })
+		    .Register(ctx);
+	});
+
+	const auto result = conn.Query("SELECT MyAggregate(i) AS result FROM (VALUES (1), (2), (3)) AS t(i)");
+	REQUIRE(result.GetColumnCount() == 1);
+	REQUIRE(result.GetChunkCount() == 1);
+
+	REQUIRE(result.GetColumnName(0) == "result");
+
+	auto chunk = result.GetChunk(0);
+
+	auto vec = chunk.GetVector(0);
+	auto data = vec.GetDataMutable<const int32_t>();
+
+	REQUIRE(data[0] == 12); // (1 + 2 + 3) * 2
+}
+
 TEST_CASE("Stable C++-API: File System", "[cpp_api]") {
 	using namespace duckdb_api;
 

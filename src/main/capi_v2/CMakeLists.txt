@@ -9,6 +9,7 @@ add_library_unity(
   error-v2.cpp
   expression-v2.cpp
   file_system-v2.cpp
+  function_aggregate-v2.cpp
   function_scalar-v2.cpp
   logical_type-v2.cpp
   option-v2.cpp

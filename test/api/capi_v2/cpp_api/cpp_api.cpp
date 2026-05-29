@@ -625,4 +625,313 @@ void ScalarFunction::Register(const Context &ctx) {
 	CheckedAPICall(duckdb_v2_scalar_function_builder_register, detail::GetHandle(ctx), impl);
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// Aggregate Function
+//----------------------------------------------------------------------------------------------------------------------
+
+class AggregateFunctionInfo {
+public:
+	AggregateFunction::SizeCallback size_callback = nullptr;
+	AggregateFunction::InitializeCallback initialize_callback = nullptr;
+	AggregateFunction::UpdateCallback update_callback = nullptr;
+	AggregateFunction::CombineCallback combine_callback = nullptr;
+	AggregateFunction::FinalizeCallback finalize_callback = nullptr;
+	AggregateFunction::DestroyCallback destroy_callback = nullptr;
+};
+
+AggregateFunction::AggregateFunction(const Context &ctx) {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_create, detail::GetHandle(ctx), &impl);
+}
+
+AggregateFunction::~AggregateFunction() {
+	duckdb_v2_aggregate_function_builder_destroy(&impl);
+}
+
+auto AggregateFunction::SetName(const std::string &name) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_name, impl, name.c_str());
+	return *this;
+}
+
+auto AggregateFunction::AddParameter(const std::string &name, const LogicalType &type) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_add_parameter, impl, name.c_str(), detail::GetHandle(type));
+	return *this;
+}
+
+auto AggregateFunction::SetReturnType(const LogicalType &type) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_return_type, impl, detail::GetHandle(type));
+	return *this;
+}
+
+class AggregateFunction::SizeInput::Inner {
+public:
+	idx_t size_in_bytes = 0;
+};
+
+void AggregateFunction::SizeInput::Reserve(idx_t size_in_bytes) {
+	inner.size_in_bytes = size_in_bytes;
+}
+
+auto AggregateFunction::SetSizeCallback(SizeCallback callback) & -> AggregateFunction & {
+	if (!callback) {
+		// Reset
+		CheckedAPICall(duckdb_v2_aggregate_function_builder_set_size_callback, impl, nullptr);
+		size_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_ptr *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
+
+			SizeInput::Inner inner;
+
+			SizeInput input {inner};
+
+			// Now call the user callback
+			function.size_callback(input);
+
+			// And write the result to the out-parameter
+			args->out_size = inner.size_in_bytes;
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_size_callback, impl, trampoline);
+
+	size_callback = callback;
+
+	return *this;
+}
+
+class AggregateFunction::InitializeInput::Inner {
+public:
+	void *state = nullptr;
+};
+
+void *AggregateFunction::InitializeInput::GetStatePointer() const {
+	return inner.state;
+}
+
+auto AggregateFunction::SetInitializeCallback(InitializeCallback callback) & -> AggregateFunction & {
+	if (!callback) {
+		// Reset
+		CheckedAPICall(duckdb_v2_aggregate_function_builder_set_init_callback, impl, nullptr);
+		initialize_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_ptr *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
+
+			InitializeInput::Inner inner;
+			inner.state = args->state;
+
+			InitializeInput input {inner};
+
+			// Now call the user callback
+			function.initialize_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_init_callback, impl, trampoline);
+
+	initialize_callback = callback;
+
+	return *this;
+}
+
+class AggregateFunction::UpdateInput::Inner {
+public:
+	idx_t count;
+	void **states;
+	DataChunk chunk;
+};
+
+auto AggregateFunction::UpdateInput::GetInputChunk() const -> const DataChunk & {
+	return inner.chunk;
+}
+auto AggregateFunction::UpdateInput::GetStateCount() const -> idx_t {
+	return inner.count;
+}
+auto AggregateFunction::UpdateInput::GetStateArray() const -> void ** {
+	return inner.states;
+}
+
+auto AggregateFunction::SetUpdateCallback(UpdateCallback callback) & -> AggregateFunction & {
+	if (!callback) {
+		// Reset
+		CheckedAPICall(duckdb_v2_aggregate_function_builder_set_update_callback, impl, nullptr);
+		update_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_ptr *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
+
+			UpdateInput::Inner inner {args->count, args->states, detail::Factory::Make<DataChunk>(args->input, false)};
+
+			UpdateInput input {inner};
+
+			// Now call the user callback
+			function.update_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_update_callback, impl, trampoline);
+
+	update_callback = callback;
+
+	return *this;
+}
+
+class AggregateFunction::CombineInput::Inner {
+public:
+	idx_t count;
+	void **sources;
+	void **targets;
+};
+
+auto AggregateFunction::CombineInput::GetStateCount() const -> idx_t {
+	return inner.count;
+}
+auto AggregateFunction::CombineInput::GetSourceStateArray() const -> void ** {
+	return inner.sources;
+}
+auto AggregateFunction::CombineInput::GetTargetStateArray() const -> void ** {
+	return inner.targets;
+}
+
+auto AggregateFunction::SetCombineCallback(CombineCallback callback) & -> AggregateFunction & {
+	if (!callback) {
+		// Reset
+		CheckedAPICall(duckdb_v2_aggregate_function_builder_set_combine_callback, impl, nullptr);
+		combine_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_ptr *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
+
+			CombineInput::Inner inner {args->count, args->sources, args->targets};
+
+			CombineInput input {inner};
+
+			// Now call the user callback
+			function.combine_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_combine_callback, impl, trampoline);
+
+	combine_callback = callback;
+
+	return *this;
+}
+
+class AggregateFunction::FinalizeInput::Inner {
+public:
+	idx_t count;
+	void **states;
+	Vector result_vector;
+	idx_t result_offset;
+};
+
+auto AggregateFunction::FinalizeInput::GetStateCount() const -> idx_t {
+	return inner.count;
+}
+
+auto AggregateFunction::FinalizeInput::GetStateArray() const -> void ** {
+	return inner.states;
+}
+
+auto AggregateFunction::FinalizeInput::GetResultVector() const -> Vector & {
+	return inner.result_vector;
+}
+
+auto AggregateFunction::FinalizeInput::GetResultOffset() const -> idx_t {
+	return inner.result_offset;
+}
+
+auto AggregateFunction::SetFinalizeCallback(FinalizeCallback callback) & -> AggregateFunction & {
+	if (!callback) {
+		// Reset
+		CheckedAPICall(duckdb_v2_aggregate_function_builder_set_finalize_callback, impl, nullptr);
+		finalize_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_ptr *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
+
+			FinalizeInput::Inner inner {args->count, args->states, detail::Factory::Make<Vector>(args->result),
+			                            args->result_offset};
+
+			FinalizeInput input {inner};
+
+			// Now call the user callback
+			function.finalize_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_finalize_callback, impl, trampoline);
+
+	finalize_callback = callback;
+
+	return *this;
+}
+
+class AggregateFunction::DestroyInput::Inner {
+public:
+	idx_t count;
+	void **states;
+};
+
+auto AggregateFunction::DestroyInput::GetStateArray() const -> void ** {
+	return inner.states;
+}
+
+auto AggregateFunction::DestroyInput::GetStateCount() const -> idx_t {
+	return inner.count;
+}
+
+auto AggregateFunction::SetDestroyCallback(DestroyCallback callback) & -> AggregateFunction & {
+	if (!callback) {
+		// Reset
+		CheckedAPICall(duckdb_v2_aggregate_function_builder_set_destroy_callback, impl, nullptr);
+		destroy_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_aggregate_function_destroy_args *args, duckdb_v2_error_info_ptr *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
+
+			DestroyInput::Inner inner {args->count, args->states};
+			DestroyInput input {inner};
+
+			// Now call the user callback
+			function.destroy_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_destroy_callback, impl, trampoline);
+
+	destroy_callback = callback;
+
+	return *this;
+}
+
+void AggregateFunction::Register(const Context &ctx) {
+	// Set the user data to the callbacks so they can be retrieved in the trampoline(s)
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_user_data, impl,
+	               new AggregateFunctionInfo {size_callback, initialize_callback, update_callback, combine_callback,
+	                                          finalize_callback, destroy_callback},
+	               detail::TypedDelete<AggregateFunctionInfo>);
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_register, detail::GetHandle(ctx), impl);
+}
+
 } // namespace duckdb_api

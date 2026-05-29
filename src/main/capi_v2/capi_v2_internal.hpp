@@ -324,6 +324,18 @@ struct PreparedStatementWrapperV2 {
 struct ErrorInfoV2 {
 	DUCKDB_V2_API_CALL_t code = DUCKDB_V2_ERROR_NONE;
 	std::string message;
+
+	bool HasError() const {
+		return code != DUCKDB_V2_ERROR_NONE;
+	}
+
+	[[noreturn]] void ThrowAsException() const {
+		// Only throw if there's actually an error!
+		D_ASSERT(HasError());
+
+		// TODO: map code to more specific exception types.
+		throw duckdb::InvalidInputException(message);
+	}
 };
 
 // Failure path. Ensure *err holds an ErrorInfoV2 (lazy-allocate if the slot

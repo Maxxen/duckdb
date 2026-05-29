@@ -487,4 +487,181 @@ public:
 	};
 };
 
+//----------------------------------------------------------------------------------------------------------------------
+// Aggregate Function
+//----------------------------------------------------------------------------------------------------------------------
+
+class AggregateFunction final : public detail::Handle {
+public:
+	class SizeInput;
+	class InitializeInput;
+	class UpdateInput;
+	class CombineInput;
+	class FinalizeInput;
+	class DestroyInput;
+
+	using SizeCallback = void (*)(SizeInput &input);
+	using InitializeCallback = void (*)(InitializeInput &input);
+	using UpdateCallback = void (*)(UpdateInput &input);
+	using CombineCallback = void (*)(CombineInput &input);
+	using FinalizeCallback = void (*)(FinalizeInput &input);
+	using DestroyCallback = void (*)(DestroyInput &input);
+
+	explicit AggregateFunction(const Context &ctx);
+
+	~AggregateFunction() override;
+
+	auto SetName(const std::string &name) & -> AggregateFunction &;
+	auto AddParameter(const std::string &name, const LogicalType &type) & -> AggregateFunction &;
+	auto SetReturnType(const LogicalType &type) & -> AggregateFunction &;
+
+	auto SetSizeCallback(SizeCallback callback) & -> AggregateFunction &;
+	auto SetInitializeCallback(InitializeCallback callback) & -> AggregateFunction &;
+	auto SetUpdateCallback(UpdateCallback callback) & -> AggregateFunction &;
+	auto SetCombineCallback(CombineCallback callback) & -> AggregateFunction &;
+	auto SetFinalizeCallback(FinalizeCallback callback) & -> AggregateFunction &;
+	auto SetDestroyCallback(DestroyCallback callback) & -> AggregateFunction &;
+
+	void Register(const Context &ctx);
+
+public:
+	class SizeInput {
+	public:
+		class Inner;
+
+		void Reserve(idx_t size_in_bytes);
+
+		template <class T>
+		void Reserve() {
+			Reserve(sizeof(T));
+		}
+
+		explicit SizeInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+	};
+
+	class InitializeInput {
+	public:
+		class Inner;
+
+		template <class T, class... ARGS>
+		T &Initialize(ARGS &&... args) {
+			auto ptr = GetStatePointer();
+			new (ptr) T(std::forward<ARGS>(args)...);
+			return *static_cast<T *>(ptr);
+		}
+
+		void *GetStatePointer() const;
+
+		explicit InitializeInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+	};
+
+	class UpdateInput {
+	public:
+		class Inner;
+
+		auto GetInputChunk() const -> const DataChunk &;
+
+		auto GetStateCount() const -> idx_t;
+		auto GetStateArray() const -> void **;
+
+		template <class T>
+		auto GetStateArray() const -> T ** {
+			auto ptr = GetStateArray();
+			return reinterpret_cast<T **>(ptr);
+		}
+
+		explicit UpdateInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+	};
+
+	class CombineInput {
+	public:
+		class Inner;
+
+		auto GetStateCount() const -> idx_t;
+		auto GetSourceStateArray() const -> void **;
+		auto GetTargetStateArray() const -> void **;
+
+		template <class T>
+		auto GetSourceStateArray() const -> T ** {
+			auto ptr = GetSourceStateArray();
+			return reinterpret_cast<T **>(ptr);
+		}
+
+		template <class T>
+		auto GetTargetStateArray() const -> T ** {
+			auto ptr = GetTargetStateArray();
+			return reinterpret_cast<T **>(ptr);
+		}
+
+		explicit CombineInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+	};
+
+	class FinalizeInput {
+	public:
+		class Inner;
+
+		auto GetStateCount() const -> idx_t;
+		auto GetStateArray() const -> void **;
+
+		template <class T>
+		auto GetStateArray() const -> T ** {
+			auto ptr = GetStateArray();
+			return reinterpret_cast<T **>(ptr);
+		}
+
+		auto GetResultVector() const -> Vector &;
+		auto GetResultOffset() const -> idx_t;
+
+		explicit FinalizeInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+	};
+
+	class DestroyInput {
+	public:
+		class Inner;
+
+		auto GetStateCount() const -> idx_t;
+		auto GetStateArray() const -> void **;
+
+		template <class T>
+		auto GetStateArray() const -> const T ** {
+			auto ptr = GetStateArray();
+			return static_cast<const T **>(ptr);
+		}
+
+		explicit DestroyInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+	};
+
+private:
+	SizeCallback size_callback = nullptr;
+	InitializeCallback initialize_callback = nullptr;
+	UpdateCallback update_callback = nullptr;
+	CombineCallback combine_callback = nullptr;
+	FinalizeCallback finalize_callback = nullptr;
+	DestroyCallback destroy_callback = nullptr;
+};
+
 } // namespace duckdb_api

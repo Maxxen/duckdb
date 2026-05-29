@@ -4,8 +4,6 @@ handles:
   scalar_function_builder:
     description: "An opaque handle to a scalar function builder. \nCreated with `scalar_function_builder_create`, configured with the various `scalar_function_set_*` functions, and registered with `scalar_function_register`. \nThe builder is owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.\n"
     cleanup_with: scalar_function_builder_destroy
-  scalar_function_info:
-    description: "An opaque handle to a scalar function callback context. \nThis is the type of the `info` parameter passed to scalar function callbacks (e.g. bind, state, and invoke callbacks). \nIt provides access to information about the function and its arguments, as well as functions for setting return types and retrieving user data. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
 # Callback Structs
 structs:
   scalar_function_bind_args:

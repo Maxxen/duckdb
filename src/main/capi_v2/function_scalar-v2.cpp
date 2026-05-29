@@ -82,8 +82,8 @@ struct ScalarFunctionV2 {
 
 		info.bind_cb(&args, &err_ptr);
 
-		if (err.code != DUCKDB_V2_ERROR_NONE) {
-			throw BinderException(err.message);
+		if (err.HasError()) {
+			err.ThrowAsException();
 		}
 
 		// If the user set the bind data, move it out here
@@ -120,8 +120,8 @@ struct ScalarFunctionV2 {
 
 		info.init_cb(&args, &err_ptr);
 
-		if (err.code != DUCKDB_V2_ERROR_NONE) {
-			throw InvalidInputException(err.message);
+		if (err.HasError()) {
+			err.ThrowAsException();
 		}
 
 		// If the user set the local state, move it out here
@@ -164,8 +164,8 @@ struct ScalarFunctionV2 {
 
 		info.exec_cb(&args, &err_ptr);
 
-		if (err.code != DUCKDB_V2_ERROR_NONE) {
-			throw InvalidInputException(err.message);
+		if (err.HasError()) {
+			err.ThrowAsException();
 		}
 	}
 };

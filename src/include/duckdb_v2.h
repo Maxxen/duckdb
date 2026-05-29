@@ -332,6 +332,300 @@ typedef void (*duckdb_v2_user_data_destroy_cb)(void *data);
 /* --- Functions for errors --- */
 
 /* ============================================================================
+ * MODULE: aggregate
+ * ============================================================================ */
+
+/* --- Enums for aggregate --- */
+
+/* --- Structs for aggregate --- */
+typedef struct {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The size of the aggregate state for a single row, in bytes. The callback should write the required size to this
+	//! field on success.
+	idx_t out_size;
+} duckdb_v2_aggregate_function_size_args;
+
+typedef struct {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the
+	//! size returned by the size callback, and is initialized to zero. The callback should initialize this state on
+	//! success.
+	void *state;
+} duckdb_v2_aggregate_function_init_args;
+
+typedef struct {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of rows in the current batch being processed. This is the size of the `input` data chunk and the
+	//! number of aggregate states pointed to by `state`.
+	idx_t count;
+	//! The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument
+	//! passed to the aggregate function, with one row per input row for the current batch.
+	duckdb_v2_data_chunk_ptr input;
+	//! Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers,
+	//! where each pointer points to the aggregate state for a single row. The callback should apply updates to these
+	//! states based on the input data on success.
+	void **states;
+} duckdb_v2_aggregate_function_update_args;
+
+typedef struct {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of source and target states to combine. This is the size of the `sources` and `targets` arrays.
+	idx_t count;
+	//! Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be combined into the destination state.
+	void **sources;
+	//! Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be updated with the combined results from the source states.
+	void **targets;
+} duckdb_v2_aggregate_function_combine_args;
+
+typedef struct {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of rows in the current batch being finalized. This is the size of the `state` array and the number of
+	//! result vectors pointed to by `result`.
+	idx_t count;
+	//! Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers,
+	//! where each pointer points to the aggregate state for a single row.
+	void **states;
+	//! The vector in which the function should write its result values for the current batch of rows being finalized.
+	duckdb_v2_vector_ptr result;
+	//! The offset in the result vector at which to start writing results for the current batch. This is used when
+	//! finalizing multiple batches of rows into a single result vector.
+	idx_t result_offset;
+} duckdb_v2_aggregate_function_finalize_args;
+
+typedef struct {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of aggregate states to destroy. This is the size of the `states` array.
+	idx_t count;
+	//! Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be destroyed and have its resources freed.
+	void **states;
+} duckdb_v2_aggregate_function_destroy_args;
+
+/* --- Types for aggregate --- */
+//! An opaque handle representing a builder for defining and registering a custom aggregate function in DuckDB. The
+//! builder allows you to specify the function's name, argument types, return type, and implementation callbacks. After
+//! configuring the builder, you can register the function with DuckDB to make it available for use in SQL queries.
+typedef void *duckdb_v2_aggregate_function_builder_ptr;
+
+/* --- Constants for aggregate --- */
+
+/* --- Error Codes for aggregate --- */
+
+/* --- Function pointer typedefs for aggregate --- */
+typedef void (*duckdb_v2_aggregate_function_size_callback_cb)(duckdb_v2_aggregate_function_size_args *args,
+                                                              duckdb_v2_error_info_ptr *err);
+
+typedef void (*duckdb_v2_aggregate_function_init_callback_cb)(duckdb_v2_aggregate_function_init_args *args,
+                                                              duckdb_v2_error_info_ptr *err);
+
+typedef void (*duckdb_v2_aggregate_function_update_callback_cb)(duckdb_v2_aggregate_function_update_args *args,
+                                                                duckdb_v2_error_info_ptr *err);
+
+typedef void (*duckdb_v2_aggregate_function_combine_callback_cb)(duckdb_v2_aggregate_function_combine_args *args,
+                                                                 duckdb_v2_error_info_ptr *err);
+
+typedef void (*duckdb_v2_aggregate_function_finalize_callback_cb)(duckdb_v2_aggregate_function_finalize_args *args,
+                                                                  duckdb_v2_error_info_ptr *err);
+
+typedef void (*duckdb_v2_aggregate_function_destroy_callback_cb)(duckdb_v2_aggregate_function_destroy_args *args,
+                                                                 duckdb_v2_error_info_ptr *err);
+
+/* --- Functions for aggregate --- */
+/*!
+ * Creates a new aggregate function builder
+ * Creates a new aggregate function builder that can be used to define and register a custom aggregate function in
+ * DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation
+ * callbacks.
+ * @param context The DuckDB context in which to create the aggregate function builder.
+ * @param out On success, receives the newly created aggregate function builder. The caller owns the builder and must
+ * destroy it with `aggregate_function_builder_destroy`.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(
+    duckdb_v2_context_ptr context, duckdb_v2_aggregate_function_builder_ptr *out, duckdb_v2_error_info_ptr *err);
+/*!
+ * Destroys an aggregate function builder
+ * Destroys an aggregate function builder that was created with `aggregate_function_builder_create`. This should be
+ * called to free resources associated with the builder when it is no longer needed.
+ * @param builder The aggregate function builder to destroy. After this call, the builder handle is invalid and should
+ * not be used.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builder_ptr *builder);
+/*!
+ * Sets the name of the aggregate function being built
+ * Sets the name of the aggregate function being defined by the builder. This is the name that will be used to call the
+ * function in SQL queries.
+ * @param builder The aggregate function builder for which to set the name.
+ * @param name The null-terminated name to set for the function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(
+    duckdb_v2_aggregate_function_builder_ptr builder, const char *name, duckdb_v2_error_info_ptr *err);
+/*!
+* Adds a parameter to a aggregate function.
+* Adds a parameter to a aggregate function with the specified name and type.
+The parameter name must be a null-terminated string. The library makes an internal copy of the provided name and type,
+and does not take ownership of either.
+
+* @param func The aggregate function to configure.
+* @param name The null-terminated name of the parameter to add.
+* @param type The type of the parameter to add.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_ptr func, const char *name,
+                                                   duckdb_v2_logical_type_ptr type, duckdb_v2_error_info_ptr *err);
+/*!
+* Sets the return type of a aggregate function.
+* Sets the return type of a aggregate function. The library makes an internal copy of the provided type and does not
+take ownership of it. Failing to set a return type before registration results in an error.
+
+* @param func The aggregate function to configure.
+* @param type The return type to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_return_type(
+    duckdb_v2_aggregate_function_builder_ptr func, duckdb_v2_logical_type_ptr type, duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets the size callback for the aggregate function being built
+ * Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB
+ * to determine how much memory to allocate for each aggregate state.
+ * @param builder The aggregate function builder for which to set the size callback.
+ * @param callback The size callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_size_callback(
+    duckdb_v2_aggregate_function_builder_ptr builder, duckdb_v2_aggregate_function_size_callback_cb callback,
+    duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets the init callback for the aggregate function being built
+ * Sets the init callback for the aggregate function being defined by the builder. The init callback is called by DuckDB
+ * to initialize the aggregate state for a single state before any updates are applied.
+ * @param builder The aggregate function builder for which to set the init callback.
+ * @param callback The init callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_init_callback(
+    duckdb_v2_aggregate_function_builder_ptr builder, duckdb_v2_aggregate_function_init_callback_cb callback,
+    duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets the update callback for the aggregate function being built
+ * Sets the update callback for the aggregate function being defined by the builder. The update callback is called by
+ * DuckDB to apply a batch of input rows to a batch of aggregate states.
+ * @param builder The aggregate function builder for which to set the update callback.
+ * @param callback The update callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_update_callback(
+    duckdb_v2_aggregate_function_builder_ptr builder, duckdb_v2_aggregate_function_update_callback_cb callback,
+    duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets the combine callback for the aggregate function being built
+ * Sets the combine callback for the aggregate function being defined by the builder. The combine callback is called by
+ * DuckDB to combine batches of source aggregate states into batches of destination aggregate states, such as when
+ * merging partial aggregates in a parallel execution.
+ * @param builder The aggregate function builder for which to set the combine callback.
+ * @param callback The combine callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_combine_callback(
+    duckdb_v2_aggregate_function_builder_ptr builder, duckdb_v2_aggregate_function_combine_callback_cb callback,
+    duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets the finalize callback for the aggregate function being built
+ * Sets the finalize callback for the aggregate function being defined by the builder. The finalize callback is called
+ * by DuckDB to finalize a batch of aggregate states into a batch of result values, such as when producing the final
+ * output of an aggregate function.
+ * @param builder The aggregate function builder for which to set the finalize callback.
+ * @param callback The finalize callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_finalize_callback(
+    duckdb_v2_aggregate_function_builder_ptr builder, duckdb_v2_aggregate_function_finalize_callback_cb callback,
+    duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets the destroy callback for the aggregate function being built
+ * Sets the destroy callback for the aggregate function being defined by the builder. The destroy callback is called by
+ * DuckDB to destroy a batch of aggregate states and free their resources, such as when cleaning up after an aggregate
+ * function has finished processing.
+ * @param builder The aggregate function builder for which to set the destroy callback.
+ * @param callback The destroy callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_destroy_callback(
+    duckdb_v2_aggregate_function_builder_ptr builder, duckdb_v2_aggregate_function_destroy_callback_cb callback,
+    duckdb_v2_error_info_ptr *err);
+/*!
+ * Sets user data for the aggregate function being built
+ * Sets a user data pointer for the aggregate function being defined by the builder. This pointer is passed to all of
+ * the function's callbacks and can be used to store context or state needed by the callbacks.
+ * @param builder The aggregate function builder for which to set the user data.
+ * @param data The user data pointer to set for the aggregate function. This pointer is passed to all of the function's
+ * callbacks and can be used to store context or state needed by the callbacks.
+ * @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
+ * If not provided, the library will not attempt to destroy the user data.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_user_data(
+    duckdb_v2_aggregate_function_builder_ptr builder, void *data, duckdb_v2_user_data_destroy_cb destroy,
+    duckdb_v2_error_info_ptr *err);
+/*!
+ * Registers the aggregate function being built
+ * Registers the aggregate function defined by the builder with DuckDB, making it available for use in SQL queries.
+ * @param context The DuckDB context in which to register the function.
+ * @param builder The aggregate function builder to register.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
+    duckdb_v2_context_ptr context, duckdb_v2_aggregate_function_builder_ptr builder, duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
  * MODULE: common-helpers
  * ============================================================================ */
 
@@ -2018,13 +2312,6 @@ typedef struct {
 //! registered with `scalar_function_register`. The builder is owned by the caller and must be destroyed with
 //! `scalar_function_builder_destroy` when no longer needed.
 typedef void *duckdb_v2_scalar_function_builder_ptr;
-
-//! An opaque handle to a scalar function callback context.
-//! This is the type of the `info` parameter passed to scalar function callbacks (e.g. bind, state, and invoke
-//! callbacks). It provides access to information about the function and its arguments, as well as functions for setting
-//! return types and retrieving user data. The library owns this handle and guarantees its validity only for the
-//! duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.
-typedef void *duckdb_v2_scalar_function_info_ptr;
 
 /* --- Constants for scalar --- */
 
