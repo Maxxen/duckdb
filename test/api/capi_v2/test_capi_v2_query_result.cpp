@@ -1,5 +1,6 @@
 #include "catch.hpp"
 #include "capi_v2_internal.hpp"
+#include "capi_v2_test_helpers.hpp"
 
 #include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/exception.hpp"
@@ -24,34 +25,14 @@
 //     are valid until duckdb_v2_error_info_destroy.
 // ---------------------------------------------------------------------------
 
-namespace {
-
-// Tiny RAII helper to keep the env + db + conn lifecycle out of every
-// test body. Construct once per test; destruction tears down in reverse.
-struct V2QueryFixture {
-	duckdb_v2_environment_ptr env = nullptr;
-	duckdb_v2_database_ptr db = nullptr;
-	duckdb_v2_connection_ptr conn = nullptr;
-	V2QueryFixture() {
-		duckdb_v2_create_environment(&env, nullptr);
-		duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
-		duckdb_v2_connect(db, &conn, nullptr);
-	}
-	~V2QueryFixture() {
-		duckdb_v2_disconnect(&conn);
-		duckdb_v2_close(&db);
-		duckdb_v2_destroy_environment(&env);
-	}
-};
-
-} // namespace
+namespace {} // namespace
 
 // ===========================================================================
 // Smoke: SELECT round-trip — the canonical "SELECT 1" check.
 // ===========================================================================
 
 TEST_CASE("V2: connection_query SELECT returns QUERY_RESULT with INTEGER column", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 1 AS one", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -96,7 +77,7 @@ TEST_CASE("V2: connection_query SELECT returns QUERY_RESULT with INTEGER column"
 // ===========================================================================
 
 TEST_CASE("V2: connection_query multi-column SELECT", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 1::INTEGER AS a, 'hi' AS b, 3.14::DOUBLE AS c", &r, nullptr) ==
@@ -136,7 +117,7 @@ TEST_CASE("V2: connection_query multi-column SELECT", "[capi_v2][query_result]")
 // ===========================================================================
 
 TEST_CASE("V2: INSERT / UPDATE / DELETE return CHANGED_ROWS with rows_changed", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
@@ -184,7 +165,7 @@ TEST_CASE("V2: INSERT / UPDATE / DELETE return CHANGED_ROWS with rows_changed", 
 // ===========================================================================
 
 TEST_CASE("V2: DDL returns NOTHING with rows_changed = 0", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "CREATE TABLE u (i INTEGER)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -209,7 +190,7 @@ TEST_CASE("V2: DDL returns NOTHING with rows_changed = 0", "[capi_v2][query_resu
 // ===========================================================================
 
 TEST_CASE("V2: connection_query surfaces parser error and leaves out_result null", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_error_info_ptr err = nullptr;
@@ -225,7 +206,7 @@ TEST_CASE("V2: connection_query surfaces parser error and leaves out_result null
 }
 
 TEST_CASE("V2: connection_query binder error (unknown table)", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_error_info_ptr err = nullptr;
@@ -237,7 +218,7 @@ TEST_CASE("V2: connection_query binder error (unknown table)", "[capi_v2][query_
 }
 
 TEST_CASE("V2: connection_query failure tolerates err == nullptr", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "BADSQL", &r, nullptr) == DUCKDB_V2_ERROR_DATABASE_CATALOG);
@@ -249,7 +230,7 @@ TEST_CASE("V2: connection_query failure tolerates err == nullptr", "[capi_v2][qu
 // ===========================================================================
 
 TEST_CASE("V2: result_column_name borrow stays valid until destroy", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_connection_query(fx.conn, "SELECT 1 AS only_column", &r, nullptr);
@@ -274,7 +255,7 @@ TEST_CASE("V2: result_column_name borrow stays valid until destroy", "[capi_v2][
 // ===========================================================================
 
 TEST_CASE("V2: result_column_logical_type is owned and outlives the result", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_connection_query(fx.conn, "SELECT 1 AS only_column", &r, nullptr);
@@ -298,7 +279,7 @@ TEST_CASE("V2: result_column_logical_type is owned and outlives the result", "[c
 // ===========================================================================
 
 TEST_CASE("V2: result_column_name out-of-range index", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_connection_query(fx.conn, "SELECT 1, 2", &r, nullptr);
@@ -322,7 +303,7 @@ TEST_CASE("V2: result_column_name out-of-range index", "[capi_v2][query_result]"
 // ===========================================================================
 
 TEST_CASE("V2: connection_query null-arg rejection", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(nullptr, "SELECT 1", &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
@@ -338,7 +319,7 @@ TEST_CASE("V2: result_destroy is null-safe", "[capi_v2][query_result]") {
 }
 
 TEST_CASE("V2: result accessors reject null handle and null out-params", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	DUCKDB_V2_RESULT_TYPE rt;
 	DUCKDB_V2_STATEMENT_TYPE st;
@@ -371,7 +352,7 @@ TEST_CASE("V2: result accessors reject null handle and null out-params", "[capi_
 // ===========================================================================
 
 TEST_CASE("V2: connection_query leaves pre-existing err untouched on success", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_error_info_ptr err = nullptr;
@@ -397,7 +378,7 @@ TEST_CASE("V2: connection_query leaves pre-existing err untouched on success", "
 // ===========================================================================
 
 TEST_CASE("V2: statement_type numeric round-trip for higher-numbered values", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
@@ -445,7 +426,7 @@ TEST_CASE("V2: STATEMENT_TYPE has no gaps vs duckdb::StatementType", "[capi_v2][
 // ===========================================================================
 
 TEST_CASE("V2: rows_changed returns 0 when WHERE filter matches nothing", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
@@ -480,7 +461,7 @@ TEST_CASE("V2: rows_changed returns 0 when WHERE filter matches nothing", "[capi
 // ===========================================================================
 
 TEST_CASE("V2: CHANGED_ROWS exposes synthetic count column via column accessors", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr setup = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &setup, nullptr);
@@ -519,7 +500,7 @@ TEST_CASE("V2: CHANGED_ROWS exposes synthetic count column via column accessors"
 // ===========================================================================
 
 TEST_CASE("V2: NOTHING result exposes the synthetic Count column with zero rows", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_connection_query(fx.conn, "CREATE TABLE t (i INTEGER)", &r, nullptr);
@@ -560,7 +541,7 @@ TEST_CASE("V2: NOTHING result exposes the synthetic Count column with zero rows"
 // ===========================================================================
 
 TEST_CASE("V2: results are independent — destroying one leaves the other usable", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr a = nullptr;
 	duckdb_v2_result_ptr b = nullptr;
@@ -599,7 +580,7 @@ TEST_CASE("V2: results are independent — destroying one leaves the other usabl
 // ===========================================================================
 
 TEST_CASE("V2: empty / whitespace-only SQL succeeds with an empty result", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	for (const char *sql : {"", "   ", ";"}) {
 		duckdb_v2_result_ptr r = nullptr;
@@ -632,7 +613,7 @@ TEST_CASE("V2: empty / whitespace-only SQL succeeds with an empty result", "[cap
 // ===========================================================================
 
 TEST_CASE("V2: multi-statement SQL returns the first result", "[capi_v2][query_result]") {
-	V2QueryFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 1 AS first_col; SELECT 'last' AS last_col", &r, nullptr) ==

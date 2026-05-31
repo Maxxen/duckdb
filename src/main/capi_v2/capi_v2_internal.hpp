@@ -361,6 +361,179 @@ inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V
 	return code;
 }
 
+// Inverse of GetErrorCodeFromExceptionType: maps a V2 error code back to the
+// DuckDB ExceptionType that round-trips to it. Returns false for codes with no
+// specific exception type (notably the DUCKDB_V2_API_ERROR sentinel and any
+// unmapped value), so callers can fall back to a phase-appropriate default.
+inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_API_CALL_t code, ExceptionType &out_type) {
+	switch (code) {
+	// Invalid Input
+	case DUCKDB_V2_ERROR_INVALID_INPUT:
+		out_type = ExceptionType::INVALID_INPUT;
+		return true;
+	case DUCKDB_V2_ERROR_OUT_OF_RANGE:
+		out_type = ExceptionType::OUT_OF_RANGE;
+		return true;
+	case DUCKDB_V2_ERROR_OBJECT_SIZE:
+		out_type = ExceptionType::OBJECT_SIZE;
+		return true;
+	// IO
+	case DUCKDB_V2_ERROR_IO_GENERAL:
+		out_type = ExceptionType::IO;
+		return true;
+	case DUCKDB_V2_ERROR_IO_NETWORK:
+		out_type = ExceptionType::NETWORK;
+		return true;
+	case DUCKDB_V2_ERROR_IO_HTTP:
+		out_type = ExceptionType::HTTP;
+		return true;
+	// Resource
+	case DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY:
+		out_type = ExceptionType::OUT_OF_MEMORY;
+		return true;
+	case DUCKDB_V2_ERROR_RESOURCE_CONNECTION:
+		out_type = ExceptionType::CONNECTION;
+		return true;
+	case DUCKDB_V2_ERROR_RESOURCE_DEPENDENCY:
+		out_type = ExceptionType::DEPENDENCY;
+		return true;
+	case DUCKDB_V2_ERROR_RESOURCE_MISSING_EXTENSION:
+		out_type = ExceptionType::MISSING_EXTENSION;
+		return true;
+	case DUCKDB_V2_ERROR_RESOURCE_AUTOLOAD:
+		out_type = ExceptionType::AUTOLOAD;
+		return true;
+	// Type
+	case DUCKDB_V2_ERROR_TYPE_CONVERSION:
+		out_type = ExceptionType::CONVERSION;
+		return true;
+	case DUCKDB_V2_ERROR_TYPE_UNKNOWN:
+		out_type = ExceptionType::UNKNOWN_TYPE;
+		return true;
+	case DUCKDB_V2_ERROR_TYPE_INVALID:
+		out_type = ExceptionType::INVALID_TYPE;
+		return true;
+	case DUCKDB_V2_ERROR_TYPE_MISMATCH:
+		out_type = ExceptionType::MISMATCH_TYPE;
+		return true;
+	case DUCKDB_V2_ERROR_TYPE_DECIMAL:
+		out_type = ExceptionType::DECIMAL;
+		return true;
+	case DUCKDB_V2_ERROR_TYPE_DIVIDE_BY_ZERO:
+		out_type = ExceptionType::DIVIDE_BY_ZERO;
+		return true;
+	// Query
+	case DUCKDB_V2_ERROR_QUERY_PARSER:
+		out_type = ExceptionType::PARSER;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_SYNTAX:
+		out_type = ExceptionType::SYNTAX;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_BINDER:
+		out_type = ExceptionType::BINDER;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_PLANNER:
+		out_type = ExceptionType::PLANNER;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_OPTIMIZER:
+		out_type = ExceptionType::OPTIMIZER;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_EXPRESSION:
+		out_type = ExceptionType::EXPRESSION;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_EXECUTOR:
+		out_type = ExceptionType::EXECUTOR;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_SCHEDULER:
+		out_type = ExceptionType::SCHEDULER;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_NOT_IMPLEMENTED:
+		out_type = ExceptionType::NOT_IMPLEMENTED;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_RESOLVED:
+		out_type = ExceptionType::PARAMETER_NOT_RESOLVED;
+		return true;
+	case DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_ALLOWED:
+		out_type = ExceptionType::PARAMETER_NOT_ALLOWED;
+		return true;
+	// Database
+	case DUCKDB_V2_ERROR_DATABASE_CATALOG:
+		out_type = ExceptionType::CATALOG;
+		return true;
+	case DUCKDB_V2_ERROR_DATABASE_TRANSACTION:
+		out_type = ExceptionType::TRANSACTION;
+		return true;
+	case DUCKDB_V2_ERROR_DATABASE_CONSTRAINT:
+		out_type = ExceptionType::CONSTRAINT;
+		return true;
+	case DUCKDB_V2_ERROR_DATABASE_INDEX:
+		out_type = ExceptionType::INDEX;
+		return true;
+	case DUCKDB_V2_ERROR_DATABASE_SEQUENCE:
+		out_type = ExceptionType::SEQUENCE;
+		return true;
+	case DUCKDB_V2_ERROR_DATABASE_STATISTICS:
+		out_type = ExceptionType::STAT;
+		return true;
+	case DUCKDB_V2_ERROR_DATABASE_SERIALIZATION:
+		out_type = ExceptionType::SERIALIZATION;
+		return true;
+	// Configuration
+	case DUCKDB_V2_ERROR_CONFIGURATION_SETTINGS:
+		out_type = ExceptionType::SETTINGS;
+		return true;
+	case DUCKDB_V2_ERROR_CONFIGURATION_INVALID:
+		out_type = ExceptionType::INVALID_CONFIGURATION;
+		return true;
+	case DUCKDB_V2_ERROR_CONFIGURATION_PERMISSION:
+		out_type = ExceptionType::PERMISSION;
+		return true;
+	// Runtime
+	case DUCKDB_V2_ERROR_RUNTIME_INTERNAL:
+		out_type = ExceptionType::INTERNAL;
+		return true;
+	case DUCKDB_V2_ERROR_RUNTIME_FATAL:
+		out_type = ExceptionType::FATAL;
+		return true;
+	case DUCKDB_V2_ERROR_RUNTIME_INTERRUPT:
+		out_type = ExceptionType::INTERRUPT;
+		return true;
+	case DUCKDB_V2_ERROR_RUNTIME_NULL_POINTER:
+		out_type = ExceptionType::NULL_POINTER;
+		return true;
+	default:
+		return false;
+	}
+}
+
+// Bridge helper for callback trampolines. Hands the user C callback a fresh,
+// stack-backed error slot, invokes it via `invoke`, and — if the callback
+// signalled an error — rethrows it as a DuckDB exception so the engine surfaces
+// it as a normal query error. The thrown exception's type is derived from the
+// error code the callback signalled, so the code round-trips faithfully (a
+// callback signalling OUT_OF_MEMORY surfaces as a resource error, not the
+// phase default). EX is the fallback exception type used only when the code has
+// no specific mapping (e.g. the DUCKDB_V2_API_ERROR sentinel); it should be a
+// phase-appropriate default (BinderException for bind, InvalidInputException
+// for init/exec). The slot lives on this function's stack; per the slot
+// contract the callback must never destroy it. `invoke` receives the slot as
+// `duckdb_v2_error_info_ptr *` and forwards it to the callback; any cb_info
+// inspection happens at the call site after this returns.
+template <class EX, class FN>
+inline void InvokeWithErrorSlot(FN &&invoke) {
+	ErrorInfoV2 err {};
+	auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+	invoke(&err_ptr);
+	if (err.code == DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	ExceptionType type;
+	if (TryGetExceptionTypeFromErrorCode(err.code, type)) {
+		throw Exception(type, err.message);
+	}
+	throw EX(err.message);
+}
+
 // Shared BIGNUM magnitude/sign decoder. Used by both
 // duckdb_v2_value_get_bignum (PR2 value-side) and duckdb_v2_bignum_decode
 // (PR4 vector-side) so the magnitude reconstruction + sign extraction

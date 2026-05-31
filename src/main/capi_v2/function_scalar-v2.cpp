@@ -77,14 +77,7 @@ struct ScalarFunctionV2 {
 		args.function_name = input.GetBoundFunction().GetName().c_str();
 		args.user_data = info.user_data;
 
-		ErrorInfoV2 err {};
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
-
-		info.bind_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_ptr *err) { info.bind_cb(&args, err); });
 
 		// If the user set the bind data, move it out here
 
@@ -115,14 +108,7 @@ struct ScalarFunctionV2 {
 		args.user_data = info.user_data;
 		args.bind_data = bind_data ? bind_data->Cast<ScalarFunctionBindDataV2>().user_data : nullptr;
 
-		ErrorInfoV2 err {};
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
-
-		info.init_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_ptr *err) { info.init_cb(&args, err); });
 
 		// If the user set the local state, move it out here
 		if (args.out_init_data) {
@@ -159,14 +145,8 @@ struct ScalarFunctionV2 {
 			args.init_data = state_ptr->Cast<ScalarFunctionStateDataV2>().user_data;
 		}
 
-		ErrorInfoV2 err {};
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
-
-		info.exec_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_ptr *err_ptr) { info.exec_cb(&args, err_ptr); });
 	}
 };
 

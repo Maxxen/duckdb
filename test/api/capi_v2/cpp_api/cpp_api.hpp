@@ -3,6 +3,7 @@
 #include <functional>
 #include <utility>
 #include <string>
+#include <optional>
 
 // (Experimental) Stable C++ API
 
@@ -285,6 +286,47 @@ private:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// Value
+//----------------------------------------------------------------------------------------------------------------------
+class Value final : public detail::Handle {
+	friend detail::Factory;
+
+public:
+	~Value() override;
+
+	Value(Value &&) noexcept = default;
+	Value &operator=(Value &&) noexcept = default;
+
+	auto IsNull() const -> bool;
+	auto GetLogicalType() const -> LogicalType;
+	auto ToString() const -> std::string;
+
+	auto AsBool() const -> bool;
+
+	auto AsI8() const -> int8_t;
+	auto AsU8() const -> uint8_t;
+
+	auto AsI16() const -> int16_t;
+	auto AsU16() const -> uint16_t;
+
+	auto AsI32() const -> int32_t;
+	auto AsU32() const -> uint32_t;
+
+	auto AsI64() const -> int64_t;
+	auto AsU64() const -> uint64_t;
+
+	auto AsF32() const -> float;
+	auto AsF64() const -> double;
+
+	auto AsVarchar() const -> std::string_view;
+
+	// TODO: Add more
+
+private:
+	explicit Value(void *impl);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Vector
 //----------------------------------------------------------------------------------------------------------------------
 class Vector final : public detail::Handle {
@@ -307,6 +349,9 @@ public:
 
 	auto GetLogicalType() const -> LogicalType;
 	auto Flatten() const -> void;
+
+	auto GetSize() const -> idx_t;
+	auto SetSize(idx_t size) -> void;
 
 private:
 	explicit Vector(void *impl);
@@ -662,6 +707,167 @@ private:
 	CombineCallback combine_callback = nullptr;
 	FinalizeCallback finalize_callback = nullptr;
 	DestroyCallback destroy_callback = nullptr;
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Table Function
+//----------------------------------------------------------------------------------------------------------------------
+
+class TableFunction final : public detail::Handle {
+public:
+	class BindInput;
+	class InitGlobalInput;
+	class InitLocalInput;
+	class ExecInput;
+
+	using BindCallback = void (*)(BindInput &input);
+	using InitGlobalCallback = void (*)(InitGlobalInput &input);
+	using InitLocalCallback = void (*)(InitLocalInput &input);
+	using ExecCallback = void (*)(ExecInput &input);
+
+	explicit TableFunction(const Context &ctx);
+
+	~TableFunction() override;
+
+	auto SetName(const std::string &name) & -> TableFunction &;
+	auto AddParameter(const LogicalType &type) & -> TableFunction &;
+	auto AddNamedParameter(const std::string &name, const LogicalType &type) & -> TableFunction &;
+
+	auto SetBindCallback(BindCallback callback) & -> TableFunction &;
+	auto SetInitGlobalCallback(InitGlobalCallback callback) & -> TableFunction &;
+	auto SetInitLocalCallback(InitLocalCallback callback) & -> TableFunction &;
+	auto SetExecCallback(ExecCallback callback) & -> TableFunction &;
+
+	void Register(const Context &ctx);
+
+private:
+	BindCallback bind_callback = nullptr;
+	InitGlobalCallback init_global_callback = nullptr;
+	InitLocalCallback init_local_callback = nullptr;
+	ExecCallback exec_callback = nullptr;
+
+public:
+	class BindInput {
+	public:
+		class Inner;
+
+		template <class T, class... ARGS>
+		void SetBindData(ARGS &&... args) {
+			auto ptr = new T(std::forward<ARGS>(args)...);
+			SetBindDataInternal(ptr, detail::TypedCopy<T>, detail::TypedEquals<T>, detail::TypedDelete<T>);
+		}
+
+		template <class T>
+		auto GetUserData() -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		auto AddResultColumn(const std::string &name, const LogicalType &type) -> void;
+
+		auto GetParameter(idx_t index) const -> Value;
+		auto GetNamedParameter(const std::string &name) const -> Value;
+
+		auto TryGetParameter(idx_t index) const -> std::optional<Value>;
+		auto TryGetNamedParameter(const std::string &name) const -> std::optional<Value>;
+
+		explicit BindInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+
+		void SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
+		                         void (*destructor)(void *));
+		void *GetUserDataInternal() const;
+	};
+
+	class InitGlobalInput {
+	public:
+		class Inner;
+
+		template <class T, class... ARGS>
+		void SetGlobalState(ARGS &&... args) {
+			auto ptr = new T(std::forward<ARGS>(args)...);
+			SetGlobalStateInternal(ptr, detail::TypedDelete<T>);
+		}
+
+		template <class T>
+		auto GetBindData() const -> const T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<const T *>(ptr);
+		}
+
+		explicit InitGlobalInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+
+		auto SetGlobalStateInternal(void *data, void (*destructor)(void *)) -> void;
+		auto GetBindDataInternal() const -> void *;
+	};
+
+	class InitLocalInput {
+	public:
+		class Inner;
+
+		template <class T, class... ARGS>
+		auto SetLocalState(ARGS &&... args) -> void {
+			auto ptr = new T(std::forward<ARGS>(args)...);
+			SetLocalStateInternal(ptr, detail::TypedDelete<T>);
+		}
+
+		template <class T>
+		auto GetBindData() const -> const T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<const T *>(ptr);
+		}
+
+		explicit InitLocalInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+
+		auto SetLocalStateInternal(void *data, void (*destructor)(void *)) -> void;
+		auto GetBindDataInternal() const -> void *;
+	};
+
+	class ExecInput {
+	public:
+		class Inner;
+
+		template <class T>
+		auto GetBindData() const -> const T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<const T *>(ptr);
+		}
+
+		template <class T>
+		auto GetGlobalState() const -> T & {
+			auto ptr = GetGlobalStateInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		template <class T>
+		auto GetLocalState() const -> T & {
+			auto ptr = GetLocalStateInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		auto GetResultChunk() const -> DataChunk &;
+
+		explicit ExecInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+
+		auto GetBindDataInternal() const -> void *;
+		auto GetGlobalStateInternal() const -> void *;
+		auto GetLocalStateInternal() const -> void *;
+	};
 };
 
 } // namespace duckdb_api

@@ -144,6 +144,84 @@ TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
 	REQUIRE(data[0] == 12); // (1 + 2 + 3) * 2
 }
 
+TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+
+	auto db = env.Open(":memory:");
+
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		TableFunction table_function(ctx);
+
+		table_function.SetName("MyRangeFunction")
+		    .AddParameter(LogicalType::INTEGER())              // Start
+		    .AddParameter(LogicalType::INTEGER())              // Stop
+		    .AddNamedParameter("step", LogicalType::INTEGER()) // Optional step, defaults to 1
+		    .SetBindCallback([](TableFunction::BindInput &input) {
+			    // We will emit one column named "i" of type INTEGER
+			    input.AddResultColumn("i", LogicalType::INTEGER());
+
+			    // Get parameters
+			    const auto start = input.GetParameter(0).AsI32();
+			    const auto stop = input.GetParameter(1).AsI32();
+
+			    // "Step" is optional and named, so we try to get it and default to 1 if it's not provided
+			    int32_t step = 1;
+			    if (const auto step_arg = input.TryGetNamedParameter("step")) {
+				    step = step_arg->AsI32();
+			    }
+
+			    // Store the parameters in the bind data for use in exec
+			    input.SetBindData<std::tuple<int32_t, int32_t, int32_t>>(start, step, stop);
+		    })
+		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
+			    auto &[start, step, stop] = input.GetBindData<std::tuple<int32_t, int32_t, int32_t>>();
+
+			    // Initialize global state
+			    input.SetGlobalState<int32_t>(start);
+		    })
+		    .SetExecCallback([](TableFunction::ExecInput &input) {
+			    auto &[start, step, stop] = input.GetBindData<std::tuple<int32_t, int32_t, int32_t>>();
+
+			    auto &state = input.GetGlobalState<int32_t>();
+
+			    auto &chunk = input.GetResultChunk();
+			    auto vec = chunk.GetVector(0);
+			    const auto data = vec.GetDataMutable<int32_t>();
+
+			    auto emitted = 0;
+			    auto capacity = 2048; // TODO: Get capacity from vector
+
+			    while (state < stop && emitted < capacity) {
+				    data[emitted++] = state;
+				    state += step;
+			    }
+
+			    vec.SetSize(emitted);
+		    })
+		    .Register(ctx);
+	});
+
+	const auto result = conn.Query("SELECT * FROM MyRangeFunction(0, 10, step => 2)");
+	REQUIRE(result.GetColumnCount() == 1);
+	REQUIRE(result.GetChunkCount() == 1);
+	REQUIRE(result.GetColumnName(0) == "i");
+
+	auto chunk = result.GetChunk(0);
+	auto vec = chunk.GetVector(0);
+
+	auto data = vec.GetDataMutable<const int32_t>();
+	REQUIRE(chunk.GetRowCount() == 5);
+	REQUIRE(data[0] == 0);
+	REQUIRE(data[1] == 2);
+	REQUIRE(data[2] == 4);
+	REQUIRE(data[3] == 6);
+	REQUIRE(data[4] == 8);
+}
+
 TEST_CASE("Stable C++-API: File System", "[cpp_api]") {
 	using namespace duckdb_api;
 

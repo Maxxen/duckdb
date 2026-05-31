@@ -1,0 +1,838 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+#
+# Table function API.
+#
+# A table function is a set of callbacks invoked by the engine at specific
+# points in the query lifecycle: bind (planning), init (execution start),
+# exec (row production), and optional hooks for optimization and progress.
+#
+# The builder pattern mirrors the scalar function API: create a builder,
+# configure it with callbacks and metadata, register it, then destroy the
+# builder. The engine copies the configuration at registration time.
+#
+# Each callback phase has its own info handle type, providing access to
+# exactly the state and inputs available at that stage. This avoids
+# runtime "which getters are valid" checks.
+module: table
+handles:
+  table_function_builder:
+    description: |
+      An owned handle to a table function builder. Created with table_function_builder_create, configured with
+      set_* functions, and registered with table_function_builder_register. The builder is owned by the caller and must
+      be destroyed with table_function_builder_destroy when no longer needed. The engine copies the configuration at
+      registration time.
+    cleanup_with: table_function_builder_destroy
+  table_function_bind_info:
+    description: |
+      Borrowed handle passed to the bind callback. Provides access to function parameters and user data. Used to
+      declare output columns and set bind data. Valid only for the callback duration.
+  table_function_init_info:
+    description: |
+      Borrowed handle passed to init_global and init_local callbacks. Provides access to bind data and projected column
+      indices. Used to set global or local state. Valid only for the callback duration.
+  table_function_filter_info:
+    description: |
+      Borrowed handle passed to the pushdown_complex_filter callback. Exposes the candidate filter expressions the
+      optimizer is offering to the scan. Enumerate them, inspect each via the expression API, and mark the ones the
+      function will apply itself with table_function_filter_mark_handled. Valid only for the callback duration.
+  table_function_exec_info:
+    description: |
+      Borrowed handle passed to the exec callback. Provides access to bind data, global state, local state and the output chunk to fill.
+      Valid only for the callback duration.
+callbacks:
+  table_function_bind:
+    description: |
+      Bind callback, invoked during query planning. The callback declares output columns via
+      table_function_bind_add_result_column and optionally sets bind data via table_function_bind_set_bind_data. Bind
+      will be accessible to all later callbacks.
+    return_type: void
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: Handle providing access to parameters and output column registration.
+      context:
+        type: context
+        description: The DuckDB context.
+      err:
+        type: error_info
+        indirection: 1
+        description: Error slot. Signal failure via error_info_signal and return.
+  table_function_init_global:
+    description: |
+      Global init callback, invoked once per scan at execution start. Receives bind data and projected column indices.
+      Sets global state shared across all threads via table_function_init_set_global_state. May set max threads via
+      table_function_init_set_max_threads.
+    return_type: void
+    parameters:
+      info:
+        type: table_function_init_info
+        description: Handle providing access to bind data and projections.
+      context:
+        type: context
+        description: The DuckDB context.
+      err:
+        type: error_info
+        indirection: 1
+        description: Error slot. Signal failure via error_info_signal and return.
+  table_function_init_local:
+    description: |
+      Local init callback, invoked once per worker thread. Receives bind data and global state. Sets per-thread local
+      state via table_function_init_set_local_state.
+    return_type: void
+    parameters:
+      info:
+        type: table_function_init_info
+        description: Handle providing access to bind data and global state.
+      context:
+        type: context
+        description: The DuckDB context.
+      err:
+        type: error_info
+        indirection: 1
+        description: Error slot. Signal failure via error_info_signal and return.
+  table_function_exec:
+    description: |
+      Execution callback, invoked repeatedly to produce rows. Fill the output chunk with rows and set its cardinality.
+      Return with cardinality 0 to signal end of data.
+    return_type: void
+    parameters:
+      info:
+        type: table_function_exec_info
+        description: Handle providing access to bind data, global state, local state, and the output chunk.
+      context:
+        type: context
+        description: The DuckDB context.
+      err:
+        type: error_info
+        indirection: 1
+        description: Error slot. Signal failure via error_info_signal and return.
+  table_function_cardinality:
+    description: |
+      Cardinality callback, invoked during optimization. Reports estimated and/or maximum row counts to help the
+      optimizer make cost-based decisions (e.g. join ordering). Write the estimate to out_estimated and set
+      out_is_exact to indicate precision. The optimizer may invoke this callback more than once per plan (e.g. during
+      cardinality estimation and statistics propagation), so it must be cheap and side-effect-free. An error raised
+      here aborts planning.
+    return_type: void
+    parameters:
+      bind_data:
+        type: void
+        indirection: 1
+        description: The bind data set during the bind callback. Treat as immutable.
+      out_estimated:
+        type: idx
+        indirection: 1
+        description: Write the estimated row count here.
+      out_is_exact:
+        type: bool
+        indirection: 1
+        description: Write true if the estimate is exact, false if approximate.
+      context:
+        type: context
+        description: The DuckDB context.
+      err:
+        type: error_info
+        indirection: 1
+        description: Error slot. Signal failure via error_info_signal and return.
+  table_function_progress:
+    description: |
+      Progress callback, invoked on-demand during execution. Reports scan progress by writing a value between 0.0 and
+      1.0 to out_progress.
+    return_type: void
+    parameters:
+      bind_data:
+        type: void
+        indirection: 1
+        description: The bind data set during the bind callback. Treat as immutable.
+      global_state:
+        type: void
+        indirection: 1
+        description: The global state set during init_global, or NULL if not set.
+      out_progress:
+        type: f64
+        indirection: 1
+        description: Write the progress value here. 0.0 = not started, 1.0 = complete.
+      context:
+        type: context
+        description: The DuckDB context.
+      err:
+        type: error_info
+        indirection: 1
+        description: Error slot. Signal failure via error_info_signal and return.
+  table_function_pushdown_complex_filter:
+    description: |
+      Complex filter pushdown callback, invoked during optimization. Receives the candidate filter expressions the
+      optimizer would otherwise apply above the scan. For each filter the function can apply itself, extract what it
+      needs (e.g. via the expression API) into bind data and call table_function_filter_mark_handled; the engine drops
+      the marked filters and applies the rest above the scan. Filters are bound expression trees: dispatch on the
+      expression class/type and read operands with the expression accessors. Treat the filters as read-only.
+    return_type: void
+    parameters:
+      bind_data:
+        type: void
+        indirection: 1
+        description: The bind data set during the bind callback. Extract handled predicates into it for use during exec.
+      info:
+        type: table_function_filter_info
+        description: Handle exposing the candidate filter expressions.
+      context:
+        type: context
+        description: The DuckDB context.
+      err:
+        type: error_info
+        indirection: 1
+        description: Error slot. On failure, set an error on the slot and return.
+functions:
+  # --- Builder lifecycle ---
+  table_function_builder_create:
+    summary: Creates a new table function builder.
+    parameters:
+      context:
+        type: context
+        description: The DuckDB context.
+      out:
+        type: table_function_builder
+        indirection: 1
+        kind: OUT
+        description: Receives the new builder handle. Caller owns it.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_destroy:
+    summary: Destroys a table function builder.
+    description: |
+      Null-safe. Does not affect any function already registered from
+      this builder.
+    parameters:
+      builder:
+        type: table_function_builder
+        indirection: 1
+        description: Pointer to the builder handle. Set to NULL after destruction.
+    return_type: API_CALL
+  table_function_builder_set_name:
+    summary: Sets the function name.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: Null-terminated function name. The library copies it.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_add_parameter:
+    summary: Adds a positional parameter to the function signature.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      type:
+        type: logical_type
+        description: The parameter's logical type.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_add_named_parameter:
+    summary: Adds a named (keyword) parameter to the function signature.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: Null-terminated parameter name. The library copies it.
+      type:
+        type: logical_type
+        description: The parameter's logical type.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_user_data:
+    summary: Sets user data on the builder, accessible from all callbacks.
+    description: |
+      Attaches an opaque pointer that is accessible from every callback via the corresponding get_user_data function.
+      Useful for static context that does not change across planning and execution.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      data:
+        type: void
+        indirection: 1
+        description: Opaque pointer to user data.
+      destroy:
+        type: user_data_destroy
+        description: Optional destructor for the user data.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # --- Callback registration ---
+  table_function_builder_set_bind_cb:
+    summary: Sets the bind callback. Required.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      callback:
+        type: table_function_bind
+        description: The bind callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_init_global_cb:
+    summary: Sets the global init callback. Optional.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      callback:
+        type: table_function_init_global
+        description: The global init callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_init_local_cb:
+    summary: Sets the local init callback. Optional.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      callback:
+        type: table_function_init_local
+        description: The local init callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_exec_cb:
+    summary: Sets the execution callback. Required.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      callback:
+        type: table_function_exec
+        description: The execution callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_cardinality_cb:
+    summary: Sets the cardinality callback. Optional.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      callback:
+        type: table_function_cardinality
+        description: The cardinality callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_progress_cb:
+    summary: Sets the progress callback. Optional.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      callback:
+        type: table_function_progress
+        description: The progress callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_pushdown_complex_filter_cb:
+    summary: Sets the complex filter pushdown callback. Optional.
+    description: |
+      Registers a callback invoked during optimization with the candidate filter expressions, letting the function
+      claim the ones it will apply itself. See the table_function_pushdown_complex_filter callback.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      callback:
+        type: table_function_pushdown_complex_filter
+        description: The complex filter pushdown callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_projection_pushdown:
+    summary: Enables projection pushdown for this table function.
+    description: |
+      When enabled, the engine may remove unused columns from the scan. The init callback receives the projected column
+      indices. The exec callback's output chunk is sized to the projected columns only.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      enable:
+        type: bool
+        description: Whether to enable projection pushdown.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_register:
+    summary: Registers the table function, making it available for use in queries.
+    description: |
+      The engine copies the builder's configuration at registration time.
+      The builder can be destroyed or reused after this call. Requires
+      at least a name, bind callback, and exec callback.
+    parameters:
+      context:
+        type: context
+        description: The DuckDB context.
+      builder:
+        type: table_function_builder
+        description: The configured builder.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # --- Bind callback methods ---
+  table_function_bind_add_result_column:
+    summary: Declares an output column during bind.
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: The bind info handle.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: Null-terminated column name. The library copies it.
+      type:
+        type: logical_type
+        description: The column's logical type.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_bind_get_parameter:
+    summary: Retrieves a positional parameter value during bind.
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: The bind info handle.
+      index:
+        type: idx
+        description: Zero-based parameter index.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the parameter value. Caller owns it.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_bind_get_named_parameter:
+    summary: Retrieves a named parameter value during bind.
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: The bind info handle.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: Null-terminated parameter name.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the parameter value. Caller owns it.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_bind_set_bind_data:
+    summary: Sets bind data that will be accessible to all later callbacks.
+    description: |
+      Bind data is immutable after the bind callback returns. It is
+      accessible to init, exec, cardinality, and progress callbacks.
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: The bind info handle.
+      data:
+        type: void
+        indirection: 1
+        description: Opaque pointer to user bind data.
+      copy:
+        type: user_data_copy
+        description: Optional copy callback.
+      equals:
+        type: user_data_equals
+        description: Optional equality callback.
+      destroy:
+        type: user_data_destroy
+        description: Optional destructor.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_bind_set_cardinality:
+    summary: Sets the estimated cardinality during bind.
+    description: |
+      A convenience for simple cases where the row count is known at
+      bind time. For dynamic estimates, use the cardinality callback.
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: The bind info handle.
+      cardinality:
+        type: idx
+        description: The estimated number of rows.
+      is_exact:
+        type: bool
+        description: Whether the cardinality is exact or an estimate.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_bind_get_user_data:
+    summary: Retrieves user data set on the builder.
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: The bind info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # --- Init callback methods ---
+  table_function_init_get_bind_data:
+    summary: Retrieves bind data set during bind.
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer (immutable).
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_init_set_global_state:
+    summary: Sets global state shared across all threads.
+    description: |
+      Only valid from init_global callback. The global state is
+      accessible from init_local, exec, and progress callbacks.
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      data:
+        type: void
+        indirection: 1
+        description: Opaque pointer to global state.
+      destroy:
+        type: user_data_destroy
+        description: Optional destructor.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_init_get_global_state:
+    summary: Retrieves the global state set during init_global.
+    description: |
+      Returns the global state pointer set via table_function_init_set_global_state,
+      or NULL if none was set. Intended for the init_local callback, which derives
+      per-thread local state from the shared global state.
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the global state pointer, or NULL if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_init_set_local_state:
+    summary: Sets per-thread local state.
+    description: |
+      Only valid from init_local callback. The local state is accessible
+      from the exec callback for the same worker.
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      data:
+        type: void
+        indirection: 1
+        description: Opaque pointer to local state.
+      destroy:
+        type: user_data_destroy
+        description: Optional destructor.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_init_set_max_threads:
+    summary: Sets the maximum number of threads for this scan.
+    description: |
+      Only valid from init_global callback. Defaults to 1. The engine
+      will create at most this many local states via init_local.
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      max_threads:
+        type: idx
+        description: Maximum thread count.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_init_get_column_count:
+    summary: Returns the number of projected columns.
+    description: |
+      When projection pushdown is enabled, this is the number of columns
+      the engine actually needs. The exec callback's output chunk has
+      exactly this many vectors.
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the projected column count.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_init_get_column_index:
+    summary: Returns the original column index for a projected column.
+    description: |
+      Maps a position in the projected column list back to the original
+      column index declared during bind. For example, if bind declared
+      columns (a, b, c) and the query only uses a and c, projected
+      position 0 maps to original index 0 (a) and position 1 maps to
+      original index 2 (c).
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      projected_index:
+        type: idx
+        description: Zero-based index into the projected column list.
+      out_original_index:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the original column index from bind.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_init_get_user_data:
+    summary: Retrieves user data set on the builder.
+    parameters:
+      info:
+        type: table_function_init_info
+        description: The init info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # --- Complex filter pushdown callback methods ---
+  table_function_filter_get_count:
+    summary: Returns the number of candidate filter expressions.
+    parameters:
+      info:
+        type: table_function_filter_info
+        description: The filter info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the filter count.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_filter_get_expression:
+    summary: Borrows a candidate filter expression by index.
+    description: |
+      The returned handle is a borrowed bound expression valid only for the duration of the pushdown callback; do not
+      destroy it. Inspect it with the expression accessors (expression_get_class, expression_get_type, etc.).
+    parameters:
+      info:
+        type: table_function_filter_info
+        description: The filter info handle.
+      index:
+        type: idx
+        description: Zero-based filter index.
+      out_expression:
+        type: expression
+        indirection: 1
+        kind: OUT_BORROW
+        description: Receives a borrowed filter expression handle.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_filter_mark_handled:
+    summary: Marks a candidate filter as applied by the function.
+    description: |
+      The engine drops every filter the function marks handled and applies the rest above the scan. The function must
+      actually apply the marked filters itself (e.g. while producing rows in exec), having extracted them into bind
+      data during this callback.
+    parameters:
+      info:
+        type: table_function_filter_info
+        description: The filter info handle.
+      index:
+        type: idx
+        description: Zero-based filter index to mark handled.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # --- Exec callback methods ---
+  table_function_exec_get_bind_data:
+    summary: Retrieves bind data set during bind.
+    parameters:
+      info:
+        type: table_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer (immutable).
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_exec_get_global_state:
+    summary: Retrieves global state set during init_global.
+    parameters:
+      info:
+        type: table_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the global state pointer, or NULL if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_exec_get_local_state:
+    summary: Retrieves local state set during init_local.
+    parameters:
+      info:
+        type: table_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the local state pointer, or NULL if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_exec_get_output_chunk:
+    summary: Retrieves the output chunk to fill.
+    parameters:
+      info:
+        type: table_function_exec_info
+        description: The exec info handle.
+      out_chunk:
+        type: data_chunk
+        indirection: 1
+        kind: OUT
+        description: Receives the output chunk handle to fill. Caller owns it.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_exec_get_user_data:
+    summary: Retrieves user data set on the builder.
+    parameters:
+      info:
+        type: table_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: opaque
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL

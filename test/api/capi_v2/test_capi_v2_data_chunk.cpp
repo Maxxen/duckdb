@@ -8,34 +8,14 @@
 // V2 data_chunk + vector tests — the read surface for row data.
 // ---------------------------------------------------------------------------
 
-namespace {
-
-// Tiny RAII helper for env + db + conn; mirrors V2QueryFixture in
-// test_capi_v2_query_result.cpp.
-struct V2ChunkFixture {
-	duckdb_v2_environment_ptr env = nullptr;
-	duckdb_v2_database_ptr db = nullptr;
-	duckdb_v2_connection_ptr conn = nullptr;
-	V2ChunkFixture() {
-		duckdb_v2_create_environment(&env, nullptr);
-		duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
-		duckdb_v2_connect(db, &conn, nullptr);
-	}
-	~V2ChunkFixture() {
-		duckdb_v2_disconnect(&conn);
-		duckdb_v2_close(&db);
-		duckdb_v2_destroy_environment(&env);
-	}
-};
-
-} // namespace
+namespace {} // namespace
 
 // ===========================================================================
 // Smoke: SELECT 1 round-trip through chunk + vector + view.
 // ===========================================================================
 
 TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT 42::INTEGER AS i", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -92,7 +72,7 @@ TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
 // ===========================================================================
 
 TEST_CASE("V2: INTEGER vector with NULL — validity + identity sel", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT * FROM (VALUES (1), (NULL), (3)) t(i)", &r, nullptr) ==
@@ -150,7 +130,7 @@ TEST_CASE("V2: INTEGER vector with NULL — validity + identity sel", "[capi_v2]
 // ===========================================================================
 
 TEST_CASE("V2: primitive view round-trips across many types", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn,
@@ -224,7 +204,7 @@ TEST_CASE("V2: primitive view round-trips across many types", "[capi_v2][data_ch
 // ===========================================================================
 
 TEST_CASE("V2: HUGEINT + INTERVAL via layout typedefs", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	// Value chosen > 2^64 so upper word is non-zero.
@@ -273,7 +253,7 @@ TEST_CASE("V2: HUGEINT + INTERVAL via layout typedefs", "[capi_v2][data_chunk]")
 // ===========================================================================
 
 TEST_CASE("V2: VARCHAR via varchar_decode (inlined + pointer forms)", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	// 8-byte string fits inlined; 50-byte string forces pointer form.
@@ -316,7 +296,7 @@ TEST_CASE("V2: VARCHAR via varchar_decode (inlined + pointer forms)", "[capi_v2]
 // ===========================================================================
 
 TEST_CASE("V2: BLOB via blob_decode", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT '\\xDE\\xAD\\xBE\\xEF'::BLOB AS b", &r, nullptr) ==
@@ -357,7 +337,7 @@ TEST_CASE("V2: BLOB via blob_decode", "[capi_v2][data_chunk]") {
 // ===========================================================================
 
 TEST_CASE("V2: BIT via bit_decode", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT * FROM (VALUES ('11111111'::BIT), ('101'::BIT)) t(b)", &r,
@@ -436,7 +416,7 @@ TEST_CASE("V2: bit_decode handles zero-length storage", "[capi_v2][data_chunk]")
 // ===========================================================================
 
 TEST_CASE("V2: BIGNUM via bignum_decode (positive + negative)", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn,
@@ -496,7 +476,7 @@ TEST_CASE("V2: BIGNUM via bignum_decode (positive + negative)", "[capi_v2][data_
 // ===========================================================================
 
 TEST_CASE("V2: LIST<INTEGER> via get_child + entries", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT * FROM (VALUES ([1, 2, 3]), ([10, 20]), ([100])) t(lst)", &r,
@@ -556,7 +536,7 @@ TEST_CASE("V2: LIST<INTEGER> via get_child + entries", "[capi_v2][data_chunk]") 
 // ===========================================================================
 
 TEST_CASE("V2: STRUCT(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(
@@ -623,7 +603,7 @@ TEST_CASE("V2: STRUCT(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]")
 // ===========================================================================
 
 TEST_CASE("V2: ARRAY(INTEGER, 3) via get_child", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(
@@ -686,7 +666,7 @@ TEST_CASE("V2: ARRAY(INTEGER, 3) via get_child", "[capi_v2][data_chunk]") {
 // ===========================================================================
 
 TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	REQUIRE(duckdb_v2_connection_query(fx.conn, "SELECT * FROM (VALUES (MAP {'a': 1, 'b': 2}), (MAP {'c': 3})) t(m)",
@@ -775,7 +755,7 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 // ===========================================================================
 
 TEST_CASE("V2: UNION(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	// Set up via a temp table so the UNION type is bound consistently
@@ -858,7 +838,7 @@ TEST_CASE("V2: UNION(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") 
 // ===========================================================================
 
 TEST_CASE("V2: DECIMAL read across internal widths", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	// Widths chosen so each column hits a different physical storage.
@@ -920,7 +900,7 @@ TEST_CASE("V2: DECIMAL read across internal widths", "[capi_v2][data_chunk]") {
 // ===========================================================================
 
 TEST_CASE("V2: generic accessors handle non-nested vectors", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_connection_query(fx.conn, "SELECT 1::INTEGER", &r, nullptr);
@@ -1152,7 +1132,7 @@ TEST_CASE("V2: vector_get_view rejects OTHER + zeroes view", "[capi_v2][data_chu
 // ===========================================================================
 
 TEST_CASE("V2: chunk null-arg + out-of-range rejection", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_result_ptr r = nullptr;
 	duckdb_v2_connection_query(fx.conn, "SELECT 1", &r, nullptr);
@@ -1180,7 +1160,7 @@ TEST_CASE("V2: chunk null-arg + out-of-range rejection", "[capi_v2][data_chunk]"
 // ===========================================================================
 
 TEST_CASE("V2: result_get_chunk rejects non-QUERY_RESULT", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	// CREATE TABLE produces a NOTHING result.
 	{
@@ -1217,7 +1197,7 @@ TEST_CASE("V2: result_get_chunk rejects non-QUERY_RESULT", "[capi_v2][data_chunk
 // ===========================================================================
 
 TEST_CASE("V2: success leaves a pre-existing err untouched", "[capi_v2][data_chunk]") {
-	V2ChunkFixture fx;
+	V2EnvFixture fx;
 
 	duckdb_v2_error_info_ptr err = nullptr;
 

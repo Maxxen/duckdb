@@ -11,6 +11,7 @@ add_library_unity(
   file_system-v2.cpp
   function_aggregate-v2.cpp
   function_scalar-v2.cpp
+  function_table-v2.cpp
   logical_type-v2.cpp
   option-v2.cpp
   query_result-v2.cpp
