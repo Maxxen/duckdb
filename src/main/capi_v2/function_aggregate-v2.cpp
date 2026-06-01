@@ -58,7 +58,7 @@ private:
 struct AggregateFunctionCallbackInfoV2 {
 	void *user_data = nullptr;
 
-	AggregateFunctionCallbackInfoV2(void *user_data_p) : user_data(user_data_p) {
+	explicit AggregateFunctionCallbackInfoV2(void *user_data_p) : user_data(user_data_p) {
 	}
 };
 
@@ -74,7 +74,7 @@ struct AggregateFunctionV2 {
 		D_ASSERT(info.size_cb);
 
 		ErrorInfoV2 err;
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
 
 		duckdb_v2_aggregate_function_size_args args = {};
 		args.struct_size = sizeof(args);
@@ -95,7 +95,7 @@ struct AggregateFunctionV2 {
 		D_ASSERT(info.init_cb);
 
 		ErrorInfoV2 err;
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
 
 		duckdb_v2_aggregate_function_init_args args = {};
 		args.struct_size = sizeof(args);
@@ -123,12 +123,12 @@ struct AggregateFunctionV2 {
 		chunk.Flatten(); // TODO: Dont flatten here
 
 		ErrorInfoV2 err;
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
 
 		duckdb_v2_aggregate_function_update_args args = {};
 		args.struct_size = sizeof(args);
 		args.user_data = info.user_data;
-		args.input = static_cast<duckdb_v2_data_chunk_ptr>(&chunk);
+		args.input = reinterpret_cast<_duckdb_v2_data_chunk *>(&chunk);
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 		args.count = count;
 
@@ -146,7 +146,7 @@ struct AggregateFunctionV2 {
 		state.Flatten(); // TODO: Dont flatten here
 
 		ErrorInfoV2 err;
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
 
 		duckdb_v2_aggregate_function_combine_args args = {};
 		args.struct_size = sizeof(args);
@@ -169,14 +169,14 @@ struct AggregateFunctionV2 {
 		state.Flatten(); // TODO: Dont flatten here
 
 		ErrorInfoV2 err;
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
 
 		duckdb_v2_aggregate_function_finalize_args args = {};
 		args.struct_size = sizeof(args);
 		args.user_data = info.user_data;
 		args.count = count;
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
-		args.result = static_cast<duckdb_v2_vector_ptr>(&result);
+		args.result = reinterpret_cast<_duckdb_v2_vector *>(&result);
 		args.result_offset = offset;
 
 		info.finalize_cb(&args, &err_ptr);
@@ -190,7 +190,7 @@ struct AggregateFunctionV2 {
 		auto &info = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>().GetInfo();
 
 		ErrorInfoV2 err;
-		auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
 
 		duckdb_v2_aggregate_function_destroy_args args = {};
 		args.struct_size = sizeof(args);
@@ -233,9 +233,9 @@ struct AggregateFunctionBuilderV2 {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(duckdb_v2_context_ptr context,
-                                                                 duckdb_v2_aggregate_function_builder_ptr *out,
-                                                                 duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(duckdb_v2_context_handle context,
+                                                                 duckdb_v2_aggregate_function_builder_handle *out,
+                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("context cannot be null");
@@ -244,11 +244,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(duckdb_v2_conte
 			throw duckdb::InvalidInputException("output parameter cannot be null");
 		}
 		auto builder = new duckdb::AggregateFunctionBuilderV2();
-		*out = static_cast<duckdb_v2_aggregate_function_builder_ptr>(builder);
+		*out = reinterpret_cast<_duckdb_v2_aggregate_function_builder *>(builder);
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builder_ptr *builder) {
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builder_handle *builder) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!builder) {
 			return;
@@ -256,13 +257,13 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggr
 		if (!*builder) {
 			return;
 		}
-		delete static_cast<duckdb::AggregateFunctionBuilderV2 *>(*builder);
+		delete reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(*builder);
 		*builder = nullptr;
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_aggregate_function_builder_ptr builder,
-                                                                   const char *name, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_aggregate_function_builder_handle builder,
+                                                                   const char *name, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -273,15 +274,15 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_agg
 		if (strlen(name) == 0) {
 			throw duckdb::InvalidInputException("Function name cannot be empty");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->name = name;
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_ptr func,
-                                                                        const char *name,
-                                                                        duckdb_v2_logical_type_ptr type,
-                                                                        duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_handle func, const char *name,
+                                                   duckdb_v2_logical_type_handle type,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -295,18 +296,19 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v
 		if (!type) {
 			throw duckdb::InvalidInputException("Parameter type pointer cannot be null");
 		}
-		const auto &ltype = *static_cast<duckdb::LogicalType *>(type);
+		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
 		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
 			throw duckdb::InvalidInputException("Parameter type cannot be invalid.");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
 		agg_builder->parameters.emplace_back(name, ltype);
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_function_builder_ptr func,
-                                                                          duckdb_v2_logical_type_ptr type,
-                                                                          duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_function_builder_handle func,
+                                                     duckdb_v2_logical_type_handle type,
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -314,96 +316,96 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_return_type(duckdb
 		if (!type) {
 			throw duckdb::InvalidInputException("Return type pointer cannot be null");
 		}
-		const auto &ltype = *static_cast<duckdb::LogicalType *>(type);
+		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
 		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
 			throw duckdb::InvalidInputException("Return type cannot be invalid.");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
 		agg_builder->return_type = ltype;
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_size_callback(duckdb_v2_aggregate_function_builder_ptr builder,
+duckdb_v2_aggregate_function_builder_set_size_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                        duckdb_v2_aggregate_function_size_callback_cb callback,
-                                                       duckdb_v2_error_info_ptr *err) {
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->size_cb = callback;
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_init_callback(duckdb_v2_aggregate_function_builder_ptr builder,
+duckdb_v2_aggregate_function_builder_set_init_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                        duckdb_v2_aggregate_function_init_callback_cb callback,
-                                                       duckdb_v2_error_info_ptr *err) {
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->init_cb = callback;
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_update_callback(duckdb_v2_aggregate_function_builder_ptr builder,
+duckdb_v2_aggregate_function_builder_set_update_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                          duckdb_v2_aggregate_function_update_callback_cb callback,
-                                                         duckdb_v2_error_info_ptr *err) {
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->update_cb = callback;
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_combine_callback(duckdb_v2_aggregate_function_builder_ptr builder,
+duckdb_v2_aggregate_function_builder_set_combine_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                           duckdb_v2_aggregate_function_combine_callback_cb callback,
-                                                          duckdb_v2_error_info_ptr *err) {
+                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->combine_cb = callback;
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_finalize_callback(duckdb_v2_aggregate_function_builder_ptr builder,
+duckdb_v2_aggregate_function_builder_set_finalize_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                            duckdb_v2_aggregate_function_finalize_callback_cb callback,
-                                                           duckdb_v2_error_info_ptr *err) {
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->finalize_cb = callback;
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_destroy_callback(duckdb_v2_aggregate_function_builder_ptr builder,
+duckdb_v2_aggregate_function_builder_set_destroy_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                           duckdb_v2_aggregate_function_destroy_callback_cb callback,
-                                                          duckdb_v2_error_info_ptr *err) {
+                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->destroy_cb = callback;
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_ptr context,
-                                                                   duckdb_v2_aggregate_function_builder_ptr builder,
-                                                                   duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_handle context,
+                                                                   duckdb_v2_aggregate_function_builder_handle builder,
+                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("context cannot be null");
@@ -413,8 +415,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
 
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
-		auto &ctx = *static_cast<duckdb::ClientContext *>(context);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto &ctx = *reinterpret_cast<duckdb::ClientContext *>(context);
 
 		if (agg_builder->name.empty()) {
 			throw duckdb::InvalidInputException("Function name cannot be empty");
@@ -479,15 +481,15 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_builder_ptr builder, void *data,
+duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_builder_handle builder, void *data,
                                                    duckdb_v2_user_data_destroy_cb destroy,
-                                                   duckdb_v2_error_info_ptr *err) {
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
 
-		auto agg_builder = static_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		if (agg_builder->user_data && agg_builder->user_data_destructor_cb) {
 			agg_builder->user_data_destructor_cb(agg_builder->user_data);
 		}

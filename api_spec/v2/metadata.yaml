@@ -6,8 +6,12 @@ versions:
   - "1.4.0"
   - "1.5.0"
 prefix: "duckdb_v2_"
+options:
+  c:
+    handles:
+      default_style: tagged_struct
 suffixes:
-  handles: "_ptr"
+  handles: "_handle"
   callbacks: "_cb"
   aliases: "_t"
 primitives:

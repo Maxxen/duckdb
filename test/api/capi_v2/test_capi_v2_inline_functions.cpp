@@ -16,9 +16,9 @@
 namespace {
 
 struct V2InlineFixture {
-	duckdb_v2_environment_ptr env = nullptr;
-	duckdb_v2_database_ptr db = nullptr;
-	duckdb_v2_connection_ptr conn = nullptr;
+	duckdb_v2_environment_handle env = nullptr;
+	duckdb_v2_database_handle db = nullptr;
+	duckdb_v2_connection_handle conn = nullptr;
 	V2InlineFixture() {
 		duckdb_v2_create_environment(&env, nullptr);
 		duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
@@ -33,17 +33,17 @@ struct V2InlineFixture {
 
 // Executes a single-column query, asserts row count, and holds chunk 0's view.
 struct InlQueryRows {
-	duckdb_v2_result_ptr r = nullptr;
-	duckdb_v2_data_chunk_ptr chunk = nullptr;
+	duckdb_v2_result_handle r = nullptr;
+	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_vector_view view {};
 	idx_t size = 0;
 
-	InlQueryRows(duckdb_v2_connection_ptr conn, const char *sql, idx_t expected_rows) {
+	InlQueryRows(duckdb_v2_connection_handle conn, const char *sql, idx_t expected_rows) {
 		REQUIRE(duckdb_v2_connection_query(conn, sql, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 		REQUIRE(size == expected_rows);
-		duckdb_v2_vector_ptr vec = nullptr;
+		duckdb_v2_vector_handle vec = nullptr;
 		duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
 		duckdb_v2_vector_get_view(vec, &view, nullptr);
 	}

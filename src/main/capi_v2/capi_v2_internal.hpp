@@ -48,7 +48,7 @@ struct EnvironmentWrapperV2;
 struct DatabaseWrapperV2;
 struct ConnectionWrapperV2;
 
-// Backing struct for the opaque duckdb_v2_environment_ptr handle. Owns
+// Backing struct for the opaque duckdb_v2_environment_handle handle. Owns
 // the DBInstanceCache used to share the path manager across all
 // databases opened through it (so the same file opened twice is
 // rejected with RESOURCE_IN_USE). Cache behavior at open time is
@@ -81,7 +81,7 @@ struct ConnectionWrapperV2 {
 	shared_ptr<Connection> connection;
 };
 
-// Backing struct for the opaque duckdb_v2_option_ptr handle. Owns all
+// Backing struct for the opaque duckdb_v2_option_handle handle. Owns all
 // strings; borrowed pointers returned by accessors are valid until the
 // option is destroyed. Created via duckdb_v2_option_create with just
 // (name, setting); metadata fields (description, default setting,
@@ -98,33 +98,33 @@ struct OptionWrapperV2 {
 
 // Opaque-handle casts used across the bridge. Inline so the unity build
 // doesn't see duplicate definitions if two TUs are concatenated.
-inline EnvironmentWrapperV2 *ToEnv(duckdb_v2_environment_ptr ptr) {
-	return static_cast<EnvironmentWrapperV2 *>(ptr);
+inline EnvironmentWrapperV2 *ToEnv(duckdb_v2_environment_handle ptr) {
+	return reinterpret_cast<EnvironmentWrapperV2 *>(ptr);
 }
-inline DatabaseWrapperV2 *ToDb(duckdb_v2_database_ptr ptr) {
-	return static_cast<DatabaseWrapperV2 *>(ptr);
+inline DatabaseWrapperV2 *ToDb(duckdb_v2_database_handle ptr) {
+	return reinterpret_cast<DatabaseWrapperV2 *>(ptr);
 }
-inline ConnectionWrapperV2 *ToConn(duckdb_v2_connection_ptr ptr) {
-	return static_cast<ConnectionWrapperV2 *>(ptr);
+inline ConnectionWrapperV2 *ToConn(duckdb_v2_connection_handle ptr) {
+	return reinterpret_cast<ConnectionWrapperV2 *>(ptr);
 }
-inline OptionWrapperV2 *ToOption(duckdb_v2_option_ptr ptr) {
-	return static_cast<OptionWrapperV2 *>(ptr);
+inline OptionWrapperV2 *ToOption(duckdb_v2_option_handle ptr) {
+	return reinterpret_cast<OptionWrapperV2 *>(ptr);
 }
 // The logical_type handle is not wrapped — the underlying duckdb::LogicalType
 // is heap-allocated directly. The V2 test suite relies on this layout to
 // share fixtures with V1 (V1-built composites are reinterpret-cast to V2
 // handles); if a wrapper is added later, those tests must change too.
-inline LogicalType *ToLogicalType(duckdb_v2_logical_type_ptr ptr) {
-	return static_cast<LogicalType *>(ptr);
+inline LogicalType *ToLogicalType(duckdb_v2_logical_type_handle ptr) {
+	return reinterpret_cast<LogicalType *>(ptr);
 }
-// Same pattern as ToLogicalType: a duckdb_v2_value_ptr is a heap-allocated
+// Same pattern as ToLogicalType: a duckdb_v2_value_handle is a heap-allocated
 // duckdb::Value with no wrapper. Lets V2 tests adopt V1-built values the
 // same way the logical_type bridge reuses V1 fixtures. Keep it identity —
 // do not wrap.
-inline Value *ToValue(duckdb_v2_value_ptr ptr) {
-	return static_cast<Value *>(ptr);
+inline Value *ToValue(duckdb_v2_value_handle ptr) {
+	return reinterpret_cast<Value *>(ptr);
 }
-// duckdb_v2_result_ptr is a heap-allocated duckdb::MaterializedQueryResult
+// duckdb_v2_result_handle is a heap-allocated duckdb::MaterializedQueryResult
 // with no wrapper. The V2 result surface today is materialized-only, by
 // construction: connection_query is the sole producer and uses
 // Connection::Query(const string &) which returns
@@ -132,32 +132,32 @@ inline Value *ToValue(duckdb_v2_value_ptr ptr) {
 // streaming or pending QueryResult, this cast must change — the bridge
 // should either gain a wrapper that tags the variant, or split into
 // per-shape handle types.
-inline MaterializedQueryResult *ToResult(duckdb_v2_result_ptr ptr) {
-	return static_cast<MaterializedQueryResult *>(ptr);
+inline MaterializedQueryResult *ToResult(duckdb_v2_result_handle ptr) {
+	return reinterpret_cast<MaterializedQueryResult *>(ptr);
 }
-// duckdb_v2_data_chunk_ptr is a heap-allocated duckdb::DataChunk with no
+// duckdb_v2_data_chunk_handle is a heap-allocated duckdb::DataChunk with no
 // wrapper. Cardinality flows through the API explicitly; no per-chunk
 // state needs caching. duckdb_v2_data_chunk_destroy deletes through this
 // cast.
-inline DataChunk *ToDataChunk(duckdb_v2_data_chunk_ptr ptr) {
-	return static_cast<DataChunk *>(ptr);
+inline DataChunk *ToDataChunk(duckdb_v2_data_chunk_handle ptr) {
+	return reinterpret_cast<DataChunk *>(ptr);
 }
-// duckdb_v2_vector_ptr is a borrowed duckdb::Vector. Top-level vectors
+// duckdb_v2_vector_handle is a borrowed duckdb::Vector. Top-level vectors
 // point into the owning DataChunk's data[]; nested children point into
 // core's ListVector / ArrayVector / StructVector / etc storage. No
 // wrapper — vector_get_view extracts (data, validity, sel) directly via
 // the matching FlatVector / ConstantVector / DictionaryVector core
 // helpers, without caching a UnifiedVectorFormat.
-inline Vector *ToVector(duckdb_v2_vector_ptr ptr) {
-	return static_cast<Vector *>(ptr);
+inline Vector *ToVector(duckdb_v2_vector_handle ptr) {
+	return reinterpret_cast<Vector *>(ptr);
 }
-// duckdb_v2_expression_ptr is a borrowed duckdb::Expression living inside the
+// duckdb_v2_expression_handle is a borrowed duckdb::Expression living inside the
 // engine's plan. No wrapper — accessors read directly off the Expression and
 // its bound subclasses. The handle is read-only and never destroyed by the
 // caller; children borrowed via expression_get_child share the parent's
 // lifetime and are likewise unwrapped Expression pointers.
-inline Expression *ToExpression(duckdb_v2_expression_ptr ptr) {
-	return static_cast<Expression *>(ptr);
+inline Expression *ToExpression(duckdb_v2_expression_handle ptr) {
+	return reinterpret_cast<Expression *>(ptr);
 }
 
 // Map core's VectorType to the V2 surface. FSST / SEQUENCE / SHREDDED
@@ -318,7 +318,7 @@ struct PreparedStatementWrapperV2 {
 	ErrorData error_data;
 };
 
-// Backing struct for the opaque duckdb_v2_error_info_ptr handle. Allocated
+// Backing struct for the opaque duckdb_v2_error_info_handle handle. Allocated
 // only on failure paths and only when the caller requested detail (i.e.
 // passed a non-null err out-parameter).
 struct ErrorInfoV2 {
@@ -349,12 +349,12 @@ struct ErrorInfoV2 {
 // `error_info_destroy` on slots they own; callbacks must NEVER destroy the
 // err slot handed to them by the library (the slot's storage may live on
 // the library's stack).
-inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_ptr *err, DUCKDB_V2_API_CALL_t code, const char *msg) {
+inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_handle *err, DUCKDB_V2_API_CALL_t code, const char *msg) {
 	if (err) {
 		if (!*err) {
-			*err = static_cast<duckdb_v2_error_info_ptr>(new ErrorInfoV2());
+			*err = reinterpret_cast<_duckdb_v2_error_info *>(new ErrorInfoV2());
 		}
-		auto &info = *static_cast<ErrorInfoV2 *>(*err);
+		auto &info = *reinterpret_cast<ErrorInfoV2 *>(*err);
 		info.code = code;
 		info.message = msg ? msg : "";
 	}
@@ -517,12 +517,12 @@ inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_API_CALL_t code, Exceptio
 // phase-appropriate default (BinderException for bind, InvalidInputException
 // for init/exec). The slot lives on this function's stack; per the slot
 // contract the callback must never destroy it. `invoke` receives the slot as
-// `duckdb_v2_error_info_ptr *` and forwards it to the callback; any cb_info
+// `duckdb_v2_error_info_handle *` and forwards it to the callback; any cb_info
 // inspection happens at the call site after this returns.
 template <class EX, class FN>
 inline void InvokeWithErrorSlot(FN &&invoke) {
 	ErrorInfoV2 err {};
-	auto err_ptr = static_cast<duckdb_v2_error_info_ptr>(&err);
+	auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
 	invoke(&err_ptr);
 	if (err.code == DUCKDB_V2_ERROR_NONE) {
 		return;
@@ -541,7 +541,7 @@ inline void InvokeWithErrorSlot(FN &&invoke) {
 // (caller frees with free()).
 inline DUCKDB_V2_API_CALL_t DecodeBignumStringT(const string_t &storage, uint8_t **out_data, idx_t *out_length,
                                                 bool *out_is_negative, const char *function_name,
-                                                duckdb_v2_error_info_ptr *err) {
+                                                duckdb_v2_error_info_handle *err) {
 	*out_data = nullptr;
 	*out_length = 0;
 	*out_is_negative = false;
@@ -670,7 +670,7 @@ inline DUCKDB_V2_API_CALL_t GetErrorCodeFromExceptionType(ExceptionType type) {
 }
 
 template <class T>
-DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_ptr *err, T callback) {
+DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callback) {
 	auto code = static_cast<DUCKDB_V2_API_CALL_t>(DUCKDB_V2_ERROR_NONE);
 	auto text = string();
 
@@ -701,9 +701,9 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_ptr *err, T callback)
 	// Failure: report detail through the slot if the caller provided one.
 	if (err) {
 		if (!*err) {
-			*err = static_cast<duckdb_v2_error_info_ptr>(new ErrorInfoV2());
+			*err = reinterpret_cast<_duckdb_v2_error_info *>(new ErrorInfoV2());
 		}
-		auto &out = *static_cast<ErrorInfoV2 *>(*err);
+		auto &out = *reinterpret_cast<ErrorInfoV2 *>(*err);
 		out.code = code;
 		out.message = std::move(text);
 	}

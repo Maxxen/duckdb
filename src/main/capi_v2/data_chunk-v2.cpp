@@ -9,8 +9,9 @@
 // DataChunk construction
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_ptr *types, idx_t column_count,
-                                                 duckdb_v2_data_chunk_ptr *out_chunk, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_handle *types, idx_t column_count,
+                                                 duckdb_v2_data_chunk_handle *out_chunk,
+                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_chunk) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_create");
@@ -29,7 +30,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_pt
 		}
 		auto chunk = duckdb::make_uniq<duckdb::DataChunk>();
 		chunk->Initialize(duckdb::Allocator::DefaultAllocator(), logical_types);
-		*out_chunk = static_cast<duckdb_v2_data_chunk_ptr>(chunk.release());
+		*out_chunk = reinterpret_cast<_duckdb_v2_data_chunk *>(chunk.release());
 	});
 }
 
@@ -37,8 +38,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_pt
 // Result-side accessors
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_chunk_count(duckdb_v2_result_ptr result, idx_t *out_count,
-                                                  duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_chunk_count(duckdb_v2_result_handle result, idx_t *out_count,
+                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_chunk_count");
@@ -52,8 +53,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_chunk_count(duckdb_v2_result_ptr result, i
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_get_chunk(duckdb_v2_result_ptr result, idx_t index,
-                                                duckdb_v2_data_chunk_ptr *out_chunk, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_get_chunk(duckdb_v2_result_handle result, idx_t index,
+                                                duckdb_v2_data_chunk_handle *out_chunk,
+                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_chunk) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_get_chunk");
@@ -70,11 +72,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_get_chunk(duckdb_v2_result_ptr result, idx
 		auto chunk = duckdb::make_uniq<duckdb::DataChunk>();
 		chunk->Initialize(duckdb::Allocator::DefaultAllocator(), collection.Types());
 		collection.FetchChunk(index, *chunk);
-		*out_chunk = static_cast<duckdb_v2_data_chunk_ptr>(chunk.release());
+		*out_chunk = reinterpret_cast<_duckdb_v2_data_chunk *>(chunk.release());
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_ptr *chunk) {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_handle *chunk) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!chunk) {
 			return;
@@ -86,8 +88,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_ptr *chun
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_ptr chunk, idx_t *out_size,
-                                                   duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_handle chunk, idx_t *out_size,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!chunk || !out_size) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_get_size");
@@ -96,8 +98,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_ptr chun
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector_count(duckdb_v2_data_chunk_ptr chunk, idx_t *out_count,
-                                                           duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector_count(duckdb_v2_data_chunk_handle chunk, idx_t *out_count,
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!chunk || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_get_vector_count");
@@ -106,8 +108,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector_count(duckdb_v2_data_chunk_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_data_chunk_ptr chunk, idx_t index,
-                                                     duckdb_v2_vector_ptr *out_vector, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_data_chunk_handle chunk, idx_t index,
+                                                     duckdb_v2_vector_handle *out_vector,
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!chunk || !out_vector) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_get_vector");
@@ -117,6 +120,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_data_chunk_ptr ch
 		if (index >= c->ColumnCount()) {
 			throw duckdb::InvalidInputException("vector index out of range");
 		}
-		*out_vector = static_cast<duckdb_v2_vector_ptr>(&c->data[index]);
+		*out_vector = reinterpret_cast<_duckdb_v2_vector *>(&c->data[index]);
 	});
 }

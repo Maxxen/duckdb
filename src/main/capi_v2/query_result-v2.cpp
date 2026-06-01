@@ -30,8 +30,8 @@ DUCKDB_V2_RESULT_TYPE MapResultType(StatementReturnType t) {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_ptr conn, const char *sql,
-                                                duckdb_v2_result_ptr *out_result, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn, const char *sql,
+                                                duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !sql || !out_result) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_query");
@@ -44,11 +44,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_ptr conn, c
 			// is preserved and routed through GetErrorCodeFromExceptionType.
 			result->GetErrorObject().Throw();
 		}
-		*out_result = static_cast<duckdb_v2_result_ptr>(result.release());
+		*out_result = reinterpret_cast<_duckdb_v2_result *>(result.release());
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_destroy(duckdb_v2_result_ptr *result) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_destroy(duckdb_v2_result_handle *result) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!result) {
 			return;
@@ -64,8 +64,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_destroy(duckdb_v2_result_ptr *result) {
 // Metadata
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_get_result_type(duckdb_v2_result_ptr result, DUCKDB_V2_RESULT_TYPE *out_type,
-                                                      duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_get_result_type(duckdb_v2_result_handle result, DUCKDB_V2_RESULT_TYPE *out_type,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_get_result_type");
@@ -75,9 +75,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_get_result_type(duckdb_v2_result_ptr resul
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_get_statement_type(duckdb_v2_result_ptr result,
+DUCKDB_V2_API_CALL_t duckdb_v2_result_get_statement_type(duckdb_v2_result_handle result,
                                                          DUCKDB_V2_STATEMENT_TYPE *out_type,
-                                                         duckdb_v2_error_info_ptr *err) {
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_get_statement_type");
@@ -87,8 +87,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_get_statement_type(duckdb_v2_result_ptr re
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_column_count(duckdb_v2_result_ptr result, idx_t *out_count,
-                                                   duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_column_count(duckdb_v2_result_handle result, idx_t *out_count,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_count");
@@ -98,8 +98,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_column_count(duckdb_v2_result_ptr result, 
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_ptr result, idx_t index, const char **out_name,
-                                                  idx_t *out_length, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_handle result, idx_t index, const char **out_name,
+                                                  idx_t *out_length, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_name || !out_length) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_name");
@@ -114,9 +114,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_ptr result, i
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_column_logical_type(duckdb_v2_result_ptr result, idx_t index,
-                                                          duckdb_v2_logical_type_ptr *out_type,
-                                                          duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_column_logical_type(duckdb_v2_result_handle result, idx_t index,
+                                                          duckdb_v2_logical_type_handle *out_type,
+                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_logical_type");
@@ -127,12 +127,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_column_logical_type(duckdb_v2_result_ptr r
 			throw duckdb::InvalidInputException("result column index out of range");
 		}
 		auto *lt = new duckdb::LogicalType(r->types[index]);
-		*out_type = static_cast<duckdb_v2_logical_type_ptr>(lt);
+		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(lt);
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_rows_changed(duckdb_v2_result_ptr result, idx_t *out_count,
-                                                   duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_rows_changed(duckdb_v2_result_handle result, idx_t *out_count,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_rows_changed");

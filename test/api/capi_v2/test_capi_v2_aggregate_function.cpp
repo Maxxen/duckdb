@@ -20,17 +20,17 @@ bool RowIsValid(const uint64_t *validity, idx_t idx) {
 	return validity == nullptr || (validity[idx >> 6] & (1ULL << (idx & 63)));
 }
 
-void SizeCallback(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_ptr *err) {
+void SizeCallback(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_handle *err) {
 	args->out_size = sizeof(MedianState);
 }
 
-void InitCallback(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_ptr *err) {
+void InitCallback(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_handle *err) {
 	// DuckDB hands us zero-initialized memory; construct the state object in place.
 	new (args->state) MedianState();
 }
 
-void UpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_ptr *err) {
-	duckdb_v2_vector_ptr input_vec = nullptr;
+void UpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_vector_handle input_vec = nullptr;
 	if (duckdb_v2_data_chunk_get_vector(args->input, 0, &input_vec, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
@@ -52,7 +52,7 @@ void UpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_er
 	}
 }
 
-void CombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_ptr *err) {
+void CombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_handle *err) {
 	const auto sources = reinterpret_cast<MedianState **>(args->sources);
 	const auto targets = reinterpret_cast<MedianState **>(args->targets);
 
@@ -63,7 +63,7 @@ void CombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_
 	}
 }
 
-void FinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_ptr *err) {
+void FinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
 	const auto states = reinterpret_cast<MedianState **>(args->states);
 
 	int32_t *result = nullptr;
@@ -84,7 +84,7 @@ void FinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v
 	}
 }
 
-void DestroyCallback(duckdb_v2_aggregate_function_destroy_args *args, duckdb_v2_error_info_ptr *err) {
+void DestroyCallback(duckdb_v2_aggregate_function_destroy_args *args, duckdb_v2_error_info_handle *err) {
 	const auto states = reinterpret_cast<MedianState **>(args->states);
 
 	for (idx_t i = 0; i < args->count; i++) {
@@ -95,24 +95,24 @@ void DestroyCallback(duckdb_v2_aggregate_function_destroy_args *args, duckdb_v2_
 } // namespace
 
 TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]") {
-	duckdb_v2_environment_ptr env = nullptr;
+	duckdb_v2_environment_handle env = nullptr;
 	duckdb_v2_create_environment(&env, nullptr);
 
-	duckdb_v2_database_ptr db = nullptr;
+	duckdb_v2_database_handle db = nullptr;
 	duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
 
-	duckdb_v2_connection_ptr conn = nullptr;
+	duckdb_v2_connection_handle conn = nullptr;
 	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(conn != nullptr);
 
 	// Register the aggregate within a transaction so we have a context.
 	duckdb_v2_connection_execute_with_context(
 	    conn,
-	    [](duckdb_v2_context_ptr ctx, void *, duckdb_v2_error_info_ptr *err) {
-		    duckdb_v2_aggregate_function_builder_ptr builder = nullptr;
+	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
+		    duckdb_v2_aggregate_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
 
-		    duckdb_v2_logical_type_ptr type = nullptr;
+		    duckdb_v2_logical_type_handle type = nullptr;
 		    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 
@@ -144,15 +144,15 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 	    nullptr, nullptr);
 
 	SECTION("median over a single group") {
-		duckdb_v2_result_ptr result = nullptr;
+		duckdb_v2_result_handle result = nullptr;
 		REQUIRE(duckdb_v2_connection_query(
 		            conn, "SELECT my_median(i) AS result FROM (VALUES (1), (2), (3), (4), (5)) AS t(i)", &result,
 		            nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		duckdb_v2_data_chunk_ptr chunk = nullptr;
+		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		duckdb_v2_vector_ptr result_vec = nullptr;
+		duckdb_v2_vector_handle result_vec = nullptr;
 		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &result_vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_vector_view result_view;
@@ -167,16 +167,16 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 	}
 
 	SECTION("median over multiple groups") {
-		duckdb_v2_result_ptr result = nullptr;
+		duckdb_v2_result_handle result = nullptr;
 		REQUIRE(duckdb_v2_connection_query(conn,
 		                                   "SELECT g, my_median(i) AS result FROM (VALUES (0, 10), (0, 20), (0, 30), "
 		                                   "(1, 1), (1, 2)) AS t(g, i) GROUP BY g ORDER BY g",
 		                                   &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		duckdb_v2_data_chunk_ptr chunk = nullptr;
+		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		duckdb_v2_vector_ptr result_vec = nullptr;
+		duckdb_v2_vector_handle result_vec = nullptr;
 		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 1, &result_vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_vector_view result_view;

@@ -33,9 +33,9 @@ bool IsSupportedVectorType(VectorType vt) {
 // Introspection
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_logical_type(duckdb_v2_vector_ptr vector,
-                                                       duckdb_v2_logical_type_ptr *out_type,
-                                                       duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_logical_type(duckdb_v2_vector_handle vector,
+                                                       duckdb_v2_logical_type_handle *out_type,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_logical_type");
@@ -43,12 +43,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_logical_type(duckdb_v2_vector_ptr vect
 		*out_type = nullptr;
 		auto *vec = duckdb::ToVector(vector);
 		auto *lt = new duckdb::LogicalType(vec->GetType());
-		*out_type = static_cast<duckdb_v2_logical_type_ptr>(lt);
+		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(lt);
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_vector_type(duckdb_v2_vector_ptr vector, DUCKDB_V2_VECTOR_TYPE *out_type,
-                                                      duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_vector_type(duckdb_v2_vector_handle vector, DUCKDB_V2_VECTOR_TYPE *out_type,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_vector_type");
@@ -57,7 +57,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_vector_type(duckdb_v2_vector_ptr vecto
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_ptr vector, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_handle vector, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_flatten");
@@ -70,8 +70,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_ptr vector, duckd
 // The view-getter
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector, duckdb_v2_vector_view *out_view,
-                                               duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_handle vector, duckdb_v2_vector_view *out_view,
+                                               duckdb_v2_error_info_handle *err) {
 	if (out_view) {
 		std::memset(out_view, 0, sizeof(*out_view));
 	}
@@ -126,8 +126,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_view(duckdb_v2_vector_ptr vector, duck
 // ---------------------------------------------------------------------------
 // Mutable Accessors
 // ---------------------------------------------------------------------------
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data_mutable(duckdb_v2_vector_ptr vector, void **out_data,
-                                                       duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data_mutable(duckdb_v2_vector_handle vector, void **out_data,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector) {
 			throw duckdb::InvalidInputException("Vector pointer cannot be null.");
@@ -151,8 +151,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_data_mutable(duckdb_v2_vector_ptr vect
 // Vector type setup
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_constant(duckdb_v2_vector_ptr vector, duckdb_v2_value_ptr value, idx_t count,
-                                                    duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_constant(duckdb_v2_vector_handle vector, duckdb_v2_value_handle value,
+                                                    idx_t count, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector) {
 			throw duckdb::InvalidInputException("Vector cannot be null.");
@@ -164,8 +164,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_constant(duckdb_v2_vector_ptr vector,
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_sequence(duckdb_v2_vector_ptr vector, int64_t start, int64_t increment,
-                                                    idx_t count, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_sequence(duckdb_v2_vector_handle vector, int64_t start, int64_t increment,
+                                                    idx_t count, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_make_sequence");
@@ -178,8 +178,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_sequence(duckdb_v2_vector_ptr vector,
 // Validity (mutable)
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_flat_get_validity_mutable(duckdb_v2_vector_ptr vector, uint64_t **out_validity,
-                                                                duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_flat_get_validity_mutable(duckdb_v2_vector_handle vector, uint64_t **out_validity,
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector || !out_validity) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_flat_get_validity_mutable");
@@ -195,8 +195,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_flat_get_validity_mutable(duckdb_v2_vector
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_ptr vector, bool validity,
-                                                         duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_handle vector, bool validity,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_constant_set_valid");
@@ -213,8 +213,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_ptr ve
 // String writing
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_ptr vector, idx_t index, const char *data,
-                                                    idx_t length, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_handle vector, idx_t index, const char *data,
+                                                    idx_t length, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector || !data) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_assign_string");
@@ -259,8 +259,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_ptr vector,
 //   others  → 0
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child_count(duckdb_v2_vector_ptr vector, idx_t *out_count,
-                                                      duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child_count(duckdb_v2_vector_handle vector, idx_t *out_count,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_child_count");
@@ -287,8 +287,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child_count(duckdb_v2_vector_ptr vecto
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx_t index,
-                                                duckdb_v2_vector_ptr *out_child, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_handle vector, idx_t index,
+                                                duckdb_v2_vector_handle *out_child, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector || !out_child) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_child");
@@ -301,7 +301,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 				throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: LIST has only child [0] (elements)");
 			}
 			auto &child = duckdb::ListVector::GetChildMutable(*vec);
-			*out_child = static_cast<duckdb_v2_vector_ptr>(&child);
+			*out_child = reinterpret_cast<_duckdb_v2_vector *>(&child);
 			return;
 		}
 		case duckdb::LogicalTypeId::ARRAY: {
@@ -309,7 +309,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 				throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: ARRAY has only child [0] (elements)");
 			}
 			auto &child = duckdb::ArrayVector::GetChildMutable(*vec);
-			*out_child = static_cast<duckdb_v2_vector_ptr>(&child);
+			*out_child = reinterpret_cast<_duckdb_v2_vector *>(&child);
 			return;
 		}
 		case duckdb::LogicalTypeId::MAP: {
@@ -317,12 +317,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 			// key vector, child [1] is the value vector.
 			if (index == 0) {
 				auto &keys = duckdb::MapVector::GetKeys(*vec);
-				*out_child = static_cast<duckdb_v2_vector_ptr>(&keys);
+				*out_child = reinterpret_cast<_duckdb_v2_vector *>(&keys);
 				return;
 			}
 			if (index == 1) {
 				auto &values = duckdb::MapVector::GetValues(*vec);
-				*out_child = static_cast<duckdb_v2_vector_ptr>(&values);
+				*out_child = reinterpret_cast<_duckdb_v2_vector *>(&values);
 				return;
 			}
 			throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: MAP children are [0]=keys, [1]=values");
@@ -332,7 +332,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 			if (index >= entries.size()) {
 				throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: STRUCT field index out of range");
 			}
-			*out_child = static_cast<duckdb_v2_vector_ptr>(&entries[index]);
+			*out_child = reinterpret_cast<_duckdb_v2_vector *>(&entries[index]);
 			return;
 		}
 		case duckdb::LogicalTypeId::UNION: {
@@ -340,7 +340,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 			// member vectors.
 			if (index == 0) {
 				auto &tags = duckdb::UnionVector::GetTags(*vec);
-				*out_child = static_cast<duckdb_v2_vector_ptr>(&tags);
+				*out_child = reinterpret_cast<_duckdb_v2_vector *>(&tags);
 				return;
 			}
 			// Compute the member-space index first; bounds-check that
@@ -352,7 +352,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 				throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: UNION member index out of range");
 			}
 			auto &member = duckdb::UnionVector::GetMember(*vec, member_idx);
-			*out_child = static_cast<duckdb_v2_vector_ptr>(&member);
+			*out_child = reinterpret_cast<_duckdb_v2_vector *>(&member);
 			return;
 		}
 		default:
@@ -365,8 +365,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ptr vector, idx
 // Generic row-count
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_size(duckdb_v2_vector_ptr vector, idx_t *out_size,
-                                               duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_size(duckdb_v2_vector_handle vector, idx_t *out_size,
+                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector || !out_size) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_size");
@@ -376,7 +376,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_size(duckdb_v2_vector_ptr vector, idx_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_ptr vector, idx_t size, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_handle vector, idx_t size,
+                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!vector) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_set_size");
@@ -404,7 +405,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_ptr vector, idx_
 // ---------------------------------------------------------------------------
 
 DUCKDB_V2_API_CALL_t duckdb_v2_varchar_decode(const duckdb_v2_varchar_t *varchar, const char **out_data,
-                                              idx_t *out_length, duckdb_v2_error_info_ptr *err) {
+                                              idx_t *out_length, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!varchar || !out_data || !out_length) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_varchar_decode");
@@ -416,7 +417,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_varchar_decode(const duckdb_v2_varchar_t *varchar
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_blob_decode(const duckdb_v2_blob_t *blob, const uint8_t **out_data, idx_t *out_length,
-                                           duckdb_v2_error_info_ptr *err) {
+                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!blob || !out_data || !out_length) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_blob_decode");
@@ -428,7 +429,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_blob_decode(const duckdb_v2_blob_t *blob, const u
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_bit_decode(const duckdb_v2_bit_t *bit, const uint8_t **out_data, idx_t *out_length,
-                                          uint8_t *out_padding_bits, duckdb_v2_error_info_ptr *err) {
+                                          uint8_t *out_padding_bits, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!bit || !out_data || !out_length || !out_padding_bits) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_bit_decode");
@@ -444,7 +445,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_bit_decode(const duckdb_v2_bit_t *bit, const uint
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_bignum_decode(const duckdb_v2_bignum_t *bignum, uint8_t **out_data, idx_t *out_length,
-                                             bool *out_is_negative, duckdb_v2_error_info_ptr *err) {
+                                             bool *out_is_negative, duckdb_v2_error_info_handle *err) {
 	if (!bignum || !out_data || !out_length || !out_is_negative) {
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null argument to duckdb_v2_bignum_decode");
 	}
@@ -456,7 +457,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_bignum_decode(const duckdb_v2_bignum_t *bignum, u
 // Per-row helpers
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_sel_at(const duckdb_v2_sel_t *sel, idx_t i, idx_t *out, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_sel_at(const duckdb_v2_sel_t *sel, idx_t i, idx_t *out,
+                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_sel_at");
@@ -466,7 +468,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_sel_at(const duckdb_v2_sel_t *sel, idx_t i, idx_t
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(const uint64_t *validity, idx_t row, bool *out_is_valid,
-                                                     duckdb_v2_error_info_ptr *err) {
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_is_valid) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_validity_row_is_valid");

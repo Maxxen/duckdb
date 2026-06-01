@@ -18,8 +18,9 @@ bool IsUniqueFileHandleConflict(const char *what) {
 // as RESOURCE_IN_USE. The default exception->code mapping in WithErrorHandler
 // would route this through IO_GENERAL, which loses the distinction the V2
 // surface wants for "this file is already open in this environment."
-DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_ptr env, const char *path, duckdb_v2_option_ptr *options,
-                                    idx_t option_count, duckdb_v2_database_ptr *out_db, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_handle env, const char *path,
+                                    duckdb_v2_option_handle *options, idx_t option_count,
+                                    duckdb_v2_database_handle *out_db, duckdb_v2_error_info_handle *err) {
 	if (!env || !out_db) {
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null argument to duckdb_v2_open");
 	}
@@ -50,7 +51,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_ptr env, const char *p
 		wrapper->admin_connection = duckdb::make_uniq<duckdb::Connection>(*wrapper->database);
 		wrapper->environment = env_wrapper;
 		env_wrapper->open_database_count.fetch_add(1, std::memory_order_release);
-		*out_db = static_cast<duckdb_v2_database_ptr>(wrapper.release());
+		*out_db = reinterpret_cast<_duckdb_v2_database *>(wrapper.release());
 		return DUCKDB_V2_ERROR_NONE;
 	} catch (std::exception &e) {
 		if (IsUniqueFileHandleConflict(e.what())) {
@@ -62,7 +63,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_ptr env, const char *p
 	}
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db) {
+DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_handle *db) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!db) {
 			return;
@@ -79,8 +80,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_ptr *db) {
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_ptr db, duckdb_v2_option_ptr option,
-                                                   duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_handle db, duckdb_v2_option_handle option,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_set");
@@ -96,8 +97,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_ptr db, du
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_ptr db, const char *name,
-                                                   duckdb_v2_option_ptr *out_option, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db, const char *name,
+                                                   duckdb_v2_option_handle *out_option,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !name || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_get");
@@ -108,12 +110,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_ptr db, co
 		auto &config = db_wrapper->database->instance->config;
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		duckdb::BuildOptionByName(*wrapper, client, config, std::string(name));
-		*out_option = static_cast<duckdb_v2_option_ptr>(wrapper.release());
+		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_count(duckdb_v2_database_ptr db, idx_t *out_count,
-                                                         duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_count(duckdb_v2_database_handle db, idx_t *out_count,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_get_count");
@@ -124,9 +126,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_count(duckdb_v2_database_ptr 
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_ptr db, idx_t index,
-                                                            duckdb_v2_option_ptr *out_option,
-                                                            duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_handle db, idx_t index,
+                                                            duckdb_v2_option_handle *out_option,
+                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_get_by_index");
@@ -137,6 +139,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_p
 		auto &config = db_wrapper->database->instance->config;
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		duckdb::BuildOptionByIndex(*wrapper, client, config, index);
-		*out_option = static_cast<duckdb_v2_option_ptr>(wrapper.release());
+		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
 	});
 }

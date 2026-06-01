@@ -4,8 +4,8 @@
 #include "duckdb_v2.h"
 #include "duckdb.h"
 
-inline duckdb_v2_logical_type_ptr V1ToV2(duckdb_logical_type t) {
-	return static_cast<duckdb_v2_logical_type_ptr>(t);
+inline duckdb_v2_logical_type_handle V1ToV2(duckdb_logical_type t) {
+	return reinterpret_cast<duckdb_v2_logical_type_handle>(t);
 }
 
 inline idx_t SelAt(const duckdb_v2_sel_t *sel, idx_t i) {
@@ -26,9 +26,9 @@ inline bool RowValid(const duckdb_v2_vector_view &view, idx_t idx) {
 
 // RAII fixture: in-memory environment + database + connection.
 struct V2EnvFixture {
-	duckdb_v2_environment_ptr env = nullptr;
-	duckdb_v2_database_ptr db = nullptr;
-	duckdb_v2_connection_ptr conn = nullptr;
+	duckdb_v2_environment_handle env = nullptr;
+	duckdb_v2_database_handle db = nullptr;
+	duckdb_v2_connection_handle conn = nullptr;
 	V2EnvFixture() {
 		duckdb_v2_create_environment(&env, nullptr);
 		duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);

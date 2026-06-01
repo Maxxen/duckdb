@@ -1,7 +1,7 @@
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_ptr db, duckdb_v2_connection_ptr *out_conn,
-                                       duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_handle db, duckdb_v2_connection_handle *out_conn,
+                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !out_conn) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connect");
@@ -10,11 +10,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_ptr db, duckdb_v2_conn
 		auto *db_wrapper = duckdb::ToDb(db);
 		auto conn_wrapper = duckdb::make_uniq<duckdb::ConnectionWrapperV2>();
 		conn_wrapper->connection = duckdb::make_shared_ptr<duckdb::Connection>(*db_wrapper->database);
-		*out_conn = static_cast<duckdb_v2_connection_ptr>(conn_wrapper.release());
+		*out_conn = reinterpret_cast<_duckdb_v2_connection *>(conn_wrapper.release());
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn) {
+DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_handle *conn) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!conn) {
 			return;
@@ -26,8 +26,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_ptr *conn) {
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_ptr conn, duckdb_v2_option_ptr option,
-                                                     DUCKDB_V2_SETTING_SCOPE scope, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_handle conn, duckdb_v2_option_handle option,
+                                                     DUCKDB_V2_SETTING_SCOPE scope, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_set");
@@ -40,8 +40,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_ptr co
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_ptr conn, const char *name,
-                                                     duckdb_v2_option_ptr *out_option, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_handle conn, const char *name,
+                                                     duckdb_v2_option_handle *out_option,
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !name || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get");
@@ -52,12 +53,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_ptr co
 		auto &config = duckdb::DBConfig::GetConfig(client);
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		duckdb::BuildOptionByName(*wrapper, client, config, std::string(name));
-		*out_option = static_cast<duckdb_v2_option_ptr>(wrapper.release());
+		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_ptr conn, idx_t *out_count,
-                                                           duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_handle conn, idx_t *out_count,
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get_count");
@@ -69,9 +70,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_ptr conn, idx_t index,
-                                                              duckdb_v2_option_ptr *out_option,
-                                                              duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_handle conn, idx_t index,
+                                                              duckdb_v2_option_handle *out_option,
+                                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get_by_index");
@@ -82,13 +83,13 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connecti
 		auto &config = duckdb::DBConfig::GetConfig(client);
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		duckdb::BuildOptionByIndex(*wrapper, client, config, index);
-		*out_option = static_cast<duckdb_v2_option_ptr>(wrapper.release());
+		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_ptr conn,
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_handle conn,
                                                                duckdb_v2_connection_callback_cb callback,
-                                                               void *user_data, duckdb_v2_error_info_ptr *err) {
+                                                               void *user_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn) {
 			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
@@ -101,8 +102,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connect
 		auto &ctx = *conn_wrapper->connection->context;
 
 		ctx.RunFunctionInTransaction([&]() {
-			auto cb_ctx_ptr = static_cast<duckdb_v2_context_ptr>(&ctx);
-			callback(cb_ctx_ptr, user_data, err);
+			auto cb_ctx_handle = reinterpret_cast<_duckdb_v2_context *>(&ctx);
+			callback(cb_ctx_handle, user_data, err);
 		});
 	});
 }

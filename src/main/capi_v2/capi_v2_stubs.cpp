@@ -3,6 +3,6 @@
 
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_ptr *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_handle *err) {
 	return DUCKDB_V2_API_ERROR; // Not yet implemented
 }

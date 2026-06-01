@@ -23,32 +23,32 @@ struct duckdb_v2_impl_string {
 
 #define DUCKDB_V2_IMPL_STRING_INLINE_MAX 12u
 
-_Static_assert(sizeof(duckdb_v2_string) == sizeof(struct duckdb_v2_impl_string),
-               "duckdb_v2_string and duckdb_v2_impl_string must have the same size");
+static_assert(sizeof(duckdb_v2_string) == sizeof(struct duckdb_v2_impl_string),
+              "duckdb_v2_string and duckdb_v2_impl_string must have the same size");
 
 //===--------------------------------------------------------------------===//
 // duckdb_v2_string helpers
 //===--------------------------------------------------------------------===//
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_string_is_inlined(const duckdb_v2_string *string, bool *out_inlined,
-                                                                duckdb_v2_error_info_ptr *err) {
+                                                               duckdb_v2_error_info_handle *err) {
 	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)string;
 	*out_inlined = p->value.inlined.length <= DUCKDB_V2_IMPL_STRING_INLINE_MAX;
 	return DUCKDB_V2_ERROR_NONE;
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_string_get_length(const duckdb_v2_string *string, uint32_t *out_length,
-                                                                duckdb_v2_error_info_ptr *err) {
+                                                               duckdb_v2_error_info_handle *err) {
 	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)string;
 	*out_length = p->value.inlined.length;
 	return DUCKDB_V2_ERROR_NONE;
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_string_get_data(const duckdb_v2_string *string, const char **out_data,
-                                                              duckdb_v2_error_info_ptr *err) {
+                                                             duckdb_v2_error_info_handle *err) {
 	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)string;
-	*out_data = p->value.inlined.length <= DUCKDB_V2_IMPL_STRING_INLINE_MAX ? p->value.inlined.inlined
-	                                                                         : p->value.pointer.ptr;
+	*out_data =
+	    p->value.inlined.length <= DUCKDB_V2_IMPL_STRING_INLINE_MAX ? p->value.inlined.inlined : p->value.pointer.ptr;
 	return DUCKDB_V2_ERROR_NONE;
 }
 
@@ -57,17 +57,17 @@ static inline DUCKDB_V2_API_CALL_t duckdb_v2_string_get_data(const duckdb_v2_str
 //===--------------------------------------------------------------------===//
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_varchar_is_inlined(const duckdb_v2_varchar_t *s, bool *out_inlined,
-                                                                 duckdb_v2_error_info_ptr *err) {
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb_v2_string_is_inlined(s, out_inlined, err);
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_varchar_get_length(const duckdb_v2_varchar_t *s, uint32_t *out_length,
-                                                                 duckdb_v2_error_info_ptr *err) {
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb_v2_string_get_length(s, out_length, err);
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_varchar_get_data(const duckdb_v2_varchar_t *s, const char **out_data,
-                                                               duckdb_v2_error_info_ptr *err) {
+                                                              duckdb_v2_error_info_handle *err) {
 	return duckdb_v2_string_get_data(s, out_data, err);
 }
 
@@ -76,17 +76,17 @@ static inline DUCKDB_V2_API_CALL_t duckdb_v2_varchar_get_data(const duckdb_v2_va
 //===--------------------------------------------------------------------===//
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_blob_is_inlined(const duckdb_v2_blob_t *b, bool *out_inlined,
-                                                              duckdb_v2_error_info_ptr *err) {
+                                                             duckdb_v2_error_info_handle *err) {
 	return duckdb_v2_string_is_inlined(b, out_inlined, err);
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_blob_get_length(const duckdb_v2_blob_t *b, uint32_t *out_length,
-                                                              duckdb_v2_error_info_ptr *err) {
+                                                             duckdb_v2_error_info_handle *err) {
 	return duckdb_v2_string_get_length(b, out_length, err);
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_blob_get_data(const duckdb_v2_blob_t *b, const char **out_data,
-                                                            duckdb_v2_error_info_ptr *err) {
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb_v2_string_get_data(b, out_data, err);
 }
 
@@ -96,7 +96,7 @@ static inline DUCKDB_V2_API_CALL_t duckdb_v2_blob_get_data(const duckdb_v2_blob_
 //===--------------------------------------------------------------------===//
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_padding(const duckdb_v2_bit_t *b, uint8_t *out_padding,
-                                                          duckdb_v2_error_info_ptr *err) {
+                                                         duckdb_v2_error_info_handle *err) {
 	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)b;
 	uint32_t len = p->value.inlined.length;
 	if (len == 0) {
@@ -109,7 +109,7 @@ static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_padding(const duckdb_v2_bit_t *
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_count(const duckdb_v2_bit_t *b, uint64_t *out_count,
-                                                        duckdb_v2_error_info_ptr *err) {
+                                                       duckdb_v2_error_info_handle *err) {
 	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)b;
 	uint32_t len = p->value.inlined.length;
 	if (len == 0) {
@@ -122,7 +122,7 @@ static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_count(const duckdb_v2_bit_t *b,
 }
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_get_data(const duckdb_v2_bit_t *b, const uint8_t **out_data,
-                                                           duckdb_v2_error_info_ptr *err) {
+                                                          duckdb_v2_error_info_handle *err) {
 	const char *raw = NULL;
 	DUCKDB_V2_API_CALL_t rc = duckdb_v2_string_get_data(b, &raw, err);
 	if (rc != DUCKDB_V2_ERROR_NONE) {
@@ -138,7 +138,7 @@ static inline DUCKDB_V2_API_CALL_t duckdb_v2_bit_get_data(const duckdb_v2_bit_t 
 //===--------------------------------------------------------------------===//
 
 static inline DUCKDB_V2_API_CALL_t duckdb_v2_bignum_is_negative(const duckdb_v2_bignum_t *b, bool *out_negative,
-                                                                  duckdb_v2_error_info_ptr *err) {
+                                                                duckdb_v2_error_info_handle *err) {
 	const struct duckdb_v2_impl_string *p = (const struct duckdb_v2_impl_string *)(const void *)b;
 	uint32_t len = p->value.inlined.length;
 	if (len == 0) {

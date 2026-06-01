@@ -17,7 +17,7 @@
       ]
     },
     "handles": {
-      "description": "Opaque handle types, keyed by name. Always rendered as pointer typedefs (e.g. typedef void* name_ptr).",
+      "description": "Opaque handle types, keyed by name. Always rendered as pointer typedefs (e.g. typedef void* name_handle).",
       "type": "object",
       "default": {},
       "propertyNames": {
@@ -388,7 +388,7 @@
           "default": ""
         },
         "pointer_alias": {
-          "description": "If true, generate a typedef pointer alias (e.g. typedef struct_name* struct_name_ptr).",
+          "description": "If true, generate a typedef pointer alias (e.g. typedef struct_name* struct_name_handle).",
           "type": "boolean",
           "default": false
         },

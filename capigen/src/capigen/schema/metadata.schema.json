@@ -3,7 +3,12 @@
   "description": "Schema for metadata.yaml — defines ABI naming conventions, primitive types, and API versions.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "versions", "suffixes", "primitives"],
+  "required": [
+    "schema_version",
+    "versions",
+    "suffixes",
+    "primitives"
+  ],
   "properties": {
     "schema_version": {
       "description": "IDL schema version that this metadata and its associated modules comply with (semver).",
@@ -23,17 +28,32 @@
       "description": "ABI naming suffixes applied to each construct type. Every adapter uses these to compute canonical names.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["handles", "callbacks", "aliases"],
+      "required": [
+        "handles",
+        "callbacks",
+        "aliases"
+      ],
       "properties": {
-        "handles": { "type": "string", "description": "Suffix for opaque handle types (e.g. '_ptr')." },
-        "callbacks": { "type": "string", "description": "Suffix for callback function pointers (e.g. '_cb')." },
-        "aliases": { "type": "string", "description": "Suffix for type aliases (e.g. '_t')." }
+        "handles": {
+          "type": "string",
+          "description": "Suffix for opaque handle types (e.g. '_handle')."
+        },
+        "callbacks": {
+          "type": "string",
+          "description": "Suffix for callback function pointers (e.g. '_cb')."
+        },
+        "aliases": {
+          "type": "string",
+          "description": "Suffix for type aliases (e.g. '_t')."
+        }
       }
     },
     "primitives": {
       "description": "Primitive type vocabulary with C ABI type names.",
       "type": "array",
-      "items": { "$ref": "#/$defs/Primitive" },
+      "items": {
+        "$ref": "#/$defs/Primitive"
+      },
       "uniqueItems": true
     },
     "prefix": {
@@ -49,7 +69,10 @@
     "Primitive": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "c_type"],
+      "required": [
+        "name",
+        "c_type"
+      ],
       "properties": {
         "name": {
           "description": "Abstract type name used in the API spec.",

@@ -461,7 +461,7 @@ TEST_CASE("CachingFileSystemWrapper read with parallel accesses", "[file_system]
 	OpenFileInfo file_info(test_file.GetPath());
 	file_info.extended_info = make_shared_ptr<ExtendedOpenFileInfo>();
 	file_info.extended_info->options["validate_external_file_cache"] = Value::BOOLEAN(false);
-	auto shared_handle =
+	auto shared_ptr =
 	    caching_wrapper->OpenFile(file_info, FileFlags::FILE_FLAGS_READ | FileFlags::FILE_FLAGS_PARALLEL_ACCESS);
 
 	// Use multiple threads to read from the same file handle in parallel using pread semantics
@@ -474,7 +474,7 @@ TEST_CASE("CachingFileSystemWrapper read with parallel accesses", "[file_system]
 		threads.emplace_back([&, idx]() {
 			const idx_t read_location = idx * chunk_size;
 			string buffer(TEST_BUFFER_SIZE, '\0');
-			shared_handle->Read(QueryContext(), &buffer[0], chunk_size, read_location);
+			shared_ptr->Read(QueryContext(), &buffer[0], chunk_size, read_location);
 			const bool ok = (buffer.substr(0, chunk_size) == test_content.substr(read_location, chunk_size));
 			// Cannot check inside of the thread because "REQUIRE" is not thread-safe.
 			{
