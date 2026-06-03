@@ -15,6 +15,12 @@ namespace duckdb_api {
 
 namespace detail {
 
+// Maps a C++ wrapper type to its underlying C-API handle type. The primary template is intentionally left undefined.
+// Each wrapper is specialized in the .cpp, so the handle types never need to appear in this header.
+template <class T>
+struct HandleTraits;
+
+template <class TYPE>
 class Handle {
 public:
 	Handle(const Handle &) = delete;
@@ -38,19 +44,16 @@ protected:
 
 	void *impl;
 
-private:
-	friend void *GetHandle(const Handle &handle);
-	friend void *LeakHandle(Handle &handle);
+public:
+	// Returns the underlying C-API handle, indirectly typed via HandleTraits<TYPE>.
+	// This is a member template so it is only instantiated where it is called
+	// (in the .cpp, after the matching HandleTraits specialization is visible).
+	// This keeps handle types out of this header.
+	template <class TR = HandleTraits<TYPE>>
+	typename TR::handle handle() const {
+		return static_cast<typename TR::handle>(impl);
+	}
 };
-
-inline void *GetHandle(const Handle &handle) {
-	return handle.impl;
-}
-inline void *LeakHandle(Handle &handle) {
-	void *impl = handle.impl;
-	handle.impl = nullptr;
-	return impl;
-}
 
 struct Factory {
 	template <class T, class... ARGS>
@@ -101,7 +104,7 @@ private:
 // Database Option
 //----------------------------------------------------------------------------------------------------------------------
 
-class DatabaseOption final : public detail::Handle {
+class DatabaseOption final : public detail::Handle<DatabaseOption> {
 	friend detail::Factory;
 
 public:
@@ -125,7 +128,7 @@ private:
 // File Handle
 //----------------------------------------------------------------------------------------------------------------------
 
-class FileHandle final : public detail::Handle {
+class FileHandle final : public detail::Handle<FileHandle> {
 	friend detail::Factory;
 
 public:
@@ -180,7 +183,7 @@ constexpr FileFlags &operator&=(FileFlags &a, FileFlags b) {
 	return a;
 }
 
-class FileSystem final : public detail::Handle {
+class FileSystem final : public detail::Handle<FileSystem> {
 	friend detail::Factory;
 
 public:
@@ -195,7 +198,7 @@ private:
 // Context
 //----------------------------------------------------------------------------------------------------------------------
 
-class Context final : public detail::Handle {
+class Context final : public detail::Handle<Context> {
 	friend detail::Factory;
 
 public:
@@ -213,7 +216,7 @@ private:
 
 class QueryResult;
 
-class Connection final : public detail::Handle {
+class Connection final : public detail::Handle<Connection> {
 	friend detail::Factory;
 
 public:
@@ -235,7 +238,7 @@ private:
 // Database
 //----------------------------------------------------------------------------------------------------------------------
 
-class Database final : public detail::Handle {
+class Database final : public detail::Handle<Database> {
 	friend detail::Factory;
 
 public:
@@ -255,7 +258,7 @@ private:
 // Environment
 //----------------------------------------------------------------------------------------------------------------------
 
-class Environment final : public detail::Handle {
+class Environment final : public detail::Handle<Environment> {
 	friend detail::Factory;
 
 public:
@@ -270,7 +273,7 @@ public:
 //----------------------------------------------------------------------------------------------------------------------
 // Logical Type
 //----------------------------------------------------------------------------------------------------------------------
-class LogicalType final : public detail::Handle {
+class LogicalType final : public detail::Handle<LogicalType> {
 	friend detail::Factory;
 
 public:
@@ -292,7 +295,7 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Value
 //----------------------------------------------------------------------------------------------------------------------
-class Value final : public detail::Handle {
+class Value final : public detail::Handle<Value> {
 	friend detail::Factory;
 
 public:
@@ -333,7 +336,7 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Vector
 //----------------------------------------------------------------------------------------------------------------------
-class Vector final : public detail::Handle {
+class Vector final : public detail::Handle<Vector> {
 	friend detail::Factory;
 
 public:
@@ -364,7 +367,7 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // DataChunk
 //----------------------------------------------------------------------------------------------------------------------
-class DataChunk final : public detail::Handle {
+class DataChunk final : public detail::Handle<DataChunk> {
 	friend detail::Factory;
 
 public:
@@ -391,7 +394,7 @@ private:
 	bool owned; // UGLY, this should probably be done c++-side.
 };
 
-class ColumnDataCollection final : public detail::Handle {
+class ColumnDataCollection final : public detail::Handle<ColumnDataCollection> {
 	friend detail::Factory;
 
 public:
@@ -434,7 +437,7 @@ private:
 	explicit ColumnDataCollection(void *impl);
 
 public:
-	class AppendState final : public detail::Handle {
+	class AppendState final : public detail::Handle<AppendState> {
 		friend detail::Factory;
 
 	public:
@@ -446,7 +449,7 @@ public:
 		explicit AppendState(void *impl);
 	};
 
-	class ScanState final : public detail::Handle {
+	class ScanState final : public detail::Handle<ScanState> {
 		friend detail::Factory;
 
 	public:
@@ -458,7 +461,7 @@ public:
 		explicit ScanState(void *impl);
 	};
 
-	class SharedScanState final : public detail::Handle {
+	class SharedScanState final : public detail::Handle<SharedScanState> {
 		friend detail::Factory;
 
 	public:
@@ -470,7 +473,7 @@ public:
 		explicit SharedScanState(void *impl);
 	};
 
-	class WorkerScanState final : public detail::Handle {
+	class WorkerScanState final : public detail::Handle<WorkerScanState> {
 		friend detail::Factory;
 
 	public:
@@ -486,7 +489,7 @@ public:
 //----------------------------------------------------------------------------------------------------------------------
 // Result
 //----------------------------------------------------------------------------------------------------------------------
-class QueryResult final : public detail::Handle {
+class QueryResult final : public detail::Handle<QueryResult> {
 	friend detail::Factory;
 
 public:
@@ -511,7 +514,9 @@ private:
 // Scalar Function
 //----------------------------------------------------------------------------------------------------------------------
 
-class ScalarFunction final : public detail::Handle {
+class ScalarFunction final : public detail::Handle<ScalarFunction> {
+	friend detail::Factory;
+
 public:
 	class BindInput;
 	class InitInput;
@@ -634,7 +639,9 @@ public:
 // Aggregate Function
 //----------------------------------------------------------------------------------------------------------------------
 
-class AggregateFunction final : public detail::Handle {
+class AggregateFunction final : public detail::Handle<AggregateFunction> {
+	friend detail::Factory;
+
 public:
 	class SizeInput;
 	class InitializeInput;
@@ -811,7 +818,9 @@ private:
 // Table Function
 //----------------------------------------------------------------------------------------------------------------------
 
-class TableFunction final : public detail::Handle {
+class TableFunction final : public detail::Handle<TableFunction> {
+	friend detail::Factory;
+
 public:
 	class BindInput;
 	class InitGlobalInput;

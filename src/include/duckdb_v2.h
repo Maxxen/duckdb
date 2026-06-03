@@ -662,24 +662,34 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
 
 /* --- Types for column_data_collection --- */
 //! A column_data_collection represents a set of (buffer-managed) data chunks.
-typedef void *duckdb_v2_column_data_collection_ptr;
+typedef struct _duckdb_v2_column_data_collection {
+	void *internal_ptr;
+} * duckdb_v2_column_data_collection_handle;
 
 //! Opaque state handle for scanning a column data collection. This is used to track progress and any other state that
 //! needs to be maintained across calls while scanning the collection.
-typedef void *duckdb_v2_column_data_collection_scan_state_ptr;
+typedef struct _duckdb_v2_column_data_collection_scan_state {
+	void *internal_ptr;
+} * duckdb_v2_column_data_collection_scan_state_handle;
 
 //! Opaque state handle for shared state across multiple threads scanning a column data collection. This is used to
 //! coordinate work distribution, track global progress, or store any other state that needs to be shared across threads
 //! during the scan of the collection.
-typedef void *duckdb_v2_column_data_collection_shared_scan_state_ptr;
+typedef struct _duckdb_v2_column_data_collection_shared_scan_state {
+	void *internal_ptr;
+} * duckdb_v2_column_data_collection_shared_scan_state_handle;
 
 //! Opaque state handle for worker-local state while scanning a column data collection. This is used to track progress
 //! and any other state that needs to be maintained on a per-worker basis across calls while scanning the collection.
-typedef void *duckdb_v2_column_data_collection_worker_scan_state_ptr;
+typedef struct _duckdb_v2_column_data_collection_worker_scan_state {
+	void *internal_ptr;
+} * duckdb_v2_column_data_collection_worker_scan_state_handle;
 
 //! Opaque state handle for appending to a column data collection. This is used to track progress and any other state
 //! that needs to be maintained across calls while appending to the collection.
-typedef void *duckdb_v2_column_data_collection_append_state_ptr;
+typedef struct _duckdb_v2_column_data_collection_append_state {
+	void *internal_ptr;
+} * duckdb_v2_column_data_collection_append_state_handle;
 
 /* --- Constants for column_data_collection --- */
 
@@ -703,8 +713,8 @@ types.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_create(
-    duckdb_v2_context_ptr context, const duckdb_v2_logical_type_ptr *types_array, idx_t types_count,
-    duckdb_v2_column_data_collection_ptr *out_collection, duckdb_v2_error_info_ptr *err);
+    duckdb_v2_context_handle context, const duckdb_v2_logical_type_handle *types_array, idx_t types_count,
+    duckdb_v2_column_data_collection_handle *out_collection, duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a column data collection and all its chunks.
 * Cleans up the collection and all resources associated with it, including all contained chunks. Sets the collection
@@ -714,7 +724,7 @@ handle to NULL.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_column_data_collection_destroy(duckdb_v2_column_data_collection_ptr *collection);
+duckdb_v2_column_data_collection_destroy(duckdb_v2_column_data_collection_handle *collection);
 /*!
  * Merges the source collection into the target collection, consuming the source in the process.
  * Transfers all chunks from the source collection to the target collection. This destroys the source collection,
@@ -726,9 +736,9 @@ duckdb_v2_column_data_collection_destroy(duckdb_v2_column_data_collection_ptr *c
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_combine(duckdb_v2_column_data_collection_ptr target,
-                                                                           duckdb_v2_column_data_collection_ptr *source,
-                                                                           duckdb_v2_error_info_ptr *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_combine(
+    duckdb_v2_column_data_collection_handle target, duckdb_v2_column_data_collection_handle *source,
+    duckdb_v2_error_info_handle *err);
 /*!
 * Returns the total number of rows across all chunks in the collection.
 * Sums the row counts of all chunks in the collection. This is the total
@@ -741,7 +751,7 @@ the number of rows in any individual chunk.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_row_count(
-    duckdb_v2_column_data_collection_ptr collection, idx_t *out_row_count, duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection, idx_t *out_row_count, duckdb_v2_error_info_handle *err);
 /*!
 * Initializes an append state for the collection.
 * Returns an append state handle that can be used to append chunks to the collection while maintaining any necessary
@@ -754,8 +764,8 @@ when done.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append_state_create(
-    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_append_state_ptr *out_state,
-    duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection, duckdb_v2_column_data_collection_append_state_handle *out_state,
+    duckdb_v2_error_info_handle *err);
 /*!
 * Destroys an append state handle.
 * Cleans up any resources associated with the append state. After this call, the state handle must not be used again.
@@ -764,7 +774,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append_state_
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_column_data_collection_append_state_destroy(duckdb_v2_column_data_collection_append_state_ptr *state);
+duckdb_v2_column_data_collection_append_state_destroy(duckdb_v2_column_data_collection_append_state_handle *state);
 /*!
  * Appends a data chunk to the collection.
  * Appends a copy of the given chunk to the end of the collection. The chunk's vectors must conform to the types defined
@@ -776,8 +786,8 @@ duckdb_v2_column_data_collection_append_state_destroy(duckdb_v2_column_data_coll
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append(
-    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_append_state_ptr state,
-    duckdb_v2_data_chunk_ptr chunk, duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection, duckdb_v2_column_data_collection_append_state_handle state,
+    duckdb_v2_data_chunk_handle chunk, duckdb_v2_error_info_handle *err);
 /*!
 * Initializes a scan state for the collection.
 * Returns a scan state handle that can be used to scan the collection while maintaining progress and any other necessary
@@ -790,8 +800,8 @@ column_data_collection_scan_state_destroy when done.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_scan_state_create(
-    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_scan_state_ptr *out_state,
-    duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection, duckdb_v2_column_data_collection_scan_state_handle *out_state,
+    duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a scan state handle.
 * Cleans up any resources associated with the scan state. After this call, the state handle must not be used again.
@@ -800,7 +810,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_scan_state_cr
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_column_data_collection_scan_state_destroy(duckdb_v2_column_data_collection_scan_state_ptr *state);
+duckdb_v2_column_data_collection_scan_state_destroy(duckdb_v2_column_data_collection_scan_state_handle *state);
 /*!
  * Scans the collection to retrieve the next data chunk.
  * Retrieves the next chunk of data from the collection based on the provided shared scan states.
@@ -814,8 +824,8 @@ duckdb_v2_column_data_collection_scan_state_destroy(duckdb_v2_column_data_collec
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_scan(
-    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_scan_state_ptr state,
-    duckdb_v2_data_chunk_ptr out_chunk, bool *did_produce_chunk, duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection, duckdb_v2_column_data_collection_scan_state_handle state,
+    duckdb_v2_data_chunk_handle out_chunk, bool *did_produce_chunk, duckdb_v2_error_info_handle *err);
 /*!
 * Initializes a shared scan state for the collection.
 * Returns a shared scan state handle that can be used by multiple threads to coordinate scanning of the collection.
@@ -827,8 +837,8 @@ Caller owns the returned state and must destroy it via column_data_collection_sh
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_create(
-    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_shared_scan_state_ptr *out_state,
-    duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection,
+    duckdb_v2_column_data_collection_shared_scan_state_handle *out_state, duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a shared scan state handle.
 * Cleans up any resources associated with the shared scan state. After this call, the state handle must not be used
@@ -838,7 +848,7 @@ again.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_destroy(
-    duckdb_v2_column_data_collection_shared_scan_state_ptr *state);
+    duckdb_v2_column_data_collection_shared_scan_state_handle *state);
 /*!
 * Initializes a worker scan state for the collection.
 * Returns a "local" scan state handle for a worker thread to use while scanning the collection. This allows each worker
@@ -852,8 +862,8 @@ column_data_collection_worker_scan_state_destroy when done.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_create(
-    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_worker_scan_state_ptr *out_state,
-    duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection,
+    duckdb_v2_column_data_collection_worker_scan_state_handle *out_state, duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a worker scan state handle.
 * Cleans up any resources associated with the worker scan state. After this call, the state handle must not be used
@@ -863,7 +873,7 @@ again.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_destroy(
-    duckdb_v2_column_data_collection_worker_scan_state_ptr *state);
+    duckdb_v2_column_data_collection_worker_scan_state_handle *state);
 /*!
 * Scans the collection to retrieve the next data chunk, using shared state for coordination across threads and
 worker-local state for individual progress tracking.
@@ -880,10 +890,10 @@ completed (and the chunk was left as-is).
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_parallel_scan(
-    duckdb_v2_column_data_collection_ptr collection,
-    duckdb_v2_column_data_collection_shared_scan_state_ptr shared_state,
-    duckdb_v2_column_data_collection_worker_scan_state_ptr worker_state, duckdb_v2_data_chunk_ptr out_chunk,
-    bool *did_produce_chunk, duckdb_v2_error_info_ptr *err);
+    duckdb_v2_column_data_collection_handle collection,
+    duckdb_v2_column_data_collection_shared_scan_state_handle shared_state,
+    duckdb_v2_column_data_collection_worker_scan_state_handle worker_state, duckdb_v2_data_chunk_handle out_chunk,
+    bool *did_produce_chunk, duckdb_v2_error_info_handle *err);
 
 /* ============================================================================
  * MODULE: common-helpers
