@@ -274,10 +274,14 @@ class LogicalType final : public detail::Handle {
 	friend detail::Factory;
 
 public:
+	LogicalType(LogicalType &&) noexcept = default;
+	LogicalType &operator=(LogicalType &&) noexcept = default;
+
 	~LogicalType() override;
 
 	static LogicalType VARCHAR();
 	static LogicalType INTEGER();
+	static LogicalType BIGINT();
 
 	std::string_view GetAlias() const;
 
@@ -364,6 +368,8 @@ class DataChunk final : public detail::Handle {
 	friend detail::Factory;
 
 public:
+	DataChunk(const Context &context, const std::vector<LogicalType> &types);
+
 	DataChunk(DataChunk &&other) noexcept {
 		std::swap(impl, other.impl);
 		std::swap(owned, other.owned);
@@ -383,6 +389,98 @@ public:
 private:
 	explicit DataChunk(void *impl, bool owned);
 	bool owned; // UGLY, this should probably be done c++-side.
+};
+
+class ColumnDataCollection final : public detail::Handle {
+	friend detail::Factory;
+
+public:
+	ColumnDataCollection(const Context &context, const std::vector<LogicalType> &types);
+
+	ColumnDataCollection(ColumnDataCollection &&other) noexcept = default;
+	ColumnDataCollection &operator=(ColumnDataCollection &&other) noexcept = default;
+
+	~ColumnDataCollection() override;
+
+	// Get the number of rows currently stored in the collection.
+	auto GetRowCount() const -> idx_t;
+
+	// Merge the other collection into this one, destroying it in the process.
+	auto Combine(ColumnDataCollection &&other) -> void;
+
+	// Perform a single-threaded scan
+	class ScanState;
+	auto GetSingleScanState() -> ScanState;
+
+	// Returns true if the scan produced a chunk of data, false if the scan is finished and no more data is available.
+	auto Scan(ScanState &state, DataChunk &chunk) -> bool;
+
+	// Perform a multi-threaded scan
+	class SharedScanState;
+	auto GetSharedScanState() -> SharedScanState;
+	class WorkerScanState;
+	auto GetWorkerScanState() -> WorkerScanState;
+
+	// Returns true if the scan produced a chunk of data, false if the scan is finished and no more data is available.
+	auto Scan(SharedScanState &shared_state, WorkerScanState &worker_state, DataChunk &chunk) -> bool;
+
+	// Append data
+	class AppendState;
+	auto GetAppendState() -> AppendState;
+
+	auto Append(AppendState &state, const DataChunk &chunk) -> void;
+
+private:
+	explicit ColumnDataCollection(void *impl);
+
+public:
+	class AppendState final : public detail::Handle {
+		friend detail::Factory;
+
+	public:
+		AppendState(AppendState &&other) noexcept = default;
+		AppendState &operator=(AppendState &&other) noexcept = default;
+		~AppendState() override;
+
+	private:
+		explicit AppendState(void *impl);
+	};
+
+	class ScanState final : public detail::Handle {
+		friend detail::Factory;
+
+	public:
+		ScanState(ScanState &&other) noexcept = default;
+		ScanState &operator=(ScanState &&other) noexcept = default;
+		~ScanState() override;
+
+	private:
+		explicit ScanState(void *impl);
+	};
+
+	class SharedScanState final : public detail::Handle {
+		friend detail::Factory;
+
+	public:
+		SharedScanState(SharedScanState &&other) noexcept = default;
+		SharedScanState &operator=(SharedScanState &&other) noexcept = default;
+		~SharedScanState() override;
+
+	private:
+		explicit SharedScanState(void *impl);
+	};
+
+	class WorkerScanState final : public detail::Handle {
+		friend detail::Factory;
+
+	public:
+		WorkerScanState(WorkerScanState &&other) noexcept = default;
+		WorkerScanState &operator=(WorkerScanState &&other) noexcept = default;
+		~WorkerScanState() override;
+
+	private:
+		explicit WorkerScanState(void *impl);
+	};
 };
 
 //----------------------------------------------------------------------------------------------------------------------

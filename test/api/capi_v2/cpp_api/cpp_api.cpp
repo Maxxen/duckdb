@@ -349,6 +349,12 @@ LogicalType LogicalType::VARCHAR() {
 	return detail::Factory::Make<LogicalType>(type);
 }
 
+LogicalType LogicalType::BIGINT() {
+	duckdb_v2_logical_type_ptr type = nullptr;
+	CheckedAPICall(duckdb_v2_logical_type_create_from_id, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &type);
+	return detail::Factory::Make<LogicalType>(type);
+}
+
 LogicalType::~LogicalType() {
 	auto _h = static_cast<duckdb_v2_logical_type_handle>(impl);
 	duckdb_v2_logical_type_destroy(&_h);
@@ -510,6 +516,23 @@ auto Vector::SetSize(idx_t size) -> void {
 //----------------------------------------------------------------------------------------------------------------------
 // Data Chunk
 //----------------------------------------------------------------------------------------------------------------------
+DataChunk::DataChunk(const Context &context, const std::vector<LogicalType> &types) {
+	// LogicalType is a Handle (with a vtable), so its storage is not layout-compatible with a raw
+	// duckdb_v2_logical_type_ptr array. Extract the underlying handles into a contiguous buffer.
+	std::vector<duckdb_v2_logical_type_ptr> type_pointers;
+	type_pointers.reserve(types.size());
+	for (const auto &type : types) {
+		type_pointers.push_back(detail::GetHandle(type));
+	}
+
+	// TODO: Pass context to create buffer-managed data chunks.
+	duckdb_v2_data_chunk_ptr chunk = nullptr;
+	CheckedAPICall(duckdb_v2_data_chunk_create, type_pointers.data(), type_pointers.size(), &chunk);
+
+	impl = chunk;
+	owned = true;
+}
+
 DataChunk::DataChunk(void *impl, bool owned) : detail::Handle(impl), owned(owned) {
 }
 
@@ -586,6 +609,106 @@ auto QueryResult::GetChunk(idx_t index) const -> DataChunk {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	CheckedAPICall(duckdb_v2_result_get_chunk, static_cast<duckdb_v2_result_handle>(impl), index, &chunk);
 	return detail::Factory::Make<DataChunk>(chunk, true);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Column Data Collection
+//----------------------------------------------------------------------------------------------------------------------
+ColumnDataCollection::ColumnDataCollection(void *impl) : detail::Handle(impl) {
+}
+
+ColumnDataCollection::ColumnDataCollection(const Context &context, const std::vector<LogicalType> &types) {
+	// LogicalType is a Handle (with a vtable), so its storage is not layout-compatible with a raw
+	// duckdb_v2_logical_type_ptr array. Extract the underlying handles into a contiguous buffer.
+	std::vector<duckdb_v2_logical_type_ptr> type_pointers;
+	type_pointers.reserve(types.size());
+	for (const auto &type : types) {
+		type_pointers.push_back(detail::GetHandle(type));
+	}
+
+	CheckedAPICall(duckdb_v2_column_data_collection_create, detail::GetHandle(context), type_pointers.data(),
+	               type_pointers.size(), &impl);
+}
+
+ColumnDataCollection::~ColumnDataCollection() {
+	duckdb_v2_column_data_collection_destroy(&impl);
+}
+
+auto ColumnDataCollection::GetRowCount() const -> idx_t {
+	idx_t count = 0;
+	CheckedAPICall(duckdb_v2_column_data_collection_row_count, impl, &count);
+	return count;
+}
+
+auto ColumnDataCollection::Combine(ColumnDataCollection &&other) -> void {
+	CheckedAPICall(duckdb_v2_column_data_collection_combine, impl, &other.impl);
+}
+
+ColumnDataCollection::ScanState::ScanState(void *impl) : detail::Handle(impl) {
+}
+ColumnDataCollection::ScanState::~ScanState() {
+	duckdb_v2_column_data_collection_scan_state_destroy(&impl);
+}
+
+auto ColumnDataCollection::GetSingleScanState() -> ScanState {
+	duckdb_v2_column_data_collection_scan_state_ptr state = nullptr;
+	CheckedAPICall(duckdb_v2_column_data_collection_scan_state_create, impl, &state);
+	return detail::Factory::Make<ScanState>(state);
+}
+
+auto ColumnDataCollection::Scan(ScanState &state, DataChunk &chunk) -> bool {
+	auto did_produce_chunk = false;
+	CheckedAPICall(duckdb_v2_column_data_collection_scan, impl, detail::GetHandle(state), detail::GetHandle(chunk),
+	               &did_produce_chunk);
+	return did_produce_chunk;
+}
+
+ColumnDataCollection::SharedScanState::SharedScanState(void *impl) : detail::Handle(impl) {
+}
+ColumnDataCollection::SharedScanState::~SharedScanState() {
+	duckdb_v2_column_data_collection_shared_scan_state_destroy(&impl);
+}
+
+auto ColumnDataCollection::GetSharedScanState() -> SharedScanState {
+	duckdb_v2_column_data_collection_shared_scan_state_ptr state = nullptr;
+	CheckedAPICall(duckdb_v2_column_data_collection_shared_scan_state_create, impl, &state);
+	return detail::Factory::Make<SharedScanState>(state);
+}
+
+ColumnDataCollection::WorkerScanState::WorkerScanState(void *impl) : detail::Handle(impl) {
+}
+ColumnDataCollection::WorkerScanState::~WorkerScanState() {
+	duckdb_v2_column_data_collection_worker_scan_state_destroy(&impl);
+}
+
+auto ColumnDataCollection::GetWorkerScanState() -> WorkerScanState {
+	duckdb_v2_column_data_collection_worker_scan_state_ptr state = nullptr;
+	CheckedAPICall(duckdb_v2_column_data_collection_worker_scan_state_create, impl, &state);
+	return detail::Factory::Make<WorkerScanState>(state);
+}
+
+auto ColumnDataCollection::Scan(SharedScanState &shared_state, WorkerScanState &worker_state, DataChunk &chunk)
+    -> bool {
+	auto did_produce_chunk = false;
+	CheckedAPICall(duckdb_v2_column_data_collection_parallel_scan, impl, detail::GetHandle(shared_state),
+	               detail::GetHandle(worker_state), detail::GetHandle(chunk), &did_produce_chunk);
+	return did_produce_chunk;
+}
+
+ColumnDataCollection::AppendState::AppendState(void *impl) : detail::Handle(impl) {
+}
+ColumnDataCollection::AppendState::~AppendState() {
+	duckdb_v2_column_data_collection_append_state_destroy(&impl);
+}
+
+auto ColumnDataCollection::GetAppendState() -> AppendState {
+	duckdb_v2_column_data_collection_append_state_ptr state = nullptr;
+	CheckedAPICall(duckdb_v2_column_data_collection_append_state_create, impl, &state);
+	return detail::Factory::Make<AppendState>(state);
+}
+
+auto ColumnDataCollection::Append(AppendState &state, const DataChunk &chunk) -> void {
+	CheckedAPICall(duckdb_v2_column_data_collection_append, impl, detail::GetHandle(state), detail::GetHandle(chunk));
 }
 
 //----------------------------------------------------------------------------------------------------------------------

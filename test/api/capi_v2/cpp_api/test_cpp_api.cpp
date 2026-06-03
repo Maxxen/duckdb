@@ -259,3 +259,124 @@ TEST_CASE("Stable C++-API: File System", "[cpp_api]") {
 		}
 	});
 }
+
+TEST_CASE("Stable C++-API: Column Data Single Scan", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// Produce 4100 rows of (a, b) where b == a * 10. This spans several internal
+	// chunks (> STANDARD_VECTOR_SIZE), so both append and scan iterate multiple times.
+	constexpr int64_t ROW_COUNT = 4100;
+	auto result = conn.Query("SELECT i AS a, i * 10 AS b FROM range(4100) t(i)");
+	REQUIRE(result.GetColumnCount() == 2);
+
+	conn.WithTransaction([&](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::BIGINT()); // range() produces BIGINT
+		types.push_back(LogicalType::BIGINT());
+
+		ColumnDataCollection collection(ctx, types);
+		REQUIRE(collection.GetRowCount() == 0);
+
+		// Append every chunk of the query result into the collection.
+		{
+			auto append_state = collection.GetAppendState();
+			for (idx_t i = 0; i < result.GetChunkCount(); i++) {
+				auto chunk = result.GetChunk(i);
+				collection.Append(append_state, chunk);
+			}
+		}
+		REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT));
+
+		// Scan the collection back single-threaded and verify the values round-trip.
+		// The scan target is a fresh standalone chunk; Scan sets its cardinality.
+		{
+			auto scan_state = collection.GetSingleScanState();
+			DataChunk out(ctx, types);
+
+			idx_t scanned = 0;
+			int64_t sum_a = 0;
+			while (collection.Scan(scan_state, out)) {
+				const auto rows = out.GetRowCount();
+				const auto a = out.GetVector(0).GetDataMutable<const int64_t>();
+				const auto b = out.GetVector(1).GetDataMutable<const int64_t>();
+				for (idx_t r = 0; r < rows; r++) {
+					REQUIRE(b[r] == a[r] * 10);
+					sum_a += a[r];
+				}
+				scanned += rows;
+			}
+
+			REQUIRE(scanned == idx_t(ROW_COUNT));
+			REQUIRE(sum_a == (ROW_COUNT - 1) * ROW_COUNT / 2); // sum of 0..4099
+		}
+
+		// Combine consumes another collection and merges its rows into this one.
+		{
+			ColumnDataCollection other(ctx, types);
+			auto append_state = other.GetAppendState();
+			for (idx_t i = 0; i < result.GetChunkCount(); i++) {
+				auto chunk = result.GetChunk(i);
+				other.Append(append_state, chunk);
+			}
+			REQUIRE(other.GetRowCount() == idx_t(ROW_COUNT));
+
+			collection.Combine(std::move(other));
+			REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT * 2));
+		}
+	});
+}
+
+TEST_CASE("Stable C++-API: Column Data Multi Scan", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	constexpr int64_t ROW_COUNT = 4100;
+	auto result = conn.Query("SELECT i AS a, i * 10 AS b FROM range(4100) t(i)");
+	REQUIRE(result.GetColumnCount() == 2);
+
+	conn.WithTransaction([&](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::BIGINT());
+		types.push_back(LogicalType::BIGINT());
+
+		ColumnDataCollection collection(ctx, types);
+
+		{
+			auto append_state = collection.GetAppendState();
+			for (idx_t i = 0; i < result.GetChunkCount(); i++) {
+				auto chunk = result.GetChunk(i);
+				collection.Append(append_state, chunk);
+			}
+		}
+		REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT));
+
+		// Drive the parallel scan API single-threaded: a shared state coordinates
+		// the scan, while a per-worker state tracks the current worker's position.
+		auto shared_state = collection.GetSharedScanState();
+		auto worker_state = collection.GetWorkerScanState();
+		DataChunk out(ctx, types);
+
+		idx_t scanned = 0;
+		int64_t sum_a = 0;
+		while (collection.Scan(shared_state, worker_state, out)) {
+			const auto rows = out.GetRowCount();
+			const auto a = out.GetVector(0).GetDataMutable<const int64_t>();
+			const auto b = out.GetVector(1).GetDataMutable<const int64_t>();
+			for (idx_t r = 0; r < rows; r++) {
+				REQUIRE(b[r] == a[r] * 10);
+				sum_a += a[r];
+			}
+			scanned += rows;
+		}
+
+		REQUIRE(scanned == idx_t(ROW_COUNT));
+		REQUIRE(sum_a == (ROW_COUNT - 1) * ROW_COUNT / 2);
+	});
+}

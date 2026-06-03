@@ -2,6 +2,7 @@ add_library_unity(
   duckdb_main_capi_v2
   OBJECT
   capi_v2_stubs.cpp
+  column_data_collection-v2.cpp
   connection-v2.cpp
   data_chunk-v2.cpp
   database-v2.cpp

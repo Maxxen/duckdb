@@ -653,6 +653,239 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
     duckdb_v2_error_info_handle *err);
 
 /* ============================================================================
+ * MODULE: column_data_collection
+ * ============================================================================ */
+
+/* --- Enums for column_data_collection --- */
+
+/* --- Structs for column_data_collection --- */
+
+/* --- Types for column_data_collection --- */
+//! A column_data_collection represents a set of (buffer-managed) data chunks.
+typedef void *duckdb_v2_column_data_collection_ptr;
+
+//! Opaque state handle for scanning a column data collection. This is used to track progress and any other state that
+//! needs to be maintained across calls while scanning the collection.
+typedef void *duckdb_v2_column_data_collection_scan_state_ptr;
+
+//! Opaque state handle for shared state across multiple threads scanning a column data collection. This is used to
+//! coordinate work distribution, track global progress, or store any other state that needs to be shared across threads
+//! during the scan of the collection.
+typedef void *duckdb_v2_column_data_collection_shared_scan_state_ptr;
+
+//! Opaque state handle for worker-local state while scanning a column data collection. This is used to track progress
+//! and any other state that needs to be maintained on a per-worker basis across calls while scanning the collection.
+typedef void *duckdb_v2_column_data_collection_worker_scan_state_ptr;
+
+//! Opaque state handle for appending to a column data collection. This is used to track progress and any other state
+//! that needs to be maintained across calls while appending to the collection.
+typedef void *duckdb_v2_column_data_collection_append_state_ptr;
+
+/* --- Constants for column_data_collection --- */
+
+/* --- Error Codes for column_data_collection --- */
+
+/* --- Function pointer typedefs for column_data_collection --- */
+
+/* --- Functions for column_data_collection --- */
+/*!
+* Creates an empty column data collection.
+* Allocates a new, empty column data collection. The collection starts with no chunks and is ready to have chunks
+appended to it. Caller owns the result and must destroy it via column_data_collection_destroy.
+
+* @param context The context to create the collection within.
+* @param types_array Pointer to an array of logical_type handles, one per column. This defines the schema for the chunks
+that will be stored in the collection. All chunks appended to this collection must have vectors that conform to these
+types.
+* @param types_count Number of elements in the types_array.
+* @param out_collection Receives the new collection handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_create(
+    duckdb_v2_context_ptr context, const duckdb_v2_logical_type_ptr *types_array, idx_t types_count,
+    duckdb_v2_column_data_collection_ptr *out_collection, duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a column data collection and all its chunks.
+* Cleans up the collection and all resources associated with it, including all contained chunks. Sets the collection
+handle to NULL.
+
+* @param collection The collection to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_column_data_collection_destroy(duckdb_v2_column_data_collection_ptr *collection);
+/*!
+ * Merges the source collection into the target collection, consuming the source in the process.
+ * Transfers all chunks from the source collection to the target collection. This destroys the source collection,
+ * setting the source handle to NULL.
+ * @param target The collection to merge into. After the call, this collection will contain all chunks from both
+ * collections.
+ * @param source The collection to merge from. This collection will be destroyed by this operation and its handle set to
+ * NULL.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_combine(duckdb_v2_column_data_collection_ptr target,
+                                                                           duckdb_v2_column_data_collection_ptr *source,
+                                                                           duckdb_v2_error_info_ptr *err);
+/*!
+* Returns the total number of rows across all chunks in the collection.
+* Sums the row counts of all chunks in the collection. This is the total
+number of rows represented by the collection, which may be more than
+the number of rows in any individual chunk.
+
+* @param collection The collection to inspect.
+* @param out_row_count Receives the total row count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_row_count(
+    duckdb_v2_column_data_collection_ptr collection, idx_t *out_row_count, duckdb_v2_error_info_ptr *err);
+/*!
+* Initializes an append state for the collection.
+* Returns an append state handle that can be used to append chunks to the collection while maintaining any necessary
+state across calls. Caller owns the returned state and must destroy it via column_data_collection_append_state_destroy
+when done.
+
+* @param collection The collection to prepare for appending.
+* @param out_state Receives the new append state handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append_state_create(
+    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_append_state_ptr *out_state,
+    duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys an append state handle.
+* Cleans up any resources associated with the append state. After this call, the state handle must not be used again.
+
+* @param state The append state to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_column_data_collection_append_state_destroy(duckdb_v2_column_data_collection_append_state_ptr *state);
+/*!
+ * Appends a data chunk to the collection.
+ * Appends a copy of the given chunk to the end of the collection. The chunk's vectors must conform to the types defined
+ * for the collection.
+ * @param collection The collection to append to.
+ * @param state The append state to use this append operation.
+ * @param chunk The chunk to append.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append(
+    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_append_state_ptr state,
+    duckdb_v2_data_chunk_ptr chunk, duckdb_v2_error_info_ptr *err);
+/*!
+* Initializes a scan state for the collection.
+* Returns a scan state handle that can be used to scan the collection while maintaining progress and any other necessary
+state across multiple scan calls. Caller owns the returned state and must destroy it via
+column_data_collection_scan_state_destroy when done.
+
+* @param collection The collection to prepare for scanning.
+* @param out_state Receives the new scan state handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_scan_state_create(
+    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_scan_state_ptr *out_state,
+    duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a scan state handle.
+* Cleans up any resources associated with the scan state. After this call, the state handle must not be used again.
+
+* @param state The scan state to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_column_data_collection_scan_state_destroy(duckdb_v2_column_data_collection_scan_state_ptr *state);
+/*!
+ * Scans the collection to retrieve the next data chunk.
+ * Retrieves the next chunk of data from the collection based on the provided shared scan states.
+ * @param collection The collection to scan.
+ * @param state The scan state to use for this scan operation. This allows each thread to maintain its own progress
+ * while coordinating with others via the shared state.
+ * @param out_chunk The output chunk to write to.
+ * @param did_produce_chunk Receives a boolean indicating whether a chunk was produced by this call or if the scan has
+ * completed (and the chunk was left as-is).
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_scan(
+    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_scan_state_ptr state,
+    duckdb_v2_data_chunk_ptr out_chunk, bool *did_produce_chunk, duckdb_v2_error_info_ptr *err);
+/*!
+* Initializes a shared scan state for the collection.
+* Returns a shared scan state handle that can be used by multiple threads to coordinate scanning of the collection.
+Caller owns the returned state and must destroy it via column_data_collection_shared_scan_state_destroy when done.
+
+* @param collection The collection to prepare for shared scanning.
+* @param out_state Receives the new shared scan state handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_create(
+    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_shared_scan_state_ptr *out_state,
+    duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a shared scan state handle.
+* Cleans up any resources associated with the shared scan state. After this call, the state handle must not be used
+again.
+
+* @param state The shared scan state to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_destroy(
+    duckdb_v2_column_data_collection_shared_scan_state_ptr *state);
+/*!
+* Initializes a worker scan state for the collection.
+* Returns a "local" scan state handle for a worker thread to use while scanning the collection. This allows each worker
+to maintain its own progress and any other necessary information across multiple scan calls, while still coordinating
+with other workers via the shared scan state. Caller owns the returned state and must destroy it via
+column_data_collection_worker_scan_state_destroy when done.
+
+* @param collection The collection to prepare for worker scanning.
+* @param out_state Receives the new worker scan state handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_create(
+    duckdb_v2_column_data_collection_ptr collection, duckdb_v2_column_data_collection_worker_scan_state_ptr *out_state,
+    duckdb_v2_error_info_ptr *err);
+/*!
+* Destroys a worker scan state handle.
+* Cleans up any resources associated with the worker scan state. After this call, the state handle must not be used
+again.
+
+* @param state The worker scan state to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_destroy(
+    duckdb_v2_column_data_collection_worker_scan_state_ptr *state);
+/*!
+* Scans the collection to retrieve the next data chunk, using shared state for coordination across threads and
+worker-local state for individual progress tracking.
+* Retrieves the next chunk of data from the collection based on the provided shared scan state and worker-local scan
+state.
+
+* @param collection The collection to scan.
+* @param shared_state The shared scan state to use for coordinating across threads.
+* @param worker_state The worker-local scan state to use for this thread's scan operation.
+* @param out_chunk The output chunk to write to.
+* @param did_produce_chunk Receives a boolean indicating whether a chunk was produced by this call or if the scan has
+completed (and the chunk was left as-is).
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_parallel_scan(
+    duckdb_v2_column_data_collection_ptr collection,
+    duckdb_v2_column_data_collection_shared_scan_state_ptr shared_state,
+    duckdb_v2_column_data_collection_worker_scan_state_ptr worker_state, duckdb_v2_data_chunk_ptr out_chunk,
+    bool *did_produce_chunk, duckdb_v2_error_info_ptr *err);
+
+/* ============================================================================
  * MODULE: common-helpers
  * ============================================================================ */
 
