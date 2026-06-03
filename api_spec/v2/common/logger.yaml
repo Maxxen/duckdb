@@ -1,0 +1,197 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: logging
+enums:
+  LOG_LEVEL:
+    description: "Severity level for log messages."
+    values:
+      LOG_LEVEL_TRACE:
+        value: 10
+        description: "Trace-level message, typically very verbose and intended for debugging."
+      LOG_LEVEL_DEBUG:
+        value: 20
+        description: "Debug-level message, useful for diagnosing issues but less verbose than trace."
+      LOG_LEVEL_INFO:
+        value: 30
+        description: "Informational message, indicating normal operation or significant events."
+      LOG_LEVEL_WARN:
+        value: 40
+        description: "Warning message, indicating a potential issue or something that may require attention."
+      LOG_LEVEL_ERROR:
+        value: 50
+        description: "Error message, indicating a failure or problem that occurred."
+      LOG_LEVEL_FATAL:
+        value: 60
+        description: "Fatal message, indicating a critical failure that may cause the process to terminate."
+handles:
+  log_storage_builder:
+    description: "Opaque handle representing a log storage mechanism to configure."
+    cleanup_with: log_storage_builder_destroy
+callbacks:
+  log_callback:
+    description: "Callback function type for processing log messages emitted by connections or contexts."
+    parameters:
+      user_data:
+        type: void
+        indirection: 1
+        description: "User data pointer associated with the log storage builder that emitted the log message."
+      timestamp:
+        type: i64
+        description: "The timestamp of when the log message was emitted, in microseconds since the Unix epoch."
+      level:
+        type: LOG_LEVEL
+        description: "The severity level of the log message."
+      log_type:
+        type: char
+        indirection: 1
+        const: true
+        description: "The null-terminated category of the log message, which can be used to classify messages (e.g., 'query', 'optimizer', 'storage')."
+      log_message:
+        type: char
+        indirection: 1
+        const: true
+        description: "The null-terminated log message being emitted."
+      err:
+        type: error_info
+        indirection: 1
+        description: "Error info handle containing details if the log message is being emitted in the context of an error."
+    return_type: void
+functions:
+  # Log Storage Builder Functions
+  log_storage_builder_create:
+    summary: "Creates a new log storage builder."
+    description: "Initializes and returns a new log storage builder handle for configuring log storage mechanisms."
+    parameters:
+      context:
+        type: context
+        description: "The context to create the log storage builder in."
+      out_builder:
+        type: log_storage_builder
+        indirection: 1
+        description: "Output parameter to receive the newly created log storage builder handle."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  log_storage_builder_set_name:
+    summary: "Sets the name of the log storage builder."
+    description: "Assigns a name to the log storage builder for identification purposes."
+    parameters:
+      builder:
+        type: log_storage_builder
+        description: "The log storage builder handle to configure."
+      name:
+        type: char
+        indirection: 1
+        const: true
+        description: "The null-terminated name to assign to the log storage builder."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  log_storage_builder_set_user_data:
+    summary: "Associates user data with the log storage builder."
+    description: "Attaches arbitrary user data to the log storage builder, which can be retrieved later when processing logs."
+    parameters:
+      builder:
+        type: log_storage_builder
+        description: "The log storage builder handle to configure."
+      user_data:
+        type: void
+        indirection: 1
+        description: "Pointer to the user data to associate with the log storage builder."
+      destructor:
+        type: user_data_destroy
+        description: "Optional destructor function to clean up the user data when the log storage builder is destroyed."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  log_storage_builder_set_log_callback:
+    summary: "Sets the log callback function for the log storage builder."
+    description: "Defines a callback function that will be invoked to process log messages emitted by connections or contexts that use this log storage builder."
+    parameters:
+      builder:
+        type: log_storage_builder
+        description: "The log storage builder handle to configure."
+      callback:
+        type: log_callback
+        description: "The callback function to set for processing log messages."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  log_storage_builder_register:
+    summary: "Registers the log storage builder with the logging system."
+    description: "Finalizes the configuration of the log storage builder and registers it so that it can be used by connections or contexts to emit log messages."
+    parameters:
+      context:
+        type: context
+        description: "The context to register the log storage builder with."
+      builder:
+        type: log_storage_builder
+        description: "The log storage builder handle to register."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  log_storage_builder_destroy:
+    summary: "Destroys a log storage builder."
+    description: "Cleans up resources associated with the log storage builder handle."
+    parameters:
+      builder:
+        type: log_storage_builder
+        indirection: 1
+        description: "The log storage builder handle to destroy."
+    return_type: API_CALL
+  # Log Emission Functions
+  connection_log:
+    summary: "Emits a log message associated with a connection."
+    description: |
+      Logs the provided message at the specified log level, associating it with the given connection.
+      DuckDB makes no guarantee that the message will actually be emitted, as it depends on the logging configuration of the connection's context.
+    belongs_to: connection
+    parameters:
+      conn:
+        type: connection
+        description: "The connection to log in"
+      level:
+        type: LOG_LEVEL
+        description: "The severity level of the log message."
+      message:
+        type: char
+        indirection: 1
+        const: true
+        description: "The null-terminated log message to emit."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  context_log:
+    summary: "Emits a log message associated with a context."
+    description: |
+      Logs the provided message at the specified log level, associating it with the given context.
+      DuckDB makes no guarantee that the message will actually be emitted, as it depends on the logging configuration of the context.
+    belongs_to: context
+    parameters:
+      context:
+        type: context
+        description: "The context to log in"
+      level:
+        type: LOG_LEVEL
+        description: "The severity level of the log message."
+      message:
+        type: char
+        indirection: 1
+        const: true
+        description: "The null-terminated log message to emit."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL

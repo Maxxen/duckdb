@@ -14,6 +14,7 @@ add_library_unity(
   function_scalar-v2.cpp
   function_table-v2.cpp
   logical_type-v2.cpp
+  logger-v2.cpp
   option-v2.cpp
   query_result-v2.cpp
   value-v2.cpp

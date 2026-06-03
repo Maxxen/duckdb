@@ -1954,6 +1954,139 @@ returns DUCKDB_V2_ERROR_NONE. The handle is set to null on return to prevent dou
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_destroy(duckdb_v2_file_handle_handle *file_handle);
 
 /* ============================================================================
+ * MODULE: logging
+ * ============================================================================ */
+
+/* --- Enums for logging --- */
+//! Severity level for log messages.
+typedef enum DUCKDB_V2_LOG_LEVEL {
+	/* Trace-level message, typically very verbose and intended for debugging. */
+	DUCKDB_V2_LOG_LEVEL_TRACE = 10,
+	/* Debug-level message, useful for diagnosing issues but less verbose than trace. */
+	DUCKDB_V2_LOG_LEVEL_DEBUG = 20,
+	/* Informational message, indicating normal operation or significant events. */
+	DUCKDB_V2_LOG_LEVEL_INFO = 30,
+	/* Warning message, indicating a potential issue or something that may require attention. */
+	DUCKDB_V2_LOG_LEVEL_WARN = 40,
+	/* Error message, indicating a failure or problem that occurred. */
+	DUCKDB_V2_LOG_LEVEL_ERROR = 50,
+	/* Fatal message, indicating a critical failure that may cause the process to terminate. */
+	DUCKDB_V2_LOG_LEVEL_FATAL = 60,
+} DUCKDB_V2_LOG_LEVEL;
+
+/* --- Structs for logging --- */
+
+/* --- Types for logging --- */
+//! Opaque handle representing a log storage mechanism to configure.
+typedef struct _duckdb_v2_log_storage_builder {
+	void *internal_ptr;
+} * duckdb_v2_log_storage_builder_handle;
+
+/* --- Constants for logging --- */
+
+/* --- Error Codes for logging --- */
+
+/* --- Function pointer typedefs for logging --- */
+//! Callback function type for processing log messages emitted by connections or contexts.
+typedef void (*duckdb_v2_log_callback_cb)(void *user_data, int64_t timestamp, DUCKDB_V2_LOG_LEVEL level,
+                                          const char *log_type, const char *log_message,
+                                          duckdb_v2_error_info_handle *err);
+
+/* --- Functions for logging --- */
+/*!
+ * Creates a new log storage builder.
+ * Initializes and returns a new log storage builder handle for configuring log storage mechanisms.
+ * @param context The context to create the log storage builder in.
+ * @param out_builder Output parameter to receive the newly created log storage builder handle.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_create(
+    duckdb_v2_context_handle context, duckdb_v2_log_storage_builder_handle *out_builder,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the name of the log storage builder.
+ * Assigns a name to the log storage builder for identification purposes.
+ * @param builder The log storage builder handle to configure.
+ * @param name The null-terminated name to assign to the log storage builder.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_name(duckdb_v2_log_storage_builder_handle builder,
+                                                                         const char *name,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+ * Associates user data with the log storage builder.
+ * Attaches arbitrary user data to the log storage builder, which can be retrieved later when processing logs.
+ * @param builder The log storage builder handle to configure.
+ * @param user_data Pointer to the user data to associate with the log storage builder.
+ * @param destructor Optional destructor function to clean up the user data when the log storage builder is destroyed.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(
+    duckdb_v2_log_storage_builder_handle builder, void *user_data, duckdb_v2_user_data_destroy_cb destructor,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the log callback function for the log storage builder.
+ * Defines a callback function that will be invoked to process log messages emitted by connections or contexts that use
+ * this log storage builder.
+ * @param builder The log storage builder handle to configure.
+ * @param callback The callback function to set for processing log messages.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_log_callback(
+    duckdb_v2_log_storage_builder_handle builder, duckdb_v2_log_callback_cb callback, duckdb_v2_error_info_handle *err);
+/*!
+ * Registers the log storage builder with the logging system.
+ * Finalizes the configuration of the log storage builder and registers it so that it can be used by connections or
+ * contexts to emit log messages.
+ * @param context The context to register the log storage builder with.
+ * @param builder The log storage builder handle to register.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_register(duckdb_v2_context_handle context,
+                                                                         duckdb_v2_log_storage_builder_handle builder,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+ * Destroys a log storage builder.
+ * Cleans up resources associated with the log storage builder handle.
+ * @param builder The log storage builder handle to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_destroy(duckdb_v2_log_storage_builder_handle *builder);
+/*!
+* Emits a log message associated with a connection.
+* Logs the provided message at the specified log level, associating it with the given connection.
+DuckDB makes no guarantee that the message will actually be emitted, as it depends on the logging configuration of the
+connection's context.
+
+* @param conn The connection to log in
+* @param level The severity level of the log message.
+* @param message The null-terminated log message to emit.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_log(duckdb_v2_connection_handle conn, DUCKDB_V2_LOG_LEVEL level,
+                                                           const char *message, duckdb_v2_error_info_handle *err);
+/*!
+* Emits a log message associated with a context.
+* Logs the provided message at the specified log level, associating it with the given context.
+DuckDB makes no guarantee that the message will actually be emitted, as it depends on the logging configuration of the
+context.
+
+* @param context The context to log in
+* @param level The severity level of the log message.
+* @param message The null-terminated log message to emit.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_context_log(duckdb_v2_context_handle context, DUCKDB_V2_LOG_LEVEL level,
+                                                        const char *message, duckdb_v2_error_info_handle *err);
+
+/* ============================================================================
  * MODULE: logical_type
  * ============================================================================ */
 

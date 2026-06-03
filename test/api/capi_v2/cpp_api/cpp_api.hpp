@@ -80,6 +80,52 @@ bool TypedEquals(void *ptr_a, void *ptr_b) {
 	return *typed_a == *typed_b;
 }
 
+// Helper class to hold "user data" pointers along with their destructors.
+struct UserData {
+public:
+	UserData() : data(nullptr), destructor(nullptr) {
+	}
+	UserData(void *data, void (*destructor)(void *)) : data(data), destructor(destructor) {
+	}
+
+	// Not copyable
+	UserData(const UserData &) = delete;
+	UserData &operator=(const UserData &) = delete;
+
+	// Movable
+	UserData(UserData &&other) noexcept : data(other.data), destructor(other.destructor) {
+		other.data = nullptr;
+		other.destructor = nullptr;
+	}
+
+	UserData &operator=(UserData &&other) noexcept {
+		if (this != &other) {
+			if (data && destructor) {
+				destructor(data);
+			}
+			data = other.data;
+			destructor = other.destructor;
+			other.data = nullptr;
+			other.destructor = nullptr;
+		}
+		return *this;
+	}
+
+	~UserData() {
+		if (data && destructor) {
+			destructor(data);
+		}
+	}
+
+	auto get() const -> void * {
+		return data;
+	}
+
+private:
+	void *data;
+	void (*destructor)(void *);
+};
+
 } // namespace detail
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -195,6 +241,25 @@ private:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// Logging
+//----------------------------------------------------------------------------------------------------------------------
+
+enum class LogLevel : uint8_t {
+	/* Trace-level message, typically very verbose and intended for debugging. */
+	LOG_TRACE = 10,
+	/* Debug-level message, useful for diagnosing issues but less verbose than trace. */
+	LOG_DEBUG = 20,
+	/* Informational message, indicating normal operation or significant events. */
+	LOG_INFO = 30,
+	/* Warning message, indicating a potential issue or something that may require attention. */
+	LOG_WARN = 40,
+	/* Error message, indicating a failure or problem that occurred. */
+	LOG_ERROR = 50,
+	/* Fatal message, indicating a critical failure that may cause the process to terminate. */
+	LOG_FATAL = 60,
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Context
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -205,6 +270,9 @@ public:
 	~Context() override;
 
 	FileSystem GetFileSystem() const;
+
+	// Log a message from this connection. This is infallible and will not throw exceptions.
+	void Log(LogLevel level, const std::string &message) const noexcept;
 
 private:
 	explicit Context(void *impl);
@@ -229,6 +297,9 @@ public:
 	void WithTransaction(std::function<void(const Context &ctx)> callback);
 
 	QueryResult Query(const std::string &sql);
+
+	// Log a message from this connection. This is infallible and will not throw exceptions.
+	void Log(LogLevel level, const std::string &message) const noexcept;
 
 private:
 	explicit Connection(void *impl);
@@ -508,6 +579,60 @@ public:
 
 private:
 	explicit QueryResult(void *impl);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Log Storage
+//----------------------------------------------------------------------------------------------------------------------
+
+class LogStorage final : public detail::Handle<LogStorage> {
+public:
+	explicit LogStorage(const Context &ctx);
+
+	~LogStorage() override;
+
+	class LogEntry;
+	using LogCallback = void (*)(LogEntry &entry);
+
+	template <class T, class... ARGS>
+	void SetUserData(ARGS &&... args) {
+		auto ptr = new T(std::forward<ARGS>(args)...);
+		SetUserDataInternal(ptr, detail::TypedDelete<T>);
+	}
+
+	auto SetLogCallback(LogCallback cb) & -> LogStorage &;
+	auto SetName(const std::string &name) & -> LogStorage &;
+	auto Register(const Context &ctx) -> void;
+
+public:
+	class LogEntry {
+	public:
+		class Inner;
+
+		auto GetLogTimestamp() const -> int64_t;
+		auto GetLogLevel() const -> LogLevel;
+		auto GetLogMessage() const -> const char *; // TODO: return some sort of string view or something here
+		auto GetLogType() const -> const char *;    // TODO: return some sort of string view or something here
+
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserData();
+			return *static_cast<T *>(ptr);
+		}
+		auto GetUserData() const -> void *;
+
+		explicit LogEntry(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+	};
+
+private:
+	LogCallback callback = nullptr;
+	detail::UserData user_data;
+
+	auto SetUserDataInternal(void *data, void (*destructor)(void *)) -> void;
 };
 
 //----------------------------------------------------------------------------------------------------------------------

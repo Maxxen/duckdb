@@ -85,6 +85,10 @@ struct HandleTraits<ColumnDataCollection::WorkerScanState> {
 	using handle = duckdb_v2_column_data_collection_worker_scan_state_handle;
 };
 template <>
+struct HandleTraits<LogStorage> {
+	using handle = duckdb_v2_log_storage_builder_handle;
+};
+template <>
 struct HandleTraits<QueryResult> {
 	using handle = duckdb_v2_result_handle;
 };
@@ -326,6 +330,10 @@ QueryResult Connection::Query(const std::string &sql) {
 	return detail::Factory::Make<QueryResult>(result);
 }
 
+void Connection::Log(LogLevel level, const std::string &message) const noexcept {
+	CheckedAPICall(duckdb_v2_connection_log, handle(), static_cast<DUCKDB_V2_LOG_LEVEL>(level), message.c_str());
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // Context
 //----------------------------------------------------------------------------------------------------------------------
@@ -341,6 +349,10 @@ FileSystem Context::GetFileSystem() const {
 	duckdb_v2_file_system_handle fs = nullptr;
 	CheckedAPICall(duckdb_v2_file_system_get_from_context, handle(), &fs);
 	return detail::Factory::Make<FileSystem>(fs);
+}
+
+void Context::Log(LogLevel level, const std::string &message) const noexcept {
+	CheckedAPICall(duckdb_v2_context_log, handle(), static_cast<DUCKDB_V2_LOG_LEVEL>(level), message.c_str());
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -802,6 +814,102 @@ auto ColumnDataCollection::GetAppendState() -> AppendState {
 
 auto ColumnDataCollection::Append(AppendState &state, const DataChunk &chunk) -> void {
 	CheckedAPICall(duckdb_v2_column_data_collection_append, handle(), state.handle(), chunk.handle());
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Log Storage
+//----------------------------------------------------------------------------------------------------------------------
+class LogStorageInfo {
+public:
+	LogStorage::LogCallback log_callback = nullptr;
+	detail::UserData user_data;
+};
+
+LogStorage::LogStorage(const Context &ctx) {
+	duckdb_v2_log_storage_builder_handle handle = nullptr;
+	CheckedAPICall(duckdb_v2_log_storage_builder_create, ctx.handle(), &handle);
+	impl = handle;
+}
+
+LogStorage::~LogStorage() {
+	auto _h = handle();
+	duckdb_v2_log_storage_builder_destroy(&_h);
+}
+
+auto LogStorage::SetUserDataInternal(void *data, void (*destructor)(void *)) -> void {
+	user_data = detail::UserData(data, destructor);
+}
+
+auto LogStorage::Register(const Context &ctx) -> void {
+	auto info = std::make_unique<LogStorageInfo>();
+	info->log_callback = callback;
+	info->user_data = std::move(user_data);
+
+	CheckedAPICall(duckdb_v2_log_storage_builder_set_user_data, handle(), info.release(),
+	               detail::TypedDelete<LogStorageInfo>);
+	CheckedAPICall(duckdb_v2_log_storage_builder_register, ctx.handle(), handle());
+}
+
+auto LogStorage::SetName(const std::string &name) & -> LogStorage & {
+	CheckedAPICall(duckdb_v2_log_storage_builder_set_name, handle(), name.c_str());
+	return *this;
+}
+
+class LogStorage::LogEntry::Inner {
+public:
+	void *user_data = nullptr;
+	int64_t timestamp = 0;
+	DUCKDB_V2_LOG_LEVEL level = DUCKDB_V2_LOG_LEVEL_DEBUG;
+	const char *log_type = nullptr;
+	const char *log_message = nullptr;
+};
+
+auto LogStorage::LogEntry::GetLogLevel() const -> LogLevel {
+	return static_cast<LogLevel>(inner.level);
+}
+
+auto LogStorage::LogEntry::GetLogMessage() const -> const char * {
+	return inner.log_message;
+}
+
+auto LogStorage::LogEntry::GetLogType() const -> const char * {
+	return inner.log_type;
+}
+
+auto LogStorage::LogEntry::GetLogTimestamp() const -> int64_t {
+	return inner.timestamp;
+}
+
+auto LogStorage::LogEntry::GetUserData() const -> void * {
+	return inner.user_data;
+}
+
+auto LogStorage::SetLogCallback(LogCallback cb) & -> LogStorage & {
+	if (cb == nullptr) {
+		CheckedAPICall(duckdb_v2_log_storage_builder_set_log_callback, handle(), nullptr);
+		callback = nullptr;
+		return *this;
+	}
+
+	auto trampoline = [](void *user_data, int64_t timestamp, DUCKDB_V2_LOG_LEVEL level, const char *log_type,
+	                     const char *log_message, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &info = *static_cast<LogStorageInfo *>(user_data);
+
+			if (!info.log_callback) {
+				return;
+			}
+
+			LogEntry::Inner inner {user_data = info.user_data.get(), timestamp, level, log_type, log_message};
+			LogEntry entry(inner);
+
+			info.log_callback(entry);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_log_storage_builder_set_log_callback, handle(), trampoline);
+	callback = cb;
+	return *this;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
