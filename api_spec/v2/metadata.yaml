@@ -12,7 +12,7 @@ options:
       default_style: tagged_struct
 suffixes:
   handles: "_handle"
-  callbacks: "_cb"
+  callbacks: "_fn"
   aliases: "_t"
 primitives:
   - name: void

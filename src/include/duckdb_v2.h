@@ -220,11 +220,11 @@ typedef duckdb_v2_string duckdb_v2_bignum_t;
 /* --- Error Codes for common --- */
 
 /* --- Function pointer typedefs for common --- */
-typedef bool (*duckdb_v2_user_data_equals_cb)(void *a, void *b);
+typedef bool (*duckdb_v2_user_data_equals_fn)(void *a, void *b);
 
-typedef void *(*duckdb_v2_user_data_copy_cb)(void *data);
+typedef void *(*duckdb_v2_user_data_copy_fn)(void *data);
 
-typedef void (*duckdb_v2_user_data_destroy_cb)(void *data);
+typedef void (*duckdb_v2_user_data_destroy_fn)(void *data);
 
 /* --- Functions for common --- */
 
@@ -468,22 +468,22 @@ typedef struct _duckdb_v2_aggregate_function_builder {
 /* --- Error Codes for aggregate --- */
 
 /* --- Function pointer typedefs for aggregate --- */
-typedef void (*duckdb_v2_aggregate_function_size_callback_cb)(duckdb_v2_aggregate_function_size_args *args,
+typedef void (*duckdb_v2_aggregate_function_size_callback_fn)(duckdb_v2_aggregate_function_size_args *args,
                                                               duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_init_callback_cb)(duckdb_v2_aggregate_function_init_args *args,
+typedef void (*duckdb_v2_aggregate_function_init_callback_fn)(duckdb_v2_aggregate_function_init_args *args,
                                                               duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_update_callback_cb)(duckdb_v2_aggregate_function_update_args *args,
+typedef void (*duckdb_v2_aggregate_function_update_callback_fn)(duckdb_v2_aggregate_function_update_args *args,
                                                                 duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_combine_callback_cb)(duckdb_v2_aggregate_function_combine_args *args,
+typedef void (*duckdb_v2_aggregate_function_combine_callback_fn)(duckdb_v2_aggregate_function_combine_args *args,
                                                                  duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_finalize_callback_cb)(duckdb_v2_aggregate_function_finalize_args *args,
+typedef void (*duckdb_v2_aggregate_function_finalize_callback_fn)(duckdb_v2_aggregate_function_finalize_args *args,
                                                                   duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_destroy_callback_cb)(duckdb_v2_aggregate_function_destroy_args *args,
+typedef void (*duckdb_v2_aggregate_function_destroy_callback_fn)(duckdb_v2_aggregate_function_destroy_args *args,
                                                                  duckdb_v2_error_info_handle *err);
 
 /* --- Functions for aggregate --- */
@@ -560,7 +560,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_retur
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_size_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_size_callback_cb callback,
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_size_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the init callback for the aggregate function being built
@@ -572,7 +572,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_size_
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_init_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_init_callback_cb callback,
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_init_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the update callback for the aggregate function being built
@@ -584,7 +584,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_init_
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_update_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_update_callback_cb callback,
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_update_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the combine callback for the aggregate function being built
@@ -597,7 +597,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_updat
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_combine_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_combine_callback_cb callback,
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_combine_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the finalize callback for the aggregate function being built
@@ -610,7 +610,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_combi
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_finalize_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_finalize_callback_cb callback,
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_finalize_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the destroy callback for the aggregate function being built
@@ -623,7 +623,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_final
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_destroy_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_destroy_callback_cb callback,
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_destroy_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets user data for the aggregate function being built
@@ -638,7 +638,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_destr
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_user_data(
-    duckdb_v2_aggregate_function_builder_handle builder, void *data, duckdb_v2_user_data_destroy_cb destroy,
+    duckdb_v2_aggregate_function_builder_handle builder, void *data, duckdb_v2_user_data_destroy_fn destroy,
     duckdb_v2_error_info_handle *err);
 /*!
  * Registers the aggregate function being built
@@ -1988,7 +1988,7 @@ typedef struct _duckdb_v2_log_storage_builder {
 
 /* --- Function pointer typedefs for logging --- */
 //! Callback function type for processing log messages emitted by connections or contexts.
-typedef void (*duckdb_v2_log_callback_cb)(void *user_data, int64_t timestamp, DUCKDB_V2_LOG_LEVEL level,
+typedef void (*duckdb_v2_log_callback_fn)(void *user_data, int64_t timestamp, DUCKDB_V2_LOG_LEVEL level,
                                           const char *log_type, const char *log_message,
                                           duckdb_v2_error_info_handle *err);
 
@@ -2025,7 +2025,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_name(duckdb_
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(
-    duckdb_v2_log_storage_builder_handle builder, void *user_data, duckdb_v2_user_data_destroy_cb destructor,
+    duckdb_v2_log_storage_builder_handle builder, void *user_data, duckdb_v2_user_data_destroy_fn destructor,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the log callback function for the log storage builder.
@@ -2037,7 +2037,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_log_callback(
-    duckdb_v2_log_storage_builder_handle builder, duckdb_v2_log_callback_cb callback, duckdb_v2_error_info_handle *err);
+    duckdb_v2_log_storage_builder_handle builder, duckdb_v2_log_callback_fn callback, duckdb_v2_error_info_handle *err);
 /*!
  * Registers the log storage builder with the logging system.
  * Finalizes the configuration of the log storage builder and registers it so that it can be used by connections or
@@ -2668,17 +2668,17 @@ typedef struct {
 	//! shallow copy implementation which simply copies the pointer value. If the bind data requires deep copying or
 	//! special handling to be safely shared across threads, the callback must provide a custom copy implementation via
 	//! this parameter.
-	duckdb_v2_user_data_copy_cb out_bind_data_copy;
+	duckdb_v2_user_data_copy_fn out_bind_data_copy;
 	//! If the callback sets `out_bind_data`, it can also set this optional destructor callback which will be used to
 	//! destroy the bind data when it's no longer needed (e.g. at the end of query execution). If `out_bind_data` is set
 	//! but this destructor is not provided, the library will not attempt to destroy the bind data.
-	duckdb_v2_user_data_destroy_cb out_bind_data_destructor;
+	duckdb_v2_user_data_destroy_fn out_bind_data_destructor;
 	//! If the callback sets `out_bind_data`, it can also set this optional equality callback which will be used to
 	//! compare two bind data pointers for equality. This is useful for optimizations such as caching or reusing
 	//! execution plans for functions with identical bind data. If `out_bind_data` is set but this equality callback is
 	//! not provided, the library will use a default pointer equality check (i.e. two bind data pointers are considered
 	//! equal if they have the same value).
-	duckdb_v2_user_data_equals_cb out_bind_data_equality;
+	duckdb_v2_user_data_equals_fn out_bind_data_equality;
 } duckdb_v2_scalar_function_bind_args;
 
 typedef struct {
@@ -2700,7 +2700,7 @@ typedef struct {
 	//! If the callback sets `out_init_data`, it can also set this optional destructor callback which will be used to
 	//! destroy the init data when it's no longer needed (e.g. at the end of query execution). If `out_init_data` is set
 	//! but this destructor is not provided, the library will not attempt to destroy the init data.
-	duckdb_v2_user_data_destroy_cb out_init_data_destructor;
+	duckdb_v2_user_data_destroy_fn out_init_data_destructor;
 } duckdb_v2_scalar_function_init_args;
 
 typedef struct {
@@ -2735,13 +2735,13 @@ typedef struct _duckdb_v2_scalar_function_builder {
 /* --- Error Codes for scalar --- */
 
 /* --- Function pointer typedefs for scalar --- */
-typedef void (*duckdb_v2_scalar_function_bind_callback_cb)(duckdb_v2_scalar_function_bind_args *args,
+typedef void (*duckdb_v2_scalar_function_bind_callback_fn)(duckdb_v2_scalar_function_bind_args *args,
                                                            duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_scalar_function_init_callback_cb)(duckdb_v2_scalar_function_init_args *args,
+typedef void (*duckdb_v2_scalar_function_init_callback_fn)(duckdb_v2_scalar_function_init_args *args,
                                                            duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_scalar_function_exec_callback_cb)(duckdb_v2_scalar_function_exec_args *args,
+typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_function_exec_args *args,
                                                            duckdb_v2_error_info_handle *err);
 
 /* --- Functions for scalar --- */
@@ -2784,7 +2784,7 @@ callbacks (e.g. "Init" and "Exec") to share information between the planning and
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_bind_callback(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_bind_callback_cb callback,
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_bind_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
 * Sets the init callback for a scalar function.
@@ -2798,7 +2798,7 @@ function. It can be used to setup an "init data" pointer which can be accessed b
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_init_callback(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_init_callback_cb callback,
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_init_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
 * Sets the "exec" callback for a scalar function.
@@ -2813,7 +2813,7 @@ function for each batch of input rows during query execution.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_exec_callback(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_exec_callback_cb callback,
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_exec_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
 * Registers a scalar function with a database, making the function available for use in queries.
@@ -2857,7 +2857,7 @@ If not provided, the library will not attempt to destroy the user data.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(
-    duckdb_v2_scalar_function_builder_handle func, void *data, duckdb_v2_user_data_destroy_cb destroy,
+    duckdb_v2_scalar_function_builder_handle func, void *data, duckdb_v2_user_data_destroy_fn destroy,
     duckdb_v2_error_info_handle *err);
 /*!
 * Adds a parameter to a scalar function.
@@ -4001,7 +4001,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(const uint64_t
 /* --- Error Codes for connection --- */
 
 /* --- Function pointer typedefs for connection --- */
-typedef void (*duckdb_v2_connection_callback_cb)(duckdb_v2_context_handle context, void *user_data,
+typedef void (*duckdb_v2_connection_callback_fn)(duckdb_v2_context_handle context, void *user_data,
                                                  duckdb_v2_error_info_handle *err);
 
 /* --- Functions for connection --- */
@@ -4114,7 +4114,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckd
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_handle conn,
-                                                                            duckdb_v2_connection_callback_cb callback,
+                                                                            duckdb_v2_connection_callback_fn callback,
                                                                             void *user_data,
                                                                             duckdb_v2_error_info_handle *err);
 
@@ -4168,25 +4168,25 @@ typedef struct _duckdb_v2_table_function_exec_info {
 //! Bind callback, invoked during query planning. The callback declares output columns via
 //! table_function_bind_add_result_column and optionally sets bind data via table_function_bind_set_bind_data. Bind
 //! will be accessible to all later callbacks.
-typedef void (*duckdb_v2_table_function_bind_cb)(duckdb_v2_table_function_bind_info_handle info,
+typedef void (*duckdb_v2_table_function_bind_fn)(duckdb_v2_table_function_bind_info_handle info,
                                                  duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err);
 
 //! Global init callback, invoked once per scan at execution start. Receives bind data and projected column indices.
 //! Sets global state shared across all threads via table_function_init_set_global_state. May set max threads via
 //! table_function_init_set_max_threads.
-typedef void (*duckdb_v2_table_function_init_global_cb)(duckdb_v2_table_function_init_info_handle info,
+typedef void (*duckdb_v2_table_function_init_global_fn)(duckdb_v2_table_function_init_info_handle info,
                                                         duckdb_v2_context_handle context,
                                                         duckdb_v2_error_info_handle *err);
 
 //! Local init callback, invoked once per worker thread. Receives bind data and global state. Sets per-thread local
 //! state via table_function_init_set_local_state.
-typedef void (*duckdb_v2_table_function_init_local_cb)(duckdb_v2_table_function_init_info_handle info,
+typedef void (*duckdb_v2_table_function_init_local_fn)(duckdb_v2_table_function_init_info_handle info,
                                                        duckdb_v2_context_handle context,
                                                        duckdb_v2_error_info_handle *err);
 
 //! Execution callback, invoked repeatedly to produce rows. Fill the output chunk with rows and set its cardinality.
 //! Return with cardinality 0 to signal end of data.
-typedef void (*duckdb_v2_table_function_exec_cb)(duckdb_v2_table_function_exec_info_handle info,
+typedef void (*duckdb_v2_table_function_exec_fn)(duckdb_v2_table_function_exec_info_handle info,
                                                  duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err);
 
 //! Cardinality callback, invoked during optimization. Reports estimated and/or maximum row counts to help the
@@ -4194,13 +4194,13 @@ typedef void (*duckdb_v2_table_function_exec_cb)(duckdb_v2_table_function_exec_i
 //! out_is_exact to indicate precision. The optimizer may invoke this callback more than once per plan (e.g. during
 //! cardinality estimation and statistics propagation), so it must be cheap and side-effect-free. An error raised
 //! here aborts planning.
-typedef void (*duckdb_v2_table_function_cardinality_cb)(void *bind_data, idx_t *out_estimated, bool *out_is_exact,
+typedef void (*duckdb_v2_table_function_cardinality_fn)(void *bind_data, idx_t *out_estimated, bool *out_is_exact,
                                                         duckdb_v2_context_handle context,
                                                         duckdb_v2_error_info_handle *err);
 
 //! Progress callback, invoked on-demand during execution. Reports scan progress by writing a value between 0.0 and
 //! 1.0 to out_progress.
-typedef void (*duckdb_v2_table_function_progress_cb)(void *bind_data, void *global_state, double *out_progress,
+typedef void (*duckdb_v2_table_function_progress_fn)(void *bind_data, void *global_state, double *out_progress,
                                                      duckdb_v2_context_handle context,
                                                      duckdb_v2_error_info_handle *err);
 
@@ -4209,7 +4209,7 @@ typedef void (*duckdb_v2_table_function_progress_cb)(void *bind_data, void *glob
 //! needs (e.g. via the expression API) into bind data and call table_function_filter_mark_handled; the engine drops
 //! the marked filters and applies the rest above the scan. Filters are bound expression trees: dispatch on the
 //! expression class/type and read operands with the expression accessors. Treat the filters as read-only.
-typedef void (*duckdb_v2_table_function_pushdown_complex_filter_cb)(void *bind_data,
+typedef void (*duckdb_v2_table_function_pushdown_complex_filter_fn)(void *bind_data,
                                                                     duckdb_v2_table_function_filter_info_handle info,
                                                                     duckdb_v2_context_handle context,
                                                                     duckdb_v2_error_info_handle *err);
@@ -4277,7 +4277,7 @@ Useful for static context that does not change across planning and execution.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_user_data(
-    duckdb_v2_table_function_builder_handle builder, void *data, duckdb_v2_user_data_destroy_cb destroy,
+    duckdb_v2_table_function_builder_handle builder, void *data, duckdb_v2_user_data_destroy_fn destroy,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the bind callback. Required.
@@ -4286,8 +4286,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_user_data
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_bind_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_bind_cb callback,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_bind_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_bind_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the global init callback. Optional.
@@ -4296,8 +4296,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_bind_cb(
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_global_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_init_global_cb callback,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_global_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_init_global_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the local init callback. Optional.
@@ -4306,8 +4306,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_glob
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_local_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_init_local_cb callback,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_local_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_init_local_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the execution callback. Required.
@@ -4316,8 +4316,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_loca
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_exec_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_exec_cb callback,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_exec_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_exec_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the cardinality callback. Optional.
@@ -4326,8 +4326,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_exec_cb(
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_cardinality_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_cardinality_cb callback,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_cardinality_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_cardinality_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the progress callback. Optional.
@@ -4336,8 +4336,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_cardinali
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_progress_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_progress_cb callback,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_progress_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_progress_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
 * Sets the complex filter pushdown callback. Optional.
@@ -4349,8 +4349,8 @@ claim the ones it will apply itself. See the table_function_pushdown_complex_fil
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_pushdown_complex_filter_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_pushdown_complex_filter_cb callback,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_pushdown_complex_filter_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_pushdown_complex_filter_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
 * Enables projection pushdown for this table function.
@@ -4425,8 +4425,8 @@ accessible to init, exec, cardinality, and progress callbacks.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_set_bind_data(
-    duckdb_v2_table_function_bind_info_handle info, void *data, duckdb_v2_user_data_copy_cb copy,
-    duckdb_v2_user_data_equals_cb equals, duckdb_v2_user_data_destroy_cb destroy, duckdb_v2_error_info_handle *err);
+    duckdb_v2_table_function_bind_info_handle info, void *data, duckdb_v2_user_data_copy_fn copy,
+    duckdb_v2_user_data_equals_fn equals, duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
 /*!
 * Sets the estimated cardinality during bind.
 * A convenience for simple cases where the row count is known at
@@ -4470,7 +4470,7 @@ accessible from init_local, exec, and progress callbacks.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_global_state(
-    duckdb_v2_table_function_init_info_handle info, void *data, duckdb_v2_user_data_destroy_cb destroy,
+    duckdb_v2_table_function_init_info_handle info, void *data, duckdb_v2_user_data_destroy_fn destroy,
     duckdb_v2_error_info_handle *err);
 /*!
 * Retrieves the global state set during init_global.
@@ -4498,7 +4498,7 @@ from the exec callback for the same worker.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_table_function_init_set_local_state(duckdb_v2_table_function_init_info_handle info, void *data,
-                                              duckdb_v2_user_data_destroy_cb destroy, duckdb_v2_error_info_handle *err);
+                                              duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
 /*!
 * Sets the maximum number of threads for this scan.
 * Only valid from init_global callback. Defaults to 1. The engine

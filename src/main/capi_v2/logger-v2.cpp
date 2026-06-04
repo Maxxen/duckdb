@@ -43,17 +43,17 @@ public:
 
 public:
 	string name;
-	duckdb_v2_log_callback_cb log_callback = nullptr;
+	duckdb_v2_log_callback_fn log_callback = nullptr;
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 };
 
 class LogStorageBuilder {
 public:
 	string name;
-	duckdb_v2_log_callback_cb log_callback = nullptr;
+	duckdb_v2_log_callback_fn log_callback = nullptr;
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 
 	~LogStorageBuilder() {
 		if (user_data && user_data_destructor_cb) {
@@ -97,7 +97,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_name(duckdb_v2_log_storag
 
 DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(duckdb_v2_log_storage_builder_handle builder,
                                                                  void *user_data,
-                                                                 duckdb_v2_user_data_destroy_cb destructor,
+                                                                 duckdb_v2_user_data_destroy_fn destructor,
                                                                  duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -115,7 +115,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(duckdb_v2_log_s
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_log_callback(duckdb_v2_log_storage_builder_handle builder,
-                                                                    duckdb_v2_log_callback_cb callback,
+                                                                    duckdb_v2_log_callback_fn callback,
                                                                     duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {

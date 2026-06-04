@@ -88,7 +88,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connecti
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_handle conn,
-                                                               duckdb_v2_connection_callback_cb callback,
+                                                               duckdb_v2_connection_callback_fn callback,
                                                                void *user_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn) {

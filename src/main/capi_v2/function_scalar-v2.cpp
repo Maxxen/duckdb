@@ -34,23 +34,23 @@ struct ScalarFunctionBindDataV2 final : public FunctionData {
 
 	void *user_data;
 
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
-	duckdb_v2_user_data_copy_cb user_data_copy_cb = nullptr;
-	duckdb_v2_user_data_equals_cb user_data_equals_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_copy_fn user_data_copy_cb = nullptr;
+	duckdb_v2_user_data_equals_fn user_data_equals_cb = nullptr;
 };
 
 struct ScalarFunctionStateDataV2 final : public FunctionLocalState {
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 };
 
 struct ScalarFunctionV2 {
 	struct RuntimeInfo final : public ScalarFunctionInfo {
-		duckdb_v2_scalar_function_bind_callback_cb bind_cb = nullptr;
-		duckdb_v2_scalar_function_init_callback_cb init_cb = nullptr;
-		duckdb_v2_scalar_function_exec_callback_cb exec_cb = nullptr;
+		duckdb_v2_scalar_function_bind_callback_fn bind_cb = nullptr;
+		duckdb_v2_scalar_function_init_callback_fn init_cb = nullptr;
+		duckdb_v2_scalar_function_exec_callback_fn exec_cb = nullptr;
 
-		duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+		duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 		void *user_data = nullptr;
 
 		~RuntimeInfo() override {
@@ -235,7 +235,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_scalar_function_builder_set_bind_callback(duckdb_v2_scalar_function_builder_handle func,
-                                                    duckdb_v2_scalar_function_bind_callback_cb callback,
+                                                    duckdb_v2_scalar_function_bind_callback_fn callback,
                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
@@ -247,7 +247,7 @@ duckdb_v2_scalar_function_builder_set_bind_callback(duckdb_v2_scalar_function_bu
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_scalar_function_builder_set_init_callback(duckdb_v2_scalar_function_builder_handle func,
-                                                    duckdb_v2_scalar_function_init_callback_cb callback,
+                                                    duckdb_v2_scalar_function_init_callback_fn callback,
                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
@@ -259,7 +259,7 @@ duckdb_v2_scalar_function_builder_set_init_callback(duckdb_v2_scalar_function_bu
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_scalar_function_builder_set_exec_callback(duckdb_v2_scalar_function_builder_handle func,
-                                                    duckdb_v2_scalar_function_exec_callback_cb callback,
+                                                    duckdb_v2_scalar_function_exec_callback_fn callback,
                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
@@ -269,7 +269,7 @@ duckdb_v2_scalar_function_builder_set_exec_callback(duckdb_v2_scalar_function_bu
 	});
 }
 DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar_function_builder_handle func,
-                                                                     void *data, duckdb_v2_user_data_destroy_cb destroy,
+                                                                     void *data, duckdb_v2_user_data_destroy_fn destroy,
                                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {

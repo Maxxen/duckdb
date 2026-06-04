@@ -1493,7 +1493,7 @@ auto TableFunction::BindInput::TryGetNamedParameter(const std::string &name) con
 auto TableFunction::SetBindCallback(BindCallback callback) & -> TableFunction & {
 	if (!callback) {
 		// Reset
-		CheckedAPICall(duckdb_v2_table_function_builder_set_bind_cb, handle(), nullptr);
+		CheckedAPICall(duckdb_v2_table_function_builder_set_bind_callback, handle(), nullptr);
 		bind_callback = nullptr;
 		return *this;
 	}
@@ -1514,7 +1514,7 @@ auto TableFunction::SetBindCallback(BindCallback callback) & -> TableFunction & 
 		});
 	};
 
-	CheckedAPICall(duckdb_v2_table_function_builder_set_bind_cb, handle(), trampoline);
+	CheckedAPICall(duckdb_v2_table_function_builder_set_bind_callback, handle(), trampoline);
 
 	bind_callback = callback;
 
@@ -1539,7 +1539,7 @@ auto TableFunction::InitGlobalInput::SetGlobalStateInternal(void *data, void (*d
 auto TableFunction::SetInitGlobalCallback(InitGlobalCallback callback) & -> TableFunction & {
 	if (!callback) {
 		// Reset
-		CheckedAPICall(duckdb_v2_table_function_builder_set_init_global_cb, handle(), nullptr);
+		CheckedAPICall(duckdb_v2_table_function_builder_set_init_global_callback, handle(), nullptr);
 		init_global_callback = nullptr;
 		return *this;
 	}
@@ -1560,7 +1560,7 @@ auto TableFunction::SetInitGlobalCallback(InitGlobalCallback callback) & -> Tabl
 		});
 	};
 
-	CheckedAPICall(duckdb_v2_table_function_builder_set_init_global_cb, handle(), trampoline);
+	CheckedAPICall(duckdb_v2_table_function_builder_set_init_global_callback, handle(), trampoline);
 
 	init_global_callback = callback;
 
@@ -1585,7 +1585,7 @@ auto TableFunction::InitLocalInput::SetLocalStateInternal(void *data, void (*des
 auto TableFunction::SetInitLocalCallback(InitLocalCallback callback) & -> TableFunction & {
 	if (!callback) {
 		// Reset
-		CheckedAPICall(duckdb_v2_table_function_builder_set_init_local_cb, handle(), nullptr);
+		CheckedAPICall(duckdb_v2_table_function_builder_set_init_local_callback, handle(), nullptr);
 		init_local_callback = nullptr;
 		return *this;
 	}
@@ -1606,7 +1606,7 @@ auto TableFunction::SetInitLocalCallback(InitLocalCallback callback) & -> TableF
 		});
 	};
 
-	CheckedAPICall(duckdb_v2_table_function_builder_set_init_local_cb, handle(), trampoline);
+	CheckedAPICall(duckdb_v2_table_function_builder_set_init_local_callback, handle(), trampoline);
 
 	init_local_callback = callback;
 
@@ -1644,7 +1644,7 @@ auto TableFunction::ExecInput::GetResultChunk() const -> DataChunk & {
 auto TableFunction::SetExecCallback(ExecCallback callback) & -> TableFunction & {
 	if (!callback) {
 		// Reset
-		CheckedAPICall(duckdb_v2_table_function_builder_set_exec_cb, handle(), nullptr);
+		CheckedAPICall(duckdb_v2_table_function_builder_set_exec_callback, handle(), nullptr);
 		exec_callback = nullptr;
 		return *this;
 	}
@@ -1668,7 +1668,7 @@ auto TableFunction::SetExecCallback(ExecCallback callback) & -> TableFunction & 
 		});
 	};
 
-	CheckedAPICall(duckdb_v2_table_function_builder_set_exec_cb, handle(), trampoline);
+	CheckedAPICall(duckdb_v2_table_function_builder_set_exec_callback, handle(), trampoline);
 
 	exec_callback = callback;
 

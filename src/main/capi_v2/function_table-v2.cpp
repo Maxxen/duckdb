@@ -42,9 +42,9 @@ struct TableFunctionBindDataV2 final : public FunctionData {
 	}
 
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
-	duckdb_v2_user_data_copy_cb user_data_copy_cb = nullptr;
-	duckdb_v2_user_data_equals_cb user_data_equals_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_copy_fn user_data_copy_cb = nullptr;
+	duckdb_v2_user_data_equals_fn user_data_equals_cb = nullptr;
 
 	// Borrowed pointer to the function's runtime info (callbacks + builder user
 	// data). Set during bind; lets init/exec/cardinality/progress reach the
@@ -70,7 +70,7 @@ struct TableFunctionGlobalStateV2 final : public GlobalTableFunctionState {
 	}
 
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 	idx_t max_threads = 1;
 };
 
@@ -82,7 +82,7 @@ struct TableFunctionLocalStateV2 final : public LocalTableFunctionState {
 	}
 
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 };
 
 // --- Callback info structs (passed to user callbacks as opaque handles) ------
@@ -129,16 +129,16 @@ struct TableFunctionFilterInfoV2 {
 // --- RuntimeInfo: stored on the TableFunction's function_info ----------------
 
 struct TableFunctionRuntimeInfoV2 final : public TableFunctionInfo {
-	duckdb_v2_table_function_bind_cb bind_cb = nullptr;
-	duckdb_v2_table_function_init_global_cb init_global_cb = nullptr;
-	duckdb_v2_table_function_init_local_cb init_local_cb = nullptr;
-	duckdb_v2_table_function_exec_cb exec_cb = nullptr;
-	duckdb_v2_table_function_cardinality_cb cardinality_cb = nullptr;
-	duckdb_v2_table_function_progress_cb progress_cb = nullptr;
-	duckdb_v2_table_function_pushdown_complex_filter_cb pushdown_complex_filter_cb = nullptr;
+	duckdb_v2_table_function_bind_fn bind_cb = nullptr;
+	duckdb_v2_table_function_init_global_fn init_global_cb = nullptr;
+	duckdb_v2_table_function_init_local_fn init_local_cb = nullptr;
+	duckdb_v2_table_function_exec_fn exec_cb = nullptr;
+	duckdb_v2_table_function_cardinality_fn cardinality_cb = nullptr;
+	duckdb_v2_table_function_progress_fn progress_cb = nullptr;
+	duckdb_v2_table_function_pushdown_complex_filter_fn pushdown_complex_filter_cb = nullptr;
 
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 
 	~TableFunctionRuntimeInfoV2() override {
 		if (user_data && user_data_destructor_cb) {
@@ -438,7 +438,7 @@ duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_bu
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_user_data(duckdb_v2_table_function_builder_handle builder,
-                                                                    void *data, duckdb_v2_user_data_destroy_cb destroy,
+                                                                    void *data, duckdb_v2_user_data_destroy_fn destroy,
                                                                     duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -461,9 +461,9 @@ duckdb_v2_table_function_builder_set_projection_pushdown(duckdb_v2_table_functio
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_bind_cb(duckdb_v2_table_function_builder_handle builder,
-                                                                  duckdb_v2_table_function_bind_cb callback,
-                                                                  duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_bind_callback(duckdb_v2_table_function_builder_handle builder,
+                                                                        duckdb_v2_table_function_bind_fn callback,
+                                                                        duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
@@ -473,9 +473,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_bind_cb(duckdb_v2_tabl
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_table_function_builder_set_init_global_cb(duckdb_v2_table_function_builder_handle builder,
-                                                    duckdb_v2_table_function_init_global_cb callback,
-                                                    duckdb_v2_error_info_handle *err) {
+duckdb_v2_table_function_builder_set_init_global_callback(duckdb_v2_table_function_builder_handle builder,
+                                                          duckdb_v2_table_function_init_global_fn callback,
+                                                          duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
@@ -484,9 +484,10 @@ duckdb_v2_table_function_builder_set_init_global_cb(duckdb_v2_table_function_bui
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_local_cb(duckdb_v2_table_function_builder_handle builder,
-                                                                        duckdb_v2_table_function_init_local_cb callback,
-                                                                        duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t
+duckdb_v2_table_function_builder_set_init_local_callback(duckdb_v2_table_function_builder_handle builder,
+                                                         duckdb_v2_table_function_init_local_fn callback,
+                                                         duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
@@ -495,9 +496,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_init_local_cb(duckdb_v
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_exec_cb(duckdb_v2_table_function_builder_handle builder,
-                                                                  duckdb_v2_table_function_exec_cb callback,
-                                                                  duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_exec_callback(duckdb_v2_table_function_builder_handle builder,
+                                                                        duckdb_v2_table_function_exec_fn callback,
+                                                                        duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
@@ -507,9 +508,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_exec_cb(duckdb_v2_tabl
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_table_function_builder_set_cardinality_cb(duckdb_v2_table_function_builder_handle builder,
-                                                    duckdb_v2_table_function_cardinality_cb callback,
-                                                    duckdb_v2_error_info_handle *err) {
+duckdb_v2_table_function_builder_set_cardinality_callback(duckdb_v2_table_function_builder_handle builder,
+                                                          duckdb_v2_table_function_cardinality_fn callback,
+                                                          duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
@@ -518,9 +519,10 @@ duckdb_v2_table_function_builder_set_cardinality_cb(duckdb_v2_table_function_bui
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_progress_cb(duckdb_v2_table_function_builder_handle builder,
-                                                                      duckdb_v2_table_function_progress_cb callback,
-                                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t
+duckdb_v2_table_function_builder_set_progress_callback(duckdb_v2_table_function_builder_handle builder,
+                                                       duckdb_v2_table_function_progress_fn callback,
+                                                       duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
@@ -529,8 +531,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_progress_cb(duckdb_v2_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_pushdown_complex_filter_cb(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_pushdown_complex_filter_cb callback,
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_pushdown_complex_filter_callback(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_table_function_pushdown_complex_filter_fn callback,
     duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -644,9 +646,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_set_cardinality(duckdb_v2_tab
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_set_bind_data(duckdb_v2_table_function_bind_info_handle info,
-                                                                 void *data, duckdb_v2_user_data_copy_cb copy,
-                                                                 duckdb_v2_user_data_equals_cb equals,
-                                                                 duckdb_v2_user_data_destroy_cb destroy,
+                                                                 void *data, duckdb_v2_user_data_copy_fn copy,
+                                                                 duckdb_v2_user_data_equals_fn equals,
+                                                                 duckdb_v2_user_data_destroy_fn destroy,
                                                                  duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
@@ -748,7 +750,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_get_global_state(duckdb_v2_ta
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_global_state(duckdb_v2_table_function_init_info_handle info,
-                                                                    void *data, duckdb_v2_user_data_destroy_cb destroy,
+                                                                    void *data, duckdb_v2_user_data_destroy_fn destroy,
                                                                     duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
@@ -766,7 +768,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_global_state(duckdb_v2_ta
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_local_state(duckdb_v2_table_function_init_info_handle info,
-                                                                   void *data, duckdb_v2_user_data_destroy_cb destroy,
+                                                                   void *data, duckdb_v2_user_data_destroy_fn destroy,
                                                                    duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {

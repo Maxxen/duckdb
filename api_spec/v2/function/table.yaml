@@ -282,7 +282,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   # --- Callback registration ---
-  table_function_builder_set_bind_cb:
+  table_function_builder_set_bind_callback:
     summary: Sets the bind callback. Required.
     parameters:
       builder:
@@ -296,7 +296,7 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  table_function_builder_set_init_global_cb:
+  table_function_builder_set_init_global_callback:
     summary: Sets the global init callback. Optional.
     parameters:
       builder:
@@ -310,7 +310,7 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  table_function_builder_set_init_local_cb:
+  table_function_builder_set_init_local_callback:
     summary: Sets the local init callback. Optional.
     parameters:
       builder:
@@ -324,7 +324,7 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  table_function_builder_set_exec_cb:
+  table_function_builder_set_exec_callback:
     summary: Sets the execution callback. Required.
     parameters:
       builder:
@@ -338,7 +338,7 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  table_function_builder_set_cardinality_cb:
+  table_function_builder_set_cardinality_callback:
     summary: Sets the cardinality callback. Optional.
     parameters:
       builder:
@@ -352,7 +352,7 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  table_function_builder_set_progress_cb:
+  table_function_builder_set_progress_callback:
     summary: Sets the progress callback. Optional.
     parameters:
       builder:
@@ -366,7 +366,7 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  table_function_builder_set_pushdown_complex_filter_cb:
+  table_function_builder_set_pushdown_complex_filter_callback:
     summary: Sets the complex filter pushdown callback. Optional.
     description: |
       Registers a callback invoked during optimization with the candidate filter expressions, letting the function

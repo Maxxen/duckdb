@@ -15,15 +15,15 @@ struct AggregateFunctionExtraDataV2 final : public AggregateFunctionInfo {
 		user_data_destructor_cb = nullptr;
 	}
 
-	duckdb_v2_aggregate_function_size_callback_cb size_cb = nullptr;
-	duckdb_v2_aggregate_function_init_callback_cb init_cb = nullptr;
-	duckdb_v2_aggregate_function_update_callback_cb update_cb = nullptr;
-	duckdb_v2_aggregate_function_combine_callback_cb combine_cb = nullptr;
-	duckdb_v2_aggregate_function_finalize_callback_cb finalize_cb = nullptr;
-	duckdb_v2_aggregate_function_destroy_callback_cb destroy_cb = nullptr;
+	duckdb_v2_aggregate_function_size_callback_fn size_cb = nullptr;
+	duckdb_v2_aggregate_function_init_callback_fn init_cb = nullptr;
+	duckdb_v2_aggregate_function_update_callback_fn update_cb = nullptr;
+	duckdb_v2_aggregate_function_combine_callback_fn combine_cb = nullptr;
+	duckdb_v2_aggregate_function_finalize_callback_fn finalize_cb = nullptr;
+	duckdb_v2_aggregate_function_destroy_callback_fn destroy_cb = nullptr;
 
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 };
 
 class AggregateFunctionBindDataV2 final : public FunctionData {
@@ -211,15 +211,15 @@ struct AggregateFunctionBuilderV2 {
 	vector<pair<string, LogicalType>> parameters;
 	LogicalType return_type;
 
-	duckdb_v2_aggregate_function_size_callback_cb size_cb = nullptr;
-	duckdb_v2_aggregate_function_init_callback_cb init_cb = nullptr;
-	duckdb_v2_aggregate_function_update_callback_cb update_cb = nullptr;
-	duckdb_v2_aggregate_function_combine_callback_cb combine_cb = nullptr;
-	duckdb_v2_aggregate_function_finalize_callback_cb finalize_cb = nullptr;
-	duckdb_v2_aggregate_function_destroy_callback_cb destroy_cb = nullptr;
+	duckdb_v2_aggregate_function_size_callback_fn size_cb = nullptr;
+	duckdb_v2_aggregate_function_init_callback_fn init_cb = nullptr;
+	duckdb_v2_aggregate_function_update_callback_fn update_cb = nullptr;
+	duckdb_v2_aggregate_function_combine_callback_fn combine_cb = nullptr;
+	duckdb_v2_aggregate_function_finalize_callback_fn finalize_cb = nullptr;
+	duckdb_v2_aggregate_function_destroy_callback_fn destroy_cb = nullptr;
 
 	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_cb user_data_destructor_cb = nullptr;
+	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
 
 	~AggregateFunctionBuilderV2() {
 		if (user_data && user_data_destructor_cb) {
@@ -327,7 +327,7 @@ duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_functio
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_aggregate_function_builder_set_size_callback(duckdb_v2_aggregate_function_builder_handle builder,
-                                                       duckdb_v2_aggregate_function_size_callback_cb callback,
+                                                       duckdb_v2_aggregate_function_size_callback_fn callback,
                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -340,7 +340,7 @@ duckdb_v2_aggregate_function_builder_set_size_callback(duckdb_v2_aggregate_funct
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_aggregate_function_builder_set_init_callback(duckdb_v2_aggregate_function_builder_handle builder,
-                                                       duckdb_v2_aggregate_function_init_callback_cb callback,
+                                                       duckdb_v2_aggregate_function_init_callback_fn callback,
                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -353,7 +353,7 @@ duckdb_v2_aggregate_function_builder_set_init_callback(duckdb_v2_aggregate_funct
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_aggregate_function_builder_set_update_callback(duckdb_v2_aggregate_function_builder_handle builder,
-                                                         duckdb_v2_aggregate_function_update_callback_cb callback,
+                                                         duckdb_v2_aggregate_function_update_callback_fn callback,
                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -366,7 +366,7 @@ duckdb_v2_aggregate_function_builder_set_update_callback(duckdb_v2_aggregate_fun
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_aggregate_function_builder_set_combine_callback(duckdb_v2_aggregate_function_builder_handle builder,
-                                                          duckdb_v2_aggregate_function_combine_callback_cb callback,
+                                                          duckdb_v2_aggregate_function_combine_callback_fn callback,
                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -379,7 +379,7 @@ duckdb_v2_aggregate_function_builder_set_combine_callback(duckdb_v2_aggregate_fu
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_aggregate_function_builder_set_finalize_callback(duckdb_v2_aggregate_function_builder_handle builder,
-                                                           duckdb_v2_aggregate_function_finalize_callback_cb callback,
+                                                           duckdb_v2_aggregate_function_finalize_callback_fn callback,
                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -392,7 +392,7 @@ duckdb_v2_aggregate_function_builder_set_finalize_callback(duckdb_v2_aggregate_f
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_aggregate_function_builder_set_destroy_callback(duckdb_v2_aggregate_function_builder_handle builder,
-                                                          duckdb_v2_aggregate_function_destroy_callback_cb callback,
+                                                          duckdb_v2_aggregate_function_destroy_callback_fn callback,
                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -482,7 +482,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_builder_handle builder, void *data,
-                                                   duckdb_v2_user_data_destroy_cb destroy,
+                                                   duckdb_v2_user_data_destroy_fn destroy,
                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
