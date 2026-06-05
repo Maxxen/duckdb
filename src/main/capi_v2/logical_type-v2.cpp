@@ -107,6 +107,19 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYP
 	});
 }
 
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_copy(duckdb_v2_logical_type_handle type,
+                                                 duckdb_v2_logical_type_handle *out_type,
+                                                 duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!type || !out_type) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_copy");
+		}
+		auto *lt = duckdb::ToLogicalType(type);
+		auto *copy = new duckdb::LogicalType(*lt);
+		*out_type = reinterpret_cast<duckdb_v2_logical_type_handle>(copy);
+	});
+}
+
 DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_handle *type) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!type) {
@@ -122,6 +135,21 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_handl
 // ---------------------------------------------------------------------------
 // Common introspection
 // ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_is_equal(duckdb_v2_logical_type_handle left,
+                                                     duckdb_v2_logical_type_handle right, bool *result,
+                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!left || !right || !result) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_is_equal");
+		}
+
+		const auto &left_lt = *duckdb::ToLogicalType(left);
+		const auto &right_lt = *duckdb::ToLogicalType(right);
+
+		*result = left_lt == right_lt;
+	});
+}
 
 DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_handle type,
                                                    DUCKDB_V2_LOGICAL_TYPE_ID *out_id,

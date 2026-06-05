@@ -3,6 +3,7 @@
 #include "test_helpers.hpp"
 
 #include <cstring>
+#include <sstream>
 
 // ---------------------------------------------------------------------------
 // Stable C-API testing
@@ -220,6 +221,84 @@ TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
 	REQUIRE(data[2] == 4);
 	REQUIRE(data[3] == 6);
 	REQUIRE(data[4] == 8);
+}
+
+TEST_CASE("Stable C++API: Copy Function", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	// State threaded through the callbacks. The bind data records the column count; the global (init) state owns the
+	// output path and accumulates the total number of rows seen; each batch reports its own row count.
+	struct GlobalState {
+		std::string path;
+		idx_t columns = 0;
+		idx_t total_rows = 0;
+	};
+
+	const auto out_path = duckdb::TestCreatePath("cpp_api_copy_function.txt");
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		CopyFunction copy_function(ctx);
+
+		copy_function.SetName("my_copy")
+		    .SetBindCallback([](CopyFunction::BindInput &input) {
+			    // Verify that the type is what we expect
+			    const auto column_count = input.GetColumnCount();
+			    REQUIRE(column_count == 1);
+			    const auto column_name = input.GetColumnName(0);
+			    REQUIRE(column_name == "i");
+			    const auto column_type = input.GetColumnType(0);
+			    REQUIRE(column_type == LogicalType::BIGINT());
+
+			    // Remember how many columns are being copied.
+			    input.SetBindData<idx_t>(input.GetColumnCount());
+		    })
+		    .SetInitCallback([](CopyFunction::InitInput &input) {
+			    // Open a per-file global state, seeded with the destination path and the bound column count.
+			    input.SetInitData<GlobalState>(
+			        GlobalState {std::string(input.GetFilePath()), input.GetBindData<idx_t>(), 0});
+		    })
+		    .SetBatchCallback([](CopyFunction::BatchInput &input) {
+			    // The batch is handed to us owning; reading its row count proves it round-trips correctly.
+			    input.SetBatchData<idx_t>(input.GetBatch().GetRowCount());
+		    })
+		    .SetFlushCallback([](CopyFunction::FlushInput &input) {
+			    input.GetInitData<GlobalState>().total_rows += input.GetBatchData<idx_t>();
+		    })
+		    .SetFinalizeCallback([](CopyFunction::FinalizeInput &input) {
+			    // Write the accumulated summary out (via DuckDB's file system) so the test can verify the chain ran.
+			    const auto &state = input.GetInitData<GlobalState>();
+			    const auto contents = std::to_string(state.columns) + " " + std::to_string(state.total_rows);
+
+			    auto fs = input.GetContext().GetFileSystem();
+			    auto file = fs.OpenFile(state.path, FileFlags::WRITE | FileFlags::CREATE);
+			    file.Write(contents.data(), static_cast<int64_t>(contents.size()));
+		    })
+		    .Register(ctx);
+	});
+
+	conn.Query("COPY (SELECT i FROM range(5) t(i)) TO '" + out_path + "' (FORMAT my_copy, USE_TMP_FILE FALSE)");
+
+	// Read the summary back through the file system API and verify the full bind -> init -> batch -> flush ->
+	// finalize chain observed 1 column and 5 rows.
+
+	conn.WithTransaction([&](const Context &ctx) {
+		auto fs = ctx.GetFileSystem();
+		auto file = fs.OpenFile(out_path, FileFlags::READ);
+		char buffer[64] = {0};
+		const auto bytes_read = file.Read(buffer, sizeof(buffer) - 1);
+
+		auto contents = std::string(buffer, bytes_read);
+		auto split = contents.find(' ');
+		auto columns = std::stoul(contents.substr(0, split));
+		auto rows = std::stoul(contents.substr(split + 1));
+
+		REQUIRE(columns == 1);
+		REQUIRE(rows == 5);
+	});
 }
 
 TEST_CASE("Stable C++-API: File System", "[cpp_api]") {

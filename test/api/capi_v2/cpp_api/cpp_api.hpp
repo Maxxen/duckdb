@@ -358,6 +358,10 @@ public:
 	static LogicalType BIGINT();
 
 	std::string_view GetAlias() const;
+	bool operator==(const LogicalType &other) const;
+	bool operator!=(const LogicalType &other) const {
+		return !(*this == other);
+	}
 
 private:
 	explicit LogicalType(void *impl);
@@ -1100,6 +1104,214 @@ public:
 		auto GetGlobalStateInternal() const -> void *;
 		auto GetLocalStateInternal() const -> void *;
 	};
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Copy Function
+//----------------------------------------------------------------------------------------------------------------------
+
+// A copy function exposes the (batch) COPY ... TO API. The engine accumulates the rows being copied into a
+// ColumnDataCollection and hands each batch to the callbacks in this order: bind (planning) -> init (once per
+// output file) -> batch (per accumulated batch) -> flush (per prepared batch) -> finalize (once per output file).
+//
+// State threads forward through the data setters: bind data is immutable and visible everywhere; init data is the
+// per-file global state; batch data is produced from a batch and consumed by flush.
+class CopyFunction final : public detail::Handle<CopyFunction> {
+	friend detail::Factory;
+
+public:
+	class BindInput;
+	class InitInput;
+	class BatchInput;
+	class FlushInput;
+	class FinalizeInput;
+
+	using BindCallback = void (*)(BindInput &input);
+	using InitCallback = void (*)(InitInput &input);
+	using BatchCallback = void (*)(BatchInput &input);
+	using FlushCallback = void (*)(FlushInput &input);
+	using FinalizeCallback = void (*)(FinalizeInput &input);
+
+	explicit CopyFunction(const Context &ctx);
+
+	CopyFunction(CopyFunction &&) = default;
+	CopyFunction &operator=(CopyFunction &&) = default;
+
+	~CopyFunction() override;
+
+	auto SetName(const std::string &name) & -> CopyFunction &;
+	auto SetBindCallback(BindCallback callback) & -> CopyFunction &;
+	auto SetInitCallback(InitCallback callback) & -> CopyFunction &;
+	auto SetBatchCallback(BatchCallback callback) & -> CopyFunction &;
+	auto SetFlushCallback(FlushCallback callback) & -> CopyFunction &;
+	auto SetFinalizeCallback(FinalizeCallback callback) & -> CopyFunction &;
+
+	auto Register(const Context &ctx) -> void;
+
+public:
+	class BindInput {
+		friend detail::Factory;
+
+	public:
+		auto GetContext() const -> Context;
+
+		// The names and types of the columns being copied
+		auto GetColumnCount() const -> idx_t;
+		auto GetColumnName(idx_t index) const -> std::string_view;
+		auto GetColumnType(idx_t index) const -> LogicalType; // TODO: Borrowed handle to column type
+
+		// Set immutable bind data, visible to all later callbacks.
+		template <class T, class... ARGS>
+		void SetBindData(ARGS &&... args) {
+			auto ptr = new T(std::forward<ARGS>(args)...);
+			SetBindDataInternal(ptr, detail::TypedCopy<T>, detail::TypedEquals<T>, detail::TypedDelete<T>);
+		}
+
+	private:
+		explicit BindInput(void *args) : args(args) {
+		}
+
+		void *args;
+
+		void SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
+		                         void (*destructor)(void *));
+	};
+
+	class InitInput {
+		friend detail::Factory;
+
+	public:
+		auto GetContext() const -> Context;
+
+		// The output file path this state is being initialized for.
+		auto GetFilePath() const -> std::string_view;
+
+		template <class T>
+		auto GetBindData() const -> const T & {
+			return *static_cast<const T *>(GetBindDataInternal());
+		}
+
+		// Set the per-file global state, visible to batch, flush and finalize.
+		template <class T, class... ARGS>
+		void SetInitData(ARGS &&... args) {
+			auto ptr = new T(std::forward<ARGS>(args)...);
+			SetInitDataInternal(ptr, detail::TypedDelete<T>);
+		}
+
+	private:
+		explicit InitInput(void *args) : args(args) {
+		}
+
+		void *args;
+
+		const void *GetBindDataInternal() const;
+		void SetInitDataInternal(void *data, void (*destructor)(void *));
+	};
+
+	class BatchInput {
+		friend detail::Factory;
+
+	public:
+		auto GetContext() const -> Context;
+
+		template <class T>
+		auto GetBindData() const -> const T & {
+			return *static_cast<const T *>(GetBindDataInternal());
+		}
+
+		template <class T>
+		auto GetInitData() const -> T & {
+			return *static_cast<T *>(GetInitDataInternal());
+		}
+
+		// The batch of rows to copy. Ownership belongs to this input: it is destroyed when the callback returns.
+		auto GetBatch() -> ColumnDataCollection & {
+			return collection;
+		}
+
+		// Set the prepared batch data, consumed by the flush callback.
+		template <class T, class... ARGS>
+		void SetBatchData(ARGS &&... args) {
+			auto ptr = new T(std::forward<ARGS>(args)...);
+			SetBatchDataInternal(ptr, detail::TypedDelete<T>);
+		}
+
+	private:
+		BatchInput(void *args, ColumnDataCollection &&collection) : args(args), collection(std::move(collection)) {
+		}
+
+		void *args;
+		ColumnDataCollection collection;
+
+		const void *GetBindDataInternal() const;
+		void *GetInitDataInternal() const;
+		void SetBatchDataInternal(void *data, void (*destructor)(void *));
+	};
+
+	class FlushInput {
+		friend detail::Factory;
+
+	public:
+		auto GetContext() const -> Context;
+
+		template <class T>
+		auto GetBindData() const -> const T & {
+			return *static_cast<const T *>(GetBindDataInternal());
+		}
+
+		template <class T>
+		auto GetInitData() const -> T & {
+			return *static_cast<T *>(GetInitDataInternal());
+		}
+
+		template <class T>
+		auto GetBatchData() const -> T & {
+			return *static_cast<T *>(GetBatchDataInternal());
+		}
+
+	private:
+		explicit FlushInput(void *args) : args(args) {
+		}
+
+		void *args;
+
+		const void *GetBindDataInternal() const;
+		void *GetInitDataInternal() const;
+		void *GetBatchDataInternal() const;
+	};
+
+	class FinalizeInput {
+		friend detail::Factory;
+
+	public:
+		auto GetContext() const -> Context;
+
+		template <class T>
+		auto GetBindData() const -> const T & {
+			return *static_cast<const T *>(GetBindDataInternal());
+		}
+
+		template <class T>
+		auto GetInitData() const -> T & {
+			return *static_cast<T *>(GetInitDataInternal());
+		}
+
+	private:
+		explicit FinalizeInput(void *args) : args(args) {
+		}
+
+		void *args;
+
+		const void *GetBindDataInternal() const;
+		void *GetInitDataInternal() const;
+	};
+
+private:
+	BindCallback bind_callback = nullptr;
+	InitCallback init_callback = nullptr;
+	BatchCallback batch_callback = nullptr;
+	FlushCallback flush_callback = nullptr;
+	FinalizeCallback finalize_callback = nullptr;
 };
 
 } // namespace duckdb_api

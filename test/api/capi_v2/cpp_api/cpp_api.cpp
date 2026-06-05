@@ -104,6 +104,10 @@ template <>
 struct HandleTraits<TableFunction> {
 	using handle = duckdb_v2_table_function_builder_handle;
 };
+template <>
+struct HandleTraits<CopyFunction> {
+	using handle = duckdb_v2_copy_function_builder_handle;
+};
 
 } // namespace detail
 
@@ -427,6 +431,15 @@ auto FileHandle::Write(const void *buffer, int64_t size) -> int64_t {
 //----------------------------------------------------------------------------------------------------------------------
 
 LogicalType::LogicalType(void *impl) : detail::Handle<LogicalType>(impl) {
+}
+
+bool LogicalType::operator==(const LogicalType &other) const {
+	if (handle() == other.handle()) {
+		return true; // same handle means same logical type
+	}
+	bool result = false;
+	CheckedAPICall(duckdb_v2_logical_type_is_equal, handle(), other.handle(), &result);
+	return result;
 }
 
 std::string_view LogicalType::GetAlias() const {
@@ -1682,6 +1695,254 @@ void TableFunction::Register(const Context &ctx) {
 	               detail::TypedDelete<TableFunctionInfo>);
 
 	CheckedAPICall(duckdb_v2_table_function_builder_register, ctx.handle(), handle());
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Copy Function
+//----------------------------------------------------------------------------------------------------------------------
+
+// Holds the user callbacks. A pointer to this is stashed as the function's user data and recovered (via the args
+// struct) in every trampoline, mirroring the scalar/aggregate/table function wrappers.
+struct CopyFunctionInfo {
+	CopyFunction::BindCallback bind_callback = nullptr;
+	CopyFunction::InitCallback init_callback = nullptr;
+	CopyFunction::BatchCallback batch_callback = nullptr;
+	CopyFunction::FlushCallback flush_callback = nullptr;
+	CopyFunction::FinalizeCallback finalize_callback = nullptr;
+};
+
+CopyFunction::CopyFunction(const Context &ctx) {
+	duckdb_v2_copy_function_builder_handle _h = nullptr;
+	CheckedAPICall(duckdb_v2_copy_function_builder_create, ctx.handle(), &_h);
+	impl = _h;
+}
+
+CopyFunction::~CopyFunction() {
+	auto _h = handle();
+	duckdb_v2_copy_function_builder_destroy(&_h);
+}
+
+auto CopyFunction::SetName(const std::string &name) & -> CopyFunction & {
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_name, handle(), name.c_str());
+	return *this;
+}
+
+// --- Bind input ---
+
+auto CopyFunction::BindInput::GetContext() const -> Context {
+	return detail::Factory::Make<Context>(static_cast<duckdb_v2_copy_function_bind_args *>(args)->context);
+}
+
+auto CopyFunction::BindInput::GetColumnCount() const -> idx_t {
+	return static_cast<duckdb_v2_copy_function_bind_args *>(args)->column_count;
+}
+
+auto CopyFunction::BindInput::GetColumnName(idx_t index) const -> std::string_view {
+	const auto name = static_cast<duckdb_v2_copy_function_bind_args *>(args)->column_names[index];
+	return name ? std::string_view(name) : std::string_view();
+}
+
+auto CopyFunction::BindInput::GetColumnType(idx_t index) const -> LogicalType {
+	auto type_handle = static_cast<duckdb_v2_copy_function_bind_args *>(args)->column_types[index];
+	duckdb_v2_logical_type_handle copy_handle = nullptr;
+	CheckedAPICall(duckdb_v2_logical_type_copy, type_handle, &copy_handle);
+	return detail::Factory::Make<LogicalType>(copy_handle);
+}
+
+void CopyFunction::BindInput::SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
+                                                  void (*destructor)(void *)) {
+	auto args_struct = static_cast<duckdb_v2_copy_function_bind_args *>(args);
+	args_struct->out_bind_data = data;
+	args_struct->out_bind_data_copy = copy;
+	args_struct->out_bind_data_equality = equals;
+	args_struct->out_bind_data_destructor = destructor;
+}
+
+// --- Init input ---
+
+auto CopyFunction::InitInput::GetContext() const -> Context {
+	return detail::Factory::Make<Context>(static_cast<duckdb_v2_copy_function_init_args *>(args)->context);
+}
+
+auto CopyFunction::InitInput::GetFilePath() const -> std::string_view {
+	const auto path = static_cast<duckdb_v2_copy_function_init_args *>(args)->file_path;
+	return path ? std::string_view(path) : std::string_view();
+}
+
+const void *CopyFunction::InitInput::GetBindDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_init_args *>(args)->bind_data;
+}
+
+void CopyFunction::InitInput::SetInitDataInternal(void *data, void (*destructor)(void *)) {
+	auto args_struct = static_cast<duckdb_v2_copy_function_init_args *>(args);
+	args_struct->out_init_data = data;
+	args_struct->out_init_data_destructor = destructor;
+}
+
+// --- Batch input ---
+
+auto CopyFunction::BatchInput::GetContext() const -> Context {
+	return detail::Factory::Make<Context>(static_cast<duckdb_v2_copy_function_batch_args *>(args)->context);
+}
+
+const void *CopyFunction::BatchInput::GetBindDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_batch_args *>(args)->bind_data;
+}
+
+void *CopyFunction::BatchInput::GetInitDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_batch_args *>(args)->init_data;
+}
+
+void CopyFunction::BatchInput::SetBatchDataInternal(void *data, void (*destructor)(void *)) {
+	auto args_struct = static_cast<duckdb_v2_copy_function_batch_args *>(args);
+	args_struct->out_batch = data;
+	args_struct->out_batch_destructor = destructor;
+}
+
+// --- Flush input ---
+
+auto CopyFunction::FlushInput::GetContext() const -> Context {
+	return detail::Factory::Make<Context>(static_cast<duckdb_v2_copy_function_flush_args *>(args)->context);
+}
+
+const void *CopyFunction::FlushInput::GetBindDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_flush_args *>(args)->bind_data;
+}
+
+void *CopyFunction::FlushInput::GetInitDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_flush_args *>(args)->init_data;
+}
+
+void *CopyFunction::FlushInput::GetBatchDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_flush_args *>(args)->in_batch;
+}
+
+// --- Finalize input ---
+
+auto CopyFunction::FinalizeInput::GetContext() const -> Context {
+	return detail::Factory::Make<Context>(static_cast<duckdb_v2_copy_function_finalize_args *>(args)->context);
+}
+
+const void *CopyFunction::FinalizeInput::GetBindDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_finalize_args *>(args)->bind_data;
+}
+
+void *CopyFunction::FinalizeInput::GetInitDataInternal() const {
+	return static_cast<duckdb_v2_copy_function_finalize_args *>(args)->init_data;
+}
+
+// --- Callback registration ---
+
+auto CopyFunction::SetBindCallback(BindCallback callback) & -> CopyFunction & {
+	if (!callback) {
+		CheckedAPICall(duckdb_v2_copy_function_builder_set_bind_callback, handle(), nullptr);
+		bind_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_copy_function_bind_args *args, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<const CopyFunctionInfo *>(args->user_data);
+			auto input = detail::Factory::Make<BindInput>(args);
+			function.bind_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_bind_callback, handle(), trampoline);
+	bind_callback = callback;
+	return *this;
+}
+
+auto CopyFunction::SetInitCallback(InitCallback callback) & -> CopyFunction & {
+	if (!callback) {
+		CheckedAPICall(duckdb_v2_copy_function_builder_set_init_callback, handle(), nullptr);
+		init_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_copy_function_init_args *args, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<const CopyFunctionInfo *>(args->user_data);
+			auto input = detail::Factory::Make<InitInput>(args);
+			function.init_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_init_callback, handle(), trampoline);
+	init_callback = callback;
+	return *this;
+}
+
+auto CopyFunction::SetBatchCallback(BatchCallback callback) & -> CopyFunction & {
+	if (!callback) {
+		CheckedAPICall(duckdb_v2_copy_function_builder_set_batch_callback, handle(), nullptr);
+		batch_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_copy_function_batch_args *args, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<const CopyFunctionInfo *>(args->user_data);
+			// Ownership of the collection is handed to us; wrap it so it is destroyed when the callback returns.
+			auto collection = detail::Factory::Make<ColumnDataCollection>(static_cast<void *>(args->in_batch));
+			auto input = detail::Factory::Make<BatchInput>(args, std::move(collection));
+			function.batch_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_batch_callback, handle(), trampoline);
+	batch_callback = callback;
+	return *this;
+}
+
+auto CopyFunction::SetFlushCallback(FlushCallback callback) & -> CopyFunction & {
+	if (!callback) {
+		CheckedAPICall(duckdb_v2_copy_function_builder_set_flush_callback, handle(), nullptr);
+		flush_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_copy_function_flush_args *args, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<const CopyFunctionInfo *>(args->user_data);
+			auto input = detail::Factory::Make<FlushInput>(args);
+			function.flush_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_flush_callback, handle(), trampoline);
+	flush_callback = callback;
+	return *this;
+}
+
+auto CopyFunction::SetFinalizeCallback(FinalizeCallback callback) & -> CopyFunction & {
+	if (!callback) {
+		CheckedAPICall(duckdb_v2_copy_function_builder_set_finalize_callback, handle(), nullptr);
+		finalize_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_copy_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<const CopyFunctionInfo *>(args->user_data);
+			auto input = detail::Factory::Make<FinalizeInput>(args);
+			function.finalize_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_finalize_callback, handle(), trampoline);
+	finalize_callback = callback;
+	return *this;
+}
+
+auto CopyFunction::Register(const Context &ctx) -> void {
+	// Stash the callbacks as the function's user data so the trampolines can recover them via args->user_data.
+	CheckedAPICall(
+	    duckdb_v2_copy_function_builder_set_user_data, handle(),
+	    new CopyFunctionInfo {bind_callback, init_callback, batch_callback, flush_callback, finalize_callback},
+	    detail::TypedDelete<CopyFunctionInfo>);
+
+	CheckedAPICall(duckdb_v2_copy_function_builder_register, ctx.handle(), handle());
 }
 
 } // namespace duckdb_api

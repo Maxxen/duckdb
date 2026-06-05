@@ -11,6 +11,7 @@ add_library_unity(
   expression-v2.cpp
   file_system-v2.cpp
   function_aggregate-v2.cpp
+  function_copy-v2.cpp
   function_scalar-v2.cpp
   function_table-v2.cpp
   logical_type-v2.cpp

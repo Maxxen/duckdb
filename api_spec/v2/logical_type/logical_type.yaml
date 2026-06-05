@@ -162,6 +162,26 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
+  logical_type_copy:
+    summary: Creates a copy of a logical type
+    description: On success, writes the new handle into *out_type.
+    role: constructor
+    belongs_to: logical_type
+    parameters:
+      type:
+        type: logical_type
+        description: The logical type to copy.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   logical_type_destroy:
     summary: Destroys a logical type handle.
     description: |
@@ -178,6 +198,33 @@ functions:
   # -----------------------------------------------------------------------
   # Common introspection
   # -----------------------------------------------------------------------
+  logical_type_is_equal:
+    summary: Compares two logical types for deep equality.
+    description: |
+      Returns true if the types are identical in kind and all parameters,
+      recursively. For example, two DECIMAL(10, 2) types are equal, but
+      DECIMAL(10, 2) is not equal to DECIMAL(10, 3) or to FLOAT. Two
+      STRUCTs with the same field names in the same order and equal field
+      types are equal, but if the field types differ they are not equal.
+    belongs_to: logical_type
+    parameters:
+      left:
+        type: logical_type
+        description: The first logical type.
+      right:
+        type: logical_type
+        description: The second logical type.
+      result:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives the result of the comparison.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   logical_type_get_id:
     summary: Returns the logical type id.
     role: getter

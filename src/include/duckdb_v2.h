@@ -2189,6 +2189,17 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V
                                                                         duckdb_v2_logical_type_handle *out_type,
                                                                         duckdb_v2_error_info_handle *err);
 /*!
+ * Creates a copy of a logical type
+ * On success, writes the new handle into *out_type.
+ * @param type The logical type to copy.
+ * @param out_type Receives the new logical type handle.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_copy(duckdb_v2_logical_type_handle type,
+                                                              duckdb_v2_logical_type_handle *out_type,
+                                                              duckdb_v2_error_info_handle *err);
+/*!
 * Destroys a logical type handle.
 * Null-safe: passing nullptr or a slot already set to nullptr is a
 no-op. On success the slot is set to nullptr.
@@ -2197,6 +2208,23 @@ no-op. On success the slot is set to nullptr.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_handle *type);
+/*!
+* Compares two logical types for deep equality.
+* Returns true if the types are identical in kind and all parameters,
+recursively. For example, two DECIMAL(10, 2) types are equal, but
+DECIMAL(10, 2) is not equal to DECIMAL(10, 3) or to FLOAT. Two
+STRUCTs with the same field names in the same order and equal field
+types are equal, but if the field types differ they are not equal.
+
+* @param left The first logical type.
+* @param right The second logical type.
+* @param result Receives the result of the comparison.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_is_equal(duckdb_v2_logical_type_handle left,
+                                                                  duckdb_v2_logical_type_handle right, bool *result,
+                                                                  duckdb_v2_error_info_handle *err);
 /*!
  * Returns the logical type id.
  * @param type The logical type.
@@ -4117,6 +4145,199 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duck
                                                                             duckdb_v2_connection_callback_fn callback,
                                                                             void *user_data,
                                                                             duckdb_v2_error_info_handle *err);
+
+/* ============================================================================
+ * MODULE: copy
+ * ============================================================================ */
+
+/* --- Enums for copy --- */
+
+/* --- Structs for copy --- */
+typedef struct {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	duckdb_v2_logical_type_handle *column_types;
+	const char **column_names;
+	idx_t column_count;
+	void *out_bind_data;
+	duckdb_v2_user_data_copy_fn out_bind_data_copy;
+	duckdb_v2_user_data_destroy_fn out_bind_data_destructor;
+	duckdb_v2_user_data_equals_fn out_bind_data_equality;
+} duckdb_v2_copy_function_bind_args;
+
+typedef struct {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	const char *file_path;
+	void *out_init_data;
+	duckdb_v2_user_data_destroy_fn out_init_data_destructor;
+} duckdb_v2_copy_function_init_args;
+
+typedef struct {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	void *init_data;
+	duckdb_v2_column_data_collection_handle in_batch;
+	void *out_batch;
+	duckdb_v2_user_data_destroy_fn out_batch_destructor;
+} duckdb_v2_copy_function_batch_args;
+
+typedef struct {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	void *init_data;
+	void *in_batch;
+} duckdb_v2_copy_function_flush_args;
+
+typedef struct {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	void *init_data;
+} duckdb_v2_copy_function_finalize_args;
+
+/* --- Types for copy --- */
+//! An opaque handle to a copy function builder. This is used to build a copy function, which can be used to copy data
+//! from one source to another.
+typedef struct _duckdb_v2_copy_function_builder {
+	void *internal_ptr;
+} * duckdb_v2_copy_function_builder_handle;
+
+/* --- Constants for copy --- */
+
+/* --- Error Codes for copy --- */
+
+/* --- Function pointer typedefs for copy --- */
+typedef void (*duckdb_v2_copy_function_bind_callback_fn)(duckdb_v2_copy_function_bind_args *args,
+                                                         duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_copy_function_init_callback_fn)(duckdb_v2_copy_function_init_args *args,
+                                                         duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_copy_function_batch_callback_fn)(duckdb_v2_copy_function_batch_args *args,
+                                                          duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_copy_function_flush_callback_fn)(duckdb_v2_copy_function_flush_args *args,
+                                                          duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_copy_function_finalize_callback_fn)(duckdb_v2_copy_function_finalize_args *args,
+                                                             duckdb_v2_error_info_handle *err);
+
+/* --- Functions for copy --- */
+/*!
+ * Creates a new copy function.
+ * @param context The DuckDB context in which the function will be created
+ * @param out Output parameter that will hold the created copy function builder handle.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_create(duckdb_v2_context_handle context,
+                                                                         duckdb_v2_copy_function_builder_handle *out,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the name of the copy function. This is the name that will be used to invoke the function in SQL.
+ * @param builder The copy function builder handle.
+ * @param name The name of the copy function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_name(
+    duckdb_v2_copy_function_builder_handle builder, const char *name, duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the bind callback for the copy function. The bind callback is responsible for binding the function to a specific
+ * set of arguments and return type. It is called during query planning when the function is invoked in SQL.
+ * @param builder The copy function builder handle.
+ * @param callback The bind callback function pointer.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_bind_callback(
+    duckdb_v2_copy_function_builder_handle builder, duckdb_v2_copy_function_bind_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the init callback for the copy function. The init callback is responsible for initializing any state or
+ * resources needed to execute the function. It is called during query execution when the function is invoked in SQL,
+ * before any batches are processed.
+ * @param builder The copy function builder handle.
+ * @param callback The init callback function pointer.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_init_callback(
+    duckdb_v2_copy_function_builder_handle builder, duckdb_v2_copy_function_init_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the batch callback for the copy function. The batch callback is responsible for processing a batch of data. It
+ * is called during query execution when the function is invoked in SQL.
+ * @param builder The copy function builder handle.
+ * @param callback The batch callback function pointer.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_batch_callback(
+    duckdb_v2_copy_function_builder_handle builder, duckdb_v2_copy_function_batch_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the flush callback for the copy function. The flush callback is responsible for flushing a processed batch of
+ * data to the output.
+ * @param builder The copy function builder handle.
+ * @param callback The flush callback function pointer.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_flush_callback(
+    duckdb_v2_copy_function_builder_handle builder, duckdb_v2_copy_function_flush_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the finalize callback for the copy function. The finalize callback is responsible for finalizing the output (for
+ * example flushing and closing the underlying file) after all batches have been flushed. It is called once per output
+ * file at the end of query execution.
+ * @param builder The copy function builder handle.
+ * @param callback The finalize callback function pointer.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_finalize_callback(
+    duckdb_v2_copy_function_builder_handle builder, duckdb_v2_copy_function_finalize_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the user data for the copy function. The user data is a pointer that will be passed to the callbacks when they
+ * are invoked. This can be used to store any state or context that the callbacks need to operate.
+ * @param builder The copy function builder handle.
+ * @param data Opaque pointer to user data.
+ * @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
+ * If not provided, the library will not attempt to destroy the user data.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_copy_function_builder_set_user_data(duckdb_v2_copy_function_builder_handle builder, void *data,
+                                              duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
+/*!
+ * Registers the copy function with a database, making the function available for use in SQL queries.
+ * @param context The DuckDB context in which to register the function.
+ * @param builder The copy function builder handle.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_register(
+    duckdb_v2_context_handle context, duckdb_v2_copy_function_builder_handle builder, duckdb_v2_error_info_handle *err);
+/*!
+ * Destroys a copy function builder handle, freeing any associated resources. After this call, the handle is no longer
+ * valid and should not be used.
+ * @param builder The copy function builder handle to destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_copy_function_builder_destroy(duckdb_v2_copy_function_builder_handle *builder);
 
 /* ============================================================================
  * MODULE: table
