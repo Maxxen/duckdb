@@ -20,7 +20,7 @@ class MetadataManager;
 //! Flip to true to defer reading persistent table data from a checkpoint until the table is first
 //! materialized (i.e. bound with a ClientContext). This allows the column types to be resolved
 //! lazily, rather than requiring fully-bound types at checkpoint-read time.
-static constexpr bool DEFER_TABLE_DATA_LOAD = false;
+static constexpr bool DEFER_TABLE_DATA_LOAD = true;
 
 //! Captured at checkpoint-read time so that the actual table data (statistics + row group metadata)
 //! can be read later, once the column types have been bound. See CheckpointReader::ReadTableData.
