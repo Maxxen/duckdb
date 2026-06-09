@@ -53,7 +53,8 @@ TEST_CASE("V2 expression: get_class across all fixtures", "[capi_v2][expression]
 
 	auto op = duckdb::make_uniq<duckdb::BoundOperatorExpression>(duckdb::ExpressionType::OPERATOR_IS_NULL,
 	                                                             duckdb::LogicalType::BOOLEAN);
-	op->children.push_back(duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
+	op->GetChildrenMutable().push_back(
+	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
 
 	auto conj = duckdb::make_uniq<duckdb::BoundConjunctionExpression>(
 	    duckdb::ExpressionType::CONJUNCTION_AND,
@@ -111,7 +112,8 @@ TEST_CASE("V2 expression: get_type across all fixtures", "[capi_v2][expression]"
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10)));
 	auto op = duckdb::make_uniq<duckdb::BoundOperatorExpression>(duckdb::ExpressionType::OPERATOR_IS_NULL,
 	                                                             duckdb::LogicalType::BOOLEAN);
-	op->children.push_back(duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
+	op->GetChildrenMutable().push_back(
+	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
 	auto conj = duckdb::make_uniq<duckdb::BoundConjunctionExpression>(
 	    duckdb::ExpressionType::CONJUNCTION_AND,
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::BOOLEAN(true)),
@@ -202,7 +204,8 @@ TEST_CASE("V2 expression: get_child_count", "[capi_v2][expression]") {
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10)));
 	auto op = duckdb::make_uniq<duckdb::BoundOperatorExpression>(duckdb::ExpressionType::OPERATOR_IS_NULL,
 	                                                             duckdb::LogicalType::BOOLEAN);
-	op->children.push_back(duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
+	op->GetChildrenMutable().push_back(
+	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
 	auto conj = duckdb::make_uniq<duckdb::BoundConjunctionExpression>(
 	    duckdb::ExpressionType::CONJUNCTION_AND,
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::BOOLEAN(true)),
@@ -413,8 +416,8 @@ TEST_CASE("V2 expression: get_child rejects null args", "[capi_v2][expression]")
 // ===========================================================================
 
 TEST_CASE("V2 expression: get_function_name on a BOUND_FUNCTION", "[capi_v2][expression]") {
-	// A comparison is a BOUND_FUNCTION; its registered name is the internal
-	// "__comparison" symbol (the operator semantic lives in get_type).
+	// A comparison is a BOUND_FUNCTION; its registered name is the operator
+	// symbol of the underlying scalar function (e.g. "=" for COMPARE_EQUAL).
 	auto cmp = duckdb::BoundComparisonExpression::Create(
 	    duckdb::ExpressionType::COMPARE_EQUAL,
 	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0),
@@ -422,8 +425,8 @@ TEST_CASE("V2 expression: get_function_name on a BOUND_FUNCTION", "[capi_v2][exp
 	const char *name = nullptr;
 	REQUIRE(duckdb_v2_expression_get_function_name(AsExpr(*cmp), &name, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(name != nullptr);
-	REQUIRE(std::string(name) == "__comparison");
-	REQUIRE(std::strlen(name) == std::string("__comparison").size());
+	REQUIRE(std::string(name) == "=");
+	REQUIRE(std::strlen(name) == std::string("=").size());
 }
 
 TEST_CASE("V2 expression: get_function_name errors on non-function classes", "[capi_v2][expression]") {
@@ -434,7 +437,8 @@ TEST_CASE("V2 expression: get_function_name errors on non-function classes", "[c
 	auto con = duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10));
 	auto op = duckdb::make_uniq<duckdb::BoundOperatorExpression>(duckdb::ExpressionType::OPERATOR_IS_NULL,
 	                                                             duckdb::LogicalType::BOOLEAN);
-	op->children.push_back(duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
+	op->GetChildrenMutable().push_back(
+	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0));
 	auto conj = duckdb::make_uniq<duckdb::BoundConjunctionExpression>(
 	    duckdb::ExpressionType::CONJUNCTION_AND,
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::BOOLEAN(true)),

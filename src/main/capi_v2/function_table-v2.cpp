@@ -266,8 +266,12 @@ struct TableFunctionBuilderV2 {
 		// The V2 vector-write API sizes per vector (vector_set_size); the engine
 		// reads the chunk's cardinality. A table-function scan always has at
 		// least one output column, so derive the row count from the first
-		// vector's size. Returning cardinality 0 signals end of data.
-		output.SetCardinality(output.data[0].size());
+		// vector's size and propagate it to every output vector. Returning
+		// cardinality 0 signals end of data. SetChildCardinality (not
+		// CheckCardinality) is required here: callers typically size only the
+		// first vector and write the others via direct buffer / assign_string
+		// writes, so the remaining vectors still need their size set.
+		output.SetChildCardinality(output.data[0].size());
 	}
 
 	// Exact cardinality also pins the max; otherwise only the estimate is known.

@@ -279,7 +279,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_function_name(duckdb_v2_expression
 		}
 		// Borrowed from the bound function's name member (GetName returns a const
 		// reference into it) — valid for the expression handle's lifetime.
-		*out_name = expr.Cast<duckdb::BoundFunctionExpression>().function.GetName().c_str();
+		*out_name = expr.Cast<duckdb::BoundFunctionExpression>().Function().GetName().c_str();
 	});
 }
 
@@ -298,8 +298,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_constant_value(duckdb_v2_expressio
 			throw duckdb::InvalidInputException(
 			    "duckdb_v2_expression_get_constant_value: expression is not a BOUND_CONSTANT");
 		}
-		*out_value =
-		    reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(expr.Cast<duckdb::BoundConstantExpression>().value));
+		*out_value = reinterpret_cast<_duckdb_v2_value *>(
+		    new duckdb::Value(expr.Cast<duckdb::BoundConstantExpression>().GetValue()));
 	});
 }
 
@@ -314,7 +314,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_reference_index(duckdb_v2_expressi
 			throw duckdb::InvalidInputException(
 			    "duckdb_v2_expression_get_reference_index: expression is not a BOUND_REF");
 		}
-		*out_index = expr.Cast<duckdb::BoundReferenceExpression>().index;
+		*out_index = expr.Cast<duckdb::BoundReferenceExpression>().Index();
 	});
 }
 
@@ -332,10 +332,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_column_binding(duckdb_v2_expressio
 		}
 		auto &col = expr.Cast<duckdb::BoundColumnRefExpression>();
 		if (out_table_index) {
-			*out_table_index = col.binding.table_index.index;
+			*out_table_index = col.Binding().table_index.index;
 		}
 		if (out_column_index) {
-			*out_column_index = col.binding.column_index.GetIndex();
+			*out_column_index = col.Binding().column_index.GetIndex();
 		}
 	});
 }

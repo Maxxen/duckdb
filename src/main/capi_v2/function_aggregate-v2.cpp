@@ -118,7 +118,7 @@ struct AggregateFunctionV2 {
 			chunk.data.emplace_back(Vector::Ref(inputs[i]));
 		}
 
-		chunk.SetCardinality(count);
+		chunk.CheckCardinality(count);
 
 		chunk.Flatten(); // TODO: Dont flatten here
 

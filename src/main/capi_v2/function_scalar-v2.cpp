@@ -97,14 +97,14 @@ struct ScalarFunctionV2 {
 
 	static auto InitCallback(ExpressionState &state, const BoundFunctionExpression &expr, FunctionData *bind_data)
 	    -> unique_ptr<FunctionLocalState> {
-		const auto &info = expr.function.GetExtraFunctionInfo().Cast<RuntimeInfo>();
+		const auto &info = expr.Function().GetExtraFunctionInfo().Cast<RuntimeInfo>();
 
 		D_ASSERT(info.init_cb);
 
 		duckdb_v2_scalar_function_init_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<_duckdb_v2_context *>(&state.GetContext());
-		args.function_name = expr.function.GetName().c_str();
+		args.function_name = expr.Function().GetName().c_str();
 		args.user_data = info.user_data;
 		args.bind_data = bind_data ? bind_data->Cast<ScalarFunctionBindDataV2>().user_data : nullptr;
 
@@ -124,19 +124,19 @@ struct ScalarFunctionV2 {
 
 	static auto ExecCallback(DataChunk &input, ExpressionState &state, Vector &result) -> void {
 		auto &expr = state.expr.Cast<BoundFunctionExpression>();
-		const auto &info = expr.function.GetExtraFunctionInfo().Cast<RuntimeInfo>();
+		const auto &info = expr.Function().GetExtraFunctionInfo().Cast<RuntimeInfo>();
 
 		D_ASSERT(info.exec_cb);
 
 		duckdb_v2_scalar_function_exec_args args = {};
 		args.struct_size = sizeof(args);
-		args.function_name = expr.function.GetName().c_str();
+		args.function_name = expr.Function().GetName().c_str();
 		args.user_data = info.user_data;
 		args.input = reinterpret_cast<_duckdb_v2_data_chunk *>(&input);
 		args.result = reinterpret_cast<_duckdb_v2_vector *>(&result);
 
 		// Setup bind data (if provided)
-		if (auto bind_ptr = expr.bind_info.get()) {
+		if (auto bind_ptr = expr.BindInfo().get()) {
 			args.bind_data = bind_ptr->Cast<ScalarFunctionBindDataV2>().user_data;
 		}
 

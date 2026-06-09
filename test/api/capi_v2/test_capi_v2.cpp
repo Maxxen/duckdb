@@ -238,18 +238,6 @@ TEST_CASE("V2 db option: get populates description and aliases", "[capi_v2][db][
 	duckdb_v2_option_destroy(&opt);
 }
 
-TEST_CASE("V2 db option: set rejects LOCAL_ONLY at GLOBAL scope", "[capi_v2][db][option]") {
-	V2Fixture fx;
-	// max_execution_time is declared LOCAL_ONLY (generic option).
-	duckdb_v2_option_handle opt = nullptr;
-	duckdb_v2_option_create("max_execution_time", "5000", &opt, nullptr);
-	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_database_option_set(fx.db, opt, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err);
-	duckdb_v2_option_destroy(&opt);
-}
-
 TEST_CASE("V2 db option: get unknown name errors", "[capi_v2][db][option]") {
 	V2Fixture fx;
 	duckdb_v2_option_handle out = nullptr;
@@ -291,7 +279,8 @@ TEST_CASE("V2 conn option: set LOCAL is invisible to other connections", "[capi_
 	duckdb_v2_connection_handle other = nullptr;
 	duckdb_v2_connect(fx.db, &other, nullptr);
 
-	// max_execution_time is LOCAL_ONLY — perfect for this test.
+	// max_execution_time is LOCAL_DEFAULT, so a LOCAL-scope write stays
+	// session-local — perfect for this test.
 	duckdb_v2_option_handle opt = nullptr;
 	duckdb_v2_option_create("max_execution_time", "5000", &opt, nullptr);
 	REQUIRE(duckdb_v2_connection_option_set(fx.conn, opt, DUCKDB_V2_SETTING_SCOPE_LOCAL, nullptr) ==
@@ -344,16 +333,7 @@ TEST_CASE("V2 conn option: set GLOBAL is visible everywhere", "[capi_v2][conn][o
 
 TEST_CASE("V2 conn option: scope enforcement matches SQL", "[capi_v2][conn][option]") {
 	V2Fixture fx;
-
-	// LOCAL_ONLY × GLOBAL: rejected.
-	duckdb_v2_option_handle local_only = nullptr;
-	duckdb_v2_option_create("max_execution_time", "5000", &local_only, nullptr);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_connection_option_set(fx.conn, local_only, DUCKDB_V2_SETTING_SCOPE_GLOBAL, &err) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err);
-	duckdb_v2_option_destroy(&local_only);
 
 	// GLOBAL_ONLY × LOCAL: rejected. allow_community_extensions is GLOBAL_ONLY.
 	duckdb_v2_option_handle global_only = nullptr;
@@ -366,7 +346,7 @@ TEST_CASE("V2 conn option: scope enforcement matches SQL", "[capi_v2][conn][opti
 
 TEST_CASE("V2 conn option: AUTOMATIC scope mirrors bare SQL `SET`", "[capi_v2][conn][option]") {
 	V2Fixture fx;
-	// max_execution_time is LOCAL_ONLY → AUTOMATIC resolves to SESSION
+	// max_execution_time is LOCAL_DEFAULT → AUTOMATIC resolves to SESSION
 	// → write succeeds.
 	duckdb_v2_option_handle local = nullptr;
 	duckdb_v2_option_create("max_execution_time", "5000", &local, nullptr);
