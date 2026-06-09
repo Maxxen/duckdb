@@ -52,6 +52,8 @@ enum class AggregateHandling : uint8_t;
 
 enum class AggregateOrderDependent : uint8_t;
 
+enum class AggregateStateExportMode : uint8_t;
+
 enum class AggregateType : uint8_t;
 
 enum class AllowParserOverride : uint8_t;
@@ -182,6 +184,8 @@ enum class DeprecatedUsingKeySyntax : uint8_t;
 
 enum class DestroyBufferUpon : uint8_t;
 
+enum class DistinctCountSource : uint8_t;
+
 enum class DistinctType : uint8_t;
 
 enum class ErrorType : uint16_t;
@@ -223,6 +227,8 @@ enum class FileCompressionType : uint8_t;
 enum class FileExpandResult : uint8_t;
 
 enum class FileGlobOptions : uint8_t;
+
+enum class FileIOMode : uint8_t;
 
 enum class FileLockType : uint8_t;
 
@@ -276,6 +282,8 @@ enum class LambdaSyntaxType : uint8_t;
 
 enum class LimitNodeType : uint8_t;
 
+enum class LimitValueType : uint8_t;
+
 enum class LoadType : uint8_t;
 
 enum class LogContextScope : uint8_t;
@@ -303,10 +311,6 @@ enum class MergeActionCondition : uint8_t;
 enum class MergeActionType : uint8_t;
 
 enum class MetaPipelineType : uint8_t;
-
-enum class MetricGroup : uint8_t;
-
-enum class MetricType : uint8_t;
 
 enum class Monotonicity : uint8_t;
 
@@ -402,6 +406,8 @@ enum class RecursiveProbeSidePreference : uint8_t;
 
 enum class RelationType : uint8_t;
 
+enum class RemoteCapability : uint8_t;
+
 enum class RenderMode : uint8_t;
 
 enum class RequestType : uint8_t;
@@ -423,6 +429,8 @@ enum class SecretDisplayType : uint8_t;
 enum class SecretPersistType : uint8_t;
 
 enum class SecretSerializationType : uint8_t;
+
+enum class SegmentTreeVerifyMode : uint8_t;
 
 enum class SelectivityOptionalFilterType : uint8_t;
 
@@ -491,6 +499,8 @@ enum class TableReferenceType : uint8_t;
 enum class TaskExecutionMode : uint8_t;
 
 enum class TaskExecutionResult : uint8_t;
+
+enum class TaskSchedulerType : uint8_t;
 
 enum class TemporaryBufferSize : uint64_t;
 
@@ -578,6 +588,9 @@ const char* EnumUtil::ToChars<AggregateHandling>(AggregateHandling value);
 
 template<>
 const char* EnumUtil::ToChars<AggregateOrderDependent>(AggregateOrderDependent value);
+
+template<>
+const char* EnumUtil::ToChars<AggregateStateExportMode>(AggregateStateExportMode value);
 
 template<>
 const char* EnumUtil::ToChars<AggregateType>(AggregateType value);
@@ -775,6 +788,9 @@ template<>
 const char* EnumUtil::ToChars<DestroyBufferUpon>(DestroyBufferUpon value);
 
 template<>
+const char* EnumUtil::ToChars<DistinctCountSource>(DistinctCountSource value);
+
+template<>
 const char* EnumUtil::ToChars<DistinctType>(DistinctType value);
 
 template<>
@@ -836,6 +852,9 @@ const char* EnumUtil::ToChars<FileExpandResult>(FileExpandResult value);
 
 template<>
 const char* EnumUtil::ToChars<FileGlobOptions>(FileGlobOptions value);
+
+template<>
+const char* EnumUtil::ToChars<FileIOMode>(FileIOMode value);
 
 template<>
 const char* EnumUtil::ToChars<FileLockType>(FileLockType value);
@@ -916,6 +935,9 @@ template<>
 const char* EnumUtil::ToChars<LimitNodeType>(LimitNodeType value);
 
 template<>
+const char* EnumUtil::ToChars<LimitValueType>(LimitValueType value);
+
+template<>
 const char* EnumUtil::ToChars<LoadType>(LoadType value);
 
 template<>
@@ -956,12 +978,6 @@ const char* EnumUtil::ToChars<MergeActionType>(MergeActionType value);
 
 template<>
 const char* EnumUtil::ToChars<MetaPipelineType>(MetaPipelineType value);
-
-template<>
-const char* EnumUtil::ToChars<MetricGroup>(MetricGroup value);
-
-template<>
-const char* EnumUtil::ToChars<MetricType>(MetricType value);
 
 template<>
 const char* EnumUtil::ToChars<Monotonicity>(Monotonicity value);
@@ -1105,6 +1121,9 @@ template<>
 const char* EnumUtil::ToChars<RelationType>(RelationType value);
 
 template<>
+const char* EnumUtil::ToChars<RemoteCapability>(RemoteCapability value);
+
+template<>
 const char* EnumUtil::ToChars<RenderMode>(RenderMode value);
 
 template<>
@@ -1136,6 +1155,9 @@ const char* EnumUtil::ToChars<SecretPersistType>(SecretPersistType value);
 
 template<>
 const char* EnumUtil::ToChars<SecretSerializationType>(SecretSerializationType value);
+
+template<>
+const char* EnumUtil::ToChars<SegmentTreeVerifyMode>(SegmentTreeVerifyMode value);
 
 template<>
 const char* EnumUtil::ToChars<SelectivityOptionalFilterType>(SelectivityOptionalFilterType value);
@@ -1238,6 +1260,9 @@ const char* EnumUtil::ToChars<TaskExecutionMode>(TaskExecutionMode value);
 
 template<>
 const char* EnumUtil::ToChars<TaskExecutionResult>(TaskExecutionResult value);
+
+template<>
+const char* EnumUtil::ToChars<TaskSchedulerType>(TaskSchedulerType value);
 
 template<>
 const char* EnumUtil::ToChars<TemporaryBufferSize>(TemporaryBufferSize value);
@@ -1353,6 +1378,9 @@ AggregateHandling EnumUtil::FromString<AggregateHandling>(const char *value);
 
 template<>
 AggregateOrderDependent EnumUtil::FromString<AggregateOrderDependent>(const char *value);
+
+template<>
+AggregateStateExportMode EnumUtil::FromString<AggregateStateExportMode>(const char *value);
 
 template<>
 AggregateType EnumUtil::FromString<AggregateType>(const char *value);
@@ -1550,6 +1578,9 @@ template<>
 DestroyBufferUpon EnumUtil::FromString<DestroyBufferUpon>(const char *value);
 
 template<>
+DistinctCountSource EnumUtil::FromString<DistinctCountSource>(const char *value);
+
+template<>
 DistinctType EnumUtil::FromString<DistinctType>(const char *value);
 
 template<>
@@ -1611,6 +1642,9 @@ FileExpandResult EnumUtil::FromString<FileExpandResult>(const char *value);
 
 template<>
 FileGlobOptions EnumUtil::FromString<FileGlobOptions>(const char *value);
+
+template<>
+FileIOMode EnumUtil::FromString<FileIOMode>(const char *value);
 
 template<>
 FileLockType EnumUtil::FromString<FileLockType>(const char *value);
@@ -1691,6 +1725,9 @@ template<>
 LimitNodeType EnumUtil::FromString<LimitNodeType>(const char *value);
 
 template<>
+LimitValueType EnumUtil::FromString<LimitValueType>(const char *value);
+
+template<>
 LoadType EnumUtil::FromString<LoadType>(const char *value);
 
 template<>
@@ -1731,12 +1768,6 @@ MergeActionType EnumUtil::FromString<MergeActionType>(const char *value);
 
 template<>
 MetaPipelineType EnumUtil::FromString<MetaPipelineType>(const char *value);
-
-template<>
-MetricGroup EnumUtil::FromString<MetricGroup>(const char *value);
-
-template<>
-MetricType EnumUtil::FromString<MetricType>(const char *value);
 
 template<>
 Monotonicity EnumUtil::FromString<Monotonicity>(const char *value);
@@ -1880,6 +1911,9 @@ template<>
 RelationType EnumUtil::FromString<RelationType>(const char *value);
 
 template<>
+RemoteCapability EnumUtil::FromString<RemoteCapability>(const char *value);
+
+template<>
 RenderMode EnumUtil::FromString<RenderMode>(const char *value);
 
 template<>
@@ -1911,6 +1945,9 @@ SecretPersistType EnumUtil::FromString<SecretPersistType>(const char *value);
 
 template<>
 SecretSerializationType EnumUtil::FromString<SecretSerializationType>(const char *value);
+
+template<>
+SegmentTreeVerifyMode EnumUtil::FromString<SegmentTreeVerifyMode>(const char *value);
 
 template<>
 SelectivityOptionalFilterType EnumUtil::FromString<SelectivityOptionalFilterType>(const char *value);
@@ -2013,6 +2050,9 @@ TaskExecutionMode EnumUtil::FromString<TaskExecutionMode>(const char *value);
 
 template<>
 TaskExecutionResult EnumUtil::FromString<TaskExecutionResult>(const char *value);
+
+template<>
+TaskSchedulerType EnumUtil::FromString<TaskSchedulerType>(const char *value);
 
 template<>
 TemporaryBufferSize EnumUtil::FromString<TemporaryBufferSize>(const char *value);

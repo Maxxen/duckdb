@@ -366,3 +366,6 @@ generated_extension_loader_package_build.cpp
 # Claude Code project files
 .claude/
 **/CLAUDE.local.md
+
+# clangd tidy/format cache
+.cache

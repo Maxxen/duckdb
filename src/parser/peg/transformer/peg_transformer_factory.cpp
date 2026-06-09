@@ -73,6 +73,11 @@ vector<unique_ptr<SQLStatement>> PEGTransformerFactory::Transform(vector<Matcher
 		if (error_token_idx >= tokens.size()) {
 			error_token_idx = tokens.size() - 1;
 		}
+		// Walk back past the EOI sentinel so the error message names a real token.
+		if (error_token_idx > 0 && (tokens[error_token_idx].type == TokenType::END_OF_INPUT ||
+		                            tokens[error_token_idx].type == TokenType::END_OF_INPUT_AUTOCOMPLETE)) {
+			error_token_idx--;
+		}
 		idx_t stmt_start = error_token_idx;
 		while (stmt_start > 0 && tokens[stmt_start - 1].text != ";") {
 			stmt_start--;
@@ -96,11 +101,12 @@ vector<unique_ptr<SQLStatement>> PEGTransformerFactory::Transform(vector<Matcher
 	}
 	match_result->name = "Program";
 
-	// Program <- Statement? (';'+ Statement)* ';'*
-	// Program[0] = optional first Statement
-	// Program[1] = optional repeat of groups: (';'+ Statement)
-	// Program[2] = optional repeat of trailing ';'
+	// Program <- TopLevelStatement*
+	// TopLevelStatement <- Statement? (';'+ / EndOfInput)
+	//   child 0: Optional<Statement>
+	//   child 1: bracket-wrapper list around Choice<';'+ | EndOfInput>
 	auto &prog = match_result->Cast<ListParseResult>();
+	auto &program_opt = prog.Child<OptionalParseResult>(0);
 
 	ArenaAllocator transformer_allocator(Allocator::DefaultAllocator());
 	PEGTransformerState transformer_state(tokens);
@@ -108,38 +114,30 @@ vector<unique_ptr<SQLStatement>> PEGTransformerFactory::Transform(vector<Matcher
 	                           enum_mappings, options);
 
 	vector<unique_ptr<SQLStatement>> result;
-	optional_ptr<ParseResult> current_stmt;
-	auto &first_stmt = prog.Child<OptionalParseResult>(0);
-	if (first_stmt.HasResult()) {
-		current_stmt = first_stmt.GetResult();
+	if (!program_opt.HasResult()) {
+		return result;
 	}
-
-	auto &statement_repeat = prog.Child<OptionalParseResult>(1);
-	if (statement_repeat.HasResult()) {
-		auto &repeat = statement_repeat.GetResult().Cast<RepeatParseResult>();
-		for (auto &child : repeat.GetChildren()) {
-			auto &child_list = child.get().Cast<ListParseResult>();
-			auto &separators = child_list.Child<RepeatParseResult>(0);
-			auto &next_stmt = child_list.GetChild(1);
-			if (current_stmt) {
-				auto separator_children = separators.GetChildren();
-				auto &separator_terminator = separator_children[0].get();
-				result.push_back(
-				    ExtractAndTransformStatement(transformer, tokens, *current_stmt, separator_terminator.offset));
-			}
-			current_stmt = next_stmt;
+	auto &top_level_repeat = program_opt.GetResult().Cast<RepeatParseResult>();
+	for (auto &child : top_level_repeat.GetChildren()) {
+		auto &tls = child.get().Cast<ListParseResult>();
+		auto &stmt_opt = tls.Child<OptionalParseResult>(0);
+		if (!stmt_opt.HasResult()) {
+			// separator-only or EOI-only TopLevelStatement — no statement to yield
+			continue;
 		}
-	}
-	if (current_stmt) {
-		optional_idx trailing_terminator;
-		auto &trailing_repeat = prog.Child<OptionalParseResult>(2);
-		if (trailing_repeat.HasResult()) {
-			auto trailing_children = trailing_repeat.GetResult().Cast<RepeatParseResult>().GetChildren();
-			if (!trailing_children.empty()) {
-				trailing_terminator = trailing_children[0].get().offset;
+		// Terminator span ends at the first separator `;` if the choice picked ';'+; the
+		// EndOfInput arm leaves the offset unset so ExtractAndTransformStatement defaults to
+		// end-of-token-stream.
+		auto &term_wrapper = tls.Child<ListParseResult>(1);
+		auto &term_inner = term_wrapper.Child<ChoiceParseResult>(0).GetResult();
+		optional_idx terminator_offset;
+		if (term_inner.type != ParseResultType::END_OF_INPUT) {
+			auto semi_children = term_inner.Cast<RepeatParseResult>().GetChildren();
+			if (!semi_children.empty()) {
+				terminator_offset = semi_children[0].get().offset;
 			}
 		}
-		result.push_back(ExtractAndTransformStatement(transformer, tokens, *current_stmt, trailing_terminator));
+		result.push_back(ExtractAndTransformStatement(transformer, tokens, stmt_opt.GetResult(), terminator_offset));
 	}
 	return result;
 }
@@ -155,212 +153,22 @@ void PEGTransformerFactory::RegisterCommon() {
 	// common.gram
 	REGISTER_TRANSFORM(TransformNumberLiteral);
 	REGISTER_TRANSFORM(TransformStringLiteral);
-	REGISTER_TRANSFORM(TransformType);
-	REGISTER_TRANSFORM(TransformArrayBounds);
-	REGISTER_TRANSFORM(TransformSquareBracketsArray);
-	REGISTER_TRANSFORM(TransformTimeType);
-	REGISTER_TRANSFORM(TransformTimeZone);
-	REGISTER_TRANSFORM(TransformWithOrWithout);
-	REGISTER_TRANSFORM(TransformTimeOrTimestamp);
-	REGISTER_TRANSFORM(TransformNumericType);
-	REGISTER_TRANSFORM(TransformSimpleNumericType);
-	REGISTER_TRANSFORM(TransformDecimalNumericType);
-	REGISTER_TRANSFORM(TransformFloatType);
-	REGISTER_TRANSFORM(TransformDecimalType);
-	REGISTER_TRANSFORM(TransformTypeModifiers);
-	REGISTER_TRANSFORM(TransformSimpleType);
-	REGISTER_TRANSFORM(TransformQualifiedTypeName);
-	REGISTER_TRANSFORM(TransformCharacterType);
-	REGISTER_TRANSFORM(TransformMapType);
-	REGISTER_TRANSFORM(TransformRowType);
-	REGISTER_TRANSFORM(TransformGeometryType);
-	REGISTER_TRANSFORM(TransformVariantType);
-	REGISTER_TRANSFORM(TransformUnionType);
-	REGISTER_TRANSFORM(TransformColIdTypeList);
-	REGISTER_TRANSFORM(TransformColIdType);
-	REGISTER_TRANSFORM(TransformBitType);
-	REGISTER_TRANSFORM(TransformIntervalType);
-	REGISTER_TRANSFORM(TransformIntervalInterval);
-	REGISTER_TRANSFORM(TransformInterval);
-	REGISTER_TRANSFORM(TransformIntervalToInterval);
-	REGISTER_TRANSFORM(TransformSetofType);
-	Register("NumericModType", &TransformDecimalType);
-	Register("DecType", &TransformDecimalType);
-}
-
-void PEGTransformerFactory::RegisterCopy() {
-	// copy.gram
-	REGISTER_TRANSFORM(TransformCopyStatement);
-	REGISTER_TRANSFORM(TransformCopySelect);
-	REGISTER_TRANSFORM(TransformCopyFromDatabase);
-	REGISTER_TRANSFORM(TransformCopyDatabaseFlag);
-	REGISTER_TRANSFORM(TransformCopyTable);
-	REGISTER_TRANSFORM(TransformFromOrTo);
-	REGISTER_TRANSFORM(TransformCopyFileName);
-	REGISTER_TRANSFORM(TransformCopyOptions);
-	REGISTER_TRANSFORM(TransformSpecializedOptionList);
-	REGISTER_TRANSFORM(TransformSpecializedOption);
-	REGISTER_TRANSFORM(TransformSingleOption);
-	REGISTER_TRANSFORM(TransformEncodingOption);
-	REGISTER_TRANSFORM(TransformForceQuoteOption);
-	REGISTER_TRANSFORM(TransformQuoteAsOption);
-	REGISTER_TRANSFORM(TransformForceNullOption);
-	REGISTER_TRANSFORM(TransformPartitionByOption);
-	REGISTER_TRANSFORM(TransformNullAsOption);
-	REGISTER_TRANSFORM(TransformDelimiterAsOption);
-	REGISTER_TRANSFORM(TransformEscapeAsOption);
-	REGISTER_TRANSFORM(TransformSchemaOrData);
-	REGISTER_TRANSFORM(TransformGenericCopyOptionList);
-	REGISTER_TRANSFORM(TransformGenericCopyOption);
-	REGISTER_TRANSFORM(TransformGenericCopyOptionParenthesizedExpressionList);
-}
-
-void PEGTransformerFactory::RegisterCreateIndex() {
-	// create_index.gram
-	REGISTER_TRANSFORM(TransformCreateIndexStmt);
-	REGISTER_TRANSFORM(TransformIndexType);
-	REGISTER_TRANSFORM(TransformIndexElement);
-	REGISTER_TRANSFORM(TransformWithList);
-	REGISTER_TRANSFORM(TransformRelOptionOrOids);
-	REGISTER_TRANSFORM(TransformRelOptionList);
-	REGISTER_TRANSFORM(TransformOids);
-	REGISTER_TRANSFORM(TransformRelOptionName);
-	REGISTER_TRANSFORM(TransformRelOptionArgumentOpt);
-	REGISTER_TRANSFORM(TransformRelOption);
-	REGISTER_TRANSFORM(TransformIndexName);
+	REGISTER_TRANSFORM(TransformIntervalToIntervalAsType);
 }
 
 void PEGTransformerFactory::RegisterCreateMacro() {
 	// create_macro.gram
-	REGISTER_TRANSFORM(TransformCreateMacroStmt);
-	REGISTER_TRANSFORM(TransformMacroDefinition);
-	REGISTER_TRANSFORM(TransformTableMacroDefinition);
-	REGISTER_TRANSFORM(TransformScalarMacroDefinition);
-	REGISTER_TRANSFORM(TransformMacroParameters);
-	REGISTER_TRANSFORM(TransformMacroParameter);
-	REGISTER_TRANSFORM(TransformSimpleParameter);
-}
-
-void PEGTransformerFactory::RegisterCreateSequence() {
-	REGISTER_TRANSFORM(TransformCreateSequenceStmt);
-	REGISTER_TRANSFORM(TransformSequenceOption);
-	REGISTER_TRANSFORM(TransformSeqSetCycle);
-	REGISTER_TRANSFORM(TransformSeqSetIncrement);
-	REGISTER_TRANSFORM(TransformSeqSetMinMax);
-	REGISTER_TRANSFORM(TransformSeqMinOrMax);
-	REGISTER_TRANSFORM(TransformSeqNoMinMax);
-	REGISTER_TRANSFORM(TransformSeqStartWith);
-	REGISTER_TRANSFORM(TransformSeqOwnedBy);
 }
 
 void PEGTransformerFactory::RegisterCreateTable() {
 	// create_table.gram
-	REGISTER_TRANSFORM(TransformCreateStatement);
-	REGISTER_TRANSFORM(TransformTemporary);
-	REGISTER_TRANSFORM(TransformCreateStatementVariation);
-	REGISTER_TRANSFORM(TransformCreateTableStmt);
-	REGISTER_TRANSFORM(TransformCreateTableAs);
-	REGISTER_TRANSFORM(TransformIdentifierList);
-	REGISTER_TRANSFORM(TransformCreateColumnList);
-	REGISTER_TRANSFORM(TransformCreateTableColumnList);
-	REGISTER_TRANSFORM(TransformPartitionSortedOptions);
-	REGISTER_TRANSFORM(TransformPartitionOptSortedOptions);
-	REGISTER_TRANSFORM(TransformSortedOptPartitionOptions);
-	REGISTER_TRANSFORM(TransformPartitionOptions);
-	REGISTER_TRANSFORM(TransformSortedOptions);
-	REGISTER_TRANSFORM(TransformIdentifierOrStringLiteral);
-	REGISTER_TRANSFORM(TransformColIdOrString);
 	REGISTER_TRANSFORM(TransformColLabelOrString);
-	REGISTER_TRANSFORM(TransformColId);
-	REGISTER_TRANSFORM(TransformColumnIdList);
-	REGISTER_TRANSFORM(TransformTypeFuncName);
 	REGISTER_TRANSFORM(TransformIdentifier);
-	REGISTER_TRANSFORM(TransformDottedIdentifier);
-	REGISTER_TRANSFORM(TransformColumnDefinition);
-	REGISTER_TRANSFORM(TransformColumnConstraint);
-	REGISTER_TRANSFORM(TransformTopLevelConstraint);
-	REGISTER_TRANSFORM(TransformTopLevelConstraintList);
-	REGISTER_TRANSFORM(TransformTopPrimaryKeyConstraint);
-	REGISTER_TRANSFORM(TransformTopUniqueConstraint);
-	REGISTER_TRANSFORM(TransformCheckConstraint);
-	REGISTER_TRANSFORM(TransformTopForeignKeyConstraint);
-	REGISTER_TRANSFORM(TransformForeignKeyConstraint);
-	REGISTER_TRANSFORM(TransformDefaultValue);
-	REGISTER_TRANSFORM(TransformGeneratedColumn);
-	REGISTER_TRANSFORM(TransformColumnCompression);
-	REGISTER_TRANSFORM(TransformPrimaryKeyConstraint);
-	REGISTER_TRANSFORM(TransformUniqueConstraint);
-	REGISTER_TRANSFORM(TransformNotNullConstraint);
-	REGISTER_TRANSFORM(TransformKeyActions);
-	REGISTER_TRANSFORM(TransformKeyAction);
-	REGISTER_TRANSFORM(TransformNoKeyAction);
-	REGISTER_TRANSFORM(TransformRestrictKeyAction);
-	REGISTER_TRANSFORM(TransformCascadeKeyAction);
-	REGISTER_TRANSFORM(TransformSetNullKeyAction);
-	REGISTER_TRANSFORM(TransformSetDefaultKeyAction);
 	REGISTER_TRANSFORM(TransformCubeOrRollup);
-
-	REGISTER_TRANSFORM(TransformUpdateAction);
-	REGISTER_TRANSFORM(TransformDeleteAction);
-	REGISTER_TRANSFORM(TransformColumnCollation);
-	REGISTER_TRANSFORM(TransformWithData);
-	REGISTER_TRANSFORM(TransformCommitAction);
-	REGISTER_TRANSFORM(TransformPreserveOrDelete);
-	REGISTER_TRANSFORM(TransformGeneratedColumnType);
-	REGISTER_TRANSFORM(TransformIfNotExists);
-	REGISTER_TRANSFORM(TransformOrReplace);
-}
-
-void PEGTransformerFactory::RegisterCreateType() {
-	// create_type.gram
-	REGISTER_TRANSFORM(TransformCreateTypeStmt);
-	REGISTER_TRANSFORM(TransformCreateType);
-	REGISTER_TRANSFORM(TransformEnumSelectType);
-	REGISTER_TRANSFORM(TransformEnumStringLiteralList);
-}
-
-void PEGTransformerFactory::RegisterDescribe() {
-	// describe.gram
-	REGISTER_TRANSFORM(TransformDescribeStatement);
-	REGISTER_TRANSFORM(TransformShowSelect);
-	REGISTER_TRANSFORM(TransformShowTables);
-	REGISTER_TRANSFORM(TransformShowAllTables);
-	REGISTER_TRANSFORM(TransformShowQualifiedName);
-	REGISTER_TRANSFORM(TransformShowOrDescribeOrSummarize);
-	REGISTER_TRANSFORM(TransformShowOrDescribe);
-	REGISTER_TRANSFORM(TransformSummarize);
-}
-
-void PEGTransformerFactory::RegisterDrop() {
-	// drop.gram
-	REGISTER_TRANSFORM(TransformDropStatement);
-	REGISTER_TRANSFORM(TransformDropEntries);
-	REGISTER_TRANSFORM(TransformDropTable);
-	REGISTER_TRANSFORM(TransformTableOrView);
-	REGISTER_TRANSFORM(TransformDropTableFunction);
-	REGISTER_TRANSFORM(TransformDropFunction);
-	REGISTER_TRANSFORM(TransformDropSchema);
-	REGISTER_TRANSFORM(TransformQualifiedSchemaName);
-	REGISTER_TRANSFORM(TransformCatalogReservedSchema);
-	REGISTER_TRANSFORM(TransformDropIndex);
-	REGISTER_TRANSFORM(TransformQualifiedIndexName);
-	REGISTER_TRANSFORM(TransformSchemaReservedIndex);
-	REGISTER_TRANSFORM(TransformCatalogReservedSchemaIndex);
-	REGISTER_TRANSFORM(TransformDropSequence);
-	REGISTER_TRANSFORM(TransformCollationName);
-	REGISTER_TRANSFORM(TransformDropCollation);
-	REGISTER_TRANSFORM(TransformDropType);
-	REGISTER_TRANSFORM(TransformDropBehavior);
-	REGISTER_TRANSFORM(TransformIfExists);
-	REGISTER_TRANSFORM(TransformDropSecret);
-	REGISTER_TRANSFORM(TransformDropSecretStorage);
-	REGISTER_TRANSFORM(TransformDropTrigger);
 }
 
 void PEGTransformerFactory::RegisterExpression() {
 	// expression.gram
-	REGISTER_TRANSFORM(TransformExpressionStatement);
-	REGISTER_TRANSFORM(TransformExpressionAlias);
 	REGISTER_TRANSFORM(TransformBaseExpression);
 	REGISTER_TRANSFORM(TransformExpression);
 	Register("ColumnDefaultExpr", &TransformExpression);
@@ -415,7 +223,6 @@ void PEGTransformerFactory::RegisterExpression() {
 	REGISTER_TRANSFORM(TransformColumnReference);
 	REGISTER_TRANSFORM(TransformCatalogReservedSchemaTableColumnName);
 	REGISTER_TRANSFORM(TransformSchemaReservedTableColumnName);
-	REGISTER_TRANSFORM(TransformReservedTableQualification);
 
 	REGISTER_TRANSFORM(TransformParameter);
 	REGISTER_TRANSFORM(TransformAnonymousParameter);
@@ -456,7 +263,7 @@ void PEGTransformerFactory::RegisterExpression() {
 	REGISTER_TRANSFORM(TransformStepSliceBound);
 
 	REGISTER_TRANSFORM(TransformTableReservedColumnName);
-	REGISTER_TRANSFORM(TransformTableQualification);
+	REGISTER_TRANSFORM(TransformColIdDot);
 	REGISTER_TRANSFORM(TransformStarExpression);
 	REGISTER_TRANSFORM(TransformExcludeList);
 	REGISTER_TRANSFORM(TransformExcludeNameList);
@@ -506,6 +313,9 @@ void PEGTransformerFactory::RegisterExpression() {
 	REGISTER_TRANSFORM(TransformSubstringArguments);
 	REGISTER_TRANSFORM(TransformSubstringExpressionList);
 	REGISTER_TRANSFORM(TransformSubstringParameters);
+	REGISTER_TRANSFORM(TransformSubstringFromFor);
+	REGISTER_TRANSFORM(TransformSubstringFromOptionalFor);
+	REGISTER_TRANSFORM(TransformSubstringFor);
 	REGISTER_TRANSFORM(TransformTrimExpression);
 	REGISTER_TRANSFORM(TransformTrimDirection);
 	REGISTER_TRANSFORM(TransformTrimSource);
@@ -542,71 +352,17 @@ void PEGTransformerFactory::RegisterExpression() {
 	REGISTER_TRANSFORM(TransformIgnoreOrRespectNulls);
 }
 
-void PEGTransformerFactory::RegisterInsert() {
-	// insert.gram
-	REGISTER_TRANSFORM(TransformInsertStatement);
-	REGISTER_TRANSFORM(TransformOrAction);
-	REGISTER_TRANSFORM(TransformInsertTarget);
-	REGISTER_TRANSFORM(TransformInsertAlias);
-	REGISTER_TRANSFORM(TransformOnConflictClause);
-	REGISTER_TRANSFORM(TransformOnConflictTarget);
-	REGISTER_TRANSFORM(TransformOnConflictExpressionTarget);
-	REGISTER_TRANSFORM(TransformOnConflictIndexTarget);
-	REGISTER_TRANSFORM(TransformOnConflictAction);
-	REGISTER_TRANSFORM(TransformOnConflictUpdate);
-	REGISTER_TRANSFORM(TransformOnConflictNothing);
-	REGISTER_TRANSFORM(TransformInsertValues);
-	REGISTER_TRANSFORM(TransformByNameOrPosition);
-	REGISTER_TRANSFORM(TransformInsertColumnList);
-	REGISTER_TRANSFORM(TransformColumnList);
-	REGISTER_TRANSFORM(TransformReturningClause);
-}
-
 void PEGTransformerFactory::RegisterConnect() {
 	// connect.gram — both rules are hand-written; the generator skips them because of the
 	// optional SessionTarget sub-rule.
 	REGISTER_TRANSFORM(TransformConnectStatement);
 }
 
-void PEGTransformerFactory::RegisterMergeInto() {
-	// merge_into.gram
-	REGISTER_TRANSFORM(TransformMergeIntoStatement);
-	REGISTER_TRANSFORM(TransformMergeIntoUsingClause);
-	REGISTER_TRANSFORM(TransformMergeMatch);
-	REGISTER_TRANSFORM(TransformMatchedClause);
-	REGISTER_TRANSFORM(TransformMatchedClauseAction);
-	REGISTER_TRANSFORM(TransformUpdateMatchClause);
-	REGISTER_TRANSFORM(TransformUpdateMatchInfo);
-	REGISTER_TRANSFORM(TransformDeleteMatchClause);
-	REGISTER_TRANSFORM(TransformInsertMatchClause);
-	REGISTER_TRANSFORM(TransformDoNothingMatchClause);
-	REGISTER_TRANSFORM(TransformErrorMatchClause);
-	REGISTER_TRANSFORM(TransformUpdateMatchSetClause);
-	REGISTER_TRANSFORM(TransformAndExpression);
-	REGISTER_TRANSFORM(TransformNotMatchedClause);
-	REGISTER_TRANSFORM(TransformBySourceOrTarget);
-	REGISTER_TRANSFORM(TransformInsertMatchInfo);
-	REGISTER_TRANSFORM(TransformInsertDefaultValues);
-	REGISTER_TRANSFORM(TransformInsertByNameOrPosition);
-	REGISTER_TRANSFORM(TransformInsertValuesList);
-}
-
 void PEGTransformerFactory::RegisterPivot() {
-	// pivot.gram
+	// PivotStatement and UnpivotStatement measure parameter usage while transforming
+	// the source table, so their top-level wrappers remain manual.
 	REGISTER_TRANSFORM(TransformPivotStatement);
-	REGISTER_TRANSFORM(TransformPivotUsing);
-	REGISTER_TRANSFORM(TransformPivotOn);
-	REGISTER_TRANSFORM(TransformPivotColumnList);
-	REGISTER_TRANSFORM(TransformPivotColumnEntry);
-	REGISTER_TRANSFORM(TransformPivotColumnSubquery);
-	REGISTER_TRANSFORM(TransformPivotColumnEntryInternal);
 	REGISTER_TRANSFORM(TransformUnpivotStatement);
-	REGISTER_TRANSFORM(TransformIntoNameValues);
-
-	REGISTER_TRANSFORM(TransformUnpivotHeader);
-	REGISTER_TRANSFORM(TransformUnpivotHeaderSingle);
-	REGISTER_TRANSFORM(TransformUnpivotHeaderList);
-	REGISTER_TRANSFORM(TransformIncludeOrExcludeNulls);
 }
 
 void PEGTransformerFactory::RegisterSelect() {
@@ -638,12 +394,6 @@ void PEGTransformerFactory::RegisterSelect() {
 	REGISTER_TRANSFORM(TransformBaseTableName);
 	REGISTER_TRANSFORM(TransformSchemaReservedTable);
 	REGISTER_TRANSFORM(TransformCatalogReservedSchemaTable);
-	REGISTER_TRANSFORM(TransformSchemaQualification);
-	REGISTER_TRANSFORM(TransformCatalogQualification);
-	REGISTER_TRANSFORM(TransformQualifiedName);
-	REGISTER_TRANSFORM(TransformCatalogReservedSchemaIdentifier);
-	REGISTER_TRANSFORM(TransformSchemaReservedIdentifierOrStringLiteral);
-	REGISTER_TRANSFORM(TransformReservedIdentifierOrStringLiteral);
 	REGISTER_TRANSFORM(TransformWhereClause);
 	REGISTER_TRANSFORM(TransformTableFunctionArguments);
 
@@ -750,21 +500,6 @@ void PEGTransformerFactory::RegisterSelect() {
 	REGISTER_TRANSFORM(TransformRepeatableSample);
 }
 
-void PEGTransformerFactory::RegisterSet() {
-	// set.gram
-	REGISTER_TRANSFORM(TransformResetStatement);
-	REGISTER_TRANSFORM(TransformSetAssignment);
-	REGISTER_TRANSFORM(TransformSetSetting);
-	REGISTER_TRANSFORM(TransformSetStatement);
-	REGISTER_TRANSFORM(TransformSetTimeZone);
-	REGISTER_TRANSFORM(TransformSetVariable);
-	REGISTER_TRANSFORM(TransformStandardAssignment);
-	REGISTER_TRANSFORM(TransformVariableList);
-	REGISTER_TRANSFORM(TransformZoneValue);
-	REGISTER_TRANSFORM(TransformZoneIntervalWithInterval);
-	REGISTER_TRANSFORM(TransformZoneIntervalWithPrecision);
-}
-
 void PEGTransformerFactory::RegisterKeywordsAndIdentifiers() {
 	Register("PragmaName", &TransformIdentifierOrKeyword);
 	Register("TypeName", &TransformIdentifierOrKeyword);
@@ -778,64 +513,14 @@ void PEGTransformerFactory::RegisterKeywordsAndIdentifiers() {
 	Register("TypeNameKeyword", &TransformIdentifierOrKeyword);
 	Register("SettingName", &TransformIdentifierOrKeyword);
 	Register("ExplainOptionName", &TransformIdentifierOrKeyword);
-	Register("ReservedSchemaQualification", &TransformSchemaQualification);
 }
 
 void PEGTransformerFactory::RegisterEnums() {
-	RegisterEnum<SetScope>("LocalScope", SetScope::LOCAL);
-	RegisterEnum<SetScope>("GlobalScope", SetScope::GLOBAL);
-	RegisterEnum<SetScope>("SessionScope", SetScope::SESSION);
-	RegisterEnum<SetScope>("VariableScope", SetScope::VARIABLE);
-
-	RegisterEnum<CopyDatabaseType>("CopySchema", CopyDatabaseType::COPY_SCHEMA);
-	RegisterEnum<CopyDatabaseType>("CopyData", CopyDatabaseType::COPY_DATA);
-
-	RegisterEnum<string>("IntType", LogicalTypeIdToString(LogicalTypeId::INTEGER));
-	RegisterEnum<string>("IntegerType", LogicalTypeIdToString(LogicalTypeId::INTEGER));
-	RegisterEnum<string>("SmallintType", LogicalTypeIdToString(LogicalTypeId::SMALLINT));
-	RegisterEnum<string>("BigintType", LogicalTypeIdToString(LogicalTypeId::BIGINT));
-	RegisterEnum<string>("RealType", LogicalTypeIdToString(LogicalTypeId::FLOAT));
-	RegisterEnum<string>("DoubleType", LogicalTypeIdToString(LogicalTypeId::DOUBLE));
-	RegisterEnum<string>("BooleanType", LogicalTypeIdToString(LogicalTypeId::BOOLEAN));
-
-	RegisterEnum<DatePartSpecifier>("YearKeyword", DatePartSpecifier::YEAR);
-	RegisterEnum<DatePartSpecifier>("MonthKeyword", DatePartSpecifier::MONTH);
-	RegisterEnum<DatePartSpecifier>("DayKeyword", DatePartSpecifier::DAY);
-	RegisterEnum<DatePartSpecifier>("HourKeyword", DatePartSpecifier::HOUR);
-	RegisterEnum<DatePartSpecifier>("MinuteKeyword", DatePartSpecifier::MINUTE);
-	RegisterEnum<DatePartSpecifier>("SecondKeyword", DatePartSpecifier::SECOND);
-	RegisterEnum<DatePartSpecifier>("MillisecondKeyword", DatePartSpecifier::MILLISECONDS);
-	RegisterEnum<DatePartSpecifier>("MicrosecondKeyword", DatePartSpecifier::MICROSECONDS);
-	RegisterEnum<DatePartSpecifier>("WeekKeyword", DatePartSpecifier::WEEK);
-	RegisterEnum<DatePartSpecifier>("QuarterKeyword", DatePartSpecifier::QUARTER);
-	RegisterEnum<DatePartSpecifier>("DecadeKeyword", DatePartSpecifier::DECADE);
-	RegisterEnum<DatePartSpecifier>("CenturyKeyword", DatePartSpecifier::CENTURY);
-	RegisterEnum<DatePartSpecifier>("MillenniumKeyword", DatePartSpecifier::MILLENNIUM);
-
-	RegisterEnum<LogicalTypeId>("TimeTypeId", LogicalTypeId::TIME);
-	RegisterEnum<LogicalTypeId>("TimestampTypeId", LogicalTypeId::TIMESTAMP);
-	RegisterEnum<bool>("WithRule", true);
-	RegisterEnum<bool>("WithoutRule", false);
-
-	RegisterEnum<SecretPersistType>("TempPersistent", SecretPersistType::TEMPORARY);
-	RegisterEnum<SecretPersistType>("TemporaryPersistent", SecretPersistType::TEMPORARY);
-	RegisterEnum<SecretPersistType>("Persistent", SecretPersistType::PERSISTENT);
-
 	RegisterEnum<CatalogType>("MaterializedViewEntry", CatalogType::VIEW_ENTRY);
-
-	RegisterEnum<string>("MinValue", "minvalue");
-	RegisterEnum<string>("MaxValue", "maxvalue");
 
 	RegisterEnum<string>("MinusPrefixOperator", "-");
 	RegisterEnum<string>("PlusPrefixOperator", "+");
 	RegisterEnum<string>("TildePrefixOperator", "~");
-
-	RegisterEnum<ShowType>("SummarizeRule", ShowType::SUMMARY);
-	RegisterEnum<ShowType>("ShowRule", ShowType::DESCRIBE);
-	RegisterEnum<ShowType>("DescribeRule", ShowType::DESCRIBE);
-
-	RegisterEnum<InsertColumnOrder>("InsertByName", InsertColumnOrder::INSERT_BY_NAME);
-	RegisterEnum<InsertColumnOrder>("InsertByPosition", InsertColumnOrder::INSERT_BY_POSITION);
 
 	RegisterEnum<OrderType>("DescendingOrder", OrderType::DESCENDING);
 	RegisterEnum<OrderType>("AscendingOrder", OrderType::ASCENDING);
@@ -871,19 +556,10 @@ void PEGTransformerFactory::RegisterEnums() {
 	RegisterEnum<string>("NotLikeOp", "!~~");
 	RegisterEnum<string>("NotSimilarToOp", "!~");
 
-	RegisterEnum<MergeActionCondition>("BySource", MergeActionCondition::WHEN_NOT_MATCHED_BY_SOURCE);
-	RegisterEnum<MergeActionCondition>("ByTarget", MergeActionCondition::WHEN_NOT_MATCHED_BY_TARGET);
-
 	RegisterEnum<WindowExcludeMode>("ExcludeCurrentRow", WindowExcludeMode::CURRENT_ROW);
 	RegisterEnum<WindowExcludeMode>("ExcludeGroup", WindowExcludeMode::GROUP);
 	RegisterEnum<WindowExcludeMode>("ExcludeTies", WindowExcludeMode::TIES);
 	RegisterEnum<WindowExcludeMode>("ExcludeNoOthers", WindowExcludeMode::NO_OTHER);
-
-	RegisterEnum<GenericCopyOption>("BinaryOption", GenericCopyOption("format", Value("binary")));
-	RegisterEnum<GenericCopyOption>("FreezeOption", GenericCopyOption("freeze", Value()));
-	RegisterEnum<GenericCopyOption>("OidsOption", GenericCopyOption("oids", Value()));
-	RegisterEnum<GenericCopyOption>("CsvOption", GenericCopyOption("format", Value("csv")));
-	RegisterEnum<GenericCopyOption>("HeaderOption", GenericCopyOption("header", Value(true)));
 
 	RegisterEnum<bool>("SamplePercentage", true);
 	RegisterEnum<bool>("SampleRows", false);
@@ -903,21 +579,12 @@ PEGTransformerFactory::PEGTransformerFactory() {
 	REGISTER_TRANSFORM(TransformStatement);
 	RegisterComment();
 	RegisterCommon();
-	RegisterCopy();
-	RegisterCreateIndex();
 	RegisterCreateMacro();
-	RegisterCreateSequence();
 	RegisterCreateTable();
-	RegisterCreateType();
-	RegisterDescribe();
-	RegisterDrop();
 	RegisterExpression();
-	RegisterInsert();
 	RegisterConnect();
-	RegisterMergeInto();
 	RegisterPivot();
 	RegisterSelect();
-	RegisterSet();
 	RegisterKeywordsAndIdentifiers();
 	RegisterEnums();
 }
@@ -944,12 +611,12 @@ ParseResult &PEGTransformerFactory::ExtractResultFromParens(ParseResult &parse_r
 	return list_pr.GetChild(1);
 }
 
-bool PEGTransformerFactory::ExpressionIsEmptyStar(ParsedExpression &expr) {
+bool PEGTransformerFactory::ExpressionIsEmptyStar(const ParsedExpression &expr) {
 	if (expr.GetExpressionClass() != ExpressionClass::STAR) {
 		return false;
 	}
 	auto &star = expr.Cast<StarExpression>();
-	if (!star.columns && star.exclude_list.empty() && star.replace_list.empty()) {
+	if (!star.IsColumns() && star.ExcludeList().empty() && star.ReplaceList().empty()) {
 		return true;
 	}
 	return false;
@@ -1006,28 +673,28 @@ bool PEGTransformerFactory::ConstructConstantFromExpression(const ParsedExpressi
 	switch (expr.GetExpressionType()) {
 	case ExpressionType::FUNCTION: {
 		auto &function = expr.Cast<FunctionExpression>();
-		if (function.function_name == "struct_pack") {
+		if (function.FunctionName() == "struct_pack") {
 			unordered_set<string> unique_names;
 			child_list_t<Value> values;
-			values.reserve(function.children.size());
-			for (const auto &child : function.children) {
-				if (!unique_names.insert(child->GetAlias()).second) {
-					throw BinderException("Duplicate struct entry name \"%s\"", child->GetAlias());
+			values.reserve(function.GetArguments().size());
+			for (const auto &child : function.GetArguments()) {
+				if (!unique_names.insert(child.GetExpression().GetAlias()).second) {
+					throw BinderException("Duplicate struct entry name \"%s\"", child.GetExpression().GetAlias());
 				}
 				Value child_value;
-				if (!ConstructConstantFromExpression(*child, child_value)) {
+				if (!ConstructConstantFromExpression(child.GetExpression(), child_value)) {
 					return false;
 				}
-				values.emplace_back(child->GetAlias(), std::move(child_value));
+				values.emplace_back(child.GetExpression().GetAlias(), std::move(child_value));
 			}
 			value = Value::STRUCT(std::move(values));
 			return true;
-		} else if (function.function_name == "list_value") {
+		} else if (function.FunctionName() == "list_value") {
 			vector<Value> values;
-			values.reserve(function.children.size());
-			for (const auto &child : function.children) {
+			values.reserve(function.GetArguments().size());
+			for (const auto &child : function.GetArguments()) {
 				Value child_value;
-				if (!ConstructConstantFromExpression(*child, child_value)) {
+				if (!ConstructConstantFromExpression(child.GetExpression(), child_value)) {
 					return false;
 				}
 				values.emplace_back(std::move(child_value));
@@ -1036,20 +703,20 @@ bool PEGTransformerFactory::ConstructConstantFromExpression(const ParsedExpressi
 			// figure out child type
 			LogicalType child_type(LogicalTypeId::SQLNULL);
 			for (auto &child_value : values) {
-				child_type = LogicalType::ForceMaxLogicalType(child_type, child_value.type());
+				child_type = LogicalType::DefaultForceMaxLogicalType(child_type, child_value.type());
 			}
 
 			// finally create the list
 			value = Value::LIST(child_type, values);
 			return true;
-		} else if (function.function_name == "map") {
+		} else if (function.FunctionName() == "map") {
 			Value keys;
-			if (!ConstructConstantFromExpression(*function.children[0], keys)) {
+			if (!ConstructConstantFromExpression(function.GetArguments()[0].GetExpression(), keys)) {
 				return false;
 			}
 
 			Value values;
-			if (!ConstructConstantFromExpression(*function.children[1], values)) {
+			if (!ConstructConstantFromExpression(function.GetArguments()[1].GetExpression(), values)) {
 				return false;
 			}
 
@@ -1071,14 +738,14 @@ bool PEGTransformerFactory::ConstructConstantFromExpression(const ParsedExpressi
 	case ExpressionType::OPERATOR_CAST: {
 		auto &cast = expr.Cast<CastExpression>();
 		Value dummy_value;
-		if (!ConstructConstantFromExpression(*cast.child, dummy_value)) {
+		if (!ConstructConstantFromExpression(cast.Child(), dummy_value)) {
 			return false;
 		}
 
 		string error_message;
-		if (!dummy_value.DefaultTryCastAs(cast.cast_type, value, &error_message)) {
+		if (!dummy_value.DefaultTryCastAs(cast.TargetType(), value, &error_message)) {
 			throw ConversionException("Unable to cast %s to %s", dummy_value.ToString(),
-			                          EnumUtil::ToString(cast.cast_type.id()));
+			                          EnumUtil::ToString(cast.TargetType().id()));
 		}
 		return true;
 	}
