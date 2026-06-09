@@ -13,6 +13,7 @@
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/storage/table/persistent_table_data.hpp"
+#include "duckdb/storage/table/deferred_table_data.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/catalog/catalog_entry/table_column_type.hpp"
 #include "duckdb/catalog/catalog_entry/column_dependency_manager.hpp"
@@ -40,6 +41,9 @@ struct BoundCreateTableInfo {
 	LogicalDependencyList dependencies;
 	//! The existing table data on disk (if any)
 	unique_ptr<PersistentTableData> data;
+	//! Deferred table data: set instead of `data` when the table data read was deferred until
+	//! the table is first materialized (see DEFER_TABLE_DATA_LOAD).
+	unique_ptr<DeferredTableData> deferred;
 	//! CREATE TABLE from QUERY
 	unique_ptr<LogicalOperator> query;
 	//! Indexes created by this table

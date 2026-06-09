@@ -149,7 +149,9 @@ void SingleFileTableDataWriter::FinalizeTable(const TableStatistics &global_stat
 			vector<MetaBlockPointer> read_pointers;
 			MetadataReader reader(metadata_manager, pointer, read_pointers);
 			auto bound_info = Binder::BindCreateTableCheckpoint(table.GetInfo(), table.schema);
-			TableDataReader data_reader(reader, *bound_info, pointer);
+			auto &columns = bound_info->Base().columns;
+			bound_info->data = make_uniq<PersistentTableData>(columns.LogicalColumnCount());
+			TableDataReader data_reader(reader, columns, *bound_info->data, pointer);
 			data_reader.ReadTableData();
 			for (idx_t row_group = 0; row_group < bound_info->data->row_group_count; ++row_group) {
 				BinaryDeserializer deserializer(reader);

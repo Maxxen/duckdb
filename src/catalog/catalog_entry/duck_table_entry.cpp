@@ -28,14 +28,15 @@
 #include "duckdb/storage/table_storage_info.hpp"
 #include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/data_table.hpp"
+#include "duckdb/storage/checkpoint/table_data_reader.hpp"
+#include "duckdb/storage/metadata/metadata_reader.hpp"
 
 namespace duckdb {
 
-IndexStorageInfo GetIndexInfo(const IndexConstraintType type, const bool v1_0_0_storage, unique_ptr<CreateInfo> &info,
+IndexStorageInfo GetIndexInfo(const IndexConstraintType type, const bool v1_0_0_storage, const string &table_name,
                               const idx_t id) {
-	auto &table_info = info->Cast<CreateTableInfo>();
 	auto constraint_name = EnumUtil::ToString(type) + "_";
-	auto name = constraint_name + table_info.table + "_" + to_string(id);
+	auto name = constraint_name + table_name + "_" + to_string(id);
 	IndexStorageInfo index_info(name);
 	if (!v1_0_0_storage) {
 		index_info.options.emplace("v1_0_0_storage", v1_0_0_storage);
@@ -118,6 +119,18 @@ DuckTableEntry::DuckTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, Bou
 		return;
 	}
 
+	if (info.deferred) {
+		// The table data read was deferred: stash the descriptor and leave `storage` null.
+		// The physical storage is constructed lazily in EnsureMaterialized once a context is available.
+		deferred_data = std::move(info.deferred);
+		return;
+	}
+
+	CreatePhysicalStorage(std::move(info.indexes), std::move(info.data));
+}
+
+void DuckTableEntry::CreatePhysicalStorage(vector<IndexStorageInfo> index_storage_infos,
+                                           unique_ptr<PersistentTableData> data) {
 	// create the physical storage
 	vector<ColumnDefinition> column_defs;
 	for (auto &col_def : columns.Physical()) {
@@ -125,8 +138,8 @@ DuckTableEntry::DuckTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, Bou
 
 		column_defs.push_back(col_def.Copy());
 	}
-	storage = make_shared_ptr<DataTable>(catalog.GetAttached(), StorageManager::Get(catalog).GetTableIOManager(&info),
-	                                     schema.name, name, std::move(column_defs), std::move(info.data));
+	storage = make_shared_ptr<DataTable>(catalog.GetAttached(), StorageManager::Get(catalog).GetTableIOManager(nullptr),
+	                                     schema.name, name, std::move(column_defs), std::move(data));
 
 	// Create the unique indexes for the UNIQUE, PRIMARY KEY, and FOREIGN KEY constraints.
 	idx_t indexes_idx = 0;
@@ -141,16 +154,16 @@ DuckTableEntry::DuckTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, Bou
 			}
 
 			auto column_indexes = unique.GetLogicalIndexes(columns);
-			if (info.indexes.empty()) {
-				auto index_info = GetIndexInfo(constraint_type, false, info.base, i);
+			if (index_storage_infos.empty()) {
+				auto index_info = GetIndexInfo(constraint_type, false, name, i);
 				storage->AddIndex(columns, column_indexes, constraint_type, std::move(index_info));
 				continue;
 			}
 
 			// We read the index from an old storage version applying a dummy name.
-			auto index_storage_info = std::move(info.indexes[indexes_idx++]);
+			auto index_storage_info = std::move(index_storage_infos[indexes_idx++]);
 			if (index_storage_info.name.empty()) {
-				auto name_info = GetIndexInfo(constraint_type, true, info.base, i);
+				auto name_info = GetIndexInfo(constraint_type, true, name, i);
 				index_storage_info.name = name_info.name;
 			}
 
@@ -169,17 +182,17 @@ DuckTableEntry::DuckTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, Bou
 					column_indexes.push_back(col.Logical());
 				}
 
-				if (info.indexes.empty()) {
+				if (index_storage_infos.empty()) {
 					auto constraint_type = IndexConstraintType::FOREIGN;
-					auto index_info = GetIndexInfo(constraint_type, false, info.base, i);
+					auto index_info = GetIndexInfo(constraint_type, false, name, i);
 					storage->AddIndex(columns, column_indexes, constraint_type, std::move(index_info));
 					continue;
 				}
 
 				// We read the index from an old storage version applying a dummy name.
-				auto index_storage_info = std::move(info.indexes[indexes_idx++]);
+				auto index_storage_info = std::move(index_storage_infos[indexes_idx++]);
 				if (index_storage_info.name.empty()) {
-					auto name_info = GetIndexInfo(IndexConstraintType::FOREIGN, true, info.base, i);
+					auto name_info = GetIndexInfo(IndexConstraintType::FOREIGN, true, name, i);
 					index_storage_info.name = name_info.name;
 				}
 
@@ -191,19 +204,57 @@ DuckTableEntry::DuckTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, Bou
 	// Move any remaining unused IndexStorageInfos to storage.
 	// These are non-constraint indexes that are still unbound at this point.
 	vector<IndexStorageInfo> remaining_indexes;
-	while (indexes_idx < info.indexes.size()) {
-		remaining_indexes.push_back(std::move(info.indexes[indexes_idx++]));
+	while (indexes_idx < index_storage_infos.size()) {
+		remaining_indexes.push_back(std::move(index_storage_infos[indexes_idx++]));
 	}
 	if (!remaining_indexes.empty()) {
 		storage->SetIndexStorageInfo(std::move(remaining_indexes));
 	}
 }
 
+bool DuckTableEntry::IsMaterialized() const {
+	return storage != nullptr;
+}
+
+void DuckTableEntry::EnsureMaterialized(ClientContext &context) {
+	// The context will be needed to resolve UNBOUND column types once that is wired up; for now the
+	// materialization itself does not require it.
+	Materialize();
+}
+
+void DuckTableEntry::Materialize() {
+	if (storage) {
+		// already materialized - fast path without locking
+		return;
+	}
+	lock_guard<mutex> lock(materialize_lock);
+	if (storage) {
+		// another thread materialized while we were waiting for the lock
+		return;
+	}
+	D_ASSERT(deferred_data);
+
+	// read the actual table data (statistics + row group metadata) now that the column types are bound
+	auto data = make_uniq<PersistentTableData>(columns.LogicalColumnCount());
+	vector<MetaBlockPointer> read_pointers;
+	MetadataReader reader(*deferred_data->manager, deferred_data->table_pointer, read_pointers);
+	TableDataReader data_reader(reader, columns, *data, deferred_data->table_pointer);
+	data_reader.ReadTableData();
+	data->total_rows = deferred_data->total_rows;
+	data->next_row_id = deferred_data->next_row_id;
+	data->read_metadata_pointers = read_pointers;
+
+	CreatePhysicalStorage(std::move(deferred_data->indexes), std::move(data));
+	deferred_data.reset();
+}
+
 unique_ptr<BaseStatistics> DuckTableEntry::GetStatistics(ClientContext &context, const StorageIndex &column_id) {
+	EnsureMaterialized(context);
 	return storage->GetStatistics(context, column_id);
 }
 
 unique_ptr<BaseStatistics> DuckTableEntry::GetStatistics(ClientContext &context, column_t column_id) {
+	EnsureMaterialized(context);
 	if (IsVirtualColumn(column_id)) {
 		// no stats for virtual columns (yet?)
 		return nullptr;
@@ -217,7 +268,7 @@ unique_ptr<BaseStatistics> DuckTableEntry::GetStatistics(ClientContext &context,
 }
 
 unique_ptr<BlockingSample> DuckTableEntry::GetSample() {
-	return storage->GetSample();
+	return GetStorage().GetSample();
 }
 
 unique_ptr<CatalogEntry> DuckTableEntry::AlterEntry(CatalogTransaction transaction, AlterInfo &info) {
@@ -239,11 +290,17 @@ unique_ptr<CatalogEntry> DuckTableEntry::AlterEntry(CatalogTransaction transacti
 	}
 
 	// We add foreign key constraints without a client context during checkpoint loading.
+	// AddForeignKeyConstraint inherits `storage` into the new entry, so materialize the deferred table
+	// data first; otherwise the new entry would be built with empty storage and lose its index data.
+	Materialize();
 	return AddForeignKeyConstraint(foreign_key_constraint_info);
 }
 
 unique_ptr<CatalogEntry> DuckTableEntry::AlterEntry(ClientContext &context, AlterInfo &info) {
 	D_ASSERT(!internal);
+
+	// Altering the table needs the physical storage, so materialize it first if it was deferred.
+	EnsureMaterialized(context);
 
 	// Column comments have a special alter type
 	if (info.type == AlterType::SET_COLUMN_COMMENT) {
@@ -1284,7 +1341,8 @@ void DuckTableEntry::Rollback(CatalogEntry &prev_entry) {
 }
 
 void DuckTableEntry::OnDrop() {
-	storage->SetAsDropped();
+	// Materialize first if deferred: dropping needs the row group structure to free the data blocks.
+	GetStorage().SetAsDropped();
 }
 
 unique_ptr<CatalogEntry> DuckTableEntry::AddConstraint(ClientContext &context, AddConstraintInfo &info) {
@@ -1353,37 +1411,49 @@ void DuckTableEntry::CommitAlter(string &column_name, CommitDropState &drop_stat
 	}
 	auto logical_column_index = LogicalIndex(logical_column_idx.GetIndex());
 	auto column_index = columns.LogicalToPhysical(logical_column_index).index;
-	storage->CommitDropColumn(column_index, drop_state);
+	GetStorage().CommitDropColumn(column_index, drop_state);
 }
 
 void DuckTableEntry::CommitDrop(CommitDropState &drop_state) {
-	storage->CommitDropTable(drop_state);
+	// Materialize first if deferred: dropping needs the row group structure to free the data blocks.
+	GetStorage().CommitDropTable(drop_state);
 }
 
 DataTable &DuckTableEntry::GetStorage() {
+	// Safety net for any (context-less) storage access: if the table data read was deferred and the
+	// table is not yet materialized, materialize it now. Column types are resolved at bind time, which
+	// precedes any execution-path GetStorage() call, so the context-less read is safe here.
+	Materialize();
 	return *storage;
 }
 
 TableFunction DuckTableEntry::GetScanFunction(ClientContext &context, unique_ptr<FunctionData> &bind_data) {
+	EnsureMaterialized(context);
 	bind_data = make_uniq<TableScanBindData>(*this);
 	return TableScanFunction::GetFunction();
 }
 
 vector<ColumnSegmentInfo> DuckTableEntry::GetColumnSegmentInfo(const QueryContext &context,
                                                                const ColumnSegmentInfoScanOptions &options) {
+	auto client_context = context.GetClientContext();
+	if (client_context) {
+		EnsureMaterialized(*client_context);
+	}
 	return storage->GetColumnSegmentInfo(context, options);
 }
 
 void DuckTableEntry::InitializeColumnSegmentInfoScan(ColumnSegmentInfoScanState &state) {
-	storage->InitializeColumnSegmentInfoScan(state);
+	// routed through GetStorage() to materialize deferred table data if needed (context-less)
+	GetStorage().InitializeColumnSegmentInfoScan(state);
 }
 
 bool DuckTableEntry::ScanColumnSegmentInfo(const QueryContext &context, ColumnSegmentInfoScanState &state,
                                            vector<ColumnSegmentInfo> &result) {
-	return storage->ScanColumnSegmentInfo(context, state, result);
+	return GetStorage().ScanColumnSegmentInfo(context, state, result);
 }
 
 TableStorageInfo DuckTableEntry::GetStorageInfo(ClientContext &context) {
+	EnsureMaterialized(context);
 	return storage->GetStorageInfo();
 }
 

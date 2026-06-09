@@ -10,12 +10,15 @@
 
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_set.hpp"
+#include "duckdb/common/mutex.hpp"
 #include "duckdb/parser/constraints/unique_constraint.hpp"
 #include "duckdb/planner/constraints/bound_unique_constraint.hpp"
+#include "duckdb/storage/table/deferred_table_data.hpp"
 
 namespace duckdb {
 
 class CommitDropState;
+class PersistentTableData;
 
 struct AddConstraintInfo;
 struct CreateTriggerInfo;
@@ -37,6 +40,16 @@ public:
 
 	//! Returns the underlying storage of the table
 	DataTable &GetStorage() override;
+
+	//! Whether the table data has been materialized (read from disk). Always true unless the table
+	//! data read was deferred (see DEFER_TABLE_DATA_LOAD).
+	bool IsMaterialized() const;
+	//! Materializes the deferred table data: reads the statistics + row group metadata from disk and
+	//! constructs the physical storage. Idempotent and thread-safe; a no-op if already materialized.
+	void EnsureMaterialized(ClientContext &context);
+	//! Context-less materialization, used on the checkpoint-write path (which may not have a context).
+	//! Idempotent and thread-safe.
+	void Materialize();
 
 	//! Get statistics of a column (physical or virtual) within the table
 	unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, const StorageIndex &storage_index);
@@ -97,9 +110,18 @@ private:
 	                                   const RemoveColumnInfo &info, CreateTableInfo &create_info,
 	                                   const vector<unique_ptr<BoundConstraint>> &bound_constraints, bool is_generated);
 
+	//! Constructs the physical storage (DataTable) and its constraint indexes. Shared by the
+	//! constructor (eager) and EnsureMaterialized (deferred).
+	void CreatePhysicalStorage(vector<IndexStorageInfo> index_storage_infos, unique_ptr<PersistentTableData> data);
+
 private:
 	//! A reference to the underlying storage unit used for this table
 	shared_ptr<DataTable> storage;
+	//! Deferred table data, set when the table data read was deferred (see DEFER_TABLE_DATA_LOAD).
+	//! Consumed and cleared by EnsureMaterialized. When set, `storage` is null until materialization.
+	unique_ptr<DeferredTableData> deferred_data;
+	//! Guards materialization of the deferred table data.
+	mutex materialize_lock;
 	//! The catalog set holding triggers for this table
 	shared_ptr<CatalogSet> triggers;
 	//! Manages dependencies of the individual columns of the table

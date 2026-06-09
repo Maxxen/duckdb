@@ -679,6 +679,14 @@ void CheckpointReader::ReadTableMacro(CatalogTransaction transaction, Deserializ
 // Table Metadata
 //===--------------------------------------------------------------------===//
 void SingleFileCheckpointWriter::WriteTable(TableCatalogEntry &table, Serializer &serializer) {
+	// If the table data read was deferred and the table was never materialized, materialize it now so
+	// that the physical storage is available to checkpoint. A true "by-reference" rewrite is not
+	// feasible without reading the row group metadata structure anyway (its blocks must be pinned),
+	// so we simply reproduce the eager load here. This does not require a ClientContext.
+	if (table.IsDuckTable()) {
+		table.Cast<DuckTableEntry>().Materialize();
+	}
+
 	// Write the table metadata
 	serializer.WriteProperty(100, "table", &table);
 
@@ -732,8 +740,9 @@ void CheckpointReader::ReadTableData(CatalogTransaction transaction, Deserialize
 	auto next_row_id = deserializer.ReadPropertyWithExplicitDefault<idx_t>(105, "next_row_id", total_rows);
 	D_ASSERT(next_row_id >= total_rows);
 
+	vector<IndexStorageInfo> indexes;
 	if (!index_storage_infos.empty()) {
-		bound_info.indexes = std::move(index_storage_infos);
+		indexes = std::move(index_storage_infos);
 
 	} else {
 		// This is an old duckdb file containing index pointers and deprecated storage.
@@ -741,17 +750,43 @@ void CheckpointReader::ReadTableData(CatalogTransaction transaction, Deserialize
 			// Deprecated storage is always true for old duckdb files.
 			IndexStorageInfo index_storage_info;
 			index_storage_info.root_block_ptr = index_pointers[i];
-			bound_info.indexes.push_back(std::move(index_storage_info));
+			indexes.push_back(std::move(index_storage_info));
 		}
 	}
 
 	// FIXME: icky downcast to get the underlying MetadataReader
 	auto &binary_deserializer = dynamic_cast<BinaryDeserializer &>(deserializer);
 	auto &reader = dynamic_cast<MetadataReader &>(binary_deserializer.GetStream());
+	auto &manager = reader.GetMetadataManager();
 
+	if (DEFER_TABLE_DATA_LOAD) {
+		// Defer reading the actual table data (stats + row group metadata) until the table is first
+		// materialized. The inline properties above were still read to keep the stream aligned; only
+		// the absolute table_pointer read at `manager`/`table_pointer` is postponed.
+		auto deferred = make_uniq<DeferredTableData>();
+		deferred->manager = manager;
+		deferred->table_pointer = table_pointer;
+		deferred->total_rows = total_rows;
+		deferred->next_row_id = next_row_id;
+		deferred->indexes = std::move(indexes);
+		bound_info.deferred = std::move(deferred);
+		return;
+	}
+
+	bound_info.indexes = std::move(indexes);
+
+	// now read the actual table data from the absolute table_pointer (stats + row group metadata).
+	// this is split out so it can be deferred until the column types have been bound.
+	ReadTableDataBody(manager, table_pointer, total_rows, next_row_id, bound_info);
+}
+
+void CheckpointReader::ReadTableDataBody(MetadataManager &manager, MetaBlockPointer table_pointer, idx_t total_rows,
+                                         idx_t next_row_id, BoundCreateTableInfo &bound_info) {
 	vector<MetaBlockPointer> read_pointers;
-	MetadataReader table_data_reader(reader.GetMetadataManager(), table_pointer, read_pointers);
-	TableDataReader data_reader(table_data_reader, bound_info, table_pointer);
+	MetadataReader table_data_reader(manager, table_pointer, read_pointers);
+	auto &columns = bound_info.Base().columns;
+	bound_info.data = make_uniq<PersistentTableData>(columns.LogicalColumnCount());
+	TableDataReader data_reader(table_data_reader, columns, *bound_info.data, table_pointer);
 	data_reader.ReadTableData();
 
 	bound_info.data->total_rows = total_rows;

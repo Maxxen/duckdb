@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/catalog/catalog.hpp"
+#include "duckdb/storage/block.hpp"
 #include "duckdb/storage/partial_block_manager.hpp"
 
 namespace duckdb {
@@ -118,6 +119,10 @@ protected:
 
 	virtual void ReadTableData(CatalogTransaction transaction, Deserializer &deserializer,
 	                           BoundCreateTableInfo &bound_info);
+	//! Reads the actual table data (statistics + row group metadata) from the absolute table_pointer.
+	//! Split out from ReadTableData so it can be deferred until the column types are bound.
+	void ReadTableDataBody(MetadataManager &manager, MetaBlockPointer table_pointer, idx_t total_rows,
+	                       idx_t next_row_id, BoundCreateTableInfo &bound_info);
 };
 
 class SingleFileCheckpointReader final : public CheckpointReader {
