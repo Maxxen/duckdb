@@ -1,6 +1,6 @@
 #pragma once
 #include "duckdb/common/common.hpp"
-#include "duckdb/parser/column_definition.hpp"
+#include "duckdb/parser/parsed_column_definition.hpp"
 #include "duckdb/parser/constraint.hpp"
 
 namespace duckdb {
@@ -11,7 +11,7 @@ struct GeneratedColumnDefinition {
 };
 
 struct ConstraintColumnDefinition {
-	ColumnDefinition column_definition;
+	ParsedColumnDefinition column_definition;
 	vector<pair<bool, ConstraintType>> constraint_types;
 	vector<unique_ptr<Constraint>> constraints;
 };

@@ -14,6 +14,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/parser/parser.hpp"
+#include "duckdb/planner/binder.hpp"
 
 namespace duckdb {
 
@@ -1057,9 +1058,11 @@ unique_ptr<FunctionData> DecodeSortKeyBind(BindScalarFunctionInput &input) {
 		if (col_list.LogicalColumnCount() != 1) {
 			throw BinderException("decode_sort_key col must contain exactly one column");
 		}
-		const auto &col_def = col_list.GetColumn(PhysicalIndex(0));
-		const auto &col_name = col_def.GetName();
-		const auto &col_type = TransformStringToLogicalType(col_def.GetType().ToString(), context);
+		const auto &col_def = col_list.GetColumn(LogicalIndex(0));
+		const auto &col_name = col_def.Name();
+		// col_def carries an unbound type expression; resolve it against the catalog/context
+		// TODO: Implement something like TypeExpression::Bind() here
+		const auto col_type = TransformStringToLogicalType(col_def.Type().ToString(), context);
 
 		// Keep track of this to validate the arguments
 		const auto physical_type = col_type.InternalType();

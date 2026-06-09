@@ -15,6 +15,7 @@
 #include "duckdb/parser/peg/ast/describe_target.hpp"
 #include "duckdb/parser/peg/ast/extension_repository_info.hpp"
 #include "duckdb/parser/peg/ast/generated_column_definition.hpp"
+#include "duckdb/parser/parsed_column_list.hpp"
 #include "duckdb/parser/peg/ast/generic_copy_option.hpp"
 #include "duckdb/parser/peg/ast/generic_copy_option_value.hpp"
 #include "duckdb/parser/peg/ast/insert_values.hpp"
@@ -1606,7 +1607,7 @@ private:
 	                                                                               ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformCreateTableAsInternal(PEGTransformer &transformer,
 	                                                                       ParseResult &parse_result);
-	static CreateTableDefinition TransformCreateTableAs(PEGTransformer &transformer, ColumnList identifier_list,
+	static CreateTableDefinition TransformCreateTableAs(PEGTransformer &transformer, ParsedColumnList identifier_list,
 	                                                    PartitionSortedOptions partition_sorted_options,
 	                                                    case_insensitive_map_t<unique_ptr<ParsedExpression>> with_list,
 	                                                    unique_ptr<SQLStatement> statement, const bool &with_data);
@@ -1641,7 +1642,7 @@ private:
 	static bool TransformWithNoData(PEGTransformer &transformer);
 	static unique_ptr<TransformResultValue> TransformIdentifierListInternal(PEGTransformer &transformer,
 	                                                                        ParseResult &parse_result);
-	static ColumnList TransformIdentifierList(PEGTransformer &transformer, const vector<string> &identifier);
+	static ParsedColumnList TransformIdentifierList(PEGTransformer &transformer, const vector<string> &identifier);
 	static unique_ptr<TransformResultValue> TransformCreateColumnListInternal(PEGTransformer &transformer,
 	                                                                          ParseResult &parse_result);
 	static CreateTableDefinition

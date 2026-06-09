@@ -624,8 +624,8 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 		auto &names = query_obj.names;
 		auto &sql_types = query_obj.types;
 		// e.g. create table (col1 ,col2) as QUERY
-		// col1 and col2 are the target_col_names
-		auto target_col_names = base.columns.GetColumnNames();
+		// col1 and col2 are the target_col_names (parsed from the optional column list)
+		auto target_col_names = base.parsed_columns.GetColumnNames();
 		// TODO check  types and target_col_names are mismatch in size
 		D_ASSERT(names.size() == sql_types.size());
 		base.columns.SetAllowDuplicates(true);
@@ -670,10 +670,48 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 			dependencies.AddDependency(entry);
 		});
 
-		// Bind all physical column types
-		for (idx_t i = 0; i < base.columns.PhysicalColumnCount(); i++) {
-			auto &column = base.columns.GetColumnMutable(PhysicalIndex(i));
-			type_binder->BindLogicalType(column.TypeMutable());
+		if (!base.parsed_columns.empty()) {
+			// SQL CREATE TABLE: resolve the parsed (unbound) columns produced by the parser into
+			// bound columns. Each column's TypeExpression is resolved to a concrete LogicalType
+			// here, so the bound ColumnList never contains UNBOUND types and we avoid in-place
+			// type mutation.
+			ColumnList bound_columns;
+			for (auto &parsed_col : base.parsed_columns.Logical()) {
+				LogicalType col_type = LogicalType::ANY;
+				if (parsed_col.HasType()) {
+					col_type = type_binder->BindLogicalTypeInternal(parsed_col.GetTypeExpression());
+				}
+				if (parsed_col.Generated()) {
+					auto gen_expr = parsed_col.GeneratedExpression().Copy();
+					if (col_type.id() != LogicalTypeId::ANY) {
+						// wrap the generated expression in a cast to the declared (resolved) type
+						gen_expr = make_uniq<CastExpression>(col_type, std::move(gen_expr));
+					}
+					ColumnDefinition bound_col(parsed_col.Name(), col_type, std::move(gen_expr),
+					                           TableColumnType::GENERATED);
+					bound_col.SetCompressionType(parsed_col.CompressionType());
+					bound_col.SetComment(parsed_col.Comment());
+					bound_col.SetTags(parsed_col.Tags());
+					bound_columns.AddColumn(std::move(bound_col));
+				} else {
+					ColumnDefinition bound_col(parsed_col.Name(), col_type);
+					if (parsed_col.HasDefaultValue()) {
+						bound_col.SetDefaultValue(parsed_col.DefaultValue().Copy());
+					}
+					bound_col.SetCompressionType(parsed_col.CompressionType());
+					bound_col.SetComment(parsed_col.Comment());
+					bound_col.SetTags(parsed_col.Tags());
+					bound_columns.AddColumn(std::move(bound_col));
+				}
+			}
+			base.columns = std::move(bound_columns);
+		} else {
+			// Internal caller (ALTER, extensions, ...): the columns are already populated as
+			// bound columns. Resolve any remaining unbound types in place (legacy behavior).
+			for (idx_t i = 0; i < base.columns.PhysicalColumnCount(); i++) {
+				auto &column = base.columns.GetColumnMutable(PhysicalIndex(i));
+				type_binder->BindLogicalType(column.TypeMutable());
+			}
 		}
 
 		auto &config = DBConfig::Get(catalog.GetAttached());

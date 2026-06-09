@@ -20,6 +20,7 @@ unique_ptr<CreateInfo> CreateTableInfo::Copy() const {
 	auto result = make_uniq<CreateTableInfo>(catalog, schema, table);
 	CopyProperties(*result);
 	result->columns = columns.Copy();
+	result->parsed_columns = parsed_columns.Copy();
 	for (auto &constraint : constraints) {
 		result->constraints.push_back(constraint->Copy());
 	}
@@ -71,12 +72,17 @@ string CreateTableInfo::ToString() const {
 	string ret = GetCreatePrefix("TABLE");
 	ret += QualifierToString(temporary ? "" : catalog, schema, table);
 
+	// Before binding, the column types live in `parsed_columns`; after binding (and for
+	// internally-constructed infos) they live in the bound `columns`.
+	const bool use_parsed = columns.empty() && !parsed_columns.empty();
 	if (query != nullptr) {
-		ret += TableCatalogEntry::ColumnNamesToSQL(columns);
+		ret += use_parsed ? TableCatalogEntry::ColumnNamesToSQL(parsed_columns)
+		                  : TableCatalogEntry::ColumnNamesToSQL(columns);
 		ret += ExtraOptionsToString();
 		ret += " AS " + query->ToString();
 	} else {
-		ret += TableCatalogEntry::ColumnsToSQL(columns, constraints);
+		ret += use_parsed ? TableCatalogEntry::ColumnsToSQL(parsed_columns, constraints)
+		                  : TableCatalogEntry::ColumnsToSQL(columns, constraints);
 		ret += ExtraOptionsToString();
 		ret += ";";
 	}

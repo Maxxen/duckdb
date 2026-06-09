@@ -12,6 +12,7 @@
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/column_list.hpp"
+#include "duckdb/parser/parsed_column_list.hpp"
 
 namespace duckdb {
 class SchemaCatalogEntry;
@@ -23,8 +24,13 @@ struct CreateTableInfo : public CreateInfo {
 
 	//! Table name to insert to
 	string table;
-	//! List of columns of the table
+	//! Bound list of columns of the table. Produced by the binder (from parsed_columns for
+	//! SQL CREATE TABLE) or populated directly by internal callers that already have concrete
+	//! types (CTAS, ALTER, extensions). This is what the catalog and storage consume.
 	ColumnList columns;
+	//! Parsed (unbound) list of columns, as produced by the SQL parser. Only set for SQL
+	//! CREATE TABLE; the binder resolves these into `columns`.
+	ParsedColumnList parsed_columns;
 	//! List of constraints on the table
 	vector<unique_ptr<Constraint>> constraints;
 	//! CREATE TABLE as QUERY

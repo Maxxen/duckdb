@@ -12,6 +12,7 @@
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/query_node.hpp"
 #include "duckdb/parser/column_list.hpp"
+#include "duckdb/parser/parsed_column_list.hpp"
 #include "duckdb/parser/simplified_token.hpp"
 #include "duckdb/parser/parser_options.hpp"
 #include "duckdb/common/exception/parser_exception.hpp"
@@ -73,10 +74,11 @@ public:
 	//! Parses a VALUES list (i.e. the list of expressions after a VALUES clause)
 	static vector<vector<unique_ptr<ParsedExpression>>> ParseValuesList(const string &value_list,
 	                                                                    ParserOptions options = ParserOptions());
-	//! Parses a column list (i.e. as found in a CREATE TABLE statement)
-	static ColumnList ParseColumnList(const string &column_list, ParserOptions options = ParserOptions());
-	static ColumnDefinition ParseColumnDefinition(const string &column_definition,
-	                                              ParserOptions options = ParserOptions());
+	//! Parses a column list (i.e. as found in a CREATE TABLE statement). The returned columns are
+	//! unbound (their types are TypeExpressions); the caller is responsible for resolving them.
+	static ParsedColumnList ParseColumnList(const string &column_list, ParserOptions options = ParserOptions());
+	static ParsedColumnDefinition ParseColumnDefinition(const string &column_definition,
+	                                                    ParserOptions options = ParserOptions());
 
 	static bool StripUnicodeSpaces(const string &query_str, string &new_query);
 

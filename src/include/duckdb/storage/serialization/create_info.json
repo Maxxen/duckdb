@@ -175,6 +175,11 @@
         "id": 206,
         "name": "options",
         "type": "case_insensitive_map_t<ParsedExpression*>"
+      },
+      {
+        "id": 207,
+        "name": "parsed_columns",
+        "type": "ParsedColumnList"
       }
     ]
   },
