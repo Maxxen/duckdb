@@ -47,9 +47,51 @@ src/main/capi_v2/                V2 bridge implementations (C++ -> C)
   capi_v2_internal.hpp           Internal header with wrapper structs
   capi_v2_stubs.cpp              Auto-generated stubs for unimplemented functions
 test/api/capi_v2/                V2 Catch2 tests
+  cpp_api/                       Stable C++ API (experimental): cpp_api.hpp/.cpp + its test (see below)
 
 python_client/                   Python client (scaffolded)
 ```
+
+## Stable C++ API (experimental)
+
+Alongside the C API, V2 carries a new C++ API: namespace `duckdb_api` in
+`test/api/capi_v2/cpp_api/` (`cpp_api.hpp` + `cpp_api.cpp`, with the Catch2 suite in
+`test_cpp_api.cpp`, tag `[cpp_api]`). Do not be misled by the location: only
+`test_cpp_api.cpp` is a test. The header and implementation are the real artifact, parked
+next to their tests while the surface is iterated; once stabilized they move out of `test/`
+into `src/`. When V2 documents or discussions say "the stable C++ API", this is what they
+mean, NOT DuckDB's existing internal C++ API (`duckdb.hpp`), which makes no stability
+promises.
+
+Two properties define it:
+
+- **Built exclusively on the V2 C API.** `cpp_api.cpp` talks only to `duckdb_v2.h`, never to
+  DuckDB internal headers. The public header goes one step further and includes no DuckDB
+  header at all: the `detail::HandleTraits` indirection keeps C handle types out of it, and
+  each wrapper stores its handle as `void *impl` (specializations live in the `.cpp`).
+- **Intended to become ABI stable.** Design decisions are made with a future stable binary
+  interface in mind. This is why callback registration favors raw function pointers plus an
+  explicit user-data channel (`SetUserData<T>`, backed by `detail::TypedDelete<T>`) over
+  `std::function`. New surface should follow that style, and must use only C++17 features:
+  the build floor is C++17, and the public header in particular must not require anything
+  newer from consumers. The experimental surface still
+  carries pre-stability open items to settle before any stability promise is made: std
+  library types in public signatures (`std::string`, `std::optional`, `std::string_view`),
+  the `std::function` parameter of `Connection::WithTransaction` (an outlier, not
+  precedent), and the virtual destructor on the `detail::Handle` base.
+
+Internal patterns new cpp_api surface should reuse rather than reinvent:
+
+- `CheckedAPICall(fn, args...)` wraps a V2 C call: it appends the err slot, and on failure
+  throws `duckdb_api::Exception` carrying the V2 error code and message.
+- `WithExceptionGuard(err, fn)` is the callback-boundary guard: trampolines that the engine
+  invokes (transactions, log storage, function callbacks) wrap the user's C++ code in it, so
+  thrown exceptions become code + text on the borrowed err slot instead of crossing the C
+  ABI. A `duckdb_api::Exception` with a mapped code round-trips exactly (the bridge rethrows
+  it engine-side via its err-slot machinery); any other exception becomes the generic
+  sentinel and surfaces with the phase-appropriate default code. Idiom: throw to fail.
+- Wrapper objects follow the `detail::Handle<T>` / `detail::Factory` pattern; constructors
+  taking raw handles stay private.
 
 ## Getting started
 
