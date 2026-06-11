@@ -353,6 +353,7 @@ BindResult ExpressionBinder::BindFunction(FunctionExpression &function, ScalarFu
 	}
 
 	FunctionBinder function_binder(binder);
+	function_binder.inside_lambda = lambda_bindings != nullptr;
 	auto result = function_binder.BindScalarFunction(func, std::move(arguments), error, function.IsOperator(), &binder);
 	if (!result) {
 		error.AddQueryLocation(function);
@@ -489,11 +490,19 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 	                     override_bind_lambda_context, capture_child_types);
 
 	FunctionBinder function_binder(binder);
+	function_binder.inside_lambda = lambda_bindings != nullptr;
 	unique_ptr<Expression> result =
 	    function_binder.BindScalarFunction(func, std::move(children), error, function.IsOperator(), &binder);
 	if (!result) {
 		error.AddQueryLocation(function);
 		error.Throw();
+	}
+
+	if (result->GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+		// the bind_expression callback replaced the function call with another expression
+		// (e.g. "invoke" rewriting itself into a subquery) - the lambda and its captures
+		// have been consumed by the callback
+		return BindResult(std::move(result));
 	}
 
 	auto &bound_function_expr = result->Cast<BoundFunctionExpression>();

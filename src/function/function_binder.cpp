@@ -1059,7 +1059,8 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunction &
 	if (result_func->Function().HasBindExpressionCallback()) {
 		// if a bind_expression callback is registered - call it and emit the resulting expression
 		FunctionBindExpressionInput input(context, result_func->FunctionMutable(), result_func->BindInfoMutable().get(),
-		                                  result_func->GetChildrenMutable());
+		                                  result_func->GetChildrenMutable(), binder ? binder : this->binder,
+		                                  inside_lambda);
 		result = result_func->Function().GetBindExpressionCallback()(input);
 	}
 

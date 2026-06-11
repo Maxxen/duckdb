@@ -105,14 +105,21 @@ struct FunctionModifiedDatabasesInput {
 
 struct FunctionBindExpressionInput {
 	FunctionBindExpressionInput(ClientContext &context_p, BoundScalarFunction &bound_function,
-	                            optional_ptr<FunctionData> bind_data_p, vector<unique_ptr<Expression>> &children_p)
-	    : context(context_p), bound_function(bound_function), bind_data(bind_data_p), children(children_p) {
+	                            optional_ptr<FunctionData> bind_data_p, vector<unique_ptr<Expression>> &children_p,
+	                            optional_ptr<Binder> binder_p = nullptr, bool inside_lambda_p = false)
+	    : context(context_p), bound_function(bound_function), bind_data(bind_data_p), children(children_p),
+	      binder(binder_p), inside_lambda(inside_lambda_p) {
 	}
 
 	ClientContext &context;
 	BoundScalarFunction &bound_function;
 	optional_ptr<FunctionData> bind_data;
 	vector<unique_ptr<Expression>> &children;
+	//! The binder, if the function is bound as part of a statement. Bind expression callbacks that create new
+	//! bindings (e.g. subqueries) require this and should fall back to returning nullptr if it is not set.
+	optional_ptr<Binder> binder;
+	//! Whether the function is bound inside a lambda expression
+	bool inside_lambda;
 };
 
 struct FunctionToStringInput {

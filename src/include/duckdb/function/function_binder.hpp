@@ -27,6 +27,8 @@ public:
 
 	optional_ptr<Binder> binder;
 	ClientContext &context;
+	//! Whether we are binding a function inside a lambda expression - set by the expression binder
+	bool inside_lambda = false;
 
 public:
 	//! Bind a scalar function from the set of functions and input arguments. Returns the index of the chosen function,
