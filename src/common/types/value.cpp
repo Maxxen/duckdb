@@ -146,8 +146,19 @@ public:
 	    : ExtraValueInfo(ExtraValueInfoType::TYPE_VALUE_INFO), type(std::move(type_p)) {
 	}
 
-	const LogicalType &GetType() {
+	const LogicalType &GetType() const {
 		return type;
+	}
+
+	const string &GetSerializedType() const {
+		if (serialized.empty()) {
+			MemoryStream stream;
+			SerializationOptions options;
+			options.storage_compatibility = StorageCompatibility::Latest();
+			BinarySerializer::Serialize(type, stream, options);
+			serialized = string(const_char_ptr_cast(stream.GetData()), stream.GetPosition());
+		}
+		return serialized;
 	}
 
 protected:
@@ -156,6 +167,7 @@ protected:
 	}
 
 	LogicalType type;
+	mutable string serialized;
 };
 
 //===--------------------------------------------------------------------===//
@@ -1921,6 +1933,9 @@ const string &StringValue::Get(const Value &value) {
 	}
 	D_ASSERT(value.type().InternalType() == PhysicalType::VARCHAR);
 	D_ASSERT(value.value_info_);
+	if (value.type().id() == LogicalTypeId::TYPE) {
+		return TypeValue::GetSerializedType(value);
+	}
 	return value.value_info_->Get<StringValueInfo>().GetString();
 }
 
@@ -1931,6 +1946,15 @@ LogicalType TypeValue::GetType(const Value &value) {
 	D_ASSERT(value.type().id() == LogicalTypeId::TYPE);
 	D_ASSERT(value.value_info_);
 	return value.value_info_->Get<TypeValueInfo>().GetType();
+}
+
+const string &TypeValue::GetSerializedType(const Value &value) {
+	if (value.is_null) {
+		throw InternalException("Calling TypeValue::GetSerializedType on a NULL value");
+	}
+	D_ASSERT(value.type().id() == LogicalTypeId::TYPE);
+	D_ASSERT(value.value_info_);
+	return value.value_info_->Get<TypeValueInfo>().GetSerializedType();
 }
 
 date_t DateValue::Get(const Value &value) {
