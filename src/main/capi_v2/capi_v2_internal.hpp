@@ -96,6 +96,29 @@ struct OptionWrapperV2 {
 	std::vector<std::string> aliases;
 };
 
+// duckdb_v2_str conversions. A duckdb_v2_str is a borrowed,
+// length-delimited view: not null-terminated, may contain interior null
+// bytes. {NULL, 0} is the canonical empty view.
+inline std::string ToString(duckdb_v2_str str) {
+	return str.ptr ? std::string(str.ptr, str.len) : std::string();
+}
+// Borrow a std::string as a view. Valid only as long as the string is
+// alive and unmodified.
+inline duckdb_v2_str ToStr(const std::string &str) {
+	duckdb_v2_str result;
+	result.ptr = str.data();
+	result.len = str.size();
+	return result;
+}
+// Borrow a string_t's bytes as a view. Valid only as long as the
+// backing storage (chunk / value) is alive.
+inline duckdb_v2_str ToStr(const string_t &str) {
+	duckdb_v2_str result;
+	result.ptr = str.GetData();
+	result.len = str.GetSize();
+	return result;
+}
+
 // Opaque-handle casts used across the bridge. Inline so the unity build
 // doesn't see duplicate definitions if two TUs are concatenated.
 inline EnvironmentWrapperV2 *ToEnv(duckdb_v2_environment_handle ptr) {

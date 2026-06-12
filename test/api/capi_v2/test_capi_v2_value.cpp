@@ -1,5 +1,6 @@
 #include "catch.hpp"
 #include "capi_v2_internal.hpp"
+#include "capi_v2_test_helpers.hpp"
 #include "duckdb.h" // V1 C API -- used only for cross-API parity checks.
 
 #include <cstdlib>
@@ -376,38 +377,30 @@ TEST_CASE("V2: varchar round-trip with embedded NUL + borrow lifetime", "[capi_v
 	// Embedded NUL forces callers to use the returned length, not strlen.
 	const char raw[] = {'a', '\0', 'b', 'c'};
 	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar(raw, 4, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2ValueCreateVarchar(raw, 4, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	const char *borrowed = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(borrowed != nullptr);
-	REQUIRE(len == 4);
-	REQUIRE(std::string(borrowed, len) == std::string(raw, 4));
+	duckdb_v2_str borrowed = {nullptr, 0};
+	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(borrowed.ptr != nullptr);
+	REQUIRE(borrowed.len == 4);
+	REQUIRE(borrowed == std::string(raw, 4));
 
 	// Borrow stays valid across calls — same pointer or at least same bytes.
-	const char *borrowed_again = nullptr;
-	idx_t len_again = 0;
-	duckdb_v2_value_get_varchar(v, &borrowed_again, &len_again, nullptr);
-	REQUIRE(len_again == len);
-	REQUIRE(std::memcmp(borrowed, borrowed_again, len) == 0);
+	duckdb_v2_str borrowed_again = {nullptr, 0};
+	duckdb_v2_value_get_varchar(v, &borrowed_again, nullptr);
+	REQUIRE(borrowed_again.len == borrowed.len);
+	REQUIRE(std::memcmp(borrowed.ptr, borrowed_again.ptr, borrowed.len) == 0);
 
 	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: varchar empty (length=0, data may be null)", "[capi_v2][value][varchar]") {
 	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar(nullptr, 0, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2ValueCreateVarchar(nullptr, 0, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	const char *borrowed = nullptr;
-	idx_t len = 999;
-	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 0);
-	// Per the borrow contract, an empty string still has a non-null
-	// terminator-friendly pointer; we don't pin a specific value, only that
-	// strlen(borrowed) == 0 == len for the empty case.
-	REQUIRE(borrowed != nullptr);
-	REQUIRE(borrowed[0] == '\0');
+	duckdb_v2_str borrowed = {reinterpret_cast<const char *>(0x1), 999};
+	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(borrowed.len == 0);
 
 	duckdb_v2_value_destroy(&v);
 }
@@ -418,18 +411,17 @@ TEST_CASE("V2: varchar empty with non-null data ignores the byte at data", "[cap
 	// nothing in the validator / ctor reads past length.
 	const char raw[] = "ignored";
 	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar(raw, 0, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
-	const char *borrowed = nullptr;
-	idx_t len = 99;
-	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 0);
+	REQUIRE(V2ValueCreateVarchar(raw, 0, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_str borrowed = {nullptr, 0};
+	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(borrowed.len == 0);
 	duckdb_v2_value_destroy(&v);
 }
 
 TEST_CASE("V2: varchar rejects null data with positive length", "[capi_v2][value][varchar]") {
 	duckdb_v2_value_handle v = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar(nullptr, 4, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2ValueCreateVarchar(nullptr, 4, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(v == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -440,8 +432,7 @@ TEST_CASE("V2: varchar rejects invalid UTF-8", "[capi_v2][value][varchar]") {
 	const unsigned char bad[] = {0xC0, 0x80};
 	duckdb_v2_value_handle v = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar(reinterpret_cast<const char *>(bad), 2, &v, &err) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2ValueCreateVarchar(reinterpret_cast<const char *>(bad), 2, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(v == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -450,16 +441,15 @@ TEST_CASE("V2: varchar rejects invalid UTF-8", "[capi_v2][value][varchar]") {
 TEST_CASE("V2: varchar getter rejects non-VARCHAR and NULL VARCHAR", "[capi_v2][value][varchar]") {
 	duckdb_v2_value_handle i = nullptr;
 	duckdb_v2_value_create_int32(0, &i, nullptr);
-	const char *p = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_value_get_varchar(i, &p, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	duckdb_v2_str p = {nullptr, 0};
+	REQUIRE(duckdb_v2_value_get_varchar(i, &p, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_value_destroy(&i);
 
 	duckdb_v2_logical_type_handle vc = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &vc, nullptr);
 	duckdb_v2_value_handle nv = nullptr;
 	duckdb_v2_value_create_null(vc, &nv, nullptr);
-	REQUIRE(duckdb_v2_value_get_varchar(nv, &p, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_varchar(nv, &p, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_value_destroy(&nv);
 	duckdb_v2_logical_type_destroy(&vc);
 }
@@ -471,11 +461,10 @@ TEST_CASE("V2: varchar V1-built value round-trips through V2 getter / destroy",
 	auto v1 = duckdb_create_varchar_length("héllo", 6); // UTF-8: h é l l o
 	auto v = V1ValueToV2(v1);
 
-	const char *borrowed = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 6);
-	REQUIRE(std::string(borrowed, len) == "héllo");
+	duckdb_v2_str borrowed = {nullptr, 0};
+	REQUIRE(duckdb_v2_value_get_varchar(v, &borrowed, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(borrowed.len == 6);
+	REQUIRE(borrowed == "héllo");
 
 	duckdb_v2_value_destroy(&v);
 }
@@ -1033,7 +1022,7 @@ TEST_CASE("V2: value_to_string for primitives", "[capi_v2][value][to_string]") {
 		// ToSQLString). Confirms the fresh-output, malloc'd contract on a
 		// string-backed value.
 		duckdb_v2_value_handle v = nullptr;
-		duckdb_v2_value_create_varchar("hi", 2, &v, nullptr);
+		V2ValueCreateVarchar("hi", 2, &v, nullptr);
 		char *out = nullptr;
 		REQUIRE(duckdb_v2_value_to_string(v, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(std::string(out) == "hi");
@@ -1080,11 +1069,10 @@ TEST_CASE("V2: value_to_string null handle / null out", "[capi_v2][value][to_str
 TEST_CASE("V2: failure path populates error info", "[capi_v2][value][error]") {
 	duckdb_v2_value_handle v = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar(nullptr, 4, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2ValueCreateVarchar(nullptr, 4, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
-	const char *msg = nullptr;
+	duckdb_v2_str msg = {nullptr, 0};
 	REQUIRE(duckdb_v2_error_info_get_text(err, &msg) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(msg != nullptr);
-	REQUIRE(std::strlen(msg) > 0);
+	REQUIRE(msg.len > 0);
 	duckdb_v2_error_info_destroy(&err);
 }

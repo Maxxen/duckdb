@@ -395,15 +395,15 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_destroy(duckdb_v2_table_fu
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_name(duckdb_v2_table_function_builder_handle builder,
-                                                               const char *name, duckdb_v2_error_info_handle *err) {
+                                                               duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-		if (!name || strlen(name) == 0) {
+		if (name.len == 0 || !name.ptr) {
 			throw duckdb::InvalidInputException("Function name cannot be null or empty.");
 		}
-		reinterpret_cast<TableFunctionBuilderV2 *>(builder)->name = name;
+		reinterpret_cast<TableFunctionBuilderV2 *>(builder)->name = duckdb::ToString(name);
 	});
 }
 
@@ -423,21 +423,21 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_add_parameter(duckdb_v2_ta
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_builder_handle builder, const char *name,
-                                                     duckdb_v2_logical_type_handle type,
+duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_builder_handle builder,
+                                                     duckdb_v2_str name, duckdb_v2_logical_type_handle type,
                                                      duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-		if (!name || strlen(name) == 0) {
+		if (name.len == 0 || !name.ptr) {
 			throw duckdb::InvalidInputException("Parameter name cannot be null or empty.");
 		}
 		if (!type) {
 			throw duckdb::InvalidInputException("Parameter type cannot be null.");
 		}
 		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
-		b.named_parameters[name] = *reinterpret_cast<duckdb::LogicalType *>(type);
+		b.named_parameters[duckdb::ToString(name)] = *reinterpret_cast<duckdb::LogicalType *>(type);
 	});
 }
 
@@ -616,21 +616,21 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_register(duckdb_v2_context
 // --- Bind callback methods ---------------------------------------------------
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_add_result_column(duckdb_v2_table_function_bind_info_handle info,
-                                                                     const char *name,
+                                                                     duckdb_v2_str name,
                                                                      duckdb_v2_logical_type_handle type,
                                                                      duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Bind info pointer cannot be null.");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Column name cannot be null.");
 		}
 		if (!type) {
 			throw duckdb::InvalidInputException("Column type cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
-		cb_info.return_names.emplace_back(name);
+		cb_info.return_names.emplace_back(duckdb::ToString(name));
 		cb_info.return_types.push_back(*reinterpret_cast<duckdb::LogicalType *>(type));
 	});
 }
@@ -701,23 +701,24 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_parameter(duckdb_v2_table
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_named_parameter(duckdb_v2_table_function_bind_info_handle info,
-                                                                       const char *name,
+                                                                       duckdb_v2_str name,
                                                                        duckdb_v2_value_handle *out_value,
                                                                        duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Bind info pointer cannot be null.");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Parameter name cannot be null.");
 		}
 		if (!out_value) {
 			throw duckdb::InvalidInputException("Output value pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
-		auto it = cb_info.named_parameters.find(name);
+		auto name_str = duckdb::ToString(name);
+		auto it = cb_info.named_parameters.find(name_str);
 		if (it == cb_info.named_parameters.end()) {
-			throw duckdb::InvalidInputException("Named parameter '%s' not found.", name);
+			throw duckdb::InvalidInputException("Named parameter '%s' not found.", name_str);
 		}
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(it->second));
 	});

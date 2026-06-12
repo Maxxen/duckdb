@@ -10,7 +10,7 @@ structs:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
       - {name: context, type: context, description: "The DuckDB context in which the function is being bound."}
-      - {name: function_name, type: char, pointer: 1, const: true, description: "The name of the function being bound."}
+      - {name: function_name, type: str, description: "The name of the function being bound. Borrowed; only valid for the duration of the callback."}
       - {name: user_data, type: opaque, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
       - {name: out_bind_data, type: opaque, pointer: 1, description: "On success, receives an opaque pointer to user data that will be associated with the function's \"bind data\" and accessible from later callbacks (e.g. \"init\" and \"exec\"). This is useful for sharing information between the planning and execution phases, such as resolved argument types, prepared statements, or other metadata computed during binding that needs to be available during execution."}
       - {name: out_bind_data_copy, type: user_data_copy, description: "If the callback sets `out_bind_data`, it can also set this optional copy callback which will be used to copy the bind data when it's accessed from a different thread (e.g. from the planning thread to a worker thread during execution). If `out_bind_data` is set but this copy callback is not provided, the library will use a default shallow copy implementation which simply copies the pointer value. If the bind data requires deep copying or special handling to be safely shared across threads, the callback must provide a custom copy implementation via this parameter."}
@@ -20,7 +20,7 @@ structs:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
       - {name: context, type: context, description: "The DuckDB context in which the function is being initialized."}
-      - {name: function_name, type: char, pointer: 1, const: true, description: "The name of the function being initialized."}
+      - {name: function_name, type: str, description: "The name of the function being initialized. Borrowed; only valid for the duration of the callback."}
       - {name: user_data, type: opaque, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
       - {name: bind_data, type: opaque, pointer: 1, description: "Opaque pointer to user data set by the function's \"bind\" callback, if any"}
       - {name: out_init_data, type: opaque, pointer: 1, description: "On success, receives an opaque pointer to user data that will be associated with the executing worker thread for the duration of the query and accessible from the function's \"exec\" callback. Note that the \"init data\" is worker-local, not _thread local_. There is no guarantee that the same thread will see the same \"init data\" across multiple invocations of the function."}
@@ -28,7 +28,7 @@ structs:
   scalar_function_exec_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: function_name, type: char, pointer: 1, const: true, description: "The name of the function being executed."}
+      - {name: function_name, type: str, description: "The name of the function being executed. Borrowed; only valid for the duration of the callback."}
       - {name: user_data, type: opaque, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
       - {name: bind_data, type: opaque, pointer: 1, description: "Opaque pointer to user data set by the function's \"bind\" callback, if any"}
       - {name: init_data, type: opaque, pointer: 1, description: "Opaque pointer to user data set by the function's \"init\" callback for the executing worker thread, if any"}
@@ -90,16 +90,14 @@ functions:
     return_type: API_CALL
   scalar_function_builder_set_name:
     summary: Sets the name of a scalar function.
-    description: "The name of a scalar function must be a null-terminated string.\nThe library make and internal copy of the provided name and does not take ownership. \nFailing to set a name before registration results in an error.\n"
+    description: "The library makes an internal copy of the provided name and does not take ownership. \nFailing to set a name before registration results in an error.\n"
     parameters:
       func:
         type: scalar_function_builder
         description: The scalar function to configure
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: The null-terminated name to set for the function.
+        type: str
+        description: The name to set for the function.
       err:
         type: error_info
         indirection: 1
@@ -198,16 +196,14 @@ functions:
   # TODO: Make this more involved.
   scalar_function_builder_add_parameter:
     summary: Adds a parameter to a scalar function.
-    description: "Adds a parameter to a scalar function with the specified name and type. \nThe parameter name must be a null-terminated string. The library makes an internal copy of the provided name and type, and does not take ownership of either.\n"
+    description: "Adds a parameter to a scalar function with the specified name and type. \nThe library makes an internal copy of the provided name and type, and does not take ownership of either.\n"
     parameters:
       func:
         type: scalar_function_builder
         description: The scalar function to configure.
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: The null-terminated name of the parameter to add.
+        type: str
+        description: The name of the parameter to add.
       type:
         type: logical_type
         description: The type of the parameter to add.

@@ -143,10 +143,10 @@ struct CopyFunctionBuilderV2 {
 		auto &info = input.function_info->Cast<CCopyFunctionInfoV2>();
 
 		// Setup arrays
-		vector<const char *> names_array;
+		vector<duckdb_v2_str> names_array;
 		names_array.reserve(names.size());
 		for (const auto &name : names) {
-			names_array.push_back(name.c_str());
+			names_array.push_back(ToStr(name));
 		}
 
 		// Copy the (const) engine-owned types into a local mutable buffer so we can hand out non-const handles
@@ -192,7 +192,7 @@ struct CopyFunctionBuilderV2 {
 		duckdb_v2_copy_function_init_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
-		args.file_path = file_path.c_str();
+		args.file_path = ToStr(file_path);
 		args.user_data = info.user_data.GetData();
 		args.bind_data = data.bind_data.GetData();
 		args.out_init_data = nullptr;
@@ -303,19 +303,19 @@ DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_create(duckdb_v2_context_ha
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_name(duckdb_v2_copy_function_builder_handle builder,
-                                                              const char *name, duckdb_v2_error_info_handle *err) {
+                                                              duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Function name cannot be null.");
 		}
-		if (strlen(name) == 0) {
+		if (name.len == 0) {
 			throw duckdb::InvalidInputException("Function name cannot be empty.");
 		}
 
-		reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder)->name = name;
+		reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder)->name = duckdb::ToString(name);
 	});
 }
 

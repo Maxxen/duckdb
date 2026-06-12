@@ -445,11 +445,10 @@ functions:
         type: expression
         description: The expression to inspect.
       out_name:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: Borrowed pointer to the null-terminated function name.
+        description: Receives a borrowed view of the function name.
       err:
         type: error_info
         indirection: 1

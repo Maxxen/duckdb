@@ -18,10 +18,10 @@ bool IsUniqueFileHandleConflict(const char *what) {
 // as RESOURCE_IN_USE. The default exception->code mapping in WithErrorHandler
 // would route this through IO_GENERAL, which loses the distinction the V2
 // surface wants for "this file is already open in this environment."
-DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_handle env, const char *path,
+DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_handle env, duckdb_v2_str path,
                                     duckdb_v2_option_handle *options, idx_t option_count,
                                     duckdb_v2_database_handle *out_db, duckdb_v2_error_info_handle *err) {
-	if (!env || !out_db) {
+	if (!env || !out_db || (!path.ptr && path.len > 0)) {
 		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null argument to duckdb_v2_open");
 	}
 	if (option_count > 0 && !options) {
@@ -45,7 +45,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_handle env, const char
 		// path manager is shared across all opens (file conflicts get
 		// detected) but no instance is memoized — every open produces a
 		// fresh DatabaseInstance.
-		std::string path_str = path ? std::string(path) : std::string();
+		std::string path_str = duckdb::ToString(path);
 		wrapper->database =
 		    env_wrapper->cache->GetOrCreateInstance(path_str, *config, duckdb::CacheBehavior::NEVER_CACHE);
 		wrapper->admin_connection = duckdb::make_uniq<duckdb::Connection>(*wrapper->database);
@@ -97,11 +97,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_handle db,
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db, const char *name,
+DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db, duckdb_v2_str name,
                                                    duckdb_v2_option_handle *out_option,
                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!db || !name || !out_option) {
+		if (!db || (!name.ptr && name.len > 0) || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_get");
 		}
 		*out_option = nullptr;
@@ -109,7 +109,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db,
 		auto &client = *db_wrapper->admin_connection->context;
 		auto &config = db_wrapper->database->instance->config;
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
-		duckdb::BuildOptionByName(*wrapper, client, config, std::string(name));
+		duckdb::BuildOptionByName(*wrapper, client, config, duckdb::ToString(name));
 		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
 	});
 }

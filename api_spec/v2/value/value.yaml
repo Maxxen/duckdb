@@ -311,19 +311,14 @@ functions:
   value_create_varchar:
     summary: Creates a VARCHAR value (UTF-8 string).
     description: |
-      Copies the input. Returns ERROR_INVALID_INPUT if data is
-      null but length > 0, or if the bytes are not valid UTF-8.
+      Copies the input. Returns ERROR_INVALID_INPUT if data.ptr is
+      null but data.len > 0, or if the bytes are not valid UTF-8.
     role: constructor
     belongs_to: value
     parameters:
       data:
-        type: char
-        indirection: 1
-        const: true
-        description: Pointer to UTF-8 bytes. May be null when length is 0.
-      length:
-        type: idx
-        description: Number of bytes to copy.
+        type: str
+        description: View of the UTF-8 bytes to copy. The pointer may be null when the length is 0.
       out_value:
         type: value
         indirection: 1
@@ -975,23 +970,18 @@ functions:
   value_get_varchar:
     summary: Borrows the bytes of a VARCHAR value.
     description: |
-      Returns a borrowed pointer + length. The data is valid until the
-      value is destroyed; the pointer is not null-terminated by contract
-      (use out_length).
+      Returns a borrowed view. The data is valid until the value is
+      destroyed; the bytes are not null-terminated by contract.
     role: getter
     belongs_to: value
     parameters:
       value:
         type: value
       out_data:
-        type: char
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-      out_length:
-        type: idx
+        type: str
         indirection: 1
-        kind: OUT
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the VARCHAR bytes.
       err:
         type: error_info
         indirection: 1

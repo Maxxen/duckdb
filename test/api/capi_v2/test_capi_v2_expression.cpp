@@ -422,11 +422,9 @@ TEST_CASE("V2 expression: get_function_name on a BOUND_FUNCTION", "[capi_v2][exp
 	    duckdb::ExpressionType::COMPARE_EQUAL,
 	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0),
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10)));
-	const char *name = nullptr;
+	duckdb_v2_str name = {nullptr, 0};
 	REQUIRE(duckdb_v2_expression_get_function_name(AsExpr(*cmp), &name, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(name != nullptr);
-	REQUIRE(std::string(name) == "=");
-	REQUIRE(std::strlen(name) == std::string("=").size());
+	REQUIRE(name == "=");
 }
 
 TEST_CASE("V2 expression: get_function_name errors on non-function classes", "[capi_v2][expression]") {
@@ -449,9 +447,9 @@ TEST_CASE("V2 expression: get_function_name errors on non-function classes", "[c
 
 	duckdb_v2_expression_handle cases[] = {AsExpr(*ref), AsExpr(*con), AsExpr(*op), AsExpr(*conj), AsExpr(*cast)};
 	for (auto expr : cases) {
-		const char *name = reinterpret_cast<const char *>(0x1);
+		duckdb_v2_str name = {reinterpret_cast<const char *>(0x1), 99};
 		REQUIRE(duckdb_v2_expression_get_function_name(expr, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(name == nullptr); // pointer out-param zeroed on failure
+		REQUIRE(name.ptr == nullptr); // out-param zeroed on failure
 	}
 }
 
@@ -460,7 +458,8 @@ TEST_CASE("V2 expression: get_function_name rejects null args", "[capi_v2][expre
 	    duckdb::ExpressionType::COMPARE_EQUAL,
 	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0),
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10)));
-	const char *name = nullptr;
+	// Exercise the real duckdb_v2_str signature directly for the null checks.
+	duckdb_v2_str name = {nullptr, 0};
 	REQUIRE(duckdb_v2_expression_get_function_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_expression_get_function_name(AsExpr(*cmp), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 }
@@ -517,9 +516,9 @@ TEST_CASE("V2 expression: get_reference_index errors on non-reference", "[capi_v
 	idx_t index = 0;
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_expression_get_reference_index(AsExpr(*con), &index, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	const char *text = nullptr;
+	duckdb_v2_str text = {nullptr, 0};
 	REQUIRE(duckdb_v2_error_info_get_text(err, &text) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(text != nullptr);
+	REQUIRE(text.ptr != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 }
 

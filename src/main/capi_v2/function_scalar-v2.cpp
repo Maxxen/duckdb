@@ -74,7 +74,7 @@ struct ScalarFunctionV2 {
 		duckdb_v2_scalar_function_bind_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<_duckdb_v2_context *>(&input.GetClientContext());
-		args.function_name = input.GetBoundFunction().GetName().c_str();
+		args.function_name = ToStr(input.GetBoundFunction().GetName());
 		args.user_data = info.user_data;
 
 		InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, err); });
@@ -104,7 +104,7 @@ struct ScalarFunctionV2 {
 		duckdb_v2_scalar_function_init_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<_duckdb_v2_context *>(&state.GetContext());
-		args.function_name = expr.Function().GetName().c_str();
+		args.function_name = ToStr(expr.Function().GetName());
 		args.user_data = info.user_data;
 		args.bind_data = bind_data ? bind_data->Cast<ScalarFunctionBindDataV2>().user_data : nullptr;
 
@@ -130,7 +130,7 @@ struct ScalarFunctionV2 {
 
 		duckdb_v2_scalar_function_exec_args args = {};
 		args.struct_size = sizeof(args);
-		args.function_name = expr.Function().GetName().c_str();
+		args.function_name = ToStr(expr.Function().GetName());
 		args.user_data = info.user_data;
 		args.input = reinterpret_cast<_duckdb_v2_data_chunk *>(&input);
 		args.result = reinterpret_cast<_duckdb_v2_vector *>(&result);
@@ -170,34 +170,34 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(duckdb_v2_context_
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar_function_builder_handle func,
-                                                                const char *name, duckdb_v2_error_info_handle *err) {
+                                                                duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Function name cannot be null.");
 		}
-		if (strlen(name) == 0) {
+		if (name.len == 0) {
 			throw duckdb::InvalidInputException("Function name cannot be empty.");
 		}
 
-		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->name = name;
+		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->name = duckdb::ToString(name);
 	});
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_handle func,
-                                                                     const char *name,
+                                                                     duckdb_v2_str name,
                                                                      duckdb_v2_logical_type_handle type,
                                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Parameter name cannot be null.");
 		}
-		if (strlen(name) == 0) {
+		if (name.len == 0) {
 			throw duckdb::InvalidInputException("Parameter name cannot be empty.");
 		}
 		if (!type) {
@@ -210,7 +210,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_s
 		}
 
 		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
-		builder.parameters.emplace_back(name, ltype);
+		builder.parameters.emplace_back(duckdb::ToString(name), ltype);
 	});
 }
 

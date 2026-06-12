@@ -218,10 +218,8 @@ functions:
         type: table_function_builder
         description: The builder to configure.
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: Null-terminated function name. The library copies it.
+        type: str
+        description: Function name. The library copies it.
       err:
         type: error_info
         indirection: 1
@@ -248,10 +246,8 @@ functions:
         type: table_function_builder
         description: The builder to configure.
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: Null-terminated parameter name. The library copies it.
+        type: str
+        description: Parameter name. The library copies it.
       type:
         type: logical_type
         description: The parameter's logical type.
@@ -426,10 +422,8 @@ functions:
         type: table_function_bind_info
         description: The bind info handle.
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: Null-terminated column name. The library copies it.
+        type: str
+        description: Column name. The library copies it.
       type:
         type: logical_type
         description: The column's logical type.
@@ -464,10 +458,8 @@ functions:
         type: table_function_bind_info
         description: The bind info handle.
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: Null-terminated parameter name.
+        type: str
+        description: Parameter name.
       out_value:
         type: value
         indirection: 1

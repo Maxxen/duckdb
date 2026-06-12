@@ -264,10 +264,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child(duckdb_v2_expression_handle 
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_function_name(duckdb_v2_expression_handle expression,
-                                                            const char **out_name, duckdb_v2_error_info_handle *err) {
+                                                            duckdb_v2_str *out_name, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
-			*out_name = nullptr;
+			*out_name = duckdb_v2_str {nullptr, 0};
 		}
 		if (!expression || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_expression_get_function_name");
@@ -279,7 +279,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_function_name(duckdb_v2_expression
 		}
 		// Borrowed from the bound function's name member (GetName returns a const
 		// reference into it) — valid for the expression handle's lifetime.
-		*out_name = expr.Cast<duckdb::BoundFunctionExpression>().Function().GetName().c_str();
+		*out_name = duckdb::ToStr(expr.Cast<duckdb::BoundFunctionExpression>().Function().GetName());
 	});
 }
 

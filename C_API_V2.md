@@ -196,19 +196,25 @@ Destructors — `duckdb_v2_close`, `duckdb_v2_disconnect`, `duckdb_v2_destroy_en
 
 The message is borrowed and valid until the info is destroyed:
 
+Strings cross the boundary as `duckdb_v2_str` — a borrowed `{const char *ptr; idx_t len;}`
+view that is NOT null-terminated (see "Length-delimited strings" below). A small
+helper turns a C literal into one:
+
 ```c
+static duckdb_v2_str v2str(const char *s) { return (duckdb_v2_str){s, s ? strlen(s) : 0}; }
+
 duckdb_v2_option_ptr opt = NULL;
 duckdb_v2_error_info_ptr err = NULL;
 
-if (duckdb_v2_option_create("memory_limit", "1GB", &opt, &err) != DUCKDB_V2_ERROR_NONE) {
-    const char *msg = NULL;
+if (duckdb_v2_option_create(v2str("memory_limit"), v2str("1GB"), &opt, &err) != DUCKDB_V2_ERROR_NONE) {
+    duckdb_v2_str msg = {NULL, 0};
     duckdb_v2_error_info_get_text(err, &msg);
-    fprintf(stderr, "option_create failed: %s\n", msg ? msg : "(no detail)");
+    fprintf(stderr, "option_create failed: %.*s\n", (int)msg.len, msg.ptr ? msg.ptr : "");
     duckdb_v2_error_info_destroy(&err);
 }
 
 // Opt-out form — only the return code is inspected:
-if (duckdb_v2_option_create("memory_limit", "1GB", &opt, NULL) != DUCKDB_V2_ERROR_NONE) {
+if (duckdb_v2_option_create(v2str("memory_limit"), v2str("1GB"), &opt, NULL) != DUCKDB_V2_ERROR_NONE) {
     fprintf(stderr, "option_create failed\n");
 }
 ```
@@ -267,7 +273,9 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
 
 - **Selection vectors mirror `UnifiedVectorFormat`.** `view.sel == NULL` for FLAT vectors (means identity); non-null for CONSTANT (zero singleton) and DICTIONARY (the dictionary's own sel). A bridge helper `duckdb_v2_sel_at(sel, i, &out, err)` returns `sel ? sel[i] : i`; consumers in tight loops who want to skip the bridge call can inline that expression themselves — the `sel == NULL` identity convention is part of the V2 contract. **Validity follows sel, not the loop counter:** for DICTIONARY the validity index is `sel[i]`, not `i`. Reading `validity[i]` directly produces wrong answers; always resolve through `sel` first.
 
-- **String-backed kinds use kind-specific bridge decoders, never a string-helper surface.** The four decoders (`duckdb_v2_varchar_decode`, `_blob_decode`, `_bit_decode`, `_bignum_decode`) are the only legitimate way to read a VARCHAR / BLOB / BIT / BIGNUM value. All four are bridge functions; the BIGNUM decoder shares an internal `DecodeBignumStringT` helper with `value_get_bignum` so the magnitude/sign decode lives in one place. `duckdb_v2_string_t` is opaque to the public ABI — only the size (16 bytes) and alignment (8 bytes, declared as `uint64_t _opaque[2]`) are committed so callers can stride `arr[row]` and the bridge's cast to `duckdb::string_t *` stays well-aligned; the layout is private to the bridge. The universal `duckdb_v2_string_*` helpers (`is_inlined`, `length`, `data`) ARE intentionally exposed as public `static inline` functions in the generated header.
+- **Length-delimited strings (`duckdb_v2_str`).** Every borrowed string crossing the boundary — both inputs (option/SQL/function names, file paths, log messages) and outputs (option getters, `result_column_name`, `logical_type_get_alias`/`_enum_value`/`_struct_child_name`/`_union_member_name`, `expression_get_function_name`, `error_info_get_text`, `varchar_decode`, `value_get_varchar`) — is a `duckdb_v2_str { const char *ptr; idx_t len; }`. It is a *borrowed view*: NOT null-terminated, may contain interior NULs, and `{NULL, 0}` is the canonical empty view (`ptr` must not be dereferenced when `len == 0`). Lifetime is documented per producing function (typically "valid until the owning handle is destroyed"). Validation contract for inputs: `{NULL, 0}` is a valid empty string; only a null pointer with a *nonzero* length is malformed and rejected with `ERROR_INVALID_INPUT`. Do not confuse `duckdb_v2_str` (the decoded view) with `duckdb_v2_string_t` (the opaque 16-byte VARCHAR *storage*). Owned string returns that the caller must `free()` (e.g. `value_to_string`, `library_version`) keep their `char **` shape and are not `duckdb_v2_str`.
+
+- **String-backed kinds use kind-specific bridge decoders, never a string-helper surface.** The four decoders (`duckdb_v2_varchar_decode`, `_blob_decode`, `_bit_decode`, `_bignum_decode`) are the only legitimate way to read a VARCHAR / BLOB / BIT / BIGNUM value. `varchar_decode` yields a `duckdb_v2_str` view; the other three keep their `(bytes, length)` out-params. All four are bridge functions; the BIGNUM decoder shares an internal `DecodeBignumStringT` helper with `value_get_bignum` so the magnitude/sign decode lives in one place. `duckdb_v2_string_t` is opaque to the public ABI — only the size (16 bytes) and alignment (8 bytes, declared as `uint64_t _opaque[2]`) are committed so callers can stride `arr[row]` and the bridge's cast to `duckdb::string_t *` stays well-aligned; the layout is private to the bridge. The universal `duckdb_v2_string_*` helpers (`is_inlined`, `length`, `data`) ARE intentionally exposed as public `static inline` functions in the generated header.
 
 - **Expressions are one generic handle, scoped to *bound* expressions.** `duckdb_v2_expression` is a single borrowed handle over `duckdb::Expression` — the post-binding tree. Unbound/parser-level `duckdb::ParsedExpression` is a separate internal hierarchy and out of scope, so `get_class` only ever yields `BOUND_*` values; the parsed-class values exist in `EXPRESSION_CLASS` purely for numeric fidelity with `duckdb::ExpressionClass` (switch on `BOUND_COLUMN_REF`, not the parsed `COLUMN_REF`, etc.). The generic core never errors on class grounds: `get_class` / `get_type` / `get_return_type`; `get_child_count` / `get_child`, which traverse via the engine's own `ExpressionIterator` so they're **total over every bound class** (a node this API doesn't model specially, e.g. `BOUND_CASE`, still exposes its children rather than looking like a leaf — child order follows the iterator). The class-specific accessors return a class-mismatch error off their class: `get_function_name` (`BOUND_FUNCTION`; the registered name — an internal symbol like `__comparison` for comparisons, so dispatch on `get_type` for the operator), `get_constant_value` (`BOUND_CONSTANT`), `get_column_binding` (`BOUND_COLUMN_REF` — the logical `{table_index, column_index}` seen during binding/optimization incl. filter pushdown), and `get_reference_index` (`BOUND_REF` — the execution-stage chunk slot assigned after physical planning, *not* what pushdown sees). We deliberately did *not* introduce a base handle plus narrowed sub-handles (`expression_as_function` / `_as_constant` / …): with so few class-specific accessors, a narrowing gate fails in exactly the same way and at the same call site as the direct accessor. Revisit when the class-specific surface grows (cast `try_cast` / target type, aggregate `distinct` / `filter`, function bind-info) — at that point a successful `expression_as_X` becomes a single checkpoint validating a whole cluster of X-only accessors. `get_name`/`get_function_name` naming and `get_column_binding` vs `get_reference_index` mirror the bound class names exactly.
 
@@ -319,17 +327,19 @@ Example implementation (excerpt from `src/main/capi_v2/option-v2.cpp`):
 ```cpp
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_option_create(const char *name, const char *setting,
+DUCKDB_V2_API_CALL_t duckdb_v2_option_create(duckdb_v2_str name, duckdb_v2_str setting,
                                              duckdb_v2_option_ptr *out_option,
                                              duckdb_v2_error_info_ptr *err) {
     return duckdb::WithErrorHandler(err, [&]() {
-        if (!name || !setting || !out_option) {
+        // A {NULL, 0} view is a valid empty string; only a null pointer with a
+        // nonzero length is malformed.
+        if ((!name.ptr && name.len > 0) || (!setting.ptr && setting.len > 0) || !out_option) {
             throw duckdb::InvalidInputException("null argument to duckdb_v2_option_create");
         }
         *out_option = nullptr;
         auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
-        wrapper->name = name;
-        wrapper->setting = setting;
+        wrapper->name = duckdb::ToString(name);
+        wrapper->setting = duckdb::ToString(setting);
         *out_option = static_cast<duckdb_v2_option_ptr>(wrapper.release());
     });
 }

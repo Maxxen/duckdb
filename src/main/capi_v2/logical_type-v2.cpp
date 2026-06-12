@@ -162,14 +162,14 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_alias(duckdb_v2_logical_type_handle type, const char **out_alias,
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_alias(duckdb_v2_logical_type_handle type, duckdb_v2_str *out_alias,
                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_alias) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_alias");
 		}
 		auto info = duckdb::ToLogicalType(type)->AuxInfo();
-		*out_alias = (info && !info->alias.empty()) ? info->alias.c_str() : nullptr;
+		*out_alias = (info && !info->alias.empty()) ? duckdb::ToStr(info->alias) : duckdb_v2_str {nullptr, 0};
 	});
 }
 
@@ -244,10 +244,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_size(duckdb_v2_logical_type
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_value(duckdb_v2_logical_type_handle type, idx_t index,
-                                                           const char **out_value, idx_t *out_length,
-                                                           duckdb_v2_error_info_handle *err) {
+                                                           duckdb_v2_str *out_value, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_value || !out_length) {
+		if (!type || !out_value) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_enum_value");
 		}
 		auto *lt = duckdb::ToLogicalType(type);
@@ -264,9 +263,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_value(duckdb_v2_logical_typ
 		// catch keeps the C ABI clean.
 		auto &dict = duckdb::EnumType::GetValuesInsertOrder(*lt);
 		auto *entries = duckdb::FlatVector::GetData<duckdb::string_t>(dict);
-		auto &entry = entries[index];
-		*out_value = entry.GetData();
-		*out_length = entry.GetSize();
+		*out_value = duckdb::ToStr(entries[index]);
 	});
 }
 
@@ -400,10 +397,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_count(duckdb_v2_log
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_name(duckdb_v2_logical_type_handle type, idx_t index,
-                                                                  const char **out_name, idx_t *out_length,
+                                                                  duckdb_v2_str *out_name,
                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_name || !out_length) {
+		if (!type || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_struct_child_name");
 		}
 		auto *lt = duckdb::ToLogicalType(type);
@@ -413,9 +410,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_name(duckdb_v2_logi
 		if (index >= duckdb::StructType::GetChildCount(*lt)) {
 			throw duckdb::InvalidInputException("struct child index out of range");
 		}
-		auto &name = duckdb::StructType::GetChildName(*lt, index);
-		*out_name = name.c_str();
-		*out_length = name.size();
+		*out_name = duckdb::ToStr(duckdb::StructType::GetChildName(*lt, index));
 	});
 }
 
@@ -458,10 +453,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_count(duckdb_v2_log
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_name(duckdb_v2_logical_type_handle type, idx_t index,
-                                                                  const char **out_name, idx_t *out_length,
+                                                                  duckdb_v2_str *out_name,
                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_name || !out_length) {
+		if (!type || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_union_member_name");
 		}
 		auto *lt = duckdb::ToLogicalType(type);
@@ -471,9 +466,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_name(duckdb_v2_logi
 		if (index >= duckdb::UnionType::GetMemberCount(*lt)) {
 			throw duckdb::InvalidInputException("union member index out of range");
 		}
-		auto &name = duckdb::UnionType::GetMemberName(*lt, index);
-		*out_name = name.c_str();
-		*out_length = name.size();
+		*out_name = duckdb::ToStr(duckdb::UnionType::GetMemberName(*lt, index));
 	});
 }
 

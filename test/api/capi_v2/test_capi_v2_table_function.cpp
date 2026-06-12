@@ -38,8 +38,8 @@ static void counter_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_
 	duckdb_v2_logical_type_handle varchar_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, err);
 
-	duckdb_v2_table_function_bind_add_result_column(info, "i", int_type, err);
-	duckdb_v2_table_function_bind_add_result_column(info, "s", varchar_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("i"), int_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("s"), varchar_type, err);
 
 	// Set cardinality hint
 	duckdb_v2_table_function_bind_set_cardinality(info, COUNTER_NUM_ROWS, true, err);
@@ -83,7 +83,7 @@ static void counter_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_
 	while (state.next_row < COUNTER_NUM_ROWS && count < 2048) {
 		int_data[count] = static_cast<int32_t>(state.next_row);
 		auto s = "row_" + std::to_string(state.next_row);
-		duckdb_v2_vector_assign_string(str_vec, count, s.c_str(), s.size(), err);
+		V2VectorAssignString(str_vec, count, s.c_str(), s.size(), err);
 		state.next_row++;
 		count++;
 	}
@@ -96,7 +96,7 @@ static void register_counter(duckdb_v2_context_handle ctx, duckdb_v2_error_info_
 	duckdb_v2_table_function_builder_handle builder = nullptr;
 	REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
 
-	REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "counter", err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("counter"), err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, counter_bind, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, counter_init_global, err) ==
 	        DUCKDB_V2_ERROR_NONE);
@@ -117,8 +117,7 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 
 	SECTION("basic query returns correct row count") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT i FROM counter()", &result, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(fix.conn, "SELECT i FROM counter()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -146,8 +145,7 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 
 	SECTION("SELECT * returns both columns with correct values") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT * FROM counter()", &result, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(fix.conn, "SELECT * FROM counter()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		idx_t col_count = 0;
 		duckdb_v2_result_column_count(result, &col_count, nullptr);
@@ -178,11 +176,10 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 
 			idx_t sidx = str_view.sel ? str_view.sel[i] : i;
 			REQUIRE(RowValid(str_view, sidx));
-			const char *s = nullptr;
-			idx_t slen = 0;
-			REQUIRE(duckdb_v2_varchar_decode(&str_data[sidx], &s, &slen, nullptr) == DUCKDB_V2_ERROR_NONE);
+			duckdb_v2_str s = {nullptr, 0};
+			REQUIRE(duckdb_v2_varchar_decode(&str_data[sidx], &s, nullptr) == DUCKDB_V2_ERROR_NONE);
 			auto expected = "row_" + std::to_string(i);
-			REQUIRE(std::string(s, slen) == expected);
+			REQUIRE(s == expected);
 		}
 
 		duckdb_v2_data_chunk_destroy(&chunk);
@@ -191,8 +188,7 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 
 	SECTION("WHERE clause filters rows (engine-side, no pushdown)") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT i FROM counter() WHERE i > 2", &result, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(fix.conn, "SELECT i FROM counter() WHERE i > 2", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -207,8 +203,7 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 
 	SECTION("empty result when filter excludes all") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT i FROM counter() WHERE i > 100", &result, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(fix.conn, "SELECT i FROM counter() WHERE i > 100", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		idx_t chunk_count = 0;
 		duckdb_v2_result_chunk_count(result, &chunk_count, nullptr);
@@ -253,7 +248,7 @@ static void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckd
 	int64_t start = 0;
 	duckdb_v2_value_handle start_val = nullptr;
 	duckdb_v2_error_info_handle local_err = nullptr;
-	if (duckdb_v2_table_function_bind_get_named_parameter(info, "start", &start_val, &local_err) ==
+	if (duckdb_v2_table_function_bind_get_named_parameter(info, V2Str("start"), &start_val, &local_err) ==
 	    DUCKDB_V2_ERROR_NONE) {
 		duckdb_v2_value_get_int64(start_val, &start, err);
 		duckdb_v2_value_destroy(&start_val);
@@ -262,7 +257,7 @@ static void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckd
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
-	duckdb_v2_table_function_bind_add_result_column(info, "val", bigint_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("val"), bigint_type, err);
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
 	auto *bd = new CounterNBindData {n, start};
@@ -319,12 +314,12 @@ static void register_counter_n(duckdb_v2_context_handle ctx, duckdb_v2_error_inf
 	duckdb_v2_table_function_builder_handle builder = nullptr;
 	REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
 
-	REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "counter_n", err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("counter_n"), err) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
 	REQUIRE(duckdb_v2_table_function_builder_add_parameter(builder, bigint_type, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_add_named_parameter(builder, "start", bigint_type, err) ==
+	REQUIRE(duckdb_v2_table_function_builder_add_named_parameter(builder, V2Str("start"), bigint_type, err) ==
 	        DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
@@ -346,8 +341,7 @@ TEST_CASE("V2 table function: positional parameter", "[capi_v2][table_function]"
 	    nullptr, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT val FROM counter_n(3)", &result, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT val FROM counter_n(3)", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -379,8 +373,7 @@ TEST_CASE("V2 table function: named parameter", "[capi_v2][table_function]") {
 	    nullptr, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT val FROM counter_n(4, start := 10)", &result, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT val FROM counter_n(4, start := 10)", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -418,8 +411,7 @@ TEST_CASE("V2 table function: parameter out of range", "[capi_v2][table_function
 	    nullptr, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT val FROM counter_n()", &result, nullptr) !=
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT val FROM counter_n()", &result, nullptr) != DUCKDB_V2_ERROR_NONE);
 	if (result) {
 		duckdb_v2_result_destroy(&result);
 	}
@@ -443,7 +435,7 @@ static void userdata_bind(duckdb_v2_table_function_bind_info_handle info, duckdb
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
-	duckdb_v2_table_function_bind_add_result_column(info, "val", bigint_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("val"), bigint_type, err);
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
 	auto *bd = new int64_t(cfg->magic_value);
@@ -504,7 +496,8 @@ TEST_CASE("V2 table function: builder user_data flows to bind and init", "[capi_
 
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "userdata_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("userdata_fn"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_user_data(
 		                builder, cfg_ptr, [](void *p) { delete static_cast<UserDataConfig *>(p); }, err) ==
 		            DUCKDB_V2_ERROR_NONE);
@@ -520,8 +513,7 @@ TEST_CASE("V2 table function: builder user_data flows to bind and init", "[capi_
 	    cfg, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT val FROM userdata_fn()", &result, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT val FROM userdata_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -556,9 +548,9 @@ static void proj_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_
                       duckdb_v2_error_info_handle *err) {
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
-	duckdb_v2_table_function_bind_add_result_column(info, "a", bigint_type, err);
-	duckdb_v2_table_function_bind_add_result_column(info, "b", bigint_type, err);
-	duckdb_v2_table_function_bind_add_result_column(info, "c", bigint_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("a"), bigint_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("b"), bigint_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("c"), bigint_type, err);
 	duckdb_v2_logical_type_destroy(&bigint_type);
 }
 
@@ -612,7 +604,7 @@ TEST_CASE("V2 table function: projection pushdown", "[capi_v2][table_function]")
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "proj_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("proj_fn"), err) == DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_projection_pushdown(builder, true, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, proj_bind, err) ==
@@ -627,8 +619,7 @@ TEST_CASE("V2 table function: projection pushdown", "[capi_v2][table_function]")
 	    nullptr, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT a, c FROM proj_fn()", &result, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT a, c FROM proj_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -673,7 +664,7 @@ static void card_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_
                       duckdb_v2_error_info_handle *err) {
 	duckdb_v2_logical_type_handle t = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &t, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_bind_add_result_column(info, "v", t, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_bind_add_result_column(info, V2Str("v"), t, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&t);
 }
 
@@ -718,7 +709,7 @@ static void card_cb_exact(void *bind_data, idx_t *out_estimated, bool *out_is_ex
 // thousands separators so numeric matches are locale/format independent.
 static std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sql) {
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(conn, sql, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(conn, sql, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	idx_t col_count = 0;
 	duckdb_v2_result_column_count(result, &col_count, nullptr);
@@ -742,12 +733,11 @@ static std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sq
 				if (!RowValid(view, idx)) {
 					continue;
 				}
-				const char *s = nullptr;
-				idx_t slen = 0;
-				if (duckdb_v2_varchar_decode(&data[idx], &s, &slen, nullptr) == DUCKDB_V2_ERROR_NONE && s) {
-					for (idx_t k = 0; k < slen; k++) {
-						if (s[k] != ',') {
-							out.push_back(s[k]);
+				duckdb_v2_str s = {nullptr, 0};
+				if (duckdb_v2_varchar_decode(&data[idx], &s, nullptr) == DUCKDB_V2_ERROR_NONE && s.ptr) {
+					for (idx_t k = 0; k < s.len; k++) {
+						if (s.ptr[k] != ',') {
+							out.push_back(s.ptr[k]);
 						}
 					}
 					out.push_back('\n');
@@ -768,7 +758,7 @@ TEST_CASE("V2 table function: cardinality callback reaches the optimizer", "[cap
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "card_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("card_fn"), err) == DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, card_bind, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, card_init_global, err) ==
@@ -794,7 +784,8 @@ TEST_CASE("V2 table function: bind_set_cardinality reaches the optimizer", "[cap
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "card_static_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("card_static_fn"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, card_bind_static, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, card_init_global, err) ==
@@ -820,7 +811,8 @@ TEST_CASE("V2 table function: cardinality callback overrides static value (exact
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "card_both_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("card_both_fn"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, card_bind_static, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, card_init_global, err) ==
@@ -861,7 +853,7 @@ TEST_CASE("V2 table function: progress callback registers and runs", "[capi_v2][
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "prog_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("prog_fn"), err) == DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, counter_bind, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, counter_init_global, err) ==
@@ -876,8 +868,7 @@ TEST_CASE("V2 table function: progress callback registers and runs", "[capi_v2][
 	    nullptr, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT count(*) FROM prog_fn()", &result, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT count(*) FROM prog_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -955,7 +946,7 @@ TEST_CASE("V2 table function: init_local reads global state", "[capi_v2][table_f
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "gs_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("gs_fn"), err) == DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, card_bind, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, gs_init_global, err) ==
@@ -969,7 +960,7 @@ TEST_CASE("V2 table function: init_local reads global state", "[capi_v2][table_f
 	    nullptr, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT v FROM gs_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT v FROM gs_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1044,7 +1035,7 @@ TEST_CASE("V2 table function: init_global reads back the global state it set", "
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "gsg_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("gsg_fn"), err) == DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, card_bind, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, gsg_init_global, err) ==
@@ -1056,7 +1047,7 @@ TEST_CASE("V2 table function: init_global reads back the global state it set", "
 	    nullptr, nullptr);
 
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT v FROM gsg_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(fix.conn, "SELECT v FROM gsg_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1200,7 +1191,8 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "pushdown_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("pushdown_fn"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, pd_bind, err) == DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, pd_init_global, err) ==
 		            DUCKDB_V2_ERROR_NONE);
@@ -1214,8 +1206,7 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 
 	SECTION("filter is claimed and applied by the function") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT v FROM pushdown_fn() WHERE v = 7", &result, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(fix.conn, "SELECT v FROM pushdown_fn() WHERE v = 7", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1236,8 +1227,7 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 
 	SECTION("no filter reaches the callback for an unfiltered scan") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(fix.conn, "SELECT v FROM pushdown_fn()", &result, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(fix.conn, "SELECT v FROM pushdown_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1268,7 +1258,7 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 static void errcode_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
                          duckdb_v2_error_info_handle *err) {
 	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY);
-	duckdb_v2_error_info_set_text(*err, "synthetic OOM from exec");
+	duckdb_v2_error_info_set_text(*err, V2Str("synthetic OOM from exec"));
 }
 
 TEST_CASE("V2 table function: callback error code round-trips to the query", "[capi_v2][table_function]") {
@@ -1279,7 +1269,8 @@ TEST_CASE("V2 table function: callback error code round-trips to the query", "[c
 	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		    duckdb_v2_table_function_builder_handle builder = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, "errcode_fn", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("errcode_fn"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, card_bind, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, card_init_global, err) ==
@@ -1293,13 +1284,12 @@ TEST_CASE("V2 table function: callback error code round-trips to the query", "[c
 
 	duckdb_v2_result_handle result = nullptr;
 	duckdb_v2_error_info_handle qerr = nullptr;
-	auto rc = duckdb_v2_connection_query(fix.conn, "SELECT v FROM errcode_fn()", &result, &qerr);
+	auto rc = V2Query(fix.conn, "SELECT v FROM errcode_fn()", &result, &qerr);
 	REQUIRE(rc == DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY); // not collapsed to INVALID_INPUT
 	REQUIRE(qerr != nullptr);
-	const char *msg = nullptr;
+	duckdb_v2_str msg = {nullptr, 0};
 	duckdb_v2_error_info_get_text(qerr, &msg);
-	REQUIRE(msg != nullptr);
-	REQUIRE(std::string(msg).find("synthetic OOM") != std::string::npos);
+	REQUIRE(V2StrTo(msg).find("synthetic OOM") != std::string::npos);
 	duckdb_v2_error_info_destroy(&qerr);
 	if (result) {
 		duckdb_v2_result_destroy(&result);
@@ -1325,7 +1315,8 @@ TEST_CASE("V2 table function: builder validation", "[capi_v2][table_function]") 
 		    // Register without exec callback should fail
 		    duckdb_v2_table_function_builder_handle builder2 = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder2, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder2, "incomplete", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder2, V2Str("incomplete"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder2, counter_bind, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_register(ctx, builder2, err) != DUCKDB_V2_ERROR_NONE);
@@ -1333,7 +1324,8 @@ TEST_CASE("V2 table function: builder validation", "[capi_v2][table_function]") 
 		    // Register without bind callback should fail
 		    duckdb_v2_table_function_builder_handle builder3 = nullptr;
 		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder3, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder3, "incomplete2", err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder3, V2Str("incomplete2"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_exec_callback(builder3, counter_exec, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_register(ctx, builder3, err) != DUCKDB_V2_ERROR_NONE);

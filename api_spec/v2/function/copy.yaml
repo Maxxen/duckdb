@@ -10,7 +10,7 @@ structs:
       - {name: context, type: context}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: column_types, type: logical_type, pointer: 1}
-      - {name: column_names, type: char, pointer: 2, const: true}
+      - {name: column_names, type: str, pointer: 1, const: true, description: "Array of column_count borrowed name views; only valid for the duration of the callback."}
       - {name: column_count, type: idx}
       - {name: out_bind_data, type: void, pointer: 1}
       - {name: out_bind_data_copy, type: user_data_copy}
@@ -22,7 +22,7 @@ structs:
       - {name: context, type: context}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: bind_data, type: void, pointer: 1, const: true}
-      - {name: file_path, type: char, pointer: 1, const: true}
+      - {name: file_path, type: str, description: "The target file path. Borrowed; only valid for the duration of the callback."}
       - {name: out_init_data, type: void, pointer: 1}
       - {name: out_init_data_destructor, type: user_data_destroy}
   copy_function_batch_args:
@@ -129,9 +129,7 @@ functions:
         type: copy_function_builder
         description: "The copy function builder handle."
       name:
-        type: char
-        indirection: 1
-        const: true
+        type: str
         description: "The name of the copy function."
       err:
         type: error_info

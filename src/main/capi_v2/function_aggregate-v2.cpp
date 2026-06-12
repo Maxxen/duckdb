@@ -263,34 +263,35 @@ duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builde
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_aggregate_function_builder_handle builder,
-                                                                   const char *name, duckdb_v2_error_info_handle *err) {
+                                                                   duckdb_v2_str name,
+                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Function name cannot be null");
 		}
-		if (strlen(name) == 0) {
+		if (name.len == 0) {
 			throw duckdb::InvalidInputException("Function name cannot be empty");
 		}
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
-		agg_builder->name = name;
+		agg_builder->name = duckdb::ToString(name);
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_handle func, const char *name,
+duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_str name,
                                                    duckdb_v2_logical_type_handle type,
                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Parameter name cannot be null");
 		}
-		if (strlen(name) == 0) {
+		if (name.len == 0) {
 			throw duckdb::InvalidInputException("Parameter name cannot be empty");
 		}
 		if (!type) {
@@ -301,7 +302,7 @@ duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_
 			throw duckdb::InvalidInputException("Parameter type cannot be invalid.");
 		}
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
-		agg_builder->parameters.emplace_back(name, ltype);
+		agg_builder->parameters.emplace_back(duckdb::ToString(name), ltype);
 	});
 }
 

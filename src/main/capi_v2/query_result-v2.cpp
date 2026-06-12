@@ -30,15 +30,15 @@ DUCKDB_V2_RESULT_TYPE MapResultType(StatementReturnType t) {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn, const char *sql,
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn, duckdb_v2_str sql,
                                                 duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!conn || !sql || !out_result) {
+		if (!conn || (!sql.ptr && sql.len > 0) || !out_result) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_query");
 		}
 		*out_result = nullptr;
 		auto *conn_wrapper = duckdb::ToConn(conn);
-		auto result = conn_wrapper->connection->Query(std::string(sql));
+		auto result = conn_wrapper->connection->Query(duckdb::ToString(sql));
 		if (result->HasError()) {
 			// Re-throw the typed ErrorData so the exception's ExceptionType
 			// is preserved and routed through GetErrorCodeFromExceptionType.
@@ -98,19 +98,17 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_column_count(duckdb_v2_result_handle resul
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_handle result, idx_t index, const char **out_name,
-                                                  idx_t *out_length, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_handle result, idx_t index, duckdb_v2_str *out_name,
+                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!result || !out_name || !out_length) {
+		if (!result || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_name");
 		}
 		auto *r = duckdb::ToResult(result);
 		if (index >= r->names.size()) {
 			throw duckdb::InvalidInputException("result column index out of range");
 		}
-		auto &name = r->names[index];
-		*out_name = name.c_str();
-		*out_length = name.size();
+		*out_name = duckdb::ToStr(r->names[index]);
 	});
 }
 

@@ -141,10 +141,8 @@ functions:
         type: aggregate_function_builder
         description: The aggregate function builder for which to set the name.
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: The null-terminated name to set for the function.
+        type: str
+        description: The name to set for the function.
       err:
         type: error_info
         indirection: 1
@@ -152,16 +150,14 @@ functions:
     return_type: API_CALL
   aggregate_function_builder_add_parameter:
     summary: Adds a parameter to a aggregate function.
-    description: "Adds a parameter to a aggregate function with the specified name and type. \nThe parameter name must be a null-terminated string. The library makes an internal copy of the provided name and type, and does not take ownership of either.\n"
+    description: "Adds a parameter to a aggregate function with the specified name and type. \nThe library makes an internal copy of the provided name and type, and does not take ownership of either.\n"
     parameters:
       func:
         type: aggregate_function_builder
         description: The aggregate function to configure.
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: The null-terminated name of the parameter to add.
+        type: str
+        description: The name of the parameter to add.
       type:
         type: logical_type
         description: The type of the parameter to add.

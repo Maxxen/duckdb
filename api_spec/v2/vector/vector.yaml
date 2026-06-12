@@ -399,13 +399,8 @@ functions:
         type: idx
         description: The row index to write to.
       data:
-        type: char
-        indirection: 1
-        const: true
-        description: Pointer to the bytes to copy.
-      length:
-        type: idx
-        description: Number of bytes to copy.
+        type: str
+        description: View of the bytes to copy. The pointer may be null when the length is 0.
       err:
         type: error_info
         indirection: 1
@@ -482,14 +477,13 @@ functions:
   # bit-inverted — the contiguous magnitude bytes don't exist on disk.
   # -----------------------------------------------------------------------
   varchar_decode:
-    summary: Reads the bytes + length of a VARCHAR value from its storage.
+    summary: Reads the bytes of a VARCHAR value from its storage as a view.
     description: |
-      out_data receives a borrowed pointer into the VARCHAR's underlying
-      bytes; out_length receives the byte length. The pointer is valid
-      for as long as the enclosing value's owning chunk is alive — for
-      short (inlined) strings the bytes physically live inside the
-      varchar_t value, so callers that need a pointer outliving the
-      value must memcpy.
+      out_data receives a borrowed view into the VARCHAR's underlying
+      bytes. The view is valid for as long as the enclosing value's
+      owning chunk is alive — for short (inlined) strings the bytes
+      physically live inside the varchar_t value, so callers that need
+      a view outliving the value must memcpy.
     parameters:
       varchar:
         type: varchar
@@ -497,16 +491,10 @@ functions:
         const: true
         description: Pointer to the VARCHAR storage.
       out_data:
-        type: char
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-        description: Receives a borrowed pointer to the bytes.
-      out_length:
-        type: idx
+        type: str
         indirection: 1
-        kind: OUT
-        description: Receives the byte length.
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the bytes.
       err:
         type: error_info
         indirection: 1

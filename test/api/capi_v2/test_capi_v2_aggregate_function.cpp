@@ -1,5 +1,6 @@
 #include "catch.hpp"
 #include "capi_v2_internal.hpp"
+#include "capi_v2_test_helpers.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -99,7 +100,7 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 	duckdb_v2_create_environment(&env, nullptr);
 
 	duckdb_v2_database_handle db = nullptr;
-	duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
+	duckdb_v2_open(env, duckdb_v2_str {nullptr, 0}, nullptr, 0, &db, nullptr);
 
 	duckdb_v2_connection_handle conn = nullptr;
 	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -116,8 +117,9 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 		    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, "my_median", err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_add_parameter(builder, "x", type, err) ==
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("my_median"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_add_parameter(builder, V2Str("x"), type, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_aggregate_function_builder_set_return_type(builder, type, err) == DUCKDB_V2_ERROR_NONE);
 
@@ -145,9 +147,8 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 
 	SECTION("median over a single group") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(
-		            conn, "SELECT my_median(i) AS result FROM (VALUES (1), (2), (3), (4), (5)) AS t(i)", &result,
-		            nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(conn, "SELECT my_median(i) AS result FROM (VALUES (1), (2), (3), (4), (5)) AS t(i)", &result,
+		                nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -168,10 +169,10 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 
 	SECTION("median over multiple groups") {
 		duckdb_v2_result_handle result = nullptr;
-		REQUIRE(duckdb_v2_connection_query(conn,
-		                                   "SELECT g, my_median(i) AS result FROM (VALUES (0, 10), (0, 20), (0, 30), "
-		                                   "(1, 1), (1, 2)) AS t(g, i) GROUP BY g ORDER BY g",
-		                                   &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(conn,
+		                "SELECT g, my_median(i) AS result FROM (VALUES (0, 10), (0, 20), (0, 30), "
+		                "(1, 1), (1, 2)) AS t(g, i) GROUP BY g ORDER BY g",
+		                &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);

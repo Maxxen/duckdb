@@ -247,11 +247,12 @@ functions:
   logical_type_get_alias:
     summary: Borrows the logical type's alias (extension/user-defined name) if any.
     description: |
-      On success, writes a borrowed null-terminated string into *out_alias
-      if the type has a non-empty alias, or NULL if the type has no alias
-      (or only an empty alias). For spatial types the alias is e.g.
-      "POINT_2D"; for arbitrary user-defined types it is the configured
-      name. A non-NULL pointer is valid until the logical type is destroyed.
+      On success, writes a borrowed view of the alias into *out_alias
+      if the type has a non-empty alias, or the empty view {NULL, 0} if
+      the type has no alias (or only an empty alias). For spatial types
+      the alias is e.g. "POINT_2D"; for arbitrary user-defined types it
+      is the configured name. A non-empty view is valid until the
+      logical type is destroyed.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -259,11 +260,10 @@ functions:
         type: logical_type
         description: The logical type.
       out_alias:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: Borrowed pointer to the alias string, or NULL if the type has no alias (or only an empty alias).
+        description: Receives a borrowed view of the alias, or the empty view {NULL, 0} if the type has no alias (or only an empty alias).
       err:
         type: error_info
         indirection: 1
@@ -364,10 +364,9 @@ functions:
     summary: Borrows the dictionary value at the given index of an ENUM.
     description: |
       Out-of-range index returns ERROR_INVALID_INPUT. The
-      returned pointer + length describe a borrowed null-terminated byte
-      string valid until the logical type is destroyed. Bytes are not
-      validated as UTF-8 — VARCHAR storage holds whatever bytes were
-      inserted.
+      returned view is a borrowed byte string valid until the logical
+      type is destroyed. Bytes are not validated as UTF-8 — VARCHAR
+      storage holds whatever bytes were inserted.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -377,16 +376,10 @@ functions:
         type: idx
         description: The dictionary index, in [0, enum_size).
       out_value:
-        type: char
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-        description: Borrowed pointer to the dictionary string.
-      out_length:
-        type: idx
+        type: str
         indirection: 1
-        kind: OUT
-        description: Receives the length in bytes of the dictionary string.
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the dictionary string.
       err:
         type: error_info
         indirection: 1
@@ -545,9 +538,8 @@ functions:
   logical_type_get_struct_child_name:
     summary: Borrows the field name at the given index of a STRUCT.
     description: |
-      The returned pointer + length describe a borrowed null-terminated
-      name valid until the logical type is destroyed. Out-of-range index
-      returns ERROR_INVALID_INPUT.
+      The returned view is a borrowed name valid until the logical type
+      is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -557,16 +549,10 @@ functions:
         type: idx
         description: The field index, in [0, struct_child_count).
       out_name:
-        type: char
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-        description: Borrowed pointer to the field name.
-      out_length:
-        type: idx
+        type: str
         indirection: 1
-        kind: OUT
-        description: Receives the byte length of the field name.
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the field name.
       err:
         type: error_info
         indirection: 1
@@ -622,9 +608,8 @@ functions:
   logical_type_get_union_member_name:
     summary: Borrows the member name at the given index of a UNION.
     description: |
-      The returned pointer + length describe a borrowed null-terminated
-      name valid until the logical type is destroyed. Out-of-range index
-      returns ERROR_INVALID_INPUT.
+      The returned view is a borrowed name valid until the logical type
+      is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -634,16 +619,10 @@ functions:
         type: idx
         description: The member index, in [0, union_member_count).
       out_name:
-        type: char
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-        description: Borrowed pointer to the member name.
-      out_length:
-        type: idx
+        type: str
         indirection: 1
-        kind: OUT
-        description: Receives the byte length of the member name.
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the member name.
       err:
         type: error_info
         indirection: 1

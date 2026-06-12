@@ -41,15 +41,11 @@ callbacks:
         type: LOG_LEVEL
         description: "The severity level of the log message."
       log_type:
-        type: char
-        indirection: 1
-        const: true
-        description: "The null-terminated category of the log message, which can be used to classify messages (e.g., 'query', 'optimizer', 'storage')."
+        type: str
+        description: "The category of the log message, which can be used to classify messages (e.g., 'query', 'optimizer', 'storage'). Borrowed; only valid for the duration of the callback."
       log_message:
-        type: char
-        indirection: 1
-        const: true
-        description: "The null-terminated log message being emitted."
+        type: str
+        description: "The log message being emitted. Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1
@@ -81,10 +77,8 @@ functions:
         type: log_storage_builder
         description: "The log storage builder handle to configure."
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: "The null-terminated name to assign to the log storage builder."
+        type: str
+        description: "The name to assign to the log storage builder."
       err:
         type: error_info
         indirection: 1
@@ -163,10 +157,8 @@ functions:
         type: LOG_LEVEL
         description: "The severity level of the log message."
       message:
-        type: char
-        indirection: 1
-        const: true
-        description: "The null-terminated log message to emit."
+        type: str
+        description: "The log message to emit."
       err:
         type: error_info
         indirection: 1
@@ -186,10 +178,8 @@ functions:
         type: LOG_LEVEL
         description: "The severity level of the log message."
       message:
-        type: char
-        indirection: 1
-        const: true
-        description: "The null-terminated log message to emit."
+        type: str
+        description: "The log message to emit."
       err:
         type: error_info
         indirection: 1

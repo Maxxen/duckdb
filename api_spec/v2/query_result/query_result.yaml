@@ -116,10 +116,8 @@ functions:
         type: connection
         description: The connection on which to execute the query.
       sql:
-        type: char
-        indirection: 1
-        const: true
-        description: Null-terminated SQL query string.
+        type: str
+        description: SQL query string.
       out_result:
         type: result
         indirection: 1
@@ -213,9 +211,8 @@ functions:
   result_column_name:
     summary: Borrows the name of a result column.
     description: |
-      Returns a borrowed null-terminated byte string + length, valid
-      until the result is destroyed. Out-of-range index returns
-      ERROR_INVALID_INPUT.
+      Returns a borrowed view of the column name, valid until the result
+      is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
     role: getter
     belongs_to: result
     parameters:
@@ -224,14 +221,10 @@ functions:
       index:
         type: idx
       out_name:
-        type: char
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-      out_length:
-        type: idx
+        type: str
         indirection: 1
-        kind: OUT
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the column name.
       err:
         type: error_info
         indirection: 1

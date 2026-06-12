@@ -40,11 +40,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_handle conn, const char *name,
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_handle conn, duckdb_v2_str name,
                                                      duckdb_v2_option_handle *out_option,
                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!conn || !name || !out_option) {
+		if (!conn || (!name.ptr && name.len > 0) || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get");
 		}
 		*out_option = nullptr;
@@ -52,7 +52,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_handle
 		auto &client = *conn_wrapper->connection->context;
 		auto &config = duckdb::DBConfig::GetConfig(client);
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
-		duckdb::BuildOptionByName(*wrapper, client, config, std::string(name));
+		duckdb::BuildOptionByName(*wrapper, client, config, duckdb::ToString(name));
 		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
 	});
 }

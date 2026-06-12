@@ -35,11 +35,10 @@ functions:
         type: error_info
         description: "The error info handle to query."
       out_text:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: "Borrowed pointer to the null-terminated message. Owned by the library; must not be freed."
+        description: "Receives a borrowed view of the message. Owned by the library; valid until the info handle is destroyed."
     return_type: API_CALL
   error_info_set_code:
     summary: "Sets the error code for an error info handle."
@@ -67,10 +66,8 @@ functions:
         type: error_info
         description: "The error info handle to set. On success, updated with the provided message."
       text:
-        type: char
-        indirection: 1
-        const: true
-        description: "Null-terminated string containing the error message to set in the info."
+        type: str
+        description: "The error message to set in the info."
     return_type: API_CALL
   error_info_destroy:
     summary: "Destroys an error info handle and frees its resources."

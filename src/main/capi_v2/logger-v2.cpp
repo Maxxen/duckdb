@@ -22,8 +22,8 @@ public:
 		}
 
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
-			log_callback(user_data, timestamp.value, static_cast<DUCKDB_V2_LOG_LEVEL>(level), log_type.c_str(),
-			             log_message.c_str(), err);
+			log_callback(user_data, timestamp.value, static_cast<DUCKDB_V2_LOG_LEVEL>(level), ToStr(log_type),
+			             ToStr(log_message), err);
 		});
 	};
 
@@ -80,18 +80,18 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_create(duckdb_v2_context_hand
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_name(duckdb_v2_log_storage_builder_handle builder,
-                                                            const char *name, duckdb_v2_error_info_handle *err) {
+                                                            duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-		if (!name) {
+		if (!name.ptr && name.len > 0) {
 			throw duckdb::InvalidInputException("Name pointer cannot be null.");
 		}
-		if (strlen(name) == 0) {
+		if (name.len == 0) {
 			throw duckdb::InvalidInputException("Name cannot be empty.");
 		}
-		reinterpret_cast<duckdb::LogStorageBuilder *>(builder)->name = name;
+		reinterpret_cast<duckdb::LogStorageBuilder *>(builder)->name = duckdb::ToString(name);
 	});
 }
 
@@ -183,18 +183,18 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_destroy(duckdb_v2_log_storage
 //----------------------------------------------------------------------------------------------------------------------
 
 DUCKDB_V2_API_CALL_t duckdb_v2_connection_log(duckdb_v2_connection_handle conn, DUCKDB_V2_LOG_LEVEL level,
-                                              const char *message, duckdb_v2_error_info_handle *err) {
+                                              duckdb_v2_str message, duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		auto &connection = *duckdb::ToConn(conn);
 		auto &ctx = *connection.connection->context;
-		duckdb::Logger::Get(ctx).WriteLog("", static_cast<duckdb::LogLevel>(level), message);
+		duckdb::Logger::Get(ctx).WriteLog("", static_cast<duckdb::LogLevel>(level), duckdb::ToString(message));
 	});
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_context_log(duckdb_v2_context_handle context, DUCKDB_V2_LOG_LEVEL level,
-                                           const char *message, duckdb_v2_error_info_handle *err) {
+                                           duckdb_v2_str message, duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		auto &ctx = *reinterpret_cast<duckdb::ClientContext *>(context);
-		duckdb::Logger::Get(ctx).WriteLog("", static_cast<duckdb::LogLevel>(level), message);
+		duckdb::Logger::Get(ctx).WriteLog("", static_cast<duckdb::LogLevel>(level), duckdb::ToString(message));
 	});
 }

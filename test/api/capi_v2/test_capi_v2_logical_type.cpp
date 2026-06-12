@@ -173,9 +173,9 @@ TEST_CASE("V2: logical_type get_alias on un-aliased type is NULL", "[capi_v2][lo
 	duckdb_v2_logical_type_handle t = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, nullptr);
 
-	const char *alias = "sentinel";
+	duckdb_v2_str alias = {reinterpret_cast<const char *>(0x1), 99};
 	REQUIRE(duckdb_v2_logical_type_get_alias(t, &alias, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(alias == nullptr);
+	REQUIRE(alias.ptr == nullptr);
 
 	duckdb_v2_logical_type_destroy(&t);
 }
@@ -185,16 +185,15 @@ TEST_CASE("V2: logical_type get_alias reads alias set via V1", "[capi_v2][logica
 	duckdb_logical_type_set_alias(v1, "my_int");
 	auto t = V1ToV2(v1);
 
-	const char *alias = nullptr;
+	duckdb_v2_str alias = {nullptr, 0};
 	REQUIRE(duckdb_v2_logical_type_get_alias(t, &alias, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(alias != nullptr);
-	REQUIRE(std::string(alias) == "my_int");
+	REQUIRE(alias == "my_int");
 
 	// Borrowed pointer is valid as long as the type is alive: a second call
 	// returns the same string contents.
-	const char *alias2 = nullptr;
+	duckdb_v2_str alias2 = {nullptr, 0};
 	duckdb_v2_logical_type_get_alias(t, &alias2, nullptr);
-	REQUIRE(std::string(alias2) == "my_int");
+	REQUIRE(alias2 == "my_int");
 
 	duckdb_v2_logical_type_destroy(&t);
 }
@@ -212,10 +211,9 @@ TEST_CASE("V2: logical_type get_alias reads alias set on a STRUCT", "[capi_v2][l
 	duckdb_logical_type_set_alias(v1, "POINT_2D");
 	auto t = V1ToV2(v1);
 
-	const char *alias = nullptr;
+	duckdb_v2_str alias = {nullptr, 0};
 	REQUIRE(duckdb_v2_logical_type_get_alias(t, &alias, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(alias != nullptr);
-	REQUIRE(std::string(alias) == "POINT_2D");
+	REQUIRE(alias == "POINT_2D");
 
 	// The id is still STRUCT — alias is metadata, not type identity.
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
@@ -226,7 +224,7 @@ TEST_CASE("V2: logical_type get_alias reads alias set on a STRUCT", "[capi_v2][l
 }
 
 TEST_CASE("V2: logical_type get_alias null handle / null out", "[capi_v2][logical_type][alias]") {
-	const char *alias = nullptr;
+	duckdb_v2_str alias = {nullptr, 0};
 	REQUIRE(duckdb_v2_logical_type_get_alias(nullptr, &alias, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	duckdb_v2_logical_type_handle t = nullptr;
@@ -315,17 +313,16 @@ TEST_CASE("V2: logical_type ENUM size / value / internal_type_id (small)", "[cap
 	REQUIRE(duckdb_v2_logical_type_get_enum_size(t, &size, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(size == 3);
 
-	const char *v = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, &v, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 1);
-	REQUIRE(std::string(v, len) == "a");
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 1, &v, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 2);
-	REQUIRE(std::string(v, len) == "bb");
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 2, &v, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 3);
-	REQUIRE(std::string(v, len) == "ccc");
+	duckdb_v2_str v = {nullptr, 0};
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(v.len == 1);
+	REQUIRE(v == "a");
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 1, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(v.len == 2);
+	REQUIRE(v == "bb");
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 2, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(v.len == 3);
+	REQUIRE(v == "ccc");
 
 	DUCKDB_V2_LOGICAL_TYPE_ID internal = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	REQUIRE(duckdb_v2_logical_type_get_enum_internal_type_id(t, &internal, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -396,9 +393,8 @@ TEST_CASE("V2: logical_type ENUM with empty dictionary", "[capi_v2][logical_type
 	REQUIRE(duckdb_v2_logical_type_get_enum_internal_type_id(t, &internal, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(internal == DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT);
 
-	const char *v = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, &v, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	duckdb_v2_str v = {nullptr, 0};
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	duckdb_v2_logical_type_destroy(&t);
 }
@@ -406,10 +402,9 @@ TEST_CASE("V2: logical_type ENUM with empty dictionary", "[capi_v2][logical_type
 TEST_CASE("V2: logical_type ENUM get_value out-of-range", "[capi_v2][logical_type][enum]") {
 	const char *names[] = {"x", "y"};
 	auto t = MakeEnum(names, 2);
-	const char *v = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str v = {nullptr, 0};
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 2, &v, &len, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 2, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_logical_type_destroy(&t);
@@ -420,11 +415,10 @@ TEST_CASE("V2: logical_type ENUM accessors reject non-ENUM", "[capi_v2][logical_
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, nullptr);
 
 	idx_t size = 0;
-	const char *v = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str v = {nullptr, 0};
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	REQUIRE(duckdb_v2_logical_type_get_enum_size(t, &size, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, &v, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_enum_internal_type_id(t, &id, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_logical_type_destroy(&t);
 }
@@ -432,17 +426,15 @@ TEST_CASE("V2: logical_type ENUM accessors reject non-ENUM", "[capi_v2][logical_
 TEST_CASE("V2: logical_type ENUM accessors null handle / null out", "[capi_v2][logical_type][enum]") {
 	idx_t size = 0;
 	REQUIRE(duckdb_v2_logical_type_get_enum_size(nullptr, &size, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	const char *v = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(nullptr, 0, &v, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	duckdb_v2_str v = {nullptr, 0};
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(nullptr, 0, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	REQUIRE(duckdb_v2_logical_type_get_enum_internal_type_id(nullptr, &id, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	const char *names[] = {"x", "y"};
 	auto t = MakeEnum(names, 2);
 	REQUIRE(duckdb_v2_logical_type_get_enum_size(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, nullptr, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, &v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_enum_value(t, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_enum_internal_type_id(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_logical_type_destroy(&t);
 }
@@ -619,15 +611,11 @@ TEST_CASE("V2: logical_type STRUCT count / name / child_type", "[capi_v2][logica
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_count(s, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(count == 2);
 
-	const char *name = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 0, &name, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(name, len) == "id");
-	// Spec promises a null-terminated string; verify once that the reported
-	// length matches strlen so callers can rely on either form.
-	REQUIRE(std::strlen(name) == len);
-	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 1, &name, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(name, len) == "name");
+	duckdb_v2_str name = {nullptr, 0};
+	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 0, &name, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(name == "id");
+	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 1, &name, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(name == "name");
 
 	duckdb_v2_logical_type_handle child = nullptr;
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_type(s, 0, &child, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -646,10 +634,9 @@ TEST_CASE("V2: logical_type STRUCT count / name / child_type", "[capi_v2][logica
 
 TEST_CASE("V2: logical_type STRUCT out-of-range index", "[capi_v2][logical_type][struct]") {
 	auto s = MakeStruct();
-	const char *name = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_logical_type_handle child = nullptr;
-	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 2, &name, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 2, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_type(s, 2, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(child == nullptr);
 	duckdb_v2_logical_type_destroy(&s);
@@ -660,31 +647,25 @@ TEST_CASE("V2: logical_type STRUCT accessors reject non-STRUCT", "[capi_v2][logi
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, nullptr);
 
 	idx_t count = 0;
-	const char *name = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_logical_type_handle child = nullptr;
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_count(t, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(t, 0, &name, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(t, 0, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_type(t, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_logical_type_destroy(&t);
 }
 
 TEST_CASE("V2: logical_type STRUCT null handle / null out", "[capi_v2][logical_type][struct]") {
 	idx_t count = 0;
-	const char *name = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_logical_type_handle child = nullptr;
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(nullptr, 0, &name, &len, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(nullptr, 0, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_type(nullptr, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	auto s = MakeStruct();
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_count(s, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 0, nullptr, &len, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 0, &name, nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_struct_child_name(s, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_struct_child_type(s, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_logical_type_destroy(&s);
 }
@@ -759,12 +740,11 @@ TEST_CASE("V2: logical_type UNION count / name / member_type", "[capi_v2][logica
 	REQUIRE(duckdb_v2_logical_type_get_union_member_count(u, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(count == 2);
 
-	const char *name = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 0, &name, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(name, len) == "i");
-	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 1, &name, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(name, len) == "s");
+	duckdb_v2_str name = {nullptr, 0};
+	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 0, &name, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(name == "i");
+	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 1, &name, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(name == "s");
 
 	duckdb_v2_logical_type_handle child = nullptr;
 	REQUIRE(duckdb_v2_logical_type_get_union_member_type(u, 0, &child, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -783,10 +763,9 @@ TEST_CASE("V2: logical_type UNION count / name / member_type", "[capi_v2][logica
 
 TEST_CASE("V2: logical_type UNION out-of-range index", "[capi_v2][logical_type][union]") {
 	auto u = MakeUnion();
-	const char *name = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_logical_type_handle child = nullptr;
-	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 2, &name, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 2, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_union_member_type(u, 2, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(child == nullptr);
 	duckdb_v2_logical_type_destroy(&u);
@@ -797,31 +776,25 @@ TEST_CASE("V2: logical_type UNION accessors reject non-UNION", "[capi_v2][logica
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, nullptr);
 
 	idx_t count = 0;
-	const char *name = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_logical_type_handle child = nullptr;
 	REQUIRE(duckdb_v2_logical_type_get_union_member_count(t, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_union_member_name(t, 0, &name, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_union_member_name(t, 0, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_union_member_type(t, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_logical_type_destroy(&t);
 }
 
 TEST_CASE("V2: logical_type UNION null handle / null out", "[capi_v2][logical_type][union]") {
 	idx_t count = 0;
-	const char *name = nullptr;
-	idx_t len = 0;
+	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_logical_type_handle child = nullptr;
 	REQUIRE(duckdb_v2_logical_type_get_union_member_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_union_member_name(nullptr, 0, &name, &len, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_union_member_name(nullptr, 0, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_union_member_type(nullptr, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	auto u = MakeUnion();
 	REQUIRE(duckdb_v2_logical_type_get_union_member_count(u, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 0, nullptr, &len, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 0, &name, nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_union_member_name(u, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_logical_type_get_union_member_type(u, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_logical_type_destroy(&u);
 }

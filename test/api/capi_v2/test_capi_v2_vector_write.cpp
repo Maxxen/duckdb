@@ -421,31 +421,30 @@ TEST_CASE("V2: vector_assign_string short + long", "[capi_v2][vector_write]") {
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 0, "hi", 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(vec, 0, "hi", 2, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	std::string long_str(100, 'x');
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 1, long_str.c_str(), long_str.size(), nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(vec, 1, long_str.c_str(), long_str.size(), nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
 
-	const char *out_data = nullptr;
-	idx_t out_len = 0;
+	duckdb_v2_str out = {nullptr, 0};
 
-	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out_data, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out_len == 2);
-	REQUIRE(std::string(out_data, out_len) == "hi");
+	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out.len == 2);
+	REQUIRE(out == "hi");
 
-	REQUIRE(duckdb_v2_varchar_decode(&arr[1], &out_data, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out_len == 100);
-	REQUIRE(std::string(out_data, out_len) == long_str);
+	REQUIRE(duckdb_v2_varchar_decode(&arr[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out.len == 100);
+	REQUIRE(out == long_str);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
 
 TEST_CASE("V2: vector_assign_string null args", "[capi_v2][vector_write]") {
-	REQUIRE(duckdb_v2_vector_assign_string(nullptr, 0, "x", 1, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2VectorAssignString(nullptr, 0, "x", 1, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 }
 
 TEST_CASE("V2: vector_assign_string on non-string vector rejects", "[capi_v2][vector_write]") {
@@ -462,7 +461,7 @@ TEST_CASE("V2: vector_assign_string on non-string vector rejects", "[capi_v2][ve
 	REQUIRE(duckdb_v2_vector_set_size(vec, 1, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// Should fail — INTEGER vector has no string heap.
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 0, "x", 1, nullptr) != DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(vec, 0, "x", 1, nullptr) != DUCKDB_V2_ERROR_NONE);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -480,12 +479,12 @@ TEST_CASE("V2: vector_assign_string constant index must be 0", "[capi_v2][vector
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar("init", 4, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2ValueCreateVarchar("init", 4, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 1, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 0, "ok", 2, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 1, "bad", 3, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2VectorAssignString(vec, 0, "ok", 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(vec, 1, "bad", 3, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -504,7 +503,7 @@ TEST_CASE("V2: vector_assign_string with BLOB", "[capi_v2][vector_write]") {
 	REQUIRE(duckdb_v2_vector_set_size(vec, 1, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	const char blob_data[] = "\xDE\xAD\x00\xBE\xEF";
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 0, blob_data, 5, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(vec, 0, blob_data, 5, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -533,16 +532,15 @@ TEST_CASE("V2: vector_assign_string empty string", "[capi_v2][vector_write]") {
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vector_set_size(vec, 1, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 0, "", 0, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(vec, 0, "", 0, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
 
-	const char *out_str = nullptr;
-	idx_t out_len = 99;
-	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out_str, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out_len == 0);
+	duckdb_v2_str out = {reinterpret_cast<const char *>(0x1), 99};
+	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out.len == 0);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -560,22 +558,21 @@ TEST_CASE("V2: vector_assign_string on constant vector", "[capi_v2][vector_write
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(duckdb_v2_value_create_varchar("init", 4, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2ValueCreateVarchar("init", 4, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
-	REQUIRE(duckdb_v2_vector_assign_string(vec, 0, "constant", 8, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(vec, 0, "constant", 8, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
-	const char *out_str = nullptr;
-	idx_t out_len = 0;
-	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 0)], &out_str, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(out_str, out_len) == "constant");
-	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 2)], &out_str, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(out_str, out_len) == "constant");
+	duckdb_v2_str out = {nullptr, 0};
+	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 0)], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out == "constant");
+	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 2)], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out == "constant");
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -712,8 +709,8 @@ TEST_CASE("V2: struct vector write via children", "[capi_v2][vector_write]") {
 
 	duckdb_v2_vector_handle field_b = nullptr;
 	REQUIRE(duckdb_v2_vector_get_child(vec, 1, &field_b, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_assign_string(field_b, 0, "hello", 5, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_assign_string(field_b, 1, "world", 5, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(field_b, 0, "hello", 5, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(field_b, 1, "world", 5, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_view view_a {};
 	REQUIRE(duckdb_v2_vector_get_view(field_a, &view_a, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -723,10 +720,9 @@ TEST_CASE("V2: struct vector write via children", "[capi_v2][vector_write]") {
 	duckdb_v2_vector_view view_b {};
 	REQUIRE(duckdb_v2_vector_get_view(field_b, &view_b, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *b_data = static_cast<const duckdb_v2_varchar_t *>(view_b.data);
-	const char *out_str = nullptr;
-	idx_t out_len = 0;
-	REQUIRE(duckdb_v2_varchar_decode(&b_data[0], &out_str, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(out_str, out_len) == "hello");
+	duckdb_v2_str out = {nullptr, 0};
+	REQUIRE(duckdb_v2_varchar_decode(&b_data[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out == "hello");
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -915,10 +911,9 @@ TEST_CASE("V2: LIST<VARCHAR> write", "[capi_v2][vector_write]") {
 	REQUIRE(duckdb_v2_vector_get_child(vec, 0, &child, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	REQUIRE(duckdb_v2_vector_set_size(child, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_assign_string(child, 0, "alpha", 5, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(child, 0, "alpha", 5, nullptr) == DUCKDB_V2_ERROR_NONE);
 	std::string long_str(200, 'z');
-	REQUIRE(duckdb_v2_vector_assign_string(child, 1, long_str.c_str(), long_str.size(), nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(child, 1, long_str.c_str(), long_str.size(), nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	void *parent_raw = nullptr;
 	REQUIRE(duckdb_v2_vector_get_data_mutable(vec, &parent_raw, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -928,12 +923,11 @@ TEST_CASE("V2: LIST<VARCHAR> write", "[capi_v2][vector_write]") {
 	REQUIRE(duckdb_v2_vector_get_view(child, &child_view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(child_view.data);
 
-	const char *out_str = nullptr;
-	idx_t out_len = 0;
-	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out_str, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(out_str, out_len) == "alpha");
-	REQUIRE(duckdb_v2_varchar_decode(&arr[1], &out_str, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out_len == 200);
+	duckdb_v2_str out = {nullptr, 0};
+	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out == "alpha");
+	REQUIRE(duckdb_v2_varchar_decode(&arr[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out.len == 200);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -973,8 +967,8 @@ TEST_CASE("V2: MAP write via child vectors", "[capi_v2][vector_write]") {
 	static_cast<int32_t *>(keys_raw)[0] = 1;
 	static_cast<int32_t *>(keys_raw)[1] = 2;
 
-	REQUIRE(duckdb_v2_vector_assign_string(values, 0, "one", 3, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_assign_string(values, 1, "two", 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(values, 0, "one", 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(values, 1, "two", 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	void *parent_raw = nullptr;
 	REQUIRE(duckdb_v2_vector_get_data_mutable(vec, &parent_raw, nullptr) == DUCKDB_V2_ERROR_NONE);

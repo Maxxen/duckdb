@@ -67,15 +67,11 @@ functions:
     belongs_to: option
     parameters:
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: "Null-terminated option name."
+        type: str
+        description: "Option name."
       setting:
-        type: char
-        indirection: 1
-        const: true
-        description: "Null-terminated setting (string-encoded value)."
+        type: str
+        description: "Setting (string-encoded value)."
       out_option:
         type: option
         indirection: 1
@@ -113,11 +109,10 @@ functions:
         type: option
         description: "The option."
       out_name:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: "Borrowed pointer to the option name. Valid until the option is destroyed."
+        description: "Receives a borrowed view of the option name. Valid until the option is destroyed."
       err:
         type: error_info
         indirection: 1
@@ -138,11 +133,10 @@ functions:
         type: option
         description: "The option."
       out_setting:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: "Borrowed pointer to the setting. Valid until the option is destroyed."
+        description: "Receives a borrowed view of the setting. Valid until the option is destroyed."
       err:
         type: error_info
         indirection: 1
@@ -161,11 +155,10 @@ functions:
         type: option
         description: "The option."
       out_default_setting:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: "Borrowed pointer to the default setting. Valid until the option is destroyed."
+        description: "Receives a borrowed view of the default setting. Valid until the option is destroyed."
       err:
         type: error_info
         indirection: 1
@@ -182,11 +175,10 @@ functions:
         type: option
         description: "The option."
       out_description:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: "Borrowed pointer to the description. Valid until the option is destroyed."
+        description: "Receives a borrowed view of the description. Valid until the option is destroyed."
       err:
         type: error_info
         indirection: 1
@@ -250,11 +242,10 @@ functions:
         type: idx
         description: "The alias index, in [0, alias_count)."
       out_alias:
-        type: char
-        indirection: 2
-        const: true
+        type: str
+        indirection: 1
         kind: OUT_BORROW
-        description: "Borrowed pointer to the alias. Valid until the option is destroyed."
+        description: "Receives a borrowed view of the alias. Valid until the option is destroyed."
       err:
         type: error_info
         indirection: 1

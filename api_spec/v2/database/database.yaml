@@ -30,10 +30,8 @@ functions:
         type: environment
         description: "The environment."
       path:
-        type: char
-        indirection: 1
-        const: true
-        description: "Path to the database. `nullptr` or any ':memory:...' path opens an in-memory database."
+        type: str
+        description: "Path to the database. An empty view (`{NULL, 0}` or zero length) or any ':memory:...' path opens an in-memory database."
       options:
         type: option
         indirection: 1
@@ -108,10 +106,8 @@ functions:
         type: database
         description: "The database."
       name:
-        type: char
-        indirection: 1
-        const: true
-        description: "Null-terminated option name (canonical or alias)."
+        type: str
+        description: "Option name (canonical or alias)."
       out_option:
         type: option
         indirection: 1

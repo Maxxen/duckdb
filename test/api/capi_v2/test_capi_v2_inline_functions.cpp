@@ -1,5 +1,6 @@
 #include "catch.hpp"
 #include "capi_v2_internal.hpp"
+#include "capi_v2_test_helpers.hpp"
 
 #include <cstring>
 #include <string>
@@ -21,7 +22,7 @@ struct V2InlineFixture {
 	duckdb_v2_connection_handle conn = nullptr;
 	V2InlineFixture() {
 		duckdb_v2_create_environment(&env, nullptr);
-		duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
+		duckdb_v2_open(env, duckdb_v2_str {nullptr, 0}, nullptr, 0, &db, nullptr);
 		duckdb_v2_connect(db, &conn, nullptr);
 	}
 	~V2InlineFixture() {
@@ -39,7 +40,7 @@ struct InlQueryRows {
 	idx_t size = 0;
 
 	InlQueryRows(duckdb_v2_connection_handle conn, const char *sql, idx_t expected_rows) {
-		REQUIRE(duckdb_v2_connection_query(conn, sql, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2Query(conn, sql, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 		REQUIRE(size == expected_rows);
@@ -128,9 +129,8 @@ TEST_CASE("V2 inline: duckdb_v2_varchar_* matches varchar_decode", "[capi_v2][in
 
 	for (idx_t row = 0; row < qr.size; row++) {
 		idx_t phys = InlSelAt(qr.view.sel, row);
-		const char *dec_data = nullptr;
-		idx_t dec_len = 0;
-		REQUIRE(duckdb_v2_varchar_decode(&arr[phys], &dec_data, &dec_len, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_str dec = {nullptr, 0};
+		REQUIRE(duckdb_v2_varchar_decode(&arr[phys], &dec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		uint32_t inl_len = 0;
 		const char *inl_data = nullptr;
@@ -139,9 +139,9 @@ TEST_CASE("V2 inline: duckdb_v2_varchar_* matches varchar_decode", "[capi_v2][in
 		REQUIRE(duckdb_v2_varchar_get_data(&arr[phys], &inl_data, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(duckdb_v2_varchar_is_inlined(&arr[phys], &inl_inlined, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		REQUIRE(inl_len == static_cast<uint32_t>(dec_len));
-		REQUIRE(inl_data == dec_data);
-		REQUIRE(inl_inlined == (dec_len <= 12));
+		REQUIRE(inl_len == static_cast<uint32_t>(dec.len));
+		REQUIRE(inl_data == dec.ptr);
+		REQUIRE(inl_inlined == (dec.len <= 12));
 	}
 }
 

@@ -22,7 +22,7 @@ struct FsFixture {
 	duckdb_v2_connection_handle conn = nullptr;
 	FsFixture() {
 		duckdb_v2_create_environment(&env, nullptr);
-		duckdb_v2_open(env, nullptr, nullptr, 0, &db, nullptr);
+		duckdb_v2_open(env, duckdb_v2_str {nullptr, 0}, nullptr, 0, &db, nullptr);
 		duckdb_v2_connect(db, &conn, nullptr);
 	}
 	~FsFixture() {
@@ -92,7 +92,7 @@ TEST_CASE("V2 file_handle: write then read round-trip", "[capi_v2][file_system]"
 	{
 		const uint64_t flags = DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE;
 		duckdb_v2_file_handle_handle h = nullptr;
-		REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(), flags, &h, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), flags, &h, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(h != nullptr);
 
 		int64_t written = 0;
@@ -109,7 +109,7 @@ TEST_CASE("V2 file_handle: write then read round-trip", "[capi_v2][file_system]"
 	// --- Read phase ---
 	{
 		duckdb_v2_file_handle_handle h = nullptr;
-		REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(), DUCKDB_V2_FILE_FLAG_READ, &h, nullptr) ==
+		REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), DUCKDB_V2_FILE_FLAG_READ, &h, nullptr) ==
 		        DUCKDB_V2_ERROR_NONE);
 
 		int64_t size = -1;
@@ -137,7 +137,7 @@ TEST_CASE("V2 file_handle: seek / tell / read-after-seek", "[capi_v2][file_syste
 	// Write a known payload.
 	{
 		duckdb_v2_file_handle_handle h = nullptr;
-		duckdb_v2_file_system_open(fs, path.c_str(), DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE, &h,
+		duckdb_v2_file_system_open(fs, V2Str(path.c_str()), DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE, &h,
 		                           nullptr);
 		int64_t written = 0;
 		duckdb_v2_file_handle_write(h, (void *)payload.data(), (int64_t)payload.size(), &written, nullptr);
@@ -145,7 +145,7 @@ TEST_CASE("V2 file_handle: seek / tell / read-after-seek", "[capi_v2][file_syste
 	}
 
 	duckdb_v2_file_handle_handle h = nullptr;
-	REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(), DUCKDB_V2_FILE_FLAG_READ, &h, nullptr) ==
+	REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), DUCKDB_V2_FILE_FLAG_READ, &h, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
 
 	SECTION("seek forwards then read returns the suffix") {
@@ -181,7 +181,7 @@ TEST_CASE("V2 file_handle: combined flags open in the expected mode", "[capi_v2]
 	// READ | WRITE | CREATE opens a fresh file with both capabilities.
 	const uint64_t flags = DUCKDB_V2_FILE_FLAG_READ | DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE;
 	duckdb_v2_file_handle_handle h = nullptr;
-	REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(), flags, &h, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), flags, &h, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	const char msg[] = "hello";
 	int64_t written = 0;
@@ -208,7 +208,8 @@ TEST_CASE("V2 file_handle: opening a non-existent file (without CREATE) fails", 
 
 	duckdb_v2_file_handle_handle h = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(), DUCKDB_V2_FILE_FLAG_READ, &h, &err) != DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), DUCKDB_V2_FILE_FLAG_READ, &h, &err) !=
+	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(h == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -224,7 +225,8 @@ TEST_CASE("V2 file_handle: CREATE_NEW fails when the file already exists", "[cap
 	// First create the file (WRITE | CREATE) — should succeed.
 	{
 		duckdb_v2_file_handle_handle h = nullptr;
-		REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(), DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE, &h,
+		REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()),
+		                                   DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE, &h,
 		                                   nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		// Also issue a SYNC so we can be extra sure the file is visible to the next open
@@ -236,7 +238,7 @@ TEST_CASE("V2 file_handle: CREATE_NEW fails when the file already exists", "[cap
 	// Now CREATE_NEW must refuse — the file is there.
 	duckdb_v2_file_handle_handle h = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(),
+	REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()),
 	                                   DUCKDB_V2_FILE_FLAG_WRITE | DUCKDB_V2_FILE_FLAG_CREATE |
 	                                       DUCKDB_V2_FILE_FLAG_CREATE_NEW,
 	                                   &h, &err) != DUCKDB_V2_ERROR_NONE);
@@ -255,7 +257,7 @@ TEST_CASE("V2 file_handle: open rejects an empty flag bitset", "[capi_v2][file_s
 	duckdb_v2_file_handle_handle h = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	// 0 == DUCKDB_V2_FILE_FLAG_INVALID; no capabilities is meaningless.
-	REQUIRE(duckdb_v2_file_system_open(fs, path.c_str(), 0, &h, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), 0, &h, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(h == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -269,12 +271,12 @@ TEST_CASE("V2 file_handle: null-arg validation", "[capi_v2][file_system]") {
 	SECTION("file_system_open rejects null file_system") {
 		duckdb_v2_file_handle_handle h = nullptr;
 		char path[] = "/tmp/anything";
-		REQUIRE(duckdb_v2_file_system_open(nullptr, path, DUCKDB_V2_FILE_FLAG_READ, &h, nullptr) ==
+		REQUIRE(duckdb_v2_file_system_open(nullptr, V2Str(path), DUCKDB_V2_FILE_FLAG_READ, &h, nullptr) ==
 		        DUCKDB_V2_ERROR_INVALID_INPUT);
 	}
 	SECTION("file_system_open rejects null out_file_handle") {
 		char path[] = "/tmp/anything";
-		REQUIRE(duckdb_v2_file_system_open(nullptr, path, DUCKDB_V2_FILE_FLAG_READ, nullptr, nullptr) ==
+		REQUIRE(duckdb_v2_file_system_open(nullptr, V2Str(path), DUCKDB_V2_FILE_FLAG_READ, nullptr, nullptr) ==
 		        DUCKDB_V2_ERROR_INVALID_INPUT);
 	}
 	SECTION("read rejects null file_handle") {

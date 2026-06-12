@@ -228,22 +228,22 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_create_double(double input, duckdb_v2_value
 // VARCHAR / BLOB / BIT / BIGNUM constructors
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_varchar(const char *data, idx_t length, duckdb_v2_value_handle *out_value,
+DUCKDB_V2_API_CALL_t duckdb_v2_value_create_varchar(duckdb_v2_str data, duckdb_v2_value_handle *out_value,
                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_value) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_varchar");
 		}
 		*out_value = nullptr;
-		if (!data && length > 0) {
+		if (!data.ptr && data.len > 0) {
 			throw duckdb::InvalidInputException("null data with positive length in duckdb_v2_value_create_varchar");
 		}
 		// Only run UTF-8 validation when there is something to validate.
-		if (length > 0 && !duckdb::Value::StringIsValid(data, length)) {
+		if (data.len > 0 && !duckdb::Value::StringIsValid(data.ptr, data.len)) {
 			throw duckdb::InvalidInputException("invalid UTF-8 in duckdb_v2_value_create_varchar");
 		}
-		// length=0 + data=NULL is the documented empty-value shape (see spec).
-		auto *v = new duckdb::Value(std::string(data ? data : "", length));
+		// len=0 + ptr=NULL is the documented empty-value shape (see spec).
+		auto *v = new duckdb::Value(duckdb::ToString(data));
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
 	});
 }
@@ -571,10 +571,16 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uhugeint(duckdb_v2_value_handle value, 
 // VARCHAR / BLOB / BIT getters (borrowed) and BIGNUM getter (owned)
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_varchar(duckdb_v2_value_handle value, const char **out_data, idx_t *out_length,
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_varchar(duckdb_v2_value_handle value, duckdb_v2_str *out_data,
                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::GetStringBytes(value, duckdb::LogicalTypeId::VARCHAR, "duckdb_v2_value_get_varchar", out_data,
-	                              out_length, err);
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!out_data) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_varchar");
+		}
+		*out_data = duckdb_v2_str {nullptr, 0};
+		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::VARCHAR, "duckdb_v2_value_get_varchar");
+		*out_data = duckdb::ToStr(duckdb::StringValue::Get(*duckdb::ToValue(value)));
+	});
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_value_get_blob(duckdb_v2_value_handle value, const uint8_t **out_data, idx_t *out_length,

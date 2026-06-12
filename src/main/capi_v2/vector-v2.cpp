@@ -213,10 +213,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_handle
 // String writing
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_handle vector, idx_t index, const char *data,
-                                                    idx_t length, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_handle vector, idx_t index, duckdb_v2_str data,
+                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!vector || !data) {
+		if (!vector || (!data.ptr && data.len > 0)) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_assign_string");
 		}
 		auto *vec = duckdb::ToVector(vector);
@@ -232,16 +232,17 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_handle vect
 			throw duckdb::InvalidInputException(
 			    "duckdb_v2_vector_assign_string: CONSTANT vector only supports index 0");
 		}
-		if (length > duckdb::NumericLimits<uint32_t>::Maximum()) {
+		if (data.len > duckdb::NumericLimits<uint32_t>::Maximum()) {
 			throw duckdb::InvalidInputException("duckdb_v2_vector_assign_string: string length exceeds maximum (%u)",
 			                                    duckdb::NumericLimits<uint32_t>::Maximum());
 		}
-		auto val = duckdb::string_t(data, duckdb::NumericCast<uint32_t>(length));
+		auto val = duckdb::string_t(data.ptr, duckdb::NumericCast<uint32_t>(data.len));
 		if (val.IsInlined()) {
 			duckdb::FlatVector::GetDataMutableUnsafe<duckdb::string_t>(*vec)[index] = val;
 		} else {
 			auto &heap = duckdb::StringVector::GetStringHeap(*vec);
-			duckdb::FlatVector::GetDataMutableUnsafe<duckdb::string_t>(*vec)[index] = heap.AddBlobToHeap(data, length);
+			duckdb::FlatVector::GetDataMutableUnsafe<duckdb::string_t>(*vec)[index] =
+			    heap.AddBlobToHeap(data.ptr, data.len);
 		}
 	});
 }
@@ -404,15 +405,14 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_handle vector, i
 // callers rely on.
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_varchar_decode(const duckdb_v2_varchar_t *varchar, const char **out_data,
-                                              idx_t *out_length, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_varchar_decode(const duckdb_v2_varchar_t *varchar, duckdb_v2_str *out_data,
+                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!varchar || !out_data || !out_length) {
+		if (!varchar || !out_data) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_varchar_decode");
 		}
 		const auto *storage = reinterpret_cast<const duckdb::string_t *>(varchar);
-		*out_data = storage->GetData();
-		*out_length = storage->GetSize();
+		*out_data = duckdb::ToStr(*storage);
 	});
 }
 

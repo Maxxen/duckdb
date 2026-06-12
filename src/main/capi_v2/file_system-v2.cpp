@@ -38,7 +38,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_context(duckdb_v2_context_ha
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_system_open(duckdb_v2_file_system_handle file_system, const char *file_path,
+DUCKDB_V2_API_CALL_t duckdb_v2_file_system_open(duckdb_v2_file_system_handle file_system, duckdb_v2_str file_path,
                                                 uint64_t file_flags, duckdb_v2_file_handle_handle *out_file_handle,
                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -50,7 +50,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_system_open(duckdb_v2_file_system_handle fil
 		if (!file_system) {
 			throw duckdb::InvalidInputException("File system pointer cannot be null.");
 		}
-		if (!file_path) {
+		if (!file_path.ptr) {
 			throw duckdb::InvalidInputException("File path pointer cannot be null.");
 		}
 		if (!file_flags) {
@@ -77,9 +77,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_system_open(duckdb_v2_file_system_handle fil
 
 		auto &fs = *reinterpret_cast<duckdb::FileSystem *>(file_system);
 
-		auto handle = fs.OpenFile(file_path, open_flags);
+		auto path_str = duckdb::ToString(file_path);
+		auto handle = fs.OpenFile(path_str, open_flags);
 		if (!handle) {
-			throw duckdb::IOException("Failed to open file: %s", file_path);
+			throw duckdb::IOException("Failed to open file: %s", path_str);
 		}
 
 		*out_file_handle = reinterpret_cast<_duckdb_v2_file_handle *>(handle.release());
