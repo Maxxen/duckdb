@@ -667,6 +667,176 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
     duckdb_v2_error_info_handle *err);
 
 /* ============================================================================
+ * MODULE: cast
+ * ============================================================================ */
+
+/* --- Enums for cast --- */
+//! The mode in which a cast is being executed. A "normal" cast must
+//! either succeed for every row or report an error (which aborts the
+//! query). A "try" cast (e.g. SQL TRY_CAST) tolerates per-row failures
+//! by writing NULL for the rows that could not be converted instead of
+//! aborting. The exec callback can read the mode from the exec args to
+//! decide whether a conversion failure should be reported as an error
+//! or silently turned into a NULL.
+typedef enum DUCKDB_V2_CAST_MODE {
+	/* A regular cast. Any conversion failure should be reported as an error via the error info handle. */
+	DUCKDB_V2_CAST_MODE_NORMAL = 0,
+	/* A "try" cast. Conversion failures should be turned into NULL values in the output vector rather than reported as
+	   errors. */
+	DUCKDB_V2_CAST_MODE_TRY = 1,
+} DUCKDB_V2_CAST_MODE;
+
+/* --- Structs for cast --- */
+typedef struct {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! Opaque pointer to user data set by the caller when registering the function, if any.
+	void *user_data;
+	//! The input vector containing the source values to cast. It contains `count` logical rows.
+	duckdb_v2_vector_handle input;
+	//! The output vector the callback must write the cast result values into. It has space for `count` logical rows.
+	duckdb_v2_vector_handle output;
+	//! The number of rows to cast, i.e. the number of logical rows in both the input and output vectors.
+	idx_t count;
+	//! The mode the cast is being executed in. See `CAST_MODE` for details. In `CAST_MODE_TRY`, conversion failures
+	//! should be written as NULL values into the output vector instead of being reported as errors.
+	DUCKDB_V2_CAST_MODE mode;
+} duckdb_v2_cast_function_exec_args;
+
+/* --- Types for cast --- */
+//! An opaque handle to a cast function builder.
+//! Created with `cast_function_builder_create`, configured with the various `cast_function_builder_set_*` functions,
+//! and registered with `cast_function_builder_register`. The builder is owned by the caller and must be destroyed with
+//! `cast_function_builder_destroy` when no longer needed.
+typedef struct _duckdb_v2_cast_function_builder {
+	void *internal_ptr;
+} * duckdb_v2_cast_function_builder_handle;
+
+/* --- Constants for cast --- */
+
+/* --- Error Codes for cast --- */
+
+/* --- Function pointer typedefs for cast --- */
+typedef void (*duckdb_v2_cast_function_exec_callback_fn)(duckdb_v2_cast_function_exec_args *args,
+                                                         duckdb_v2_error_info_handle *err);
+
+/* --- Functions for cast --- */
+/*!
+* Creates a new cast function builder.
+* Creates a new cast function builder that can be configured with the various `cast_function_builder_set_*` functions
+and registered with `cast_function_builder_register`. On success, returns a handle to the new builder. The builder is
+owned by the caller and must be destroyed with `cast_function_builder_destroy` when no longer needed.
+
+* @param context The DuckDB context in which the cast function will be created.
+* @param out On success, receives the newly created cast function builder. The caller owns the builder and must destroy
+it with `cast_function_builder_destroy`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_create(duckdb_v2_context_handle context,
+                                                                         duckdb_v2_cast_function_builder_handle *out,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Sets the source type of a cast function.
+* Sets the logical type the cast converts from. The library makes an internal copy of the provided type and does not
+take ownership of it. Failing to set a source type before registration results in an error. The source type must be a
+fully defined concrete type and must not contain ANY or INVALID types.
+
+* @param func The cast function to configure.
+* @param type The source type to cast from.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_source_type(
+    duckdb_v2_cast_function_builder_handle func, duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the target type of a cast function.
+* Sets the logical type the cast converts to. The library makes an internal copy of the provided type and does not take
+ownership of it. Failing to set a target type before registration results in an error. The target type must be a fully
+defined concrete type and must not contain ANY or INVALID types.
+
+* @param func The cast function to configure.
+* @param type The target type to cast to.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_target_type(
+    duckdb_v2_cast_function_builder_handle func, duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the implicit cast cost of a cast function.
+* Sets the "cost" of applying this cast implicitly. The binder uses this cost when it has to choose between multiple
+candidate implicit casts: a lower (non-negative) cost makes the cast more likely to be chosen. A negative cost (the
+default) means the cast is never applied implicitly and can only be requested explicitly via CAST / TRY_CAST. This
+setting is optional.
+
+* @param func The cast function to configure.
+* @param cost The implicit cast cost. A negative value (the default) disables implicit casting.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_implicit_cast_cost(
+    duckdb_v2_cast_function_builder_handle func, int64_t cost, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the exec callback for a cast function.
+* The "exec" callback is invoked during query execution to convert each batch of input values into the target type.
+This is the main callback that implements the logic of the cast.
+Failing to set an "exec" callback before registration results in an error.
+
+* @param func The cast function to configure.
+* @param callback The "exec" callback to set for the function. This is the callback that will be invoked to perform the
+cast for each batch of input rows during query execution.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_exec_callback(
+    duckdb_v2_cast_function_builder_handle func, duckdb_v2_cast_function_exec_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets arbitrary extra data on a cast function.
+* This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function.
+This is useful for associating custom metadata or static context with the function that can be retrieved later from the
+exec callback via the args' `user_data` field.
+
+* @param func The cast function to configure.
+* @param data Opaque pointer to user data.
+* @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
+If not provided, the library will not attempt to destroy the user data.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_cast_function_builder_set_user_data(duckdb_v2_cast_function_builder_handle func, void *data,
+                                              duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
+/*!
+* Registers a cast function with a database, making the cast available in queries.
+* This function registers a fully configured cast function builder with a database, making the cast available for use in
+SQL queries (and for implicit casting, depending on the implicit cast cost). The function builder must have its source
+type, target type, and exec callback set before registration; otherwise, registration will fail with an error. DuckDB
+makes an internal copy of the configured function and its properties during registration, so the caller retains
+ownership of the builder and can safely destroy or modify it after registration without affecting the registered cast.
+
+* @param context The DuckDB context in which to register the cast function.
+* @param func The cast function to register.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_register(duckdb_v2_context_handle context,
+                                                                           duckdb_v2_cast_function_builder_handle func,
+                                                                           duckdb_v2_error_info_handle *err);
+/*!
+* Destroys a cast function builder, releasing its resources.
+* This function destroys a cast function builder that was created with `cast_function_builder_create`, releasing any
+resources associated with it. If the builder has already been registered with a database, destroying it does not affect
+the registered cast in the database, as DuckDB makes an internal copy of the function during registration. This function
+is null-safe: calling it with a null pointer is a no-op and returns ERROR_NONE. The handle is set to null on return to
+prevent double-destruction.
+
+* @param func The cast function to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_destroy(duckdb_v2_cast_function_builder_handle *func);
+
+/* ============================================================================
  * MODULE: column_data_collection
  * ============================================================================ */
 
@@ -1093,6 +1263,120 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_opt
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_handle option, idx_t index,
                                                              duckdb_v2_str *out_alias,
                                                              duckdb_v2_error_info_handle *err);
+
+/* ============================================================================
+ * MODULE: custom_type
+ * ============================================================================ */
+
+/* --- Enums for custom_type --- */
+
+/* --- Structs for custom_type --- */
+
+/* --- Types for custom_type --- */
+//! An opaque handle to a custom type builder.
+//! Created with `custom_type_builder_create`, configured with the various `custom_type_builder_set_*` functions, and
+//! registered with `custom_type_builder_register`. The builder is owned by the caller and must be destroyed with
+//! `custom_type_builder_destroy` when no longer needed.
+typedef struct _duckdb_v2_custom_type_builder {
+	void *internal_ptr;
+} * duckdb_v2_custom_type_builder_handle;
+
+/* --- Constants for custom_type --- */
+
+/* --- Error Codes for custom_type --- */
+
+/* --- Function pointer typedefs for custom_type --- */
+
+/* --- Functions for custom_type --- */
+/*!
+ * Constructs a logical type that is an alias of another logical type.
+ * This is intended for use in custom type bind callbacks to create logical type instances that are aliases of the base
+ * type. The resulting logical type will have the same internal representation as the base type, but with a different
+ * name and potentially different metadata. This allows custom types to be created that are logically distinct from
+ * their base type but do not require custom handling in the execution engine.
+ * @param base_type The logical type to create an alias of. This is typically the base type provided in the custom type
+ * bind info.
+ * @param alias_name The name to give the resulting alias logical type. This should typically be the name of the custom
+ * type being constructed, which can be obtained from the custom type bind info.
+ * @param out_type The resulting alias logical type. This logical type will have the same internal representation as the
+ * base type but with the provided alias name.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_with_alias(duckdb_v2_logical_type_handle base_type,
+                                                                           duckdb_v2_str alias_name,
+                                                                           duckdb_v2_logical_type_handle *out_type,
+                                                                           duckdb_v2_error_info_handle *err);
+/*!
+* Creates a new custom type builder.
+* Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and
+registered with `custom_type_builder_register`. On success, returns a handle to the new builder. The builder is owned by
+the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.
+
+* @param context The context in which to create the custom type builder.
+* @param out_builder The created custom type builder.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_create(
+    duckdb_v2_context_handle context, duckdb_v2_custom_type_builder_handle *out_builder,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Destroys a custom type builder, releasing its resources.
+* This function destroys a custom type builder that was created with `custom_type_builder_create`, releasing any
+resources associated with it. If the builder has already been registered with a database, destroying it does not affect
+the registered type, as DuckDB makes an internal copy of the type during registration. This function is null-safe:
+calling it with a null pointer is a no-op. The handle is set to null on return to prevent double-destruction.
+
+* @param builder The custom type builder to destroy.
+* @return void
+*/
+DUCKDB_C_API void duckdb_v2_custom_type_builder_destroy(duckdb_v2_custom_type_builder_handle *builder);
+/*!
+* Registers a custom type with a database, making the type available for use in queries.
+* This function registers a fully configured custom type builder with a database, making the type available for use in
+SQL queries executed on that database (referenced by its name). The builder must have both its name and base type set
+before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured
+type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after
+registration without affecting the registered type.
+
+* @param context The context to register the custom type builder with.
+* @param builder The custom type builder to register.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_register(duckdb_v2_context_handle context,
+                                                                         duckdb_v2_custom_type_builder_handle builder,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Sets the name of a custom type.
+* The library makes an internal copy of the provided name and does not take ownership.
+The name is used to reference the custom type in SQL and must be set before registration; otherwise registration will
+fail with an error.
+
+* @param builder The custom type builder to set the name on.
+* @param name The name of the custom type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_set_name(duckdb_v2_custom_type_builder_handle builder,
+                                                                         duckdb_v2_str name,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Sets the base type of a custom type.
+* Sets the logical type the custom type is based on. The custom type shares the base type's internal (physical)
+representation but is logically distinct, so it can carry its own cast functions. The library makes an internal copy of
+the provided type and does not take ownership of it. The base type must be set before registration; otherwise
+registration will fail with an error.
+
+* @param builder The custom type builder to set the base type on.
+* @param base_type The logical type to use as the base for this custom type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_custom_type_builder_set_base_type(duckdb_v2_custom_type_builder_handle builder,
+                                            duckdb_v2_logical_type_handle base_type, duckdb_v2_error_info_handle *err);
 
 /* ============================================================================
  * MODULE: data_chunk

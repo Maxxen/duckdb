@@ -108,6 +108,14 @@ template <>
 struct HandleTraits<CopyFunction> {
 	using handle = duckdb_v2_copy_function_builder_handle;
 };
+template <>
+struct HandleTraits<CastFunction> {
+	using handle = duckdb_v2_cast_function_builder_handle;
+};
+template <>
+struct HandleTraits<CustomType> {
+	using handle = duckdb_v2_custom_type_builder_handle;
+};
 
 } // namespace detail
 
@@ -473,6 +481,12 @@ LogicalType LogicalType::BIGINT() {
 	duckdb_v2_logical_type_handle type = nullptr;
 	CheckedAPICall(duckdb_v2_logical_type_create_from_id, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &type);
 	return detail::Factory::Make<LogicalType>(type);
+}
+
+LogicalType LogicalType::WithAlias(std::string_view alias) const {
+	duckdb_v2_logical_type_handle new_type = nullptr;
+	CheckedAPICall(duckdb_v2_logical_type_create_with_alias, handle(), ToStr(std::string(alias)), &new_type);
+	return detail::Factory::Make<LogicalType>(new_type);
 }
 
 LogicalType::~LogicalType() {
@@ -1950,6 +1964,116 @@ auto CopyFunction::Register(const Context &ctx) -> void {
 	    detail::TypedDelete<CopyFunctionInfo>);
 
 	CheckedAPICall(duckdb_v2_copy_function_builder_register, ctx.handle(), handle());
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Cast Function
+//----------------------------------------------------------------------------------------------------------------------
+
+struct CastFunctionInfo {
+	CastFunction::ExecCallback exec_callback = nullptr;
+};
+
+CastFunction::CastFunction(const Context &ctx) {
+	duckdb_v2_cast_function_builder_handle _h = nullptr;
+	CheckedAPICall(duckdb_v2_cast_function_builder_create, ctx.handle(), &_h);
+	impl = _h;
+}
+
+CastFunction::~CastFunction() {
+	auto _h = handle();
+	duckdb_v2_cast_function_builder_destroy(&_h);
+}
+
+auto CastFunction::SetSourceType(const LogicalType &type) & -> CastFunction & {
+	CheckedAPICall(duckdb_v2_cast_function_builder_set_source_type, handle(), type.handle());
+	return *this;
+}
+
+auto CastFunction::SetTargetType(const LogicalType &type) & -> CastFunction & {
+	CheckedAPICall(duckdb_v2_cast_function_builder_set_target_type, handle(), type.handle());
+	return *this;
+}
+
+auto CastFunction::SetImplicitCastCost(int64_t cost) & -> CastFunction & {
+	CheckedAPICall(duckdb_v2_cast_function_builder_set_implicit_cast_cost, handle(), cost);
+	return *this;
+}
+
+auto CastFunction::ExecInput::GetInput() const -> Vector {
+	auto vec = static_cast<duckdb_v2_cast_function_exec_args *>(args)->input;
+	return detail::Factory::Make<Vector>(vec);
+}
+
+auto CastFunction::ExecInput::GetOutput() const -> Vector {
+	auto vec = static_cast<duckdb_v2_cast_function_exec_args *>(args)->output;
+	return detail::Factory::Make<Vector>(vec);
+}
+
+auto CastFunction::ExecInput::GetCount() const -> idx_t {
+	return static_cast<duckdb_v2_cast_function_exec_args *>(args)->count;
+}
+
+auto CastFunction::ExecInput::GetCastMode() const -> CastMode {
+	auto mode = static_cast<duckdb_v2_cast_function_exec_args *>(args)->mode;
+	return mode == DUCKDB_V2_CAST_MODE_TRY ? CastMode::TRY : CastMode::NORMAL;
+}
+
+auto CastFunction::SetExecCallback(ExecCallback callback) & -> CastFunction & {
+	if (!callback) {
+		CheckedAPICall(duckdb_v2_cast_function_builder_set_exec_callback, handle(), nullptr);
+		exec_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_cast_function_exec_args *args, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<const CastFunctionInfo *>(args->user_data);
+			auto input = detail::Factory::Make<ExecInput>(args);
+			function.exec_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_cast_function_builder_set_exec_callback, handle(), trampoline);
+	exec_callback = callback;
+	return *this;
+}
+
+void CastFunction::Register(const Context &ctx) {
+	// Stash the callback as the function's user data so the trampoline can recover it via args->user_data.
+	CheckedAPICall(duckdb_v2_cast_function_builder_set_user_data, handle(), new CastFunctionInfo {exec_callback},
+	               detail::TypedDelete<CastFunctionInfo>);
+
+	CheckedAPICall(duckdb_v2_cast_function_builder_register, ctx.handle(), handle());
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Custom Type
+//----------------------------------------------------------------------------------------------------------------------
+
+CustomType::CustomType(const Context &ctx) {
+	duckdb_v2_custom_type_builder_handle _h = nullptr;
+	CheckedAPICall(duckdb_v2_custom_type_builder_create, ctx.handle(), &_h);
+	impl = _h;
+}
+
+CustomType::~CustomType() {
+	auto _h = handle();
+	duckdb_v2_custom_type_builder_destroy(&_h);
+}
+
+auto CustomType::SetName(const std::string &name) & -> CustomType & {
+	CheckedAPICall(duckdb_v2_custom_type_builder_set_name, handle(), ToStr(name));
+	return *this;
+}
+
+auto CustomType::SetBaseType(const LogicalType &type) & -> CustomType & {
+	CheckedAPICall(duckdb_v2_custom_type_builder_set_base_type, handle(), type.handle());
+	return *this;
+}
+
+void CustomType::Register(const Context &ctx) {
+	CheckedAPICall(duckdb_v2_custom_type_builder_register, ctx.handle(), handle());
 }
 
 } // namespace duckdb_api

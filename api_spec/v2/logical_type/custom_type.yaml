@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: custom_type
+handles:
+  custom_type_builder:
+    description: "An opaque handle to a custom type builder. \nCreated with `custom_type_builder_create`, configured with the various `custom_type_builder_set_*` functions, and registered with `custom_type_builder_register`. \nThe builder is owned by the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.\n"
+    cleanup_with: custom_type_builder_destroy
+functions:
+  # TODO: This function should be moved/removed/changed
+  logical_type_create_with_alias:
+    summary: "Constructs a logical type that is an alias of another logical type."
+    description: "This is intended for use in custom type bind callbacks to create logical type instances that are aliases of the base type. The resulting logical type will have the same internal representation as the base type, but with a different name and potentially different metadata. This allows custom types to be created that are logically distinct from their base type but do not require custom handling in the execution engine."
+    parameters:
+      base_type:
+        type: logical_type
+        description: "The logical type to create an alias of. This is typically the base type provided in the custom type bind info."
+      alias_name:
+        type: str
+        description: "The name to give the resulting alias logical type. This should typically be the name of the custom type being constructed, which can be obtained from the custom type bind info."
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: "The resulting alias logical type. This logical type will have the same internal representation as the base type but with the provided alias name."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  #------------------------------------------------------------------------------------------------
+  # Custom Type Builder Functions
+  #------------------------------------------------------------------------------------------------
+  custom_type_builder_create:
+    summary: Creates a new custom type builder.
+    description: "Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and registered with `custom_type_builder_register`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.\n"
+    parameters:
+      context:
+        type: context
+        description: "The context in which to create the custom type builder."
+      out_builder:
+        type: custom_type_builder
+        indirection: 1
+        kind: OUT
+        description: "The created custom type builder."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  custom_type_builder_destroy:
+    summary: Destroys a custom type builder, releasing its resources.
+    description: "This function destroys a custom type builder that was created with `custom_type_builder_create`, releasing any resources associated with it. \nIf the builder has already been registered with a database, destroying it does not affect the registered type, as DuckDB makes an internal copy of the type during registration. \nThis function is null-safe: calling it with a null pointer is a no-op. \nThe handle is set to null on return to prevent double-destruction.\n"
+    parameters:
+      builder:
+        type: custom_type_builder
+        indirection: 1
+        description: "The custom type builder to destroy."
+    return_type: void
+  custom_type_builder_register:
+    summary: Registers a custom type with a database, making the type available for use in queries.
+    description: "This function registers a fully configured custom type builder with a database, making the type available for use in SQL queries executed on that database (referenced by its name). \nThe builder must have both its name and base type set before registration; otherwise, registration will fail with an error. \nDuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.\n"
+    parameters:
+      context:
+        type: context
+        description: "The context to register the custom type builder with."
+      builder:
+        type: custom_type_builder
+        description: "The custom type builder to register."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  custom_type_builder_set_name:
+    summary: Sets the name of a custom type.
+    description: "The library makes an internal copy of the provided name and does not take ownership. \nThe name is used to reference the custom type in SQL and must be set before registration; otherwise registration will fail with an error.\n"
+    parameters:
+      builder:
+        type: custom_type_builder
+        description: "The custom type builder to set the name on."
+      name:
+        type: str
+        description: "The name of the custom type."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  custom_type_builder_set_base_type:
+    summary: Sets the base type of a custom type.
+    description: "Sets the logical type the custom type is based on. The custom type shares the base type's internal (physical) representation but is logically distinct, so it can carry its own cast functions. \nThe library makes an internal copy of the provided type and does not take ownership of it. \nThe base type must be set before registration; otherwise registration will fail with an error.\n"
+    parameters:
+      builder:
+        type: custom_type_builder
+        description: "The custom type builder to set the base type on."
+      base_type:
+        type: logical_type
+        description: "The logical type to use as the base for this custom type."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL

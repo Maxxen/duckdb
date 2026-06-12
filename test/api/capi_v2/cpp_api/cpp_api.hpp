@@ -357,6 +357,8 @@ public:
 	static LogicalType INTEGER();
 	static LogicalType BIGINT();
 
+	LogicalType WithAlias(std::string_view alias) const;
+
 	std::string_view GetAlias() const;
 	bool operator==(const LogicalType &other) const;
 	bool operator!=(const LogicalType &other) const {
@@ -1312,6 +1314,86 @@ private:
 	BatchCallback batch_callback = nullptr;
 	FlushCallback flush_callback = nullptr;
 	FinalizeCallback finalize_callback = nullptr;
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Cast Function
+//----------------------------------------------------------------------------------------------------------------------
+
+// A cast function converts values of a source logical type into a target logical type. The exec callback is handed the
+// flattened input vector, the output vector to write into, the number of rows, and the cast mode. In CAST_MODE::TRY the
+// callback should write NULL for rows it cannot convert; in CAST_MODE::NORMAL it should throw to abort the query.
+class CastFunction final : public detail::Handle<CastFunction> {
+	friend detail::Factory;
+
+public:
+	enum class CastMode : uint8_t {
+		/* A regular cast: conversion failures should be reported (by throwing) and abort the query. */
+		NORMAL = 0,
+		/* A "try" cast: conversion failures should be written as NULLs in the output instead of throwing. */
+		TRY = 1,
+	};
+
+	class ExecInput;
+
+	using ExecCallback = void (*)(ExecInput &input);
+
+	explicit CastFunction(const Context &ctx);
+
+	~CastFunction() override;
+
+	auto SetSourceType(const LogicalType &type) & -> CastFunction &;
+	auto SetTargetType(const LogicalType &type) & -> CastFunction &;
+	auto SetImplicitCastCost(int64_t cost) & -> CastFunction &;
+	auto SetExecCallback(ExecCallback callback) & -> CastFunction &;
+
+	void Register(const Context &ctx);
+
+private:
+	ExecCallback exec_callback = nullptr;
+
+public:
+	class ExecInput {
+		friend detail::Factory;
+
+	public:
+		// The input vector holding the source values to cast.
+		auto GetInput() const -> Vector;
+		// The output vector the callback writes the converted values into.
+		auto GetOutput() const -> Vector;
+		// The number of rows to cast.
+		auto GetCount() const -> idx_t;
+		// The mode the cast is executing in (NORMAL vs TRY).
+		auto GetCastMode() const -> CastMode;
+
+	private:
+		explicit ExecInput(void *args) : args(args) {
+		}
+
+		void *args;
+	};
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Custom Type
+//----------------------------------------------------------------------------------------------------------------------
+
+// Registers a user-defined logical type in the catalog so it can be referenced by name in SQL. A custom type is
+// currently an alias of an existing "base" type (e.g. an INTEGER aliased as TEMPERATURE): it shares the base type's
+// physical representation but is logically distinct, so it can carry its own cast functions. Configure the builder via
+// SetName / SetBaseType, then Register it. Obtain a LogicalType for the registered type via base.WithAlias(name).
+class CustomType final : public detail::Handle<CustomType> {
+	friend detail::Factory;
+
+public:
+	explicit CustomType(const Context &ctx);
+
+	~CustomType() override;
+
+	auto SetName(const std::string &name) & -> CustomType &;
+	auto SetBaseType(const LogicalType &type) & -> CustomType &;
+
+	void Register(const Context &ctx);
 };
 
 } // namespace duckdb_api

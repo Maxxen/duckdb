@@ -301,6 +301,53 @@ TEST_CASE("Stable C++API: Copy Function", "[cpp_api]") {
 	});
 }
 
+TEST_CASE("Stable C++API: Cast Function", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		// Register the custom type TEMPERATURE (an alias of INTEGER) via the C++ CustomType wrapper.
+		CustomType custom_type(ctx);
+		custom_type.SetName("TEMPERATURE").SetBaseType(LogicalType::INTEGER()).Register(ctx);
+
+		// A LogicalType for the registered custom type, used as the cast's source type.
+		auto temperature = LogicalType::INTEGER().WithAlias("TEMPERATURE");
+
+		// Register a TEMPERATURE -> BIGINT cast that adds 1000 (a distinctive transform we can assert on).
+		CastFunction cast(ctx);
+		cast.SetSourceType(temperature)
+		    .SetTargetType(LogicalType::BIGINT())
+		    .SetImplicitCastCost(0)
+		    .SetExecCallback([](CastFunction::ExecInput &input) {
+			    auto in_vec = input.GetInput();
+			    auto out_vec = input.GetOutput();
+			    // The bridge passes the input vector as-is (it is not flattened for us); flatten it so we can
+			    // index its data directly regardless of whether it arrived constant / dictionary-encoded.
+			    in_vec.Flatten();
+			    const auto in = in_vec.GetDataMutable<const int32_t>();
+			    const auto out = out_vec.GetDataMutable<int64_t>();
+			    for (idx_t i = 0; i < input.GetCount(); i++) {
+				    out[i] = static_cast<int64_t>(in[i]) + 1000;
+			    }
+		    })
+		    .Register(ctx);
+	});
+
+	const auto result = conn.Query("SELECT CAST(CAST(42 AS TEMPERATURE) AS BIGINT) AS result");
+	REQUIRE(result.GetColumnCount() == 1);
+	REQUIRE(result.GetColumnName(0) == "result");
+	REQUIRE(result.GetColumnType(0) == LogicalType::BIGINT());
+
+	auto chunk = result.GetChunk(0);
+	auto vec = chunk.GetVector(0);
+	const auto data = vec.GetDataMutable<const int64_t>();
+	REQUIRE(chunk.GetRowCount() == 1);
+	REQUIRE(data[0] == 1042);
+}
+
 TEST_CASE("Stable C++-API: File System", "[cpp_api]") {
 	using namespace duckdb_api;
 
