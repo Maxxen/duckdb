@@ -61,9 +61,9 @@ struct ScalarFunctionV2 {
 	};
 
 	RuntimeInfo info;
-	string name;
+	Identifier name;
 
-	vector<pair<string, LogicalType>> parameters;
+	vector<pair<Identifier, LogicalType>> parameters;
 	LogicalType return_type;
 
 	static auto BindCallback(BindScalarFunctionInput &input) -> unique_ptr<FunctionData> {
@@ -182,7 +182,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar
 			throw duckdb::InvalidInputException("Function name cannot be empty.");
 		}
 
-		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->name = duckdb::ToString(name);
+		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->name = duckdb::ToIdentifier(name);
 	});
 }
 

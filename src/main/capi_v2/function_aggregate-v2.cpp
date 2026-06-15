@@ -207,8 +207,8 @@ struct AggregateFunctionV2 {
 };
 
 struct AggregateFunctionBuilderV2 {
-	string name;
-	vector<pair<string, LogicalType>> parameters;
+	Identifier name;
+	vector<pair<Identifier, LogicalType>> parameters;
 	LogicalType return_type;
 
 	duckdb_v2_aggregate_function_size_callback_fn size_cb = nullptr;
@@ -276,7 +276,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_agg
 			throw duckdb::InvalidInputException("Function name cannot be empty");
 		}
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
-		agg_builder->name = duckdb::ToString(name);
+		agg_builder->name = duckdb::ToIdentifier(name);
 	});
 }
 
@@ -302,7 +302,7 @@ duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_
 			throw duckdb::InvalidInputException("Parameter type cannot be invalid.");
 		}
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
-		agg_builder->parameters.emplace_back(duckdb::ToString(name), ltype);
+		agg_builder->parameters.emplace_back(duckdb::ToIdentifier(name), ltype);
 	});
 }
 

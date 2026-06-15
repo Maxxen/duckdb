@@ -102,6 +102,9 @@ struct OptionWrapperV2 {
 inline std::string ToString(duckdb_v2_str str) {
 	return str.ptr ? std::string(str.ptr, str.len) : std::string();
 }
+inline Identifier ToIdentifier(duckdb_v2_str str) {
+	return str.ptr ? Identifier(str.ptr, str.len) : Identifier();
+}
 // Borrow a std::string as a view. Valid only as long as the string is
 // alive and unmodified.
 inline duckdb_v2_str ToStr(const std::string &str) {
@@ -116,6 +119,12 @@ inline duckdb_v2_str ToStr(const string_t &str) {
 	duckdb_v2_str result;
 	result.ptr = str.GetData();
 	result.len = str.GetSize();
+	return result;
+}
+inline duckdb_v2_str ToStr(const duckdb::Identifier &ident) {
+	duckdb_v2_str result;
+	result.ptr = ident.c_str();
+	result.len = ident.size();
 	return result;
 }
 

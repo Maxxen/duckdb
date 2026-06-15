@@ -33,6 +33,8 @@ public:
 	//! promoting a runtime string must be a deliberate choice at the call site.
 	explicit Identifier(const string &str) : value(str) {
 	}
+	explicit Identifier(const char *str, idx_t len) : value(str, len) {
+	}
 	explicit Identifier(string &&str) : value(std::move(str)) {
 	}
 

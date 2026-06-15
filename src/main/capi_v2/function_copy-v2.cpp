@@ -130,7 +130,7 @@ public:
 };
 
 struct CopyFunctionBuilderV2 {
-	string name;
+	Identifier name;
 	duckdb_v2_copy_function_bind_callback_fn bind_cb = nullptr;
 	duckdb_v2_copy_function_init_callback_fn init_cb = nullptr;
 	duckdb_v2_copy_function_batch_callback_fn batch_cb = nullptr;
@@ -138,7 +138,7 @@ struct CopyFunctionBuilderV2 {
 	duckdb_v2_copy_function_finalize_callback_fn finalize_cb = nullptr;
 	UserDataHandle user_data;
 
-	static auto CopyToBind(ClientContext &context, CopyFunctionBindInput &input, const vector<string> &names,
+	static auto CopyToBind(ClientContext &context, CopyFunctionBindInput &input, const vector<Identifier> &names,
 	                       const vector<LogicalType> &sql_types) -> unique_ptr<FunctionData> {
 		auto &info = input.function_info->Cast<CCopyFunctionInfoV2>();
 
@@ -315,7 +315,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_name(duckdb_v2_copy_fun
 			throw duckdb::InvalidInputException("Function name cannot be empty.");
 		}
 
-		reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder)->name = duckdb::ToString(name);
+		reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder)->name = duckdb::ToIdentifier(name);
 	});
 }
 

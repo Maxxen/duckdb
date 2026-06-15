@@ -96,7 +96,7 @@ struct TableFunctionBindInfoV2 {
 	bool cardinality_set = false;
 	void *user_data = nullptr;
 	vector<Value> parameters;
-	case_insensitive_map_t<Value> named_parameters;
+	named_parameter_map_t named_parameters;
 };
 
 struct TableFunctionInitInfoV2 {
@@ -150,10 +150,10 @@ struct TableFunctionRuntimeInfoV2 final : public TableFunctionInfo {
 // --- Builder struct ----------------------------------------------------------
 
 struct TableFunctionBuilderV2 {
-	string name;
+	Identifier name;
 	TableFunctionRuntimeInfoV2 info;
 	vector<LogicalType> parameters;
-	case_insensitive_map_t<LogicalType> named_parameters;
+	identifier_map_t<LogicalType> named_parameters;
 	bool projection_pushdown = false;
 
 	static unique_ptr<FunctionData> BindCallback(ClientContext &context, TableFunctionBindInput &input,
@@ -168,8 +168,8 @@ struct TableFunctionBuilderV2 {
 		}
 		cb_info.named_parameters = input.named_parameters;
 
-		auto info_handle = reinterpret_cast<_duckdb_v2_table_function_bind_info *>(&cb_info);
-		auto ctx_ptr = reinterpret_cast<_duckdb_v2_context *>(&context);
+		auto info_handle = reinterpret_cast<duckdb_v2_table_function_bind_info_handle>(&cb_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 		InvokeWithErrorSlot<BinderException>(
 		    [&](duckdb_v2_error_info_handle *err_ptr) { rt_info.bind_cb(info_handle, ctx_ptr, err_ptr); });
@@ -202,8 +202,8 @@ struct TableFunctionBuilderV2 {
 		cb_info.column_ids = input.column_ids;
 		cb_info.projection_ids.assign(input.projection_ids.begin(), input.projection_ids.end());
 
-		auto info_handle = reinterpret_cast<_duckdb_v2_table_function_init_info *>(&cb_info);
-		auto ctx_ptr = reinterpret_cast<_duckdb_v2_context *>(&context);
+		auto info_handle = reinterpret_cast<duckdb_v2_table_function_init_info_handle>(&cb_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 		InvokeWithErrorSlot<InvalidInputException>(
 		    [&](duckdb_v2_error_info_handle *err_ptr) { rt_info.init_global_cb(info_handle, ctx_ptr, err_ptr); });
@@ -233,8 +233,8 @@ struct TableFunctionBuilderV2 {
 		cb_info.column_ids = input.column_ids;
 		cb_info.projection_ids.assign(input.projection_ids.begin(), input.projection_ids.end());
 
-		auto info_handle = reinterpret_cast<_duckdb_v2_table_function_init_info *>(&cb_info);
-		auto ctx_ptr = reinterpret_cast<_duckdb_v2_context *>(&context.client);
+		auto info_handle = reinterpret_cast<duckdb_v2_table_function_init_info_handle>(&cb_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context.client);
 
 		InvokeWithErrorSlot<InvalidInputException>(
 		    [&](duckdb_v2_error_info_handle *err_ptr) { rt_info.init_local_cb(info_handle, ctx_ptr, err_ptr); });
@@ -257,8 +257,8 @@ struct TableFunctionBuilderV2 {
 		cb_info.output = &output;
 		cb_info.user_data = bind.runtime_info->user_data;
 
-		auto info_handle = reinterpret_cast<_duckdb_v2_table_function_exec_info *>(&cb_info);
-		auto ctx_ptr = reinterpret_cast<_duckdb_v2_context *>(&context);
+		auto info_handle = reinterpret_cast<duckdb_v2_table_function_exec_info_handle>(&cb_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 		InvokeWithErrorSlot<InvalidInputException>(
 		    [&](duckdb_v2_error_info_handle *err_ptr) { bind.runtime_info->exec_cb(info_handle, ctx_ptr, err_ptr); });
@@ -289,7 +289,7 @@ struct TableFunctionBuilderV2 {
 		if (rt_info.cardinality_cb) {
 			idx_t estimated = 0;
 			bool is_exact = false;
-			auto ctx_ptr = reinterpret_cast<_duckdb_v2_context *>(&context);
+			auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 			InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err_ptr) {
 				rt_info.cardinality_cb(bind.user_data, &estimated, &is_exact, ctx_ptr, err_ptr);
@@ -316,7 +316,7 @@ struct TableFunctionBuilderV2 {
 		}
 
 		double progress = 0.0;
-		auto ctx_ptr = reinterpret_cast<_duckdb_v2_context *>(&context);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err_ptr) {
 			rt_info.progress_cb(bind.user_data, global_user_data, &progress, ctx_ptr, err_ptr);
@@ -336,8 +336,8 @@ struct TableFunctionBuilderV2 {
 		filter_info.expressions = &filters;
 		filter_info.handled.resize(filters.size(), false);
 
-		auto info_handle = reinterpret_cast<_duckdb_v2_table_function_filter_info *>(&filter_info);
-		auto ctx_ptr = reinterpret_cast<_duckdb_v2_context *>(&context);
+		auto info_handle = reinterpret_cast<duckdb_v2_table_function_filter_info_handle>(&filter_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err_ptr) {
 			rt_info.pushdown_complex_filter_cb(bind.user_data, info_handle, ctx_ptr, err_ptr);
@@ -380,7 +380,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_create(duckdb_v2_context_h
 		if (!out) {
 			throw duckdb::InvalidInputException("Output pointer cannot be null.");
 		}
-		*out = reinterpret_cast<_duckdb_v2_table_function_builder *>(new TableFunctionBuilderV2());
+		*out = reinterpret_cast<duckdb_v2_table_function_builder_handle>(new TableFunctionBuilderV2());
 	});
 }
 
@@ -403,7 +403,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_name(duckdb_v2_table_f
 		if (name.len == 0 || !name.ptr) {
 			throw duckdb::InvalidInputException("Function name cannot be null or empty.");
 		}
-		reinterpret_cast<TableFunctionBuilderV2 *>(builder)->name = duckdb::ToString(name);
+		reinterpret_cast<TableFunctionBuilderV2 *>(builder)->name = duckdb::ToIdentifier(name);
 	});
 }
 
@@ -437,7 +437,7 @@ duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_bu
 			throw duckdb::InvalidInputException("Parameter type cannot be null.");
 		}
 		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
-		b.named_parameters[duckdb::ToString(name)] = *reinterpret_cast<duckdb::LogicalType *>(type);
+		b.named_parameters[duckdb::ToIdentifier(name)] = *reinterpret_cast<duckdb::LogicalType *>(type);
 	});
 }
 
@@ -696,7 +696,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_parameter(duckdb_v2_table
 			throw duckdb::InvalidInputException("Parameter index %llu out of range (have %llu).", index,
 			                                    cb_info.parameters.size());
 		}
-		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(cb_info.parameters[index]));
+		*out_value = reinterpret_cast<duckdb_v2_value_handle>(new duckdb::Value(cb_info.parameters[index]));
 	});
 }
 
@@ -715,12 +715,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_named_parameter(duckdb_v2
 			throw duckdb::InvalidInputException("Output value pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
-		auto name_str = duckdb::ToString(name);
+		auto name_str = duckdb::ToIdentifier(name);
 		auto it = cb_info.named_parameters.find(name_str);
 		if (it == cb_info.named_parameters.end()) {
 			throw duckdb::InvalidInputException("Named parameter '%s' not found.", name_str);
 		}
-		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(it->second));
+		*out_value = reinterpret_cast<duckdb_v2_value_handle>(new duckdb::Value(it->second));
 	});
 }
 
@@ -889,7 +889,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_get_expression(duckdb_v2_ta
 			throw duckdb::InvalidInputException("Filter index %llu out of range (have %llu).", index,
 			                                    fi.expressions->size());
 		}
-		*out_expression = reinterpret_cast<_duckdb_v2_expression *>((*fi.expressions)[index].get());
+		*out_expression = reinterpret_cast<duckdb_v2_expression_handle>((*fi.expressions)[index].get());
 	});
 }
 
@@ -966,7 +966,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_exec_get_output_chunk(duckdb_v2_ta
 		if (!cb_info.output) {
 			throw duckdb::InvalidInputException("Output chunk is not available in this context.");
 		}
-		*out_chunk = reinterpret_cast<_duckdb_v2_data_chunk *>(cb_info.output);
+		*out_chunk = reinterpret_cast<duckdb_v2_data_chunk_handle>(cb_info.output);
 	});
 }
 
