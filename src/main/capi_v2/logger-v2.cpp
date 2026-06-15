@@ -185,8 +185,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_destroy(duckdb_v2_log_storage
 DUCKDB_V2_API_CALL_t duckdb_v2_connection_log(duckdb_v2_connection_handle conn, DUCKDB_V2_LOG_LEVEL level,
                                               duckdb_v2_str message, duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
-		auto &connection = *duckdb::ToConn(conn);
-		auto &ctx = *connection.connection->context;
+		auto &ctx = *duckdb::ToConn(conn)->context;
 		duckdb::Logger::Get(ctx).WriteLog("", static_cast<duckdb::LogLevel>(level), duckdb::ToString(message));
 	});
 }

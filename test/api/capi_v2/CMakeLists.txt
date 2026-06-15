@@ -15,8 +15,7 @@ add_library_unity(
   test_capi_v2_file_system.cpp
   test_capi_v2_table_function.cpp
   test_capi_v2_vector_write.cpp
-  cpp_api/cpp_api.cpp
-  cpp_api/test_cpp_api.cpp)
+  test_cpp_api.cpp)
 
 set(UNITTEST_OBJECT_FILES
     ${UNITTEST_OBJECT_FILES} $<TARGET_OBJECTS:test_sql_capi_v2>

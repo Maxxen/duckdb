@@ -77,10 +77,6 @@ struct DatabaseWrapperV2 {
 	unique_ptr<Connection> admin_connection;
 };
 
-struct ConnectionWrapperV2 {
-	shared_ptr<Connection> connection;
-};
-
 // Backing struct for the opaque duckdb_v2_option_handle handle. Owns all
 // strings; borrowed pointers returned by accessors are valid until the
 // option is destroyed. Created via duckdb_v2_option_create with just
@@ -136,8 +132,8 @@ inline EnvironmentWrapperV2 *ToEnv(duckdb_v2_environment_handle ptr) {
 inline DatabaseWrapperV2 *ToDb(duckdb_v2_database_handle ptr) {
 	return reinterpret_cast<DatabaseWrapperV2 *>(ptr);
 }
-inline ConnectionWrapperV2 *ToConn(duckdb_v2_connection_handle ptr) {
-	return reinterpret_cast<ConnectionWrapperV2 *>(ptr);
+inline Connection *ToConn(duckdb_v2_connection_handle ptr) {
+	return reinterpret_cast<Connection *>(ptr);
 }
 inline OptionWrapperV2 *ToOption(duckdb_v2_option_handle ptr) {
 	return reinterpret_cast<OptionWrapperV2 *>(ptr);

@@ -4,10 +4,15 @@
 #include <utility>
 #include <string>
 #include <optional>
+#include <stdexcept>
+#include <cstdint>
+#include <memory>
 
 // (Experimental) Stable C++ API
 
 namespace duckdb_api {
+
+typedef uint64_t idx_t;
 
 //----------------------------------------------------------------------------------------------------------------------
 // Internal Implementation Details
@@ -135,15 +140,15 @@ private:
 class Exception : public std::runtime_error {
 public:
 	// TODO: add more exception types!
-	Exception(int32_t code, std::string message) : std::runtime_error(std::move(message)), code(code) {
+	Exception(uint32_t code, std::string message) : std::runtime_error(std::move(message)), code(code) {
 	}
 
-	int32_t GetCode() const {
+	uint32_t GetCode() const {
 		return code;
 	}
 
 private:
-	int32_t code;
+	uint32_t code;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -288,6 +293,17 @@ class Connection final : public detail::Handle<Connection> {
 	friend detail::Factory;
 
 public:
+	Connection(Connection &&other) noexcept {
+		std::swap(impl, other.impl);
+		std::swap(owned, other.owned);
+	}
+
+	Connection &operator=(Connection &&other) noexcept {
+		std::swap(impl, other.impl);
+		std::swap(owned, other.owned);
+		return *this;
+	}
+
 	~Connection() override;
 
 	size_t GetOptionCount() const;
@@ -301,8 +317,13 @@ public:
 	// Log a message from this connection. This is infallible and will not throw exceptions.
 	void Log(LogLevel level, const std::string &message) const noexcept;
 
+	static Connection FromOpaque(void *opaque) {
+		return Connection(opaque, false);
+	}
+
 private:
-	explicit Connection(void *impl);
+	explicit Connection(void *impl, bool owned);
+	bool owned = false; // TODO: This should be fixed C++ side
 };
 
 //----------------------------------------------------------------------------------------------------------------------

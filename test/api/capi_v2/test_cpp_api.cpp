@@ -1,5 +1,5 @@
 #include "catch.hpp"
-#include "cpp_api.hpp"
+#include "duckdb_cpp.hpp"
 #include "test_helpers.hpp"
 
 #include <cstring>

@@ -1,0 +1,11 @@
+# name: test/sql/demo_v2/demo_v2.test
+# description: Read json files with empty arrays
+# group: [demo_v2]
+
+require demo_v2
+
+# empty file
+query I
+add_two(2)
+----
+4

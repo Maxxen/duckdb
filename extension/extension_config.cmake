@@ -11,3 +11,5 @@
 duckdb_extension_load(core_functions)
 duckdb_extension_load(parquet)
 
+# Load the demo extension
+duckdb_extension_load(demo_v2)

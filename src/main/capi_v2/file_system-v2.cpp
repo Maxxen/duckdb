@@ -14,7 +14,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_connection(duckdb_v2_connect
 		}
 
 		// Return a reference to the context's file system.
-		auto &ctx = *reinterpret_cast<duckdb::ConnectionWrapperV2 *>(connection)->connection->context;
+		auto &ctx = *duckdb::ToConn(connection)->context;
 		*out_file_system = reinterpret_cast<_duckdb_v2_file_system *>(&duckdb::FileSystem::GetFileSystem(ctx));
 	});
 }

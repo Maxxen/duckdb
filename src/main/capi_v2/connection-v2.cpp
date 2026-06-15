@@ -8,9 +8,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_handle db, duckdb_v2_c
 		}
 		*out_conn = nullptr;
 		auto *db_wrapper = duckdb::ToDb(db);
-		auto conn_wrapper = duckdb::make_uniq<duckdb::ConnectionWrapperV2>();
-		conn_wrapper->connection = duckdb::make_shared_ptr<duckdb::Connection>(*db_wrapper->database);
-		*out_conn = reinterpret_cast<_duckdb_v2_connection *>(conn_wrapper.release());
+		*out_conn = reinterpret_cast<duckdb_v2_connection_handle>(new duckdb::Connection(*db_wrapper->database));
 	});
 }
 
@@ -32,9 +30,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_handle
 		if (!conn || !option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_set");
 		}
-		auto *conn_wrapper = duckdb::ToConn(conn);
 		auto *opt = duckdb::ToOption(option);
-		auto &client = *conn_wrapper->connection->context;
+		auto &client = *duckdb::ToConn(conn)->context;
 		duckdb::PhysicalSet::ApplyVariable(client, opt->name, duckdb::MapSettingScopeV2(scope),
 		                                   duckdb::Value(opt->setting));
 	});
@@ -48,8 +45,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_handle
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get");
 		}
 		*out_option = nullptr;
-		auto *conn_wrapper = duckdb::ToConn(conn);
-		auto &client = *conn_wrapper->connection->context;
+		auto &client = *duckdb::ToConn(conn)->context;
 		auto &config = duckdb::DBConfig::GetConfig(client);
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		duckdb::BuildOptionByName(*wrapper, client, config, duckdb::ToString(name));
@@ -63,8 +59,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_
 		if (!conn || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get_count");
 		}
-		auto *conn_wrapper = duckdb::ToConn(conn);
-		auto &client = *conn_wrapper->connection->context;
+		auto &client = *duckdb::ToConn(conn)->context;
 		auto &config = duckdb::DBConfig::GetConfig(client);
 		*out_count = duckdb::DBConfig::GetOptionCount() + config.GetExtensionSettings().size();
 	});
@@ -78,8 +73,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connecti
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get_by_index");
 		}
 		*out_option = nullptr;
-		auto *conn_wrapper = duckdb::ToConn(conn);
-		auto &client = *conn_wrapper->connection->context;
+		auto &client = *duckdb::ToConn(conn)->context;
 		auto &config = duckdb::DBConfig::GetConfig(client);
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		duckdb::BuildOptionByIndex(*wrapper, client, config, index);
@@ -98,8 +92,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connect
 			throw duckdb::InvalidInputException("Callback pointer cannot be null.");
 		}
 
-		auto *conn_wrapper = duckdb::ToConn(conn);
-		auto &ctx = *conn_wrapper->connection->context;
+		auto &ctx = *duckdb::ToConn(conn)->context;
 
 		ctx.RunFunctionInTransaction([&]() {
 			auto cb_ctx_handle = reinterpret_cast<_duckdb_v2_context *>(&ctx);

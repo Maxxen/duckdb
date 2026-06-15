@@ -1,12 +1,5 @@
 // Include the C++ API header (which includes the C API header)
-#include "cpp_api.hpp"
-
-// Include the DuckDB V2 Header
-#include "cpp_api.hpp"
-#include "cpp_api.hpp"
-#include "cpp_api.hpp"
-#include "cpp_api.hpp"
-
+#include "duckdb_cpp.hpp"
 #include "duckdb_v2.h"
 
 namespace duckdb_api {
@@ -130,7 +123,7 @@ namespace {
 template <class F, class... ARGS>
 void CheckedAPICall(F &&func, ARGS &&... args) {
 	duckdb_v2_error_info_handle err = nullptr;
-	auto code = func(std::forward<ARGS>(args)..., &err);
+	const auto code = func(std::forward<ARGS>(args)..., &err);
 	if (code != DUCKDB_V2_ERROR_NONE) {
 		duckdb_v2_str message_view = {nullptr, 0};
 		if (err) {
@@ -205,7 +198,7 @@ size_t Environment::GetOpenDatabaseCount() const {
 
 Database Environment::Open(const std::string &path) {
 	duckdb_v2_database_handle db = nullptr;
-	CheckedAPICall(duckdb_v2_open, handle(), ToStr(path), nullptr, 0, &db);
+	CheckedAPICall(duckdb_v2_open, handle(), ToStr(path), nullptr, static_cast<idx_t>(0), &db);
 	return detail::Factory::Make<Database>(db);
 }
 
@@ -294,19 +287,21 @@ void Database::SetOption(const DatabaseOption &option) {
 Connection Database::Connect() {
 	duckdb_v2_connection_handle conn = nullptr;
 	CheckedAPICall(duckdb_v2_connect, handle(), &conn);
-	return detail::Factory::Make<Connection>(conn);
+	return detail::Factory::Make<Connection>(conn, true);
 }
 
 //---------------------------------------------------------------------------
 // Connection
 //---------------------------------------------------------------------------
 
-Connection::Connection(void *impl) : detail::Handle<Connection>(impl) {
+Connection::Connection(void *impl, bool owned) : detail::Handle<Connection>(impl), owned(owned) {
 }
 
 Connection::~Connection() {
-	auto _h = handle();
-	duckdb_v2_disconnect(&_h);
+	if (owned) {
+		auto _h = handle();
+		duckdb_v2_disconnect(&_h);
+	}
 }
 
 size_t Connection::GetOptionCount() const {

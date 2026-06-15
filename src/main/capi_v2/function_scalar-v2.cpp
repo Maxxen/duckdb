@@ -323,7 +323,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 			function.SetBindCallback(duckdb::ScalarFunctionV2::BindCallback);
 		}
 
-		if (builder.info.exec_cb) {
+		if (builder.info.init_cb) {
 			function.SetInitStateCallback(duckdb::ScalarFunctionV2::InitCallback);
 		}
 

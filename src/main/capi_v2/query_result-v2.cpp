@@ -37,8 +37,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_query");
 		}
 		*out_result = nullptr;
-		auto *conn_wrapper = duckdb::ToConn(conn);
-		auto result = conn_wrapper->connection->Query(duckdb::ToString(sql));
+		auto result = duckdb::ToConn(conn)->Query(duckdb::ToString(sql));
 		if (result->HasError()) {
 			// Re-throw the typed ErrorData so the exception's ExceptionType
 			// is preserved and routed through GetErrorCodeFromExceptionType.
