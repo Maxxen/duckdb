@@ -419,6 +419,7 @@ def format_directory(directory):
 
 files = []
 if format_all:
+    files.append('CMakeLists.txt')
     for direct in formatted_directories:
         files += format_directory(direct)
 

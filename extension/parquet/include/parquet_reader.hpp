@@ -197,7 +197,7 @@ public:
 	int64_t current_group;
 	idx_t offset_in_group;
 	idx_t group_offset;
-	unique_ptr<CachingFileHandle> file_handle;
+	shared_ptr<CachingFileHandle> file_handle;
 	vector<unique_ptr<ColumnReader>> column_readers;
 	duckdb_base_std::unique_ptr<duckdb_apache::thrift::protocol::TProtocol> thrift_file_proto;
 
@@ -209,6 +209,14 @@ public:
 
 	bool prefetch_mode = false;
 	bool current_group_prefetched = false;
+	//! Number of filter head counts, used for prefetching
+	idx_t filter_head_count = 0;
+	//! true once the filters ran
+	bool filter_done = false;
+	//! Surviving row count
+	idx_t filter_count = 0;
+	//! Filter columns kept across the payload BLOCKED
+	DataChunk filter_stash;
 
 	ParquetPrefetchMetrics prefetch_metrics;
 
@@ -285,7 +293,7 @@ struct ParquetUnionData : public BaseUnionData {
 	~ParquetUnionData() override;
 
 	optional_idx TryGetCardinalityEstimate() const override;
-	unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, const string &name) override;
+	unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, const Identifier &name) override;
 
 	ParquetOptions options;
 	shared_ptr<ParquetFileMetadataCache> metadata;
@@ -317,7 +325,7 @@ public:
 	}
 
 	shared_ptr<BaseUnionData> GetUnionData(idx_t file_idx) override;
-	unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, const string &name) override;
+	unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, const Identifier &name) override;
 
 	bool TryInitializeScan(ClientContext &context, GlobalTableFunctionState &gstate,
 	                       LocalTableFunctionState &lstate) override;
@@ -348,15 +356,16 @@ public:
 	uint32_t ReadDataEncrypted(duckdb_apache::thrift::protocol::TProtocol &iprot, const data_ptr_t buffer,
 	                           const uint32_t buffer_size, CryptoMetaData &aad_crypto_metadata) const;
 
-	unique_ptr<BaseStatistics> ReadStatistics(const string &name);
+	unique_ptr<BaseStatistics> ReadStatistics(const Identifier &name);
 
 	CachingFileHandle &GetHandle() {
 		return *file_handle;
 	}
 
 	static unique_ptr<BaseStatistics> ReadStatistics(ClientContext &context, ParquetOptions parquet_options,
-	                                                 shared_ptr<ParquetFileMetadataCache> metadata, const string &name);
-	static unique_ptr<BaseStatistics> ReadStatistics(const ParquetUnionData &union_data, const string &name);
+	                                                 shared_ptr<ParquetFileMetadataCache> metadata,
+	                                                 const Identifier &name);
+	static unique_ptr<BaseStatistics> ReadStatistics(const ParquetUnionData &union_data, const Identifier &name);
 
 	LogicalType DeriveLogicalType(const SchemaElement &s_ele, ParquetColumnSchema &schema) const;
 	static LogicalType DeriveLogicalType(const SchemaElement &s_ele, const ParquetOptions &options,
@@ -389,7 +398,7 @@ private:
 	idx_t GetGroupOffset(ParquetReaderScanState &state);
 	//! Group span is the distance between the min page offset and the max page offset plus the max page compressed size
 	uint64_t GetGroupSpan(ParquetReaderScanState &state);
-	void PrepareRowGroupBuffer(ParquetReaderScanState &state, idx_t out_col_idx);
+	void PrepareRowGroupBuffer(ClientContext &context, ParquetReaderScanState &state, idx_t out_col_idx);
 	//! Whole-group prefetch strategy.
 	ParquetPrefetchStrategy WholeGroupPrefetch(ParquetReaderScanState &state, ThriftFileTransport &trans,
 	                                           const duckdb_parquet::RowGroup &group, uint64_t total_row_group_span,
@@ -401,7 +410,19 @@ private:
 	//! Switch to the next row group and schedule its I/O (prepare column buffers, prefetch the bytes).
 	AsyncResult Schedule(ClientContext &context, ParquetReaderScanState &state, DataChunk &result, bool log_prefetch);
 	//! Process up to STANDARD_VECTOR_SIZE rows of the current row group into result.
-	SourceResultType Process(ParquetReaderScanState &state, DataChunk &result, bool log_prefetch);
+	AsyncResult Process(ParquetReaderScanState &state, DataChunk &result, bool log_prefetch);
+	//! Process filters
+	AsyncResult ProcessFilters(ParquetReaderScanState &state, DataChunk &result, idx_t scan_count, uint8_t *define_ptr,
+	                           uint8_t *repeat_ptr, bool log_prefetch);
+	//! Run the filters into state.sel; returns the surviving row count. Advances every filter column.
+	idx_t EvaluateFilters(ParquetReaderScanState &state, DataChunk &result, idx_t scan_count, uint8_t *define_ptr,
+	                      uint8_t *repeat_ptr, bool log_prefetch);
+	//! Async-fetch the surviving payload columns (stashing the filter columns); empty if no fetch is needed.
+	vector<unique_ptr<AsyncTask>> ScheduleRemainingColumns(ParquetReaderScanState &state, DataChunk &result,
+	                                                       idx_t scan_count);
+	//! Read the remaining (non-filter) columns into result.
+	void DecodeRemainingColumns(ParquetReaderScanState &state, DataChunk &result, idx_t filter_count,
+	                            uint8_t *define_ptr, uint8_t *repeat_ptr);
 	ParquetColumnSchema ParseColumnSchema(const SchemaElement &s_ele, idx_t max_define, idx_t max_repeat,
 	                                      idx_t schema_index, idx_t column_index,
 	                                      ParquetColumnSchemaType type = ParquetColumnSchemaType::COLUMN);

@@ -126,7 +126,7 @@ typedef void (*aggregate_serialize_t)(Serializer &serializer, const optional_ptr
 typedef unique_ptr<FunctionData> (*aggregate_deserialize_t)(Deserializer &deserializer,
                                                             BoundAggregateFunction &function);
 
-typedef LogicalType (*aggregate_get_state_type_t)(const BoundAggregateFunction &function);
+typedef AggregateStateLayout (*aggregate_get_state_type_t)(const BoundAggregateFunction &function);
 
 struct AggregateFunctionInfo {
 	DUCKDB_API virtual ~AggregateFunctionInfo();
@@ -396,7 +396,7 @@ public:
 		return nullptr;
 	}
 
-	AggregateFunction(const string &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
+	AggregateFunction(const Identifier &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
 	                  aggregate_size_t state_size, aggregate_initialize_t initialize, aggregate_update_t update,
 	                  aggregate_combine_t combine, aggregate_finalize_t finalize,
 	                  FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
@@ -421,7 +421,7 @@ public:
 		callbacks.deserialize = deserialize;
 	}
 
-	AggregateFunction(const string &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
+	AggregateFunction(const Identifier &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
 	                  aggregate_size_t state_size, aggregate_initialize_t initialize, aggregate_update_t update,
 	                  aggregate_combine_t combine, aggregate_finalize_t finalize,
 	                  aggregate_cluster_update_t cluster_update_p = nullptr, bind_aggregate_function_t bind = nullptr,
@@ -451,7 +451,7 @@ public:
 	                  aggregate_destructor_t destructor = nullptr, aggregate_statistics_t statistics = nullptr,
 	                  aggregate_window_batch_t window = nullptr, aggregate_serialize_t serialize = nullptr,
 	                  aggregate_deserialize_t deserialize = nullptr)
-	    : AggregateFunction(string(), arguments, return_type, state_size, initialize, update, combine, finalize,
+	    : AggregateFunction(Identifier(), arguments, return_type, state_size, initialize, update, combine, finalize,
 	                        null_handling, cluster_update_p, bind, destructor, statistics, window, serialize,
 	                        deserialize) {
 	}
@@ -462,7 +462,7 @@ public:
 	                  bind_aggregate_function_t bind = nullptr, aggregate_destructor_t destructor = nullptr,
 	                  aggregate_statistics_t statistics = nullptr, aggregate_window_batch_t window = nullptr,
 	                  aggregate_serialize_t serialize = nullptr, aggregate_deserialize_t deserialize = nullptr)
-	    : AggregateFunction(string(), arguments, return_type, state_size, initialize, update, combine, finalize,
+	    : AggregateFunction(Identifier(), arguments, return_type, state_size, initialize, update, combine, finalize,
 	                        FunctionNullHandling::DEFAULT_NULL_HANDLING, cluster_update_p, bind, destructor, statistics,
 	                        window, serialize, deserialize) {
 	}
@@ -473,7 +473,7 @@ public:
 	                  aggregate_window_batch_t window_batch, bind_aggregate_function_t bind = nullptr,
 	                  aggregate_destructor_t destructor = nullptr, aggregate_statistics_t statistics = nullptr,
 	                  aggregate_serialize_t serialize = nullptr, aggregate_deserialize_t deserialize = nullptr)
-	    : SimpleFunction(string(), arguments, return_type) {
+	    : SimpleFunction(Identifier(), arguments, return_type) {
 		callbacks.state_size = state_size;
 		callbacks.initialize = initialize;
 		callbacks.window_batch = window_batch;
@@ -500,11 +500,6 @@ public:
 		return *this;
 	}
 
-	template <class STATE_TYPE>
-	AggregateFunction &SetStructStateExport() {
-		return SetStructStateExport([](const BoundAggregateFunction &) { return STATE_TYPE::GetLogicalType(); });
-	}
-
 	AggregateFunction &SetClusterCallback(aggregate_cluster_update_t cluster_update) {
 		callbacks.cluster_update = cluster_update;
 		return *this;
@@ -524,7 +519,7 @@ public:
 	template <class STATE, class RESULT_TYPE, class OP>
 	static AggregateFunction NullaryAggregate(LogicalType return_type) {
 		AggregateFunction result(
-		    string(), {}, return_type, AggregateFunction::StateSize<STATE>,
+		    Identifier(), {}, return_type, AggregateFunction::StateSize<STATE>,
 		    AggregateFunction::StateInitialize<STATE, OP>, AggregateFunction::NullaryScatterUpdate<STATE, OP>,
 		    AggregateFunction::StateCombine<STATE, OP>, AggregateFunction::StateFinalize<STATE, RESULT_TYPE, OP>,
 		    FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NullaryClusterUpdate<STATE, OP>);
@@ -537,19 +532,26 @@ public:
 	static AggregateFunction
 	UnaryAggregate(const LogicalType &input_type, LogicalType return_type,
 	               FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING) {
-		AggregateFunction result(string(), {input_type}, return_type, AggregateFunction::StateSize<STATE>,
+		AggregateFunction result(Identifier(), {input_type}, return_type, AggregateFunction::StateSize<STATE>,
 		                         AggregateFunction::StateInitialize<STATE, OP, destructor_type>,
 		                         AggregateFunction::UnaryScatterUpdate<STATE, INPUT_TYPE, OP>,
 		                         AggregateFunction::StateCombine<STATE, OP>,
 		                         AggregateFunction::StateFinalize<STATE, RESULT_TYPE, OP>, null_handling,
 		                         UnaryClusterUpdateCallback<STATE, INPUT_TYPE, OP>());
+		// automatically wire up the destructor if the operation defines a Destroy method
+		if constexpr (OperationHasDestroy<STATE, OP>::value) {
+			result.callbacks.destructor = AggregateFunction::StateDestroy<STATE, OP>;
+		}
 		WireStructStateType<STATE>(result);
 		return result;
 	}
 
+	//! Deprecated: use UnaryAggregate instead - the destructor is now automatically wired up when the operation
+	//! defines a Destroy method
 	template <class STATE, class INPUT_TYPE, class RESULT_TYPE, class OP,
 	          AggregateDestructorType destructor_type = AggregateDestructorType::STANDARD>
-	static AggregateFunction UnaryAggregateDestructor(LogicalType input_type, LogicalType return_type) {
+	[[deprecated("Use UnaryAggregate instead - the destructor is now wired up automatically")]] static AggregateFunction
+	UnaryAggregateDestructor(LogicalType input_type, LogicalType return_type) {
 		auto aggregate = UnaryAggregate<STATE, INPUT_TYPE, RESULT_TYPE, OP, destructor_type>(input_type, return_type);
 		aggregate.callbacks.destructor = AggregateFunction::StateDestroy<STATE, OP>;
 		return aggregate;
@@ -569,13 +571,15 @@ public:
 	}
 
 public:
+	//! Returns the logical type for state type ST, resolving types that are only known after binding
+	//! (sort keys, linked lists and StateString fields) from the bound aggregate function.
+	//! Defined out-of-line (after BoundAggregateFunction is complete).
+	template <class ST, class STATE>
+	static LogicalType BuildStateLogical(const BoundAggregateFunction &bound_function);
+
+	//! Defined out-of-line (after BoundAggregateFunction is complete) so the lambda body can call GetReturnType().
 	template <class STATE>
-	static void WireStructStateType(AggregateFunction &result) {
-		if constexpr (HasStructStateType<STATE>::value) {
-			result.SetStructStateExport(
-			    [](const BoundAggregateFunction &) { return STATE::STATE_TYPE::GetLogicalType(STATE::STATE_NAMES); });
-		}
-	}
+	static void WireStructStateType(AggregateFunction &result);
 
 	template <class STATE>
 	static idx_t StateSize(const BoundAggregateFunction &) {
@@ -591,6 +595,15 @@ public:
 	template <class STATE, class OP>
 	struct OperationHasInitialize<STATE, OP, initialize_void_t<decltype(OP::Initialize(std::declval<STATE &>()))>>
 	    : std::true_type {};
+
+	//! Detects whether "OP" provides a "Destroy(STATE &, AggregateInputData &)" method
+	template <class STATE, class OP, class = void>
+	struct OperationHasDestroy : std::false_type {};
+	template <class STATE, class OP>
+	struct OperationHasDestroy<STATE, OP,
+	                           initialize_void_t<decltype(OP::template Destroy<STATE>(
+	                               std::declval<STATE &>(), std::declval<AggregateInputData &>()))>> : std::true_type {
+	};
 
 	template <class STATE, class OP, AggregateDestructorType destructor_type = AggregateDestructorType::STANDARD>
 	static void StateInitialize(const BoundAggregateFunction &, data_ptr_t state) {
@@ -697,13 +710,55 @@ public:
 	DUCKDB_API bool operator==(const BoundAggregateFunction &rhs) const;
 	DUCKDB_API bool operator!=(const BoundAggregateFunction &rhs) const;
 
-	LogicalType GetStateType() const {
+	AggregateStateLayout GetStateType() const {
 		D_ASSERT(callbacks.get_state_type);
-		const auto result = callbacks.get_state_type(*this);
-		// The underlying type of the AggregateState should be a struct
-		D_ASSERT(result.id() == LogicalTypeId::STRUCT);
-		return result;
+		return callbacks.get_state_type(*this);
 	}
 };
+
+// Defined here (after BoundAggregateFunction is complete) so the lambda body can call GetReturnType().
+template <class STATE>
+inline void AggregateFunction::WireStructStateType(AggregateFunction &result) {
+	if constexpr (HasStructStateType<STATE>::value) {
+		using ST = typename STATE::STATE_TYPE;
+		result.SetStructStateExport([](const BoundAggregateFunction &bound) {
+			AggregateStateLayout layout;
+			if (bound.GetReturnType().IsAggregateState()) {
+				// the function has been modified for state export (see ExportAggregateFunction::SetStateExport) -
+				// its return type IS the state type already
+				layout.type = bound.GetReturnType();
+			} else {
+				layout.type = AggregateFunction::BuildStateLogical<ST, STATE>(bound);
+			}
+			layout.total_state_size = AlignValue<idx_t>(sizeof(STATE));
+			layout.field = BuildStateField<ST>();
+			AggregateStateField::PopulateListFunctions(layout.type, layout.field);
+			return layout;
+		});
+	} else if constexpr (HasPrimitiveLogicalType<STATE>::value) {
+		result.SetStructStateExport([](const BoundAggregateFunction &) {
+			return AggregateStateLayout(PrimitiveToLogicalType<STATE>(), AlignValue<idx_t>(sizeof(STATE)));
+		});
+	}
+}
+
+// Defined here (after BoundAggregateFunction is complete) so the body can access the bound function's types.
+template <class ST, class STATE>
+inline LogicalType AggregateFunction::BuildStateLogical(const BoundAggregateFunction &bound_function) {
+	// the runtime types of the bound function - used to resolve StateReturnType/StateInputType sources
+	StateLayoutTypeInfo info {bound_function.GetReturnType(), bound_function.GetArguments()};
+	if constexpr (IsStateListType<ST>::value) {
+		return ResolveStateSourceType<typename ST::SOURCE_TYPE>(info);
+	} else if constexpr (IsOptionalStateType<ST>::value) {
+		using V = typename ST::value_type;
+		if constexpr (IsStructStateType<V>::value) {
+			return V::GetLogicalType(STATE::STATE_NAMES, info);
+		} else {
+			return FieldToLogicalType<V>(info);
+		}
+	} else {
+		return ST::GetLogicalType(STATE::STATE_NAMES, info);
+	}
+}
 
 } // namespace duckdb
