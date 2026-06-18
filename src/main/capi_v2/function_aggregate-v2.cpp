@@ -162,8 +162,8 @@ struct AggregateFunctionV2 {
 		}
 	}
 
-	static auto FinalizeCallback(Vector &state, AggregateInputData &aggr_input_data, Vector &result, idx_t count,
-	                             idx_t offset) -> void {
+	static auto FinalizeCallback(Vector &state, AggregateFinalizeInputData &aggr_input_data, Vector &result,
+	                             idx_t count, idx_t offset) -> void {
 		auto &info = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>().GetInfo();
 
 		state.Flatten(); // TODO: Dont flatten here
