@@ -39,6 +39,21 @@ public:
 		return *this;
 	}
 
+	// True when this wrapper holds a live handle. Moved-from wrappers and
+	// "no value" results (e.g. end-of-stream chunks) are empty.
+	explicit operator bool() const noexcept {
+		return impl != nullptr;
+	}
+
+	// Detaches and returns the underlying handle, leaving the wrapper
+	// empty; for transfer-semantics calls where the C API consumes the
+	// handle.
+	void *release() noexcept {
+		auto *detached = impl;
+		impl = nullptr;
+		return detached;
+	}
+
 	virtual ~Handle() noexcept = default;
 
 protected:
@@ -284,6 +299,45 @@ private:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// SQL statements
+//----------------------------------------------------------------------------------------------------------------------
+
+// An owned, parsed SQL statement, yielded by StatementIterator::Next and
+// consumed by Connection::Query.
+class SqlStatement final : public detail::Handle<SqlStatement> {
+	friend detail::Factory;
+
+public:
+	SqlStatement(SqlStatement &&) noexcept = default;
+	SqlStatement &operator=(SqlStatement &&) noexcept = default;
+
+	~SqlStatement() override;
+
+private:
+	explicit SqlStatement(void *impl);
+};
+
+// An owned iterator over the statements of a SQL string, produced by
+// Connection::ParseSQL. Parsing only: no binding, no catalog access, no
+// transaction. Statements already yielded outlive the iterator.
+class StatementIterator final : public detail::Handle<StatementIterator> {
+	friend detail::Factory;
+
+public:
+	StatementIterator(StatementIterator &&) noexcept = default;
+	StatementIterator &operator=(StatementIterator &&) noexcept = default;
+
+	~StatementIterator() override;
+
+	// Yields the next owned statement; empty when the iterator is
+	// exhausted (idempotently).
+	auto Next() -> SqlStatement;
+
+private:
+	explicit StatementIterator(void *impl);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Connection
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -304,6 +358,16 @@ public:
 		return *this;
 	}
 
+	// Snapshot of the active query's execution progress. The engine
+	// publishes progress only when enable_progress_bar is set; a
+	// percentage of -1 (with both row counts 0) means no information is
+	// available.
+	struct QueryProgress {
+		double percentage;
+		uint64_t rows_processed;
+		uint64_t total_rows_to_process;
+	};
+
 	~Connection() override;
 
 	size_t GetOptionCount() const;
@@ -312,7 +376,29 @@ public:
 
 	void WithTransaction(std::function<void(const Context &ctx)> callback);
 
+	// Parses a SQL string into an iterator over its statements. Parsing
+	// only: no binding, no catalog access, no transaction.
+	StatementIterator ParseSQL(const char *sql);
+	// Inline forwarder: keeps std::string out of the compiled interface.
+	StatementIterator ParseSQL(const std::string &sql) {
+		return ParseSQL(sql.c_str());
+	}
+
+	// Starts lazy, streaming execution of a parsed statement; nothing runs
+	// until the result is stepped. The statement is consumed. Throws
+	// RESOURCE_IN_USE while a live result exists.
+	QueryResult Query(SqlStatement statement);
+
+	// Single-statement convenience over ParseSQL + Query: throws
+	// INVALID_INPUT unless the input contains exactly one statement.
 	QueryResult Query(const std::string &sql);
+
+	// Requests cancellation of the active query. Safe to call from any
+	// thread; a no-op when no query is active.
+	void Interrupt();
+
+	// Reads the active query's progress. Safe to call from any thread.
+	QueryProgress GetQueryProgress() const;
 
 	// Log a message from this connection. This is infallible and will not throw exceptions.
 	void Log(LogLevel level, const std::string &message) const noexcept;
@@ -489,7 +575,7 @@ public:
 
 private:
 	explicit DataChunk(void *impl, bool owned);
-	bool owned; // UGLY, this should probably be done c++-side.
+	bool owned = false; // UGLY, this should probably be done c++-side.
 };
 
 class ColumnDataCollection final : public detail::Handle<ColumnDataCollection> {
@@ -591,6 +677,22 @@ class QueryResult final : public detail::Handle<QueryResult> {
 	friend detail::Factory;
 
 public:
+	// Mirrors DUCKDB_V2_RESULT_STEP_STATUS, including WAITING as the
+	// zero value.
+	enum class StepStatus : uint8_t {
+		WAITING = 0,
+		CHUNK = 1,
+		FINISHED = 2,
+		CANCELLED = 3,
+	};
+
+	// Outcome of one step: the status, plus the produced chunk. The chunk
+	// is non-empty iff the status is CHUNK.
+	struct StepResult {
+		StepStatus status;
+		DataChunk chunk;
+	};
+
 	QueryResult(QueryResult &&) noexcept = default;
 	QueryResult &operator=(QueryResult &&) noexcept = default;
 
@@ -599,10 +701,25 @@ public:
 	auto GetColumnCount() const -> idx_t;
 	auto GetColumnName(idx_t index) const -> std::string_view;
 	auto GetColumnType(idx_t index) const -> LogicalType;
-	auto GetRowsChanged() const -> idx_t;
 
-	auto GetChunkCount() const -> idx_t;
-	auto GetChunk(idx_t index) const -> DataChunk;
+	// The streaming primitive, built for async runtimes: runs a bounded
+	// unit of execution work and returns without blocking. Execution
+	// errors throw; FINISHED / CANCELLED are sticky statuses.
+	auto Step() -> StepResult;
+
+	// Blocks until Step can make progress; a no-op on a terminal
+	// result.
+	auto Wait() -> void;
+
+	// Fetches the next chunk of the streaming result, blocking until it is
+	// available. Empty at end-of-stream (idempotently). Cancellation
+	// throws RUNTIME_INTERRUPT.
+	auto FetchChunk() -> DataChunk;
+
+	// Runs the result to completion, applying all side effects and
+	// discarding rows; returns the affected row count for CHANGED_ROWS
+	// results, 0 otherwise. Cancellation throws RUNTIME_INTERRUPT.
+	auto Drain() -> idx_t;
 
 private:
 	explicit QueryResult(void *impl);

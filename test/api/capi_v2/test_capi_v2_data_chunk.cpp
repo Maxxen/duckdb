@@ -20,12 +20,7 @@ TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT 42::INTEGER AS i", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	idx_t chunks = 99;
-	REQUIRE(duckdb_v2_result_chunk_count(r, &chunks, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(chunks == 1);
-
-	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_data_chunk_handle chunk = V2StepChunk(r);
 	REQUIRE(chunk != nullptr);
 
 	idx_t size = 0;
@@ -78,7 +73,7 @@ TEST_CASE("V2: INTEGER vector with NULL — validity + identity sel", "[capi_v2]
 	REQUIRE(V2Query(fx.conn, "SELECT * FROM (VALUES (1), (NULL), (3)) t(i)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -143,7 +138,7 @@ TEST_CASE("V2: primitive view round-trips across many types", "[capi_v2][data_ch
 	                &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -213,7 +208,7 @@ TEST_CASE("V2: HUGEINT + INTERVAL via layout typedefs", "[capi_v2][data_chunk]")
 	                &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -260,7 +255,7 @@ TEST_CASE("V2: VARCHAR via varchar_decode (inlined + pointer forms)", "[capi_v2]
 	        DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -299,7 +294,7 @@ TEST_CASE("V2: BLOB via blob_decode", "[capi_v2][data_chunk]") {
 	REQUIRE(V2Query(fx.conn, "SELECT '\\xDE\\xAD\\xBE\\xEF'::BLOB AS b", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -340,7 +335,7 @@ TEST_CASE("V2: BIT via bit_decode", "[capi_v2][data_chunk]") {
 	        DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -422,7 +417,7 @@ TEST_CASE("V2: BIGNUM via bignum_decode (positive + negative)", "[capi_v2][data_
 	                &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -479,7 +474,7 @@ TEST_CASE("V2: LIST<INTEGER> via get_child + entries", "[capi_v2][data_chunk]") 
 	        DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -539,7 +534,7 @@ TEST_CASE("V2: STRUCT(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]")
 	                nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -604,7 +599,7 @@ TEST_CASE("V2: ARRAY(INTEGER, 3) via get_child", "[capi_v2][data_chunk]") {
 	                nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -666,7 +661,7 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 	        DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -748,17 +743,15 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 TEST_CASE("V2: UNION(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") {
 	V2EnvFixture fx;
 
-	duckdb_v2_result_handle r = nullptr;
 	// Set up via a temp table so the UNION type is bound consistently
 	// across both inserted rows.
-	V2Query(fx.conn, "CREATE TABLE u_t (u UNION(i INTEGER, s VARCHAR))", &r, nullptr);
-	duckdb_v2_result_destroy(&r);
-	V2Query(fx.conn, "INSERT INTO u_t VALUES (union_value(i := 42)), (union_value(s := 'hello'))", &r, nullptr);
-	duckdb_v2_result_destroy(&r);
+	V2ExecSQL(fx.conn, "CREATE TABLE u_t (u UNION(i INTEGER, s VARCHAR))");
+	V2ExecSQL(fx.conn, "INSERT INTO u_t VALUES (union_value(i := 42)), (union_value(s := 'hello'))");
+	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT u FROM u_t", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -839,7 +832,7 @@ TEST_CASE("V2: DECIMAL read across internal widths", "[capi_v2][data_chunk]") {
 	                &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 	REQUIRE(size == 1);
@@ -894,7 +887,7 @@ TEST_CASE("V2: generic accessors handle non-nested vectors", "[capi_v2][data_chu
 	duckdb_v2_result_handle r = nullptr;
 	V2Query(fx.conn, "SELECT 1::INTEGER", &r, nullptr);
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	chunk = V2StepChunk(r);
 	duckdb_v2_vector_handle vec = nullptr;
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
 
@@ -1126,56 +1119,13 @@ TEST_CASE("V2: chunk null-arg + out-of-range rejection", "[capi_v2][data_chunk]"
 	duckdb_v2_result_handle r = nullptr;
 	V2Query(fx.conn, "SELECT 1", &r, nullptr);
 
-	idx_t out = 0;
-	REQUIRE(duckdb_v2_result_chunk_count(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_chunk_count(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-
-	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(r, 99, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(chunk == nullptr);
-
-	duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr);
+	duckdb_v2_data_chunk_handle chunk = V2StepChunk(r);
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 99, &vec, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(vec == nullptr);
 
 	duckdb_v2_data_chunk_destroy(&chunk);
 	duckdb_v2_result_destroy(&r);
-}
-
-// ===========================================================================
-// CHANGED_ROWS / NOTHING results have no row data — result_chunk_count
-// returns 0, result_get_chunk rejects with INVALID_INPUT.
-// ===========================================================================
-
-TEST_CASE("V2: result_get_chunk rejects non-QUERY_RESULT", "[capi_v2][data_chunk]") {
-	V2EnvFixture fx;
-
-	// CREATE TABLE produces a NOTHING result.
-	{
-		duckdb_v2_result_handle r = nullptr;
-		REQUIRE(V2Query(fx.conn, "CREATE TABLE t (a INTEGER)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
-		idx_t chunks = 99;
-		REQUIRE(duckdb_v2_result_chunk_count(r, &chunks, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(chunks == 0);
-		duckdb_v2_data_chunk_handle chunk = reinterpret_cast<duckdb_v2_data_chunk_handle>(0x1); // poison
-		REQUIRE(duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(chunk == nullptr);
-		duckdb_v2_result_destroy(&r);
-	}
-
-	// INSERT produces a CHANGED_ROWS result.
-	{
-		duckdb_v2_result_handle r = nullptr;
-		REQUIRE(V2Query(fx.conn, "INSERT INTO t VALUES (1), (2)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
-		idx_t chunks = 99;
-		REQUIRE(duckdb_v2_result_chunk_count(r, &chunks, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(chunks == 0);
-		duckdb_v2_data_chunk_handle chunk = reinterpret_cast<duckdb_v2_data_chunk_handle>(0x1);
-		REQUIRE(duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(chunk == nullptr);
-		duckdb_v2_result_destroy(&r);
-	}
 }
 
 // ===========================================================================
@@ -1189,12 +1139,14 @@ TEST_CASE("V2: success leaves a pre-existing err untouched", "[capi_v2][data_chu
 
 	duckdb_v2_error_info_handle err = nullptr;
 
-	// Failing call: result_get_chunk on a non-QUERY_RESULT.
+	// Failing call: out-of-range vector index on a real chunk.
 	duckdb_v2_result_handle r1 = nullptr;
-	V2Query(fx.conn, "CREATE TABLE clear_t (a INTEGER)", &r1, nullptr);
-	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(r1, 0, &chunk, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	V2Query(fx.conn, "SELECT 1", &r1, nullptr);
+	duckdb_v2_data_chunk_handle chunk = V2StepChunk(r1);
+	duckdb_v2_vector_handle oor_vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 99, &oor_vec, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(err != nullptr); // populated on failure
+	duckdb_v2_data_chunk_destroy(&chunk);
 	duckdb_v2_result_destroy(&r1);
 
 	// Succeeding call reusing the same err slot: the slot is left untouched.
@@ -1219,9 +1171,9 @@ TEST_CASE("V2: success leaves a pre-existing err untouched", "[capi_v2][data_chu
 
 // ===========================================================================
 // data_chunk has fully independent lifetime from the producing result,
-// connection, and database — result_get_chunk copies the data into a
-// fresh allocator-backed buffer. Pin this by destroying the result,
-// connection, AND database, then reading the chunk + its vectors.
+// connection, and database; chunks handed out by the stream own their
+// data. Pin this by destroying the result, connection, AND database,
+// then reading the chunk + its vectors.
 // ===========================================================================
 
 TEST_CASE("V2: data_chunk outlives result + connection + database", "[capi_v2][data_chunk]") {
@@ -1237,7 +1189,7 @@ TEST_CASE("V2: data_chunk outlives result + connection + database", "[capi_v2][d
 
 		duckdb_v2_result_handle r = nullptr;
 		REQUIRE(V2Query(conn, "SELECT * FROM (VALUES (1), (2), (3)) t(i)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_result_get_chunk(r, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		chunk = V2StepChunk(r);
 
 		// Tear everything down except the chunk itself.
 		duckdb_v2_result_destroy(&r);

@@ -1,18 +1,19 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: data_chunk
 #
-# Fetch and inspect data chunks from a materialised result.
+# Construct and inspect data chunks.
 #
 # Mirrors duckdb::DataChunk: a set of vectors of equal logical length plus
 # a row-count cardinality. Each vector carries its own logical type (see
 # vector_get_logical_type in the vector module). The chunk does
-# not store types separately — they live on the vectors.
+# not store types separately; they live on the vectors.
 #
-# Chunks fetched via result_get_chunk are caller-owned and must
-# be destroyed via data_chunk_destroy. Vectors borrowed via
+# Chunks produced by a streaming result (result_step /
+# result_fetch_chunk in the query_result module) are caller-owned and
+# must be destroyed via data_chunk_destroy. Vectors borrowed via
 # data_chunk_get_vector are valid for the lifetime of the chunk
 # and are read via vector_get_view. The row count for top-level
-# vectors is data_chunk_get_size — it lives on the chunk, not on
+# vectors is data_chunk_get_size; it lives on the chunk, not on
 # the view. (Nested children get their row count from parent
 # geometry; see the vector module's docstring.)
 
@@ -38,57 +39,6 @@ functions:
       column_count:
         type: idx
         description: Number of elements in the types array.
-      out_chunk:
-        type: data_chunk
-        indirection: 1
-        kind: OUT
-        description: Receives the new chunk handle.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # Result-side accessors (extend the result handle's surface)
-  # -----------------------------------------------------------------------
-  result_chunk_count:
-    summary: Returns the number of data chunks in a materialized result.
-    description: |
-      For QUERY_RESULT results, returns the chunk count. For CHANGED_ROWS
-      or NOTHING results, returns 0.
-    role: getter
-    belongs_to: result
-    parameters:
-      result:
-        type: result
-      out_count:
-        type: idx
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  result_get_chunk:
-    summary: Retrieves a data chunk from a materialized result.
-    description: |
-      Returns a caller-owned chunk. Each chunk holds a vector per
-      result column with a chunk-size-bounded row count (the chunk
-      size is fixed at the library's compile time). Out-of-range
-      index returns ERROR_INVALID_INPUT. Returns ERROR_INVALID_INPUT
-      if the result is not a QUERY_RESULT (CHANGED_ROWS / NOTHING
-      results have no row data).
-    role: getter
-    belongs_to: result
-    parameters:
-      result:
-        type: result
-      index:
-        type: idx
-        description: The chunk index, in [0, result_chunk_count).
       out_chunk:
         type: data_chunk
         indirection: 1

@@ -1,15 +1,66 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: query_result
 #
-# Run a query and inspect its schema. Row-data access (chunks and typed
-# vector views) lives in the data_chunk and vector modules.
+# Run a query with lazy, streaming execution and inspect its schema.
+# Row-data access (chunks and typed vector views) lives in the data_chunk
+# and vector modules.
 #
-# The result handle carries the schema (column names + types), the statement
-# type, the result type (query / changed-rows / nothing), and, for
-# CHANGED_ROWS results, the affected row count.
+# connection_query() takes a statement parsed by the sql_statement
+# module, prepares it, and returns immediately; nothing executes until
+# the result is stepped. The primitive is result_step: non-blocking,
+# runs a bounded amount of execution work, reports a RESULT_STEP_STATUS.
+# It can be used for async runtimes (e.g. Python asyncio): each step hands
+# control back so an event loop can interleave other work. result_wait,
+# result_fetch_chunk, and result_drain are blocking conveniences over it.
+# Chunks are caller-owned and read via the data_chunk / vector APIs;
+# there is no random access into a result.
 #
-# connection_query() always returns a materialized result.
-# Streaming and pending result variants are not part of this surface.
+# Lazy execution means side-effecting statements (INSERT, CREATE, SET,
+# CALL, ...) take effect only when their result is drained; destroying an
+# undrained result abandons execution including the side effects. Use
+# result_drain for fire-and-forget statements; it also reports the
+# changed-row count. The result type (result_get_result_type) is
+# prepare-time metadata, so callers decide between consuming rows and
+# draining without inspecting the SQL.
+#
+# A connection runs one result at a time. While a live result exists
+# (one that is not finished, cancelled, errored, or destroyed),
+# connection_query refuses with ERROR_RESOURCE_IN_USE. For concurrent
+# queries, open another connection.
+#
+# The result handle carries the schema (column names and types), the
+# statement type, and the result type from prepare time. "Prepare-time
+# metadata" in the getter descriptions below means: valid before the
+# first step, during consumption, and after the stream ends.
+#
+# Statement expansion: connection_query preprocesses the statement, and
+# some single statements expand into a group of engine statements (e.g.
+# PIVOT, or ALTER ... ADD COLUMN with a non-constant DEFAULT, which the
+# engine wraps in a transaction). The group executes as one result,
+# driven by the same steps. Result selection mirrors the engine's own
+# rule: the caller sees the first row-producing statement of the group,
+# or the last statement when none produces rows; other statements'
+# output is discarded, as the engine discards it. For expanding
+# statements the metadata getters fail with ERROR_INVALID_INPUT until
+# stepping has prepared the result-producing statement; for every
+# non-expanding statement metadata is available from connection_query
+# on, as described above.
+#
+# The result handle is single-consumer: step, fetch, and wait from one
+# thread at a time. Cross-thread control of an in-flight query goes
+# through the connection (connection_interrupt,
+# connection_query_progress).
+#
+# Deliberately deferred conveniences; the primitives already cover each
+# of these at the cost of more calls:
+# - result_materialize(result, out_cdc, err): drain a stream into a
+#   column data collection (not zero-copy; that trade-off is the
+#   caller's). Draining already works via result_fetch_chunk plus
+#   column_data_collection_append.
+# - A result-level rows-changed accessor: under streaming execution the
+#   changed-row count of an INSERT/UPDATE/DELETE arrives as the result's
+#   single BIGINT "Count" chunk, so it is known only after draining;
+#   result_drain reports it without manual decoding.
 
 enums:
   STATEMENT_TYPE:
@@ -96,28 +147,72 @@ enums:
         value: 1
       RESULT_TYPE_NOTHING:
         value: 2
+  RESULT_STEP_STATUS:
+    description: |
+      Outcome of a result_step call. WAITING is the 0-value, so a
+      zero-initialized out-param reads as "no work product yet", never
+      CHUNK (as with VECTOR_TYPE_OTHER). This enum deliberately does not
+      mirror an internal enum: it collapses duckdb::PendingExecutionResult
+      and duckdb::StreamExecutionResult into the four states a consumer
+      acts on. Do not renumber to round-trip with either.
+    values:
+      RESULT_STEP_STATUS_WAITING:
+        value: 0
+        description: No chunk yet; step again, or block in result_wait.
+      RESULT_STEP_STATUS_CHUNK:
+        value: 1
+        description: A caller-owned chunk was written to *out_chunk.
+      RESULT_STEP_STATUS_FINISHED:
+        value: 2
+        description: Stream exhausted. Sticky.
+      RESULT_STEP_STATUS_CANCELLED:
+        value: 3
+        description: Query was interrupted. Sticky.
 functions:
   connection_query:
-    summary: Runs a SQL query on the connection and returns a materialized result.
+    summary: Starts lazy, streaming execution of a parsed statement on the connection.
     description: |
-      The SQL is executed synchronously, all rows are materialized, and a
-      result handle is returned. Streaming execution is not part of this
-      surface.
+      Takes a statement produced by the sql_statement module
+      (parse_sql / statement_iterator_next), preprocesses and prepares
+      it, and returns a result handle without executing anything:
+      execution happens incrementally as the result is stepped
+      (result_step) or drained (result_fetch_chunk). This call
+      reports only errors detected at prepare time (binder, catalog,
+      pragma preprocessing, ...); errors raised during execution
+      surface from the stepping functions.
 
-      Returns the error code, and if an error occurred and err is non-NULL, sets err.
+      Preprocessing can expand one statement into a group of engine
+      statements (see the module commentary); the group executes as one
+      result through the same steps, and the stream surfaces the first
+      row-producing statement of the group, or the last statement when
+      none produces rows. An expansion with more than one row-producing
+      statement cannot be streamed as a single result and reports
+      ERROR_QUERY_NOT_IMPLEMENTED (no known expansion produces one).
+
+      The statement is transferred: the engine consumes it and the slot
+      is set to NULL, on success and on prepare-time failure alike. The
+      two refusals that never reach the engine leave the statement
+      intact: null arguments, and ERROR_RESOURCE_IN_USE while the
+      connection has a live result (a connection runs one result at a
+      time; drain, destroy, or interrupt the live result first, or open
+      another connection).
+
+      Schema metadata (result type, statement type, column count, names,
+      logical types) is available on the returned handle immediately,
+      before the first step.
+
       *out_result is set to nullptr on failure.
-
-      Multi-statement input runs every statement, but only the first result
-      is returned through out_result. Subsequent results are discarded.
     role: constructor
     belongs_to: result
     parameters:
       conn:
         type: connection
-        description: The connection on which to execute the query.
-      sql:
-        type: str
-        description: SQL query string.
+        description: The connection on which to execute the statement.
+      statement:
+        type: sql_statement
+        indirection: 1
+        kind: IN_TRANSFER
+        description: The statement to execute; consumed and set to NULL unless the call refuses with ERROR_RESOURCE_IN_USE or rejects null arguments.
       out_result:
         type: result
         indirection: 1
@@ -133,7 +228,12 @@ functions:
     summary: Destroys a result handle.
     description: |
       Null-safe: passing nullptr or a slot already set to nullptr is a
-      no-op. Frees all owned memory. On success the slot is set to nullptr.
+      no-op. Frees all owned memory and frees the connection for its
+      next query. Safe at any point in the stream's life: destroying a
+      partially consumed result abandons the remaining execution,
+      including side effects not yet applied. Chunks already fetched are
+      caller-owned and stay valid. On success the slot is set to
+      nullptr.
     role: destructor
     belongs_to: result
     parameters:
@@ -142,14 +242,146 @@ functions:
         indirection: 1
         description: The result to destroy.
     return_type: API_CALL
+  result_step:
+    summary: Runs one bounded unit of query execution and returns without blocking.
+    description: |
+      The streaming primitive: a step runs a bounded amount of execution work,
+      (partly / mostly) non-blocking, and returns control to the caller, so an
+      event loop stays responsive and can interleave other work between
+      steps. The conveniences (result_wait, result_fetch_chunk,
+      result_drain) block and are for synchronous callers. out_status
+      reports the outcome:
+
+      - CHUNK: *out_chunk receives a caller-owned chunk (destroy via
+        data_chunk_destroy). Written iff status is CHUNK; nullptr
+        otherwise.
+      - WAITING: no chunk yet, but work was done. Transient: keep
+        stepping and it resolves to CHUNK, FINISHED, CANCELLED, or an
+        error. Block in result_wait instead of busy-stepping.
+      - FINISHED: stream exhausted. Sticky.
+      - CANCELLED: query interrupted (connection_interrupt). Sticky.
+        Cancellation is a status here, not an error; result_fetch_chunk,
+        which has no status out-param, reports it as
+        ERROR_RUNTIME_INTERRUPT.
+
+      Execution errors come back as the return code plus err, never a
+      status; out_status is then unspecified and *out_chunk is nullptr.
+      Errors are sticky: later steps report the same code.
+    role: method
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+        description: The result to step.
+      out_chunk:
+        type: data_chunk
+        indirection: 1
+        kind: OUT
+        description: Receives an owned chunk iff *out_status is CHUNK; set to nullptr otherwise.
+      out_status:
+        type: RESULT_STEP_STATUS
+        indirection: 1
+        kind: OUT
+        description: Receives the step status.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_fetch_chunk:
+    summary: Blocks until the next chunk is available and returns it.
+    description: |
+      Convenience over result_step: blocks until a chunk is produced or
+      the stream ends. On success *out_chunk receives a caller-owned
+      chunk (destroy via data_chunk_destroy), or nullptr at
+      end-of-stream. End-of-stream is sticky: subsequent calls keep
+      succeeding with *out_chunk set to nullptr.
+
+      If the query is interrupted, returns ERROR_RUNTIME_INTERRUPT: the
+      same event result_step reports as status CANCELLED, carried
+      on the error channel because this function has no status
+      out-param.
+
+      On failure *out_chunk is set to nullptr. Errors are sticky:
+      subsequent calls report the same error code.
+    role: method
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+        description: The result to fetch from.
+      out_chunk:
+        type: data_chunk
+        indirection: 1
+        kind: OUT
+        description: Receives an owned chunk, or nullptr at end-of-stream.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_wait:
+    summary: Blocks until result_step can make progress.
+    description: |
+      Convenience over result_step: blocks until a
+      step is worth issuing again, i.e. until a unit of execution work
+      is executable on the calling thread. Never produces or consumes
+      chunks. Waiting on a terminal result (FINISHED, CANCELLED, or a
+      sticky error) returns immediately; it is a no-op, never an error.
+    role: method
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+        description: The result to wait on.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  result_drain:
+    summary: Runs the result to completion and reports the changed-row count.
+    description: |
+      Convenience over result_step: blocks until the
+      stream is fully consumed, so all side effects are applied. Rows of
+      a row-producing result are discarded. For CHANGED_ROWS results
+      *out_rows_changed receives the affected row count; for all other
+      result types, and for a stream whose Count chunk was already
+      consumed, it receives 0.
+
+      The result type (result_get_result_type) is prepare-time metadata,
+      so callers decide between consuming rows and draining without
+      inspecting the SQL. Draining an already FINISHED result succeeds.
+      Cancellation surfaces as ERROR_RUNTIME_INTERRUPT; errors are
+      sticky, and on failure *out_rows_changed is unspecified.
+    role: method
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+        description: The result to drain.
+      out_rows_changed:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the affected row count for CHANGED_ROWS results, 0 otherwise.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   result_get_result_type:
     summary: Returns the shape of the result (query / changed_rows / nothing).
     description: |
       Returns the result shape: QUERY_RESULT for statements that produce
       rows (SELECT, RETURNING, EXPLAIN), CHANGED_ROWS for
       INSERT/UPDATE/DELETE without RETURNING, NOTHING for DDL and other
-      statements with no row output. Always succeeds for a non-null
-      result handle.
+      statements with no row output. Prepare-time metadata (deferred
+      for expanding statements; see the module commentary).
     role: getter
     belongs_to: result
     parameters:
@@ -168,7 +400,9 @@ functions:
   result_get_statement_type:
     summary: Returns the SQL statement type that produced the result.
     description: |
-      Returns the duckdb::StatementType variant numerically. Always succeeds for a non-null result handle.
+      Returns the duckdb::StatementType variant numerically. Prepare-time
+      metadata (deferred for expanding statements; see the module
+      commentary).
     role: getter
     belongs_to: result
     parameters:
@@ -189,10 +423,9 @@ functions:
     description: |
       For QUERY_RESULT, this is the number of columns in each chunk's
       vector list. For CHANGED_ROWS and NOTHING, DuckDB emits a single
-      synthetic BIGINT "Count" column — populated with the affected row
-      count for CHANGED_ROWS, empty (zero rows) for NOTHING. The typed
-      accessor for the CHANGED_ROWS row count is
-      result_rows_changed.
+      synthetic BIGINT "Count" column: for CHANGED_ROWS the stream
+      yields one chunk holding the affected row count, for NOTHING the
+      stream yields no rows. Prepare-time metadata.
     role: getter
     belongs_to: result
     parameters:
@@ -212,7 +445,7 @@ functions:
     summary: Borrows the name of a result column.
     description: |
       Returns a borrowed view of the column name, valid until the result
-      is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
+      is destroyed. Prepare-time metadata. Out-of-range index returns ERROR_INVALID_INPUT.
     role: getter
     belongs_to: result
     parameters:
@@ -235,8 +468,8 @@ functions:
     summary: Returns the logical type of a result column.
     description: |
       The returned logical type is caller-owned and must be destroyed via
-      logical_type_destroy. Out-of-range index returns
-      ERROR_INVALID_INPUT.
+      logical_type_destroy. Prepare-time metadata. Out-of-range index
+      returns ERROR_INVALID_INPUT.
 
       Note: at the data-chunk level the same type is also reachable via
       vector_get_logical_type on each chunk's vector. The vector
@@ -251,26 +484,6 @@ functions:
         type: idx
       out_type:
         type: logical_type
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  result_rows_changed:
-    summary: Returns the number of rows affected (for INSERT/UPDATE/DELETE).
-    description: |
-      Only meaningful for CHANGED_ROWS results. Returns 0 for QUERY_RESULT
-      and NOTHING results.
-    role: getter
-    belongs_to: result
-    parameters:
-      result:
-        type: result
-      out_count:
-        type: idx
         indirection: 1
         kind: OUT
       err:

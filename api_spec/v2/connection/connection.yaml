@@ -1,5 +1,13 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: connection
+handles:
+  query_progress:
+    description: |
+      An opaque, owned handle to a snapshot of a query's execution
+      progress, captured by connection_query_progress at call time.
+      Read via the query_progress_get_* accessors; destroy via
+      query_progress_destroy.
+    cleanup_with: query_progress_destroy
 callbacks:
   connection_callback:
     return_type: void
@@ -166,10 +174,140 @@ functions:
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: API_CALL
+  connection_interrupt:
+    summary: "Interrupts the query currently executing on the connection."
+    description: |
+      Requests cancellation of the connection's active query. This is
+      the cross-thread cancellation entry point for streaming results:
+      safe to call from any thread, including while another thread
+      steps the query's result. A no-op when no query is active.
+      Cancellation surfaces on the consuming side as step status
+      CANCELLED (result_step) or as ERROR_RUNTIME_INTERRUPT
+      (result_fetch_chunk).
+    role: method
+    belongs_to: connection
+    parameters:
+      conn:
+        type: connection
+        description: "The connection whose active query to interrupt."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  connection_query_progress:
+    summary: "Captures a snapshot of the active query's execution progress."
+    description: |
+      Captures the progress of the query currently executing on the
+      connection into an owned snapshot handle; read it via the
+      query_progress_get_* accessors and destroy it via
+      query_progress_destroy. Safe to call from any thread, including
+      while another thread steps the query's result.
+
+      Progress is published only when the enable_progress_bar option is
+      set; the bridge does not enable tracking itself. A percentage of
+      -1 (with both row counts 0) means no information is available:
+      tracking disabled, no query active, or no progress published yet.
+    role: constructor
+    belongs_to: query_progress
+    parameters:
+      conn:
+        type: connection
+        description: "The connection."
+      out_progress:
+        type: query_progress
+        indirection: 1
+        kind: OUT
+        description: "Receives the new progress snapshot handle."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  query_progress_get_percentage:
+    summary: "Returns the snapshot's percentage complete."
+    description: |
+      The percentage complete in [0, 100], or -1 when no progress
+      information was available at capture time.
+    role: getter
+    belongs_to: query_progress
+    parameters:
+      progress:
+        type: query_progress
+        description: "The progress snapshot."
+      out_percentage:
+        type: f64
+        indirection: 1
+        kind: OUT
+        description: "Receives the percentage."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  query_progress_get_rows_processed:
+    summary: "Returns the snapshot's processed row count."
+    role: getter
+    belongs_to: query_progress
+    parameters:
+      progress:
+        type: query_progress
+        description: "The progress snapshot."
+      out_rows_processed:
+        type: u64
+        indirection: 1
+        kind: OUT
+        description: "Receives the number of rows processed so far."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  query_progress_get_total_rows_to_process:
+    summary: "Returns the snapshot's total row count."
+    role: getter
+    belongs_to: query_progress
+    parameters:
+      progress:
+        type: query_progress
+        description: "The progress snapshot."
+      out_total_rows_to_process:
+        type: u64
+        indirection: 1
+        kind: OUT
+        description: "Receives the total number of rows the query will process."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: API_CALL
+  query_progress_destroy:
+    summary: "Destroys a progress snapshot handle."
+    description: |
+      Null-safe: passing nullptr or a slot already set to nullptr is a
+      no-op. On success the slot is set to nullptr.
+    role: destructor
+    belongs_to: query_progress
+    parameters:
+      progress:
+        type: query_progress
+        indirection: 1
+        description: "The progress snapshot to destroy."
+    return_type: API_CALL
   connection_execute_with_context:
     summary: "Runs a callback in a transaction with the connection's context as the active context."
     description: |
       Invoke a user-provided callback within a transaction and the connection's context as the active context.
+
+      Do not consume a streaming result inside the callback: the
+      callback runs holding the context lock that result_step /
+      result_fetch_chunk / result_wait need, so draining there
+      deadlocks. Drain results before entering the callback.
     parameters:
       conn:
         type: connection

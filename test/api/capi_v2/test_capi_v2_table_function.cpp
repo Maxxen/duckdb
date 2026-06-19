@@ -120,7 +120,8 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 		REQUIRE(V2Query(fix.conn, "SELECT i FROM counter()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
-		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		chunk = V2StepChunk(result);
+		REQUIRE(chunk != nullptr);
 
 		idx_t size = 0;
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -152,7 +153,8 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 		REQUIRE(col_count == 2);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
-		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		chunk = V2StepChunk(result);
+		REQUIRE(chunk != nullptr);
 
 		idx_t size = 0;
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -191,7 +193,8 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 		REQUIRE(V2Query(fix.conn, "SELECT i FROM counter() WHERE i > 2", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
-		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		chunk = V2StepChunk(result);
+		REQUIRE(chunk != nullptr);
 
 		idx_t size = 0;
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -205,17 +208,7 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 		duckdb_v2_result_handle result = nullptr;
 		REQUIRE(V2Query(fix.conn, "SELECT i FROM counter() WHERE i > 100", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		idx_t chunk_count = 0;
-		duckdb_v2_result_chunk_count(result, &chunk_count, nullptr);
-		// Either 0 chunks or 1 chunk with 0 rows
-		if (chunk_count > 0) {
-			duckdb_v2_data_chunk_handle chunk = nullptr;
-			duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr);
-			idx_t size = 0;
-			duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
-			REQUIRE(size == 0);
-			duckdb_v2_data_chunk_destroy(&chunk);
-		}
+		REQUIRE(V2DrainRowCount(result) == 0);
 
 		duckdb_v2_result_destroy(&result);
 	}
@@ -344,7 +337,8 @@ TEST_CASE("V2 table function: positional parameter", "[capi_v2][table_function]"
 	REQUIRE(V2Query(fix.conn, "SELECT val FROM counter_n(3)", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -376,7 +370,8 @@ TEST_CASE("V2 table function: named parameter", "[capi_v2][table_function]") {
 	REQUIRE(V2Query(fix.conn, "SELECT val FROM counter_n(4, start := 10)", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -516,7 +511,8 @@ TEST_CASE("V2 table function: builder user_data flows to bind and init", "[capi_
 	REQUIRE(V2Query(fix.conn, "SELECT val FROM userdata_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -622,7 +618,8 @@ TEST_CASE("V2 table function: projection pushdown", "[capi_v2][table_function]")
 	REQUIRE(V2Query(fix.conn, "SELECT a, c FROM proj_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
@@ -715,11 +712,7 @@ static std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sq
 	duckdb_v2_result_column_count(result, &col_count, nullptr);
 
 	std::string out;
-	idx_t chunk_count = 0;
-	duckdb_v2_result_chunk_count(result, &chunk_count, nullptr);
-	for (idx_t c = 0; c < chunk_count; c++) {
-		duckdb_v2_data_chunk_handle chunk = nullptr;
-		REQUIRE(duckdb_v2_result_get_chunk(result, c, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	while (auto chunk = V2StepChunk(result)) {
 		idx_t size = 0;
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 		for (idx_t col = 0; col < col_count; col++) {
@@ -871,7 +864,8 @@ TEST_CASE("V2 table function: progress callback registers and runs", "[capi_v2][
 	REQUIRE(V2Query(fix.conn, "SELECT count(*) FROM prog_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 	duckdb_v2_vector_handle vec = nullptr;
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
 	duckdb_v2_vector_view view;
@@ -963,7 +957,8 @@ TEST_CASE("V2 table function: init_local reads global state", "[capi_v2][table_f
 	REQUIRE(V2Query(fix.conn, "SELECT v FROM gs_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 	REQUIRE(size == 1);
@@ -1050,7 +1045,8 @@ TEST_CASE("V2 table function: init_global reads back the global state it set", "
 	REQUIRE(V2Query(fix.conn, "SELECT v FROM gsg_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 	REQUIRE(size == 1);
@@ -1209,7 +1205,8 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 		REQUIRE(V2Query(fix.conn, "SELECT v FROM pushdown_fn() WHERE v = 7", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
-		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		chunk = V2StepChunk(result);
+		REQUIRE(chunk != nullptr);
 		idx_t size = 0;
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 		REQUIRE(size == 1);
@@ -1230,7 +1227,8 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 		REQUIRE(V2Query(fix.conn, "SELECT v FROM pushdown_fn()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
-		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		chunk = V2StepChunk(result);
+		REQUIRE(chunk != nullptr);
 		idx_t size = 0;
 		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
 		REQUIRE(size == 1);
@@ -1282,9 +1280,24 @@ TEST_CASE("V2 table function: callback error code round-trips to the query", "[c
 	    },
 	    nullptr, nullptr);
 
+	// The exec callback only runs once the result is stepped; the error
+	// surfaces from the step, not from connection_query.
 	duckdb_v2_result_handle result = nullptr;
 	duckdb_v2_error_info_handle qerr = nullptr;
-	auto rc = V2Query(fix.conn, "SELECT v FROM errcode_fn()", &result, &qerr);
+	REQUIRE(V2Query(fix.conn, "SELECT v FROM errcode_fn()", &result, &qerr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	while (true) {
+		duckdb_v2_data_chunk_handle chunk = nullptr;
+		DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+		rc = duckdb_v2_result_step(result, &chunk, &status, &qerr);
+		if (rc != DUCKDB_V2_ERROR_NONE) {
+			break;
+		}
+		REQUIRE(status != DUCKDB_V2_RESULT_STEP_STATUS_FINISHED); // must fail before finishing
+		if (chunk) {
+			duckdb_v2_data_chunk_destroy(&chunk);
+		}
+	}
 	REQUIRE(rc == DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY); // not collapsed to INVALID_INPUT
 	REQUIRE(qerr != nullptr);
 	duckdb_v2_str msg = {nullptr, 0};

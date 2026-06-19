@@ -34,6 +34,14 @@ struct HandleTraits<Connection> {
 	using handle = duckdb_v2_connection_handle;
 };
 template <>
+struct HandleTraits<SqlStatement> {
+	using handle = duckdb_v2_sql_statement_handle;
+};
+template <>
+struct HandleTraits<StatementIterator> {
+	using handle = duckdb_v2_statement_iterator_handle;
+};
+template <>
 struct HandleTraits<Database> {
 	using handle = duckdb_v2_database_handle;
 };
@@ -136,11 +144,11 @@ void CheckedAPICall(F &&func, ARGS &&... args) {
 }
 
 // Borrow a std::string as a length-delimited view for the C API.
-inline duckdb_v2_str ToStr(const std::string &s) {
+duckdb_v2_str ToStr(const std::string &s) {
 	return duckdb_v2_str {s.data(), s.size()};
 }
 // View a borrowed C-API string as a std::string_view ({NULL,0} -> empty).
-inline std::string_view FromStr(duckdb_v2_str s) {
+std::string_view FromStr(duckdb_v2_str s) {
 	return s.ptr ? std::string_view(s.ptr, s.len) : std::string_view();
 }
 
@@ -340,10 +348,83 @@ void Connection::WithTransaction(std::function<void(const Context &ctx)> callbac
 	CheckedAPICall(duckdb_v2_connection_execute_with_context, handle(), trampoline, &callback);
 }
 
-QueryResult Connection::Query(const std::string &sql) {
+//----------------------------------------------------------------------------------------------------------------------
+// SQL statements
+//----------------------------------------------------------------------------------------------------------------------
+
+SqlStatement::SqlStatement(void *impl) : detail::Handle<SqlStatement>(impl) {
+}
+
+SqlStatement::~SqlStatement() {
+	auto _h = handle();
+	duckdb_v2_sql_statement_destroy(&_h);
+}
+
+StatementIterator::StatementIterator(void *impl) : detail::Handle<StatementIterator>(impl) {
+}
+
+StatementIterator::~StatementIterator() {
+	auto _h = handle();
+	duckdb_v2_statement_iterator_destroy(&_h);
+}
+
+auto StatementIterator::Next() -> SqlStatement {
+	duckdb_v2_sql_statement_handle statement = nullptr;
+	CheckedAPICall(duckdb_v2_statement_iterator_next, handle(), &statement);
+	// An empty handle marks exhaustion.
+	return detail::Factory::Make<SqlStatement>(statement);
+}
+
+StatementIterator Connection::ParseSQL(const char *sql) {
+	duckdb_v2_statement_iterator_handle iterator = nullptr;
+	CheckedAPICall(duckdb_v2_parse_sql, handle(), sql, &iterator);
+	return detail::Factory::Make<StatementIterator>(iterator);
+}
+
+QueryResult Connection::Query(SqlStatement statement) {
+	auto stmt = static_cast<duckdb_v2_sql_statement_handle>(statement.release());
 	duckdb_v2_result_handle result = nullptr;
-	CheckedAPICall(duckdb_v2_connection_query, handle(), ToStr(sql), &result);
+	try {
+		CheckedAPICall(duckdb_v2_connection_query, handle(), &stmt, &result);
+	} catch (...) {
+		// The busy and null refusals do not consume the statement; the
+		// by-value parameter is gone either way, so free the handle.
+		duckdb_v2_sql_statement_destroy(&stmt);
+		throw;
+	}
 	return detail::Factory::Make<QueryResult>(result);
+}
+
+QueryResult Connection::Query(const std::string &sql) {
+	auto statements = ParseSQL(sql);
+	auto statement = statements.Next();
+	if (!statement || statements.Next()) {
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
+		                "Query expects exactly one statement; use ParseSQL for multi-statement input");
+	}
+	return Query(std::move(statement));
+}
+
+void Connection::Interrupt() {
+	CheckedAPICall(duckdb_v2_connection_interrupt, handle());
+}
+
+Connection::QueryProgress Connection::GetQueryProgress() const {
+	// Flatten the C snapshot object into the POD struct: capture, read the
+	// accessors, destroy.
+	duckdb_v2_query_progress_handle snapshot = nullptr;
+	CheckedAPICall(duckdb_v2_connection_query_progress, handle(), &snapshot);
+	QueryProgress progress {};
+	try {
+		CheckedAPICall(duckdb_v2_query_progress_get_percentage, snapshot, &progress.percentage);
+		CheckedAPICall(duckdb_v2_query_progress_get_rows_processed, snapshot, &progress.rows_processed);
+		CheckedAPICall(duckdb_v2_query_progress_get_total_rows_to_process, snapshot, &progress.total_rows_to_process);
+	} catch (...) {
+		duckdb_v2_query_progress_destroy(&snapshot);
+		throw;
+	}
+	duckdb_v2_query_progress_destroy(&snapshot);
+	return progress;
 }
 
 void Connection::Log(LogLevel level, const std::string &message) const noexcept {
@@ -719,22 +800,39 @@ auto QueryResult::GetColumnType(idx_t index) const -> LogicalType {
 	return detail::Factory::Make<LogicalType>(type);
 }
 
-auto QueryResult::GetRowsChanged() const -> idx_t {
-	idx_t changed = 0;
-	CheckedAPICall(duckdb_v2_result_rows_changed, handle(), &changed);
-	return changed;
-}
+// StepStatus mirrors DUCKDB_V2_RESULT_STEP_STATUS numerically; trip here if
+// either side is renumbered.
+static_assert(static_cast<uint8_t>(QueryResult::StepStatus::WAITING) == DUCKDB_V2_RESULT_STEP_STATUS_WAITING,
+              "StepStatus must mirror DUCKDB_V2_RESULT_STEP_STATUS");
+static_assert(static_cast<uint8_t>(QueryResult::StepStatus::CHUNK) == DUCKDB_V2_RESULT_STEP_STATUS_CHUNK,
+              "StepStatus must mirror DUCKDB_V2_RESULT_STEP_STATUS");
+static_assert(static_cast<uint8_t>(QueryResult::StepStatus::FINISHED) == DUCKDB_V2_RESULT_STEP_STATUS_FINISHED,
+              "StepStatus must mirror DUCKDB_V2_RESULT_STEP_STATUS");
+static_assert(static_cast<uint8_t>(QueryResult::StepStatus::CANCELLED) == DUCKDB_V2_RESULT_STEP_STATUS_CANCELLED,
+              "StepStatus must mirror DUCKDB_V2_RESULT_STEP_STATUS");
 
-auto QueryResult::GetChunkCount() const -> idx_t {
-	idx_t count = 0;
-	CheckedAPICall(duckdb_v2_result_chunk_count, handle(), &count);
-	return count;
-}
-
-auto QueryResult::GetChunk(idx_t index) const -> DataChunk {
+auto QueryResult::Step() -> StepResult {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	CheckedAPICall(duckdb_v2_result_get_chunk, handle(), index, &chunk);
-	return detail::Factory::Make<DataChunk>(chunk, true);
+	DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+	CheckedAPICall(duckdb_v2_result_step, handle(), &chunk, &status);
+	return StepResult {static_cast<StepStatus>(status), detail::Factory::Make<DataChunk>(chunk, chunk != nullptr)};
+}
+
+auto QueryResult::Wait() -> void {
+	CheckedAPICall(duckdb_v2_result_wait, handle());
+}
+
+auto QueryResult::FetchChunk() -> DataChunk {
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	CheckedAPICall(duckdb_v2_result_fetch_chunk, handle(), &chunk);
+	// An empty handle marks end-of-stream.
+	return detail::Factory::Make<DataChunk>(chunk, chunk != nullptr);
+}
+
+auto QueryResult::Drain() -> idx_t {
+	idx_t rows_changed = 0;
+	CheckedAPICall(duckdb_v2_result_drain, handle(), &rows_changed);
+	return rows_changed;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

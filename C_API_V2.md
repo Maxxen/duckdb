@@ -43,29 +43,29 @@ capigen/                         Code generator (vendored via git subtree from d
 pyproject.toml                   Root dev-environment shell; pulls in capigen as a path source and pins the formatter toolchain
 scripts/capi_v2_regen.sh         Regenerates header + stubs and formats the output
 src/include/duckdb_v2.h          Generated V2 C header (committed)
+src/include/duckdb_cpp.hpp       Stable C++ API (experimental) public header (see below)
 src/main/capi_v2/                V2 bridge implementations (C++ -> C)
   capi_v2_internal.hpp           Internal header with wrapper structs
   capi_v2_stubs.cpp              Auto-generated stubs for unimplemented functions
+  duckdb_cpp.cpp                 Stable C++ API (experimental) implementation
 test/api/capi_v2/                V2 Catch2 tests
-  cpp_api/                       Stable C++ API (experimental): cpp_api.hpp/.cpp + its test (see below)
+  test_cpp_api.cpp               Stable C++ API test suite, tag [cpp_api]
 
 python_client/                   Python client (scaffolded)
 ```
 
 ## Stable C++ API (experimental)
 
-Alongside the C API, V2 carries a new C++ API: namespace `duckdb_api` in
-`test/api/capi_v2/cpp_api/` (`cpp_api.hpp` + `cpp_api.cpp`, with the Catch2 suite in
-`test_cpp_api.cpp`, tag `[cpp_api]`). Do not be misled by the location: only
-`test_cpp_api.cpp` is a test. The header and implementation are the real artifact, parked
-next to their tests while the surface is iterated; once stabilized they move out of `test/`
-into `src/`. When V2 documents or discussions say "the stable C++ API", this is what they
-mean, NOT DuckDB's existing internal C++ API (`duckdb.hpp`), which makes no stability
-promises.
+Alongside the C API, V2 carries a new C++ API: namespace `duckdb_api`, with its public
+header at `src/include/duckdb_cpp.hpp` and its implementation at
+`src/main/capi_v2/duckdb_cpp.cpp`; the Catch2 suite lives at
+`test/api/capi_v2/test_cpp_api.cpp` (tag `[cpp_api]`). When V2 documents or discussions say
+"the stable C++ API", this is what they mean, NOT DuckDB's existing internal C++ API
+(`duckdb.hpp`), which makes no stability promises.
 
 Two properties define it:
 
-- **Built exclusively on the V2 C API.** `cpp_api.cpp` talks only to `duckdb_v2.h`, never to
+- **Built exclusively on the V2 C API.** `duckdb_cpp.cpp` talks only to `duckdb_v2.h`, never to
   DuckDB internal headers. The public header goes one step further and includes no DuckDB
   header at all: the `detail::HandleTraits` indirection keeps C handle types out of it, and
   each wrapper stores its handle as `void *impl` (specializations live in the `.cpp`).
@@ -232,6 +232,32 @@ Two consequences of the uniform model:
 - **Inside a callback, initiating a custom error** is done through the public setters on the handle DuckDB provides: `duckdb_v2_error_info_set_code(*err, code)` and `duckdb_v2_error_info_set_text(*err, message)`. In a callback `*err` is always a valid handle owned by DuckDB; the callee sets its code and message and returns. **The callee must never destroy the handle** — its storage may be on the library's stack. After the callback returns, the trampoline reads the code and, if it is not `DUCKDB_V2_ERROR_NONE`, raises a DuckDB exception that the outer `WithErrorHandler` translates back into the V2 error code.
 
 The `WithErrorHandler` template in `capi_v2_internal.hpp` is the bridge-level helper for external entry points: it wraps a lambda with try/catch, translates thrown DuckDB exceptions to V2 error codes via `GetErrorCodeFromExceptionType`, and writes the resulting code/message into the slot **only on failure** (lazy-allocating on first use, never destroying); on success it returns `DUCKDB_V2_ERROR_NONE` and leaves the slot untouched. Callback trampolines (e.g. inside `connection_execute_with_context` or the scalar-function bind/init/exec bridges) allocate a stack `ErrorInfoV2`, hand the callback a slot pointing at it, inspect its code after the callback returns, and translate a set code into a thrown DuckDB exception that the outer `WithErrorHandler` catches.
+
+## Streaming result model
+
+Query results are streaming-only; there is no materialized result surface and no random access into a result. The mechanics below are contracts, and the motivations are part of them — they explain which alternatives were considered and rejected, so they don't get re-litigated.
+
+- **Statements are parsed first, then queried.** `parse_sql(conn, sql, out_iterator, err)` parses only — no binding, no catalog access, no transaction; the connection supplies parser options and parser extensions, and statements are *raw* parser output (statement-level rewrites happen inside `connection_query`, mirroring the upstream `StatementIterator`'s `preprocess=false` mode). The iterator yields owned `sql_statement` handles (`statement_iterator_next`, NULL at exhaustion); the iterator-shaped contract permits the current eager backend (`Parser::ParseQuery`) to be re-backed by the lazy upstream `StatementIterator` (duckdb/duckdb#23041) without an API change: a parse error surfaces either from `parse_sql` (eager, nothing yielded) or from the `next()` that reaches the failing statement (incremental, prior statements yielded). *Motivation:* a string-taking, single-statement `connection_query` forces callers to split SQL themselves — effectively to parse; the iterator makes multi-statement input explicit and per-statement, and raw output guarantees one user statement is always one handle.
+
+- **`connection_query` is lazy, takes one parsed statement by transfer, and owns statement expansion.** It preprocesses the statement (pragma reparsing, expansion unpacking, transaction wrapping), prepares it, and executes nothing until the result is stepped; prepare-time errors (binder/catalog/preprocessing) return from `connection_query` itself, execution errors from the steps. The statement is consumed (slot nulled) on success and prepare-time failure alike, mirroring the engine's by-value `unique_ptr`; only the busy and null-arg refusals, which never reach the engine, leave it intact. Preprocessing can expand one user statement into a group of engine statements (auto-PIVOT; `ALTER ... ADD COLUMN` with a non-constant DEFAULT, which the engine wraps in an auto-rollback transaction): the group executes as one result through the same steps, and result selection mirrors `ClientContext::Query`'s chain-append rule — the caller sees the first row-producing fragment, or the last fragment when none produces rows; other fragments' output is discarded exactly as the engine discards it. When a group cannot complete (error, cancellation, destroy), the bridge rolls back the injected auto-rollback transaction, mirroring the eager loop's error handling. For expanding statements the metadata getters fail with `INVALID_INPUT` until stepping has prepared the result-producing fragment; for every non-expanding statement metadata stays available from `connection_query` on. An expansion with more than one row-producing fragment reports `NOT_IMPLEMENTED` (none exists today; the eager engine would chain them as separate results).
+
+- **The primitive is `result_step`; everything else is a convenience over it.** `result_step` is non-blocking (never waits indefinitely; it runs a bounded amount of execution work) and reports a `RESULT_STEP_STATUS`. `result_wait` ("block until stepping is worth it") and `result_fetch_chunk` ("block until the next chunk or end-of-stream") are layered on top and gain no capability the primitive lacks. *Motivation:* async runtimes (e.g. Python asyncio) need "can I make progress?" inversion of control. A per-chunk **callback** consumption model was considered and rejected: it inverts control the wrong way for event loops (so step would have to ship anyway), forces a trampoline on every FFI binding, and reopens context-lock reentrancy questions inside the callback. Step stays the only primitive; scoped conveniences may be layered over it later, never under it.
+
+- **`RESULT_STEP_STATUS` conventions.** `WAITING = 0`, so a zero-initialized status out-param reads as "no work product yet", never as CHUNK (same convention as `VECTOR_TYPE_OTHER` being 0). The enum deliberately does **not** numerically mirror an internal enum — it collapses `PendingExecutionResult` and `StreamExecutionResult` into the four states a consumer can act on. It is the documented exception to the numeric round-trip rule; do not "fix" it.
+
+- **Cancellation has two channels, chosen by the entry point.** In `result_step` an interrupt surfaces as the sticky status `CANCELLED` (not an error); in `result_fetch_chunk`, which has no status out-param, the same event surfaces as `ERROR_RUNTIME_INTERRUPT`. Errors proper are always return-code + `err` slot, never a status, and are sticky.
+
+- **A result is a cursor on the connection's single execution slot, not a box of data.** Creating the pending query opens a transaction (under autocommit); the engine commits/rolls back only when the stream is drained to completion — or, if an undrained result is destroyed, lazily when the connection next begins a query. Two consequences callers must understand:
+  - An undrained result **holds a transaction open** (version cleanup and checkpointing are deferred behind it). Drain or destroy promptly.
+  - Side-effecting statements (`INSERT`, `CREATE`, `SET`, `CALL`, …) **take effect only when their result is drained**. Destroying an undrained result abandons execution *including the side effects* — silently. `result_drain(result, out_rows_changed, err)` is the sanctioned convenience for fire-and-forget statements: it runs the result to completion, discards rows, and reports the changed-row count. The result type (`result_get_result_type`) is prepare-time metadata, so callers decide between consuming rows and draining without inspecting the SQL. (A separate eager `connection_execute` entry point was considered and rejected in review: the caller cannot know up front whether e.g. `INSERT ... RETURNING` produces rows, so the result handle must carry that information.)
+
+- **One live result per connection — `connection_query` refuses while one exists.** While a connection has a live, non-terminal result, starting a new query fails with `RESOURCE_IN_USE` (the same refuse-on-busy convention as `duckdb_v2_destroy_environment`). *Motivation:* the engine's native behavior is to silently cancel the previous stream when a new query starts — action at a distance that every major C database API (libpq, MySQL's `mysql_use_result`, ODBC without MARS) rejects loudly instead. The busy check is **bridge-level bookkeeping on handle liveness** (a shared slot set at query time, released on terminal state or destroy), *not* an engine-state inspection: `ClientContext::active_query` is private and cleared lazily at the next query's `InitialCleanup` (so checking it would deadlock the query → destroy → query pattern), and "open transaction" is the wrong predicate under explicit `BEGIN`. With the handle-liveness rule enforced, the engine's lazy cleanup becomes unobservable again — exactly the implementation detail it was meant to be. Callers who want concurrency open a second connection (cheap; same `DatabaseInstance`); `connection_interrupt` is the escape hatch for abandoning a stream from another thread.
+
+- **Single consumer, cross-thread control through the connection.** Step/fetch/wait from one thread at a time. `connection_interrupt` (atomic store) and `connection_query_progress` (atomic reads) are the sanctioned cross-thread entry points. Note that `connection_query_progress` reports real values only when `enable_progress_bar` is set — the engine creates the `ProgressBar` (and updates the progress cache) only then; `-1`/`0`/`0` means "no information available". This mirrors V1's `duckdb_query_progress`; the bridge does not auto-enable tracking (a getter must not change execution behavior).
+
+- **Do not consume a result inside `connection_execute_with_context`.** The callback runs holding the context lock that step/fetch/wait need; draining a stream there deadlocks. Drain before entering the callback. (Appending chunks to a `ColumnDataCollection` is not transactional — only CDC *creation* needs the context — so this costs no expressiveness.)
+
+- **`duckdb_v2_result_handle` is a documented load-bearing wrapper** (`ResultWrapperV2` in `capi_v2_internal.hpp`): a state machine `PENDING → STREAMING → FINISHED | CANCELLED | ERRORED` over the engine's own two-phase objects (`PendingQueryResult`, then the `QueryResult` from `Execute()`), driven exclusively through their public surface. Prepare-time metadata (types, names, statement type, properties) is copied into the wrapper at construction so the metadata getters stay valid before the first step, during consumption, and after close. The result handle is *not* on the no-wrapper list (that list is logical_type / data_chunk / vector).
 
 ## V2 conventions
 

@@ -1,0 +1,126 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: sql_statement
+#
+# Turn a SQL string into individual statements. parse_sql() parses only:
+# no binding, no catalog access, and no transaction is involved. The
+# connection supplies the parser state (options and parser extensions
+# loaded on it); statements parsed on one connection should be executed
+# on that connection. Statements are raw parser output: statement-level
+# rewrites (pragma reparsing, statement expansion, transaction wrapping)
+# happen inside connection_query, so one user statement is always one
+# handle.
+#
+# The iterator yields one owned statement per statement_iterator_next
+# call. A statement is executed by transferring it to connection_query,
+# which consumes it; re-running a statement means parsing again (or,
+# in the future, preparing it). The statement handle is fully opaque:
+# execution-relevant introspection (result type, statement type, column
+# schema) lives on the result handle.
+#
+# A parse error surfaces either from parse_sql (an implementation that
+# parses eagerly reports it up front and yields no statements) or from
+# the statement_iterator_next call that reaches the failing statement
+# (an incremental implementation yields the statements before it).
+# Callers must handle both, by checking every return code.
+
+handles:
+  sql_statement:
+    description: |
+      An opaque, owned handle to a single parsed SQL statement, produced
+      by statement_iterator_next. Consumed by connection_query; destroy
+      unconsumed statements via sql_statement_destroy.
+    cleanup_with: sql_statement_destroy
+  statement_iterator:
+    description: |
+      An opaque, owned handle to an iterator over the statements of a
+      SQL string, produced by parse_sql. Destroy via
+      statement_iterator_destroy; statements already yielded are
+      independently owned and unaffected.
+    cleanup_with: statement_iterator_destroy
+functions:
+  parse_sql:
+    summary: Parses a SQL string into an iterator over its statements.
+    description: |
+      Parses only: no binding, no catalog access, and no transaction.
+      The connection supplies the parser options and parser extensions;
+      it is not otherwise touched. Statements are raw parser output;
+      statement-level rewrites happen inside connection_query. The SQL
+      string is copied; the caller may free it after this call. An input
+      with no statements (empty, whitespace, or separators only) yields
+      an iterator that is immediately exhausted.
+    role: constructor
+    belongs_to: statement_iterator
+    parameters:
+      conn:
+        type: connection
+        description: The connection supplying the parser state.
+      sql:
+        type: char
+        indirection: 1
+        const: true
+        description: Null-terminated SQL string; may contain any number of statements.
+      out_iterator:
+        type: statement_iterator
+        indirection: 1
+        kind: OUT
+        description: Receives the new iterator handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  statement_iterator_next:
+    summary: Yields the next statement, or NULL when exhausted.
+    description: |
+      On success *out_statement receives the next owned statement, or
+      NULL when the iterator is exhausted (idempotently). A parse error
+      within the input surfaces no later than the call that reaches the
+      failing statement; see the module commentary for the eager and
+      incremental reporting variants. On failure *out_statement is set
+      to NULL.
+    role: method
+    belongs_to: statement_iterator
+    parameters:
+      iterator:
+        type: statement_iterator
+        description: The iterator to advance.
+      out_statement:
+        type: sql_statement
+        indirection: 1
+        kind: OUT
+        description: Receives an owned statement, or NULL when the iterator is exhausted.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  sql_statement_destroy:
+    summary: Destroys an unconsumed statement handle.
+    description: |
+      Null-safe: passing nullptr or a slot already set to nullptr is a
+      no-op. Statements consumed by connection_query null their slot and
+      need no destroy. On success the slot is set to nullptr.
+    role: destructor
+    belongs_to: sql_statement
+    parameters:
+      statement:
+        type: sql_statement
+        indirection: 1
+        description: The statement to destroy.
+    return_type: API_CALL
+  statement_iterator_destroy:
+    summary: Destroys a statement iterator handle.
+    description: |
+      Null-safe: passing nullptr or a slot already set to nullptr is a
+      no-op. Statements already yielded are independently owned and stay
+      valid. On success the slot is set to nullptr.
+    role: destructor
+    belongs_to: statement_iterator
+    parameters:
+      iterator:
+        type: statement_iterator
+        indirection: 1
+        description: The iterator to destroy.
+    return_type: API_CALL

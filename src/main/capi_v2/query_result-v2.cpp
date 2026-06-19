@@ -1,6 +1,9 @@
 #include "capi_v2_internal.hpp"
 
-#include "duckdb/main/materialized_query_result.hpp"
+#include "duckdb/common/enums/pending_execution_result.hpp"
+#include "duckdb/common/enums/stream_execution_result.hpp"
+#include "duckdb/main/query_parameters.hpp"
+#include "duckdb/parser/statement/transaction_statement.hpp"
 
 namespace duckdb {
 namespace {
@@ -24,38 +27,452 @@ DUCKDB_V2_RESULT_TYPE MapResultType(StatementReturnType t) {
 }
 
 } // anonymous namespace
+
+// ---------------------------------------------------------------------------
+// ResultWrapperV2 state machine
+// ---------------------------------------------------------------------------
+
+void ResultWrapperV2::StartNextFragment() {
+	D_ASSERT(fragment_index < fragments.size());
+	if (fragment_index > 0 && context->IsInterrupted()) {
+		// PendingQuery's InitialCleanup clears a pending interrupt flag;
+		// without this check an interrupt landing exactly at a fragment
+		// boundary would be silently swallowed and the group would keep
+		// running. (At fragment 0 the clearing is desired: a stale
+		// interrupt must not poison a new query.)
+		throw InterruptException();
+	}
+	auto stmt = std::move(fragments[fragment_index++]);
+	bool is_last = fragment_index == fragments.size();
+	auto next_pending = context->PendingQuery(std::move(stmt), QueryResultOutputType::ALLOW_STREAMING);
+	if (next_pending->HasError()) {
+		// Re-throw the typed ErrorData so the exception's ExceptionType is
+		// preserved and routed through GetErrorCodeFromExceptionType.
+		next_pending->GetErrorObject().Throw();
+	}
+	bool has_result = next_pending->properties.return_type == StatementReturnType::QUERY_RESULT;
+	if (principal_seen && has_result) {
+		// ClientContext::Query would chain these as separate results with
+		// separate schemas; a single stream cannot. No known expansion
+		// produces two row-producing fragments.
+		throw NotImplementedException(
+		    "statement expands to multiple row-producing statements, which cannot be streamed as a single result");
+	}
+	// Result selection mirrors ClientContext::Query: the caller sees the
+	// first row-producing fragment, or the last fragment when none
+	// produces rows.
+	principal_active = has_result || (is_last && !principal_seen);
+	if (has_result) {
+		principal_seen = true;
+	}
+	if (principal_active) {
+		types = next_pending->types;
+		names = next_pending->names;
+		statement_type = next_pending->statement_type;
+		properties = next_pending->properties;
+		metadata_available = true;
+	}
+	pending = std::move(next_pending);
+	state = State::PENDING;
+}
+
+void ResultWrapperV2::RequireMetadata() const {
+	if (!metadata_available) {
+		throw InvalidInputException("result metadata is not yet available: the statement expands to a group of "
+		                            "statements and the result-producing one has not been prepared; step the result");
+	}
+}
+
+DUCKDB_V2_RESULT_STEP_STATUS ResultWrapperV2::HandleExecutionError(ErrorData error_data) {
+	pending.reset();
+	result.reset();
+	fragments.clear();
+	try {
+		RollbackIncompleteGroup();
+	} catch (...) {
+		// Best effort; never mask the original error.
+	}
+	ReleaseBusySlot();
+	if (error_data.Type() == ExceptionType::INTERRUPT) {
+		// In the step channel, cancellation is a status, not an error,
+		// regardless of which phase the interrupt landed in. The status
+		// channel carries no message, so the engine's error text is
+		// deliberately dropped here.
+		state = State::CANCELLED;
+		return DUCKDB_V2_RESULT_STEP_STATUS_CANCELLED;
+	}
+	state = State::ERRORED;
+	error = std::move(error_data);
+	error.Throw();
+}
+
+DUCKDB_V2_RESULT_STEP_STATUS ResultWrapperV2::Step(unique_ptr<DataChunk> &out_chunk) {
+	out_chunk.reset();
+	switch (state) {
+	case State::FINISHED:
+		return DUCKDB_V2_RESULT_STEP_STATUS_FINISHED;
+	case State::CANCELLED:
+		return DUCKDB_V2_RESULT_STEP_STATUS_CANCELLED;
+	case State::ERRORED:
+		// Sticky: rethrow the recorded error without touching the (closed)
+		// internal results.
+		error.Throw();
+	case State::PENDING: {
+		PendingExecutionResult exec;
+		try {
+			exec = pending->ExecuteTask();
+		} catch (std::exception &ex) {
+			return HandleExecutionError(ErrorData(ex));
+		}
+		switch (exec) {
+		case PendingExecutionResult::RESULT_NOT_READY:
+		case PendingExecutionResult::BLOCKED:
+		case PendingExecutionResult::NO_TASKS_AVAILABLE:
+			return DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+		case PendingExecutionResult::EXECUTION_ERROR:
+			return HandleExecutionError(pending->GetErrorObject());
+		case PendingExecutionResult::RESULT_READY:
+		case PendingExecutionResult::EXECUTION_FINISHED: {
+			// Transition to the streaming phase. Execute() is (mostly)
+			// instant once the pending result is ready. Reporting WAITING
+			// after the transition keeps the contract simple: one unit of
+			// work per step; the next step hits the stream.
+			unique_ptr<QueryResult> res;
+			try {
+				res = pending->Execute();
+			} catch (std::exception &ex) {
+				return HandleExecutionError(ErrorData(ex));
+			}
+			pending.reset();
+			if (res->HasError()) {
+				return HandleExecutionError(res->GetErrorObject());
+			}
+			result = std::move(res);
+			state = State::STREAMING;
+			return DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+		}
+		}
+		D_ASSERT(false); // unmapped PendingExecutionResult variant
+		return DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+	}
+	case State::STREAMING: {
+		if (result->type == QueryResultType::STREAM_RESULT) {
+			auto &stream = result->Cast<StreamQueryResult>();
+			StreamExecutionResult exec;
+			try {
+				exec = stream.ExecuteTask();
+			} catch (std::exception &ex) {
+				// SimpleBufferedData surfaces a pending interrupt by
+				// throwing InterruptException from ExecuteTask; route it
+				// through the same sink as EXECUTION_CANCELLED.
+				return HandleExecutionError(ErrorData(ex));
+			}
+			switch (exec) {
+			case StreamExecutionResult::CHUNK_NOT_READY:
+			case StreamExecutionResult::BLOCKED:
+			case StreamExecutionResult::NO_TASKS_AVAILABLE:
+				return DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+			case StreamExecutionResult::EXECUTION_CANCELLED:
+				pending.reset();
+				result.reset();
+				fragments.clear();
+				try {
+					RollbackIncompleteGroup();
+				} catch (...) {
+					// Best effort; cancellation still wins.
+				}
+				ReleaseBusySlot();
+				state = State::CANCELLED;
+				return DUCKDB_V2_RESULT_STEP_STATUS_CANCELLED;
+			case StreamExecutionResult::EXECUTION_ERROR:
+				return HandleExecutionError(stream.GetErrorObject());
+			case StreamExecutionResult::CHUNK_READY:
+			case StreamExecutionResult::EXECUTION_FINISHED:
+				// Both states mean "Fetch without doing more execution
+				// work": CHUNK_READY has a buffered chunk; after
+				// EXECUTION_FINISHED the buffer may still hold trailing
+				// chunks and Fetch drains them until it reports
+				// end-of-stream.
+				break;
+			}
+		}
+		// Fetch the next buffered chunk. For the materialized fallback
+		// (non-row statements can come back materialized even with
+		// ALLOW_STREAMING) the data is fully available and every step
+		// lands here directly.
+		unique_ptr<DataChunk> chunk;
+		try {
+			chunk = result->Fetch();
+		} catch (std::exception &ex) {
+			return HandleExecutionError(ErrorData(ex));
+		}
+		if (result->HasError()) {
+			// StreamQueryResult::Fetch reports late execution errors by
+			// setting the error and returning null.
+			return HandleExecutionError(result->GetErrorObject());
+		}
+		if (!chunk || chunk->size() == 0) {
+			// Stream results already normalize end-of-stream to null (and
+			// close) in FetchInternal; the size() == 0 arm is needed for the
+			// materialized fallback, whose Fetch does not normalize.
+			result.reset();
+			if (fragment_index < fragments.size()) {
+				// More fragments in the group: start the next one and keep
+				// reporting WAITING. FINISHED only after the whole group
+				// (including a trailing injected COMMIT) has executed.
+				try {
+					StartNextFragment();
+				} catch (std::exception &ex) {
+					return HandleExecutionError(ErrorData(ex));
+				}
+				return DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+			}
+			state = State::FINISHED;
+			ReleaseBusySlot();
+			return DUCKDB_V2_RESULT_STEP_STATUS_FINISHED;
+		}
+		if (!principal_active) {
+			// Output of a non-principal fragment (e.g. the internal UPDATE of
+			// an expanded ALTER): discard it, exactly as ClientContext::Query
+			// drops these results from its chain.
+			return DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+		}
+		out_chunk = std::move(chunk);
+		return DUCKDB_V2_RESULT_STEP_STATUS_CHUNK;
+	}
+	}
+	D_ASSERT(false); // unreachable: all states handled above
+	return DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+}
+
+void ResultWrapperV2::Wait() {
+	// Unlike ExecuteTask, the engine's WaitForTask performs no
+	// executability check and dereferences the context's active query
+	// unguarded; an unchecked wait on an invalidated result is UB. Verify
+	// executability first, the same way the steps do.
+	switch (state) {
+	case State::PENDING: {
+		// CheckPulse re-validates executability (throwing a clean error when
+		// the result is closed) and reports the engine state without running
+		// work. Its outcome decides whether blocking is safe: the engine may
+		// already have processed an execution error and ended the query
+		// internally (waiting then dereferences the closed query), and a
+		// ready or finished query has no task to wake on.
+		switch (pending->CheckPulse()) {
+		case PendingExecutionResult::BLOCKED:
+		case PendingExecutionResult::NO_TASKS_AVAILABLE:
+			// No progress possible right now; this is the one case where
+			// blocking is meaningful.
+			pending->WaitForTask();
+			return;
+		case PendingExecutionResult::EXECUTION_ERROR:
+			// The error (interrupts included) is already recorded on the
+			// pending result and the engine closed the query. Transition the
+			// state machine now: a later ExecuteTask would trip the engine's
+			// closed-result check and misreport the error as INVALID_INPUT.
+			HandleExecutionError(pending->GetErrorObject());
+			return;
+		default:
+			// RESULT_NOT_READY / RESULT_READY / EXECUTION_FINISHED: the next
+			// step makes progress without blocking.
+			return;
+		}
+	}
+	case State::STREAMING:
+		if (result->type == QueryResultType::STREAM_RESULT) {
+			auto &stream = result->Cast<StreamQueryResult>();
+			if (!stream.IsOpen()) {
+				// Closed or invalidated: the next step returns without
+				// blocking, so there is nothing to wait for.
+				return;
+			}
+			stream.WaitForTask();
+		}
+		// Materialized fallback: every step makes progress; nothing to
+		// wait for.
+		return;
+	default:
+		// Terminal states: waiting is a no-op, never an error.
+		return;
+	}
+}
+
+unique_ptr<DataChunk> ResultWrapperV2::FetchChunkBlocking() {
+	while (true) {
+		unique_ptr<DataChunk> chunk;
+		switch (Step(chunk)) {
+		case DUCKDB_V2_RESULT_STEP_STATUS_CHUNK:
+			return chunk;
+		case DUCKDB_V2_RESULT_STEP_STATUS_FINISHED:
+			return nullptr;
+		case DUCKDB_V2_RESULT_STEP_STATUS_CANCELLED:
+			// fetch_chunk has no status channel, so cancellation surfaces
+			// as ERROR_RUNTIME_INTERRUPT. The state stays CANCELLED (not
+			// ERRORED), so steps keep reporting the status. Throwing a
+			// fresh InterruptException means the error text is the generic
+			// "Interrupted!", not the engine's message; deliberate, since
+			// the CANCELLED state carries no message either.
+			throw InterruptException();
+		case DUCKDB_V2_RESULT_STEP_STATUS_WAITING:
+			Wait();
+			break;
+		}
+	}
+}
+
 } // namespace duckdb
 
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn, duckdb_v2_str sql,
+DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn,
+                                                duckdb_v2_sql_statement_handle *statement,
                                                 duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!conn || (!sql.ptr && sql.len > 0) || !out_result) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_query");
-		}
+	if (out_result) {
 		*out_result = nullptr;
-		auto result = duckdb::ToConn(conn)->Query(duckdb::ToString(sql));
-		if (result->HasError()) {
-			// Re-throw the typed ErrorData so the exception's ExceptionType
-			// is preserved and routed through GetErrorCodeFromExceptionType.
-			result->GetErrorObject().Throw();
+	}
+	// The two refusals below never reach the engine and leave the
+	// statement intact (the spec commits to this).
+	if (!conn || !statement || !*statement || !out_result) {
+		return duckdb::WithErrorHandler(
+		    err, [&]() { throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_query"); });
+	}
+	auto *connection = duckdb::ToConn(conn);
+	auto wrapper = duckdb::make_uniq<duckdb::ResultWrapperV2>();
+	// One live result per connection. The busy slot lives in the context's
+	// registered-state map (so the connection handle stays a bare Connection *),
+	// shared with this result. The busy check is a manual return path: no
+	// ExceptionType maps to RESOURCE_IN_USE, so routing it through
+	// WithErrorHandler would degrade the code. It must run before PendingQuery,
+	// which would otherwise silently cancel the live stream.
+	auto busy_slot = duckdb::GetBusySlot(*connection->context);
+	void *expected = nullptr;
+	if (!busy_slot->owner.compare_exchange_strong(expected, wrapper.get())) {
+		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_RESOURCE_IN_USE,
+		                            "connection has a live result; drain, destroy, or interrupt it before starting "
+		                            "a new query (or open another connection)");
+	}
+	// On any failure below, the wrapper's destructor releases the slot.
+	wrapper->busy_slot = std::move(busy_slot);
+	return duckdb::WithErrorHandler(err, [&]() {
+		// Transfer: mirror the engine, which takes the statement by-value
+		// unique_ptr and consumes it on success and prepare-time failure
+		// alike.
+		duckdb::unique_ptr<duckdb::SQLStatement> stmt(duckdb::ToSqlStatement(*statement));
+		*statement = nullptr;
+		// Statement-level preprocessing (pragma reparsing, expansion
+		// unpacking, transaction wrapping): one user statement can expand
+		// into a group of engine statements that the wrapper executes in
+		// order. parse_sql deliberately leaves this to connection_query so
+		// parsing stays binder-free and a group is never split across the
+		// API boundary.
+		wrapper->fragments.push_back(std::move(stmt));
+		connection->context->PreprocessStatements(wrapper->fragments);
+		if (wrapper->fragments.empty()) {
+			throw duckdb::InvalidInputException("statement preprocessing yielded no executable statements");
 		}
-		*out_result = reinterpret_cast<_duckdb_v2_result *>(result.release());
+		wrapper->fragment_count = wrapper->fragments.size();
+		// Detect whether preprocessing wrapped this group in its own
+		// transaction (autocommit input expanded to BEGIN ... COMMIT). The
+		// injected BEGIN is always the first fragment; a group running inside
+		// a user-managed transaction is left unwrapped (it gets a SET, not a
+		// BEGIN). Recorded so the destructor knows whether the open
+		// transaction is the bridge's to roll back on incomplete destroy.
+		if (wrapper->fragments.front()->type == duckdb::StatementType::TRANSACTION_STATEMENT) {
+			auto &transaction_stmt = wrapper->fragments.front()->Cast<duckdb::TransactionStatement>();
+			wrapper->owns_wrapping_transaction =
+			    transaction_stmt.info->type == duckdb::TransactionType::BEGIN_TRANSACTION;
+		}
+		wrapper->context = connection->context;
+		// Prepare the first fragment. Lazy streaming execution: nothing
+		// executes until the result is stepped; for non-expanding statements
+		// (the common case) this also captures the metadata immediately.
+		wrapper->StartNextFragment();
+		*out_result = reinterpret_cast<_duckdb_v2_result *>(wrapper.release());
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_result_drain(duckdb_v2_result_handle result, idx_t *out_rows_changed,
+                                            duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!result || !out_rows_changed) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_drain");
+		}
+		auto *wrapper = duckdb::ToResult(result);
+		// Drain to completion: side effects are applied, rows of a
+		// row-producing result are discarded. CHANGED_ROWS results stream a
+		// single-row BIGINT Count chunk carrying the affected row count.
+		// The principal fragment's metadata may only become available
+		// mid-drain (expanding statements), so check per chunk: surfaced
+		// chunks always belong to the principal fragment.
+		idx_t rows_changed = 0;
+		while (auto chunk = wrapper->FetchChunkBlocking()) {
+			bool changed_rows = wrapper->metadata_available &&
+			                    wrapper->properties.return_type == duckdb::StatementReturnType::CHANGED_ROWS;
+			if (changed_rows && chunk->size() > 0) {
+				rows_changed = static_cast<idx_t>(chunk->GetValue(0, 0).GetValue<int64_t>());
+			}
+		}
+		*out_rows_changed = rows_changed;
 	});
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_result_destroy(duckdb_v2_result_handle *result) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
-		if (!result) {
+		if (!result || !*result) {
 			return;
 		}
-		if (*result) {
-			delete duckdb::ToResult(*result);
-			*result = nullptr;
+		// Adopt so the wrapper is freed even if Finalize() throws.
+		duckdb::unique_ptr<duckdb::ResultWrapperV2> wrapper(duckdb::ToResult(*result));
+		*result = nullptr;
+		wrapper->Finalize();
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Streaming consumption
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_result_step(duckdb_v2_result_handle result, duckdb_v2_data_chunk_handle *out_chunk,
+                                           DUCKDB_V2_RESULT_STEP_STATUS *out_status, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!result || !out_chunk || !out_status) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_step");
 		}
+		*out_chunk = nullptr;
+		auto *wrapper = duckdb::ToResult(result);
+		duckdb::unique_ptr<duckdb::DataChunk> chunk;
+		auto status = wrapper->Step(chunk);
+		*out_status = status;
+		if (status == DUCKDB_V2_RESULT_STEP_STATUS_CHUNK) {
+			*out_chunk = reinterpret_cast<_duckdb_v2_data_chunk *>(chunk.release());
+		}
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_result_fetch_chunk(duckdb_v2_result_handle result,
+                                                  duckdb_v2_data_chunk_handle *out_chunk,
+                                                  duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!result || !out_chunk) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_fetch_chunk");
+		}
+		*out_chunk = nullptr;
+		auto *wrapper = duckdb::ToResult(result);
+		auto chunk = wrapper->FetchChunkBlocking();
+		if (chunk) {
+			*out_chunk = reinterpret_cast<_duckdb_v2_data_chunk *>(chunk.release());
+		}
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_result_wait(duckdb_v2_result_handle result, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!result) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_wait");
+		}
+		duckdb::ToResult(result)->Wait();
 	});
 }
 
@@ -70,6 +487,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_get_result_type(duckdb_v2_result_handle re
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_get_result_type");
 		}
 		auto *r = duckdb::ToResult(result);
+		r->RequireMetadata();
 		*out_type = duckdb::MapResultType(r->properties.return_type);
 	});
 }
@@ -82,6 +500,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_get_statement_type(duckdb_v2_result_handle
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_get_statement_type");
 		}
 		auto *r = duckdb::ToResult(result);
+		r->RequireMetadata();
 		*out_type = static_cast<DUCKDB_V2_STATEMENT_TYPE>(r->statement_type);
 	});
 }
@@ -93,6 +512,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_column_count(duckdb_v2_result_handle resul
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_count");
 		}
 		auto *r = duckdb::ToResult(result);
+		r->RequireMetadata();
 		*out_count = r->types.size();
 	});
 }
@@ -104,6 +524,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_handle result
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_name");
 		}
 		auto *r = duckdb::ToResult(result);
+		r->RequireMetadata();
 		if (index >= r->names.size()) {
 			throw duckdb::InvalidInputException("result column index out of range");
 		}
@@ -120,33 +541,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_column_logical_type(duckdb_v2_result_handl
 		}
 		*out_type = nullptr;
 		auto *r = duckdb::ToResult(result);
+		r->RequireMetadata();
 		if (index >= r->types.size()) {
 			throw duckdb::InvalidInputException("result column index out of range");
 		}
 		auto *lt = new duckdb::LogicalType(r->types[index]);
 		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(lt);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_result_rows_changed(duckdb_v2_result_handle result, idx_t *out_count,
-                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!result || !out_count) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_rows_changed");
-		}
-		auto *r = duckdb::ToResult(result);
-		if (r->properties.return_type != duckdb::StatementReturnType::CHANGED_ROWS) {
-			*out_count = 0;
-			return;
-		}
-		// CHANGED_ROWS results are constructed by core as a single BIGINT
-		// "Count" column with one row. The runtime guard catches a future
-		// shape divergence in release; debug builds trip the assert first.
-		D_ASSERT(r->RowCount() == 1 && r->types.size() == 1);
-		if (r->RowCount() != 1 || r->types.size() != 1) {
-			*out_count = 0;
-			return;
-		}
-		*out_count = static_cast<idx_t>(r->GetValue(0, 0).GetValue<int64_t>());
 	});
 }

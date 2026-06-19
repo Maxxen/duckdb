@@ -65,26 +65,34 @@ handles:
     cleanup_with: value_destroy
   result:
     description: |
-      An opaque, owned handle to the result of a query. Carries the schema
-      (column names + logical types), the statement type, the result type
-      (query result / changed rows / nothing), and — for materialized
-      results — the row data accessible chunk-by-chunk. Always destroy via
-      result_destroy.
+      An opaque, owned handle to the streaming result of a query. Carries
+      the schema (column names and logical types), the statement type,
+      and the result type from prepare time; row data is produced
+      incrementally by stepping (result_step) or draining
+      (result_fetch_chunk). Single consumer: step from one thread at a
+      time.
+
+      A result is a cursor on the connection's execution, not a box of
+      data. While it is live (not finished, cancelled, errored, or
+      destroyed) the connection refuses new queries with
+      ERROR_RESOURCE_IN_USE, and the query's transaction stays open,
+      deferring version cleanup and checkpointing. Drain or destroy
+      promptly. Side-effecting statements take effect only when the
+      result is drained. Always destroy via result_destroy, which is
+      safe even on a partially consumed stream.
     cleanup_with: result_destroy
   data_chunk:
     description: |
       An opaque, owned handle to a data chunk: a set of vectors of equal
       logical length plus a cardinality (row count). Each vector carries
-      its own logical type. Chunks are fetched from a materialized result
-      via result_get_chunk and must be destroyed by the caller.
+      its own logical type. Chunks are produced by a streaming result
+      via result_step / result_fetch_chunk and must be destroyed by
+      the caller.
 
       Lifetime is fully independent of the producing result, connection,
-      and database: result_get_chunk copies the chunk's data into a fresh
-      allocator-backed buffer, so the chunk (and the vectors and view
-      pointers borrowed from it) remain valid until data_chunk_destroy
-      — even if the result, connection, or database is destroyed first.
-      Borrowed vectors and view pointers all share this lifetime; they
-      die with the chunk, not with the producer.
+      and database: the chunk owns its data, so the chunk and the
+      vectors and view pointers borrowed from it remain valid until
+      data_chunk_destroy, even if the producers are destroyed first.
     cleanup_with: data_chunk_destroy
   vector:
     description: |

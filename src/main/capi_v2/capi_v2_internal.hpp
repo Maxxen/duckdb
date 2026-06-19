@@ -19,6 +19,10 @@
 #include "duckdb/main/appender.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/main/client_context_state.hpp"
+#include "duckdb/main/pending_query_result.hpp"
+#include "duckdb/main/stream_query_result.hpp"
+#include "duckdb/parser/sql_statement.hpp"
 #include "duckdb/planner/expression/bound_parameter_data.hpp"
 #include "duckdb/main/db_instance_cache.hpp"
 
@@ -64,7 +68,6 @@ namespace duckdb {
 // Forward declarations.
 struct EnvironmentWrapperV2;
 struct DatabaseWrapperV2;
-struct ConnectionWrapperV2;
 
 // Backing struct for the opaque duckdb_v2_environment_handle handle. Owns
 // the DBInstanceCache used to share the path manager across all
@@ -93,6 +96,41 @@ struct DatabaseWrapperV2 {
 	// the legacy get_setting cascade (which requires a ClientContext).
 	// Created at open and destroyed with the wrapper.
 	unique_ptr<Connection> admin_connection;
+};
+
+// A connection runs one result at a time: while a live, non-terminal
+// result exists, connection_query refuses with RESOURCE_IN_USE. The busy
+// check is bridge-side handle-liveness bookkeeping, deliberately not an
+// engine-state inspection (the engine's active_query slot is private and
+// cleared lazily, and "open transaction" is the wrong predicate under
+// explicit BEGIN). The slot stores the owning ResultWrapperV2 so release
+// is idempotent and only the current owner can free it.
+//
+// It lives in the ClientContext's registered-state map (one per
+// connection, keyed by kBusySlotStateKey) rather than on the connection
+// handle, so the V2 connection handle can stay a bare Connection * that is
+// bit-identical to V1's duckdb_connection. Being a shared_ptr in that map,
+// it outlives the connection if a result still holds it, and outlives a
+// drained result because the map keeps it: either side can outlive the
+// other.
+struct ConnectionBusySlotV2 : public ClientContextState {
+	std::atomic<void *> owner {nullptr};
+};
+
+inline constexpr const char *kBusySlotStateKey = "v2_connection_busy_slot";
+
+inline shared_ptr<ConnectionBusySlotV2> GetBusySlot(ClientContext &context) {
+	return context.registered_state->GetOrCreate<ConnectionBusySlotV2>(kBusySlotStateKey);
+}
+
+// Backing struct for the opaque duckdb_v2_query_progress_handle: an
+// immutable snapshot of duckdb::QueryProgress, captured by
+// connection_query_progress at call time (the live fields are atomics;
+// the handle decouples readers from them).
+struct QueryProgressWrapperV2 {
+	double percentage = -1;
+	uint64_t rows_processed = 0;
+	uint64_t total_rows_to_process = 0;
 };
 
 // Backing struct for the opaque duckdb_v2_option_handle handle. Owns all
@@ -150,11 +188,39 @@ inline EnvironmentWrapperV2 *ToEnv(duckdb_v2_environment_handle ptr) {
 inline DatabaseWrapperV2 *ToDb(duckdb_v2_database_handle ptr) {
 	return reinterpret_cast<DatabaseWrapperV2 *>(ptr);
 }
+// The connection handle is not wrapped: a duckdb_v2_connection is a bare
+// heap-allocated duckdb::Connection, bit-identical to V1's duckdb_connection
+// (a Connection *). This lets the two handle types be cast to each other for
+// operations (not for construction/destruction: a handle must be destroyed by
+// the API family that created it). The one piece of per-connection bridge state
+// (the busy slot) lives in the ClientContext's registered-state map, not here.
 inline Connection *ToConn(duckdb_v2_connection_handle ptr) {
 	return reinterpret_cast<Connection *>(ptr);
 }
 inline OptionWrapperV2 *ToOption(duckdb_v2_option_handle ptr) {
 	return reinterpret_cast<OptionWrapperV2 *>(ptr);
+}
+inline QueryProgressWrapperV2 *ToQueryProgress(duckdb_v2_query_progress_handle ptr) {
+	return reinterpret_cast<QueryProgressWrapperV2 *>(ptr);
+}
+// duckdb_v2_sql_statement_handle is a heap-allocated duckdb::SQLStatement
+// (a derived class instance) with no wrapper. connection_query adopts it
+// back into a unique_ptr and transfers it to the engine; destroy deletes
+// through this cast.
+inline SQLStatement *ToSqlStatement(duckdb_v2_sql_statement_handle ptr) {
+	return reinterpret_cast<SQLStatement *>(ptr);
+}
+
+// Backing struct for the opaque duckdb_v2_statement_iterator_handle.
+// The current backend parses eagerly (ClientContext::ParseStatements)
+// and yields from the vector; the iterator-shaped contract permits a
+// lazy parse-on-next backend later without an API change.
+struct StatementIteratorWrapperV2 {
+	vector<unique_ptr<SQLStatement>> statements;
+	idx_t cursor = 0;
+};
+inline StatementIteratorWrapperV2 *ToStatementIterator(duckdb_v2_statement_iterator_handle ptr) {
+	return reinterpret_cast<StatementIteratorWrapperV2 *>(ptr);
 }
 // The logical_type handle is not wrapped — the underlying duckdb::LogicalType
 // is heap-allocated directly. The V2 test suite relies on this layout to
@@ -170,16 +236,180 @@ inline LogicalType *ToLogicalType(duckdb_v2_logical_type_handle ptr) {
 inline Value *ToValue(duckdb_v2_value_handle ptr) {
 	return reinterpret_cast<Value *>(ptr);
 }
-// duckdb_v2_result_handle is a heap-allocated duckdb::MaterializedQueryResult
-// with no wrapper. The V2 result surface today is materialized-only, by
-// construction: connection_query is the sole producer and uses
-// Connection::Query(const string &) which returns
-// unique_ptr<MaterializedQueryResult>. If a future entrypoint produces a
-// streaming or pending QueryResult, this cast must change — the bridge
-// should either gain a wrapper that tags the variant, or split into
-// per-shape handle types.
-inline MaterializedQueryResult *ToResult(duckdb_v2_result_handle ptr) {
-	return reinterpret_cast<MaterializedQueryResult *>(ptr);
+// Backing struct for the opaque duckdb_v2_result_handle: the streaming
+// result's state machine.
+//
+// connection_query preprocesses the transferred statement (pragma
+// reparsing, expansion unpacking, transaction wrapping), which can turn
+// one user statement into a group of engine statements ("fragments",
+// e.g. PIVOT, or ALTER ... ADD COLUMN with a non-constant DEFAULT). The
+// wrapper executes the fragments in order; each one passes through two
+// internal phases with their own task-step API:
+//
+//   for each fragment:
+//     PENDING (unique_ptr<PendingQueryResult>)
+//       -> STREAMING (unique_ptr<QueryResult>, usually StreamQueryResult)
+//   -> FINISHED | CANCELLED | ERRORED (sticky)
+//
+// (The error state is named ERRORED, not ERROR: windows.h defines ERROR
+// as an object-like macro.)
+//
+// PENDING drives PendingQueryResult::ExecuteTask; once the result is
+// ready, Execute() transitions to STREAMING, which drives
+// StreamQueryResult::ExecuteTask + Fetch. Non-row statements can come
+// back materialized even with ALLOW_STREAMING; the STREAMING phase
+// drains those through the same Fetch loop. Terminal states drop the
+// internal results, release the connection's busy slot, and never touch
+// the internals again: steps keep reporting FINISHED / CANCELLED, and
+// ERRORED keeps rethrowing the recorded ErrorData.
+//
+// Result selection mirrors ClientContext::Query's chain-append rule: the
+// caller sees the chunks and metadata of the PRINCIPAL fragment, which
+// is the first fragment whose return_type is QUERY_RESULT, or the last
+// fragment when none produces rows. Other fragments execute through the
+// same machinery with their output drained and discarded (the engine
+// drops those results too). An expansion with more than one
+// row-producing fragment cannot be streamed as one result and reports
+// NOT_IMPLEMENTED (no known expansion produces one).
+//
+// Schema metadata (types, names, statement_type, properties) is copied
+// from the principal fragment when it is prepared: at connection_query
+// time for non-expanding statements (the common case), or once stepping
+// reaches the principal fragment otherwise. metadata_available gates the
+// getters.
+//
+// Single-consumer: step/fetch/wait from one thread at a time.
+// Cross-thread control goes through the connection
+// (connection_interrupt / connection_query_progress).
+struct ResultWrapperV2 {
+	enum class State : uint8_t { PENDING, STREAMING, FINISHED, CANCELLED, ERRORED };
+
+	~ResultWrapperV2() {
+		// Finalize() (engine cleanup) runs in duckdb_v2_result_destroy, not here:
+		// a destructor must not drive locked engine state behind a catch-all.
+		pending.reset();
+		result.reset();
+		ReleaseBusySlot();
+	}
+
+	State state = State::PENDING;
+	//! Live while state == PENDING.
+	unique_ptr<PendingQueryResult> pending;
+	//! Live while state == STREAMING.
+	unique_ptr<QueryResult> result;
+
+	//! Keeps the ClientContext alive for starting subsequent fragments and
+	//! preserves the guarantee that an undrained result survives disconnect:
+	//! the connection handle (a bare Connection *) may be destroyed while a
+	//! result is live, but the context it shared with us stays alive here.
+	shared_ptr<ClientContext> context;
+	//! The preprocessed statement group; fragment_index points at the next
+	//! fragment to start, fragment_count remembers the group size after
+	//! fragments is cleared on terminal transitions.
+	vector<unique_ptr<SQLStatement>> fragments;
+	idx_t fragment_index = 0;
+	idx_t fragment_count = 0;
+	//! True while the currently executing fragment is the principal one
+	//! (its chunks are surfaced; other fragments' output is discarded).
+	bool principal_active = false;
+	//! True once a row-producing fragment has been selected as principal.
+	bool principal_seen = false;
+	//! True once the principal fragment's metadata has been captured.
+	bool metadata_available = false;
+	//! True when connection_query injected its own wrapping transaction for
+	//! this group (autocommit input that preprocessing expanded and wrapped
+	//! in BEGIN ... COMMIT). Distinguishes a bridge-owned transaction, which
+	//! must be rolled back on incomplete destroy, from a user-managed one,
+	//! which must not be touched. Captured at query time because the engine's
+	//! auto_rollback flag is not reliably observable from the bridge's
+	//! fragment execution path.
+	bool owns_wrapping_transaction = false;
+
+	//! The owning connection's busy slot; released on terminal transition
+	//! or destroy, whichever comes first.
+	shared_ptr<ConnectionBusySlotV2> busy_slot;
+
+	//! Principal fragment's metadata, valid once metadata_available.
+	vector<LogicalType> types;
+	vector<string> names;
+	StatementType statement_type = StatementType::INVALID_STATEMENT;
+	StatementProperties properties;
+
+	//! Sticky error, recorded when state == ERRORED.
+	ErrorData error;
+
+	//! Mirrors ClientContext::Query's error handling for expanded groups
+	//! (client_context.cpp, chain-append loop): when the group cannot
+	//! complete, roll back the transaction connection_query injected to wrap
+	//! it. A no-op for non-expanded statements, for groups that ran inside a
+	//! user-managed transaction (which the bridge never wraps), and when the
+	//! transaction is already gone.
+	void RollbackIncompleteGroup() {
+		if (!owns_wrapping_transaction || !context) {
+			return;
+		}
+		if (context->transaction.HasActiveTransaction()) {
+			// Mirrors Connection::Rollback (Query("ROLLBACK") + throw on error),
+			// driven through the retained context so it works after disconnect.
+			auto result = context->Query("ROLLBACK", QueryResultOutputType::FORCE_MATERIALIZED);
+			if (result->HasError()) {
+				result->ThrowError();
+			}
+		}
+	}
+
+	//! Close() the live engine result so an abandoned active query is cleaned
+	//! up (freeing the executor, which breaks the ClientContext ref cycle),
+	//! then roll back an injected group transaction. May throw; the terminal
+	//! states leave pending/result null, so this is then a no-op.
+	void Finalize() {
+		if (pending) {
+			pending->Close();
+		} else if (result && result->type == QueryResultType::STREAM_RESULT) {
+			result->Cast<StreamQueryResult>().Close();
+		}
+		RollbackIncompleteGroup();
+	}
+
+	//! Frees the connection for its next query. Only the current owner can
+	//! release the slot, so a release after the connection moved on is a
+	//! no-op.
+	void ReleaseBusySlot() {
+		if (busy_slot) {
+			void *expected = this;
+			busy_slot->owner.compare_exchange_strong(expected, nullptr);
+			busy_slot.reset();
+		}
+	}
+
+	// State-machine entry points; defined in query_result-v2.cpp. All of
+	// them throw DuckDB exceptions on failure (callers wrap in
+	// WithErrorHandler) and record sticky errors before throwing.
+
+	//! Starts the pending query for the next fragment, selecting it as
+	//! principal per the engine-mirrored rule and capturing its metadata
+	//! when selected. Throws on prepare errors.
+	void StartNextFragment();
+	//! Drives one unit of work; never blocks. On CHUNK, out_chunk holds the
+	//! produced chunk; on every other status it is reset.
+	DUCKDB_V2_RESULT_STEP_STATUS Step(unique_ptr<DataChunk> &out_chunk);
+	//! Blocks until Step can make progress. No-op on terminal states.
+	void Wait();
+	//! Blocking convenience: steps/waits until a chunk is produced (returned)
+	//! or the stream ends (nullptr). Cancellation throws InterruptException.
+	unique_ptr<DataChunk> FetchChunkBlocking();
+	//! Throws unless the principal fragment's metadata is available.
+	void RequireMetadata() const;
+
+private:
+	//! Shared error sink: interrupts become the sticky CANCELLED state
+	//! (returned as a status), everything else becomes the sticky ERRORED
+	//! state and throws.
+	DUCKDB_V2_RESULT_STEP_STATUS HandleExecutionError(ErrorData error_data);
+};
+
+inline ResultWrapperV2 *ToResult(duckdb_v2_result_handle ptr) {
+	return reinterpret_cast<ResultWrapperV2 *>(ptr);
 }
 // duckdb_v2_data_chunk_handle is a heap-allocated duckdb::DataChunk with no
 // wrapper. Cardinality flows through the API explicitly; no per-chunk

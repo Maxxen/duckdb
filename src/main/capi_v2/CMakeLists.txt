@@ -20,6 +20,7 @@ add_library_unity(
   logger-v2.cpp
   option-v2.cpp
   query_result-v2.cpp
+  sql_statement-v2.cpp
   value-v2.cpp
   vector-v2.cpp)
 

@@ -166,10 +166,10 @@ void RegisterTemperature(duckdb_v2_context_handle ctx, void *, duckdb_v2_error_i
 // Helper: run a query and return the single int32 result (asserting it is non-NULL).
 int32_t QuerySingleInt(duckdb_v2_connection_handle conn, const std::string &sql) {
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(V2Query(conn, sql, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(conn, sql.c_str(), &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_data_chunk_handle chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -188,10 +188,10 @@ int32_t QuerySingleInt(duckdb_v2_connection_handle conn, const std::string &sql)
 // Helper: run a query and return the single VARCHAR result (asserting it is non-NULL).
 std::string QuerySingleVarchar(duckdb_v2_connection_handle conn, const std::string &sql) {
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(V2Query(conn, sql, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2Query(conn, sql.c_str(), &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_data_chunk_handle chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
 
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -234,8 +234,8 @@ TEST_CASE("V2 cast: custom type round-trip casts", "[capi_v2][cast]") {
 		duckdb_v2_result_handle result = nullptr;
 		REQUIRE(V2Query(conn, "SELECT CAST(CAST(NULL AS TEMPERATURE) AS VARCHAR) IS NULL", &result, nullptr) ==
 		        DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_data_chunk_handle chunk = nullptr;
-		REQUIRE(duckdb_v2_result_get_chunk(result, 0, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_data_chunk_handle chunk = V2StepChunk(result);
+		REQUIRE(chunk != nullptr);
 		duckdb_v2_vector_handle vec = nullptr;
 		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_vector_view view;
@@ -248,8 +248,24 @@ TEST_CASE("V2 cast: custom type round-trip casts", "[capi_v2][cast]") {
 	SECTION("strict cast failure aborts the query") {
 		duckdb_v2_result_handle result = nullptr;
 		duckdb_v2_error_info_handle err = nullptr;
-		REQUIRE(V2Query(conn, "SELECT CAST('not-a-temp' AS TEMPERATURE)", &result, &err) != DUCKDB_V2_ERROR_NONE);
+		// Lazy streaming: the query prepares fine; the strict-cast error only
+		// surfaces once the stream is stepped.
+		REQUIRE(V2Query(conn, "SELECT CAST('not-a-temp' AS TEMPERATURE)", &result, &err) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+		while (true) {
+			duckdb_v2_data_chunk_handle chunk = nullptr;
+			DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+			rc = duckdb_v2_result_step(result, &chunk, &status, &err);
+			if (rc != DUCKDB_V2_ERROR_NONE || status == DUCKDB_V2_RESULT_STEP_STATUS_FINISHED) {
+				break;
+			}
+			if (chunk) {
+				duckdb_v2_data_chunk_destroy(&chunk);
+			}
+		}
+		REQUIRE(rc != DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_error_info_destroy(&err);
+		duckdb_v2_result_destroy(&result);
 	}
 
 	SECTION("TRY_CAST failure yields NULL") {
