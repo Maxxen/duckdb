@@ -114,22 +114,25 @@ structs:
       - {name: len, type: idx}
   string:
     description: |
-      Opaque 16-byte storage for a byte-backed value (VARCHAR / BLOB
-      / BIT / BIGNUM). Only the struct's size (16 bytes) and alignment
-      (8 bytes, from `uint64_t _opaque[2]`) are committed as ABI; the
-      field layout (inline-vs-pointer dispatch mirroring
-      duckdb::string_t) lives privately inside the bridge decoders.
-      Callers MUST go through the matching <kind>_decode bridge to
-      read bytes — varchar_decode for VARCHAR storage, blob_decode for
-      BLOB, bit_decode for BIT, bignum_decode for BIGNUM. Reading
-      `_opaque` directly is undefined behaviour. The 8-byte alignment
-      matches duckdb::string_t's `alignof` so the bridge's
-      reinterpret_cast is well-defined even when callers
-      stack/heap-allocate a string_t and hand a pointer to it.
+      16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT /
+      BIGNUM), mirroring duckdb::string_t. Inlined when length <=
+      STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise
+      value.pointer.ptr holds the bytes and value.pointer.prefix the
+      first 4. Read the fields directly, or decode via the matching
+      varchar/blob/bit/bignum_decode (which applies each kind's wire
+      encoding).
     fields:
-      - name: _opaque
-        type: u64
-        array_size: 2
+      - name: value
+        union:
+          - name: pointer
+            fields:
+              - {name: length, type: u32}
+              - {name: prefix, type: char, array_size: 4}
+              - {name: ptr, type: char, pointer: 1}
+          - name: inlined
+            fields:
+              - {name: length, type: u32}
+              - {name: inlined, type: char, array_size: 12}
 callbacks:
   user_data_equals:
     return_type: bool
@@ -194,3 +197,7 @@ aliases:
   bignum:
     underlying: string
     description: BIGNUM storage. Decode via bignum_decode.
+constants:
+  STRING_INLINE_LENGTH:
+    value: 12
+    description: "Inline cutoff for `string` storage: a value of at most this many bytes is stored inline."

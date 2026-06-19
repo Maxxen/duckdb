@@ -107,6 +107,101 @@ class TestInlineArrayStructRendering:
         assert "uint32_t code;" in content
 
 
+class TestUnionStructRendering:
+    """A field carrying `union`/`fields` renders as an anonymous union/struct."""
+
+    def _metadata(self):
+        return {
+            "schema_version": "0.2.0",
+            "versions": ["1.0.0"],
+            "suffixes": {"handles": "_ptr", "callbacks": "_cb", "aliases": "_t"},
+            "primitives": [
+                {"name": "char", "c_type": "char"},
+                {"name": "u32", "c_type": "uint32_t"},
+            ],
+        }
+
+    def _module(self):
+        return {
+            "module": "m",
+            "handles": {},
+            "callbacks": {},
+            "aliases": {},
+            "structs": {
+                "duckdb_v2_string": {
+                    "pointer_alias": False,
+                    "fields": [
+                        {
+                            "name": "value",
+                            "union": [
+                                {
+                                    "name": "pointer",
+                                    "fields": [
+                                        {"name": "length", "type": "u32"},
+                                        {
+                                            "name": "prefix",
+                                            "type": "char",
+                                            "array_size": 4,
+                                        },
+                                        {"name": "ptr", "type": "char", "pointer": 1},
+                                    ],
+                                },
+                                {
+                                    "name": "inlined",
+                                    "fields": [
+                                        {"name": "length", "type": "u32"},
+                                        {
+                                            "name": "inlined",
+                                            "type": "char",
+                                            "array_size": 12,
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            },
+            "enums": {},
+            "constants": {},
+            "error_groups": {},
+            "functions": {},
+        }
+
+    def test_union_struct_renders(self, tmp_path):
+        output = tmp_path / "out.h"
+        generate([self._module()], self._metadata(), output)
+        content = output.read_text()
+        # Anonymous union wrapping two anonymous member structs.
+        assert "union {" in content
+        assert "} value;" in content
+        assert "} pointer;" in content
+        assert "} inlined;" in content
+        # Leaf fields inside the members resolve their types normally.
+        assert "uint32_t length;" in content
+        assert "char prefix[4];" in content
+        assert "char* ptr;" in content
+        assert "char inlined[12];" in content
+        # The whole aggregate closes with the struct typedef name.
+        assert "} duckdb_v2_string;" in content
+
+    def test_union_struct_is_deterministic(self, tmp_path):
+        out1 = tmp_path / "a.h"
+        out2 = tmp_path / "b.h"
+        generate([self._module()], self._metadata(), out1)
+        generate([self._module()], self._metadata(), out2)
+        assert out1.read_text() == out2.read_text()
+
+    def test_union_member_description_renders(self, tmp_path):
+        module = self._module()
+        members = module["structs"]["duckdb_v2_string"]["fields"][0]["union"]
+        members[0]["description"] = "out-of-line form"
+        output = tmp_path / "out.h"
+        generate([module], self._metadata(), output)
+        content = output.read_text()
+        assert "//! out-of-line form" in content
+
+
 class TestSchemaVersion:
     def test_missing_schema_version(self, tmp_path):
         """metadata.yaml without schema_version is rejected by JSON Schema validation."""
@@ -131,9 +226,6 @@ HAS_CC = shutil.which("cc") is not None
 class TestCompile:
     """Verify the generated header is syntactically valid C."""
 
-    @pytest.mark.xfail(
-        reason="IDL has undefined types (idx_t, duckdb_v2_ctx_ptr used before declaration)"
-    )
     def test_header_compiles_as_c(self, tmp_path):
         metadata = load_metadata(TESTSPEC_DIR)
         modules = load_modules(TESTSPEC_DIR)
@@ -150,9 +242,6 @@ class TestCompile:
         )
         assert result.returncode == 0, f"Header failed to compile:\n{result.stderr}"
 
-    @pytest.mark.xfail(
-        reason="IDL has undefined types (idx_t, duckdb_v2_ctx_ptr used before declaration)"
-    )
     def test_header_compiles_as_cpp(self, tmp_path):
         metadata = load_metadata(TESTSPEC_DIR)
         modules = load_modules(TESTSPEC_DIR)

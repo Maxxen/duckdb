@@ -31,6 +31,7 @@
 #include "duckdb_v2.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -40,6 +41,23 @@
 #define strdup _strdup
 #endif
 #endif
+
+// ABI guard: the bridge reinterpret_casts duckdb_v2_string <-> duckdb::string_t,
+// so the layouts must match. sizeof/alignof tie them together; the offsetof
+// checks pin duckdb_v2_string's field offsets (string_t's union is private, so
+// offsetof can't reach into it).
+static_assert(sizeof(duckdb_v2_string) == sizeof(duckdb::string_t),
+              "duckdb_v2_string must match the size of duckdb::string_t");
+static_assert(alignof(duckdb_v2_string) == alignof(duckdb::string_t),
+              "duckdb_v2_string must match the alignment of duckdb::string_t");
+static_assert(offsetof(duckdb_v2_string, value.pointer.length) == 0,
+              "duckdb_v2_string value.pointer.length must be at offset 0");
+static_assert(offsetof(duckdb_v2_string, value.pointer.prefix) == 4,
+              "duckdb_v2_string value.pointer.prefix must be at offset 4");
+static_assert(offsetof(duckdb_v2_string, value.pointer.ptr) == 8,
+              "duckdb_v2_string value.pointer.ptr must be at offset 8");
+static_assert(offsetof(duckdb_v2_string, value.inlined.inlined) == 4,
+              "duckdb_v2_string value.inlined.inlined must be at offset 4");
 
 namespace duckdb {
 

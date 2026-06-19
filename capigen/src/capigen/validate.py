@@ -51,13 +51,22 @@ def validate_semantics(modules: list[dict], metadata: dict) -> list[str]:
                     f"{module_name}::{name}: Unknown underlying type '{a['underlying']}'"
                 )
 
-        for name, s in mod.get("structs", {}).items():
-            for f in s.get("fields", []):
-                if not is_valid_type(f["type"]):
+        def check_fields(struct_name: str, fields: list, mod_name: str) -> None:
+            """Validate leaf field types; recurse into nested struct/union fields."""
+            for f in fields:
+                if "union" in f:
+                    for m in f["union"]:
+                        check_fields(struct_name, m["fields"], mod_name)
+                elif "fields" in f:
+                    check_fields(struct_name, f["fields"], mod_name)
+                elif not is_valid_type(f["type"]):
                     errors.append(
-                        f"{module_name}::{name}.{f['name']}: "
+                        f"{mod_name}::{struct_name}.{f['name']}: "
                         f"Unknown field type '{f['type']}'"
                     )
+
+        for name, s in mod.get("structs", {}).items():
+            check_fields(name, s.get("fields", []), module_name)
 
         for name, cb in mod.get("callbacks", {}).items():
             if not is_valid_type(cb["return_type"]):

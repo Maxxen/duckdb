@@ -211,6 +211,93 @@ class TestResolveStructs:
         assert f.const is True
         assert f.pointer == 1
 
+    def test_struct_nested_struct_field(self, metadata, make_module):
+        modules = [
+            make_module(
+                "m",
+                structs={
+                    "outer": {
+                        "fields": [
+                            {
+                                "name": "inner",
+                                "fields": [
+                                    {"name": "a", "type": "i32"},
+                                    {"name": "b", "type": "u64"},
+                                ],
+                            },
+                        ],
+                    },
+                },
+            )
+        ]
+        result = resolve_modules(modules, metadata)
+        f = result[0].structs[0].fields[0]
+        assert f.name == "inner"
+        assert f.base == ""
+        assert f.union_members is None
+        assert f.nested_fields is not None
+        assert [nf.name for nf in f.nested_fields] == ["a", "b"]
+        assert f.nested_fields[0].base == "int32_t"
+        assert f.nested_fields[1].base == "uint64_t"
+
+    def test_struct_union_field(self, metadata, make_module):
+        modules = [
+            make_module(
+                "m",
+                structs={
+                    "string": {
+                        "fields": [
+                            {
+                                "name": "value",
+                                "union": [
+                                    {
+                                        "name": "pointer",
+                                        "fields": [
+                                            {"name": "length", "type": "u32"},
+                                            {
+                                                "name": "prefix",
+                                                "type": "char",
+                                                "array_size": 4,
+                                            },
+                                            {
+                                                "name": "ptr",
+                                                "type": "char",
+                                                "pointer": 1,
+                                            },
+                                        ],
+                                    },
+                                    {
+                                        "name": "inlined",
+                                        "fields": [
+                                            {"name": "length", "type": "u32"},
+                                            {
+                                                "name": "inlined",
+                                                "type": "char",
+                                                "array_size": 12,
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            )
+        ]
+        result = resolve_modules(modules, metadata)
+        f = result[0].structs[0].fields[0]
+        assert f.name == "value"
+        assert f.nested_fields is None
+        assert f.union_members is not None
+        assert [m.name for m in f.union_members] == ["pointer", "inlined"]
+        pointer = f.union_members[0]
+        assert [mf.name for mf in pointer.fields] == ["length", "prefix", "ptr"]
+        assert pointer.fields[1].array_size == 4
+        assert pointer.fields[2].pointer == 1
+        inlined = f.union_members[1]
+        assert inlined.fields[1].base == "char"
+        assert inlined.fields[1].array_size == 12
+
     def test_struct_inline_array_field(self, metadata, make_module):
         modules = [
             make_module(

@@ -107,10 +107,6 @@ typedef {{ p.underlying }} {{ p.c_type }};
 
 {% endfor %}
 
-{% if metadata.get('prefix') == 'duckdb_v2_' %}
-{% include 'duckdb_v2_inline_functions.h' %}
-{% endif %}
-
 {% if metadata.get('options', {}).get('c', {}).get('emit_extension_api', false) %}
 //===--------------------------------------------------------------------===//
 // DuckDB extension access

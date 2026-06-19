@@ -4,17 +4,30 @@ These dataclasses encode C output semantics, not API spec semantics.
 The resolver (resolve.py) is the only place that reads spec dicts.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+
+
+@dataclass
+class CUnionMember:
+    name: str
+    fields: list[CField]
+    description: str = ""
 
 
 @dataclass
 class CField:
     name: str
-    base: str
+    base: str = ""
     pointer: int = 0
     const: bool = False
     array_size: int | None = None
     description: str = ""
+    # Aggregate fields: a field is either a leaf (base set) or carries one of
+    # these. nested_fields -> anonymous struct; union_members -> anonymous union.
+    nested_fields: list[CField] | None = None
+    union_members: list[CUnionMember] | None = None
 
 
 @dataclass

@@ -411,12 +411,11 @@
       }
     },
     "StructField": {
-      "description": "A single field within a struct.",
+      "description": "A struct field: a leaf (declares `type`), or an aggregate that nests `fields` (anonymous struct) or `union` (anonymous union of named member structs). Exactly one of `type` / `fields` / `union` is present.",
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name",
-        "type"
+        "name"
       ],
       "properties": {
         "name": {
@@ -424,7 +423,7 @@
           "type": "string"
         },
         "type": {
-          "description": "Type name — a primitive or declared type.",
+          "description": "Type name (a primitive or declared type). Leaf fields only.",
           "type": "string"
         },
         "pointer": {
@@ -446,8 +445,39 @@
         "description": {
           "type": "string",
           "default": ""
+        },
+        "fields": {
+          "description": "If set, render this field as an anonymous nested struct with these fields. Mutually exclusive with `type` and `union`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StructField"
+          }
+        },
+        "union": {
+          "description": "If set, render this field as an anonymous union of named member structs. Mutually exclusive with `type` and `fields`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UnionMember"
+          }
         }
       },
+      "oneOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "fields"
+          ]
+        },
+        {
+          "required": [
+            "union"
+          ]
+        }
+      ],
       "allOf": [
         {
           "if": {
@@ -467,8 +497,71 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "fields"
+                ]
+              },
+              {
+                "required": [
+                  "union"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "pointer"
+                  ]
+                },
+                {
+                  "required": [
+                    "const"
+                  ]
+                },
+                {
+                  "required": [
+                    "array_size"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
+    },
+    "UnionMember": {
+      "description": "A named member of an anonymous union, rendered as `struct { <fields> } <name>;`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "fields"
+      ],
+      "properties": {
+        "name": {
+          "description": "Member name.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Fields of this member's anonymous struct, in declaration order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StructField"
+          }
+        },
+        "description": {
+          "type": "string",
+          "default": ""
+        }
+      }
     },
     "EnumDefinition": {
       "description": "A C enum typedef. Values are auto-numbered from 0 unless explicitly set.",

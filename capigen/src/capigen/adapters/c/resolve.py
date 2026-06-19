@@ -14,6 +14,7 @@ from .render import (
     CParam,
     CStruct,
     CTypeDef,
+    CUnionMember,
 )
 
 
@@ -236,6 +237,50 @@ def _resolve_alias(
     )
 
 
+def _resolve_field(
+    f: dict,
+    registry: dict[str, str],
+    primitives: dict[str, str],
+    context: str,
+) -> CField:
+    """Resolve one struct field: a leaf, an anonymous struct, or an anonymous union."""
+    if "union" in f:
+        return CField(
+            name=f["name"],
+            description=f.get("description", ""),
+            union_members=[
+                CUnionMember(
+                    name=m["name"],
+                    fields=[
+                        _resolve_field(mf, registry, primitives, context)
+                        for mf in m["fields"]
+                    ],
+                    description=m.get("description", ""),
+                )
+                for m in f["union"]
+            ],
+        )
+    if "fields" in f:
+        return CField(
+            name=f["name"],
+            description=f.get("description", ""),
+            nested_fields=[
+                _resolve_field(nf, registry, primitives, context) for nf in f["fields"]
+            ],
+        )
+    base = _resolve_c_name(
+        f["type"], registry, primitives, f"{context} field '{f['name']}'"
+    )
+    return CField(
+        name=f["name"],
+        base=base,
+        pointer=f.get("pointer", 0),
+        const=f.get("const", False),
+        array_size=f.get("array_size"),
+        description=f.get("description", ""),
+    )
+
+
 def _resolve_struct(
     name: str,
     s: dict,
@@ -250,21 +295,10 @@ def _resolve_struct(
     else:
         alias = prefixed
 
-    fields = []
-    for f in s.get("fields", []):
-        base = _resolve_c_name(
-            f["type"], registry, primitives, f"Struct '{name}' field '{f['name']}'"
-        )
-        fields.append(
-            CField(
-                name=f["name"],
-                base=base,
-                pointer=f["pointer"],
-                const=f["const"],
-                array_size=f.get("array_size"),
-                description=f.get("description", ""),
-            )
-        )
+    fields = [
+        _resolve_field(f, registry, primitives, f"Struct '{name}'")
+        for f in s.get("fields", [])
+    ]
 
     return CStruct(
         name=prefixed,

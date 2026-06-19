@@ -125,12 +125,36 @@ structs:
 
 ### Struct field
 
+A field is either a **leaf** (declares `type`) or an **aggregate** (declares `fields`
+for an anonymous nested struct, or `union` for an anonymous union of named member
+structs). Exactly one of `type` / `fields` / `union` must be present.
+
 | Field | Required | Default | Description |
 |---|---|---|---|
-| `name` | yes | — | Field name |
-| `type` | yes | — | Type name (primitive or declared) |
-| `pointer` | no | `0` | Pointer indirection level |
-| `const` | no | `false` | Whether the field is const-qualified |
+| `name` | yes | none | Field name |
+| `type` | leaf only | none | Type name (primitive or declared) |
+| `pointer` | no | `0` | Pointer indirection level (leaf only) |
+| `const` | no | `false` | Whether the field is const-qualified (leaf only) |
+| `array_size` | no | none | Render as an inline fixed-size array `name[N]` (leaf only; mutually exclusive with `pointer > 0`) |
+| `fields` | aggregate | none | Anonymous nested struct: an ordered list of struct fields |
+| `union` | aggregate | none | Anonymous union: a list of `{name, fields}` members, each rendered as a member struct |
+
+```yaml
+structs:
+  duckdb_string:
+    fields:
+      - name: value
+        union:
+          - name: pointer
+            fields:
+              - {name: length, type: u32}
+              - {name: prefix, type: char, array_size: 4}
+              - {name: ptr, type: char, pointer: 1}
+          - name: inlined
+            fields:
+              - {name: length, type: u32}
+              - {name: inlined, type: char, array_size: 12}
+```
 
 ---
 

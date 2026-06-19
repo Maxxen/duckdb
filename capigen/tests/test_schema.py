@@ -176,3 +176,97 @@ class TestStructFieldArraySize:
         """Fields without array_size still validate."""
         mod = self._struct_with_field({"pointer": 1})
         jsonschema.validate(mod, SCHEMA)  # should not raise
+
+
+class TestStructFieldAggregates:
+    """Struct fields may be a leaf (type), a nested struct (fields), or a union."""
+
+    def _struct(self, field):
+        return _minimal_module(structs={"duckdb_v2_s": {"fields": [field]}})
+
+    def test_nested_struct_field_accepted(self):
+        mod = self._struct(
+            {
+                "name": "inner",
+                "fields": [
+                    {"name": "a", "type": "u32"},
+                    {"name": "b", "type": "char", "pointer": 1},
+                ],
+            }
+        )
+        jsonschema.validate(mod, SCHEMA)  # should not raise
+
+    def test_union_field_accepted(self):
+        mod = self._struct(
+            {
+                "name": "value",
+                "union": [
+                    {
+                        "name": "pointer",
+                        "fields": [
+                            {"name": "length", "type": "u32"},
+                            {"name": "prefix", "type": "char", "array_size": 4},
+                        ],
+                    },
+                    {
+                        "name": "inlined",
+                        "fields": [
+                            {"name": "inlined", "type": "char", "array_size": 12}
+                        ],
+                    },
+                ],
+            }
+        )
+        jsonschema.validate(mod, SCHEMA)  # should not raise
+
+    def test_field_without_type_or_aggregate_rejected(self):
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(self._struct({"name": "x"}), SCHEMA)
+
+    def test_field_with_type_and_fields_rejected(self):
+        bad = {"name": "x", "type": "u32", "fields": [{"name": "a", "type": "u32"}]}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(self._struct(bad), SCHEMA)
+
+    def test_field_with_type_and_union_rejected(self):
+        bad = {
+            "name": "x",
+            "type": "u32",
+            "union": [{"name": "m", "fields": [{"name": "a", "type": "u32"}]}],
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(self._struct(bad), SCHEMA)
+
+    def test_union_member_missing_fields_rejected(self):
+        bad = {"name": "value", "union": [{"name": "pointer"}]}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(self._struct(bad), SCHEMA)
+
+    def test_nested_struct_with_leaf_attr_rejected(self):
+        bad = {"name": "inner", "fields": [{"name": "a", "type": "u32"}], "pointer": 1}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(self._struct(bad), SCHEMA)
+
+    def test_union_with_leaf_attr_rejected(self):
+        bad = {
+            "name": "value",
+            "union": [{"name": "m", "fields": [{"name": "a", "type": "u32"}]}],
+            "array_size": 4,
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(self._struct(bad), SCHEMA)
+
+    def test_union_member_description_accepted(self):
+        mod = self._struct(
+            {
+                "name": "value",
+                "union": [
+                    {
+                        "name": "pointer",
+                        "description": "out-of-line form",
+                        "fields": [{"name": "length", "type": "u32"}],
+                    }
+                ],
+            }
+        )
+        jsonschema.validate(mod, SCHEMA)  # should not raise
