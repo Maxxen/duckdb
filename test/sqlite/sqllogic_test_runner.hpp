@@ -60,6 +60,8 @@ public:
 	duckdb::unique_ptr<DuckDB> db;
 	duckdb::unique_ptr<Connection> con;
 	duckdb::unique_ptr<DBConfig> config;
+	//! Strategy for executing SQL (internal engine vs stable C++ API).
+	duckdb::unique_ptr<SQLLogicExecutor> executor;
 	unordered_set<string> extensions;
 	unordered_map<string, duckdb::unique_ptr<DuckDB>> named_db;
 	unordered_map<string, duckdb::unique_ptr<Connection>> named_connection_map;

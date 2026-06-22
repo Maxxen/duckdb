@@ -49,6 +49,30 @@ struct Condition {
 	bool skip_if;
 };
 
+//! Strategy for executing a SQL string and materializing the result. The
+//! concrete implementation (internal ClientContext::Query vs the stable C++
+//! API's streaming path) is selected by CreateSQLLogicExecutor; the rest of the
+//! runner is agnostic to which is in use.
+class SQLLogicExecutor {
+public:
+	virtual ~SQLLogicExecutor() = default;
+
+	//! Execute a (possibly multi-statement) SQL string and materialize the result.
+	virtual duckdb::unique_ptr<MaterializedQueryResult> Execute(Connection &connection, const string &sql) = 0;
+
+	//! Whether this executor can run the given test file. Lets an executor opt
+	//! out of tests that assert behavior it does not reproduce.
+	virtual bool SupportsTest(const string &test_path) const {
+		return true;
+	}
+};
+
+//! Construct the executor for this build/run. The compile-time
+//! SQLLOGIC_CPP_API_EXECUTION define sets the default; the
+//! DUCKDB_SQLLOGIC_EXECUTOR environment variable ("cpp_api" / "internal")
+//! overrides it at runtime, so one binary can run either path.
+duckdb::unique_ptr<SQLLogicExecutor> CreateSQLLogicExecutor();
+
 class Command {
 public:
 	explicit Command(SQLLogicTestRunner &runner);

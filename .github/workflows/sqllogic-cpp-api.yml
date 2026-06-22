@@ -1,0 +1,128 @@
+name: Sqllogic (C API runner)
+
+# Runs the sqllogic suite through the stable-C++-API executor
+# (CppApiSQLLogicExecutor) instead of the internal ClientContext::Query path,
+# across the same configuration matrix and platforms that upstream/main
+# exercises. A nightly guard that the C-API/streaming path stays byte-for-byte
+# equivalent to the internal one as the engine and bridge evolve.
+#
+# Only meaningful once the C-API runner has merged to the branch this runs on:
+# scheduled runs use the workflow + code from the default branch.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 3 * * *' # nightly, 03:30 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Select the C-API executor at runtime. Both executors are always compiled in;
+# this override makes test/run pick the C-API one on a standard build, so the
+# build is identical to upstream's and stays ccache-shareable. (Equivalent to
+# the SQLLOGIC_CPP_API_EXECUTION compile flag, which is the local-default knob.)
+env:
+  DUCKDB_SQLLOGIC_EXECUTOR: cpp_api
+  GEN: ninja
+  CORE_EXTENSIONS: "json;parquet;icu;tpch;tpcds;autocomplete"
+
+jobs:
+  # The configuration matrix. Mirrors upstream ExtendedTests' linux-configs-all
+  # job exactly (same configs, ubuntu-24.04, reldebug, test/run --test-config),
+  # which is Linux-only upstream.
+  linux-configs:
+    name: "linux ${{ matrix.config }}"
+    runs-on: ${{ github.repository_owner == 'duckdb' && 'namespace-profile-linux-x64' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - force_storage
+          - force_storage_restart
+          - latest_storage
+          - block_verification
+          - wal_verification
+          - no_local_filesystem
+          - block_size_16kB
+          - latest_storage_block_size_16kB
+          - block_allocator_100mib
+          - variant_vector
+          - compressed_in_memory
+          - prefetch_all_storage
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python3 scripts/ci/retry.py -- make toolsci
+      - uses: ./.github/actions/ccache-action
+      - name: Build
+        run: make reldebug
+      - name: Run sqllogic (${{ matrix.config }})
+        run: ./build/reldebug/test/run --test-config=test/configs/${{ matrix.config }}.json "*"
+
+  # The default suite (no special config), per platform. Upstream runs the full
+  # suite on each OS (Main.yml / OSX.yml); the config matrix above is Linux-only,
+  # so this is where the non-Linux coverage lives. Windows is intentionally
+  # absent here -- see the note in the PR / workflow discussion.
+  default-suite:
+    name: "${{ matrix.os }} default"
+    runs-on: ${{ matrix.os == 'macos' && 'macos-latest' || (github.repository_owner == 'duckdb' && 'namespace-profile-linux-x64' || 'ubuntu-24.04') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, macos]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install (linux)
+        if: matrix.os == 'linux'
+        run: python3 scripts/ci/retry.py -- make toolsci
+      - name: Install (macos)
+        if: matrix.os == 'macos'
+        run: python3 scripts/ci/retry.py -- brew install ninja
+      - uses: ./.github/actions/ccache-action
+      - name: Build
+        run: make reldebug
+      - name: Run sqllogic (default config)
+        run: ./build/reldebug/test/run "*"
+
+  # Sanitizer coverage. Mirrors upstream NightlyTests' relassert config runs.
+  # `make relassert` builds RelWithDebInfo + FORCE_ASSERT with ASan/UBSan (and
+  # LSan on Linux), so this is the only pass that exercises the C-API runner's
+  # chunk adoption + re-materialization under a sanitizer across the corpus.
+  # Linux-only: that is where LSan runs.
+  linux-relassert-configs:
+    name: "linux relassert ${{ matrix.config }}"
+    runs-on: ${{ github.repository_owner == 'duckdb' && 'namespace-profile-linux-x64' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - release_assertions
+          - vector_size_512
+          - block_size_16kB
+          - initial_column_segment_size
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python3 scripts/ci/retry.py -- make toolsci
+      - uses: ./.github/actions/ccache-action
+      - name: Build (relassert -> assertions + sanitizers)
+        run: make relassert
+      - name: Run sqllogic (${{ matrix.config }})
+        # Larger batch timeout: sanitized builds run the suite much slower.
+        run: ./build/relassert/test/run --test-config=test/configs/${{ matrix.config }}.json --batch-timeout 600 "*"

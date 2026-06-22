@@ -23,7 +23,8 @@ namespace duckdb {
 mutex SQLLogicTestRunner::skip_reason_lock;
 map<string, idx_t> SQLLogicTestRunner::skip_reason_counts;
 
-SQLLogicTestRunner::SQLLogicTestRunner(string dbpath) : dbpath(std::move(dbpath)), finished_processing_file(false) {
+SQLLogicTestRunner::SQLLogicTestRunner(string dbpath)
+    : dbpath(std::move(dbpath)), executor(CreateSQLLogicExecutor()), finished_processing_file(false) {
 	config = GetTestConfig();
 	config->SetOptionByName("allow_unredacted_secrets", true);
 	config->options.load_extensions = false;
@@ -691,6 +692,11 @@ void SQLLogicTestRunner::ExecuteFile(string script) {
 	auto &test_config = TestConfiguration::Get();
 	if (test_config.ShouldSkipTest(script)) {
 		SkipTest("config skip_tests");
+		return;
+	}
+
+	if (!executor->SupportsTest(script)) {
+		SkipTest("test is not supported by the active SQL executor");
 		return;
 	}
 

@@ -1,0 +1,66 @@
+name: Sqllogic (C API runner) — Windows
+
+# Staged, MANUAL validation of the C-API sqllogic runner on Windows. Kept in
+# its own workflow (workflow_dispatch only, no cron) so it can be iterated on
+# in isolation; once it is reliably green, fold this job into the platform
+# matrix of sqllogic-cpp-api.yml.
+#
+# Tuned for the fastest feedback loop:
+#   - Release build (no debug/assert/sanitizer overhead) — fastest to compile
+#     and to run.
+#   - ccache (cross-platform; upstream Windows.yml uses the same action) so
+#     re-runs skip recompilation.
+#   - A small default test slice, overridable at dispatch time, so the first
+#     runs return quickly. Widen to "*" once the build + C-API path are proven.
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_filter:
+        description: "Test selection (small slice = fast feedback; set to * for the full suite)"
+        type: string
+        default: "test/sql/types/*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Select the C-API executor at runtime (inherited by the test process). Both
+# executors are always compiled in; this picks the C-API one on a standard build.
+env:
+  DUCKDB_SQLLOGIC_EXECUTOR: cpp_api
+  GEN: ninja
+  CORE_EXTENSIONS: "json;parquet;icu;tpch;tpcds;autocomplete"
+
+jobs:
+  windows-default:
+    name: "windows default (cpp_api)"
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The cache that makes iteration fast. ccache-action is cross-platform —
+      # upstream Windows.yml uses this exact action with MSVC.
+      - uses: ./.github/actions/ccache-action
+      - name: Set up MSVC environment (x64)
+        uses: ./.github/actions/setup-msvc-env
+      - name: Build (Release)
+        shell: bash
+        run: |
+          python scripts/ci/retry.py -- python scripts/windows_ci.py
+          python scripts/ci/retry.py -- make windows_release
+      - name: Run sqllogic (cpp_api)
+        shell: bash
+        run: |
+          # windows_release is an in-source build, so the binary lands under
+          # ./test; locate it robustly rather than hard-coding the path.
+          unittest="./test/unittest.exe"
+          if [ ! -f "$unittest" ]; then
+            unittest=$(find . -name 'unittest.exe' -not -path './vcpkg*' | head -1)
+          fi
+          echo "Using $unittest (DUCKDB_SQLLOGIC_EXECUTOR=$DUCKDB_SQLLOGIC_EXECUTOR)"
+          "$unittest" "${{ inputs.test_filter }}"
