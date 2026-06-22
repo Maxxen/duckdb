@@ -20,8 +20,18 @@ DUCKDB_V2_API_CALL_t duckdb_v2_parse_sql(duckdb_v2_connection_handle conn, const
 		// reparsing, expansion unpacking, transaction wrapping) happen in
 		// connection_query, so a statement group is never split across the
 		// API boundary.
+		//
+		// A parse error goes through the engine's public ProcessError, like the
+		// eager query path: honors errors_as_json (JSON, else LINE/caret), then
+		// re-thrown to route back through WithErrorHandler.
 		duckdb::Parser parser(connection->context->GetParserOptions());
-		parser.ParseQuery(std::string(sql));
+		try {
+			parser.ParseQuery(std::string(sql));
+		} catch (const duckdb::Exception &ex) {
+			duckdb::ErrorData error(ex);
+			connection->context->ProcessError(error, std::string(sql));
+			error.Throw();
+		}
 		wrapper->statements = std::move(parser.statements);
 		*out_iterator = reinterpret_cast<_duckdb_v2_statement_iterator *>(wrapper.release());
 	});

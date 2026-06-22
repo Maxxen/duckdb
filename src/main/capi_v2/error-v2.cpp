@@ -9,12 +9,24 @@ DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_text(duckdb_v2_error_info_handle i
 	return DUCKDB_V2_ERROR_NONE;
 }
 
+DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_raw_message(duckdb_v2_error_info_handle info,
+                                                          duckdb_v2_str *out_raw_message) {
+	if (!info || !out_raw_message) {
+		return DUCKDB_V2_ERROR_INVALID_INPUT;
+	}
+	const auto *ei = reinterpret_cast<duckdb::ErrorInfoV2 *>(info);
+	*out_raw_message = ei->raw_message.empty() ? duckdb_v2_str {nullptr, 0} : duckdb::ToStr(ei->raw_message);
+	return DUCKDB_V2_ERROR_NONE;
+}
+
 DUCKDB_V2_API_CALL_t duckdb_v2_error_info_set_text(duckdb_v2_error_info_handle info, duckdb_v2_str text) {
 	if (!info || (!text.ptr && text.len > 0)) {
 		return DUCKDB_V2_ERROR_INVALID_INPUT;
 	}
 	auto *ei = reinterpret_cast<duckdb::ErrorInfoV2 *>(info);
 	ei->message = duckdb::ToString(text);
+	// Directly-set message has no body.
+	ei->raw_message.clear();
 	return DUCKDB_V2_ERROR_NONE;
 }
 

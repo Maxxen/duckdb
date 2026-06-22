@@ -40,6 +40,28 @@ functions:
         kind: OUT_BORROW
         description: "Receives a borrowed view of the message. Owned by the library; valid until the info handle is destroyed."
     return_type: API_CALL
+  error_info_get_raw_message:
+    summary: "Retrieves the error message body without the leading category prefix."
+    description: |
+      Borrowed view of the message body with the "<Type> Error: " prefix that
+      error_info_get_text carries stripped off (ErrorData::RawMessage()). The
+      authoritative unprefixed body: with no type name in the API the prefix cannot
+      be rebuilt, so it is not derivable from error_info_get_text. The body is in
+      whatever form the engine rendered it (a LINE/caret block by default, JSON
+      under errors_as_json), so unprefixed, not plain. `{NULL, 0}` when there is no
+      message. Valid until the info handle is destroyed.
+    role: getter
+    belongs_to: error_info
+    parameters:
+      info:
+        type: error_info
+        description: "The error info handle to query."
+      out_raw_message:
+        type: str
+        indirection: 1
+        kind: OUT_BORROW
+        description: "Receives a borrowed view of the raw message. Owned by the library; valid until the info handle is destroyed."
+    return_type: API_CALL
   error_info_set_code:
     summary: "Sets the error code for an error info handle."
     description: |

@@ -606,7 +606,12 @@ struct PreparedStatementWrapperV2 {
 // passed a non-null err out-parameter).
 struct ErrorInfoV2 {
 	DUCKDB_V2_API_CALL_t code = DUCKDB_V2_ERROR_NONE;
+	// message: full "<Type> Error: <raw>" (ErrorData::Message()). raw_message: the
+	// body with that prefix stripped (ErrorData::RawMessage()), in the engine's
+	// rendered form (caret block, or JSON under errors_as_json); empty for a
+	// directly-set message. Both written on the error path (WithErrorHandler).
 	std::string message;
+	std::string raw_message;
 
 	bool HasError() const {
 		return code != DUCKDB_V2_ERROR_NONE;
@@ -640,6 +645,8 @@ inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_handle *err, DUCKD
 		auto &info = *reinterpret_cast<ErrorInfoV2 *>(*err);
 		info.code = code;
 		info.message = msg ? msg : "";
+		// Directly-set message has no body; clear any from a prior failure.
+		info.raw_message.clear();
 	}
 	return code;
 }
@@ -956,6 +963,7 @@ template <class T>
 DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callback) {
 	auto code = static_cast<DUCKDB_V2_API_CALL_t>(DUCKDB_V2_ERROR_NONE);
 	auto text = string();
+	auto raw_message = string();
 
 	try {
 		// Invoke the callback
@@ -964,6 +972,8 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callba
 		ErrorData error_data(ex);
 		code = GetErrorCodeFromExceptionType(error_data.Type());
 		text = error_data.Message();
+		// The unprefixed body (ErrorData::RawMessage()), in the engine's rendered form.
+		raw_message = error_data.RawMessage();
 	} catch (const std::exception &ex) {
 		code = DUCKDB_V2_API_ERROR;
 		text = ex.what();
@@ -989,6 +999,9 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callba
 		auto &out = *reinterpret_cast<ErrorInfoV2 *>(*err);
 		out.code = code;
 		out.message = std::move(text);
+		// Overwrite in place; empty when this error carried only a flat message,
+		// so a stale body from an earlier failure never survives.
+		out.raw_message = std::move(raw_message);
 	}
 
 	return code;

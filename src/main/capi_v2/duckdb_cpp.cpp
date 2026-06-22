@@ -134,12 +134,15 @@ void CheckedAPICall(F &&func, ARGS &&... args) {
 	const auto code = func(std::forward<ARGS>(args)..., &err);
 	if (code != DUCKDB_V2_ERROR_NONE) {
 		duckdb_v2_str message_view = {nullptr, 0};
+		duckdb_v2_str raw_view = {nullptr, 0};
 		if (err) {
 			duckdb_v2_error_info_get_text(err, &message_view);
+			duckdb_v2_error_info_get_raw_message(err, &raw_view);
 		}
 		std::string message = message_view.ptr ? std::string(message_view.ptr, message_view.len) : "unknown error";
+		std::string raw = raw_view.ptr ? std::string(raw_view.ptr, raw_view.len) : "";
 		duckdb_v2_error_info_destroy(&err);
-		throw Exception(code, message);
+		throw Exception(code, std::move(message), std::move(raw));
 	}
 }
 

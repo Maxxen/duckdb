@@ -1684,6 +1684,23 @@ destroyed.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_text(duckdb_v2_error_info_handle info,
                                                                 duckdb_v2_str *out_text);
 /*!
+* Retrieves the error message body without the leading category prefix.
+* Borrowed view of the message body with the "<Type> Error: " prefix that
+error_info_get_text carries stripped off (ErrorData::RawMessage()). The
+authoritative unprefixed body: with no type name in the API the prefix cannot
+be rebuilt, so it is not derivable from error_info_get_text. The body is in
+whatever form the engine rendered it (a LINE/caret block by default, JSON
+under errors_as_json), so unprefixed, not plain. `{NULL, 0}` when there is no
+message. Valid until the info handle is destroyed.
+
+* @param info The error info handle to query.
+* @param out_raw_message Receives a borrowed view of the raw message. Owned by the library; valid until the info handle
+is destroyed.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_get_raw_message(duckdb_v2_error_info_handle info,
+                                                                       duckdb_v2_str *out_raw_message);
+/*!
 * Sets the error code for an error info handle.
 * On success, sets the error code to the provided value. On failure,
 nothing is changed. Can accept a `nullptr` info handle: in that case,

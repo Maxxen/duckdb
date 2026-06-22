@@ -794,3 +794,33 @@ TEST_CASE("Stable C++-API: ParseSQL iterates statements into Query", "[cpp_api]"
 	REQUIRE_THROWS_MATCHES(conn.Query("SELECT 1; SELECT 2"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 	REQUIRE_THROWS_MATCHES(conn.Query(""), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 }
+
+TEST_CASE("Stable C++-API: Exception carries the code and message body", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// Binder error: GetCode() is the identity, GetRawMessage() the unprefixed body.
+	try {
+		conn.Query("SELECT * FROM no_such_table");
+		FAIL("expected a Catalog error");
+	} catch (const Exception &ex) {
+		REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_DATABASE_CATALOG);
+		REQUIRE(std::string(ex.GetRawMessage()).find("no_such_table") != std::string::npos);
+		REQUIRE(std::string(ex.GetRawMessage()).rfind("Catalog Error:", 0) != 0);
+		// what() is the full prefixed message and contains the body.
+		REQUIRE(std::string(ex.what()).rfind("Catalog Error:", 0) == 0);
+		REQUIRE(std::string(ex.what()).find(ex.GetRawMessage()) != std::string::npos);
+	}
+
+	// Parse error via ParseSQL has the same shape: Parser code, unprefixed body.
+	try {
+		conn.ParseSQL("SELECT 1; SELEKT 2");
+		FAIL("expected a Parser error");
+	} catch (const Exception &ex) {
+		REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_QUERY_PARSER);
+		REQUIRE(std::string(ex.GetRawMessage()).rfind("Parser Error:", 0) != 0);
+	}
+}

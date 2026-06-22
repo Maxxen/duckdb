@@ -155,15 +155,24 @@ private:
 class Exception : public std::runtime_error {
 public:
 	// TODO: add more exception types!
-	Exception(uint32_t code, std::string message) : std::runtime_error(std::move(message)), code(code) {
+	Exception(uint32_t code, std::string message, std::string raw_message = {})
+	    : std::runtime_error(std::move(message)), code(code), raw_message(std::move(raw_message)) {
 	}
 
 	uint32_t GetCode() const {
 		return code;
 	}
 
+	// The message body with what()'s "<Type> Error: " prefix stripped, or empty.
+	// Not derivable from what() (no type name here to rebuild the prefix); in the
+	// engine's rendered form (location block, or JSON under errors_as_json).
+	const std::string &GetRawMessage() const {
+		return raw_message;
+	}
+
 private:
 	uint32_t code;
+	std::string raw_message;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
