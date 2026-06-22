@@ -84,6 +84,12 @@ void ResultWrapperV2::RequireMetadata() const {
 }
 
 DUCKDB_V2_RESULT_STEP_STATUS ResultWrapperV2::HandleExecutionError(ErrorData error_data) {
+	// Only a consumer-initiated cancellation is a cancellation. An
+	// engine-initiated interrupt that shares the INTERRUPT exception type
+	// (e.g. a max_execution_time timeout) must surface as an error carrying the
+	// engine's message, mirroring the eager ClientContext::Query path.
+	bool user_cancelled = error_data.Type() == ExceptionType::INTERRUPT && busy_slot &&
+	                      busy_slot->cancel_requested.load(std::memory_order_relaxed);
 	pending.reset();
 	result.reset();
 	fragments.clear();
@@ -93,7 +99,7 @@ DUCKDB_V2_RESULT_STEP_STATUS ResultWrapperV2::HandleExecutionError(ErrorData err
 		// Best effort; never mask the original error.
 	}
 	ReleaseBusySlot();
-	if (error_data.Type() == ExceptionType::INTERRUPT) {
+	if (user_cancelled) {
 		// In the step channel, cancellation is a status, not an error,
 		// regardless of which phase the interrupt landed in. The status
 		// channel carries no message, so the engine's error text is
@@ -355,6 +361,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn
 	}
 	// On any failure below, the wrapper's destructor releases the slot.
 	wrapper->busy_slot = std::move(busy_slot);
+	// A fresh query starts uncancelled: clear any consumer-cancellation request
+	// left over from before this result claimed the slot (mirrors the engine
+	// clearing interrupt_state at query begin).
+	wrapper->busy_slot->cancel_requested.store(false, std::memory_order_relaxed);
 	return duckdb::WithErrorHandler(err, [&]() {
 		// Transfer: mirror the engine, which takes the statement by-value
 		// unique_ptr and consumes it on success and prepare-time failure
@@ -374,15 +384,17 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn
 		}
 		wrapper->fragment_count = wrapper->fragments.size();
 		// Detect whether preprocessing wrapped this group in its own
-		// transaction (autocommit input expanded to BEGIN ... COMMIT). The
-		// injected BEGIN is always the first fragment; a group running inside
-		// a user-managed transaction is left unwrapped (it gets a SET, not a
-		// BEGIN). Recorded so the destructor knows whether the open
-		// transaction is the bridge's to roll back on incomplete destroy.
-		if (wrapper->fragments.front()->type == duckdb::StatementType::TRANSACTION_STATEMENT) {
-			auto &transaction_stmt = wrapper->fragments.front()->Cast<duckdb::TransactionStatement>();
-			wrapper->owns_wrapping_transaction =
-			    transaction_stmt.info->type == duckdb::TransactionType::BEGIN_TRANSACTION;
+		// transaction (autocommit input expanded to BEGIN ... COMMIT).
+		// Preprocessing only injects the wrap for a multi-fragment group, as a
+		// leading BEGIN paired with a trailing COMMIT; a lone user-issued BEGIN
+		// is a single fragment the user owns and the bridge must not roll back.
+		if (wrapper->fragments.size() > 1 &&
+		    wrapper->fragments.front()->type == duckdb::StatementType::TRANSACTION_STATEMENT &&
+		    wrapper->fragments.back()->type == duckdb::StatementType::TRANSACTION_STATEMENT) {
+			auto &front_stmt = wrapper->fragments.front()->Cast<duckdb::TransactionStatement>();
+			auto &back_stmt = wrapper->fragments.back()->Cast<duckdb::TransactionStatement>();
+			wrapper->owns_wrapping_transaction = front_stmt.info->type == duckdb::TransactionType::BEGIN_TRANSACTION &&
+			                                     back_stmt.info->type == duckdb::TransactionType::COMMIT;
 		}
 		wrapper->context = connection->context;
 		// Prepare the first fragment. Lazy streaming execution: nothing

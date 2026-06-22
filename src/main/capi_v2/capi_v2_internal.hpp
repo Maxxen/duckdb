@@ -115,6 +115,13 @@ struct DatabaseWrapperV2 {
 // other.
 struct ConnectionBusySlotV2 : public ClientContextState {
 	std::atomic<void *> owner {nullptr};
+	// True once the consumer called connection_interrupt for the active result.
+	// This flag is how we distinguish a consumer cancellation (-> CANCELLED
+	// status) from an engine-initiated interrupt that shares the INTERRUPT
+	// exception type, e.g. a max_execution_time timeout (-> error). The engine's
+	// own interrupt_state is not usable for this: the executor sets it to stop
+	// sibling tasks on any error. Reset when a new query claims the slot.
+	std::atomic<bool> cancel_requested {false};
 };
 
 inline constexpr const char *kBusySlotStateKey = "v2_connection_busy_slot";

@@ -117,7 +117,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_interrupt(duckdb_v2_connection_handle 
 		// ClientContext::Interrupt is an atomic store; safe to call from any
 		// thread, including while another thread steps this connection's
 		// result. A no-op when no query is active.
-		duckdb::ToConn(conn)->context->Interrupt();
+		auto &context = *duckdb::ToConn(conn)->context;
+		// Record that the cancellation was consumer-initiated.
+		duckdb::GetBusySlot(context)->cancel_requested.store(true, std::memory_order_relaxed);
+		context.Interrupt();
 	});
 }
 
