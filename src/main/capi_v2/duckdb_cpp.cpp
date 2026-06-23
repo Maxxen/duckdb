@@ -448,6 +448,88 @@ Connection Database::Connect() {
 	return detail::Factory::Make<Connection>(conn, true);
 }
 
+namespace {
+
+// Bundles the C++ callback and the caller's user data into the C API's single opaque slot.
+struct ReplacementScanInfoCpp {
+	Database::ReplacementScanCallback callback = nullptr;
+	detail::UserData user_data;
+};
+
+} // namespace
+
+void Database::AddReplacementScanInternal(ReplacementScanCallback callback, void *user_data,
+                                          void (*destructor)(void *)) {
+	auto *payload = new ReplacementScanInfoCpp();
+	payload->callback = callback;
+	payload->user_data = detail::UserData(user_data, destructor);
+
+	static auto trampoline = [](duckdb_v2_replacement_scan_info_handle c_info, duckdb_v2_context_handle ctx,
+	                            duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			void *raw = nullptr;
+			CheckedAPICall(duckdb_v2_replacement_scan_get_user_data, c_info, &raw);
+			auto &recovered = *static_cast<ReplacementScanInfoCpp *>(raw);
+			auto input = detail::Factory::Make<ReplacementScanInput>(
+			    static_cast<void *>(c_info), static_cast<void *>(ctx), recovered.user_data.get());
+			recovered.callback(input);
+		});
+	};
+
+	// The engine owns the payload on success (freed at db close); on failure we still own it.
+	duckdb_v2_opaque opaque {payload, detail::TypedDelete<ReplacementScanInfoCpp>, nullptr};
+	try {
+		CheckedAPICall(duckdb_v2_replacement_scan_register, handle(), trampoline, opaque);
+	} catch (...) {
+		detail::TypedDelete<ReplacementScanInfoCpp>(payload);
+		throw;
+	}
+}
+
+void Database::AddReplacementScan(ReplacementScanCallback callback) {
+	AddReplacementScanInternal(callback, nullptr, nullptr);
+}
+
+auto Database::ReplacementScanInput::GetCatalogName() const -> std::string_view {
+	duckdb_v2_str name {nullptr, 0};
+	CheckedAPICall(duckdb_v2_replacement_scan_get_catalog_name,
+	               static_cast<duckdb_v2_replacement_scan_info_handle>(info), &name);
+	return FromStr(name);
+}
+
+auto Database::ReplacementScanInput::GetSchemaName() const -> std::string_view {
+	duckdb_v2_str name {nullptr, 0};
+	CheckedAPICall(duckdb_v2_replacement_scan_get_schema_name,
+	               static_cast<duckdb_v2_replacement_scan_info_handle>(info), &name);
+	return FromStr(name);
+}
+
+auto Database::ReplacementScanInput::GetTableName() const -> std::string_view {
+	duckdb_v2_str name {nullptr, 0};
+	CheckedAPICall(duckdb_v2_replacement_scan_get_table_name, static_cast<duckdb_v2_replacement_scan_info_handle>(info),
+	               &name);
+	return FromStr(name);
+}
+
+auto Database::ReplacementScanInput::GetContext() const -> Context {
+	return detail::Factory::Make<Context>(static_cast<duckdb_v2_context_handle>(context));
+}
+
+void Database::ReplacementScanInput::SetFunctionName(const std::string &name) {
+	CheckedAPICall(duckdb_v2_replacement_scan_set_function_name,
+	               static_cast<duckdb_v2_replacement_scan_info_handle>(info), ToStr(name));
+}
+
+void Database::ReplacementScanInput::AddParameter(const Value &value) {
+	CheckedAPICall(duckdb_v2_replacement_scan_add_parameter, static_cast<duckdb_v2_replacement_scan_info_handle>(info),
+	               value.handle());
+}
+
+void Database::ReplacementScanInput::AddNamedParameter(const std::string &name, const Value &value) {
+	CheckedAPICall(duckdb_v2_replacement_scan_add_named_parameter,
+	               static_cast<duckdb_v2_replacement_scan_info_handle>(info), ToStr(name), value.handle());
+}
+
 //---------------------------------------------------------------------------
 // Connection
 //---------------------------------------------------------------------------
@@ -730,6 +812,18 @@ Value::Value(void *impl) : detail::Handle<Value>(impl) {
 Value::~Value() {
 	auto _h = handle();
 	duckdb_v2_value_destroy(&_h);
+}
+
+Value Value::FromI64(int64_t value) {
+	duckdb_v2_value_handle handle = nullptr;
+	CheckedAPICall(duckdb_v2_value_create_int64, value, &handle);
+	return detail::Factory::Make<Value>(handle);
+}
+
+Value Value::FromVarchar(const std::string &value) {
+	duckdb_v2_value_handle handle = nullptr;
+	CheckedAPICall(duckdb_v2_value_create_varchar, ToStr(value), &handle);
+	return detail::Factory::Make<Value>(handle);
 }
 
 auto Value::IsNull() const -> bool {

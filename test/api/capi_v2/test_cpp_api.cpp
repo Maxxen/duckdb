@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <fstream>
 #include <sstream>
 
 // ---------------------------------------------------------------------------
@@ -923,4 +924,113 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 
 	REQUIRE(volatile_rows == 1000);
 	REQUIRE(consistent_rows < volatile_rows);
+}
+
+TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// Sums the row counts of every chunk a result produces.
+	auto count_rows = [](QueryResult result) -> idx_t {
+		idx_t total = 0;
+		while (auto chunk = result.FetchChunk()) {
+			total += chunk.GetRowCount();
+		}
+		return total;
+	};
+
+	SECTION("claim a builtin table function") {
+		db.AddReplacementScan([](Database::ReplacementScanInput &input) {
+			input.SetFunctionName("range");
+			input.AddParameter(Value::FromI64(5));
+		});
+		auto result = conn.Query("SELECT * FROM cpp_repl_no_such_table");
+		REQUIRE(result.GetColumnCount() == 1);
+		auto chunk = result.FetchChunk();
+		REQUIRE(chunk);
+		REQUIRE(chunk.GetRowCount() == 5);
+		// range(5) yields the BIGINT sequence 0..4 in order.
+		auto data = chunk.GetVector(0).GetDataMutable<const int64_t>();
+		for (idx_t i = 0; i < 5; i++) {
+			REQUIRE(data[i] == static_cast<int64_t>(i));
+		}
+	}
+
+	SECTION("decline falls through to the catalog error") {
+		db.AddReplacementScan([](Database::ReplacementScanInput &input) {
+			// Inspect the name but do not claim it.
+			REQUIRE(input.GetTableName() == "cpp_repl_no_such_table");
+			REQUIRE(input.GetCatalogName().empty());
+			REQUIRE(input.GetSchemaName().empty());
+		});
+		REQUIRE_THROWS_MATCHES(conn.Query("SELECT * FROM cpp_repl_no_such_table"), Exception,
+		                       HasErrorCode(DUCKDB_V2_ERROR_DATABASE_CATALOG));
+	}
+
+	SECTION("callback failure: a mapped code round-trips exactly") {
+		db.AddReplacementScan([](Database::ReplacementScanInput &input) {
+			throw Exception(DUCKDB_V2_ERROR_IO_GENERAL, "cpp replacement scan failure");
+		});
+		REQUIRE_THROWS_MATCHES(conn.Query("SELECT * FROM cpp_repl_no_such_table"), Exception,
+		                       HasErrorCode(DUCKDB_V2_ERROR_IO_GENERAL));
+	}
+
+	SECTION("callback failure: a generic exception becomes a binder error") {
+		db.AddReplacementScan([](Database::ReplacementScanInput &input) { throw std::runtime_error("plain failure"); });
+		REQUIRE_THROWS_MATCHES(conn.Query("SELECT * FROM cpp_repl_no_such_table"), Exception,
+		                       HasErrorCode(DUCKDB_V2_ERROR_QUERY_BINDER));
+	}
+
+	SECTION("user data and a named parameter, end to end via read_csv") {
+		const auto csv_path = duckdb::TestCreatePath("cpp_api_replacement_scan.csv");
+		{
+			std::ofstream out(csv_path);
+			out << "100,apple\n200,banana\n300,cherry\n";
+		}
+
+		// User data carries the CSV path; claim read_csv(path, sep => ',').
+		db.AddReplacementScan<std::string>(
+		    [](Database::ReplacementScanInput &input) {
+			    const auto &path = input.GetUserData<std::string>();
+			    input.SetFunctionName("read_csv");
+			    input.AddParameter(Value::FromVarchar(path));
+			    input.AddNamedParameter("sep", Value::FromVarchar(","));
+		    },
+		    csv_path);
+
+		auto result = conn.Query("SELECT * FROM cpp_repl_csv_placeholder");
+		// `sep => ','` split each line into two columns; a wrong separator would
+		// collapse them into one.
+		REQUIRE(result.GetColumnCount() == 2);
+		REQUIRE(count_rows(std::move(result)) == 3);
+	}
+
+	SECTION("the callback reaches the filesystem through the context") {
+		const auto csv_path = duckdb::TestCreatePath("cpp_api_replacement_scan_ctx.csv");
+		{
+			std::ofstream out(csv_path);
+			out << "7,seven\n8,eight\n";
+		}
+
+		// Probe the file through the binding context's filesystem before claiming.
+		db.AddReplacementScan<std::string>(
+		    [](Database::ReplacementScanInput &input) {
+			    const auto &path = input.GetUserData<std::string>();
+			    auto fs = input.GetContext().GetFileSystem();
+			    auto file = fs.OpenFile(path, FileFlags::READ);
+			    char head[1] = {0};
+			    REQUIRE(file.Read(head, 1) == 1);
+			    input.SetFunctionName("read_csv");
+			    input.AddParameter(Value::FromVarchar(path));
+			    input.AddNamedParameter("sep", Value::FromVarchar(","));
+		    },
+		    csv_path);
+
+		auto result = conn.Query("SELECT * FROM cpp_repl_ctx_placeholder");
+		REQUIRE(result.GetColumnCount() == 2);
+		REQUIRE(count_rows(std::move(result)) == 2);
+	}
 }

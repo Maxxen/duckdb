@@ -420,6 +420,8 @@ private:
 // Database
 //----------------------------------------------------------------------------------------------------------------------
 
+class Value;
+
 class Database final : public detail::Handle<Database> {
 	friend detail::Factory;
 
@@ -432,8 +434,58 @@ public:
 
 	Connection Connect();
 
+	// Passed to the callback (valid only during it): inspect the unresolved name and claim it.
+	class ReplacementScanInput;
+	using ReplacementScanCallback = void (*)(ReplacementScanInput &input);
+
+	// Registers a scan consulted when a name can't be resolved: claim (SetFunctionName), decline (return), or fail
+	// (throw). Registration order, first claim wins; lives until db close. Not synchronized with queries: register
+	// first.
+	void AddReplacementScan(ReplacementScanCallback callback);
+
+	// As above, constructing user data of type T in place (freed at db close; read via GetUserData<T>).
+	template <class T, class... ARGS>
+	void AddReplacementScan(ReplacementScanCallback callback, ARGS &&... args) {
+		auto *data = new T(std::forward<ARGS>(args)...);
+		AddReplacementScanInternal(callback, data, detail::TypedDelete<T>);
+	}
+
 private:
 	explicit Database(void *impl);
+	void AddReplacementScanInternal(ReplacementScanCallback callback, void *user_data, void (*destructor)(void *));
+
+public:
+	class ReplacementScanInput {
+		friend detail::Factory;
+
+	public:
+		// Unresolved reference parts; an absent catalog/schema qualifier is an empty view.
+		auto GetCatalogName() const -> std::string_view;
+		auto GetSchemaName() const -> std::string_view;
+		auto GetTableName() const -> std::string_view;
+
+		// Binding context (callback-duration). For filesystem probes / logging; do not run queries through it.
+		auto GetContext() const -> Context;
+
+		template <class T>
+		auto GetUserData() const -> T & {
+			return *static_cast<T *>(user_data);
+		}
+
+		// Claim by naming the target function (last call wins); add parameters in order. Values are copied.
+		void SetFunctionName(const std::string &name);
+		void AddParameter(const Value &value);
+		void AddNamedParameter(const std::string &name, const Value &value);
+
+	private:
+		ReplacementScanInput(void *info, void *context, void *user_data)
+		    : info(info), context(context), user_data(user_data) {
+		}
+
+		void *info;
+		void *context;
+		void *user_data;
+	};
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -491,6 +543,10 @@ public:
 
 	Value(Value &&) noexcept = default;
 	Value &operator=(Value &&) noexcept = default;
+
+	// Construct an owned value. The library copies the input.
+	static Value FromI64(int64_t value);
+	static Value FromVarchar(const std::string &value);
 
 	auto IsNull() const -> bool;
 	auto GetLogicalType() const -> LogicalType;

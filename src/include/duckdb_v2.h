@@ -2968,6 +2968,154 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_type(d
 /* --- Struct definitions for logical_type --- */
 
 /* ============================================================================
+ * MODULE: replacement_scan
+ * ============================================================================ */
+
+/* --- Enums for replacement_scan --- */
+
+/* --- Struct forward declarations for replacement_scan --- */
+
+/* --- Types for replacement_scan --- */
+//! Borrowed handle passed to the replacement scan callback. Provides access to the unresolved table reference
+//! (catalog, schema, and table name) and the user data, and is used to claim the reference by naming a target table
+//! function and adding parameters. Valid only for the callback duration.
+typedef struct _duckdb_v2_replacement_scan_info {
+	void *internal_ptr;
+} * duckdb_v2_replacement_scan_info_handle;
+
+/* --- Constants for replacement_scan --- */
+
+/* --- Error Codes for replacement_scan --- */
+
+/* --- Function pointer typedefs for replacement_scan --- */
+//! Replacement scan callback, invoked during binding when a table name cannot be resolved. The callback inspects
+//! the unresolved name via the replacement_scan_get_* accessors and finishes in one of three ways:
+//! - claim: call replacement_scan_set_function_name (and optionally add parameters); the engine plans the named
+//! table function in place of the unresolved name.
+//! - decline: return without calling replacement_scan_set_function_name; the engine consults the next registered
+//! scan and falls through to the normal catalog error if none claims.
+//! - fail: set a code and message on the error slot and return; the query fails with that code.
+//! The callback runs on the binding thread, inside the active query: reading settings through the context is fine;
+//! running queries through it deadlocks on the context lock.
+typedef void (*duckdb_v2_replacement_scan_callback_fn)(duckdb_v2_replacement_scan_info_handle info,
+                                                       duckdb_v2_context_handle context,
+                                                       duckdb_v2_error_info_handle *err);
+
+/* --- Functions for replacement_scan --- */
+/*!
+* Registers a replacement scan callback on the database.
+* Scans are consulted in registration order; the first scan to claim an unresolved name wins. Registered scans
+live until the database closes; there is no unregistration. The user data's destroy callback (if set) runs
+exactly once, at database close; a NULL user data pointer has nothing to destroy.
+
+Registration is not thread-safe with respect to running queries; register before issuing queries on any
+connection of the database.
+
+* @param db The database to register the scan on.
+* @param callback The replacement scan callback.
+* @param user_data User data accessible from the callback via replacement_scan_get_user_data, bundling the pointer with
+an optional destroy callback that runs once at database close. The pointer may be NULL.
+
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_register(duckdb_v2_database_handle db,
+                                                                      duckdb_v2_replacement_scan_callback_fn callback,
+                                                                      duckdb_v2_opaque user_data,
+                                                                      duckdb_v2_error_info_handle *err);
+/*!
+* Borrows the catalog name of the unresolved table reference.
+* Returns a borrowed string view, valid for the callback duration. The canonical empty view {NULL, 0} when the
+reference carries no catalog qualifier (the engine reports an absent part as an empty string; this accessor
+translates that to the empty view per the borrowed-string convention).
+
+* @param info The replacement scan info handle.
+* @param out_name Receives the borrowed catalog name view, or the empty view {NULL, 0} when the reference was
+unqualified.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_catalog_name(
+    duckdb_v2_replacement_scan_info_handle info, duckdb_v2_str *out_name, duckdb_v2_error_info_handle *err);
+/*!
+* Borrows the schema name of the unresolved table reference.
+* Returns a borrowed string view, valid for the callback duration. The canonical empty view {NULL, 0} when the
+reference carries no schema qualifier (the engine reports an absent part as an empty string; this accessor
+translates that to the empty view per the borrowed-string convention).
+
+* @param info The replacement scan info handle.
+* @param out_name Receives the borrowed schema name view, or the empty view {NULL, 0} when the reference was
+unqualified.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_schema_name(
+    duckdb_v2_replacement_scan_info_handle info, duckdb_v2_str *out_name, duckdb_v2_error_info_handle *err);
+/*!
+* Borrows the table name of the unresolved table reference.
+* Returns a borrowed string view, valid for the callback duration. Always a non-empty view.
+
+* @param info The replacement scan info handle.
+* @param out_name Receives the borrowed table name view.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_table_name(duckdb_v2_replacement_scan_info_handle info,
+                                                                            duckdb_v2_str *out_name,
+                                                                            duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data passed at registration.
+ * @param info The replacement scan info handle.
+ * @param out_data Receives the user data pointer.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_user_data(duckdb_v2_replacement_scan_info_handle info,
+                                                                           void **out_data,
+                                                                           duckdb_v2_error_info_handle *err);
+/*!
+* Claims the unresolved name by naming the target table function.
+* The library copies the name. The name is not validated here: an unknown function surfaces later as the binder's
+own catalog error. Calling this more than once overwrites the previous name; the last call wins.
+
+* @param info The replacement scan info handle.
+* @param name Table function name. The library copies it.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_set_function_name(
+    duckdb_v2_replacement_scan_info_handle info, duckdb_v2_str name, duckdb_v2_error_info_handle *err);
+/*!
+* Adds a positional parameter for the target table function.
+* Parameters are passed to the table function in the order they are added. The value is borrowed and copied at
+the call; the caller still owns it and destroys it.
+
+* @param info The replacement scan info handle.
+* @param value The parameter value. Borrowed and copied at the call; the caller still owns it.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_add_parameter(duckdb_v2_replacement_scan_info_handle info,
+                                                                           duckdb_v2_value_handle value,
+                                                                           duckdb_v2_error_info_handle *err);
+/*!
+* Adds a named (keyword) parameter for the target table function.
+* The library copies the name. The value is borrowed and copied at the call; the caller still owns it and
+destroys it.
+
+* @param info The replacement scan info handle.
+* @param name Parameter name. The library copies it.
+* @param value The parameter value. Borrowed and copied at the call; the caller still owns it.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_replacement_scan_add_named_parameter(duckdb_v2_replacement_scan_info_handle info, duckdb_v2_str name,
+                                               duckdb_v2_value_handle value, duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for replacement_scan --- */
+
+/* ============================================================================
  * MODULE: scalar
  * ============================================================================ */
 

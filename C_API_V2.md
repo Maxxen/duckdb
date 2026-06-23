@@ -92,6 +92,15 @@ Internal patterns new cpp_api surface should reuse rather than reinvent:
   sentinel and surfaces with the phase-appropriate default code. Idiom: throw to fail.
 - Wrapper objects follow the `detail::Handle<T>` / `detail::Factory` pattern; constructors
   taking raw handles stay private.
+- Nullable borrowed strings (the C API returns `{NULL, 0}` for "no value") map to an empty
+  `std::string_view` in the wrapper — e.g. `Database::ReplacementScanInput::GetCatalogName`,
+  `DatabaseOption::GetDefaultValue`. The C API keeps NULL (the right C idiom); per-language
+  idiom mapping is what the wrapper is for.
+- Callback registration uses raw function pointers plus the C API's `opaque` user-data
+  channel. When a surface has a single registration call rather than a builder (e.g.
+  `Database::AddReplacementScan<T>`), the wrapper bundles its own C++ callback together with
+  the caller's user data into that one opaque slot, destroying both via `detail::TypedDelete`
+  at engine teardown.
 
 ## Getting started
 
@@ -259,6 +268,16 @@ Query results are streaming-only; there is no materialized result surface and no
 
 - **`duckdb_v2_result_handle` is a documented load-bearing wrapper** (`ResultWrapperV2` in `capi_v2_internal.hpp`): a state machine `PENDING → STREAMING → FINISHED | CANCELLED | ERRORED` over the engine's own two-phase objects (`PendingQueryResult`, then the `QueryResult` from `Execute()`), driven exclusively through their public surface. Prepare-time metadata (types, names, statement type, properties) is copied into the wrapper at construction so the metadata getters stay valid before the first step, during consumption, and after close. The result handle is *not* on the no-wrapper list (that list is logical_type / data_chunk / vector).
 
+## Replacement scans
+
+`duckdb_v2_replacement_scan_register(db, callback, user_data, err)` registers a callback the binder consults when a table name cannot be resolved (what makes `SELECT * FROM 'file.csv'` work). The callback claims the name by naming a target table function (`set_function_name` plus positional / named parameters), declines by returning without claiming, or fails by setting code/text on the err slot. It mirrors the table-function callback family (`(info, context, err)`) and uses the same `opaque` user-data channel (`{ptr, destroy, equals}`) as the function builders, not a bespoke destroy parameter. Three points to know:
+
+- **Registration is not synchronized with running queries — register before issuing queries.** Registration appends to `DBConfig::replacement_scans`, which the binder iterates without a lock. V2 inherits this and documents the restriction rather than solving it. The underlying engine race is broader than the C API (extensions append at LOAD / autoload time while other connections bind, and `ReadCSVReplacement` can autoload parquet *mid-iteration* — `src/function/table/read_csv.cpp` → `extension/parquet/parquet_extension.cpp` — invalidating the very vector being walked). Engine-level synchronization (or a bridge-level dispatcher) is something to look into at some point.
+
+- **Unqualified name parts read as the empty view, not `""`.** The engine reports an absent catalog / schema as an empty string; the `get_catalog_name` / `get_schema_name` getters translate that to the canonical `duckdb_v2_str` empty view `{NULL, 0}` per the borrowed-string convention. The table name is always a non-empty view.
+
+- **Only the table-function target form is exposed.** The engine accepts any `TableRef` from a replacement callback (wrapping non-table-function, non-subquery refs in a `SubqueryRef` itself); the V2 surface deliberately exposes only the table-function form for now, leaving room for a view-query-style target later.
+
 ## V2 conventions
 
 These rules apply when writing V2 spec YAML, bridge implementations, and tests. Most have been hard-won from PR1 review; the canonical reference is `design_pr1_to_pr4.md` → "V2 conventions to carry forward". A short reminder list:
@@ -266,6 +285,8 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
 - **Handle layout is load-bearing.** A V2 handle is a raw pointer to the underlying C++ object — *not* a wrapper struct — unless the wrapper is documented as load-bearing (`EnvironmentWrapperV2`, `OptionWrapperV2`, etc.). `duckdb_v2_logical_type_ptr` specifically is a `duckdb::LogicalType *`; V1 and V2 share the same `new LogicalType(...)` allocation, so V2 destroy can free a V1-built handle. Direction matters: V1 → V2 destroy is OK and exploited in PR1 tests; V2 → V1 destroy is not asserted and must not be relied on. **Do not wrap `duckdb_v2_logical_type` in a struct** — the PR1 test suite relies on the identity for V1-built composite fixtures. Same rule for `duckdb_v2_data_chunk_ptr` (a `duckdb::DataChunk *`) and `duckdb_v2_vector_ptr` (a `duckdb::Vector *`): no wrappers. PR4 verified neither needs to carry per-handle state — cardinality flows through the API explicitly, and the single untyped view-getter is thin enough to extract `(data, validity, sel)` directly from the core helpers without caching a `UnifiedVectorFormat`.
 
 - **Cast helpers** (`ToEnv`, `ToDb`, `ToLogicalType`, …) live in `capi_v2_internal.hpp` next to the matching wrapper struct — not in per-module `.cpp` files.
+
+- **Opaque user data crosses as one struct — `duckdb_v2_opaque` (#95).** Any caller-owned pointer the engine must hold (user data, bind data, init / global / local state) crosses the ABI as the single by-value `duckdb_v2_opaque {void *ptr; …destroy; …equals;}`, never a bespoke `(void *user_data, user_data_destroy)` pair — that pattern and the `user_data_copy` callback were removed in #95. In the bridge, hold it in the `OpaqueDataHandle` RAII wrapper (`capi_v2_internal.hpp`): `shared_ptr<OpaqueDataHandle>` when the data is threaded / copied across phases (bind data, builder user data), a plain `OpaqueDataHandle` by value for single-owner state. The stable C++ API builds one via `detail::MakeUserData<T>` (raw fn pointer + this channel). New user-data-taking surface must use this, not reinvent it.
 
 - **File-private helpers** in `src/main/capi_v2/*.cpp` go in an anonymous namespace (`namespace { … }`) inside `namespace duckdb { … }`. It is the modern C++ idiom for TU-local symbols (block-scoped, applies to types as well as functions, preferred by Core Guidelines and clang-tidy). Note: under a unity build it does *not* isolate names between concatenated files — all `namespace { … }` blocks in one TU share the same unnamed namespace, so two helpers with the same name in two `*-v2.cpp` files still collide. Name uniqueness is the actual defense.
 

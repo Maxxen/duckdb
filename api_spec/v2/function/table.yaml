@@ -56,7 +56,7 @@ callbacks:
       err:
         type: error_info
         indirection: 1
-        description: Error slot. Signal failure via error_info_signal and return.
+        description: Error slot. Signal failure via error_info_set_code / error_info_set_text and return.
   table_function_init_global:
     description: |
       Global init callback, invoked once per scan at execution start. Receives bind data and projected column indices.
@@ -73,7 +73,7 @@ callbacks:
       err:
         type: error_info
         indirection: 1
-        description: Error slot. Signal failure via error_info_signal and return.
+        description: Error slot. Signal failure via error_info_set_code / error_info_set_text and return.
   table_function_init_local:
     description: |
       Local init callback, invoked once per worker thread. Receives bind data and global state. Sets per-thread local
@@ -89,7 +89,7 @@ callbacks:
       err:
         type: error_info
         indirection: 1
-        description: Error slot. Signal failure via error_info_signal and return.
+        description: Error slot. Signal failure via error_info_set_code / error_info_set_text and return.
   table_function_exec:
     description: |
       Execution callback, invoked repeatedly to produce rows. Fill the output chunk with rows and set its cardinality.
@@ -105,7 +105,7 @@ callbacks:
       err:
         type: error_info
         indirection: 1
-        description: Error slot. Signal failure via error_info_signal and return.
+        description: Error slot. Signal failure via error_info_set_code / error_info_set_text and return.
   table_function_cardinality:
     description: |
       Cardinality callback, invoked during optimization. Reports estimated and/or maximum row counts to help the
@@ -133,7 +133,7 @@ callbacks:
       err:
         type: error_info
         indirection: 1
-        description: Error slot. Signal failure via error_info_signal and return.
+        description: Error slot. Signal failure via error_info_set_code / error_info_set_text and return.
   table_function_progress:
     description: |
       Progress callback, invoked on-demand during execution. Reports scan progress by writing a value between 0.0 and
@@ -158,7 +158,7 @@ callbacks:
       err:
         type: error_info
         indirection: 1
-        description: Error slot. Signal failure via error_info_signal and return.
+        description: Error slot. Signal failure via error_info_set_code / error_info_set_text and return.
   table_function_pushdown_complex_filter:
     description: |
       Complex filter pushdown callback, invoked during optimization. Receives the candidate filter expressions the
