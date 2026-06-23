@@ -9,31 +9,31 @@ structs:
   aggregate_function_size_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
       - {name: out_size, type: idx, description: "The size of the aggregate state for a single row, in bytes. The callback should write the required size to this field on success."}
   aggregate_function_init_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
       - {name: state, type: void, pointer: 1, description: "Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the size returned by the size callback, and is initialized to zero. The callback should initialize this state on success."}
   aggregate_function_update_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
       - {name: count, type: idx, description: "The number of rows in the current batch being processed. This is the size of the `input` data chunk and the number of aggregate states pointed to by `state`."}
       - {name: input, type: data_chunk, description: "The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument passed to the aggregate function, with one row per input row for the current batch."}
       - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers, where each pointer points to the aggregate state for a single row. The callback should apply updates to these states based on the input data on success."}
   aggregate_function_combine_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
       - {name: count, type: idx, description: "The number of source and target states to combine. This is the size of the `sources` and `targets` arrays."}
       - {name: sources, type: void, pointer: 2, description: "Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an aggregate state that should be combined into the destination state."}
       - {name: targets, type: void, pointer: 2, description: "Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an aggregate state that should be updated with the combined results from the source states."}
   aggregate_function_finalize_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
       - {name: count, type: idx, description: "The number of rows in the current batch being finalized. This is the size of the `state` array and the number of result vectors pointed to by `result`."}
       - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers, where each pointer points to the aggregate state for a single row."}
       - {name: result, type: vector, description: "The vector in which the function should write its result values for the current batch of rows being finalized."}
@@ -41,7 +41,7 @@ structs:
   aggregate_function_destroy_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: opaque, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
+      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
       - {name: count, type: idx, description: "The number of aggregate states to destroy. This is the size of the `states` array."}
       - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an aggregate state that should be destroyed and have its resources freed."}
 callbacks:
@@ -281,12 +281,8 @@ functions:
         type: aggregate_function_builder
         description: The aggregate function builder for which to set the user data.
       data:
-        type: void
-        indirection: 1
+        type: opaque
         description: The user data pointer to set for the aggregate function. This pointer is passed to all of the function's callbacks and can be used to store context or state needed by the callbacks.
-      destroy:
-        type: user_data_destroy
-        description: Optional. If provided, this callback will be used to destroy the user data when it's no longer needed. If not provided, the library will not attempt to destroy the user data.
       err:
         type: error_info
         indirection: 1

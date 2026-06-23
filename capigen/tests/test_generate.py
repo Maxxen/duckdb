@@ -182,8 +182,9 @@ class TestUnionStructRendering:
         assert "char prefix[4];" in content
         assert "char* ptr;" in content
         assert "char inlined[12];" in content
-        # The whole aggregate closes with the struct typedef name.
-        assert "} duckdb_v2_string;" in content
+        # The struct is forward-declared, then its body defines the named struct.
+        assert "typedef struct duckdb_v2_string duckdb_v2_string;" in content
+        assert "struct duckdb_v2_string {" in content
 
     def test_union_struct_is_deterministic(self, tmp_path):
         out1 = tmp_path / "a.h"

@@ -7,41 +7,22 @@ namespace duckdb {
 namespace {
 
 struct ScalarFunctionBindDataV2 final : public FunctionData {
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
+
 	auto Copy() const -> unique_ptr<FunctionData> override {
 		auto copy = make_uniq<ScalarFunctionBindDataV2>();
-		copy->user_data = user_data_copy_cb ? user_data_copy_cb(user_data) : user_data;
-		copy->user_data_destructor_cb = user_data_destructor_cb;
-		copy->user_data_copy_cb = user_data_copy_cb;
-		copy->user_data_equals_cb = user_data_equals_cb;
+		copy->user_data = user_data;
 		return std::move(copy);
 	}
 
 	auto Equals(const FunctionData &other) const -> bool override {
-		if (user_data_equals_cb) {
-			auto &other_bind_data = other.Cast<ScalarFunctionBindDataV2>();
-			return user_data_equals_cb(user_data, other_bind_data.user_data);
-		}
-		return user_data == other.Cast<ScalarFunctionBindDataV2>().user_data;
+		const auto &other_data = other.Cast<ScalarFunctionBindDataV2>();
+		return user_data && other_data.user_data && user_data->Equals(*other_data.user_data);
 	}
-
-	~ScalarFunctionBindDataV2() override {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-		user_data = nullptr;
-		user_data_destructor_cb = nullptr;
-	}
-
-	void *user_data;
-
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
-	duckdb_v2_user_data_copy_fn user_data_copy_cb = nullptr;
-	duckdb_v2_user_data_equals_fn user_data_equals_cb = nullptr;
 };
 
 struct ScalarFunctionStateDataV2 final : public FunctionLocalState {
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
+	OpaqueDataHandle user_data;
 };
 
 struct ScalarFunctionV2 {
@@ -49,15 +30,7 @@ struct ScalarFunctionV2 {
 		duckdb_v2_scalar_function_bind_callback_fn bind_cb = nullptr;
 		duckdb_v2_scalar_function_init_callback_fn init_cb = nullptr;
 		duckdb_v2_scalar_function_exec_callback_fn exec_cb = nullptr;
-
-		duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
-		void *user_data = nullptr;
-
-		~RuntimeInfo() override {
-			if (user_data && user_data_destructor_cb) {
-				user_data_destructor_cb(user_data);
-			}
-		}
+		shared_ptr<OpaqueDataHandle> user_data = nullptr;
 	};
 
 	RuntimeInfo info;
@@ -75,7 +48,7 @@ struct ScalarFunctionV2 {
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<_duckdb_v2_context *>(&input.GetClientContext());
 		args.function_name = ToStr(input.GetBoundFunction().GetName());
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 
 		InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, err); });
 
@@ -84,14 +57,11 @@ struct ScalarFunctionV2 {
 		if (args.out_bind_data) {
 			auto result = make_uniq<ScalarFunctionBindDataV2>();
 
-			result->user_data = args.out_bind_data;
-			result->user_data_copy_cb = args.out_bind_data_copy;
-			result->user_data_equals_cb = args.out_bind_data_equality;
-			result->user_data_destructor_cb = args.out_bind_data_destructor;
+			result->user_data = make_shared_ptr<OpaqueDataHandle>(args.out_bind_data, args.out_bind_data_destructor,
+			                                                      args.out_bind_data_equality);
 
 			return std::move(result);
 		}
-
 		return nullptr;
 	}
 
@@ -105,16 +75,17 @@ struct ScalarFunctionV2 {
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<_duckdb_v2_context *>(&state.GetContext());
 		args.function_name = ToStr(expr.Function().GetName());
-		args.user_data = info.user_data;
-		args.bind_data = bind_data ? bind_data->Cast<ScalarFunctionBindDataV2>().user_data : nullptr;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+
+		auto user_bind_data = bind_data ? bind_data->Cast<ScalarFunctionBindDataV2>().user_data : nullptr;
+		args.bind_data = user_bind_data ? user_bind_data->GetData() : nullptr;
 
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) { info.init_cb(&args, err); });
 
 		// If the user set the local state, move it out here
 		if (args.out_init_data) {
 			auto result = make_uniq<ScalarFunctionStateDataV2>();
-			result->user_data = args.out_init_data;
-			result->user_data_destructor_cb = info.user_data_destructor_cb;
+			result->user_data = OpaqueDataHandle(args.out_init_data, args.out_init_data_destructor);
 
 			return std::move(result);
 		}
@@ -131,18 +102,20 @@ struct ScalarFunctionV2 {
 		duckdb_v2_scalar_function_exec_args args = {};
 		args.struct_size = sizeof(args);
 		args.function_name = ToStr(expr.Function().GetName());
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.input = reinterpret_cast<_duckdb_v2_data_chunk *>(&input);
 		args.result = reinterpret_cast<_duckdb_v2_vector *>(&result);
 
 		// Setup bind data (if provided)
 		if (auto bind_ptr = expr.BindInfo().get()) {
-			args.bind_data = bind_ptr->Cast<ScalarFunctionBindDataV2>().user_data;
+			const auto &bind_data = bind_ptr->Cast<ScalarFunctionBindDataV2>();
+			args.bind_data = bind_data.user_data ? bind_data.user_data->GetData() : nullptr;
 		}
 
 		// Setup local state (if provided)
 		if (auto state_ptr = ExecuteFunctionState::GetFunctionState(state)) {
-			args.init_data = state_ptr->Cast<ScalarFunctionStateDataV2>().user_data;
+			const auto &state_data = state_ptr->Cast<ScalarFunctionStateDataV2>();
+			args.init_data = state_data.user_data.GetData();
 		}
 
 		InvokeWithErrorSlot<InvalidInputException>(
@@ -269,7 +242,7 @@ duckdb_v2_scalar_function_builder_set_exec_callback(duckdb_v2_scalar_function_bu
 	});
 }
 DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar_function_builder_handle func,
-                                                                     void *data, duckdb_v2_user_data_destroy_fn destroy,
+                                                                     duckdb_v2_opaque data,
                                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
@@ -277,8 +250,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_s
 		}
 
 		auto &function = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
-		function.info.user_data = data;
-		function.info.user_data_destructor_cb = destroy;
+		function.info.user_data =
+		    duckdb::make_shared_ptr<duckdb::OpaqueDataHandle>(data.ptr, data.destroy, data.equals);
 	});
 }
 
@@ -328,9 +301,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 		}
 
 		function.SetExtraFunctionInfo<duckdb::ScalarFunctionV2::RuntimeInfo>(builder.info);
-		builder.info.user_data =
-		    nullptr; // Clear user data from builder since it's now owned by the function's extra info
-		builder.info.user_data_destructor_cb = nullptr; // Clear user data destructor from builder for the same reason
 
 		// Also verify signature so that function parameters make sense
 		function.GetSignature().Verify();

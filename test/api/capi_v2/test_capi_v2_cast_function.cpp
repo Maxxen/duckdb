@@ -153,7 +153,8 @@ void RegisterTemperature(duckdb_v2_context_handle ctx, void *, duckdb_v2_error_i
 	auto destroy = [](void *data) {
 		delete static_cast<std::string *>(data);
 	};
-	REQUIRE(duckdb_v2_cast_function_builder_set_user_data(from_varchar, secret, destroy, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_set_user_data(from_varchar, {secret, destroy, nullptr}, err) ==
+	        DUCKDB_V2_ERROR_NONE);
 
 	REQUIRE(duckdb_v2_cast_function_builder_register(ctx, from_varchar, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_destroy(&from_varchar) == DUCKDB_V2_ERROR_NONE);

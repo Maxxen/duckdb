@@ -52,7 +52,7 @@ static void counter_init_global(duckdb_v2_table_function_init_info_handle info, 
                                 duckdb_v2_error_info_handle *err) {
 	auto *state = new CounterGlobalState();
 	duckdb_v2_table_function_init_set_global_state(
-	    info, state, [](void *p) { delete static_cast<CounterGlobalState *>(p); }, err);
+	    info, {state, [](void *p) { delete static_cast<CounterGlobalState *>(p); }, nullptr}, err);
 }
 
 static void counter_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
@@ -255,7 +255,7 @@ static void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckd
 
 	auto *bd = new CounterNBindData {n, start};
 	duckdb_v2_table_function_bind_set_bind_data(
-	    info, bd, nullptr, nullptr, [](void *p) { delete static_cast<CounterNBindData *>(p); }, err);
+	    info, {bd, [](void *p) { delete static_cast<CounterNBindData *>(p); }, nullptr}, err);
 
 	duckdb_v2_table_function_bind_set_cardinality(info, static_cast<idx_t>(n), true, err);
 }
@@ -270,7 +270,7 @@ static void counter_n_init_global(duckdb_v2_table_function_init_info_handle info
 	state->next_row = bd->start;
 	state->end_row = bd->start + bd->n;
 	duckdb_v2_table_function_init_set_global_state(
-	    info, state, [](void *p) { delete static_cast<CounterNGlobalState *>(p); }, err);
+	    info, {state, [](void *p) { delete static_cast<CounterNGlobalState *>(p); }, nullptr}, err);
 }
 
 static void counter_n_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
@@ -434,8 +434,8 @@ static void userdata_bind(duckdb_v2_table_function_bind_info_handle info, duckdb
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
 	auto *bd = new int64_t(cfg->magic_value);
-	duckdb_v2_table_function_bind_set_bind_data(
-	    info, bd, nullptr, nullptr, [](void *p) { delete static_cast<int64_t *>(p); }, err);
+	duckdb_v2_table_function_bind_set_bind_data(info, {bd, [](void *p) { delete static_cast<int64_t *>(p); }, nullptr},
+	                                            err);
 }
 
 static void userdata_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
@@ -448,7 +448,7 @@ static void userdata_init_global(duckdb_v2_table_function_init_info_handle info,
 
 	auto *state = new int64_t(0);
 	duckdb_v2_table_function_init_set_global_state(
-	    info, state, [](void *p) { delete static_cast<int64_t *>(p); }, err);
+	    info, {state, [](void *p) { delete static_cast<int64_t *>(p); }, nullptr}, err);
 }
 
 static void userdata_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
@@ -494,7 +494,7 @@ TEST_CASE("V2 table function: builder user_data flows to bind and init", "[capi_
 		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("userdata_fn"), err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_user_data(
-		                builder, cfg_ptr, [](void *p) { delete static_cast<UserDataConfig *>(p); }, err) ==
+		                builder, {cfg_ptr, [](void *p) { delete static_cast<UserDataConfig *>(p); }, nullptr}, err) ==
 		            DUCKDB_V2_ERROR_NONE);
 		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, userdata_bind, err) ==
 		            DUCKDB_V2_ERROR_NONE);
@@ -564,7 +564,7 @@ static void proj_init_global(duckdb_v2_table_function_init_info_handle info, duc
 	}
 
 	duckdb_v2_table_function_init_set_global_state(
-	    info, state, [](void *p) { delete static_cast<ProjGlobalState *>(p); }, err);
+	    info, {state, [](void *p) { delete static_cast<ProjGlobalState *>(p); }, nullptr}, err);
 }
 
 static void proj_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
@@ -676,7 +676,7 @@ static void card_init_global(duckdb_v2_table_function_init_info_handle info, duc
                              duckdb_v2_error_info_handle *err) {
 	auto *s = new CardState();
 	duckdb_v2_table_function_init_set_global_state(
-	    info, s, [](void *p) { delete static_cast<CardState *>(p); }, err);
+	    info, {s, [](void *p) { delete static_cast<CardState *>(p); }, nullptr}, err);
 }
 
 static void card_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
@@ -892,7 +892,7 @@ static void gs_init_global(duckdb_v2_table_function_init_info_handle info, duckd
                            duckdb_v2_error_info_handle *err) {
 	auto *g = new GsGlobal {99, false};
 	duckdb_v2_table_function_init_set_global_state(
-	    info, g, [](void *p) { delete static_cast<GsGlobal *>(p); }, err);
+	    info, {g, [](void *p) { delete static_cast<GsGlobal *>(p); }, nullptr}, err);
 }
 
 static void gs_init_local(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
@@ -902,8 +902,8 @@ static void gs_init_local(duckdb_v2_table_function_init_info_handle info, duckdb
 	REQUIRE(gs != nullptr);
 	auto *g = static_cast<GsGlobal *>(gs);
 	auto *l = new int64_t(g->magic + 1);
-	duckdb_v2_table_function_init_set_local_state(
-	    info, l, [](void *p) { delete static_cast<int64_t *>(p); }, err);
+	duckdb_v2_table_function_init_set_local_state(info, {l, [](void *p) { delete static_cast<int64_t *>(p); }, nullptr},
+	                                              err);
 }
 
 static void gs_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
@@ -991,7 +991,7 @@ static void gsg_init_global(duckdb_v2_table_function_init_info_handle info, duck
                             duckdb_v2_error_info_handle *err) {
 	auto *g = new GsgGlobal {42, -1, false};
 	duckdb_v2_table_function_init_set_global_state(
-	    info, g, [](void *p) { delete static_cast<GsgGlobal *>(p); }, err);
+	    info, {g, [](void *p) { delete static_cast<GsgGlobal *>(p); }, nullptr}, err);
 
 	// Read it back within the same init_global callback.
 	void *gs = nullptr;
@@ -1083,14 +1083,14 @@ static void pd_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_co
 	card_bind(info, ctx, err); // one BIGINT column "v"
 	auto *bd = new PdBindData {false, 0};
 	duckdb_v2_table_function_bind_set_bind_data(
-	    info, bd, nullptr, nullptr, [](void *p) { delete static_cast<PdBindData *>(p); }, err);
+	    info, {bd, [](void *p) { delete static_cast<PdBindData *>(p); }, nullptr}, err);
 }
 
 static void pd_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
                            duckdb_v2_error_info_handle *err) {
 	auto *g = new PdGlobal {false};
 	duckdb_v2_table_function_init_set_global_state(
-	    info, g, [](void *p) { delete static_cast<PdGlobal *>(p); }, err);
+	    info, {g, [](void *p) { delete static_cast<PdGlobal *>(p); }, nullptr}, err);
 }
 
 static void pd_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_handle info, duckdb_v2_context_handle ctx,

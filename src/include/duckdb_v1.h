@@ -327,7 +327,7 @@ typedef enum duckdb_catalog_entry_type {
 	DUCKDB_CATALOG_ENTRY_TYPE_DATABASE = 9,
 } duckdb_catalog_entry_type;
 
-/* --- Structs for common_enums --- */
+/* --- Struct forward declarations for common_enums --- */
 
 /* --- Types for common_enums --- */
 //! Alias for the DUCKDB_TYPE enum.
@@ -341,162 +341,86 @@ typedef DUCKDB_TYPE duckdb_type;
 
 /* --- Functions for common_enums --- */
 
+/* --- Struct definitions for common_enums --- */
+
 /* ============================================================================
  * MODULE: common_types
  * ============================================================================ */
 
 /* --- Enums for common_types --- */
 
-/* --- Structs for common_types --- */
+/* --- Struct forward declarations for common_types --- */
 //! DATE is stored as days since 1970-01-01.
-typedef struct {
-	int32_t days;
-} duckdb_date;
+typedef struct duckdb_date duckdb_date;
 
 //! Decomposed date components.
-typedef struct {
-	int32_t year;
-	int8_t month;
-	int8_t day;
-} duckdb_date_struct;
+typedef struct duckdb_date_struct duckdb_date_struct;
 
 //! TIME is stored as microseconds since 00:00:00.
-typedef struct {
-	int64_t micros;
-} duckdb_time;
+typedef struct duckdb_time duckdb_time;
 
 //! Decomposed time components.
-typedef struct {
-	int8_t hour;
-	int8_t min;
-	int8_t sec;
-	int32_t micros;
-} duckdb_time_struct;
+typedef struct duckdb_time_struct duckdb_time_struct;
 
 //! TIME_NS is stored as nanoseconds since 00:00:00.
-typedef struct {
-	int64_t nanos;
-} duckdb_time_ns;
+typedef struct duckdb_time_ns duckdb_time_ns;
 
 //! TIME_TZ stored as 40 bits for microseconds and 24 bits for offset.
-typedef struct {
-	uint64_t bits;
-} duckdb_time_tz;
+typedef struct duckdb_time_tz duckdb_time_tz;
 
 //! Decomposed TIME_TZ components.
-typedef struct {
-	duckdb_time_struct time;
-	int32_t offset;
-} duckdb_time_tz_struct;
+typedef struct duckdb_time_tz_struct duckdb_time_tz_struct;
 
 //! TIMESTAMP is stored as microseconds since 1970-01-01.
-typedef struct {
-	int64_t micros;
-} duckdb_timestamp;
+typedef struct duckdb_timestamp duckdb_timestamp;
 
 //! Decomposed timestamp components.
-typedef struct {
-	duckdb_date_struct date;
-	duckdb_time_struct time;
-} duckdb_timestamp_struct;
+typedef struct duckdb_timestamp_struct duckdb_timestamp_struct;
 
 //! TIMESTAMP_S is stored as seconds since 1970-01-01.
-typedef struct {
-	int64_t seconds;
-} duckdb_timestamp_s;
+typedef struct duckdb_timestamp_s duckdb_timestamp_s;
 
 //! TIMESTAMP_MS is stored as milliseconds since 1970-01-01.
-typedef struct {
-	int64_t millis;
-} duckdb_timestamp_ms;
+typedef struct duckdb_timestamp_ms duckdb_timestamp_ms;
 
 //! TIMESTAMP_NS is stored as nanoseconds since 1970-01-01.
-typedef struct {
-	int64_t nanos;
-} duckdb_timestamp_ns;
+typedef struct duckdb_timestamp_ns duckdb_timestamp_ns;
 
 //! INTERVAL is stored in months, days, and micros.
-typedef struct {
-	int32_t months;
-	int32_t days;
-	int64_t micros;
-} duckdb_interval;
+typedef struct duckdb_interval duckdb_interval;
 
 //! HUGEINT is composed of a lower and upper component. Value is upper * 2^64 + lower.
-typedef struct {
-	uint64_t lower;
-	int64_t upper;
-} duckdb_hugeint;
+typedef struct duckdb_hugeint duckdb_hugeint;
 
 //! UHUGEINT is composed of a lower and upper component. Value is upper * 2^64 + lower.
-typedef struct {
-	uint64_t lower;
-	uint64_t upper;
-} duckdb_uhugeint;
+typedef struct duckdb_uhugeint duckdb_uhugeint;
 
 //! DECIMAL is composed of a width and a scale. Value is stored in a HUGEINT.
-typedef struct {
-	uint8_t width;
-	uint8_t scale;
-	duckdb_hugeint value;
-} duckdb_decimal;
+typedef struct duckdb_decimal duckdb_decimal;
 
 //! A type holding information about the query execution progress.
-typedef struct {
-	double percentage;
-	uint64_t rows_processed;
-	uint64_t total_rows_to_process;
-} duckdb_query_progress_type;
+typedef struct duckdb_query_progress_type duckdb_query_progress_type;
 
 //! Internal representation of a LIST metadata entry.
-typedef struct {
-	uint64_t offset;
-	uint64_t length;
-} duckdb_list_entry;
+typedef struct duckdb_list_entry duckdb_list_entry;
 
 //! A column in a result. Use accessor functions rather than accessing fields directly.
-typedef struct {
-	void *deprecated_data;
-	bool *deprecated_nullmask;
-	DUCKDB_TYPE deprecated_type;
-	char *deprecated_name;
-	void *internal_data;
-} duckdb_column;
+typedef struct duckdb_column duckdb_column;
 
 //! A DuckDB string (char* + size). Free data with duckdb_free.
-typedef struct {
-	char *data;
-	idx_t size;
-} duckdb_string;
+typedef struct duckdb_string duckdb_string;
 
 //! A DuckDB BLOB (void* + size). Free data with duckdb_free.
-typedef struct {
-	void *data;
-	idx_t size;
-} duckdb_blob;
+typedef struct duckdb_blob duckdb_blob;
 
 //! A DuckDB BIT (uint8_t* + size). Free data with duckdb_free.
-typedef struct {
-	uint8_t *data;
-	idx_t size;
-} duckdb_bit;
+typedef struct duckdb_bit duckdb_bit;
 
 //! A DuckDB BIGNUM (uint8_t* + size + is_negative). Free data with duckdb_free.
-typedef struct {
-	uint8_t *data;
-	idx_t size;
-	bool is_negative;
-} duckdb_bignum;
+typedef struct duckdb_bignum duckdb_bignum;
 
 //! A query result. Must be freed with duckdb_destroy_result.
-typedef struct {
-	idx_t deprecated_column_count;
-	idx_t deprecated_row_count;
-	idx_t deprecated_rows_changed;
-	duckdb_column *deprecated_columns;
-	char *deprecated_error_message;
-	void *internal_data;
-} duckdb_result;
+typedef struct duckdb_result duckdb_result;
 
 /* --- Types for common_types --- */
 
@@ -508,13 +432,140 @@ typedef struct {
 
 /* --- Functions for common_types --- */
 
+/* --- Struct definitions for common_types --- */
+struct duckdb_date {
+	int32_t days;
+};
+
+struct duckdb_date_struct {
+	int32_t year;
+	int8_t month;
+	int8_t day;
+};
+
+struct duckdb_time {
+	int64_t micros;
+};
+
+struct duckdb_time_struct {
+	int8_t hour;
+	int8_t min;
+	int8_t sec;
+	int32_t micros;
+};
+
+struct duckdb_time_ns {
+	int64_t nanos;
+};
+
+struct duckdb_time_tz {
+	uint64_t bits;
+};
+
+struct duckdb_time_tz_struct {
+	duckdb_time_struct time;
+	int32_t offset;
+};
+
+struct duckdb_timestamp {
+	int64_t micros;
+};
+
+struct duckdb_timestamp_struct {
+	duckdb_date_struct date;
+	duckdb_time_struct time;
+};
+
+struct duckdb_timestamp_s {
+	int64_t seconds;
+};
+
+struct duckdb_timestamp_ms {
+	int64_t millis;
+};
+
+struct duckdb_timestamp_ns {
+	int64_t nanos;
+};
+
+struct duckdb_interval {
+	int32_t months;
+	int32_t days;
+	int64_t micros;
+};
+
+struct duckdb_hugeint {
+	uint64_t lower;
+	int64_t upper;
+};
+
+struct duckdb_uhugeint {
+	uint64_t lower;
+	uint64_t upper;
+};
+
+struct duckdb_decimal {
+	uint8_t width;
+	uint8_t scale;
+	duckdb_hugeint value;
+};
+
+struct duckdb_query_progress_type {
+	double percentage;
+	uint64_t rows_processed;
+	uint64_t total_rows_to_process;
+};
+
+struct duckdb_list_entry {
+	uint64_t offset;
+	uint64_t length;
+};
+
+struct duckdb_column {
+	void *deprecated_data;
+	bool *deprecated_nullmask;
+	DUCKDB_TYPE deprecated_type;
+	char *deprecated_name;
+	void *internal_data;
+};
+
+struct duckdb_string {
+	char *data;
+	idx_t size;
+};
+
+struct duckdb_blob {
+	void *data;
+	idx_t size;
+};
+
+struct duckdb_bit {
+	uint8_t *data;
+	idx_t size;
+};
+
+struct duckdb_bignum {
+	uint8_t *data;
+	idx_t size;
+	bool is_negative;
+};
+
+struct duckdb_result {
+	idx_t deprecated_column_count;
+	idx_t deprecated_row_count;
+	idx_t deprecated_rows_changed;
+	duckdb_column *deprecated_columns;
+	char *deprecated_error_message;
+	void *internal_data;
+};
+
 /* ============================================================================
  * MODULE: common_handles
  * ============================================================================ */
 
 /* --- Enums for common_handles --- */
 
-/* --- Structs for common_handles --- */
+/* --- Struct forward declarations for common_handles --- */
 
 /* --- Types for common_handles --- */
 //! A database instance cache. Must be destroyed with duckdb_destroy_instance_cache.
@@ -847,13 +898,15 @@ typedef void (*duckdb_copy_function_global_init_t)(duckdb_copy_function_global_i
 
 /* --- Functions for common_handles --- */
 
+/* --- Struct definitions for common_handles --- */
+
 /* ============================================================================
  * MODULE: datetime_helpers
  * ============================================================================ */
 
 /* --- Enums for datetime_helpers --- */
 
-/* --- Structs for datetime_helpers --- */
+/* --- Struct forward declarations for datetime_helpers --- */
 
 /* --- Types for datetime_helpers --- */
 
@@ -1009,13 +1062,15 @@ DUCKDB_C_API duckdb_decimal duckdb_double_to_decimal(double val, uint8_t width, 
  */
 DUCKDB_C_API double duckdb_decimal_to_double(duckdb_decimal val);
 
+/* --- Struct definitions for datetime_helpers --- */
+
 /* ============================================================================
  * MODULE: aggregate_function
  * ============================================================================ */
 
 /* --- Enums for aggregate_function --- */
 
-/* --- Structs for aggregate_function --- */
+/* --- Struct forward declarations for aggregate_function --- */
 
 /* --- Types for aggregate_function --- */
 
@@ -1179,13 +1234,15 @@ If the set is incomplete or a function with this name already exists DuckDBError
 DUCKDB_C_API duckdb_state duckdb_register_aggregate_function_set(duckdb_connection con,
                                                                  duckdb_aggregate_function_set set);
 
+/* --- Struct definitions for aggregate_function --- */
+
 /* ============================================================================
  * MODULE: appender
  * ============================================================================ */
 
 /* --- Enums for appender --- */
 
-/* --- Structs for appender --- */
+/* --- Struct forward declarations for appender --- */
 
 /* --- Types for appender --- */
 
@@ -1563,13 +1620,15 @@ The error message should not be freed. It will be de-allocated when `duckdb_appe
 */
 DUCKDB_C_API const char *duckdb_appender_error(duckdb_appender appender);
 
+/* --- Struct definitions for appender --- */
+
 /* ============================================================================
  * MODULE: arrow
  * ============================================================================ */
 
 /* --- Enums for arrow --- */
 
-/* --- Structs for arrow --- */
+/* --- Struct forward declarations for arrow --- */
 
 /* --- Types for arrow --- */
 
@@ -1802,13 +1861,15 @@ DUCKDB_C_API duckdb_state duckdb_arrow_array_scan(duckdb_connection connection, 
                                                   duckdb_arrow_schema arrow_schema, duckdb_arrow_array arrow_array,
                                                   duckdb_arrow_stream *out_stream);
 
+/* --- Struct definitions for arrow --- */
+
 /* ============================================================================
  * MODULE: cast_function
  * ============================================================================ */
 
 /* --- Enums for cast_function --- */
 
-/* --- Structs for cast_function --- */
+/* --- Struct forward declarations for cast_function --- */
 
 /* --- Types for cast_function --- */
 
@@ -1919,13 +1980,15 @@ DUCKDB_C_API duckdb_state duckdb_register_cast_function(duckdb_connection con, d
  */
 DUCKDB_C_API void duckdb_destroy_cast_function(duckdb_cast_function *cast_function);
 
+/* --- Struct definitions for cast_function --- */
+
 /* ============================================================================
  * MODULE: catalog
  * ============================================================================ */
 
 /* --- Enums for catalog --- */
 
-/* --- Structs for catalog --- */
+/* --- Struct forward declarations for catalog --- */
 
 /* --- Types for catalog --- */
 
@@ -2002,13 +2065,15 @@ Note that this does not actually "drop" the catalog entry from the database cata
 */
 DUCKDB_C_API void duckdb_destroy_catalog_entry(duckdb_catalog_entry *entry);
 
+/* --- Struct definitions for catalog --- */
+
 /* ============================================================================
  * MODULE: config_option
  * ============================================================================ */
 
 /* --- Enums for config_option --- */
 
-/* --- Structs for config_option --- */
+/* --- Struct forward declarations for config_option --- */
 
 /* --- Types for config_option --- */
 
@@ -2137,13 +2202,15 @@ DUCKDB_C_API idx_t duckdb_profiling_info_get_child_count(duckdb_profiling_info i
  */
 DUCKDB_C_API duckdb_profiling_info duckdb_profiling_info_get_child(duckdb_profiling_info info, idx_t index);
 
+/* --- Struct definitions for config_option --- */
+
 /* ============================================================================
  * MODULE: connection
  * ============================================================================ */
 
 /* --- Enums for connection --- */
 
-/* --- Structs for connection --- */
+/* --- Struct forward declarations for connection --- */
 
 /* --- Types for connection --- */
 
@@ -2235,13 +2302,15 @@ DUCKDB_C_API void duckdb_destroy_arrow_options(duckdb_arrow_options *arrow_optio
  */
 DUCKDB_C_API duckdb_value duckdb_get_table_names(duckdb_connection connection, const char *query, bool qualified);
 
+/* --- Struct definitions for connection --- */
+
 /* ============================================================================
  * MODULE: copy_function
  * ============================================================================ */
 
 /* --- Enums for copy_function --- */
 
-/* --- Structs for copy_function --- */
+/* --- Struct forward declarations for copy_function --- */
 
 /* --- Types for copy_function --- */
 
@@ -2538,13 +2607,15 @@ and related functions in the bind callback of the table function to retrieve the
 DUCKDB_C_API void duckdb_copy_function_set_copy_from_function(duckdb_copy_function copy_function,
                                                               duckdb_table_function table_function);
 
+/* --- Struct definitions for copy_function --- */
+
 /* ============================================================================
  * MODULE: data_chunk
  * ============================================================================ */
 
 /* --- Enums for data_chunk --- */
 
-/* --- Structs for data_chunk --- */
+/* --- Struct forward declarations for data_chunk --- */
 
 /* --- Types for data_chunk --- */
 
@@ -2614,13 +2685,15 @@ DUCKDB_C_API idx_t duckdb_data_chunk_get_size(duckdb_data_chunk chunk);
  */
 DUCKDB_C_API void duckdb_data_chunk_set_size(duckdb_data_chunk chunk, idx_t size);
 
+/* --- Struct definitions for data_chunk --- */
+
 /* ============================================================================
  * MODULE: database
  * ============================================================================ */
 
 /* --- Enums for database --- */
 
-/* --- Structs for database --- */
+/* --- Struct forward declarations for database --- */
 
 /* --- Types for database --- */
 
@@ -2759,13 +2832,15 @@ DUCKDB_C_API duckdb_state duckdb_set_config(duckdb_config config, const char *na
  */
 DUCKDB_C_API void duckdb_destroy_config(duckdb_config *config);
 
+/* --- Struct definitions for database --- */
+
 /* ============================================================================
  * MODULE: expression
  * ============================================================================ */
 
 /* --- Enums for expression --- */
 
-/* --- Structs for expression --- */
+/* --- Struct forward declarations for expression --- */
 
 /* --- Types for expression --- */
 
@@ -2808,13 +2883,15 @@ DUCKDB_C_API bool duckdb_expression_is_foldable(duckdb_expression expr);
 DUCKDB_C_API duckdb_error_data duckdb_expression_fold(duckdb_client_context context, duckdb_expression expr,
                                                       duckdb_value *out_value);
 
+/* --- Struct definitions for expression --- */
+
 /* ============================================================================
  * MODULE: file_system
  * ============================================================================ */
 
 /* --- Enums for file_system --- */
 
-/* --- Structs for file_system --- */
+/* --- Struct forward declarations for file_system --- */
 
 /* --- Types for file_system --- */
 
@@ -2951,13 +3028,15 @@ DUCKDB_C_API duckdb_state duckdb_file_handle_sync(duckdb_file_handle file_handle
  */
 DUCKDB_C_API duckdb_state duckdb_file_handle_close(duckdb_file_handle file_handle);
 
+/* --- Struct definitions for file_system --- */
+
 /* ============================================================================
  * MODULE: log_storage
  * ============================================================================ */
 
 /* --- Enums for log_storage --- */
 
-/* --- Structs for log_storage --- */
+/* --- Struct forward declarations for log_storage --- */
 
 /* --- Types for log_storage --- */
 
@@ -3017,13 +3096,15 @@ DUCKDB_C_API void duckdb_log_storage_set_name(duckdb_log_storage log_storage, co
  */
 DUCKDB_C_API duckdb_state duckdb_register_log_storage(duckdb_database database, duckdb_log_storage log_storage);
 
+/* --- Struct definitions for log_storage --- */
+
 /* ============================================================================
  * MODULE: logical_type
  * ============================================================================ */
 
 /* --- Enums for logical_type --- */
 
-/* --- Structs for logical_type --- */
+/* --- Struct forward declarations for logical_type --- */
 
 /* --- Types for logical_type --- */
 
@@ -3302,13 +3383,15 @@ Result must be freed with `duckdb_free`.
 */
 DUCKDB_C_API char *duckdb_geometry_type_get_crs(duckdb_logical_type type);
 
+/* --- Struct definitions for logical_type --- */
+
 /* ============================================================================
  * MODULE: pending
  * ============================================================================ */
 
 /* --- Enums for pending --- */
 
-/* --- Structs for pending --- */
+/* --- Struct forward declarations for pending --- */
 
 /* --- Types for pending --- */
 
@@ -3395,13 +3478,15 @@ DUCKDB_PENDING_RESULT_READY, this function will return true.
 */
 DUCKDB_C_API bool duckdb_pending_execution_is_finished(duckdb_pending_state pending_state);
 
+/* --- Struct definitions for pending --- */
+
 /* ============================================================================
  * MODULE: prepared_statement
  * ============================================================================ */
 
 /* --- Enums for prepared_statement --- */
 
-/* --- Structs for prepared_statement --- */
+/* --- Struct forward declarations for prepared_statement --- */
 
 /* --- Types for prepared_statement --- */
 
@@ -3887,13 +3972,15 @@ Note that after calling `duckdb_pending_prepared_streaming`, the pending result 
 DUCKDB_C_API duckdb_state duckdb_pending_prepared_streaming(duckdb_prepared_statement prepared_statement,
                                                             duckdb_pending_result *out_result);
 
+/* --- Struct definitions for prepared_statement --- */
+
 /* ============================================================================
  * MODULE: query
  * ============================================================================ */
 
 /* --- Enums for query --- */
 
-/* --- Structs for query --- */
+/* --- Struct forward declarations for query --- */
 
 /* --- Types for query --- */
 
@@ -4222,13 +4309,15 @@ It is not known beforehand how many chunks will be returned by this result.
 */
 DUCKDB_C_API duckdb_data_chunk duckdb_stream_fetch_chunk(duckdb_result result);
 
+/* --- Struct definitions for query --- */
+
 /* ============================================================================
  * MODULE: replacement_scan
  * ============================================================================ */
 
 /* --- Enums for replacement_scan --- */
 
-/* --- Structs for replacement_scan --- */
+/* --- Struct forward declarations for replacement_scan --- */
 
 /* --- Types for replacement_scan --- */
 
@@ -4277,13 +4366,15 @@ DUCKDB_C_API void duckdb_replacement_scan_add_parameter(duckdb_replacement_scan_
  */
 DUCKDB_C_API void duckdb_replacement_scan_set_error(duckdb_replacement_scan_info info, const char *error);
 
+/* --- Struct definitions for replacement_scan --- */
+
 /* ============================================================================
  * MODULE: scalar_function
  * ============================================================================ */
 
 /* --- Enums for scalar_function --- */
 
-/* --- Structs for scalar_function --- */
+/* --- Struct forward declarations for scalar_function --- */
 
 /* --- Types for scalar_function --- */
 
@@ -4581,13 +4672,15 @@ DUCKDB_C_API void *duckdb_scalar_function_init_get_bind_data(duckdb_init_info in
  */
 DUCKDB_C_API void *duckdb_scalar_function_init_get_extra_info(duckdb_init_info info);
 
+/* --- Struct definitions for scalar_function --- */
+
 /* ============================================================================
  * MODULE: table_description
  * ============================================================================ */
 
 /* --- Enums for table_description --- */
 
-/* --- Structs for table_description --- */
+/* --- Struct forward declarations for table_description --- */
 
 /* --- Types for table_description --- */
 
@@ -4676,13 +4769,15 @@ The return value must be destroyed with `duckdb_destroy_logical_type`.
 DUCKDB_C_API duckdb_logical_type duckdb_table_description_get_column_type(duckdb_table_description table_description,
                                                                           idx_t index);
 
+/* --- Struct definitions for table_description --- */
+
 /* ============================================================================
  * MODULE: table_function
  * ============================================================================ */
 
 /* --- Enums for table_function --- */
 
-/* --- Structs for table_function --- */
+/* --- Struct forward declarations for table_function --- */
 
 /* --- Types for table_function --- */
 
@@ -5022,13 +5117,15 @@ The result must be destroyed with `duckdb_destroy_logical_type`.
 DUCKDB_C_API duckdb_logical_type duckdb_table_function_bind_get_result_column_type(duckdb_bind_info info,
                                                                                    idx_t col_idx);
 
+/* --- Struct definitions for table_function --- */
+
 /* ============================================================================
  * MODULE: threading
  * ============================================================================ */
 
 /* --- Enums for threading --- */
 
-/* --- Structs for threading --- */
+/* --- Struct forward declarations for threading --- */
 
 /* --- Types for threading --- */
 
@@ -5115,13 +5212,15 @@ DUCKDB_C_API void duckdb_destroy_task_state(duckdb_task_state state);
  */
 DUCKDB_C_API bool duckdb_execution_is_finished(duckdb_connection con);
 
+/* --- Struct definitions for threading --- */
+
 /* ============================================================================
  * MODULE: value
  * ============================================================================ */
 
 /* --- Enums for value --- */
 
-/* --- Structs for value --- */
+/* --- Struct forward declarations for value --- */
 
 /* --- Types for value --- */
 
@@ -5981,13 +6080,15 @@ DUCKDB_C_API duckdb_blob duckdb_value_blob(duckdb_result *result, idx_t col, idx
 DUCKDB_C_API bool duckdb_value_is_null(duckdb_result *result, idx_t col, idx_t row);
 #endif
 
+/* --- Struct definitions for value --- */
+
 /* ============================================================================
  * MODULE: vector
  * ============================================================================ */
 
 /* --- Enums for vector --- */
 
-/* --- Structs for vector --- */
+/* --- Struct forward declarations for vector --- */
 
 /* --- Types for vector --- */
 
@@ -6264,6 +6365,8 @@ DUCKDB_C_API void duckdb_destroy_selection_vector(duckdb_selection_vector sel);
  * @return sel_t*
  */
 DUCKDB_C_API sel_t *duckdb_selection_vector_get_data_ptr(duckdb_selection_vector sel);
+
+/* --- Struct definitions for vector --- */
 
 //===--------------------------------------------------------------------===//
 // DuckDB extension access

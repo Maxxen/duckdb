@@ -27,7 +27,7 @@ structs:
   cast_function_exec_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: user_data, type: opaque, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any."}
+      - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any."}
       - {name: input, type: vector, description: "The input vector containing the source values to cast. It contains `count` logical rows."}
       - {name: output, type: vector, description: "The output vector the callback must write the cast result values into. It has space for `count` logical rows."}
       - {name: count, type: idx, description: "The number of rows to cast, i.e. the number of logical rows in both the input and output vectors."}
@@ -139,12 +139,8 @@ functions:
         type: cast_function_builder
         description: The cast function to configure.
       data:
-        type: void
-        indirection: 1
+        type: opaque
         description: Opaque pointer to user data.
-      destroy:
-        type: user_data_destroy
-        description: Optional. If provided, this callback will be used to destroy the user data when it's no longer needed. If not provided, the library will not attempt to destroy the user data.
       err:
         type: error_info
         indirection: 1

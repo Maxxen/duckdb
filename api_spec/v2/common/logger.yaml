@@ -92,12 +92,8 @@ functions:
         type: log_storage_builder
         description: "The log storage builder handle to configure."
       user_data:
-        type: void
-        indirection: 1
+        type: opaque
         description: "Pointer to the user data to associate with the log storage builder."
-      destructor:
-        type: user_data_destroy
-        description: "Optional destructor function to clean up the user data when the log storage builder is destroyed."
       err:
         type: error_info
         indirection: 1

@@ -141,8 +141,16 @@ structs:
             fields:
               - {name: length, type: u32}
               - {name: inlined, type: char, array_size: 12}
+  opaque:
+    description: |
+      An opaque, owned handle to a user-defined resource. Bundles the pointer
+      with optional callbacks to destroy and compare the resource.
+    fields:
+      - {name: ptr, type: void, pointer: 1}
+      - {name: destroy, type: opaque_destroy}
+      - {name: equals, type: opaque_equals}
 callbacks:
-  user_data_equals:
+  opaque_equals:
     return_type: bool
     parameters:
       a:
@@ -159,19 +167,7 @@ callbacks:
           Opaque pointer to the second resource. The library passes this pointer
           to the equality function when it needs to compare two resources for
           equality.
-  user_data_copy:
-    return_type: opaque
-    return_pointer: 1
-    parameters:
-      data:
-        type: void
-        indirection: 1
-        description: |
-          Opaque pointer to the resource to copy. The library passes this pointer
-          to the copy function when it needs to make a copy of the resource.
-          The copy function is responsible for allocating a new copy and returning
-          its pointer; the library will eventually destroy it with the destructor.
-  user_data_destroy:
+  opaque_destroy:
     return_type: void
     parameters:
       data:

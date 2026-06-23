@@ -13,9 +13,8 @@ structs:
       - {name: column_names, type: str, pointer: 1, const: true, description: "Array of column_count borrowed name views; only valid for the duration of the callback."}
       - {name: column_count, type: idx}
       - {name: out_bind_data, type: void, pointer: 1}
-      - {name: out_bind_data_copy, type: user_data_copy}
-      - {name: out_bind_data_destructor, type: user_data_destroy}
-      - {name: out_bind_data_equality, type: user_data_equals}
+      - {name: out_bind_data_destructor, type: opaque_destroy}
+      - {name: out_bind_data_equality, type: opaque_equals}
   copy_function_init_args:
     fields:
       - {name: struct_size, type: u32}
@@ -24,7 +23,7 @@ structs:
       - {name: bind_data, type: void, pointer: 1, const: true}
       - {name: file_path, type: str, description: "The target file path. Borrowed; only valid for the duration of the callback."}
       - {name: out_init_data, type: void, pointer: 1}
-      - {name: out_init_data_destructor, type: user_data_destroy}
+      - {name: out_init_data_destructor, type: opaque_destroy}
   copy_function_batch_args:
     fields:
       - {name: struct_size, type: u32}
@@ -34,7 +33,7 @@ structs:
       - {name: init_data, type: void, pointer: 1}
       - {name: in_batch, type: column_data_collection}
       - {name: out_batch, type: void, pointer: 1}
-      - {name: out_batch_destructor, type: user_data_destroy}
+      - {name: out_batch_destructor, type: opaque_destroy}
   copy_function_flush_args:
     fields:
       - {name: struct_size, type: u32}
@@ -213,12 +212,8 @@ functions:
         type: copy_function_builder
         description: "The copy function builder handle."
       data:
-        type: void
-        indirection: 1
+        type: opaque
         description: Opaque pointer to user data.
-      destroy:
-        type: user_data_destroy
-        description: Optional. If provided, this callback will be used to destroy the user data when it's no longer needed. If not provided, the library will not attempt to destroy the user data.
       err:
         type: error_info
         indirection: 1

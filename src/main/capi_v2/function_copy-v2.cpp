@@ -5,89 +5,6 @@
 namespace duckdb {
 namespace {
 
-// Helper class to manage user data with custom copy, destroy, and equals callbacks
-class UserDataHandle {
-public:
-	UserDataHandle() = default;
-
-	explicit UserDataHandle(void *data, duckdb_v2_user_data_destroy_fn destroy_cb = nullptr,
-	                        duckdb_v2_user_data_copy_fn copy_cb = nullptr,
-	                        duckdb_v2_user_data_equals_fn equals_cb = nullptr)
-	    : data(data), destroy_cb(destroy_cb), copy_cb(copy_cb), equals_cb(equals_cb) {
-	}
-
-	// Moveable
-	UserDataHandle(UserDataHandle &&other) noexcept
-	    : data(other.data), destroy_cb(other.destroy_cb), copy_cb(other.copy_cb), equals_cb(other.equals_cb) {
-		other.data = nullptr;
-		other.destroy_cb = nullptr;
-		other.copy_cb = nullptr;
-		other.equals_cb = nullptr;
-	}
-
-	UserDataHandle &operator=(UserDataHandle &&other) noexcept {
-		if (this == &other) {
-			return *this;
-		}
-
-		// Clean up existing data
-		if (data && destroy_cb) {
-			destroy_cb(data);
-		}
-
-		data = other.data;
-		destroy_cb = other.destroy_cb;
-		copy_cb = other.copy_cb;
-		equals_cb = other.equals_cb;
-
-		other.data = nullptr;
-		other.destroy_cb = nullptr;
-		other.copy_cb = nullptr;
-		other.equals_cb = nullptr;
-
-		return *this;
-	}
-
-	~UserDataHandle() {
-		if (data && destroy_cb) {
-			destroy_cb(data);
-		}
-	}
-
-	bool operator==(const UserDataHandle &other) const {
-		if (equals_cb) {
-			return equals_cb(data, other.data);
-		}
-		return data == other.data;
-	}
-
-	bool operator!=(const UserDataHandle &other) const {
-		return !(*this == other);
-	}
-
-	// explicit copy
-	UserDataHandle Copy() const {
-		if (copy_cb) {
-			return UserDataHandle(copy_cb(data), destroy_cb, copy_cb, equals_cb);
-		}
-		return UserDataHandle(data, destroy_cb, copy_cb, equals_cb);
-	}
-
-	bool Equals(const UserDataHandle &other) const {
-		return *this == other;
-	}
-
-	void *GetData() const {
-		return data;
-	}
-
-private:
-	void *data = nullptr;
-	duckdb_v2_user_data_destroy_fn destroy_cb = nullptr;
-	duckdb_v2_user_data_copy_fn copy_cb = nullptr;
-	duckdb_v2_user_data_equals_fn equals_cb = nullptr;
-};
-
 class CCopyFunctionInfoV2 final : public CopyFunctionInfo {
 public:
 	string name;
@@ -96,12 +13,12 @@ public:
 	duckdb_v2_copy_function_batch_callback_fn batch_cb = nullptr;
 	duckdb_v2_copy_function_flush_callback_fn flush_cb = nullptr;
 	duckdb_v2_copy_function_finalize_callback_fn finalize_cb = nullptr;
-	UserDataHandle user_data;
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 };
 
 class CCopyFunctionBindDataV2 final : public FunctionData {
 public:
-	UserDataHandle bind_data;
+	shared_ptr<OpaqueDataHandle> bind_data = nullptr;
 	CCopyFunctionInfoV2 &info;
 
 	explicit CCopyFunctionBindDataV2(CCopyFunctionInfoV2 &info) : info(info) {
@@ -109,24 +26,24 @@ public:
 
 	auto Copy() const -> unique_ptr<FunctionData> override {
 		auto copy = make_uniq<CCopyFunctionBindDataV2>(info);
-		copy->bind_data = bind_data.Copy();
+		copy->bind_data = bind_data;
 		return std::move(copy);
 	}
 
 	auto Equals(const FunctionData &other) const -> bool override {
 		auto &other_bind_data = other.Cast<CCopyFunctionBindDataV2>();
-		return bind_data.Equals(other_bind_data.bind_data);
+		return bind_data->Equals(*other_bind_data.bind_data);
 	}
 };
 
 class CCopyFunctionStateV2 final : public GlobalFunctionData {
 public:
-	UserDataHandle init_data;
+	OpaqueDataHandle init_data;
 };
 
 class CCopyFunctionBatchV2 final : public PreparedBatchData {
 public:
-	UserDataHandle batch_data;
+	OpaqueDataHandle batch_data;
 };
 
 struct CopyFunctionBuilderV2 {
@@ -136,7 +53,8 @@ struct CopyFunctionBuilderV2 {
 	duckdb_v2_copy_function_batch_callback_fn batch_cb = nullptr;
 	duckdb_v2_copy_function_flush_callback_fn flush_cb = nullptr;
 	duckdb_v2_copy_function_finalize_callback_fn finalize_cb = nullptr;
-	UserDataHandle user_data;
+
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 
 	static auto CopyToBind(ClientContext &context, CopyFunctionBindInput &input, const vector<Identifier> &names,
 	                       const vector<LogicalType> &sql_types) -> unique_ptr<FunctionData> {
@@ -162,7 +80,7 @@ struct CopyFunctionBuilderV2 {
 		duckdb_v2_copy_function_bind_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
-		args.user_data = info.user_data.GetData();
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.column_count = names.size();
 		args.column_names = names_array.data();
 		args.column_types = types_array.data();
@@ -177,8 +95,8 @@ struct CopyFunctionBuilderV2 {
 
 		// If the user set the bind data, move it out here
 		if (args.out_bind_data) {
-			result->bind_data = UserDataHandle(args.out_bind_data, args.out_bind_data_destructor,
-			                                   args.out_bind_data_copy, args.out_bind_data_equality);
+			result->bind_data = make_shared_ptr<OpaqueDataHandle>(args.out_bind_data, args.out_bind_data_destructor,
+			                                                      args.out_bind_data_equality);
 		}
 
 		return std::move(result);
@@ -193,8 +111,8 @@ struct CopyFunctionBuilderV2 {
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.file_path = ToStr(file_path);
-		args.user_data = info.user_data.GetData();
-		args.bind_data = data.bind_data.GetData();
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = data.bind_data->GetData();
 		args.out_init_data = nullptr;
 		args.out_init_data_destructor = nullptr;
 
@@ -207,7 +125,7 @@ struct CopyFunctionBuilderV2 {
 		auto result = make_uniq<CCopyFunctionStateV2>();
 
 		if (args.out_init_data) {
-			result->init_data = UserDataHandle(args.out_init_data, args.out_init_data_destructor);
+			result->init_data = OpaqueDataHandle(args.out_init_data, args.out_init_data_destructor);
 		}
 
 		return std::move(result);
@@ -222,8 +140,8 @@ struct CopyFunctionBuilderV2 {
 		duckdb_v2_copy_function_batch_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
-		args.user_data = info.user_data.GetData();
-		args.bind_data = data.bind_data.GetData();
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = data.bind_data->GetData();
 		args.init_data = state.init_data.GetData();
 		// Ownership of the collection is transferred to the callback: the callback (or the C++ wrapper around
 		// it) is responsible for destroying it via duckdb_v2_column_data_collection_destroy. We release it from
@@ -238,7 +156,7 @@ struct CopyFunctionBuilderV2 {
 		auto result = make_uniq<CCopyFunctionBatchV2>();
 
 		if (args.out_batch) {
-			result->batch_data = UserDataHandle(args.out_batch, args.out_batch_destructor);
+			result->batch_data = OpaqueDataHandle(args.out_batch, args.out_batch_destructor);
 		}
 
 		return std::move(result);
@@ -253,8 +171,8 @@ struct CopyFunctionBuilderV2 {
 		duckdb_v2_copy_function_flush_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
-		args.user_data = info.user_data.GetData();
-		args.bind_data = data.bind_data.GetData();
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = data.bind_data->GetData();
 		args.init_data = state.init_data.GetData();
 		args.in_batch = batch.Cast<CCopyFunctionBatchV2>().batch_data.GetData();
 
@@ -276,8 +194,8 @@ struct CopyFunctionBuilderV2 {
 		duckdb_v2_copy_function_finalize_args args = {};
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
-		args.user_data = info.user_data.GetData();
-		args.bind_data = data.bind_data.GetData();
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = data.bind_data->GetData();
 		args.init_data = state.init_data.GetData();
 
 		duckdb::InvokeWithErrorSlot<InvalidInputException>(
@@ -399,7 +317,7 @@ duckdb_v2_copy_function_builder_set_finalize_callback(duckdb_v2_copy_function_bu
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_user_data(duckdb_v2_copy_function_builder_handle builder,
-                                                                   void *data, duckdb_v2_user_data_destroy_fn destroy,
+                                                                   duckdb_v2_opaque data,
                                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -407,7 +325,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_user_data(duckdb_v2_cop
 		}
 
 		auto &builder_ref = *reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder);
-		builder_ref.user_data = duckdb::UserDataHandle(data, destroy);
+		builder_ref.user_data = duckdb::make_shared_ptr<duckdb::OpaqueDataHandle>(data.ptr, data.destroy, data.equals);
 	});
 }
 
@@ -459,7 +377,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_register(duckdb_v2_context_
 		info->batch_cb = builder_ref.batch_cb;
 		info->flush_cb = builder_ref.flush_cb;
 		info->finalize_cb = builder_ref.finalize_cb;
-		info->user_data = std::move(builder_ref.user_data);
+		info->user_data = builder_ref.user_data;
 
 		function.function_info = std::move(info);
 

@@ -186,6 +186,15 @@ DUCKDB_V2_API_CALL_t WithExceptionGuard(duckdb_v2_error_info_handle *err, T call
 
 } // namespace
 
+namespace detail {
+
+template <class T, class... ARGS>
+auto MakeUserData(ARGS &&... args) -> duckdb_v2_opaque {
+	return duckdb_v2_opaque {new T(std::forward<ARGS>(args)...), TypedDelete<T>, TypedEquals<T>};
+}
+
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // Environment
 //---------------------------------------------------------------------------
@@ -870,7 +879,7 @@ auto ColumnDataCollection::GetRowCount() const -> idx_t {
 	return count;
 }
 
-auto ColumnDataCollection::Combine(ColumnDataCollection &&other) -> void {
+auto ColumnDataCollection::Combine(ColumnDataCollection other) -> void {
 	auto _other = other.handle();
 	CheckedAPICall(duckdb_v2_column_data_collection_combine, handle(), &_other);
 	other.impl = nullptr;
@@ -953,6 +962,14 @@ class LogStorageInfo {
 public:
 	LogStorage::LogCallback log_callback = nullptr;
 	detail::UserData user_data;
+
+	LogStorageInfo(LogStorage::LogCallback log_callback, detail::UserData user_data)
+	    : log_callback(log_callback), user_data(std::move(user_data)) {
+	}
+
+	bool operator==(const LogStorageInfo &other) const {
+		return log_callback == other.log_callback && user_data.get() == other.user_data.get();
+	}
 };
 
 LogStorage::LogStorage(const Context &ctx) {
@@ -971,12 +988,8 @@ auto LogStorage::SetUserDataInternal(void *data, void (*destructor)(void *)) -> 
 }
 
 auto LogStorage::Register(const Context &ctx) -> void {
-	auto info = std::make_unique<LogStorageInfo>();
-	info->log_callback = callback;
-	info->user_data = std::move(user_data);
-
-	CheckedAPICall(duckdb_v2_log_storage_builder_set_user_data, handle(), info.release(),
-	               detail::TypedDelete<LogStorageInfo>);
+	auto info = detail::MakeUserData<LogStorageInfo>(callback, std::move(user_data));
+	CheckedAPICall(duckdb_v2_log_storage_builder_set_user_data, handle(), info);
 	CheckedAPICall(duckdb_v2_log_storage_builder_register, ctx.handle(), handle());
 }
 
@@ -1078,17 +1091,26 @@ struct ScalarFunctionInfo {
 	ScalarFunction::BindCallback bind_callback = nullptr;
 	ScalarFunction::InitCallback init_callback = nullptr;
 	ScalarFunction::ExecCallback exec_callback = nullptr;
+
+	ScalarFunctionInfo(ScalarFunction::BindCallback bind_callback, ScalarFunction::InitCallback init_callback,
+	                   ScalarFunction::ExecCallback exec_callback)
+	    : bind_callback(bind_callback), init_callback(init_callback), exec_callback(exec_callback) {
+	}
+
+	bool operator==(const ScalarFunctionInfo &other) const {
+		return bind_callback == other.bind_callback && init_callback == other.init_callback &&
+		       exec_callback == other.exec_callback;
+	}
 };
 
 void *ScalarFunction::BindInput::GetBindDataInternal() const {
 	return static_cast<duckdb_v2_scalar_function_bind_args *>(args)->out_bind_data;
 }
 
-void ScalarFunction::BindInput::SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
+void ScalarFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(void *a, void *b),
                                                     void (*destructor)(void *)) {
 	duckdb_v2_scalar_function_bind_args *args_struct = static_cast<duckdb_v2_scalar_function_bind_args *>(args);
 	args_struct->out_bind_data = data;
-	args_struct->out_bind_data_copy = copy;
 	args_struct->out_bind_data_equality = equals;
 	args_struct->out_bind_data_destructor = destructor;
 }
@@ -1215,9 +1237,8 @@ auto ScalarFunction::SetExecCallback(ExecCallback callback) & -> ScalarFunction 
 
 void ScalarFunction::Register(const Context &ctx) {
 	// Set the user data to the callbacks so they can be retrieved in the trampoline(s)
-	CheckedAPICall(duckdb_v2_scalar_function_builder_set_user_data, handle(),
-	               new ScalarFunctionInfo {bind_callback, init_callback, exec_callback},
-	               detail::TypedDelete<ScalarFunctionInfo>);
+	auto info = detail::MakeUserData<ScalarFunctionInfo>(bind_callback, init_callback, exec_callback);
+	CheckedAPICall(duckdb_v2_scalar_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_scalar_function_builder_register, ctx.handle(), handle());
 }
@@ -1234,6 +1255,27 @@ public:
 	AggregateFunction::CombineCallback combine_callback = nullptr;
 	AggregateFunction::FinalizeCallback finalize_callback = nullptr;
 	AggregateFunction::DestroyCallback destroy_callback = nullptr;
+
+	AggregateFunctionInfo(AggregateFunction::SizeCallback size_callback,
+	                      AggregateFunction::InitializeCallback initialize_callback,
+	                      AggregateFunction::UpdateCallback update_callback,
+	                      AggregateFunction::CombineCallback combine_callback,
+	                      AggregateFunction::FinalizeCallback finalize_callback,
+	                      AggregateFunction::DestroyCallback destroy_callback)
+	    : size_callback(size_callback), initialize_callback(initialize_callback), update_callback(update_callback),
+	      combine_callback(combine_callback), finalize_callback(finalize_callback), destroy_callback(destroy_callback) {
+	}
+
+	bool operator==(const AggregateFunctionInfo &other) const {
+		// We only compare the presence of callbacks, not their actual function pointers, since the latter can be
+		// wrapped in different trampoline layers.
+		return (size_callback != nullptr) == (other.size_callback != nullptr) &&
+		       (initialize_callback != nullptr) == (other.initialize_callback != nullptr) &&
+		       (update_callback != nullptr) == (other.update_callback != nullptr) &&
+		       (combine_callback != nullptr) == (other.combine_callback != nullptr) &&
+		       (finalize_callback != nullptr) == (other.finalize_callback != nullptr) &&
+		       (destroy_callback != nullptr) == (other.destroy_callback != nullptr);
+	}
 };
 
 AggregateFunction::AggregateFunction(const Context &ctx) {
@@ -1526,10 +1568,9 @@ auto AggregateFunction::SetDestroyCallback(DestroyCallback callback) & -> Aggreg
 
 void AggregateFunction::Register(const Context &ctx) {
 	// Set the user data to the callbacks so they can be retrieved in the trampoline(s)
-	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_user_data, handle(),
-	               new AggregateFunctionInfo {size_callback, initialize_callback, update_callback, combine_callback,
-	                                          finalize_callback, destroy_callback},
-	               detail::TypedDelete<AggregateFunctionInfo>);
+	auto info = detail::MakeUserData<AggregateFunctionInfo>(size_callback, initialize_callback, update_callback,
+	                                                        combine_callback, finalize_callback, destroy_callback);
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_aggregate_function_builder_register, ctx.handle(), handle());
 }
@@ -1543,6 +1584,17 @@ public:
 	TableFunction::InitGlobalCallback init_global_callback = nullptr;
 	TableFunction::InitLocalCallback init_local_callback = nullptr;
 	TableFunction::ExecCallback exec_callback = nullptr;
+
+	TableFunctionInfo(TableFunction::BindCallback bind_callback, TableFunction::InitGlobalCallback init_global_callback,
+	                  TableFunction::InitLocalCallback init_local_callback, TableFunction::ExecCallback exec_callback)
+	    : bind_callback(bind_callback), init_global_callback(init_global_callback),
+	      init_local_callback(init_local_callback), exec_callback(exec_callback) {
+	}
+
+	bool operator==(const TableFunctionInfo &other) const {
+		return bind_callback == other.bind_callback && init_global_callback == other.init_global_callback &&
+		       init_local_callback == other.init_local_callback && exec_callback == other.exec_callback;
+	}
 };
 
 TableFunction::TableFunction(const Context &ctx) {
@@ -1582,9 +1634,10 @@ void *TableFunction::BindInput::GetUserDataInternal() const {
 	return data;
 }
 
-void TableFunction::BindInput::SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
+void TableFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(void *a, void *b),
                                                    void (*destructor)(void *)) {
-	CheckedAPICall(duckdb_v2_table_function_bind_set_bind_data, inner.info, data, copy, equals, destructor);
+	CheckedAPICall(duckdb_v2_table_function_bind_set_bind_data, inner.info,
+	               duckdb_v2_opaque {data, destructor, equals});
 }
 
 auto TableFunction::BindInput::AddResultColumn(const std::string &name, const LogicalType &type) -> void {
@@ -1665,7 +1718,8 @@ auto TableFunction::InitGlobalInput::GetBindDataInternal() const -> void * {
 }
 
 auto TableFunction::InitGlobalInput::SetGlobalStateInternal(void *data, void (*destructor)(void *)) -> void {
-	CheckedAPICall(duckdb_v2_table_function_init_set_global_state, inner.info, data, destructor);
+	CheckedAPICall(duckdb_v2_table_function_init_set_global_state, inner.info,
+	               duckdb_v2_opaque {data, destructor, nullptr});
 }
 
 auto TableFunction::SetInitGlobalCallback(InitGlobalCallback callback) & -> TableFunction & {
@@ -1711,7 +1765,8 @@ auto TableFunction::InitLocalInput::GetBindDataInternal() const -> void * {
 }
 
 auto TableFunction::InitLocalInput::SetLocalStateInternal(void *data, void (*destructor)(void *)) -> void {
-	CheckedAPICall(duckdb_v2_table_function_init_set_local_state, inner.info, data, destructor);
+	CheckedAPICall(duckdb_v2_table_function_init_set_local_state, inner.info,
+	               duckdb_v2_opaque {data, destructor, nullptr});
 }
 
 auto TableFunction::SetInitLocalCallback(InitLocalCallback callback) & -> TableFunction & {
@@ -1809,9 +1864,9 @@ auto TableFunction::SetExecCallback(ExecCallback callback) & -> TableFunction & 
 
 void TableFunction::Register(const Context &ctx) {
 	// Set the user data to the callbacks so they can be retrieved in the trampoline(s)
-	CheckedAPICall(duckdb_v2_table_function_builder_set_user_data, handle(),
-	               new TableFunctionInfo {bind_callback, init_global_callback, init_local_callback, exec_callback},
-	               detail::TypedDelete<TableFunctionInfo>);
+	auto info = detail::MakeUserData<TableFunctionInfo>(bind_callback, init_global_callback, init_local_callback,
+	                                                    exec_callback);
+	CheckedAPICall(duckdb_v2_table_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_table_function_builder_register, ctx.handle(), handle());
 }
@@ -1828,6 +1883,19 @@ struct CopyFunctionInfo {
 	CopyFunction::BatchCallback batch_callback = nullptr;
 	CopyFunction::FlushCallback flush_callback = nullptr;
 	CopyFunction::FinalizeCallback finalize_callback = nullptr;
+
+	CopyFunctionInfo(CopyFunction::BindCallback bind, CopyFunction::InitCallback init,
+	                 CopyFunction::BatchCallback batch, CopyFunction::FlushCallback flush,
+	                 CopyFunction::FinalizeCallback finalize)
+	    : bind_callback(bind), init_callback(init), batch_callback(batch), flush_callback(flush),
+	      finalize_callback(finalize) {
+	}
+
+	bool operator==(const CopyFunctionInfo &other) const {
+		return bind_callback == other.bind_callback && init_callback == other.init_callback &&
+		       batch_callback == other.batch_callback && flush_callback == other.flush_callback &&
+		       finalize_callback == other.finalize_callback;
+	}
 };
 
 CopyFunction::CopyFunction(const Context &ctx) {
@@ -1867,11 +1935,10 @@ auto CopyFunction::BindInput::GetColumnType(idx_t index) const -> LogicalType {
 	return detail::Factory::Make<LogicalType>(copy_handle);
 }
 
-void CopyFunction::BindInput::SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
+void CopyFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(void *a, void *b),
                                                   void (*destructor)(void *)) {
 	auto args_struct = static_cast<duckdb_v2_copy_function_bind_args *>(args);
 	args_struct->out_bind_data = data;
-	args_struct->out_bind_data_copy = copy;
 	args_struct->out_bind_data_equality = equals;
 	args_struct->out_bind_data_destructor = destructor;
 }
@@ -2054,10 +2121,9 @@ auto CopyFunction::SetFinalizeCallback(FinalizeCallback callback) & -> CopyFunct
 
 auto CopyFunction::Register(const Context &ctx) -> void {
 	// Stash the callbacks as the function's user data so the trampolines can recover them via args->user_data.
-	CheckedAPICall(
-	    duckdb_v2_copy_function_builder_set_user_data, handle(),
-	    new CopyFunctionInfo {bind_callback, init_callback, batch_callback, flush_callback, finalize_callback},
-	    detail::TypedDelete<CopyFunctionInfo>);
+	auto info = detail::MakeUserData<CopyFunctionInfo>(bind_callback, init_callback, batch_callback, flush_callback,
+	                                                   finalize_callback);
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_copy_function_builder_register, ctx.handle(), handle());
 }
@@ -2068,6 +2134,13 @@ auto CopyFunction::Register(const Context &ctx) -> void {
 
 struct CastFunctionInfo {
 	CastFunction::ExecCallback exec_callback = nullptr;
+
+	explicit CastFunctionInfo(CastFunction::ExecCallback exec_callback) : exec_callback(exec_callback) {
+	}
+
+	bool operator==(const CastFunctionInfo &other) const {
+		return exec_callback == other.exec_callback;
+	}
 };
 
 CastFunction::CastFunction(const Context &ctx) {
@@ -2137,8 +2210,8 @@ auto CastFunction::SetExecCallback(ExecCallback callback) & -> CastFunction & {
 
 void CastFunction::Register(const Context &ctx) {
 	// Stash the callback as the function's user data so the trampoline can recover it via args->user_data.
-	CheckedAPICall(duckdb_v2_cast_function_builder_set_user_data, handle(), new CastFunctionInfo {exec_callback},
-	               detail::TypedDelete<CastFunctionInfo>);
+	auto info = detail::MakeUserData<CastFunctionInfo>(exec_callback);
+	CheckedAPICall(duckdb_v2_cast_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_cast_function_builder_register, ctx.handle(), handle());
 }

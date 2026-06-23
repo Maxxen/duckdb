@@ -26,12 +26,16 @@
 {%- endif -%}
 {%- endmacro -%}
 
-{%- macro render_struct(s) -%}
+{%- macro render_struct_fwd(s) -%}
   {%- if s.description %}//! {{ s.description | c_line_comment }}
 {% endif -%}
-typedef struct {
+typedef struct {{ s.template_alias }} {{ "*" if s.pointer_alias else "" }}{{ s.template_alias }};
+{%- endmacro %}
+
+{%- macro render_struct_body(s) -%}
+struct {{ s.template_alias }} {
 {% for f in s.fields -%}
 {{ render_field(f, "  ") }}
 {% endfor -%}
-}{{ "*" if s.pointer_alias else "" }} {{ s.template_alias }};
+};
 {%- endmacro %}

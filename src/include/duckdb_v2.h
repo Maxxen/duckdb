@@ -74,7 +74,7 @@ typedef uint64_t idx_t;
 
 /* --- Enums for common --- */
 
-/* --- Structs for common --- */
+/* --- Struct forward declarations for common --- */
 //! A borrowed, length-delimited string view: `ptr` points to `len` bytes
 //! of character data. The bytes are NOT guaranteed to be null-terminated
 //! and may contain interior null bytes; always honour `len` instead of
@@ -85,10 +85,7 @@ typedef uint64_t idx_t;
 //! confused with `string`, the opaque 16-byte VARCHAR *storage* format —
 //! `str` is the decoded *view* shape that byte reads across the API
 //! boundary use.
-typedef struct {
-	const char *ptr;
-	idx_t len;
-} duckdb_v2_str;
+typedef struct duckdb_v2_str duckdb_v2_str;
 
 //! 16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT /
 //! BIGNUM), mirroring duckdb::string_t. Inlined when length <=
@@ -97,19 +94,11 @@ typedef struct {
 //! first 4. Read the fields directly, or decode via the matching
 //! varchar/blob/bit/bignum_decode (which applies each kind's wire
 //! encoding).
-typedef struct {
-	union {
-		struct {
-			uint32_t length;
-			char prefix[4];
-			char *ptr;
-		} pointer;
-		struct {
-			uint32_t length;
-			char inlined[12];
-		} inlined;
-	} value;
-} duckdb_v2_string;
+typedef struct duckdb_v2_string duckdb_v2_string;
+
+//! An opaque, owned handle to a user-defined resource. Bundles the pointer
+//! with optional callbacks to destroy and compare the resource.
+typedef struct duckdb_v2_opaque duckdb_v2_opaque;
 
 /* --- Types for common --- */
 //! An opaque handle to the V2 environment: the required root through
@@ -249,13 +238,37 @@ typedef duckdb_v2_string duckdb_v2_bignum_t;
 /* --- Error Codes for common --- */
 
 /* --- Function pointer typedefs for common --- */
-typedef bool (*duckdb_v2_user_data_equals_fn)(void *a, void *b);
+typedef bool (*duckdb_v2_opaque_equals_fn)(void *a, void *b);
 
-typedef void *(*duckdb_v2_user_data_copy_fn)(void *data);
-
-typedef void (*duckdb_v2_user_data_destroy_fn)(void *data);
+typedef void (*duckdb_v2_opaque_destroy_fn)(void *data);
 
 /* --- Functions for common --- */
+
+/* --- Struct definitions for common --- */
+struct duckdb_v2_str {
+	const char *ptr;
+	idx_t len;
+};
+
+struct duckdb_v2_string {
+	union {
+		struct {
+			uint32_t length;
+			char prefix[4];
+			char *ptr;
+		} pointer;
+		struct {
+			uint32_t length;
+			char inlined[12];
+		} inlined;
+	} value;
+};
+
+struct duckdb_v2_opaque {
+	void *ptr;
+	duckdb_v2_opaque_destroy_fn destroy;
+	duckdb_v2_opaque_equals_fn equals;
+};
 
 /* ============================================================================
  * MODULE: errors
@@ -263,7 +276,7 @@ typedef void (*duckdb_v2_user_data_destroy_fn)(void *data);
 
 /* --- Enums for errors --- */
 
-/* --- Structs for errors --- */
+/* --- Struct forward declarations for errors --- */
 
 /* --- Types for errors --- */
 
@@ -382,107 +395,26 @@ typedef void (*duckdb_v2_user_data_destroy_fn)(void *data);
 
 /* --- Functions for errors --- */
 
+/* --- Struct definitions for errors --- */
+
 /* ============================================================================
  * MODULE: aggregate
  * ============================================================================ */
 
 /* --- Enums for aggregate --- */
 
-/* --- Structs for aggregate --- */
-typedef struct {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! The size of the aggregate state for a single row, in bytes. The callback should write the required size to this
-	//! field on success.
-	idx_t out_size;
-} duckdb_v2_aggregate_function_size_args;
+/* --- Struct forward declarations for aggregate --- */
+typedef struct duckdb_v2_aggregate_function_size_args duckdb_v2_aggregate_function_size_args;
 
-typedef struct {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the
-	//! size returned by the size callback, and is initialized to zero. The callback should initialize this state on
-	//! success.
-	void *state;
-} duckdb_v2_aggregate_function_init_args;
+typedef struct duckdb_v2_aggregate_function_init_args duckdb_v2_aggregate_function_init_args;
 
-typedef struct {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! The number of rows in the current batch being processed. This is the size of the `input` data chunk and the
-	//! number of aggregate states pointed to by `state`.
-	idx_t count;
-	//! The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument
-	//! passed to the aggregate function, with one row per input row for the current batch.
-	duckdb_v2_data_chunk_handle input;
-	//! Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers,
-	//! where each pointer points to the aggregate state for a single row. The callback should apply updates to these
-	//! states based on the input data on success.
-	void **states;
-} duckdb_v2_aggregate_function_update_args;
+typedef struct duckdb_v2_aggregate_function_update_args duckdb_v2_aggregate_function_update_args;
 
-typedef struct {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! The number of source and target states to combine. This is the size of the `sources` and `targets` arrays.
-	idx_t count;
-	//! Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be combined into the destination state.
-	void **sources;
-	//! Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be updated with the combined results from the source states.
-	void **targets;
-} duckdb_v2_aggregate_function_combine_args;
+typedef struct duckdb_v2_aggregate_function_combine_args duckdb_v2_aggregate_function_combine_args;
 
-typedef struct {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! The number of rows in the current batch being finalized. This is the size of the `state` array and the number of
-	//! result vectors pointed to by `result`.
-	idx_t count;
-	//! Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers,
-	//! where each pointer points to the aggregate state for a single row.
-	void **states;
-	//! The vector in which the function should write its result values for the current batch of rows being finalized.
-	duckdb_v2_vector_handle result;
-	//! The offset in the result vector at which to start writing results for the current batch. This is used when
-	//! finalizing multiple batches of rows into a single result vector.
-	idx_t result_offset;
-} duckdb_v2_aggregate_function_finalize_args;
+typedef struct duckdb_v2_aggregate_function_finalize_args duckdb_v2_aggregate_function_finalize_args;
 
-typedef struct {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! The number of aggregate states to destroy. This is the size of the `states` array.
-	idx_t count;
-	//! Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be destroyed and have its resources freed.
-	void **states;
-} duckdb_v2_aggregate_function_destroy_args;
+typedef struct duckdb_v2_aggregate_function_destroy_args duckdb_v2_aggregate_function_destroy_args;
 
 /* --- Types for aggregate --- */
 //! An opaque handle representing a builder for defining and registering a custom aggregate function in DuckDB. The
@@ -660,14 +592,11 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_destr
  * @param builder The aggregate function builder for which to set the user data.
  * @param data The user data pointer to set for the aggregate function. This pointer is passed to all of the function's
  * callbacks and can be used to store context or state needed by the callbacks.
- * @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
- * If not provided, the library will not attempt to destroy the user data.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_user_data(
-    duckdb_v2_aggregate_function_builder_handle builder, void *data, duckdb_v2_user_data_destroy_fn destroy,
-    duckdb_v2_error_info_handle *err);
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
  * Registers the aggregate function being built
  * Registers the aggregate function defined by the builder with DuckDB, making it available for use in SQL queries.
@@ -679,6 +608,102 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_user_
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
     duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle builder,
     duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for aggregate --- */
+struct duckdb_v2_aggregate_function_size_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The size of the aggregate state for a single row, in bytes. The callback should write the required size to this
+	//! field on success.
+	idx_t out_size;
+};
+
+struct duckdb_v2_aggregate_function_init_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the
+	//! size returned by the size callback, and is initialized to zero. The callback should initialize this state on
+	//! success.
+	void *state;
+};
+
+struct duckdb_v2_aggregate_function_update_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of rows in the current batch being processed. This is the size of the `input` data chunk and the
+	//! number of aggregate states pointed to by `state`.
+	idx_t count;
+	//! The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument
+	//! passed to the aggregate function, with one row per input row for the current batch.
+	duckdb_v2_data_chunk_handle input;
+	//! Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers,
+	//! where each pointer points to the aggregate state for a single row. The callback should apply updates to these
+	//! states based on the input data on success.
+	void **states;
+};
+
+struct duckdb_v2_aggregate_function_combine_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of source and target states to combine. This is the size of the `sources` and `targets` arrays.
+	idx_t count;
+	//! Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be combined into the destination state.
+	void **sources;
+	//! Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be updated with the combined results from the source states.
+	void **targets;
+};
+
+struct duckdb_v2_aggregate_function_finalize_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of rows in the current batch being finalized. This is the size of the `state` array and the number of
+	//! result vectors pointed to by `result`.
+	idx_t count;
+	//! Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers,
+	//! where each pointer points to the aggregate state for a single row.
+	void **states;
+	//! The vector in which the function should write its result values for the current batch of rows being finalized.
+	duckdb_v2_vector_handle result;
+	//! The offset in the result vector at which to start writing results for the current batch. This is used when
+	//! finalizing multiple batches of rows into a single result vector.
+	idx_t result_offset;
+};
+
+struct duckdb_v2_aggregate_function_destroy_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The number of aggregate states to destroy. This is the size of the `states` array.
+	idx_t count;
+	//! Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be destroyed and have its resources freed.
+	void **states;
+};
 
 /* ============================================================================
  * MODULE: cast
@@ -700,22 +725,8 @@ typedef enum DUCKDB_V2_CAST_MODE {
 	DUCKDB_V2_CAST_MODE_TRY = 1,
 } DUCKDB_V2_CAST_MODE;
 
-/* --- Structs for cast --- */
-typedef struct {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! Opaque pointer to user data set by the caller when registering the function, if any.
-	void *user_data;
-	//! The input vector containing the source values to cast. It contains `count` logical rows.
-	duckdb_v2_vector_handle input;
-	//! The output vector the callback must write the cast result values into. It has space for `count` logical rows.
-	duckdb_v2_vector_handle output;
-	//! The number of rows to cast, i.e. the number of logical rows in both the input and output vectors.
-	idx_t count;
-	//! The mode the cast is being executed in. See `CAST_MODE` for details. In `CAST_MODE_TRY`, conversion failures
-	//! should be written as NULL values into the output vector instead of being reported as errors.
-	DUCKDB_V2_CAST_MODE mode;
-} duckdb_v2_cast_function_exec_args;
+/* --- Struct forward declarations for cast --- */
+typedef struct duckdb_v2_cast_function_exec_args duckdb_v2_cast_function_exec_args;
 
 /* --- Types for cast --- */
 //! An opaque handle to a cast function builder.
@@ -813,14 +824,11 @@ exec callback via the args' `user_data` field.
 
 * @param func The cast function to configure.
 * @param data Opaque pointer to user data.
-* @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
-If not provided, the library will not attempt to destroy the user data.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_cast_function_builder_set_user_data(duckdb_v2_cast_function_builder_handle func, void *data,
-                                              duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_user_data(
+    duckdb_v2_cast_function_builder_handle func, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
 * Registers a cast function with a database, making the cast available in queries.
 * This function registers a fully configured cast function builder with a database, making the cast available for use in
@@ -850,13 +858,30 @@ prevent double-destruction.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_destroy(duckdb_v2_cast_function_builder_handle *func);
 
+/* --- Struct definitions for cast --- */
+struct duckdb_v2_cast_function_exec_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! Opaque pointer to user data set by the caller when registering the function, if any.
+	void *user_data;
+	//! The input vector containing the source values to cast. It contains `count` logical rows.
+	duckdb_v2_vector_handle input;
+	//! The output vector the callback must write the cast result values into. It has space for `count` logical rows.
+	duckdb_v2_vector_handle output;
+	//! The number of rows to cast, i.e. the number of logical rows in both the input and output vectors.
+	idx_t count;
+	//! The mode the cast is being executed in. See `CAST_MODE` for details. In `CAST_MODE_TRY`, conversion failures
+	//! should be written as NULL values into the output vector instead of being reported as errors.
+	DUCKDB_V2_CAST_MODE mode;
+};
+
 /* ============================================================================
  * MODULE: column_data_collection
  * ============================================================================ */
 
 /* --- Enums for column_data_collection --- */
 
-/* --- Structs for column_data_collection --- */
+/* --- Struct forward declarations for column_data_collection --- */
 
 /* --- Types for column_data_collection --- */
 //! A column_data_collection represents a set of (buffer-managed) data chunks.
@@ -1093,6 +1118,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_parallel_scan
     duckdb_v2_column_data_collection_worker_scan_state_handle worker_state, duckdb_v2_data_chunk_handle out_chunk,
     bool *did_produce_chunk, duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for column_data_collection --- */
+
 /* ============================================================================
  * MODULE: configuration
  * ============================================================================ */
@@ -1132,7 +1159,7 @@ typedef enum DUCKDB_V2_SETTING_SCOPE {
 	DUCKDB_V2_SETTING_SCOPE_LOCAL = 2,
 } DUCKDB_V2_SETTING_SCOPE;
 
-/* --- Structs for configuration --- */
+/* --- Struct forward declarations for configuration --- */
 
 /* --- Types for configuration --- */
 
@@ -1260,13 +1287,15 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_ha
                                                              duckdb_v2_str *out_alias,
                                                              duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for configuration --- */
+
 /* ============================================================================
  * MODULE: custom_type
  * ============================================================================ */
 
 /* --- Enums for custom_type --- */
 
-/* --- Structs for custom_type --- */
+/* --- Struct forward declarations for custom_type --- */
 
 /* --- Types for custom_type --- */
 //! An opaque handle to a custom type builder.
@@ -1374,13 +1403,15 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_custom_type_builder_set_base_type(duckdb_v2_custom_type_builder_handle builder,
                                             duckdb_v2_logical_type_handle base_type, duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for custom_type --- */
+
 /* ============================================================================
  * MODULE: data_chunk
  * ============================================================================ */
 
 /* --- Enums for data_chunk --- */
 
-/* --- Structs for data_chunk --- */
+/* --- Struct forward declarations for data_chunk --- */
 
 /* --- Types for data_chunk --- */
 
@@ -1453,13 +1484,15 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_data
                                                                   duckdb_v2_vector_handle *out_vector,
                                                                   duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for data_chunk --- */
+
 /* ============================================================================
  * MODULE: database
  * ============================================================================ */
 
 /* --- Enums for database --- */
 
-/* --- Structs for database --- */
+/* --- Struct forward declarations for database --- */
 
 /* --- Types for database --- */
 
@@ -1588,13 +1621,15 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for database --- */
+
 /* ============================================================================
  * MODULE: environment
  * ============================================================================ */
 
 /* --- Enums for environment --- */
 
-/* --- Structs for environment --- */
+/* --- Struct forward declarations for environment --- */
 
 /* --- Types for environment --- */
 
@@ -1640,13 +1675,15 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_environment_database_count(duckdb_v2
                                                                        idx_t *out_count,
                                                                        duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for environment --- */
+
 /* ============================================================================
  * MODULE: error
  * ============================================================================ */
 
 /* --- Enums for error --- */
 
-/* --- Structs for error --- */
+/* --- Struct forward declarations for error --- */
 
 /* --- Types for error --- */
 
@@ -1734,6 +1771,8 @@ nullptr. Safe to call on any info returned by the library.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_error_info_destroy(duckdb_v2_error_info_handle *info);
+
+/* --- Struct definitions for error --- */
 
 /* ============================================================================
  * MODULE: expression
@@ -1874,7 +1913,7 @@ typedef enum DUCKDB_V2_EXPRESSION_TYPE {
 	DUCKDB_V2_EXPRESSION_TYPE_BOUND_EXPANDED = 234,
 } DUCKDB_V2_EXPRESSION_TYPE;
 
-/* --- Structs for expression --- */
+/* --- Struct forward declarations for expression --- */
 
 /* --- Types for expression --- */
 //! A borrowed handle to a bound expression node within the engine's plan.
@@ -2033,6 +2072,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_reference_index(duckd
                                                                            idx_t *out_index,
                                                                            duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for expression --- */
+
 /* ============================================================================
  * MODULE: file_system
  * ============================================================================ */
@@ -2056,7 +2097,7 @@ typedef enum DUCKDB_V2_FILE_FLAG {
 	DUCKDB_V2_FILE_FLAG_APPEND = 16,
 } DUCKDB_V2_FILE_FLAG;
 
-/* --- Structs for file_system --- */
+/* --- Struct forward declarations for file_system --- */
 
 /* --- Types for file_system --- */
 //! An opaque handle to a DuckDB file system.
@@ -2238,6 +2279,8 @@ returns DUCKDB_V2_ERROR_NONE. The handle is set to null on return to prevent dou
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_destroy(duckdb_v2_file_handle_handle *file_handle);
 
+/* --- Struct definitions for file_system --- */
+
 /* ============================================================================
  * MODULE: logging
  * ============================================================================ */
@@ -2259,7 +2302,7 @@ typedef enum DUCKDB_V2_LOG_LEVEL {
 	DUCKDB_V2_LOG_LEVEL_FATAL = 60,
 } DUCKDB_V2_LOG_LEVEL;
 
-/* --- Structs for logging --- */
+/* --- Struct forward declarations for logging --- */
 
 /* --- Types for logging --- */
 //! Opaque handle representing a log storage mechanism to configure.
@@ -2305,13 +2348,11 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_name(duckdb_
  * Attaches arbitrary user data to the log storage builder, which can be retrieved later when processing logs.
  * @param builder The log storage builder handle to configure.
  * @param user_data Pointer to the user data to associate with the log storage builder.
- * @param destructor Optional destructor function to clean up the user data when the log storage builder is destroyed.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_API_CALL_t
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(
-    duckdb_v2_log_storage_builder_handle builder, void *user_data, duckdb_v2_user_data_destroy_fn destructor,
-    duckdb_v2_error_info_handle *err);
+    duckdb_v2_log_storage_builder_handle builder, duckdb_v2_opaque user_data, duckdb_v2_error_info_handle *err);
 /*!
  * Sets the log callback function for the log storage builder.
  * Defines a callback function that will be invoked to process log messages emitted by connections or contexts that use
@@ -2370,6 +2411,8 @@ context.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_context_log(duckdb_v2_context_handle context, DUCKDB_V2_LOG_LEVEL level,
                                                         duckdb_v2_str message, duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for logging --- */
 
 /* ============================================================================
  * MODULE: logical_type
@@ -2442,7 +2485,7 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 	DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT = 109,
 } DUCKDB_V2_LOGICAL_TYPE_ID;
 
-/* --- Structs for logical_type --- */
+/* --- Struct forward declarations for logical_type --- */
 
 /* --- Types for logical_type --- */
 
@@ -2759,85 +2802,20 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_type(d
                                                                                duckdb_v2_logical_type_handle *out_child,
                                                                                duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for logical_type --- */
+
 /* ============================================================================
  * MODULE: scalar
  * ============================================================================ */
 
 /* --- Enums for scalar --- */
 
-/* --- Structs for scalar --- */
-typedef struct {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The DuckDB context in which the function is being bound.
-	duckdb_v2_context_handle context;
-	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! On success, receives an opaque pointer to user data that will be associated with the function's "bind data" and
-	//! accessible from later callbacks (e.g. "init" and "exec"). This is useful for sharing information between the
-	//! planning and execution phases, such as resolved argument types, prepared statements, or other metadata computed
-	//! during binding that needs to be available during execution.
-	void *out_bind_data;
-	//! If the callback sets `out_bind_data`, it can also set this optional copy callback which will be used to copy the
-	//! bind data when it's accessed from a different thread (e.g. from the planning thread to a worker thread during
-	//! execution). If `out_bind_data` is set but this copy callback is not provided, the library will use a default
-	//! shallow copy implementation which simply copies the pointer value. If the bind data requires deep copying or
-	//! special handling to be safely shared across threads, the callback must provide a custom copy implementation via
-	//! this parameter.
-	duckdb_v2_user_data_copy_fn out_bind_data_copy;
-	//! If the callback sets `out_bind_data`, it can also set this optional destructor callback which will be used to
-	//! destroy the bind data when it's no longer needed (e.g. at the end of query execution). If `out_bind_data` is set
-	//! but this destructor is not provided, the library will not attempt to destroy the bind data.
-	duckdb_v2_user_data_destroy_fn out_bind_data_destructor;
-	//! If the callback sets `out_bind_data`, it can also set this optional equality callback which will be used to
-	//! compare two bind data pointers for equality. This is useful for optimizations such as caching or reusing
-	//! execution plans for functions with identical bind data. If `out_bind_data` is set but this equality callback is
-	//! not provided, the library will use a default pointer equality check (i.e. two bind data pointers are considered
-	//! equal if they have the same value).
-	duckdb_v2_user_data_equals_fn out_bind_data_equality;
-} duckdb_v2_scalar_function_bind_args;
+/* --- Struct forward declarations for scalar --- */
+typedef struct duckdb_v2_scalar_function_bind_args duckdb_v2_scalar_function_bind_args;
 
-typedef struct {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The DuckDB context in which the function is being initialized.
-	duckdb_v2_context_handle context;
-	//! The name of the function being initialized. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! Opaque pointer to user data set by the function's "bind" callback, if any
-	void *bind_data;
-	//! On success, receives an opaque pointer to user data that will be associated with the executing worker thread for
-	//! the duration of the query and accessible from the function's "exec" callback. Note that the "init data" is
-	//! worker-local, not _thread local_. There is no guarantee that the same thread will see the same "init data"
-	//! across multiple invocations of the function.
-	void *out_init_data;
-	//! If the callback sets `out_init_data`, it can also set this optional destructor callback which will be used to
-	//! destroy the init data when it's no longer needed (e.g. at the end of query execution). If `out_init_data` is set
-	//! but this destructor is not provided, the library will not attempt to destroy the init data.
-	duckdb_v2_user_data_destroy_fn out_init_data_destructor;
-} duckdb_v2_scalar_function_init_args;
+typedef struct duckdb_v2_scalar_function_init_args duckdb_v2_scalar_function_init_args;
 
-typedef struct {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being executed. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! Opaque pointer to user data set by the function's "bind" callback, if any
-	void *bind_data;
-	//! Opaque pointer to user data set by the function's "init" callback for the executing worker thread, if any
-	void *init_data;
-	//! The input data chunk for the current invocation. This contains vectors for each argument passed to the function,
-	//! with one row per input row for the current batch.
-	duckdb_v2_data_chunk_handle input;
-	//! The vector in which the function should write its result values for the current invocation.
-	duckdb_v2_vector_handle result;
-} duckdb_v2_scalar_function_exec_args;
+typedef struct duckdb_v2_scalar_function_exec_args duckdb_v2_scalar_function_exec_args;
 
 /* --- Types for scalar --- */
 //! An opaque handle to a scalar function builder.
@@ -2968,14 +2946,11 @@ callbacks via `scalar_function_get_user_data`.
 
 * @param func The scalar function to configure.
 * @param data Opaque pointer to user data.
-* @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
-If not provided, the library will not attempt to destroy the user data.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(
-    duckdb_v2_scalar_function_builder_handle func, void *data, duckdb_v2_user_data_destroy_fn destroy,
-    duckdb_v2_error_info_handle *err);
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
 * Adds a parameter to a scalar function.
 * Adds a parameter to a scalar function with the specified name and type.
@@ -3004,13 +2979,80 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
                                                   duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for scalar --- */
+struct duckdb_v2_scalar_function_bind_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The DuckDB context in which the function is being bound.
+	duckdb_v2_context_handle context;
+	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! Opaque pointer to user data set by the caller when registering the function, if any
+	void *user_data;
+	//! On success, receives an opaque pointer to user data that will be associated with the function's "bind data" and
+	//! accessible from later callbacks (e.g. "init" and "exec"). This is useful for sharing information between the
+	//! planning and execution phases, such as resolved argument types, prepared statements, or other metadata computed
+	//! during binding that needs to be available during execution.
+	void *out_bind_data;
+	//! If the callback sets `out_bind_data`, it can also set this optional destructor callback which will be used to
+	//! destroy the bind data when it's no longer needed (e.g. at the end of query execution). If `out_bind_data` is set
+	//! but this destructor is not provided, the library will not attempt to destroy the bind data.
+	duckdb_v2_opaque_destroy_fn out_bind_data_destructor;
+	//! If the callback sets `out_bind_data`, it can also set this optional equality callback which will be used to
+	//! compare two bind data pointers for equality. This is useful for optimizations such as caching or reusing
+	//! execution plans for functions with identical bind data. If `out_bind_data` is set but this equality callback is
+	//! not provided, the library will use a default pointer equality check (i.e. two bind data pointers are considered
+	//! equal if they have the same value).
+	duckdb_v2_opaque_equals_fn out_bind_data_equality;
+};
+
+struct duckdb_v2_scalar_function_init_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The DuckDB context in which the function is being initialized.
+	duckdb_v2_context_handle context;
+	//! The name of the function being initialized. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! Opaque pointer to user data set by the caller when registering the function, if any
+	void *user_data;
+	//! Opaque pointer to user data set by the function's "bind" callback, if any
+	void *bind_data;
+	//! On success, receives an opaque pointer to user data that will be associated with the executing worker thread for
+	//! the duration of the query and accessible from the function's "exec" callback. Note that the "init data" is
+	//! worker-local, not _thread local_. There is no guarantee that the same thread will see the same "init data"
+	//! across multiple invocations of the function.
+	void *out_init_data;
+	//! If the callback sets `out_init_data`, it can also set this optional destructor callback which will be used to
+	//! destroy the init data when it's no longer needed (e.g. at the end of query execution). If `out_init_data` is set
+	//! but this destructor is not provided, the library will not attempt to destroy the init data.
+	duckdb_v2_opaque_destroy_fn out_init_data_destructor;
+};
+
+struct duckdb_v2_scalar_function_exec_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The name of the function being executed. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! Opaque pointer to user data set by the caller when registering the function, if any
+	void *user_data;
+	//! Opaque pointer to user data set by the function's "bind" callback, if any
+	void *bind_data;
+	//! Opaque pointer to user data set by the function's "init" callback for the executing worker thread, if any
+	void *init_data;
+	//! The input data chunk for the current invocation. This contains vectors for each argument passed to the function,
+	//! with one row per input row for the current batch.
+	duckdb_v2_data_chunk_handle input;
+	//! The vector in which the function should write its result values for the current invocation.
+	duckdb_v2_vector_handle result;
+};
+
 /* ============================================================================
  * MODULE: sql_statement
  * ============================================================================ */
 
 /* --- Enums for sql_statement --- */
 
-/* --- Structs for sql_statement --- */
+/* --- Struct forward declarations for sql_statement --- */
 
 /* --- Types for sql_statement --- */
 //! An opaque, owned handle to a single parsed SQL statement, produced
@@ -3092,13 +3134,15 @@ valid. On success the slot is set to nullptr.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_statement_iterator_destroy(duckdb_v2_statement_iterator_handle *iterator);
 
+/* --- Struct definitions for sql_statement --- */
+
 /* ============================================================================
  * MODULE: value
  * ============================================================================ */
 
 /* --- Enums for value --- */
 
-/* --- Structs for value --- */
+/* --- Struct forward declarations for value --- */
 
 /* --- Types for value --- */
 
@@ -3808,6 +3852,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_decimal(duckdb_v2_value_ha
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uuid(duckdb_v2_value_handle value, uint64_t *out_lower,
                                                            uint64_t *out_upper, duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for value --- */
+
 /* ============================================================================
  * MODULE: vector
  * ============================================================================ */
@@ -3830,34 +3876,16 @@ typedef enum DUCKDB_V2_VECTOR_TYPE {
 	DUCKDB_V2_VECTOR_TYPE_DICTIONARY = 3,
 } DUCKDB_V2_VECTOR_TYPE;
 
-/* --- Structs for vector --- */
-typedef struct {
-	const void *data;
-	const uint64_t *validity;
-	const duckdb_v2_sel_t *sel;
-	idx_t count;
-} duckdb_v2_vector_view;
+/* --- Struct forward declarations for vector --- */
+typedef struct duckdb_v2_vector_view duckdb_v2_vector_view;
 
-typedef struct {
-	idx_t offset;
-	idx_t length;
-} duckdb_v2_list_entry;
+typedef struct duckdb_v2_list_entry duckdb_v2_list_entry;
 
-typedef struct {
-	uint64_t lower;
-	int64_t upper;
-} duckdb_v2_hugeint_t;
+typedef struct duckdb_v2_hugeint_t duckdb_v2_hugeint_t;
 
-typedef struct {
-	uint64_t lower;
-	uint64_t upper;
-} duckdb_v2_uhugeint_t;
+typedef struct duckdb_v2_uhugeint_t duckdb_v2_uhugeint_t;
 
-typedef struct {
-	int32_t months;
-	int32_t days;
-	int64_t micros;
-} duckdb_v2_interval_t;
+typedef struct duckdb_v2_interval_t duckdb_v2_interval_t;
 
 /* --- Types for vector --- */
 
@@ -4182,13 +4210,42 @@ is the physical row index (post-selection).
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(const uint64_t *validity, idx_t row,
                                                                   bool *out_is_valid, duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for vector --- */
+struct duckdb_v2_vector_view {
+	const void *data;
+	const uint64_t *validity;
+	const duckdb_v2_sel_t *sel;
+	idx_t count;
+};
+
+struct duckdb_v2_list_entry {
+	idx_t offset;
+	idx_t length;
+};
+
+struct duckdb_v2_hugeint_t {
+	uint64_t lower;
+	int64_t upper;
+};
+
+struct duckdb_v2_uhugeint_t {
+	uint64_t lower;
+	uint64_t upper;
+};
+
+struct duckdb_v2_interval_t {
+	int32_t months;
+	int32_t days;
+	int64_t micros;
+};
+
 /* ============================================================================
  * MODULE: connection
  * ============================================================================ */
 
 /* --- Enums for connection --- */
 
-/* --- Structs for connection --- */
+/* --- Struct forward declarations for connection --- */
 
 /* --- Types for connection --- */
 //! An opaque, owned handle to a snapshot of a query's execution
@@ -4404,65 +4461,24 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duck
                                                                             void *user_data,
                                                                             duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for connection --- */
+
 /* ============================================================================
  * MODULE: copy
  * ============================================================================ */
 
 /* --- Enums for copy --- */
 
-/* --- Structs for copy --- */
-typedef struct {
-	uint32_t struct_size;
-	duckdb_v2_context_handle context;
-	const void *user_data;
-	duckdb_v2_logical_type_handle *column_types;
-	//! Array of column_count borrowed name views; only valid for the duration of the callback.
-	const duckdb_v2_str *column_names;
-	idx_t column_count;
-	void *out_bind_data;
-	duckdb_v2_user_data_copy_fn out_bind_data_copy;
-	duckdb_v2_user_data_destroy_fn out_bind_data_destructor;
-	duckdb_v2_user_data_equals_fn out_bind_data_equality;
-} duckdb_v2_copy_function_bind_args;
+/* --- Struct forward declarations for copy --- */
+typedef struct duckdb_v2_copy_function_bind_args duckdb_v2_copy_function_bind_args;
 
-typedef struct {
-	uint32_t struct_size;
-	duckdb_v2_context_handle context;
-	const void *user_data;
-	const void *bind_data;
-	//! The target file path. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str file_path;
-	void *out_init_data;
-	duckdb_v2_user_data_destroy_fn out_init_data_destructor;
-} duckdb_v2_copy_function_init_args;
+typedef struct duckdb_v2_copy_function_init_args duckdb_v2_copy_function_init_args;
 
-typedef struct {
-	uint32_t struct_size;
-	duckdb_v2_context_handle context;
-	const void *user_data;
-	const void *bind_data;
-	void *init_data;
-	duckdb_v2_column_data_collection_handle in_batch;
-	void *out_batch;
-	duckdb_v2_user_data_destroy_fn out_batch_destructor;
-} duckdb_v2_copy_function_batch_args;
+typedef struct duckdb_v2_copy_function_batch_args duckdb_v2_copy_function_batch_args;
 
-typedef struct {
-	uint32_t struct_size;
-	duckdb_v2_context_handle context;
-	const void *user_data;
-	const void *bind_data;
-	void *init_data;
-	void *in_batch;
-} duckdb_v2_copy_function_flush_args;
+typedef struct duckdb_v2_copy_function_flush_args duckdb_v2_copy_function_flush_args;
 
-typedef struct {
-	uint32_t struct_size;
-	duckdb_v2_context_handle context;
-	const void *user_data;
-	const void *bind_data;
-	void *init_data;
-} duckdb_v2_copy_function_finalize_args;
+typedef struct duckdb_v2_copy_function_finalize_args duckdb_v2_copy_function_finalize_args;
 
 /* --- Types for copy --- */
 //! An opaque handle to a copy function builder. This is used to build a copy function, which can be used to copy data
@@ -4573,14 +4589,11 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_finalize_c
  * are invoked. This can be used to store any state or context that the callbacks need to operate.
  * @param builder The copy function builder handle.
  * @param data Opaque pointer to user data.
- * @param destroy Optional. If provided, this callback will be used to destroy the user data when it's no longer needed.
- * If not provided, the library will not attempt to destroy the user data.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_API_CALL_t
  */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_copy_function_builder_set_user_data(duckdb_v2_copy_function_builder_handle builder, void *data,
-                                              duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_user_data(
+    duckdb_v2_copy_function_builder_handle builder, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
  * Registers the copy function with a database, making the function available for use in SQL queries.
  * @param context The DuckDB context in which to register the function.
@@ -4598,6 +4611,59 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_register(
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_copy_function_builder_destroy(duckdb_v2_copy_function_builder_handle *builder);
+
+/* --- Struct definitions for copy --- */
+struct duckdb_v2_copy_function_bind_args {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	duckdb_v2_logical_type_handle *column_types;
+	//! Array of column_count borrowed name views; only valid for the duration of the callback.
+	const duckdb_v2_str *column_names;
+	idx_t column_count;
+	void *out_bind_data;
+	duckdb_v2_opaque_destroy_fn out_bind_data_destructor;
+	duckdb_v2_opaque_equals_fn out_bind_data_equality;
+};
+
+struct duckdb_v2_copy_function_init_args {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	//! The target file path. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str file_path;
+	void *out_init_data;
+	duckdb_v2_opaque_destroy_fn out_init_data_destructor;
+};
+
+struct duckdb_v2_copy_function_batch_args {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	void *init_data;
+	duckdb_v2_column_data_collection_handle in_batch;
+	void *out_batch;
+	duckdb_v2_opaque_destroy_fn out_batch_destructor;
+};
+
+struct duckdb_v2_copy_function_flush_args {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	void *init_data;
+	void *in_batch;
+};
+
+struct duckdb_v2_copy_function_finalize_args {
+	uint32_t struct_size;
+	duckdb_v2_context_handle context;
+	const void *user_data;
+	const void *bind_data;
+	void *init_data;
+};
 
 /* ============================================================================
  * MODULE: query_result
@@ -4671,7 +4737,7 @@ typedef enum DUCKDB_V2_RESULT_STEP_STATUS {
 	DUCKDB_V2_RESULT_STEP_STATUS_CANCELLED = 3,
 } DUCKDB_V2_RESULT_STEP_STATUS;
 
-/* --- Structs for query_result --- */
+/* --- Struct forward declarations for query_result --- */
 
 /* --- Types for query_result --- */
 
@@ -4915,13 +4981,15 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_column_logical_type(duckdb_v2
                                                                        duckdb_v2_logical_type_handle *out_type,
                                                                        duckdb_v2_error_info_handle *err);
 
+/* --- Struct definitions for query_result --- */
+
 /* ============================================================================
  * MODULE: table
  * ============================================================================ */
 
 /* --- Enums for table --- */
 
-/* --- Structs for table --- */
+/* --- Struct forward declarations for table --- */
 
 /* --- Types for table --- */
 //! An owned handle to a table function builder. Created with table_function_builder_create, configured with
@@ -5069,13 +5137,11 @@ Useful for static context that does not change across planning and execution.
 
 * @param builder The builder to configure.
 * @param data Opaque pointer to user data.
-* @param destroy Optional destructor for the user data.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_user_data(
-    duckdb_v2_table_function_builder_handle builder, void *data, duckdb_v2_user_data_destroy_fn destroy,
-    duckdb_v2_error_info_handle *err);
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
  * Sets the bind callback. Required.
  * @param builder The builder to configure.
@@ -5214,16 +5280,12 @@ duckdb_v2_table_function_bind_get_named_parameter(duckdb_v2_table_function_bind_
 accessible to init, exec, cardinality, and progress callbacks.
 
 * @param info The bind info handle.
-* @param data Opaque pointer to user bind data.
-* @param copy Optional copy callback.
-* @param equals Optional equality callback.
-* @param destroy Optional destructor.
+* @param data Opaque pointer to bind data.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_set_bind_data(
-    duckdb_v2_table_function_bind_info_handle info, void *data, duckdb_v2_user_data_copy_fn copy,
-    duckdb_v2_user_data_equals_fn equals, duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
+    duckdb_v2_table_function_bind_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
 * Sets the estimated cardinality during bind.
 * A convenience for simple cases where the row count is known at
@@ -5261,14 +5323,12 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_get_bind_data(
 accessible from init_local, exec, and progress callbacks.
 
 * @param info The init info handle.
-* @param data Opaque pointer to global state.
-* @param destroy Optional destructor.
+* @param data Opaque handle to the global state, bundling an optional destructor.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_global_state(
-    duckdb_v2_table_function_init_info_handle info, void *data, duckdb_v2_user_data_destroy_fn destroy,
-    duckdb_v2_error_info_handle *err);
+    duckdb_v2_table_function_init_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
 * Retrieves the global state set during init_global.
 * Returns the global state pointer set via table_function_init_set_global_state,
@@ -5288,14 +5348,12 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_get_global_state
 from the exec callback for the same worker.
 
 * @param info The init info handle.
-* @param data Opaque pointer to local state.
-* @param destroy Optional destructor.
+* @param data Opaque handle to the local state, bundling an optional destructor.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_table_function_init_set_local_state(duckdb_v2_table_function_init_info_handle info, void *data,
-                                              duckdb_v2_user_data_destroy_fn destroy, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_local_state(
+    duckdb_v2_table_function_init_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
 * Sets the maximum number of threads for this scan.
 * Only valid from init_global callback. Defaults to 1. The engine
@@ -5429,6 +5487,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_exec_get_output_chunk
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_exec_get_user_data(
     duckdb_v2_table_function_exec_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for table --- */
 
 #ifdef __cplusplus
 }

@@ -17,8 +17,6 @@ suffixes:
 primitives:
   - name: void
     c_type: void
-  - name: opaque
-    c_type: void
   - name: char
     c_type: char
   - name: bool

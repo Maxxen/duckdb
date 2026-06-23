@@ -7,14 +7,6 @@ namespace duckdb {
 namespace {
 
 struct AggregateFunctionExtraDataV2 final : public AggregateFunctionInfo {
-	~AggregateFunctionExtraDataV2() override {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-		user_data = nullptr;
-		user_data_destructor_cb = nullptr;
-	}
-
 	duckdb_v2_aggregate_function_size_callback_fn size_cb = nullptr;
 	duckdb_v2_aggregate_function_init_callback_fn init_cb = nullptr;
 	duckdb_v2_aggregate_function_update_callback_fn update_cb = nullptr;
@@ -22,8 +14,7 @@ struct AggregateFunctionExtraDataV2 final : public AggregateFunctionInfo {
 	duckdb_v2_aggregate_function_finalize_callback_fn finalize_cb = nullptr;
 	duckdb_v2_aggregate_function_destroy_callback_fn destroy_cb = nullptr;
 
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 };
 
 class AggregateFunctionBindDataV2 final : public FunctionData {
@@ -78,7 +69,7 @@ struct AggregateFunctionV2 {
 
 		duckdb_v2_aggregate_function_size_args args = {};
 		args.struct_size = sizeof(args);
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 
 		info.size_cb(&args, &err_ptr);
 
@@ -99,7 +90,7 @@ struct AggregateFunctionV2 {
 
 		duckdb_v2_aggregate_function_init_args args = {};
 		args.struct_size = sizeof(args);
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.state = state;
 
 		info.init_cb(&args, &err_ptr);
@@ -127,7 +118,7 @@ struct AggregateFunctionV2 {
 
 		duckdb_v2_aggregate_function_update_args args = {};
 		args.struct_size = sizeof(args);
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.input = reinterpret_cast<_duckdb_v2_data_chunk *>(&chunk);
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 		args.count = count;
@@ -150,7 +141,7 @@ struct AggregateFunctionV2 {
 
 		duckdb_v2_aggregate_function_combine_args args = {};
 		args.struct_size = sizeof(args);
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.count = count;
 		args.sources = FlatVector::GetDataMutableUnsafe<void *>(state);
 		args.targets = FlatVector::GetDataMutableUnsafe<void *>(combined);
@@ -173,7 +164,7 @@ struct AggregateFunctionV2 {
 
 		duckdb_v2_aggregate_function_finalize_args args = {};
 		args.struct_size = sizeof(args);
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.count = count;
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 		args.result = reinterpret_cast<_duckdb_v2_vector *>(&result);
@@ -194,7 +185,7 @@ struct AggregateFunctionV2 {
 
 		duckdb_v2_aggregate_function_destroy_args args = {};
 		args.struct_size = sizeof(args);
-		args.user_data = info.user_data;
+		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.count = count;
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 
@@ -218,16 +209,7 @@ struct AggregateFunctionBuilderV2 {
 	duckdb_v2_aggregate_function_finalize_callback_fn finalize_cb = nullptr;
 	duckdb_v2_aggregate_function_destroy_callback_fn destroy_cb = nullptr;
 
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
-
-	~AggregateFunctionBuilderV2() {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-		user_data = nullptr;
-		user_data_destructor_cb = nullptr;
-	}
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 };
 
 } // namespace
@@ -473,29 +455,18 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 		catalog.CreateFunction(ctx, create_info);
 
 		function_info->user_data = agg_builder->user_data;
-		function_info->user_data_destructor_cb = agg_builder->user_data_destructor_cb;
-
-		// "move out" the extra data
-		agg_builder->user_data_destructor_cb = nullptr;
-		agg_builder->user_data = nullptr;
 	});
 }
 
 DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_builder_handle builder, void *data,
-                                                   duckdb_v2_user_data_destroy_fn destroy,
-                                                   duckdb_v2_error_info_handle *err) {
+duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_builder_handle builder,
+                                                   duckdb_v2_opaque data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
 
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
-		if (agg_builder->user_data && agg_builder->user_data_destructor_cb) {
-			agg_builder->user_data_destructor_cb(agg_builder->user_data);
-		}
-
-		agg_builder->user_data = data;
-		agg_builder->user_data_destructor_cb = destroy;
+		agg_builder->user_data = duckdb::make_shared_ptr<duckdb::OpaqueDataHandle>(data.ptr, data.destroy, data.equals);
 	});
 }

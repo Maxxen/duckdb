@@ -1007,4 +1007,64 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callba
 	return code;
 }
 
+// Owning RAII wrapper for an opaque resource with optional destroy and equals callbacks.
+class OpaqueDataHandle {
+public:
+	OpaqueDataHandle() = default;
+
+	explicit OpaqueDataHandle(void *data, duckdb_v2_opaque_destroy_fn destroy_cb = nullptr,
+	                          duckdb_v2_opaque_equals_fn equals_cb = nullptr)
+	    : data(data), destroy_cb(destroy_cb), equals_cb(equals_cb) {
+	}
+
+	// Moveable
+	OpaqueDataHandle(OpaqueDataHandle &&other) noexcept
+	    : data(other.data), destroy_cb(other.destroy_cb), equals_cb(other.equals_cb) {
+		other.data = nullptr;
+		other.destroy_cb = nullptr;
+		other.equals_cb = nullptr;
+	}
+
+	OpaqueDataHandle &operator=(OpaqueDataHandle &&other) noexcept {
+		std::swap(data, other.data);
+		std::swap(destroy_cb, other.destroy_cb);
+		std::swap(equals_cb, other.equals_cb);
+		return *this;
+	}
+
+	// Not copyable
+	OpaqueDataHandle(const OpaqueDataHandle &) = delete;
+	OpaqueDataHandle &operator=(const OpaqueDataHandle &) = delete;
+
+	~OpaqueDataHandle() {
+		if (data && destroy_cb) {
+			destroy_cb(data);
+		}
+	}
+
+	bool operator==(const OpaqueDataHandle &other) const {
+		if (equals_cb) {
+			return equals_cb(data, other.data);
+		}
+		return data == other.data;
+	}
+
+	bool operator!=(const OpaqueDataHandle &other) const {
+		return !(*this == other);
+	}
+
+	bool Equals(const OpaqueDataHandle &other) const {
+		return *this == other;
+	}
+
+	void *GetData() const {
+		return data;
+	}
+
+private:
+	void *data = nullptr;
+	duckdb_v2_opaque_destroy_fn destroy_cb = nullptr;
+	duckdb_v2_opaque_equals_fn equals_cb = nullptr;
+};
+
 } // namespace duckdb

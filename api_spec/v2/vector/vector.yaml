@@ -95,7 +95,7 @@ module: vector
 structs:
   vector_view:
     fields:
-      - {name: data, type: opaque, pointer: 1, const: true}
+      - {name: data, type: void, pointer: 1, const: true}
       - {name: validity, type: u64, pointer: 1, const: true}
       - {name: sel, type: sel, pointer: 1, const: true}
       - {name: count, type: idx}

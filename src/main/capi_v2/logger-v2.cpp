@@ -9,12 +9,6 @@ namespace {
 
 class CAPILogStorage final : public LogStorage {
 public:
-	~CAPILogStorage() override {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-	}
-
 	void WriteLogEntry(timestamp_t timestamp, LogLevel level, const string &log_type, const string &log_message,
 	                   const RegisteredLoggingContext &context) override {
 		if (log_callback == nullptr) {
@@ -22,8 +16,8 @@ public:
 		}
 
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
-			log_callback(user_data, timestamp.value, static_cast<DUCKDB_V2_LOG_LEVEL>(level), ToStr(log_type),
-			             ToStr(log_message), err);
+			log_callback(user_data ? user_data->GetData() : nullptr, timestamp.value,
+			             static_cast<DUCKDB_V2_LOG_LEVEL>(level), ToStr(log_type), ToStr(log_message), err);
 		});
 	};
 
@@ -44,22 +38,14 @@ public:
 public:
 	string name;
 	duckdb_v2_log_callback_fn log_callback = nullptr;
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 };
 
 class LogStorageBuilder {
 public:
 	string name;
 	duckdb_v2_log_callback_fn log_callback = nullptr;
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
-
-	~LogStorageBuilder() {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-	}
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 };
 
 } // namespace
@@ -96,8 +82,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_name(duckdb_v2_log_storag
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(duckdb_v2_log_storage_builder_handle builder,
-                                                                 void *user_data,
-                                                                 duckdb_v2_user_data_destroy_fn destructor,
+                                                                 duckdb_v2_opaque data,
                                                                  duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -105,12 +90,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_user_data(duckdb_v2_log_s
 		}
 
 		auto &b = *reinterpret_cast<duckdb::LogStorageBuilder *>(builder);
-		if (b.user_data && b.user_data_destructor_cb) {
-			b.user_data_destructor_cb(b.user_data);
-		}
-
-		b.user_data = user_data;
-		b.user_data_destructor_cb = destructor;
+		b.user_data = duckdb::make_shared_ptr<duckdb::OpaqueDataHandle>(data.ptr, data.destroy, data.equals);
 	});
 }
 
@@ -161,11 +141,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_register(duckdb_v2_context_ha
 		log_storage->name = b.name;
 		log_storage->log_callback = b.log_callback;
 		log_storage->user_data = b.user_data;
-		log_storage->user_data_destructor_cb = b.user_data_destructor_cb;
-
-		// "Move out" the user data from the builder
-		b.user_data = nullptr;
-		b.user_data_destructor_cb = nullptr;
 	});
 }
 

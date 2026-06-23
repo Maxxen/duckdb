@@ -1,6 +1,6 @@
 {% from "macros/parameters.j2" import c_function %}
 {% from "_c_fragments/funcptr.j2" import render_funcptr %}
-{% from "_c_fragments/_struct.j2" import render_struct %}
+{% from "_c_fragments/_struct.j2" import render_struct_fwd, render_struct_body %}
 {% from "_c_fragments/_type.j2" import render_type %}
 
 /* --- Enums for {{ module.name }} --- */
@@ -16,9 +16,9 @@
 
 {% endfor %}
 
-/* --- Structs for {{ module.name }} --- */
+/* --- Struct forward declarations for {{ module.name }} --- */
 {% for s in module.structs %}
-{{ render_struct(s) }}
+{{ render_struct_fwd(s) }}
 
 {% endfor %}
 
@@ -78,4 +78,10 @@ DUCKDB_C_API {% if func.deprecated and dep_enc == 'strict' -%}DUCKDB_DEPRECATED 
 #endif
 {% endif %}
 {% endif %}
+{% endfor %}
+
+/* --- Struct definitions for {{ module.name }} --- */
+{% for s in module.structs %}
+{{ render_struct_body(s) }}
+
 {% endfor %}

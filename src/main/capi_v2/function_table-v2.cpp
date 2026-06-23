@@ -13,14 +13,7 @@ struct TableFunctionRuntimeInfoV2;
 struct TableFunctionBindDataV2 final : public FunctionData {
 	unique_ptr<FunctionData> Copy() const override {
 		auto copy = make_uniq<TableFunctionBindDataV2>();
-		if (user_data_copy_cb) {
-			copy->user_data = user_data_copy_cb(user_data);
-			copy->user_data_destructor_cb = user_data_destructor_cb;
-			copy->user_data_copy_cb = user_data_copy_cb;
-		} else {
-			copy->user_data = user_data;
-		}
-		copy->user_data_equals_cb = user_data_equals_cb;
+		copy->user_data = user_data;
 		copy->runtime_info = runtime_info;
 		copy->cardinality = cardinality;
 		copy->cardinality_is_exact = cardinality_is_exact;
@@ -29,22 +22,11 @@ struct TableFunctionBindDataV2 final : public FunctionData {
 	}
 
 	bool Equals(const FunctionData &other) const override {
-		if (user_data_equals_cb) {
-			return user_data_equals_cb(user_data, other.Cast<TableFunctionBindDataV2>().user_data);
-		}
-		return user_data == other.Cast<TableFunctionBindDataV2>().user_data;
+		const auto &other_data = other.Cast<TableFunctionBindDataV2>().user_data;
+		return user_data && other_data && user_data->Equals(*other_data);
 	}
 
-	~TableFunctionBindDataV2() override {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-	}
-
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
-	duckdb_v2_user_data_copy_fn user_data_copy_cb = nullptr;
-	duckdb_v2_user_data_equals_fn user_data_equals_cb = nullptr;
+	shared_ptr<OpaqueDataHandle> user_data;
 
 	// Borrowed pointer to the function's runtime info (callbacks + builder user
 	// data). Set during bind; lets init/exec/cardinality/progress reach the
@@ -59,30 +41,16 @@ struct TableFunctionBindDataV2 final : public FunctionData {
 };
 
 struct TableFunctionGlobalStateV2 final : public GlobalTableFunctionState {
-	~TableFunctionGlobalStateV2() override {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-	}
-
 	idx_t MaxThreads() const override {
 		return max_threads;
 	}
 
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
+	OpaqueDataHandle user_data;
 	idx_t max_threads = 1;
 };
 
 struct TableFunctionLocalStateV2 final : public LocalTableFunctionState {
-	~TableFunctionLocalStateV2() override {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-	}
-
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
+	OpaqueDataHandle user_data;
 };
 
 // --- Callback info structs (passed to user callbacks as opaque handles) ------
@@ -137,14 +105,7 @@ struct TableFunctionRuntimeInfoV2 final : public TableFunctionInfo {
 	duckdb_v2_table_function_progress_fn progress_cb = nullptr;
 	duckdb_v2_table_function_pushdown_complex_filter_fn pushdown_complex_filter_cb = nullptr;
 
-	void *user_data = nullptr;
-	duckdb_v2_user_data_destroy_fn user_data_destructor_cb = nullptr;
-
-	~TableFunctionRuntimeInfoV2() override {
-		if (user_data && user_data_destructor_cb) {
-			user_data_destructor_cb(user_data);
-		}
-	}
+	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 };
 
 // --- Builder struct ----------------------------------------------------------
@@ -162,7 +123,7 @@ struct TableFunctionBuilderV2 {
 		D_ASSERT(rt_info.bind_cb);
 
 		TableFunctionBindInfoV2 cb_info;
-		cb_info.user_data = rt_info.user_data;
+		cb_info.user_data = rt_info.user_data ? rt_info.user_data->GetData() : nullptr;
 		for (auto &v : input.inputs) {
 			cb_info.parameters.push_back(v);
 		}
@@ -198,7 +159,7 @@ struct TableFunctionBuilderV2 {
 
 		TableFunctionInitInfoV2 cb_info;
 		cb_info.bind_data = bind;
-		cb_info.user_data = rt_info.user_data;
+		cb_info.user_data = rt_info.user_data ? rt_info.user_data->GetData() : nullptr;
 		cb_info.column_ids = input.column_ids;
 		cb_info.projection_ids.assign(input.projection_ids.begin(), input.projection_ids.end());
 
@@ -229,7 +190,7 @@ struct TableFunctionBuilderV2 {
 		TableFunctionInitInfoV2 cb_info;
 		cb_info.bind_data = bind;
 		cb_info.global_state = global_state->Cast<TableFunctionGlobalStateV2>();
-		cb_info.user_data = rt_info.user_data;
+		cb_info.user_data = rt_info.user_data ? rt_info.user_data->GetData() : nullptr;
 		cb_info.column_ids = input.column_ids;
 		cb_info.projection_ids.assign(input.projection_ids.begin(), input.projection_ids.end());
 
@@ -255,7 +216,7 @@ struct TableFunctionBuilderV2 {
 		cb_info.global_state = global_state;
 		cb_info.local_state = data_p.local_state ? &data_p.local_state->Cast<TableFunctionLocalStateV2>() : nullptr;
 		cb_info.output = &output;
-		cb_info.user_data = bind.runtime_info->user_data;
+		cb_info.user_data = bind.runtime_info->user_data ? bind.runtime_info->user_data->GetData() : nullptr;
 
 		auto info_handle = reinterpret_cast<duckdb_v2_table_function_exec_info_handle>(&cb_info);
 		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
@@ -292,7 +253,8 @@ struct TableFunctionBuilderV2 {
 			auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 			InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err_ptr) {
-				rt_info.cardinality_cb(bind.user_data, &estimated, &is_exact, ctx_ptr, err_ptr);
+				rt_info.cardinality_cb(bind.user_data ? bind.user_data->GetData() : nullptr, &estimated, &is_exact,
+				                       ctx_ptr, err_ptr);
 			});
 			return MakeNodeStatistics(estimated, is_exact);
 		}
@@ -312,14 +274,15 @@ struct TableFunctionBuilderV2 {
 
 		void *global_user_data = nullptr;
 		if (global_state) {
-			global_user_data = global_state->Cast<TableFunctionGlobalStateV2>().user_data;
+			global_user_data = global_state->Cast<TableFunctionGlobalStateV2>().user_data.GetData();
 		}
 
 		double progress = 0.0;
 		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err_ptr) {
-			rt_info.progress_cb(bind.user_data, global_user_data, &progress, ctx_ptr, err_ptr);
+			rt_info.progress_cb(bind.user_data ? bind.user_data->GetData() : nullptr, global_user_data, &progress,
+			                    ctx_ptr, err_ptr);
 		});
 		// DuckDB's table_scan_progress reports a 0-100 percentage; the V2
 		// contract is a 0.0-1.0 fraction.
@@ -340,7 +303,8 @@ struct TableFunctionBuilderV2 {
 		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
 
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err_ptr) {
-			rt_info.pushdown_complex_filter_cb(bind.user_data, info_handle, ctx_ptr, err_ptr);
+			rt_info.pushdown_complex_filter_cb(bind.user_data ? bind.user_data->GetData() : nullptr, info_handle,
+			                                   ctx_ptr, err_ptr);
 		});
 
 		// Drop the filters the callback claimed; the engine applies whatever
@@ -442,15 +406,14 @@ duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_bu
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_user_data(duckdb_v2_table_function_builder_handle builder,
-                                                                    void *data, duckdb_v2_user_data_destroy_fn destroy,
+                                                                    duckdb_v2_opaque data,
                                                                     duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
 		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
-		b.info.user_data = data;
-		b.info.user_data_destructor_cb = destroy;
+		b.info.user_data = duckdb::make_shared_ptr<duckdb::OpaqueDataHandle>(data.ptr, data.destroy, data.equals);
 	});
 }
 
@@ -597,9 +560,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_register(duckdb_v2_context
 		info_handle->progress_cb = b.info.progress_cb;
 		info_handle->pushdown_complex_filter_cb = b.info.pushdown_complex_filter_cb;
 		info_handle->user_data = b.info.user_data;
-		info_handle->user_data_destructor_cb = b.info.user_data_destructor_cb;
-		b.info.user_data = nullptr;
-		b.info.user_data_destructor_cb = nullptr;
+
 		func.function_info = duckdb::shared_ptr<duckdb::TableFunctionInfo>(info_handle);
 
 		for (auto &[name, type] : b.named_parameters) {
@@ -650,9 +611,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_set_cardinality(duckdb_v2_tab
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_set_bind_data(duckdb_v2_table_function_bind_info_handle info,
-                                                                 void *data, duckdb_v2_user_data_copy_fn copy,
-                                                                 duckdb_v2_user_data_equals_fn equals,
-                                                                 duckdb_v2_user_data_destroy_fn destroy,
+                                                                 duckdb_v2_opaque data,
                                                                  duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
@@ -660,10 +619,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_set_bind_data(duckdb_v2_table
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
 		cb_info.bind_data = duckdb::make_uniq<TableFunctionBindDataV2>();
-		cb_info.bind_data->user_data = data;
-		cb_info.bind_data->user_data_copy_cb = copy;
-		cb_info.bind_data->user_data_equals_cb = equals;
-		cb_info.bind_data->user_data_destructor_cb = destroy;
+		cb_info.bind_data->user_data =
+		    duckdb::make_shared_ptr<duckdb::OpaqueDataHandle>(data.ptr, data.destroy, data.equals);
 	});
 }
 
@@ -736,7 +693,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_get_bind_data(duckdb_v2_table
 			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionInitInfoV2 *>(info);
-		*out_data = cb_info.bind_data ? cb_info.bind_data->user_data : nullptr;
+		if (cb_info.bind_data && cb_info.bind_data->user_data) {
+			*out_data = cb_info.bind_data->user_data->GetData();
+		} else {
+			*out_data = nullptr;
+		}
 	});
 }
 
@@ -750,12 +711,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_get_global_state(duckdb_v2_ta
 			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionInitInfoV2 *>(info);
-		*out_data = cb_info.global_state ? cb_info.global_state->user_data : nullptr;
+		*out_data = cb_info.global_state ? cb_info.global_state->user_data.GetData() : nullptr;
 	});
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_global_state(duckdb_v2_table_function_init_info_handle info,
-                                                                    void *data, duckdb_v2_user_data_destroy_fn destroy,
+                                                                    duckdb_v2_opaque data,
                                                                     duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
@@ -763,8 +724,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_global_state(duckdb_v2_ta
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionInitInfoV2 *>(info);
 		cb_info.set_global_state = duckdb::make_uniq<TableFunctionGlobalStateV2>();
-		cb_info.set_global_state->user_data = data;
-		cb_info.set_global_state->user_data_destructor_cb = destroy;
+		cb_info.set_global_state->user_data = duckdb::OpaqueDataHandle(data.ptr, data.destroy, data.equals);
 		cb_info.set_global_state->max_threads = cb_info.max_threads;
 		// Point the read view at what we just set so get_global_state observes it
 		// within init_global too, not only after init_local wires global_state.
@@ -773,7 +733,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_global_state(duckdb_v2_ta
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_local_state(duckdb_v2_table_function_init_info_handle info,
-                                                                   void *data, duckdb_v2_user_data_destroy_fn destroy,
+                                                                   duckdb_v2_opaque data,
                                                                    duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
@@ -781,8 +741,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_init_set_local_state(duckdb_v2_tab
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionInitInfoV2 *>(info);
 		cb_info.set_local_state = duckdb::make_uniq<TableFunctionLocalStateV2>();
-		cb_info.set_local_state->user_data = data;
-		cb_info.set_local_state->user_data_destructor_cb = destroy;
+		cb_info.set_local_state->user_data = duckdb::OpaqueDataHandle(data.ptr, data.destroy, data.equals);
 	});
 }
 
@@ -920,7 +879,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_exec_get_bind_data(duckdb_v2_table
 			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionExecInfoV2 *>(info);
-		*out_data = cb_info.bind_data ? cb_info.bind_data->user_data : nullptr;
+		if (cb_info.bind_data && cb_info.bind_data->user_data) {
+			*out_data = cb_info.bind_data->user_data->GetData();
+		} else {
+			*out_data = nullptr;
+		}
 	});
 }
 
@@ -934,7 +897,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_exec_get_global_state(duckdb_v2_ta
 			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionExecInfoV2 *>(info);
-		*out_data = cb_info.global_state ? cb_info.global_state->user_data : nullptr;
+		*out_data = cb_info.global_state ? cb_info.global_state->user_data.GetData() : nullptr;
 	});
 }
 
@@ -948,7 +911,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_exec_get_local_state(duckdb_v2_tab
 			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionExecInfoV2 *>(info);
-		*out_data = cb_info.local_state ? cb_info.local_state->user_data : nullptr;
+		*out_data = cb_info.local_state ? cb_info.local_state->user_data.GetData() : nullptr;
 	});
 }
 

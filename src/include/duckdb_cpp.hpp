@@ -88,12 +88,6 @@ void TypedDelete(void *ptr) {
 }
 
 template <class T>
-void *TypedCopy(void *ptr) {
-	auto typed_ptr = static_cast<T *>(ptr);
-	return new T(*typed_ptr);
-}
-
-template <class T>
 bool TypedEquals(void *ptr_a, void *ptr_b) {
 	auto typed_a = static_cast<T *>(ptr_a);
 	auto typed_b = static_cast<T *>(ptr_b);
@@ -602,7 +596,7 @@ public:
 	auto GetRowCount() const -> idx_t;
 
 	// Merge the other collection into this one, destroying it in the process.
-	auto Combine(ColumnDataCollection &&other) -> void;
+	auto Combine(ColumnDataCollection other) -> void;
 
 	// Perform a single-threaded scan
 	class ScanState;
@@ -831,7 +825,7 @@ public:
 		template <class T, class... ARGS>
 		void SetBindData(ARGS &&... args) {
 			auto ptr = new T(std::forward<ARGS>(args)...);
-			SetBindDataInternal(ptr, detail::TypedCopy<T>, detail::TypedEquals<T>, detail::TypedDelete<T>);
+			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
 		}
 
 		template <class T>
@@ -846,8 +840,7 @@ public:
 
 		void *args;
 
-		void SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
-		                         void (*destructor)(void *));
+		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 		void *GetBindDataInternal() const;
 	};
 
@@ -1139,7 +1132,7 @@ public:
 		template <class T, class... ARGS>
 		void SetBindData(ARGS &&... args) {
 			auto ptr = new T(std::forward<ARGS>(args)...);
-			SetBindDataInternal(ptr, detail::TypedCopy<T>, detail::TypedEquals<T>, detail::TypedDelete<T>);
+			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
 		}
 
 		template <class T>
@@ -1162,8 +1155,7 @@ public:
 	private:
 		Inner &inner;
 
-		void SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
-		                         void (*destructor)(void *));
+		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 		void *GetUserDataInternal() const;
 	};
 
@@ -1313,7 +1305,7 @@ public:
 		template <class T, class... ARGS>
 		void SetBindData(ARGS &&... args) {
 			auto ptr = new T(std::forward<ARGS>(args)...);
-			SetBindDataInternal(ptr, detail::TypedCopy<T>, detail::TypedEquals<T>, detail::TypedDelete<T>);
+			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
 		}
 
 	private:
@@ -1322,8 +1314,7 @@ public:
 
 		void *args;
 
-		void SetBindDataInternal(void *data, void *(*copy)(void *), bool (*equals)(void *a, void *b),
-		                         void (*destructor)(void *));
+		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 	};
 
 	class InitInput {
