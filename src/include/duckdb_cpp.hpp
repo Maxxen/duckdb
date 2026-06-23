@@ -227,9 +227,10 @@ enum class FileFlags : uint8_t {
 	/* Open the file with "write" capabilities. */
 	WRITE = 2,
 	/* Create a new file, or open if it already exists. */
-	CREATE = 4,
-	/* Create a new file, or fail if it already exists. */
-	CREATE_NEW = 8,
+	FILE_CREATE = 4,
+	/* Create a new file, or fail if it already exists. The FILE_ prefix matches
+	   the engine's flag names and keeps CREATE_NEW clear of the <windows.h> macro. */
+	FILE_CREATE_NEW = 8,
 	/* Open the file in "append" mode. */
 	APPEND = 16,
 };

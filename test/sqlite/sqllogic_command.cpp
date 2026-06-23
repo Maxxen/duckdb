@@ -120,8 +120,8 @@ public:
 	}
 
 	bool SupportsTest(const string &test_path) const override {
-		// Tests that do not run reliably under streaming (ALLOW_STREAMING)
-		// execution. Each is independent of the C++ API itself:
+		// Tests that do not run reliably under the C-API runner's execution
+		// model. Each is independent of the C++ API's correctness:
 		//
 		// - test_5457 asserts behavior specific to FORCE_MATERIALIZED execution:
 		//   it relies on an out-of-memory error raised during eager
@@ -135,9 +135,16 @@ public:
 		//   PhysicalCopyToFile::FlushBatch under multi-threaded same-file
 		//   writes, which the test itself flags as best-effort). Streaming's
 		//   task scheduling surfaces it intermittently. Not a C++ API issue.
+		//
+		// - test_custom_profiling_using_groups reads parser.* profiling metrics.
+		//   The runner parses each statement via parse_sql and then executes it
+		//   via Query, so the executed query's profile has no parser phase and the
+		//   parser.* columns are absent. The profile is correct for how the runner
+		//   executes; the test asserts the single-call (parse+execute) shape.
 		static const char *const INCOMPATIBLE[] = {
 		    "test/issues/internal/test_5457.test",
 		    "test/sql/copy/row_groups_per_file.test",
+		    "test/sql/pragma/profiling/test_custom_profiling_using_groups.test",
 		};
 		for (auto &incompatible : INCOMPATIBLE) {
 			if (StringUtil::Contains(test_path, incompatible)) {

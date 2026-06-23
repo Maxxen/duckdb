@@ -301,7 +301,7 @@ TEST_CASE("Stable C++API: Copy Function", "[cpp_api]") {
 			    const auto contents = std::to_string(state.columns) + " " + std::to_string(state.total_rows);
 
 			    auto fs = input.GetContext().GetFileSystem();
-			    auto file = fs.OpenFile(state.path, FileFlags::WRITE | FileFlags::CREATE);
+			    auto file = fs.OpenFile(state.path, FileFlags::WRITE | FileFlags::FILE_CREATE);
 			    file.Write(contents.data(), static_cast<int64_t>(contents.size()));
 		    })
 		    .Register(ctx);
@@ -392,7 +392,7 @@ TEST_CASE("Stable C++-API: File System", "[cpp_api]") {
 
 		// Write a file
 		{
-			auto handle = fs.OpenFile(test_path, FileFlags::WRITE | FileFlags::CREATE);
+			auto handle = fs.OpenFile(test_path, FileFlags::WRITE | FileFlags::FILE_CREATE);
 
 			// Write some data to the file
 			const std::string data = "Hello, DuckDB!";
