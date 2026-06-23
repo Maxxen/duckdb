@@ -5,6 +5,7 @@
 // For the DUCKDB_V2_ERROR_* codes asserted against Exception::GetCode().
 #include "duckdb_v2.h"
 
+#include <atomic>
 #include <cstring>
 #include <sstream>
 
@@ -30,6 +31,10 @@ public:
 private:
 	int32_t code;
 };
+
+// Counts how many rows the scalar-property exec callback below is invoked over,
+// used to observe whether the optimizer constant-folded the function.
+std::atomic<duckdb_api::idx_t> g_property_exec_rows {0};
 
 } // namespace
 
@@ -823,4 +828,99 @@ TEST_CASE("Stable C++-API: Exception carries the code and message body", "[cpp_a
 		REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_QUERY_PARSER);
 		REQUIRE(std::string(ex.GetRawMessage()).rfind("Parser Error:", 0) != 0);
 	}
+}
+
+TEST_CASE("Stable C++API: Function properties", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		// Scalar: common properties default and round-trip.
+		ScalarFunction scalar(ctx);
+		REQUIRE(scalar.GetStability() == FunctionStability::Consistent);
+		REQUIRE(scalar.GetNullHandling() == FunctionNullHandling::Default);
+		REQUIRE(scalar.GetFallibility() == FunctionFallibility::Infallible);
+		REQUIRE(scalar.GetCollationHandling() == FunctionCollationHandling::Propagate);
+
+		scalar.SetStability(FunctionStability::Volatile)
+		    .SetNullHandling(FunctionNullHandling::Special)
+		    .SetFallibility(FunctionFallibility::Fallible)
+		    .SetCollationHandling(FunctionCollationHandling::Ignore);
+
+		REQUIRE(scalar.GetStability() == FunctionStability::Volatile);
+		REQUIRE(scalar.GetNullHandling() == FunctionNullHandling::Special);
+		REQUIRE(scalar.GetFallibility() == FunctionFallibility::Fallible);
+		REQUIRE(scalar.GetCollationHandling() == FunctionCollationHandling::Ignore);
+
+		// Aggregate: shares the common properties and adds its own.
+		AggregateFunction aggregate(ctx);
+		REQUIRE(aggregate.GetStability() == FunctionStability::Consistent);
+		REQUIRE(aggregate.GetOrderDependence() == AggregateFunction::OrderDependence::Dependent);
+		REQUIRE(aggregate.GetDistinctDependence() == AggregateFunction::DistinctDependence::Dependent);
+
+		aggregate.SetStability(FunctionStability::ConsistentWithinQuery)
+		    .SetOrderDependence(AggregateFunction::OrderDependence::Independent)
+		    .SetDistinctDependence(AggregateFunction::DistinctDependence::Independent);
+
+		REQUIRE(aggregate.GetStability() == FunctionStability::ConsistentWithinQuery);
+		REQUIRE(aggregate.GetOrderDependence() == AggregateFunction::OrderDependence::Independent);
+		REQUIRE(aggregate.GetDistinctDependence() == AggregateFunction::DistinctDependence::Independent);
+	});
+}
+
+TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// An exec callback that counts the rows it processes and writes a constant.
+	auto exec = [](ScalarFunction::ExecInput &input) {
+		auto chunk = input.GetInputChunk();
+		auto out = input.GetResultVector().GetDataMutable<int32_t>();
+		auto count = chunk.GetRowCount();
+		for (idx_t i = 0; i < count; i++) {
+			out[i] = 0;
+		}
+		g_property_exec_rows += count;
+	};
+
+	conn.WithTransaction([&](const Context &ctx) {
+		// Default stability (CONSISTENT): foldable when its argument is constant.
+		ScalarFunction consistent(ctx);
+		consistent.SetName("prop_consistent")
+		    .AddParameter("x", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetExecCallback(exec)
+		    .Register(ctx);
+
+		// Same function, but VOLATILE: must be evaluated for every row.
+		ScalarFunction vol(ctx);
+		vol.SetName("prop_volatile")
+		    .AddParameter("x", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetStability(FunctionStability::Volatile)
+		    .SetExecCallback(exec)
+		    .Register(ctx);
+	});
+
+	auto drain = [&](const char *sql) -> idx_t {
+		g_property_exec_rows = 0;
+		auto result = conn.Query(sql);
+		while (auto chunk = result.FetchChunk()) {
+		}
+		return g_property_exec_rows.load();
+	};
+
+	// With a constant argument the consistent function is folded to a single
+	// evaluation, while the volatile one runs for all 1000 rows.
+	auto consistent_rows = drain("SELECT prop_consistent(42) FROM range(1000)");
+	auto volatile_rows = drain("SELECT prop_volatile(42) FROM range(1000)");
+
+	REQUIRE(volatile_rows == 1000);
+	REQUIRE(consistent_rows < volatile_rows);
 }

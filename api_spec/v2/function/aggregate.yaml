@@ -183,6 +183,48 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: API_CALL
+  aggregate_function_builder_set_property:
+    summary: Sets a property on an aggregate function.
+    description: |
+      Configures a function property that influences planning and execution. In addition to the shared base properties (stability, NULL handling, fallibility, collation handling), aggregate functions also accept the aggregate-specific keys (order dependence, distinct dependence).
+      The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches `key`; passing a value that does not correspond to `key`, or a key that is not valid for aggregate functions, results in an error.
+    parameters:
+      func:
+        type: aggregate_function_builder
+        description: The aggregate function to configure.
+      key:
+        type: FUNCTION_PROPERTY_KEY
+        description: The property to set.
+      value:
+        type: FUNCTION_PROPERTY_VALUE
+        description: The value to set for the property. Must be a value that matches `key`.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_builder_get_property:
+    summary: Gets a property from an aggregate function.
+    description: |
+      Retrieves the current value of a function property previously set with `aggregate_function_builder_set_property`, or its default if it was never set.
+      Passing a key that is not valid for aggregate functions results in an error.
+    parameters:
+      func:
+        type: aggregate_function_builder
+        description: The aggregate function to query.
+      key:
+        type: FUNCTION_PROPERTY_KEY
+        description: The property to retrieve.
+      out_value:
+        type: FUNCTION_PROPERTY_VALUE
+        indirection: 1
+        kind: OUT
+        description: On success, receives the current value of the property.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
   aggregate_function_builder_set_size_callback:
     summary: Sets the size callback for the aggregate function being built
     description: "Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB to determine how much memory to allocate for each aggregate state."

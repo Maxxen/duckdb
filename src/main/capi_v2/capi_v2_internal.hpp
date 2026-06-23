@@ -1007,6 +1007,23 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callba
 	return code;
 }
 
+// Function property channel (api_spec/v2/function/function.yaml). Translates the
+// generic (key, value) enum pair onto the engine's FunctionProperties /
+// AggregateFunctionProperties. Defined in function_properties-v2.cpp. All throw
+// InvalidInputException on a value that does not match the key or a key that is
+// not valid for the function type. Forward-declared to keep this header light.
+class FunctionProperties;
+class AggregateFunctionProperties;
+
+void SetScalarFunctionProperty(FunctionProperties &props, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                               DUCKDB_V2_FUNCTION_PROPERTY_VALUE value);
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE GetScalarFunctionProperty(const FunctionProperties &props,
+                                                            DUCKDB_V2_FUNCTION_PROPERTY_KEY key);
+void SetAggregateFunctionProperty(AggregateFunctionProperties &props, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                                  DUCKDB_V2_FUNCTION_PROPERTY_VALUE value);
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE GetAggregateFunctionProperty(const AggregateFunctionProperties &props,
+                                                               DUCKDB_V2_FUNCTION_PROPERTY_KEY key);
+
 // Owning RAII wrapper for an opaque resource with optional destroy and equals callbacks.
 class OpaqueDataHandle {
 public:

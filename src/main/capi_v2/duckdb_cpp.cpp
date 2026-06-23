@@ -184,6 +184,144 @@ DUCKDB_V2_API_CALL_t WithExceptionGuard(duckdb_v2_error_info_handle *err, T call
 	return code;
 }
 
+// ---- Function property enum conversions (C++ enum <-> generic C value) ----
+// Each function property maps onto a (key, value) pair in the underlying C API.
+// The wrapper exposes one explicit enum per property; these translate to and
+// from the corresponding DUCKDB_V2_FUNCTION_PROPERTY_VALUE.
+
+[[noreturn]] void ThrowUnexpectedPropertyValue(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
+	throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
+	                "Unexpected function property value " + std::to_string(static_cast<uint32_t>(value)));
+}
+
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(FunctionStability value) {
+	switch (value) {
+	case FunctionStability::Consistent:
+		return DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT;
+	case FunctionStability::Volatile:
+		return DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_VOLATILE;
+	case FunctionStability::ConsistentWithinQuery:
+		return DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT_WITHIN_QUERY;
+	}
+	return DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT;
+}
+FunctionStability FromCStability(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
+	switch (value) {
+	case DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT:
+		return FunctionStability::Consistent;
+	case DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_VOLATILE:
+		return FunctionStability::Volatile;
+	case DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT_WITHIN_QUERY:
+		return FunctionStability::ConsistentWithinQuery;
+	default:
+		ThrowUnexpectedPropertyValue(value);
+	}
+}
+
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(FunctionNullHandling value) {
+	switch (value) {
+	case FunctionNullHandling::Default:
+		return DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_DEFAULT;
+	case FunctionNullHandling::Special:
+		return DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL;
+	}
+	return DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_DEFAULT;
+}
+FunctionNullHandling FromCNullHandling(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
+	switch (value) {
+	case DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_DEFAULT:
+		return FunctionNullHandling::Default;
+	case DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL:
+		return FunctionNullHandling::Special;
+	default:
+		ThrowUnexpectedPropertyValue(value);
+	}
+}
+
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(FunctionFallibility value) {
+	switch (value) {
+	case FunctionFallibility::Infallible:
+		return DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_INFALLIBLE;
+	case FunctionFallibility::Fallible:
+		return DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_FALLIBLE;
+	}
+	return DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_INFALLIBLE;
+}
+FunctionFallibility FromCFallibility(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
+	switch (value) {
+	case DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_INFALLIBLE:
+		return FunctionFallibility::Infallible;
+	case DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_FALLIBLE:
+		return FunctionFallibility::Fallible;
+	default:
+		ThrowUnexpectedPropertyValue(value);
+	}
+}
+
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(FunctionCollationHandling value) {
+	switch (value) {
+	case FunctionCollationHandling::Propagate:
+		return DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PROPAGATE;
+	case FunctionCollationHandling::PushCombinable:
+		return DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PUSH_COMBINABLE;
+	case FunctionCollationHandling::Ignore:
+		return DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_IGNORE;
+	}
+	return DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PROPAGATE;
+}
+FunctionCollationHandling FromCCollationHandling(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
+	switch (value) {
+	case DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PROPAGATE:
+		return FunctionCollationHandling::Propagate;
+	case DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PUSH_COMBINABLE:
+		return FunctionCollationHandling::PushCombinable;
+	case DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_IGNORE:
+		return FunctionCollationHandling::Ignore;
+	default:
+		ThrowUnexpectedPropertyValue(value);
+	}
+}
+
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(AggregateFunction::OrderDependence value) {
+	switch (value) {
+	case AggregateFunction::OrderDependence::Dependent:
+		return DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_YES;
+	case AggregateFunction::OrderDependence::Independent:
+		return DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_NO;
+	}
+	return DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_YES;
+}
+AggregateFunction::OrderDependence FromCOrderDependence(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
+	switch (value) {
+	case DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_YES:
+		return AggregateFunction::OrderDependence::Dependent;
+	case DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_NO:
+		return AggregateFunction::OrderDependence::Independent;
+	default:
+		ThrowUnexpectedPropertyValue(value);
+	}
+}
+
+DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(AggregateFunction::DistinctDependence value) {
+	switch (value) {
+	case AggregateFunction::DistinctDependence::Dependent:
+		return DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_YES;
+	case AggregateFunction::DistinctDependence::Independent:
+		return DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO;
+	}
+	return DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_YES;
+}
+AggregateFunction::DistinctDependence FromCDistinctDependence(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
+	switch (value) {
+	case DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_YES:
+		return AggregateFunction::DistinctDependence::Dependent;
+	case DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO:
+		return AggregateFunction::DistinctDependence::Independent;
+	default:
+		ThrowUnexpectedPropertyValue(value);
+	}
+}
+
 } // namespace
 
 namespace detail {
@@ -1087,6 +1225,54 @@ auto ScalarFunction::SetReturnType(const LogicalType &type) & -> ScalarFunction 
 	return *this;
 }
 
+auto ScalarFunction::SetStability(FunctionStability value) & -> ScalarFunction & {
+	CheckedAPICall(duckdb_v2_scalar_function_builder_set_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_STABILITY,
+	               ToCValue(value));
+	return *this;
+}
+auto ScalarFunction::GetStability() const -> FunctionStability {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_scalar_function_builder_get_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_STABILITY,
+	               &value);
+	return FromCStability(value);
+}
+
+auto ScalarFunction::SetNullHandling(FunctionNullHandling value) & -> ScalarFunction & {
+	CheckedAPICall(duckdb_v2_scalar_function_builder_set_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING,
+	               ToCValue(value));
+	return *this;
+}
+auto ScalarFunction::GetNullHandling() const -> FunctionNullHandling {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_scalar_function_builder_get_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING,
+	               &value);
+	return FromCNullHandling(value);
+}
+
+auto ScalarFunction::SetFallibility(FunctionFallibility value) & -> ScalarFunction & {
+	CheckedAPICall(duckdb_v2_scalar_function_builder_set_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY,
+	               ToCValue(value));
+	return *this;
+}
+auto ScalarFunction::GetFallibility() const -> FunctionFallibility {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_scalar_function_builder_get_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY,
+	               &value);
+	return FromCFallibility(value);
+}
+
+auto ScalarFunction::SetCollationHandling(FunctionCollationHandling value) & -> ScalarFunction & {
+	CheckedAPICall(duckdb_v2_scalar_function_builder_set_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING, ToCValue(value));
+	return *this;
+}
+auto ScalarFunction::GetCollationHandling() const -> FunctionCollationHandling {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_scalar_function_builder_get_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING, &value);
+	return FromCCollationHandling(value);
+}
+
 struct ScalarFunctionInfo {
 	ScalarFunction::BindCallback bind_callback = nullptr;
 	ScalarFunction::InitCallback init_callback = nullptr;
@@ -1302,6 +1488,78 @@ auto AggregateFunction::AddParameter(const std::string &name, const LogicalType 
 auto AggregateFunction::SetReturnType(const LogicalType &type) & -> AggregateFunction & {
 	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_return_type, handle(), type.handle());
 	return *this;
+}
+
+auto AggregateFunction::SetStability(FunctionStability value) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_STABILITY,
+	               ToCValue(value));
+	return *this;
+}
+auto AggregateFunction::GetStability() const -> FunctionStability {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_get_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_STABILITY,
+	               &value);
+	return FromCStability(value);
+}
+
+auto AggregateFunction::SetNullHandling(FunctionNullHandling value) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING, ToCValue(value));
+	return *this;
+}
+auto AggregateFunction::GetNullHandling() const -> FunctionNullHandling {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_get_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING, &value);
+	return FromCNullHandling(value);
+}
+
+auto AggregateFunction::SetFallibility(FunctionFallibility value) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY,
+	               ToCValue(value));
+	return *this;
+}
+auto AggregateFunction::GetFallibility() const -> FunctionFallibility {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_get_property, handle(), DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY,
+	               &value);
+	return FromCFallibility(value);
+}
+
+auto AggregateFunction::SetCollationHandling(FunctionCollationHandling value) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING, ToCValue(value));
+	return *this;
+}
+auto AggregateFunction::GetCollationHandling() const -> FunctionCollationHandling {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_get_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING, &value);
+	return FromCCollationHandling(value);
+}
+
+auto AggregateFunction::SetOrderDependence(OrderDependence value) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT, ToCValue(value));
+	return *this;
+}
+auto AggregateFunction::GetOrderDependence() const -> OrderDependence {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_get_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT, &value);
+	return FromCOrderDependence(value);
+}
+
+auto AggregateFunction::SetDistinctDependence(DistinctDependence value) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT, ToCValue(value));
+	return *this;
+}
+auto AggregateFunction::GetDistinctDependence() const -> DistinctDependence {
+	DUCKDB_V2_FUNCTION_PROPERTY_VALUE value;
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_get_property, handle(),
+	               DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT, &value);
+	return FromCDistinctDependence(value);
 }
 
 class AggregateFunction::SizeInput::Inner {

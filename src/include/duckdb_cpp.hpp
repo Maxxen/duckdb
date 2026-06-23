@@ -783,6 +783,50 @@ private:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// Function Properties
+//----------------------------------------------------------------------------------------------------------------------
+
+// Properties shared by every function category, mirroring the engine's base
+// FunctionProperties. Category-specific properties (e.g. aggregate order/distinct
+// dependence) are declared as nested enums on the relevant function class.
+
+// How stable/deterministic a function's result is, used by the optimizer.
+enum class FunctionStability : uint8_t {
+	/* Always returns the same result for the same input. */
+	Consistent = 0,
+	/* The result may differ per row (e.g. random()). */
+	Volatile = 1,
+	/* Stable within a single query/transaction but may change across queries (e.g. now()). */
+	ConsistentWithinQuery = 2,
+};
+
+// Whether a function handles NULL inputs itself.
+enum class FunctionNullHandling : uint8_t {
+	/* If any argument is NULL the result is NULL and the function is not invoked for that row. */
+	Default = 0,
+	/* The function is invoked even when arguments are NULL and decides the result itself. */
+	Special = 1,
+};
+
+// Whether a function can raise a runtime error.
+enum class FunctionFallibility : uint8_t {
+	/* The function never raises a runtime error. */
+	Infallible = 0,
+	/* The function may raise a runtime error for some inputs. */
+	Fallible = 1,
+};
+
+// How a function interacts with collations on its arguments.
+enum class FunctionCollationHandling : uint8_t {
+	/* Combines collations from its inputs and propagates them to its result (default). */
+	Propagate = 0,
+	/* Combinable collations are executed on the input arguments before the function runs. */
+	PushCombinable = 1,
+	/* Collations are ignored by the function. */
+	Ignore = 2,
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Scalar Function
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -809,6 +853,15 @@ public:
 	auto SetBindCallback(BindCallback callback) & -> ScalarFunction &;
 	auto SetInitCallback(InitCallback callback) & -> ScalarFunction &;
 	auto SetExecCallback(ExecCallback callback) & -> ScalarFunction &;
+
+	auto SetStability(FunctionStability value) & -> ScalarFunction &;
+	auto GetStability() const -> FunctionStability;
+	auto SetNullHandling(FunctionNullHandling value) & -> ScalarFunction &;
+	auto GetNullHandling() const -> FunctionNullHandling;
+	auto SetFallibility(FunctionFallibility value) & -> ScalarFunction &;
+	auto GetFallibility() const -> FunctionFallibility;
+	auto SetCollationHandling(FunctionCollationHandling value) & -> ScalarFunction &;
+	auto GetCollationHandling() const -> FunctionCollationHandling;
 
 	void Register(const Context &ctx);
 
@@ -914,6 +967,22 @@ class AggregateFunction final : public detail::Handle<AggregateFunction> {
 	friend detail::Factory;
 
 public:
+	// Whether the aggregate's result depends on the order in which rows are aggregated.
+	enum class OrderDependence : uint8_t {
+		/* The result depends on input order (default). */
+		Dependent = 0,
+		/* The result does not depend on input order. */
+		Independent = 1,
+	};
+
+	// Whether the aggregate's result is affected by a DISTINCT modifier.
+	enum class DistinctDependence : uint8_t {
+		/* The result is affected by DISTINCT (default). */
+		Dependent = 0,
+		/* The result is not affected by DISTINCT. */
+		Independent = 1,
+	};
+
 	class SizeInput;
 	class InitializeInput;
 	class UpdateInput;
@@ -942,6 +1011,20 @@ public:
 	auto SetCombineCallback(CombineCallback callback) & -> AggregateFunction &;
 	auto SetFinalizeCallback(FinalizeCallback callback) & -> AggregateFunction &;
 	auto SetDestroyCallback(DestroyCallback callback) & -> AggregateFunction &;
+
+	auto SetStability(FunctionStability value) & -> AggregateFunction &;
+	auto GetStability() const -> FunctionStability;
+	auto SetNullHandling(FunctionNullHandling value) & -> AggregateFunction &;
+	auto GetNullHandling() const -> FunctionNullHandling;
+	auto SetFallibility(FunctionFallibility value) & -> AggregateFunction &;
+	auto GetFallibility() const -> FunctionFallibility;
+	auto SetCollationHandling(FunctionCollationHandling value) & -> AggregateFunction &;
+	auto GetCollationHandling() const -> FunctionCollationHandling;
+
+	auto SetOrderDependence(OrderDependence value) & -> AggregateFunction &;
+	auto GetOrderDependence() const -> OrderDependence;
+	auto SetDistinctDependence(DistinctDependence value) & -> AggregateFunction &;
+	auto GetDistinctDependence() const -> DistinctDependence;
 
 	void Register(const Context &ctx);
 

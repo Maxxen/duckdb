@@ -398,6 +398,91 @@ struct duckdb_v2_opaque {
 /* --- Struct definitions for errors --- */
 
 /* ============================================================================
+ * MODULE: function
+ * ============================================================================ */
+
+/* --- Enums for function --- */
+//! Identifies a configurable function property. Pass one of these to
+//! `*_function_builder_set_property` / `_get_property` together with a
+//! matching `FUNCTION_PROPERTY_VALUE`. The high byte is the function-type
+//! group: COMMON (`0x01xxxx`) keys apply to all function types, while
+//! group-specific keys (e.g. aggregate `0x03xxxx`) are only valid for that
+//! function type and are rejected with an error otherwise.
+typedef enum DUCKDB_V2_FUNCTION_PROPERTY_KEY {
+	/* How stable/deterministic the function's result is across rows and queries. Accepts the
+	   `FUNCTION_PROPERTY_STABILITY_*` values. Defaults to `CONSISTENT`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY = 65536,
+	/* Whether the function handles NULL inputs itself. Accepts the `FUNCTION_PROPERTY_NULL_HANDLING_*` values. Defaults
+	   to `DEFAULT` (NULL in, NULL out). */
+	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING = 65792,
+	/* Whether the function can raise a runtime error. Accepts the `FUNCTION_PROPERTY_FALLIBILITY_*` values. Defaults to
+	   `INFALLIBLE`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY = 66048,
+	/* How the function interacts with collations on its arguments. Accepts the `FUNCTION_PROPERTY_COLLATION_HANDLING_*`
+	   values. Defaults to `PROPAGATE`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING = 66304,
+	/* Aggregate only. Whether the aggregate's result depends on the order in which rows are aggregated. Accepts the
+	   `FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_*` values. Defaults to `YES`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT = 196608,
+	/* Aggregate only. Whether the aggregate's result is affected by a DISTINCT modifier. Accepts the
+	   `FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_*` values. Defaults to `YES`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT = 196864,
+} DUCKDB_V2_FUNCTION_PROPERTY_KEY;
+
+//! A value for a `FUNCTION_PROPERTY_KEY`. Each key owns a 256-value block: a
+//! value `V` is valid for key `K` iff `(V & 0xFFFF00) == K`, and shares the
+//! key's function-type group (`V & 0xFF0000`) in its high byte. Passing a
+//! value that does not match the key is rejected with an error. Boolean-like
+//! properties are
+//! expressed as named values so that additional values can be added later
+//! without breaking the ABI.
+typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
+	/* The function always returns the same result given the same input. */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT = 65536,
+	/* The result may differ per row (e.g. random()). */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_VOLATILE = 65537,
+	/* The result is stable within a single query/transaction but may change across queries (e.g. now()). */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT_WITHIN_QUERY = 65538,
+	/* Default NULL handling: if any argument is NULL the result is NULL and the function is not invoked for that row.
+	 */
+	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_DEFAULT = 65792,
+	/* The function handles NULL inputs itself and is invoked even when arguments are NULL. */
+	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL = 65793,
+	/* The function never raises a runtime error. */
+	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_INFALLIBLE = 66048,
+	/* The function may raise a runtime error for some inputs. */
+	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_FALLIBLE = 66049,
+	/* The function combines collations from its inputs and propagates them to its result (default). */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PROPAGATE = 66304,
+	/* Combinable collations are executed on the input arguments before the function runs. */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PUSH_COMBINABLE = 66305,
+	/* Collations are ignored by the function. */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_IGNORE = 66306,
+	/* The aggregate's result depends on the order in which rows are aggregated (default). */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_YES = 196608,
+	/* The aggregate's result does not depend on input order. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_NO = 196609,
+	/* The aggregate's result is affected by a DISTINCT modifier (default). */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_YES = 196864,
+	/* The aggregate's result is not affected by a DISTINCT modifier. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO = 196865,
+} DUCKDB_V2_FUNCTION_PROPERTY_VALUE;
+
+/* --- Struct forward declarations for function --- */
+
+/* --- Types for function --- */
+
+/* --- Constants for function --- */
+
+/* --- Error Codes for function --- */
+
+/* --- Function pointer typedefs for function --- */
+
+/* --- Functions for function --- */
+
+/* --- Struct definitions for function --- */
+
+/* ============================================================================
  * MODULE: aggregate
  * ============================================================================ */
 
@@ -510,6 +595,37 @@ take ownership of it. Failing to set a return type before registration results i
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_return_type(
     duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_logical_type_handle type,
     duckdb_v2_error_info_handle *err);
+/*!
+* Sets a property on an aggregate function.
+* Configures a function property that influences planning and execution. In addition to the shared base properties
+(stability, NULL handling, fallibility, collation handling), aggregate functions also accept the aggregate-specific keys
+(order dependence, distinct dependence). The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches
+`key`; passing a value that does not correspond to `key`, or a key that is not valid for aggregate functions, results in
+an error.
+
+* @param func The aggregate function to configure.
+* @param key The property to set.
+* @param value The value to set for the property. Must be a value that matches `key`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_property(
+    duckdb_v2_aggregate_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value, duckdb_v2_error_info_handle *err);
+/*!
+* Gets a property from an aggregate function.
+* Retrieves the current value of a function property previously set with `aggregate_function_builder_set_property`, or
+its default if it was never set. Passing a key that is not valid for aggregate functions results in an error.
+
+* @param func The aggregate function to query.
+* @param key The property to retrieve.
+* @param out_value On success, receives the current value of the property.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_get_property(
+    duckdb_v2_aggregate_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
 /*!
  * Sets the size callback for the aggregate function being built
  * Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB
@@ -2978,6 +3094,35 @@ ownership of it. Failing to set a return type before registration results in an 
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
                                                   duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Sets a property on a scalar function.
+* Configures a function property that influences planning and execution, such as stability (volatility), NULL handling,
+fallibility, or collation handling. The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches `key`;
+passing a value that does not correspond to `key`, or a key that is not valid for scalar functions, results in an error.
+
+* @param func The scalar function to configure.
+* @param key The property to set.
+* @param value The value to set for the property. Must be a value that matches `key`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_property(
+    duckdb_v2_scalar_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value, duckdb_v2_error_info_handle *err);
+/*!
+* Gets a property from a scalar function.
+* Retrieves the current value of a function property previously set with `scalar_function_builder_set_property`, or its
+default if it was never set. Passing a key that is not valid for scalar functions results in an error.
+
+* @param func The scalar function to query.
+* @param key The property to retrieve.
+* @param out_value On success, receives the current value of the property.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property(
+    duckdb_v2_scalar_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for scalar --- */
 struct duckdb_v2_scalar_function_bind_args {

@@ -14,6 +14,7 @@ add_library_unity(
   function_aggregate-v2.cpp
   function_cast-v2.cpp
   function_copy-v2.cpp
+  function_properties-v2.cpp
   function_scalar-v2.cpp
   function_table-v2.cpp
   logical_type-v2.cpp

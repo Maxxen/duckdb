@@ -38,6 +38,7 @@ struct ScalarFunctionV2 {
 
 	vector<pair<Identifier, LogicalType>> parameters;
 	LogicalType return_type;
+	FunctionProperties properties;
 
 	static auto BindCallback(BindScalarFunctionInput &input) -> unique_ptr<FunctionData> {
 		const auto &info = input.GetBoundFunction().GetExtraFunctionInfo().Cast<RuntimeInfo>();
@@ -302,6 +303,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 
 		function.SetExtraFunctionInfo<duckdb::ScalarFunctionV2::RuntimeInfo>(builder.info);
 
+		function.SetProperties(builder.properties);
+
 		// Also verify signature so that function parameters make sense
 		function.GetSignature().Verify();
 
@@ -309,6 +312,35 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 		duckdb::CreateScalarFunctionInfo sf_info(function);
 		sf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
 		catalog.CreateFunction(context, sf_info);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_property(duckdb_v2_scalar_function_builder_handle func,
+                                                                    DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                                                                    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value,
+                                                                    duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function pointer cannot be null.");
+		}
+		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
+		duckdb::SetScalarFunctionProperty(builder.properties, key, value);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property(duckdb_v2_scalar_function_builder_handle func,
+                                                                    DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                                                                    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value,
+                                                                    duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function pointer cannot be null.");
+		}
+		if (!out_value) {
+			throw duckdb::InvalidInputException("Output value pointer cannot be null.");
+		}
+		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
+		*out_value = duckdb::GetScalarFunctionProperty(builder.properties, key);
 	});
 }
 
