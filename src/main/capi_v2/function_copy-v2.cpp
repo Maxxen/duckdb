@@ -94,9 +94,9 @@ struct CopyFunctionBuilderV2 {
 		auto result = make_uniq<CCopyFunctionBindDataV2>(info);
 
 		// If the user set the bind data, move it out here
-		if (args.out_bind_data) {
-			result->bind_data = make_shared_ptr<OpaqueDataHandle>(args.out_bind_data, args.out_bind_data_destructor,
-			                                                      args.out_bind_data_equality);
+		if (args.out_bind_data.ptr) {
+			result->bind_data = make_shared_ptr<OpaqueDataHandle>(args.out_bind_data.ptr, args.out_bind_data.destroy,
+			                                                      args.out_bind_data.equals);
 		}
 
 		return std::move(result);
@@ -113,8 +113,6 @@ struct CopyFunctionBuilderV2 {
 		args.file_path = ToStr(file_path);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.bind_data = data.bind_data->GetData();
-		args.out_init_data = nullptr;
-		args.out_init_data_destructor = nullptr;
 
 		// The init callback is optional: when absent, the global state simply carries no init data.
 		if (info.init_cb) {
@@ -124,8 +122,8 @@ struct CopyFunctionBuilderV2 {
 
 		auto result = make_uniq<CCopyFunctionStateV2>();
 
-		if (args.out_init_data) {
-			result->init_data = OpaqueDataHandle(args.out_init_data, args.out_init_data_destructor);
+		if (args.out_init_data.ptr) {
+			result->init_data = OpaqueDataHandle(args.out_init_data.ptr, args.out_init_data.destroy);
 		}
 
 		return std::move(result);
@@ -147,16 +145,14 @@ struct CopyFunctionBuilderV2 {
 		// it) is responsible for destroying it via duckdb_v2_column_data_collection_destroy. We release it from
 		// the unique_ptr so it outlives this scope.
 		args.in_batch = reinterpret_cast<duckdb_v2_column_data_collection_handle>(collection.release());
-		args.out_batch = nullptr;
-		args.out_batch_destructor = nullptr;
 
 		duckdb::InvokeWithErrorSlot<InvalidInputException>(
 		    [&](duckdb_v2_error_info_handle *err) { info.batch_cb(&args, err); });
 
 		auto result = make_uniq<CCopyFunctionBatchV2>();
 
-		if (args.out_batch) {
-			result->batch_data = OpaqueDataHandle(args.out_batch, args.out_batch_destructor);
+		if (args.out_batch.ptr) {
+			result->batch_data = OpaqueDataHandle(args.out_batch.ptr, args.out_batch.destroy);
 		}
 
 		return std::move(result);

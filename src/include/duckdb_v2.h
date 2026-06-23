@@ -489,6 +489,8 @@ typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
 /* --- Enums for aggregate --- */
 
 /* --- Struct forward declarations for aggregate --- */
+typedef struct duckdb_v2_aggregate_function_bind_args duckdb_v2_aggregate_function_bind_args;
+
 typedef struct duckdb_v2_aggregate_function_size_args duckdb_v2_aggregate_function_size_args;
 
 typedef struct duckdb_v2_aggregate_function_init_args duckdb_v2_aggregate_function_init_args;
@@ -514,6 +516,9 @@ typedef struct _duckdb_v2_aggregate_function_builder {
 /* --- Error Codes for aggregate --- */
 
 /* --- Function pointer typedefs for aggregate --- */
+typedef void (*duckdb_v2_aggregate_function_bind_callback_fn)(duckdb_v2_aggregate_function_bind_args *args,
+                                                              duckdb_v2_error_info_handle *err);
+
 typedef void (*duckdb_v2_aggregate_function_size_callback_fn)(duckdb_v2_aggregate_function_size_args *args,
                                                               duckdb_v2_error_info_handle *err);
 
@@ -627,6 +632,21 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_get_prope
     duckdb_v2_aggregate_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
     DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
 /*!
+* Sets the bind callback for the aggregate function being built
+* The "bind" callback is invoked once during query planning. It can set bind data via `out_bind_data`, which is then
+passed to the update, combine, finalize, and destroy callbacks. This is useful for sharing information computed during
+binding (e.g. resolved argument types or configuration) with execution. The bind callback is optional; if not set, no
+bind data is associated with the function. Note that bind data is not available to the size and init callbacks.
+
+* @param builder The aggregate function builder for which to set the bind callback.
+* @param callback The bind callback function to set for the aggregate function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_bind_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_bind_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
  * Sets the size callback for the aggregate function being built
  * Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB
  * to determine how much memory to allocate for each aggregate state.
@@ -726,6 +746,25 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
     duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for aggregate --- */
+struct duckdb_v2_aggregate_function_bind_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The DuckDB context in which the function is being bound.
+	duckdb_v2_context_handle context;
+	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! The user data pointer that was set for the function builder via `aggregate_function_builder_set_user_data`, if
+	//! any.
+	void *user_data;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to the aggregate's "bind data" plus
+	//! optional destructor and equality callbacks. The bind data is accessible from the update, combine, finalize, and
+	//! destroy callbacks, which is useful for sharing information computed during binding (e.g. resolved argument types
+	//! or configuration) with execution. The destructor, if provided, is used to destroy the bind data when it's no
+	//! longer needed. The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan
+	//! caching/reuse); otherwise a default pointer equality check is used.
+	duckdb_v2_opaque out_bind_data;
+};
+
 struct duckdb_v2_aggregate_function_size_args {
 	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
 	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
@@ -758,6 +797,8 @@ struct duckdb_v2_aggregate_function_update_args {
 	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
 	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
 	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
 	//! The number of rows in the current batch being processed. This is the size of the `input` data chunk and the
 	//! number of aggregate states pointed to by `state`.
 	idx_t count;
@@ -777,6 +818,8 @@ struct duckdb_v2_aggregate_function_combine_args {
 	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
 	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
 	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
 	//! The number of source and target states to combine. This is the size of the `sources` and `targets` arrays.
 	idx_t count;
 	//! Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an
@@ -794,6 +837,8 @@ struct duckdb_v2_aggregate_function_finalize_args {
 	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
 	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
 	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
 	//! The number of rows in the current batch being finalized. This is the size of the `state` array and the number of
 	//! result vectors pointed to by `result`.
 	idx_t count;
@@ -814,6 +859,8 @@ struct duckdb_v2_aggregate_function_destroy_args {
 	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
 	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
 	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
 	//! The number of aggregate states to destroy. This is the size of the `states` array.
 	idx_t count;
 	//! Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an
@@ -3134,21 +3181,14 @@ struct duckdb_v2_scalar_function_bind_args {
 	duckdb_v2_str function_name;
 	//! Opaque pointer to user data set by the caller when registering the function, if any
 	void *user_data;
-	//! On success, receives an opaque pointer to user data that will be associated with the function's "bind data" and
-	//! accessible from later callbacks (e.g. "init" and "exec"). This is useful for sharing information between the
-	//! planning and execution phases, such as resolved argument types, prepared statements, or other metadata computed
-	//! during binding that needs to be available during execution.
-	void *out_bind_data;
-	//! If the callback sets `out_bind_data`, it can also set this optional destructor callback which will be used to
-	//! destroy the bind data when it's no longer needed (e.g. at the end of query execution). If `out_bind_data` is set
-	//! but this destructor is not provided, the library will not attempt to destroy the bind data.
-	duckdb_v2_opaque_destroy_fn out_bind_data_destructor;
-	//! If the callback sets `out_bind_data`, it can also set this optional equality callback which will be used to
-	//! compare two bind data pointers for equality. This is useful for optimizations such as caching or reusing
-	//! execution plans for functions with identical bind data. If `out_bind_data` is set but this equality callback is
-	//! not provided, the library will use a default pointer equality check (i.e. two bind data pointers are considered
-	//! equal if they have the same value).
-	duckdb_v2_opaque_equals_fn out_bind_data_equality;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to user data (the function's "bind
+	//! data") plus optional destructor and equality callbacks. The bind data is accessible from later callbacks (e.g.
+	//! "init" and "exec"), which is useful for sharing information between the planning and execution phases such as
+	//! resolved argument types, prepared statements, or other metadata computed during binding. The destructor, if
+	//! provided, is used to destroy the bind data when it's no longer needed (e.g. at the end of query execution). The
+	//! equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse);
+	//! otherwise a default pointer equality check is used.
+	duckdb_v2_opaque out_bind_data;
 };
 
 struct duckdb_v2_scalar_function_init_args {
@@ -3162,15 +3202,13 @@ struct duckdb_v2_scalar_function_init_args {
 	void *user_data;
 	//! Opaque pointer to user data set by the function's "bind" callback, if any
 	void *bind_data;
-	//! On success, receives an opaque pointer to user data that will be associated with the executing worker thread for
-	//! the duration of the query and accessible from the function's "exec" callback. Note that the "init data" is
-	//! worker-local, not _thread local_. There is no guarantee that the same thread will see the same "init data"
-	//! across multiple invocations of the function.
-	void *out_init_data;
-	//! If the callback sets `out_init_data`, it can also set this optional destructor callback which will be used to
-	//! destroy the init data when it's no longer needed (e.g. at the end of query execution). If `out_init_data` is set
-	//! but this destructor is not provided, the library will not attempt to destroy the init data.
-	duckdb_v2_opaque_destroy_fn out_init_data_destructor;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to worker-local "init data" plus an
+	//! optional destructor callback. The init data is associated with the executing worker thread for the duration of
+	//! the query and accessible from the function's "exec" callback. Note that the "init data" is worker-local, not
+	//! _thread local_: there is no guarantee that the same thread will see the same "init data" across multiple
+	//! invocations of the function. The destructor, if provided, is used to destroy the init data when it's no longer
+	//! needed; the opaque handle's equality callback is unused for init data.
+	duckdb_v2_opaque out_init_data;
 };
 
 struct duckdb_v2_scalar_function_exec_args {
@@ -4766,9 +4804,10 @@ struct duckdb_v2_copy_function_bind_args {
 	//! Array of column_count borrowed name views; only valid for the duration of the callback.
 	const duckdb_v2_str *column_names;
 	idx_t column_count;
-	void *out_bind_data;
-	duckdb_v2_opaque_destroy_fn out_bind_data_destructor;
-	duckdb_v2_opaque_equals_fn out_bind_data_equality;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to the copy function's bind data
+	//! plus optional destructor and equality callbacks. The bind data is accessible from the init, batch, flush, and
+	//! finalize callbacks.
+	duckdb_v2_opaque out_bind_data;
 };
 
 struct duckdb_v2_copy_function_init_args {
@@ -4778,8 +4817,10 @@ struct duckdb_v2_copy_function_init_args {
 	const void *bind_data;
 	//! The target file path. Borrowed; only valid for the duration of the callback.
 	duckdb_v2_str file_path;
-	void *out_init_data;
-	duckdb_v2_opaque_destroy_fn out_init_data_destructor;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to the copy function's global init
+	//! data plus an optional destructor callback. The init data is accessible from the batch, flush, and finalize
+	//! callbacks. The opaque handle's equality callback is unused for init data.
+	duckdb_v2_opaque out_init_data;
 };
 
 struct duckdb_v2_copy_function_batch_args {
@@ -4789,8 +4830,10 @@ struct duckdb_v2_copy_function_batch_args {
 	const void *bind_data;
 	void *init_data;
 	duckdb_v2_column_data_collection_handle in_batch;
-	void *out_batch;
-	duckdb_v2_opaque_destroy_fn out_batch_destructor;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to the prepared batch data plus an
+	//! optional destructor callback, to be handed to the flush callback. The opaque handle's equality callback is
+	//! unused for batch data.
+	duckdb_v2_opaque out_batch;
 };
 
 struct duckdb_v2_copy_function_flush_args {

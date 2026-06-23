@@ -1290,15 +1290,13 @@ struct ScalarFunctionInfo {
 };
 
 void *ScalarFunction::BindInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_scalar_function_bind_args *>(args)->out_bind_data;
+	return static_cast<duckdb_v2_scalar_function_bind_args *>(args)->out_bind_data.ptr;
 }
 
 void ScalarFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(void *a, void *b),
                                                     void (*destructor)(void *)) {
 	duckdb_v2_scalar_function_bind_args *args_struct = static_cast<duckdb_v2_scalar_function_bind_args *>(args);
-	args_struct->out_bind_data = data;
-	args_struct->out_bind_data_equality = equals;
-	args_struct->out_bind_data_destructor = destructor;
+	args_struct->out_bind_data = duckdb_v2_opaque {data, destructor, equals};
 }
 
 void *ScalarFunction::InitInput::GetBindDataInternal() const {
@@ -1306,13 +1304,12 @@ void *ScalarFunction::InitInput::GetBindDataInternal() const {
 }
 
 void *ScalarFunction::InitInput::GetWorkerStateInternal() const {
-	return static_cast<duckdb_v2_scalar_function_init_args *>(args)->out_init_data;
+	return static_cast<duckdb_v2_scalar_function_init_args *>(args)->out_init_data.ptr;
 }
 
 void ScalarFunction::InitInput::SetWorkerStateInternal(void *data, void (*destructor)(void *)) {
 	auto args_struct = static_cast<duckdb_v2_scalar_function_init_args *>(args);
-	args_struct->out_init_data = data;
-	args_struct->out_init_data_destructor = destructor;
+	args_struct->out_init_data = duckdb_v2_opaque {data, destructor, nullptr};
 }
 
 void *ScalarFunction::ExecInput::GetBindDataInternal() const {
@@ -2196,9 +2193,7 @@ auto CopyFunction::BindInput::GetColumnType(idx_t index) const -> LogicalType {
 void CopyFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(void *a, void *b),
                                                   void (*destructor)(void *)) {
 	auto args_struct = static_cast<duckdb_v2_copy_function_bind_args *>(args);
-	args_struct->out_bind_data = data;
-	args_struct->out_bind_data_equality = equals;
-	args_struct->out_bind_data_destructor = destructor;
+	args_struct->out_bind_data = duckdb_v2_opaque {data, destructor, equals};
 }
 
 // --- Init input ---
@@ -2217,8 +2212,7 @@ const void *CopyFunction::InitInput::GetBindDataInternal() const {
 
 void CopyFunction::InitInput::SetInitDataInternal(void *data, void (*destructor)(void *)) {
 	auto args_struct = static_cast<duckdb_v2_copy_function_init_args *>(args);
-	args_struct->out_init_data = data;
-	args_struct->out_init_data_destructor = destructor;
+	args_struct->out_init_data = duckdb_v2_opaque {data, destructor, nullptr};
 }
 
 // --- Batch input ---
@@ -2237,8 +2231,7 @@ void *CopyFunction::BatchInput::GetInitDataInternal() const {
 
 void CopyFunction::BatchInput::SetBatchDataInternal(void *data, void (*destructor)(void *)) {
 	auto args_struct = static_cast<duckdb_v2_copy_function_batch_args *>(args);
-	args_struct->out_batch = data;
-	args_struct->out_batch_destructor = destructor;
+	args_struct->out_batch = duckdb_v2_opaque {data, destructor, nullptr};
 }
 
 // --- Flush input ---

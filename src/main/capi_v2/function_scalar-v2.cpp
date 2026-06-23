@@ -55,11 +55,11 @@ struct ScalarFunctionV2 {
 
 		// If the user set the bind data, move it out here
 
-		if (args.out_bind_data) {
+		if (args.out_bind_data.ptr) {
 			auto result = make_uniq<ScalarFunctionBindDataV2>();
 
-			result->user_data = make_shared_ptr<OpaqueDataHandle>(args.out_bind_data, args.out_bind_data_destructor,
-			                                                      args.out_bind_data_equality);
+			result->user_data = make_shared_ptr<OpaqueDataHandle>(args.out_bind_data.ptr, args.out_bind_data.destroy,
+			                                                      args.out_bind_data.equals);
 
 			return std::move(result);
 		}
@@ -84,9 +84,9 @@ struct ScalarFunctionV2 {
 		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) { info.init_cb(&args, err); });
 
 		// If the user set the local state, move it out here
-		if (args.out_init_data) {
+		if (args.out_init_data.ptr) {
 			auto result = make_uniq<ScalarFunctionStateDataV2>();
-			result->user_data = OpaqueDataHandle(args.out_init_data, args.out_init_data_destructor);
+			result->user_data = OpaqueDataHandle(args.out_init_data.ptr, args.out_init_data.destroy);
 
 			return std::move(result);
 		}

@@ -12,6 +12,7 @@ struct AggregateFunctionExtraDataV2 final : public AggregateFunctionInfo {
 	duckdb_v2_aggregate_function_update_callback_fn update_cb = nullptr;
 	duckdb_v2_aggregate_function_combine_callback_fn combine_cb = nullptr;
 	duckdb_v2_aggregate_function_finalize_callback_fn finalize_cb = nullptr;
+	duckdb_v2_aggregate_function_bind_callback_fn bind_cb = nullptr;
 	duckdb_v2_aggregate_function_destroy_callback_fn destroy_cb = nullptr;
 
 	shared_ptr<OpaqueDataHandle> user_data = nullptr;
@@ -23,16 +24,27 @@ public:
 	}
 
 	auto Copy() const -> unique_ptr<FunctionData> override {
-		return make_uniq<AggregateFunctionBindDataV2>(agg_info);
+		auto result = make_uniq<AggregateFunctionBindDataV2>(agg_info);
+		result->user_bind_data = user_bind_data;
+		return std::move(result);
 	}
 
 	auto Equals(const FunctionData &other_p) const -> bool override {
-		auto &other = other_p.Cast<AggregateFunctionBindDataV2>().GetInfo();
+		auto &other = other_p.Cast<AggregateFunctionBindDataV2>();
+		auto &other_info = other.GetInfo();
 		auto &info = GetInfo();
 
-		return info.size_cb == other.size_cb && info.init_cb == other.init_cb && info.update_cb == other.update_cb &&
-		       info.combine_cb == other.combine_cb && info.finalize_cb == other.finalize_cb &&
-		       info.destroy_cb == other.destroy_cb;
+		if (!(info.size_cb == other_info.size_cb && info.init_cb == other_info.init_cb &&
+		      info.update_cb == other_info.update_cb && info.combine_cb == other_info.combine_cb &&
+		      info.finalize_cb == other_info.finalize_cb && info.destroy_cb == other_info.destroy_cb &&
+		      info.bind_cb == other_info.bind_cb)) {
+			return false;
+		}
+		// Compare user bind data: both unset is equal; otherwise defer to the opaque handle's equality.
+		if (!user_bind_data || !other.user_bind_data) {
+			return user_bind_data == other.user_bind_data;
+		}
+		return user_bind_data->Equals(*other.user_bind_data);
 	}
 
 	auto GetInfo() const -> const AggregateFunctionExtraDataV2 & {
@@ -41,6 +53,9 @@ public:
 	auto GetInfo() -> AggregateFunctionExtraDataV2 & {
 		return agg_info->Cast<AggregateFunctionExtraDataV2>();
 	}
+
+	//! User bind data set by the bind callback, if any. Shared so copies alias the same resource.
+	shared_ptr<OpaqueDataHandle> user_bind_data = nullptr;
 
 private:
 	shared_ptr<AggregateFunctionInfo> agg_info;
@@ -56,7 +71,26 @@ struct AggregateFunctionCallbackInfoV2 {
 struct AggregateFunctionV2 {
 	static auto BindCallback(BindAggregateFunctionInput &input) -> unique_ptr<FunctionData> {
 		// Propagate the extra function info through the bind data
-		return make_uniq<AggregateFunctionBindDataV2>(input.GetBoundFunction().GetFunctionInfo());
+		auto result = make_uniq<AggregateFunctionBindDataV2>(input.GetBoundFunction().GetFunctionInfo());
+		const auto &info = result->GetInfo();
+
+		// Run the optional user bind callback and capture any bind data it sets.
+		if (info.bind_cb) {
+			duckdb_v2_aggregate_function_bind_args args = {};
+			args.struct_size = sizeof(args);
+			args.context = reinterpret_cast<_duckdb_v2_context *>(&input.GetClientContext());
+			args.function_name = ToStr(input.GetBoundFunction().GetName());
+			args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+
+			InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, err); });
+
+			if (args.out_bind_data.ptr) {
+				result->user_bind_data = make_shared_ptr<OpaqueDataHandle>(
+				    args.out_bind_data.ptr, args.out_bind_data.destroy, args.out_bind_data.equals);
+			}
+		}
+
+		return std::move(result);
 	}
 
 	static auto SizeCallback(const BoundAggregateFunction &function) -> idx_t {
@@ -102,7 +136,8 @@ struct AggregateFunctionV2 {
 
 	static auto UpdateCallback(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count, Vector &state,
 	                           idx_t count) -> void {
-		auto &info = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>().GetInfo();
+		auto &bind = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>();
+		auto &info = bind.GetInfo();
 
 		DataChunk chunk;
 		for (idx_t i = 0; i < input_count; i++) {
@@ -119,6 +154,7 @@ struct AggregateFunctionV2 {
 		duckdb_v2_aggregate_function_update_args args = {};
 		args.struct_size = sizeof(args);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
 		args.input = reinterpret_cast<_duckdb_v2_data_chunk *>(&chunk);
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 		args.count = count;
@@ -132,7 +168,8 @@ struct AggregateFunctionV2 {
 
 	static auto CombineCallback(Vector &state, Vector &combined, AggregateInputData &aggr_input_data, idx_t count)
 	    -> void {
-		auto &info = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>().GetInfo();
+		auto &bind = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>();
+		auto &info = bind.GetInfo();
 
 		state.Flatten(); // TODO: Dont flatten here
 
@@ -142,6 +179,7 @@ struct AggregateFunctionV2 {
 		duckdb_v2_aggregate_function_combine_args args = {};
 		args.struct_size = sizeof(args);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
 		args.count = count;
 		args.sources = FlatVector::GetDataMutableUnsafe<void *>(state);
 		args.targets = FlatVector::GetDataMutableUnsafe<void *>(combined);
@@ -155,7 +193,8 @@ struct AggregateFunctionV2 {
 
 	static auto FinalizeCallback(Vector &state, AggregateFinalizeInputData &aggr_input_data, Vector &result,
 	                             idx_t count, idx_t offset) -> void {
-		auto &info = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>().GetInfo();
+		auto &bind = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>();
+		auto &info = bind.GetInfo();
 
 		state.Flatten(); // TODO: Dont flatten here
 
@@ -165,6 +204,7 @@ struct AggregateFunctionV2 {
 		duckdb_v2_aggregate_function_finalize_args args = {};
 		args.struct_size = sizeof(args);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
 		args.count = count;
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 		args.result = reinterpret_cast<_duckdb_v2_vector *>(&result);
@@ -178,7 +218,8 @@ struct AggregateFunctionV2 {
 	}
 
 	static auto DestroyCallback(Vector &state, AggregateInputData &aggr_input_data, idx_t count) -> void {
-		auto &info = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>().GetInfo();
+		auto &bind = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>();
+		auto &info = bind.GetInfo();
 
 		ErrorInfoV2 err;
 		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
@@ -186,6 +227,7 @@ struct AggregateFunctionV2 {
 		duckdb_v2_aggregate_function_destroy_args args = {};
 		args.struct_size = sizeof(args);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
 		args.count = count;
 		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 
@@ -202,6 +244,7 @@ struct AggregateFunctionBuilderV2 {
 	vector<pair<Identifier, LogicalType>> parameters;
 	LogicalType return_type;
 
+	duckdb_v2_aggregate_function_bind_callback_fn bind_cb = nullptr;
 	duckdb_v2_aggregate_function_size_callback_fn size_cb = nullptr;
 	duckdb_v2_aggregate_function_init_callback_fn init_cb = nullptr;
 	duckdb_v2_aggregate_function_update_callback_fn update_cb = nullptr;
@@ -306,6 +349,19 @@ duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_functio
 		}
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
 		agg_builder->return_type = ltype;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_set_bind_callback(duckdb_v2_aggregate_function_builder_handle builder,
+                                                       duckdb_v2_aggregate_function_bind_callback_fn callback,
+                                                       duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!builder) {
+			throw duckdb::InvalidInputException("Function builder cannot be null");
+		}
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		agg_builder->bind_cb = callback;
 	});
 }
 
@@ -423,6 +479,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 
 		auto function_info = duckdb::make_shared_ptr<duckdb::AggregateFunctionExtraDataV2>();
 
+		function_info->bind_cb = agg_builder->bind_cb;
 		function_info->size_cb = agg_builder->size_cb;
 		function_info->init_cb = agg_builder->init_cb;
 		function_info->update_cb = agg_builder->update_cb;

@@ -3,6 +3,7 @@
 #include "capi_v2_test_helpers.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -201,4 +202,156 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 	REQUIRE(conn == nullptr);
 	duckdb_v2_close(&db);
 	duckdb_v2_destroy_environment(&env);
+}
+
+// ---------------------------------------------------------------------------
+// Aggregate bind data: a bind callback sets bind data that threads through to
+// the update/combine/finalize callbacks.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::atomic<bool> g_bind_data_seen_in_update {false};
+std::atomic<int> g_bind_data_destroyed {0};
+
+void BindDataBindCallback(duckdb_v2_aggregate_function_bind_args *args, duckdb_v2_error_info_handle *err) {
+	// Compute a "multiplier" at bind time and hand it to execution as bind data.
+	args->out_bind_data.ptr = new int32_t(10);
+	args->out_bind_data.destroy = [](void *p) {
+		g_bind_data_destroyed++;
+		delete static_cast<int32_t *>(p);
+	};
+}
+
+void BindDataSizeCallback(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_handle *err) {
+	args->out_size = sizeof(int64_t);
+}
+
+void BindDataInitCallback(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_handle *err) {
+	*static_cast<int64_t *>(args->state) = 0;
+}
+
+void BindDataUpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_handle *err) {
+	if (args->bind_data) {
+		g_bind_data_seen_in_update = true;
+	}
+
+	duckdb_v2_vector_handle input_vec = nullptr;
+	if (duckdb_v2_data_chunk_get_vector(args->input, 0, &input_vec, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	duckdb_v2_vector_view view;
+	if (duckdb_v2_vector_get_view(input_vec, &view, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	const auto data = static_cast<const int32_t *>(view.data);
+	const auto states = reinterpret_cast<int64_t **>(args->states);
+	for (idx_t i = 0; i < args->count; i++) {
+		const auto idx = view.sel ? view.sel[i] : i;
+		if (!RowIsValid(view.validity, idx)) {
+			continue;
+		}
+		*states[i] += data[idx];
+	}
+}
+
+void BindDataCombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_handle *err) {
+	const auto sources = reinterpret_cast<int64_t **>(args->sources);
+	const auto targets = reinterpret_cast<int64_t **>(args->targets);
+	for (idx_t i = 0; i < args->count; i++) {
+		*targets[i] += *sources[i];
+	}
+}
+
+void BindDataFinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
+	// Use the bind-time multiplier handed to us via bind data.
+	const auto multiplier = args->bind_data ? *static_cast<const int32_t *>(args->bind_data) : 1;
+	const auto states = reinterpret_cast<int64_t **>(args->states);
+
+	int32_t *result = nullptr;
+	if (duckdb_v2_vector_get_data_mutable(args->result, (void **)&result, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	for (idx_t i = 0; i < args->count; i++) {
+		result[args->result_offset + i] = static_cast<int32_t>(*states[i] * multiplier);
+	}
+}
+
+} // namespace
+
+TEST_CASE("V2 aggregate: bind data threads through to execution callbacks", "[capi_v2][aggregate]") {
+	g_bind_data_seen_in_update = false;
+	g_bind_data_destroyed = 0;
+
+	duckdb_v2_environment_handle env = nullptr;
+	duckdb_v2_create_environment(&env, nullptr);
+	duckdb_v2_database_handle db = nullptr;
+	duckdb_v2_open(env, duckdb_v2_str {nullptr, 0}, nullptr, 0, &db, nullptr);
+	duckdb_v2_connection_handle conn = nullptr;
+	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_connection_execute_with_context(
+	    conn,
+	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
+		    duckdb_v2_aggregate_function_builder_handle builder = nullptr;
+		    REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+
+		    duckdb_v2_logical_type_handle type = nullptr;
+		    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("sum_times_ten"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_add_parameter(builder, V2Str("x"), type, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_return_type(builder, type, err) == DUCKDB_V2_ERROR_NONE);
+
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_bind_callback(builder, BindDataBindCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, BindDataSizeCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, BindDataInitCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, BindDataUpdateCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, BindDataCombineCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, BindDataFinalizeCallback,
+		                                                                       err) == DUCKDB_V2_ERROR_NONE);
+
+		    REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
+
+		    duckdb_v2_logical_type_destroy(&type);
+	    },
+	    nullptr, nullptr);
+
+	duckdb_v2_result_handle result = nullptr;
+	REQUIRE(V2Query(conn, "SELECT sum_times_ten(i) AS result FROM (VALUES (1), (2), (3), (4), (5)) AS t(i)", &result,
+	                nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_data_chunk_handle chunk = V2StepChunk(result);
+	REQUIRE(chunk != nullptr);
+
+	duckdb_v2_vector_handle result_vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &result_vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_view result_view;
+	REQUIRE(duckdb_v2_vector_get_view(result_vec, &result_view, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(result_view.count == 1);
+
+	// (1 + 2 + 3 + 4 + 5) * 10 = 150 -> proves the bind-time multiplier reached finalize.
+	REQUIRE((static_cast<const int32_t *>(result_view.data))[0] == 150);
+	// And the update callback saw the bind data too.
+	REQUIRE(g_bind_data_seen_in_update.load());
+
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_result_destroy(&result) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_disconnect(&conn);
+	duckdb_v2_close(&db);
+	duckdb_v2_destroy_environment(&env);
+
+	// The bind data was cleaned up via its destructor.
+	REQUIRE(g_bind_data_destroyed.load() >= 1);
 }
