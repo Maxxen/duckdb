@@ -184,13 +184,10 @@ public:
 } // namespace
 
 unique_ptr<SQLLogicExecutor> CreateSQLLogicExecutor() {
-	bool use_cpp_api =
-#ifdef SQLLOGIC_CPP_API_EXECUTION
-	    true;
-#else
-	    false;
-#endif
-	// Runtime override, so a single binary can A/B the two execution paths.
+	// Both executors are always compiled in. Default to the internal executor;
+	// DUCKDB_SQLLOGIC_EXECUTOR=cpp_api selects the stable-C++-API runner at runtime
+	// (no recompile), so a single binary can A/B the two execution paths.
+	bool use_cpp_api = false;
 	if (const char *env = std::getenv("DUCKDB_SQLLOGIC_EXECUTOR")) {
 		auto mode = StringUtil::Lower(env);
 		if (mode == "cpp_api") {

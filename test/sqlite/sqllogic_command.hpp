@@ -67,10 +67,10 @@ public:
 	}
 };
 
-//! Construct the executor for this build/run. The compile-time
-//! SQLLOGIC_CPP_API_EXECUTION define sets the default; the
+//! Construct the executor for this run. Both executors are compiled in; the
 //! DUCKDB_SQLLOGIC_EXECUTOR environment variable ("cpp_api" / "internal")
-//! overrides it at runtime, so one binary can run either path.
+//! selects one at runtime (default: internal), so one binary can run either
+//! path with no recompile.
 duckdb::unique_ptr<SQLLogicExecutor> CreateSQLLogicExecutor();
 
 class Command {
