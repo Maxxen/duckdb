@@ -77,6 +77,7 @@ duckdb_v2_str BorrowReplacementScanNamePart(const string &part) {
 DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_register(duckdb_v2_database_handle db,
                                                          duckdb_v2_replacement_scan_callback_fn callback,
                                                          duckdb_v2_opaque user_data, duckdb_v2_error_info_handle *err) {
+	duckdb::OpaqueDataHandle owned(user_data.ptr, user_data.destroy, user_data.equals);
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !callback) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_register");
@@ -84,7 +85,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_register(duckdb_v2_database_hand
 		auto *wrapper = duckdb::ToDb(db);
 		auto data = duckdb::make_uniq<duckdb::ReplacementScanDataV2>();
 		data->callback = callback;
-		data->user_data = duckdb::OpaqueDataHandle(user_data.ptr, user_data.destroy, user_data.equals);
+		data->user_data = std::move(owned);
 		auto &config = duckdb::DBConfig::GetConfig(*wrapper->database->instance);
 		config.replacement_scans.push_back(
 		    duckdb::ReplacementScan(duckdb::ReplacementScanTrampolineV2, std::move(data)));

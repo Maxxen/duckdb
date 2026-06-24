@@ -448,19 +448,15 @@ Connection Database::Connect() {
 	return detail::Factory::Make<Connection>(conn, true);
 }
 
-namespace {
-
 // Bundles the C++ callback and the caller's user data into the C API's single opaque slot.
-struct ReplacementScanInfoCpp {
+struct ReplacementScanInfo {
 	Database::ReplacementScanCallback callback = nullptr;
 	detail::UserData user_data;
 };
 
-} // namespace
-
 void Database::AddReplacementScanInternal(ReplacementScanCallback callback, void *user_data,
                                           void (*destructor)(void *)) {
-	auto *payload = new ReplacementScanInfoCpp();
+	auto *payload = new ReplacementScanInfo(); // NOLINT
 	payload->callback = callback;
 	payload->user_data = detail::UserData(user_data, destructor);
 
@@ -469,7 +465,7 @@ void Database::AddReplacementScanInternal(ReplacementScanCallback callback, void
 		WithExceptionGuard(err, [&]() {
 			void *raw = nullptr;
 			CheckedAPICall(duckdb_v2_replacement_scan_get_user_data, c_info, &raw);
-			auto &recovered = *static_cast<ReplacementScanInfoCpp *>(raw);
+			auto &recovered = *static_cast<ReplacementScanInfo *>(raw);
 			auto input = detail::Factory::Make<ReplacementScanInput>(
 			    static_cast<void *>(c_info), static_cast<void *>(ctx), recovered.user_data.get());
 			recovered.callback(input);
@@ -477,11 +473,11 @@ void Database::AddReplacementScanInternal(ReplacementScanCallback callback, void
 	};
 
 	// The engine owns the payload on success (freed at db close); on failure we still own it.
-	duckdb_v2_opaque opaque {payload, detail::TypedDelete<ReplacementScanInfoCpp>, nullptr};
+	duckdb_v2_opaque opaque {payload, detail::TypedDelete<ReplacementScanInfo>, nullptr};
 	try {
 		CheckedAPICall(duckdb_v2_replacement_scan_register, handle(), trampoline, opaque);
 	} catch (...) {
-		detail::TypedDelete<ReplacementScanInfoCpp>(payload);
+		detail::TypedDelete<ReplacementScanInfo>(payload);
 		throw;
 	}
 }
