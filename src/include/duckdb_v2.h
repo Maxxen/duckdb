@@ -66,6 +66,60 @@ extern "C" {
 // General type definitions
 //===--------------------------------------------------------------------===//
 
+// Arrow C Data Interface (https://arrow.apache.org/docs/format/CDataInterface.html).
+// Defined here so this header is self-contained: a binding author can allocate
+// and fill an ArrowSchema / ArrowArray with only this header. Guarded by the
+// standard ARROW_C_DATA_INTERFACE / ARROW_C_STREAM_INTERFACE macros that
+// pyarrow / nanoarrow / arrow also use, so these definitions coexist with a
+// consumer's own Arrow headers (first definition wins; the layouts are
+// byte-identical by spec).
+#ifndef ARROW_C_DATA_INTERFACE
+#define ARROW_C_DATA_INTERFACE
+
+#define ARROW_FLAG_DICTIONARY_ORDERED 1
+#define ARROW_FLAG_NULLABLE           2
+#define ARROW_FLAG_MAP_KEYS_SORTED    4
+
+struct ArrowSchema {
+	const char *format;
+	const char *name;
+	const char *metadata;
+	int64_t flags;
+	int64_t n_children;
+	struct ArrowSchema **children;
+	struct ArrowSchema *dictionary;
+	void (*release)(struct ArrowSchema *);
+	void *private_data;
+};
+
+struct ArrowArray {
+	int64_t length;
+	int64_t null_count;
+	int64_t offset;
+	int64_t n_buffers;
+	int64_t n_children;
+	const void **buffers;
+	struct ArrowArray **children;
+	struct ArrowArray *dictionary;
+	void (*release)(struct ArrowArray *);
+	void *private_data;
+};
+
+#endif
+
+#ifndef ARROW_C_STREAM_INTERFACE
+#define ARROW_C_STREAM_INTERFACE
+
+struct ArrowArrayStream {
+	int (*get_schema)(struct ArrowArrayStream *, struct ArrowSchema *out);
+	int (*get_next)(struct ArrowArrayStream *, struct ArrowArray *out);
+	const char *(*get_last_error)(struct ArrowArrayStream *);
+	void (*release)(struct ArrowArrayStream *);
+	void *private_data;
+};
+
+#endif
+
 typedef uint64_t idx_t;
 
 /* ============================================================================
@@ -876,6 +930,179 @@ struct duckdb_v2_aggregate_function_destroy_args {
 	//! aggregate state that should be destroyed and have its resources freed.
 	void **states;
 };
+
+/* ============================================================================
+ * MODULE: arrow
+ * ============================================================================ */
+
+/* --- Enums for arrow --- */
+
+/* --- Struct forward declarations for arrow --- */
+
+/* --- Types for arrow --- */
+//! An opaque, owned handle to a converted Arrow schema: the bound
+//! DuckDB-side interpretation of an ArrowSchema (the column logical types
+//! plus the per-column Arrow type info needed to import arrays). Built once
+//! from an ArrowSchema via arrow_converted_schema_create and reused across
+//! many arrays by arrow_array_to_data_chunk (e.g. a UDF binds it in init and
+//! reuses it per chunk, avoiding per-array schema overhead). Always destroy
+//! via arrow_converted_schema_destroy.
+typedef struct _duckdb_v2_arrow_converted_schema {
+	void *internal_ptr;
+} * duckdb_v2_arrow_converted_schema_handle;
+
+/* --- Constants for arrow --- */
+
+/* --- Error Codes for arrow --- */
+
+/* --- Function pointer typedefs for arrow --- */
+
+/* --- Functions for arrow --- */
+/*!
+* Exports a native streaming result as a lazy ArrowArrayStream.
+* Consumes the result by transfer (the slot is set to NULL) and writes a
+lazy ArrowArrayStream into the caller-allocated *out_stream. The stream
+owns the result cursor: its `release` drains nothing, but it unpins the
+query transaction and frees the connection's busy slot (mirroring
+result_destroy), so the connection can run its next query. The caller
+frees the stream via out_stream->release(out_stream).
+
+The stream is lazy. get_next drives the result state machine, stepping
+internally past WAITING until a batch is ready, and coalesces DuckDB
+chunks into one Arrow array of up to batch_size rows via the engine's
+ArrowAppender (batch_size == 0 selects the default of 131072 rows, which
+is 64 * STANDARD_VECTOR_SIZE). get_schema returns the Arrow schema and
+never touches the catalog: the schema and the extension type map are
+built and cached under the live transaction at the moment the stream is
+created, not lazily inside get_schema. Building the schema can require
+catalog / transaction access (extension populate-schema callbacks, e.g.
+GEOMETRY with a CRS; ENUM dictionaries), so caching it up front is a
+correctness requirement, not an optimization.
+
+Partial consumption is allowed: passing a result that has already yielded
+some chunks produces a stream over the remainder.
+
+For a statement that expands into a group whose metadata is not yet
+available, this call steps the result far enough to prepare the
+row-producing fragment so the schema can be cached, which can block
+briefly. For the common non-expanding statement nothing is executed here.
+
+The result is consumed even on failure paths that have already taken
+ownership; *out_stream is left untouched on failure. Null arguments
+return ERROR_INVALID_INPUT and leave the result intact.
+
+* @param result The result to export; consumed and set to NULL on success. Left intact only when the call rejects null
+arguments.
+* @param batch_size Target rows per Arrow array. 0 selects the default of 131072 (64 * STANDARD_VECTOR_SIZE).
+* @param out_stream Caller-allocated ArrowArrayStream the library fills. Free it with out_stream->release(out_stream).
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_to_arrow_stream(duckdb_v2_result_handle *result, idx_t batch_size,
+                                                                   struct ArrowArrayStream *out_stream,
+                                                                   duckdb_v2_error_info_handle *err);
+/*!
+* Converts a list of DuckDB logical types and column names into an Arrow schema.
+* Fills the caller-allocated *out_schema with the Arrow schema for the
+given column types and names, using the Arrow options carried by
+`context`. The caller owns the result and frees it via
+out_schema->release(out_schema).
+
+`types` and `names` are parallel arrays of length `count`; they may be
+NULL only when count is 0. Building the schema can touch the catalog /
+transaction (extension populate-schema callbacks, ENUM dictionaries), so
+`context` must have an active transaction (callbacks do; otherwise wrap
+the call in connection_execute_with_context).
+
+* @param context The context whose Arrow options and transaction drive the conversion.
+* @param types Array of column logical types. May be NULL only when count is 0.
+* @param names Array of column names, parallel to types. May be NULL only when count is 0.
+* @param count The number of columns (length of types and names).
+* @param out_schema Caller-allocated ArrowSchema the library fills. Free it with out_schema->release(out_schema).
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_types_to_arrow_schema(duckdb_v2_context_handle context,
+                                                                          const duckdb_v2_logical_type_handle *types,
+                                                                          const duckdb_v2_str *names, idx_t count,
+                                                                          struct ArrowSchema *out_schema,
+                                                                          duckdb_v2_error_info_handle *err);
+/*!
+* Converts a DuckDB data chunk into an Arrow array.
+* Fills the caller-allocated *out_array with the Arrow array for `chunk`,
+using the Arrow options and extension type casts resolved from `context`.
+The caller owns the result and frees it via out_array->release(out_array).
+`chunk` is not consumed; its data is copied / referenced per the Arrow
+ownership the appender establishes.
+
+* @param context The context whose Arrow options and transaction drive the conversion.
+* @param chunk The data chunk to convert.
+* @param out_array Caller-allocated ArrowArray the library fills. Free it with out_array->release(out_array).
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_to_arrow_array(duckdb_v2_context_handle context,
+                                                                      duckdb_v2_data_chunk_handle chunk,
+                                                                      struct ArrowArray *out_array,
+                                                                      duckdb_v2_error_info_handle *err);
+/*!
+* Builds a reusable converted schema from an Arrow schema.
+* Resolves `schema` against `context` (column logical types plus per-column
+Arrow type info) and writes an owned arrow_converted_schema handle into
+*out_converted. Reuse it across many arrays via arrow_array_to_data_chunk.
+Always destroy via arrow_converted_schema_destroy. `schema` is read, not
+consumed; the caller retains ownership of it. *out_converted is set to
+NULL on failure.
+
+* @param context The context used to resolve Arrow types (extension types included).
+* @param schema The Arrow schema to convert. Read, not consumed; the caller retains ownership.
+* @param out_converted Receives the new converted-schema handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_arrow_converted_schema_create(
+    duckdb_v2_context_handle context, struct ArrowSchema *schema,
+    duckdb_v2_arrow_converted_schema_handle *out_converted, duckdb_v2_error_info_handle *err);
+/*!
+* Converts an Arrow array into a DuckDB data chunk using a converted schema.
+* Builds a data chunk from `array`, interpreted through `converted` (from
+arrow_converted_schema_create). Data ownership transfers to the produced
+chunk: the chunk holds the Arrow buffers zero-copy and `array`'s `release`
+is set to NULL, so the caller must not release `array` afterward. The
+produced chunk is owned by the caller and destroyed via data_chunk_destroy.
+
+The chunk is sized to the array length, which may exceed
+STANDARD_VECTOR_SIZE: that constant is the pipeline chunk size, not a cap
+on a standalone data chunk. *out_chunk is set to NULL on failure.
+
+Only the default Arrow array physical layout and dictionary-encoded and
+run-end-encoded layouts are supported; other layouts return
+ERROR_QUERY_NOT_IMPLEMENTED.
+
+* @param context The context used during conversion.
+* @param array The Arrow array to convert. Its data is adopted by the chunk and its `release` is set to NULL.
+* @param converted The converted schema describing the array, from arrow_converted_schema_create.
+* @param out_chunk Receives the new data chunk. Destroy via data_chunk_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_arrow_array_to_data_chunk(duckdb_v2_context_handle context,
+                                                                      struct ArrowArray *array,
+                                                                      duckdb_v2_arrow_converted_schema_handle converted,
+                                                                      duckdb_v2_data_chunk_handle *out_chunk,
+                                                                      duckdb_v2_error_info_handle *err);
+/*!
+* Destroys a converted schema handle.
+* Null-safe: passing NULL or a slot already set to NULL is a no-op. On
+return the slot is set to NULL to prevent double-free.
+
+* @param converted The converted schema to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_arrow_converted_schema_destroy(duckdb_v2_arrow_converted_schema_handle *converted);
+
+/* --- Struct definitions for arrow --- */
 
 /* ============================================================================
  * MODULE: cast

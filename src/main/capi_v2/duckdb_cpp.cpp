@@ -1155,6 +1155,62 @@ auto QueryResult::Drain() -> idx_t {
 	return rows_changed;
 }
 
+auto QueryResult::ToArrowStream(idx_t batch_size) -> ArrowStream {
+	// Allocate before detaching the result: if this throws, the result wrapper
+	// is still owned by *this and ~QueryResult frees it (no leak).
+	auto *stream = new ArrowArrayStream {};
+	auto raw = handle();
+	// result_to_arrow_stream consumes the result by transfer (a valid handle is
+	// consumed on success and failure alike). Detach our wrapper now so
+	// ~QueryResult never double-frees the transferred result.
+	this->release();
+	try {
+		CheckedAPICall(duckdb_v2_result_to_arrow_stream, &raw, batch_size, stream);
+	} catch (...) {
+		delete stream;
+		throw;
+	}
+	return detail::Factory::Make<ArrowStream>(stream);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Arrow Stream
+//----------------------------------------------------------------------------------------------------------------------
+
+ArrowStream::~ArrowStream() {
+	if (stream) {
+		if (stream->release) {
+			stream->release(stream);
+		}
+		delete stream;
+	}
+}
+
+// The Arrow C stream interface reports failure only as an errno-style int, with
+// no error code, so GetSchema/Next surface a generic INVALID_INPUT code; the
+// real detail comes through get_last_error and is carried in the message.
+void ArrowStream::GetSchema(ArrowSchema &out) const {
+	if (!stream || !stream->release) {
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "ArrowStream::GetSchema on an empty stream");
+	}
+	if (stream->get_schema(stream, &out) != 0) {
+		const char *msg = stream->get_last_error ? stream->get_last_error(stream) : nullptr;
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, msg ? msg : "Arrow stream get_schema failed");
+	}
+}
+
+bool ArrowStream::Next(ArrowArray &out) const {
+	out.release = nullptr;
+	if (!stream || !stream->release) {
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "ArrowStream::Next on an empty stream");
+	}
+	if (stream->get_next(stream, &out) != 0) {
+		const char *msg = stream->get_last_error ? stream->get_last_error(stream) : nullptr;
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, msg ? msg : "Arrow stream get_next failed");
+	}
+	return out.release != nullptr;
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // Column Data Collection
 //----------------------------------------------------------------------------------------------------------------------

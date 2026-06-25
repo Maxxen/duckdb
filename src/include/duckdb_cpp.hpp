@@ -14,6 +14,13 @@
 
 // (Experimental) Stable C++ API
 
+// Arrow C Data Interface structs (defined by duckdb_v2.h, or by the consumer's
+// own Arrow headers under the shared ARROW_C_*_INTERFACE guards). Forward
+// declared so this header stays free of any concrete Arrow definition.
+struct ArrowSchema;
+struct ArrowArray;
+struct ArrowArrayStream;
+
 namespace duckdb_api {
 
 typedef uint64_t idx_t;
@@ -878,6 +885,69 @@ public:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// Arrow Stream
+//----------------------------------------------------------------------------------------------------------------------
+
+// An owning, move-only handle to an Arrow C Data Interface stream
+// (ArrowArrayStream). Produced by QueryResult::ToArrowStream. On destruction it
+// releases the underlying stream (its transaction and the connection's query
+// slot). The arrays produced by Next() are owned by the caller and released
+// independently of this wrapper.
+//
+// Unlike the other wrappers this does not derive from detail::Handle<T>: it
+// owns a raw Arrow C struct (ArrowArrayStream) rather than an opaque DuckDB C
+// handle, so the Handle storage/release machinery does not apply.
+class ArrowStream final {
+	friend detail::Factory;
+
+public:
+	ArrowStream(ArrowStream &&other) noexcept : stream(other.stream) {
+		other.stream = nullptr;
+	}
+	ArrowStream &operator=(ArrowStream &&other) noexcept {
+		std::swap(stream, other.stream);
+		return *this;
+	}
+	ArrowStream(const ArrowStream &) = delete;
+	ArrowStream &operator=(const ArrowStream &) = delete;
+
+	~ArrowStream();
+
+	// True while this wrapper holds a live stream (not moved-from / released).
+	explicit operator bool() const noexcept {
+		return stream != nullptr;
+	}
+
+	// Borrows the underlying Arrow C stream; the wrapper retains ownership.
+	// Hand its address to an Arrow consumer that does not take ownership.
+	auto get() const noexcept -> ArrowArrayStream * {
+		return stream;
+	}
+
+	// Detaches the underlying Arrow C stream, transferring ownership (and the
+	// duty to call its release) to the caller. The wrapper is left empty.
+	auto Detach() noexcept -> ArrowArrayStream * {
+		auto detached = stream;
+		stream = nullptr;
+		return detached;
+	}
+
+	// Reads the stream schema into `out`; the caller owns it (release via
+	// out.release). Throws on failure.
+	void GetSchema(ArrowSchema &out) const;
+
+	// Fetches the next array into `out`. Returns false at end of stream (where
+	// `out` is left released). Each produced array is owned by the caller.
+	// Throws on failure.
+	bool Next(ArrowArray &out) const;
+
+private:
+	explicit ArrowStream(ArrowArrayStream *stream) : stream(stream) {
+	}
+	ArrowArrayStream *stream = nullptr;
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Result
 //----------------------------------------------------------------------------------------------------------------------
 class QueryResult final : public detail::Handle<QueryResult> {
@@ -927,6 +997,12 @@ public:
 	// discarding rows; returns the affected row count for CHANGED_ROWS
 	// results, 0 otherwise. Cancellation throws RUNTIME_INTERRUPT.
 	auto Drain() -> idx_t;
+
+	// Exports this result as an owning Arrow stream, consuming the result:
+	// the wrapper is left empty afterward. batch_size is the target rows per
+	// Arrow array (0 selects the engine default). The stream is lazy; its
+	// schema is fixed at this call.
+	auto ToArrowStream(idx_t batch_size = 0) -> ArrowStream;
 
 private:
 	explicit QueryResult(void *impl);

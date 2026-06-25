@@ -10,6 +10,12 @@ options:
   c:
     handles:
       default_style: tagged_struct
+    # Emit the full ArrowSchema / ArrowArray / ArrowArrayStream struct
+    # definitions into the header preamble, guarded by ARROW_C_DATA_INTERFACE /
+    # ARROW_C_STREAM_INTERFACE so they coexist with a consumer's own Arrow
+    # headers. The arrow module references these structs by their upstream
+    # names (declared as primitives below).
+    emit_arrow_defs: true
 suffixes:
   handles: "_handle"
   callbacks: "_fn"
@@ -46,3 +52,13 @@ primitives:
     underlying: uint64_t
   - name: size
     c_type: size_t
+  # Arrow C Data Interface structs. Declared as primitives so the arrow module
+  # can reference them by their upstream names (e.g. `struct ArrowSchema *`).
+  # They carry no `underlying`, so no typedef is emitted; the full struct
+  # definitions come from the header preamble (emit_arrow_defs above).
+  - name: ArrowSchema
+    c_type: struct ArrowSchema
+  - name: ArrowArray
+    c_type: struct ArrowArray
+  - name: ArrowArrayStream
+    c_type: struct ArrowArrayStream

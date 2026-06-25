@@ -5,6 +5,7 @@ add_library_unity(
   OBJECT
   test_capi_v2.cpp
   test_capi_v2_aggregate_function.cpp
+  test_capi_v2_arrow.cpp
   test_capi_v2_cast_function.cpp
   test_capi_v2_data_chunk.cpp
   test_capi_v2_error_info.cpp
