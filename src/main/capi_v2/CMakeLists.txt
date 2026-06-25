@@ -23,6 +23,7 @@ add_library_unity(
   query_result-v2.cpp
   replacement_scan-v2.cpp
   sql_statement-v2.cpp
+  string_heap-v2.cpp
   value-v2.cpp
   vector-v2.cpp)
 

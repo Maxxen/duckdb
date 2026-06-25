@@ -102,6 +102,13 @@ handles:
       unified-format shape (data + validity + selection) per kind; the
       row count comes from the caller's context (the chunk for top-level
       vectors; parent geometry for nested children).
+  string_heap:
+    description: |
+      Borrowed handle to a vector's string heap: the arena owning the
+      out-of-line bytes of non-inlined VARCHAR / BLOB / BIT / BIGNUM values.
+      Obtained via vector_get_string_heap. Do not destroy; valid until the
+      owning vector is flattened, reallocated, or destroyed. Bytes added to it
+      are owned by the vector.
   context:
     description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 structs:

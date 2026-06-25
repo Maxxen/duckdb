@@ -203,6 +203,15 @@ typedef struct _duckdb_v2_vector {
 	void *internal_ptr;
 } * duckdb_v2_vector_handle;
 
+//! Borrowed handle to a vector's string heap: the arena owning the
+//! out-of-line bytes of non-inlined VARCHAR / BLOB / BIT / BIGNUM values.
+//! Obtained via vector_get_string_heap. Do not destroy; valid until the
+//! owning vector is flattened, reallocated, or destroyed. Bytes added to it
+//! are owned by the vector.
+typedef struct _duckdb_v2_string_heap {
+	void *internal_ptr;
+} * duckdb_v2_string_heap_handle;
+
 //! The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
 typedef struct _duckdb_v2_context {
 	void *internal_ptr;
@@ -3468,6 +3477,42 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_statement_iterator_destroy(duckdb_v2
 /* --- Struct definitions for sql_statement --- */
 
 /* ============================================================================
+ * MODULE: string_heap
+ * ============================================================================ */
+
+/* --- Enums for string_heap --- */
+
+/* --- Struct forward declarations for string_heap --- */
+
+/* --- Types for string_heap --- */
+
+/* --- Constants for string_heap --- */
+
+/* --- Error Codes for string_heap --- */
+
+/* --- Function pointer typedefs for string_heap --- */
+
+/* --- Functions for string_heap --- */
+/*!
+* Reserves byte_len bytes of vector-lifetime memory from the heap.
+* Raw arena allocation: returns a writable pointer to byte_len uninitialized
+bytes. No string semantics and no size gating; byte_len may be 0. The
+caller writes the bytes and assembles the duckdb_v2_string. A
+duckdb_v2_string length is a uint32, so bytes backing a single value must
+respect that bound; this is the caller's to enforce.
+
+* @param heap
+* @param byte_len Number of bytes to reserve. May be 0.
+* @param out_ptr Receives a writable pointer to byte_len heap-owned bytes.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_string_heap_allocate(duckdb_v2_string_heap_handle heap, idx_t byte_len,
+                                                                 uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for string_heap --- */
+
+/* ============================================================================
  * MODULE: value
  * ============================================================================ */
 
@@ -4387,21 +4432,20 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_flat_get_validity_mutable(duc
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_handle vector, bool validity,
                                                                       duckdb_v2_error_info_handle *err);
 /*!
-* Writes a string value into a vector at the given row index.
-* Copies the bytes into the vector's string heap and writes the
-resulting handle into the data array at the given index. Works for
-any string-backed logical type (VARCHAR, BLOB, BIT, BIGNUM). No
-encoding validation is performed. The vector must be FLAT or
-CONSTANT.
+* Borrows a string-backed vector's heap for writing.
+* Allocates the heap on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM
+vectors; ERROR_INVALID_INPUT otherwise. This is the single string-ness
+check; the resulting heap's add calls skip it. Borrowed (do not destroy);
+valid until the vector is flattened, reallocated, or destroyed.
 
 * @param vector
-* @param index The row index to write to.
-* @param data View of the bytes to copy. The pointer may be null when the length is 0.
+* @param out_heap Receives the borrowed string-heap handle.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_handle vector, idx_t index,
-                                                                 duckdb_v2_str data, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_string_heap(duckdb_v2_vector_handle vector,
+                                                                   duckdb_v2_string_heap_handle *out_heap,
+                                                                   duckdb_v2_error_info_handle *err);
 /*!
 * Returns the number of child vectors a nested vector exposes.
 * For LIST / ARRAY returns 1; for MAP returns 2 (keys, values); for

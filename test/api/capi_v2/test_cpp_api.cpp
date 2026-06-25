@@ -1,5 +1,6 @@
 #include "catch.hpp"
 #include "duckdb_cpp.hpp"
+#include "duckdb_v2.h"
 #include "test_helpers.hpp"
 
 // For the DUCKDB_V2_ERROR_* codes asserted against Exception::GetCode().
@@ -1032,5 +1033,249 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 		auto result = conn.Query("SELECT * FROM cpp_repl_ctx_placeholder");
 		REQUIRE(result.GetColumnCount() == 2);
 		REQUIRE(count_rows(std::move(result)) == 2);
+	}
+}
+
+TEST_CASE("Stable C++API: Vector AssignString", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::VARCHAR());
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(3);
+
+		// AssignString resolves the heap once and reuses it for the rest.
+		vec.AssignString(0, "hi"); // inlined
+		const std::string long_str(100, 'x');
+		vec.AssignString(1, long_str); // copied into the heap
+		vec.AssignString(2, "");       // empty
+
+		// The cpp_api has no VARCHAR read path yet; decode through the C API to
+		// confirm the bytes round-trip.
+		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+		duckdb_v2_str out = {nullptr, 0};
+		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == "hi");
+		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == long_str);
+		REQUIRE(duckdb_v2_varchar_decode(&slots[2], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(out.len == 0);
+	});
+}
+
+TEST_CASE("Stable C++API: Vector AssignStrings (bulk)", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::VARCHAR());
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(3);
+
+		// A single write, then a bulk write starting at index 1; both share the
+		// cached heap. The bulk batch mixes an inlined and a heap-allocated value.
+		vec.AssignString(0, "head");
+		const std::vector<std::string> owned = {"second", "this tail value is comfortably longer than twelve bytes"};
+		const std::vector<std::string_view> tail(owned.begin(), owned.end());
+		vec.AssignStrings(1, tail);
+
+		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+		duckdb_v2_str out = {nullptr, 0};
+		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == "head");
+		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == owned[0]);
+		REQUIRE(duckdb_v2_varchar_decode(&slots[2], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == owned[1]);
+
+		// An empty batch is a no-op.
+		vec.AssignStrings(0, {});
+	});
+}
+
+TEST_CASE("Stable C++API: StringHeap primitive (dedup + scatter)", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::VARCHAR());
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(4);
+
+		auto heap = vec.GetStringHeap();
+
+		// Dedup: intern a (non-inlined) value once, reference it from many slots.
+		const std::string shared_str = "this is a shared value, longer than twelve bytes";
+		auto shared = heap.Add(shared_str);
+		vec.SetString(0, shared);
+		vec.SetString(2, shared);
+
+		// Bulk intern, then scatter the tokens into arbitrary positions.
+		const std::vector<std::string> owned = {"x", "another longer-than-inline string value"};
+		auto tokens = heap.AddMany(std::vector<std::string_view>(owned.begin(), owned.end()));
+		vec.SetString(3, tokens[0]);
+		vec.SetString(1, tokens[1]);
+
+		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+		duckdb_v2_str out = {nullptr, 0};
+		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == shared_str);
+		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == owned[1]);
+		REQUIRE(duckdb_v2_varchar_decode(&slots[2], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == shared_str);
+		REQUIRE(duckdb_v2_varchar_decode(&slots[3], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == "x");
+
+		// An empty AddMany returns an empty vector.
+		REQUIRE(heap.AddMany({}).empty());
+	});
+}
+
+TEST_CASE("Stable C++API: StringHeap::Allocate write-in-place", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::VARCHAR());
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(2);
+
+		auto heap = vec.GetStringHeap();
+
+		// Write-in-place: generate bytes straight into the heap, then build a token over them.
+		const uint32_t len = 64;
+		auto *bytes = heap.Allocate(len);
+		REQUIRE(bytes != nullptr);
+		std::memset(bytes, 'q', len);
+		auto token = StringStorage::FromHeapData(reinterpret_cast<char *>(bytes), len);
+		REQUIRE_FALSE(token.IsInlined());
+		REQUIRE(token.Length() == len);
+		REQUIRE(token.Data() == reinterpret_cast<const char *>(bytes));
+		vec.SetString(0, token);
+
+		// Inlined token: the bytes live in the value itself.
+		auto small = heap.Add("tiny");
+		REQUIRE(small.IsInlined());
+		REQUIRE(small.Length() == 4);
+		REQUIRE(std::string(small.Data(), small.Length()) == "tiny");
+		vec.SetString(1, small);
+
+		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+		duckdb_v2_str out = {nullptr, 0};
+		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == std::string(len, 'q'));
+		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == "tiny");
+	});
+}
+
+TEST_CASE("Stable C++API: StringStorage GetDataWritable + Finalize", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::VARCHAR());
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(1);
+
+		auto heap = vec.GetStringHeap();
+
+		// Point a token at heap bytes, write through GetDataWritable, seal with Finalize.
+		const uint32_t len = 40;
+		auto *bytes = heap.Allocate(len);
+		REQUIRE(bytes != nullptr);
+
+		StringStorage token {};
+		token.value.pointer.length = len;
+		token.value.pointer.ptr = reinterpret_cast<char *>(bytes);
+		REQUIRE_FALSE(token.IsInlined());
+		REQUIRE(token.GetDataWritable() == reinterpret_cast<char *>(bytes));
+
+		const std::string payload(len, 'z');
+		std::memcpy(token.GetDataWritable(), payload.data(), len);
+		token.Finalize();
+
+		// Finalize seals the prefix to the first PREFIX_LENGTH bytes.
+		REQUIRE(std::memcmp(token.value.pointer.prefix, payload.data(), StringStorage::PREFIX_LENGTH) == 0);
+		vec.SetString(0, token);
+
+		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+		duckdb_v2_str out = {nullptr, 0};
+		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(std::string(out.ptr, out.len) == payload);
+	});
+}
+
+TEST_CASE("Stable C++API: AssignString rejects misuse", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	// A non-string vector has no heap: AssignString surfaces INVALID_INPUT.
+	{
+		Environment env;
+		auto db = env.Open(":memory:");
+		auto conn = db.Connect();
+		conn.WithTransaction([](const Context &ctx) {
+			std::vector<LogicalType> types;
+			types.push_back(LogicalType::INTEGER());
+			DataChunk chunk(ctx, types);
+			auto vec = chunk.GetVector(0);
+			vec.SetSize(1);
+			REQUIRE_THROWS_MATCHES(vec.AssignString(0, "x"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		});
+	}
+
+	// A CONSTANT vector's data array holds one slot: only index 0 is writable.
+	// Built through the C API (the C++ surface has no make-constant) and wrapped.
+	{
+		duckdb_v2_logical_type_handle vtype = nullptr;
+		REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &vtype, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_data_chunk_handle chunk = nullptr;
+		REQUIRE(duckdb_v2_data_chunk_create(&vtype, 1, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_logical_type_destroy(&vtype) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_vector_handle cvec = nullptr;
+		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &cvec, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_value_handle val = nullptr;
+		REQUIRE(duckdb_v2_value_create_varchar(duckdb_v2_str {"const", 5}, &val, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_vector_make_constant(cvec, val, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_value_destroy(&val) == DUCKDB_V2_ERROR_NONE);
+
+		auto vec = detail::Factory::Make<Vector>(cvec);
+		REQUIRE_THROWS_MATCHES(vec.AssignString(1, "x"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_NOTHROW(vec.AssignString(0, "ok"));
+
+		REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 	}
 }

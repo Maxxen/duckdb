@@ -3,9 +3,13 @@
 #include <functional>
 #include <utility>
 #include <string>
+#include <string_view>
+#include <vector>
 #include <optional>
 #include <stdexcept>
 #include <cstdint>
+#include <cstring>
+#include <cassert>
 #include <memory>
 
 // (Experimental) Stable C++ API
@@ -578,6 +582,123 @@ private:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// String Heap
+//----------------------------------------------------------------------------------------------------------------------
+
+// Transparent mirror of the C ABI's duckdb_v2_string (same layout as
+// duckdb::string_t): 16-byte storage for VARCHAR / BLOB / BIT / BIGNUM, inlined
+// when length <= INLINE_LENGTH. A non-inlined value is valid only in a slot of
+// the vector whose heap produced it. Aggregate, so it writes straight into a
+// slot; layout pinned by static_assert in the .cpp.
+struct StringStorage {
+	static constexpr uint32_t INLINE_LENGTH = 12;
+	static constexpr uint32_t PREFIX_LENGTH = 4;
+
+	union {
+		struct {
+			uint32_t length;
+			char prefix[PREFIX_LENGTH];
+			char *ptr;
+		} pointer;
+		struct {
+			uint32_t length;
+			char inlined[INLINE_LENGTH];
+		} inlined;
+	} value;
+
+	// Inlined token; the bytes live in the value. `len` must fit INLINE_LENGTH.
+	static auto Inlined(const char *data, uint32_t len) -> StringStorage {
+		assert(len <= INLINE_LENGTH);
+		StringStorage storage {};
+		storage.value.inlined.length = len;
+		if (len > 0) {
+			std::memcpy(storage.value.inlined.inlined, data, len);
+		}
+		return storage;
+	}
+
+	// Non-inlined token over `len` bytes at `heap_data` (from Allocate); sets the
+	// prefix. `len` must exceed INLINE_LENGTH, else it would read as inlined.
+	static auto FromHeapData(char *heap_data, uint32_t len) -> StringStorage {
+		assert(len > INLINE_LENGTH);
+		StringStorage storage {};
+		storage.value.pointer.length = len;
+		storage.value.pointer.ptr = heap_data;
+		std::memcpy(storage.value.pointer.prefix, heap_data, PREFIX_LENGTH);
+		return storage;
+	}
+
+	// length shares offset 0 across both arms, so these read either representation.
+	auto IsInlined() const -> bool {
+		return value.inlined.length <= INLINE_LENGTH;
+	}
+	auto Length() const -> uint32_t {
+		return value.inlined.length;
+	}
+	auto Data() const -> const char * {
+		return IsInlined() ? value.inlined.inlined : value.pointer.ptr;
+	}
+	auto GetDataWritable() -> char * {
+		return IsInlined() ? value.inlined.inlined : value.pointer.ptr;
+	}
+	// Seal a non-inlined value's prefix from its bytes (cf. string_t::Finalize).
+	auto Finalize() -> void {
+		if (!IsInlined()) {
+			std::memcpy(value.pointer.prefix, value.pointer.ptr, PREFIX_LENGTH);
+		}
+	}
+};
+
+// Borrowed handle to a vector's string heap. Reserves vector-lifetime bytes and
+// returns StringStorage tokens to place in any order (dedup, scatter). Borrowed;
+// invalid across a flatten or reallocation of the owning vector.
+class StringHeap final : public detail::Handle<StringHeap> {
+	friend detail::Factory;
+
+public:
+	StringHeap(StringHeap &&) noexcept = default;
+	StringHeap &operator=(StringHeap &&) noexcept = default;
+
+	~StringHeap() override;
+
+	// Reserves `byte_len` vector-lifetime bytes; raw arena allocation, no gating.
+	// Write-in-place: Allocate -> write -> FromHeapData -> Vector::SetString.
+	auto Allocate(idx_t byte_len) -> uint8_t *;
+
+	// Interns `data`, returning the token. <= INLINE_LENGTH builds inline (no
+	// allocation, no boundary crossing); larger allocates and copies. Throws if
+	// `data` exceeds the uint32 length a duckdb_v2_string can hold.
+	auto Add(std::string_view data) -> StringStorage {
+		if (data.size() > UINT32_MAX) {
+			ThrowStringTooLong(data.size());
+		}
+		if (data.size() <= StringStorage::INLINE_LENGTH) {
+			return StringStorage::Inlined(data.data(), static_cast<uint32_t>(data.size()));
+		}
+		auto len = static_cast<uint32_t>(data.size());
+		auto *bytes = Allocate(len);
+		std::memcpy(bytes, data.data(), len);
+		return StringStorage::FromHeapData(reinterpret_cast<char *>(bytes), len);
+	}
+
+	// Bulk Add: interns every view, returning the tokens in order.
+	auto AddMany(const std::vector<std::string_view> &data) -> std::vector<StringStorage> {
+		std::vector<StringStorage> out;
+		out.reserve(data.size());
+		for (const auto &view : data) {
+			out.push_back(Add(view));
+		}
+		return out;
+	}
+
+private:
+	explicit StringHeap(void *impl);
+
+	// Throws OUT_OF_RANGE when an interned value exceeds the uint32 length bound.
+	[[noreturn]] static void ThrowStringTooLong(idx_t size);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Vector
 //----------------------------------------------------------------------------------------------------------------------
 class Vector final : public detail::Handle<Vector> {
@@ -604,8 +725,34 @@ public:
 	auto GetSize() const -> idx_t;
 	auto SetSize(idx_t size) -> void;
 
+	// Copies `data` into the vector's string heap and places the resulting
+	// storage value into slot `index`. The vector must be a string-backed kind
+	// (VARCHAR / BLOB / BIT / BIGNUM); FLAT accepts any in-bounds index, CONSTANT
+	// only index 0. Resolves the heap per call, so flattening between calls is safe.
+	auto AssignString(idx_t index, std::string_view data) -> void;
+
+	// Bulk form of AssignString: copies each view in `data` into the heap and
+	// places the results into consecutive slots starting at `start`. Resolves the
+	// heap once and writes straight into the data array in one pass, amortizing
+	// the per-value boundary crossing. CONSTANT requires start 0 and one value.
+	auto AssignStrings(idx_t start, const std::vector<std::string_view> &data) -> void;
+
+	// Borrows this vector's string heap to intern strings whose placement is
+	// decided separately (dedup, scatter, reorder). For simple in-order fills
+	// prefer AssignString / AssignStrings. The vector must be a string-backed
+	// kind (VARCHAR / BLOB / BIT / BIGNUM).
+	auto GetStringHeap() -> StringHeap;
+
+	// Places an interned storage token into slot `index`. The token must come
+	// from this vector's heap (a non-inlined token from another vector dangles).
+	auto SetString(idx_t index, StringStorage value) -> void;
+
 private:
 	explicit Vector(void *impl);
+
+	// Throws INVALID_INPUT if [start, start+count) is not writable: a CONSTANT
+	// vector's data array holds a single slot, so only index 0 may be written.
+	auto CheckWriteRange(idx_t start, idx_t count) const -> void;
 };
 
 //----------------------------------------------------------------------------------------------------------------------

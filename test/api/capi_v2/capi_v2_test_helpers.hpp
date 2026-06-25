@@ -56,9 +56,58 @@ inline DUCKDB_V2_API_CALL_t V2ValueCreateVarchar(const char *data, idx_t len, du
                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb_v2_value_create_varchar(duckdb_v2_str {data, len}, out_value, err);
 }
+// Assemble a non-inlined duckdb_v2_string over already-written heap bytes (no
+// allocation, no payload copy): the single hand-assembler for write-in-place flows.
+inline duckdb_v2_string V2StringFromHeapBytes(uint8_t *bytes, idx_t len) {
+	duckdb_v2_string storage {};
+	storage.value.pointer.length = static_cast<uint32_t>(len);
+	storage.value.pointer.ptr = reinterpret_cast<char *>(bytes);
+	std::memcpy(storage.value.pointer.prefix, bytes, 4);
+	return storage;
+}
+
+// Assemble a duckdb_v2_string from raw bytes, using string_heap_allocate for the
+// non-inlined path. Mirrors the C++ StringHeap::Add. `rc` gets the allocate result.
+inline duckdb_v2_string V2MakeString(duckdb_v2_string_heap_handle heap, const char *data, idx_t len,
+                                     DUCKDB_V2_API_CALL_t &rc, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_string storage {};
+	rc = DUCKDB_V2_ERROR_NONE;
+	if (len <= DUCKDB_V2_STRING_INLINE_LENGTH) {
+		storage.value.inlined.length = static_cast<uint32_t>(len);
+		if (len > 0) {
+			std::memcpy(storage.value.inlined.inlined, data, len);
+		}
+		return storage;
+	}
+	uint8_t *bytes = nullptr;
+	rc = duckdb_v2_string_heap_allocate(heap, len, &bytes, err);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return storage;
+	}
+	std::memcpy(bytes, data, len);
+	return V2StringFromHeapBytes(bytes, len);
+}
+
+// Borrow the heap, assemble the value, place it in slot `index`. Mirrors the C++
+// Vector::AssignString; used by the many tests that need one string in a slot.
 inline DUCKDB_V2_API_CALL_t V2VectorAssignString(duckdb_v2_vector_handle vec, idx_t index, const char *data, idx_t len,
                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb_v2_vector_assign_string(vec, index, duckdb_v2_str {data, len}, err);
+	duckdb_v2_string_heap_handle heap = nullptr;
+	auto rc = duckdb_v2_vector_get_string_heap(vec, &heap, err);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return rc;
+	}
+	auto storage = V2MakeString(heap, data, len, rc, err);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return rc;
+	}
+	void *raw = nullptr;
+	rc = duckdb_v2_vector_get_data_mutable(vec, &raw, err);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return rc;
+	}
+	static_cast<duckdb_v2_string *>(raw)[index] = storage;
+	return DUCKDB_V2_ERROR_NONE;
 }
 
 inline idx_t SelAt(const duckdb_v2_sel_t *sel, idx_t i) {

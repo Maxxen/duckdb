@@ -381,26 +381,27 @@ functions:
     return_type: API_CALL
   # -----------------------------------------------------------------------
   # String writing
+  #
+  # vector_get_string_heap borrows the heap; the writes themselves live in the
+  # string_heap module, which documents the two-step write and lifetime.
   # -----------------------------------------------------------------------
-  vector_assign_string:
-    summary: Writes a string value into a vector at the given row index.
+  vector_get_string_heap:
+    summary: Borrows a string-backed vector's heap for writing.
     description: |
-      Copies the bytes into the vector's string heap and writes the
-      resulting handle into the data array at the given index. Works for
-      any string-backed logical type (VARCHAR, BLOB, BIT, BIGNUM). No
-      encoding validation is performed. The vector must be FLAT or
-      CONSTANT.
-    role: setter
+      Allocates the heap on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM
+      vectors; ERROR_INVALID_INPUT otherwise. This is the single string-ness
+      check; the resulting heap's add calls skip it. Borrowed (do not destroy);
+      valid until the vector is flattened, reallocated, or destroyed.
+    role: getter
     belongs_to: vector
     parameters:
       vector:
         type: vector
-      index:
-        type: idx
-        description: The row index to write to.
-      data:
-        type: str
-        description: View of the bytes to copy. The pointer may be null when the length is 0.
+      out_heap:
+        type: string_heap
+        indirection: 1
+        kind: OUT_BORROW
+        description: Receives the borrowed string-heap handle.
       err:
         type: error_info
         indirection: 1

@@ -68,6 +68,7 @@ namespace duckdb {
 // Forward declarations.
 struct EnvironmentWrapperV2;
 struct DatabaseWrapperV2;
+class StringHeap;
 
 // Backing struct for the opaque duckdb_v2_environment_handle handle. Owns
 // the DBInstanceCache used to share the path manager across all
@@ -433,6 +434,13 @@ inline DataChunk *ToDataChunk(duckdb_v2_data_chunk_handle ptr) {
 // helpers, without caching a UnifiedVectorFormat.
 inline Vector *ToVector(duckdb_v2_vector_handle ptr) {
 	return reinterpret_cast<Vector *>(ptr);
+}
+// duckdb_v2_string_heap_handle is a borrowed duckdb::StringHeap living inside a
+// vector's auxiliary buffer. No wrapper — the handle is the bare StringHeap
+// pointer, obtained via vector_get_string_heap and valid only while the owning
+// vector's heap is. The caller never destroys it.
+inline StringHeap *ToStringHeap(duckdb_v2_string_heap_handle ptr) {
+	return reinterpret_cast<StringHeap *>(ptr);
 }
 // duckdb_v2_expression_handle is a borrowed duckdb::Expression living inside the
 // engine's plan. No wrapper — accessors read directly off the Expression and

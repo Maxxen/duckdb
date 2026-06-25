@@ -53,7 +53,8 @@ void TemperatureToVarchar(duckdb_v2_cast_function_exec_args *args, duckdb_v2_err
 			continue;
 		}
 		std::string formatted = std::to_string(in[idx]) + "C";
-		REQUIRE(duckdb_v2_vector_assign_string(args->output, i, V2Str(formatted), err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2VectorAssignString(args->output, i, formatted.c_str(), formatted.size(), err) ==
+		        DUCKDB_V2_ERROR_NONE);
 	}
 }
 

@@ -7,7 +7,6 @@
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
 #include "duckdb/common/vector/map_vector.hpp"
-#include "duckdb/common/vector/string_vector.hpp"
 #include "duckdb/common/vector/struct_vector.hpp"
 #include "duckdb/common/vector/union_vector.hpp"
 
@@ -209,44 +208,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_constant_set_valid(duckdb_v2_vector_handle
 		duckdb::ConstantVector::SetNull(*vec, !validity);
 	});
 }
-// ---------------------------------------------------------------------------
-// String writing
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_assign_string(duckdb_v2_vector_handle vector, idx_t index, duckdb_v2_str data,
-                                                    duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!vector || (!data.ptr && data.len > 0)) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_assign_string");
-		}
-		auto *vec = duckdb::ToVector(vector);
-		if (vec->GetType().InternalType() != duckdb::PhysicalType::VARCHAR) {
-			throw duckdb::InvalidInputException("duckdb_v2_vector_assign_string: vector is not a string-backed type");
-		}
-		auto vt = vec->GetVectorType();
-		if (vt != duckdb::VectorType::FLAT_VECTOR && vt != duckdb::VectorType::CONSTANT_VECTOR) {
-			throw duckdb::InvalidInputException(
-			    "duckdb_v2_vector_assign_string: only supported for FLAT and CONSTANT vectors");
-		}
-		if (vt == duckdb::VectorType::CONSTANT_VECTOR && index != 0) {
-			throw duckdb::InvalidInputException(
-			    "duckdb_v2_vector_assign_string: CONSTANT vector only supports index 0");
-		}
-		if (data.len > duckdb::NumericLimits<uint32_t>::Maximum()) {
-			throw duckdb::InvalidInputException("duckdb_v2_vector_assign_string: string length exceeds maximum (%u)",
-			                                    duckdb::NumericLimits<uint32_t>::Maximum());
-		}
-		auto val = duckdb::string_t(data.ptr, duckdb::NumericCast<uint32_t>(data.len));
-		if (val.IsInlined()) {
-			duckdb::FlatVector::GetDataMutableUnsafe<duckdb::string_t>(*vec)[index] = val;
-		} else {
-			auto &heap = duckdb::StringVector::GetStringHeap(*vec);
-			duckdb::FlatVector::GetDataMutableUnsafe<duckdb::string_t>(*vec)[index] =
-			    heap.AddBlobToHeap(data.ptr, data.len);
-		}
-	});
-}
-
 // ---------------------------------------------------------------------------
 // Generic structural accessors for nested kinds
 //

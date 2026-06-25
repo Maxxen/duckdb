@@ -62,6 +62,10 @@ struct HandleTraits<Vector> {
 	using handle = duckdb_v2_vector_handle;
 };
 template <>
+struct HandleTraits<StringHeap> {
+	using handle = duckdb_v2_string_heap_handle;
+};
+template <>
 struct HandleTraits<DataChunk> {
 	using handle = duckdb_v2_data_chunk_handle;
 };
@@ -915,6 +919,39 @@ auto Value::AsVarchar() const -> std::string_view {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+// String Heap
+//----------------------------------------------------------------------------------------------------------------------
+// StringStorage mirrors duckdb_v2_string; pin it here (both types visible) so any
+// layout drift breaks the build rather than the ABI.
+static_assert(sizeof(StringStorage) == sizeof(duckdb_v2_string) && alignof(StringStorage) == alignof(duckdb_v2_string),
+              "StringStorage must mirror the C ABI's duckdb_v2_string");
+static_assert(offsetof(StringStorage, value.pointer.length) == offsetof(duckdb_v2_string, value.pointer.length) &&
+                  offsetof(StringStorage, value.pointer.prefix) == offsetof(duckdb_v2_string, value.pointer.prefix) &&
+                  offsetof(StringStorage, value.pointer.ptr) == offsetof(duckdb_v2_string, value.pointer.ptr) &&
+                  offsetof(StringStorage, value.inlined.inlined) == offsetof(duckdb_v2_string, value.inlined.inlined),
+              "StringStorage field offsets must match duckdb_v2_string");
+static_assert(StringStorage::INLINE_LENGTH == DUCKDB_V2_STRING_INLINE_LENGTH,
+              "StringStorage::INLINE_LENGTH must match DUCKDB_V2_STRING_INLINE_LENGTH");
+
+StringHeap::StringHeap(void *impl) : detail::Handle<StringHeap>(impl) {
+}
+
+StringHeap::~StringHeap() {
+	/* String heaps are always borrowed, so we don't destroy the handle here */
+}
+
+auto StringHeap::Allocate(idx_t byte_len) -> uint8_t * {
+	uint8_t *ptr = nullptr;
+	CheckedAPICall(duckdb_v2_string_heap_allocate, handle(), byte_len, &ptr);
+	return ptr;
+}
+
+void StringHeap::ThrowStringTooLong(idx_t size) {
+	throw Exception(DUCKDB_V2_ERROR_OUT_OF_RANGE, "Out of Range Error: string length " + std::to_string(size) +
+	                                                  " exceeds the maximum a duckdb_v2_string can hold");
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 // Vector
 //----------------------------------------------------------------------------------------------------------------------
 Vector::Vector(void *impl) : detail::Handle<Vector>(impl) {
@@ -960,6 +997,49 @@ auto Vector::GetSize() const -> idx_t {
 
 auto Vector::SetSize(idx_t size) -> void {
 	CheckedAPICall(duckdb_v2_vector_set_size, handle(), size);
+}
+
+auto Vector::CheckWriteRange(idx_t start, idx_t count) const -> void {
+	if (count == 0) {
+		return;
+	}
+	DUCKDB_V2_VECTOR_TYPE type = DUCKDB_V2_VECTOR_TYPE_OTHER;
+	CheckedAPICall(duckdb_v2_vector_get_vector_type, handle(), &type);
+	// A CONSTANT vector's data array holds a single slot; only index 0 is writable.
+	if (type == DUCKDB_V2_VECTOR_TYPE_CONSTANT && (start != 0 || count > 1)) {
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
+		                "Invalid Input Error: cannot assign a string to a CONSTANT vector at index != 0");
+	}
+}
+
+auto Vector::AssignString(idx_t index, std::string_view data) -> void {
+	CheckWriteRange(index, 1);
+	auto heap = GetStringHeap();
+	GetDataMutable<StringStorage>()[index] = heap.Add(data);
+}
+
+auto Vector::AssignStrings(idx_t start, const std::vector<std::string_view> &data) -> void {
+	if (data.empty()) {
+		return;
+	}
+	CheckWriteRange(start, data.size());
+	auto heap = GetStringHeap();
+	// Intern and place into the data array in one pass. On throw, slots
+	// [start, start+i) are already written; the vector is left partially filled.
+	auto *slots = GetDataMutable<StringStorage>();
+	for (idx_t i = 0; i < data.size(); i++) {
+		slots[start + i] = heap.Add(data[i]);
+	}
+}
+
+auto Vector::GetStringHeap() -> StringHeap {
+	duckdb_v2_string_heap_handle heap = nullptr;
+	CheckedAPICall(duckdb_v2_vector_get_string_heap, handle(), &heap);
+	return detail::Factory::Make<StringHeap>(heap);
+}
+
+auto Vector::SetString(idx_t index, StringStorage value) -> void {
+	GetDataMutable<StringStorage>()[index] = value;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
