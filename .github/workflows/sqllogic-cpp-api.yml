@@ -144,6 +144,13 @@ jobs:
   # under a sanitizer. The diff filters pre-existing / environment sanitizer hits
   # (those fire under both executors), leaving only C-API-specific ones. This is
   # the heaviest build (~16GB on disk + ASan memory), so it also adds swap.
+  #
+  # The full suite under a sanitizer overruns the 6h GitHub job limit (and fills
+  # the runner disk), so this run excludes the .test_slow tests (the Catch2 [.]
+  # hidden tag, via the "~[.]" pattern). The sanitizer here guards the C-API
+  # runner code path, which the fast suite exercises fully; exhaustive
+  # storage-config coverage of the slow tests is already provided by the
+  # non-sanitizer linux-configs jobs above.
   linux-relassert-configs:
     name: "linux relassert ${{ matrix.config }}"
     runs-on: ubuntu-24.04
@@ -172,5 +179,7 @@ jobs:
         # memory (relassert is RelWithDebInfo -> the debug_link_jobs pool, default 2).
         run: EXTRA_CMAKE_VARIABLES="-DDUCKDB_DEBUG_LINK_JOBS=1" make relassert
       - name: "Run sqllogic (${{ matrix.config }}): cpp_api vs internal"
-        # Larger batch timeout: sanitized builds run the suite much slower.
-        run: python scripts/ci/sqllogic_executor_diff.py -- ./build/relassert/test/run --test-config=test/configs/${{ matrix.config }}.json --batch-timeout 600 "*"
+        # "~[.]" excludes the .test_slow tests so the sanitized run fits the 6h
+        # limit (see the job comment above). Larger batch timeout: sanitized
+        # builds run the suite much slower.
+        run: python scripts/ci/sqllogic_executor_diff.py -- ./build/relassert/test/run --test-config=test/configs/${{ matrix.config }}.json --batch-timeout 600 "~[.]"
