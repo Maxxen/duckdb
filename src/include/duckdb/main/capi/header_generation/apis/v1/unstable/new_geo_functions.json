@@ -2,6 +2,7 @@
   "version": "unstable_new_geo_functions",
   "description": "API to operate on GEOMETRY types.",
   "entries": [
-    "duckdb_geometry_type_get_crs"
+    "duckdb_geometry_type_get_crs",
+    "duckdb_geography_type_get_crs"
   ]
 }

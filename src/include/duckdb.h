@@ -144,6 +144,8 @@ typedef enum DUCKDB_TYPE {
 	DUCKDB_TYPE_GEOMETRY = 40,
 	// VARIANT type
 	DUCKDB_TYPE_VARIANT = 41,
+	// GEOGRAPHY type, WKB blob with spherical edges
+	DUCKDB_TYPE_GEOGRAPHY = 43,
 } duckdb_type;
 
 //! An enum over the returned state of different functions.
@@ -6294,6 +6296,15 @@ Result must be freed with `duckdb_free`.
 * @return The CRS of the GEOMETRY type, or NULL if the type is not a GEOMETRY type.
 */
 DUCKDB_C_API char *duckdb_geometry_type_get_crs(duckdb_logical_type type);
+
+/*!
+Gets the CRS (Coordinate Reference System) of a GEOGRAPHY type.
+Result must be freed with `duckdb_free`.
+
+* @param type The GEOGRAPHY type.
+* @return The CRS of the GEOGRAPHY type, or NULL if the type is not a GEOGRAPHY type.
+*/
+DUCKDB_C_API char *duckdb_geography_type_get_crs(duckdb_logical_type type);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Variant Helpers

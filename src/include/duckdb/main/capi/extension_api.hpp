@@ -595,6 +595,7 @@ typedef struct {
 	// API to operate on GEOMETRY types.
 
 	char *(*duckdb_geometry_type_get_crs)(duckdb_logical_type type);
+	char *(*duckdb_geography_type_get_crs)(duckdb_logical_type type);
 	// API to register a custom log storage.
 
 	duckdb_log_storage (*duckdb_create_log_storage)(void);
@@ -1180,6 +1181,7 @@ inline duckdb_ext_api_v1 CreateAPIv1(void) {
 	result.duckdb_file_handle_sync = duckdb_file_handle_sync;
 	result.duckdb_file_handle_size = duckdb_file_handle_size;
 	result.duckdb_geometry_type_get_crs = duckdb_geometry_type_get_crs;
+	result.duckdb_geography_type_get_crs = duckdb_geography_type_get_crs;
 	result.duckdb_create_log_storage = duckdb_create_log_storage;
 	result.duckdb_destroy_log_storage = duckdb_destroy_log_storage;
 	result.duckdb_log_storage_set_write_log_entry = duckdb_log_storage_set_write_log_entry;

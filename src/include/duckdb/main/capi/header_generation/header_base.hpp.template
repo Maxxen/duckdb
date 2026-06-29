@@ -138,6 +138,8 @@ typedef enum DUCKDB_TYPE {
 	DUCKDB_TYPE_GEOMETRY = 40,
 	// VARIANT type
 	DUCKDB_TYPE_VARIANT = 41,
+	// GEOGRAPHY type, WKB blob with spherical edges
+	DUCKDB_TYPE_GEOGRAPHY = 43,
 } duckdb_type;
 
 //! An enum over the returned state of different functions.

@@ -976,6 +976,7 @@ bool JSONTransform::Transform(yyjson_val *vals[], yyjson_alc *alc, Vector &resul
 	case LogicalTypeId::TIMESTAMP_SEC:
 	case LogicalTypeId::UUID:
 	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		return TransformFromString(vals, result, count, options);
 	case LogicalTypeId::VARCHAR:
 	case LogicalTypeId::BLOB:

@@ -19,6 +19,23 @@
                 },
                 "return_value": "The CRS of the GEOMETRY type, or NULL if the type is not a GEOMETRY type."
             }
+        },
+        {
+            "name": "duckdb_geography_type_get_crs",
+            "return_type": "char*",
+            "params": [
+                {
+                    "type": "duckdb_logical_type",
+                    "name": "type"
+                }
+            ],
+            "comment": {
+                "description": "Gets the CRS (Coordinate Reference System) of a GEOGRAPHY type.\nResult must be freed with `duckdb_free`.\n\n",
+                "param_comments": {
+                    "type": "The GEOGRAPHY type."
+                },
+                "return_value": "The CRS of the GEOGRAPHY type, or NULL if the type is not a GEOGRAPHY type."
+            }
         }
     ]
 }

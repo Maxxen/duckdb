@@ -610,7 +610,8 @@ static void CreateValues(const StructNames &names, yyjson_mut_doc *doc, yyjson_m
 	case LogicalTypeId::TIMESTAMP_MS:
 	case LogicalTypeId::TIMESTAMP_SEC:
 	case LogicalTypeId::UUID:
-	case LogicalTypeId::GEOMETRY: {
+	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY: {
 		Vector string_vector(LogicalTypeId::VARCHAR, count);
 		VectorOperations::DefaultCast(value_v, string_vector, count);
 		TemplatedCreateValues<string_t, string_t>(doc, vals, string_vector, count);

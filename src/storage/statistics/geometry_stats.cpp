@@ -64,16 +64,22 @@ vector<string> GeometryTypeSet::ToString(bool snake_case) const {
 }
 
 BaseStatistics GeometryStats::CreateUnknown(LogicalType type) {
+	const bool geodetic = type.id() == LogicalTypeId::GEOGRAPHY;
 	BaseStatistics result(std::move(type));
 	result.InitializeUnknown();
-	GetDataUnsafe(result).SetUnknown();
+	auto &data = GetDataUnsafe(result);
+	data.SetUnknown();
+	data.geodetic = geodetic;
 	return result;
 }
 
 BaseStatistics GeometryStats::CreateEmpty(LogicalType type) {
+	const bool geodetic = type.id() == LogicalTypeId::GEOGRAPHY;
 	BaseStatistics result(std::move(type));
 	result.InitializeEmpty();
-	GetDataUnsafe(result).SetEmpty();
+	auto &data = GetDataUnsafe(result);
+	data.SetEmpty();
+	data.geodetic = geodetic;
 	return result;
 }
 
@@ -114,6 +120,8 @@ void GeometryStats::Serialize(const BaseStatistics &stats, Serializer &serialize
 
 void GeometryStats::Deserialize(Deserializer &deserializer, BaseStatistics &base) {
 	auto &data = GetDataUnsafe(base);
+	// The geodetic flag is derived from the column type, not serialized.
+	data.geodetic = base.GetType().id() == LogicalTypeId::GEOGRAPHY;
 
 	// Read old garbage string stats if present, but ignore it since it is not relevant to geometry stats
 	if (deserializer.CanDeserializeProperty(200, "min")) {
@@ -236,7 +244,8 @@ const GeometryStatsFlags &GeometryStats::GetFlags(const BaseStatistics &stats) {
 
 // Expression comparison pruning
 static FilterPropagateResult CheckIntersectionFilter(const GeometryStatsData &data, const Value &constant) {
-	if (constant.IsNull() || constant.type().id() != LogicalTypeId::GEOMETRY) {
+	if (constant.IsNull() ||
+	    (constant.type().id() != LogicalTypeId::GEOMETRY && constant.type().id() != LogicalTypeId::GEOGRAPHY)) {
 		// Cannot prune against NULL
 		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 	}
@@ -246,21 +255,22 @@ static FilterPropagateResult CheckIntersectionFilter(const GeometryStatsData &da
 	// intersects everything, so the IntersectsXY/ContainsXY math below stays valid.
 	D_ASSERT(data.extent.CanPruneXY());
 
+	const bool geodetic = data.geodetic;
 	const auto &geom = StringValue::Get(constant);
 	auto extent = GeometryExtent::Empty();
-	if (Geometry::GetExtent(string_t(geom), extent) == 0) {
+	if (Geometry::GetExtent(string_t(geom), extent, geodetic) == 0) {
 		// If the geometry is empty, the predicate will never match
 		return FilterPropagateResult::FILTER_ALWAYS_FALSE;
 	}
 
 	// Check if the bounding boxes intersect
 	// If the bounding boxes do not intersect, the predicate will never match
-	if (!extent.IntersectsXY(data.extent)) {
+	if (!extent.IntersectsXY(data.extent, geodetic)) {
 		return FilterPropagateResult::FILTER_ALWAYS_FALSE;
 	}
 
 	// If the column is completely inside the bounds, the predicate will always match
-	if (extent.ContainsXY(data.extent)) {
+	if (extent.ContainsXY(data.extent, geodetic)) {
 		return FilterPropagateResult::FILTER_ALWAYS_TRUE;
 	}
 
@@ -280,8 +290,11 @@ FilterPropagateResult GeometryStats::CheckZonemap(const BaseStatistics &stats, c
 		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 	}
 
-	if (func.GetChildren()[0]->GetReturnType().id() != LogicalTypeId::GEOMETRY ||
-	    func.GetChildren()[1]->GetReturnType().id() != LogicalTypeId::GEOMETRY) {
+	const auto is_geo_type = [](LogicalTypeId id) {
+		return id == LogicalTypeId::GEOMETRY || id == LogicalTypeId::GEOGRAPHY;
+	};
+	if (!is_geo_type(func.GetChildren()[0]->GetReturnType().id()) ||
+	    !is_geo_type(func.GetChildren()[1]->GetReturnType().id())) {
 		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 	}
 
@@ -303,10 +316,10 @@ FilterPropagateResult GeometryStats::CheckZonemap(const BaseStatistics &stats, c
 	// The column reference may be wrapped in a GEOMETRY -> GEOMETRY cast (e.g. a CRS-erasing cast inserted to match
 	// the predicate's argument type). Such casts only change CRS metadata, not coordinates, so the bounding box
 	// remains valid. Look through them when classifying the operands.
-	auto strip_geometry_cast = [](const Expression &child) -> const Expression * {
+	auto strip_geometry_cast = [&](const Expression &child) -> const Expression * {
 		if (child.GetExpressionType() == ExpressionType::OPERATOR_CAST) {
 			auto &cast = child.Cast<BoundCastExpression>();
-			if (cast.Child().GetReturnType().id() == LogicalTypeId::GEOMETRY) {
+			if (is_geo_type(cast.Child().GetReturnType().id())) {
 				return &cast.Child();
 			}
 		}

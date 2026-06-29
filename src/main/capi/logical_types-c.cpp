@@ -426,3 +426,14 @@ char *duckdb_geometry_type_get_crs(duckdb_logical_type type) {
 	}
 	return strdup(duckdb::GeoType::GetCRS(logical_type).GetDefinition().c_str());
 }
+
+char *duckdb_geography_type_get_crs(duckdb_logical_type type) {
+	if (!AssertLogicalTypeId(type, duckdb::LogicalTypeId::GEOGRAPHY)) {
+		return nullptr;
+	}
+	auto &logical_type = *(reinterpret_cast<duckdb::LogicalType *>(type));
+	if (!duckdb::GeoType::HasCRS(logical_type)) {
+		return nullptr;
+	}
+	return strdup(duckdb::GeoType::GetCRS(logical_type).GetDefinition().c_str());
+}
