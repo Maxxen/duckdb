@@ -389,6 +389,7 @@ struct ArrowGeometry {
 		const auto extension_metadata = schema_metadata.GetOption(ArrowSchemaMetadata::ARROW_METADATA_KEY);
 
 		unique_ptr<CoordinateReferenceSystem> duckdb_crs;
+		bool is_geography = false;
 
 		if (!extension_metadata.empty()) {
 			JSONParseError error;
@@ -402,9 +403,11 @@ struct ArrowGeometry {
 				throw SerializationException("Invalid GeoArrow metadata: not a JSON object");
 			}
 
+			// "edges" selects the interpolation: "planar" (or absent) maps to GEOMETRY, any non-planar
+			// value (e.g. "spherical") maps to GEOGRAPHY. We don't otherwise interpret the algorithm.
 			auto edges = val.GetMember("edges");
 			if (edges.IsString() && edges.GetString() != "planar") {
-				throw NotImplementedException("Can't import non-planar edges");
+				is_geography = true;
 			}
 
 			// Pick out the CRS if present
@@ -417,8 +420,13 @@ struct ArrowGeometry {
 			}
 		}
 
-		// Create the geometry type, with or without CRS
-		auto geo_type = duckdb_crs ? LogicalType::GEOMETRY(*duckdb_crs) : LogicalType::GEOMETRY();
+		// Create the geometry/geography type, with or without CRS
+		LogicalType geo_type;
+		if (is_geography) {
+			geo_type = duckdb_crs ? LogicalType::GEOGRAPHY(*duckdb_crs) : LogicalType::GEOGRAPHY();
+		} else {
+			geo_type = duckdb_crs ? LogicalType::GEOMETRY(*duckdb_crs) : LogicalType::GEOMETRY();
+		}
 
 		const auto format = string(schema.format);
 		if (format == "z") {
@@ -494,6 +502,11 @@ struct ArrowGeometry {
 		auto root = writer.CreateObject();
 		writer.SetRoot(root);
 
+		// GEOGRAPHY assumes geodesic (spherical) edge interpolation; GEOMETRY uses the default planar edges.
+		if (type.id() == LogicalTypeId::GEOGRAPHY) {
+			root.AddString("edges", "spherical");
+		}
+
 		if (GeoType::HasCRS(type)) {
 			WriteCRS(writer, root, GeoType::GetCRS(type), context);
 		}
@@ -542,6 +555,16 @@ void ArrowTypeExtensionSet::Initialize(const DBConfig &config) {
 	    {"geoarrow.wkb", ArrowGeometry::PopulateSchema, ArrowGeometry::GetType,
 	     make_shared_ptr<ArrowTypeExtensionData>(LogicalType::GEOMETRY(), LogicalType::BLOB, ArrowGeometry::ArrowToDuck,
 	                                             ArrowGeometry::DuckToArrow)});
+
+	// GEOGRAPHY shares the geoarrow.wkb encoding with GEOMETRY; the "edges" metadata distinguishes them on import
+	// (spherical -> GEOGRAPHY). It is registered under a distinct internal key so the registry does not see a
+	// duplicate extension; ArrowGeometry::PopulateSchema still emits the canonical "geoarrow.wkb" name (with
+	// edges=spherical) on export, and import always resolves "geoarrow.wkb" to the GEOMETRY entry above whose
+	// GetType inspects the edges to pick GEOMETRY vs GEOGRAPHY.
+	config.RegisterArrowExtension(
+	    {"geoarrow.wkb.geography", ArrowGeometry::PopulateSchema, ArrowGeometry::GetType,
+	     make_shared_ptr<ArrowTypeExtensionData>(LogicalType::GEOGRAPHY(), LogicalType::BLOB,
+	                                             ArrowGeometry::ArrowToDuck, ArrowGeometry::DuckToArrow)});
 
 	// Types that are 1:n
 	config.RegisterArrowExtension({"arrow.json", &ArrowJson::PopulateSchema, &ArrowJson::GetType,

@@ -169,6 +169,7 @@ PhysicalType LogicalType::GetInternalType() {
 	case LogicalTypeId::UNBOUND:
 		return PhysicalType::UNKNOWN;
 	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		return PhysicalType::VARCHAR;
 	default:
 		throw InternalException("Invalid LogicalType %s", ToString());
@@ -263,10 +264,10 @@ const vector<LogicalType> LogicalType::AllTypes() {
 	    LogicalTypeId::UBIGINT,   LogicalTypeId::TIMESTAMP_TZ,  LogicalTypeId::TIMESTAMP_TZ_NS,
 	    LogicalTypeId::TIME_TZ,   LogicalTypeId::TIME_NS,       LogicalTypeId::BIT,
 	    LogicalTypeId::BIGNUM,    LogicalTypeId::UHUGEINT,      LogicalTypeId::HUGEINT,
-	    LogicalTypeId::UUID,      LogicalTypeId::GEOMETRY,      LogicalTypeId::STRUCT,
-	    LogicalTypeId::TUPLE,     LogicalTypeId::LIST,          LogicalTypeId::MAP,
-	    LogicalTypeId::ENUM,      LogicalTypeId::UNION,         LogicalTypeId::ARRAY,
-	    LogicalTypeId::VARIANT,
+	    LogicalTypeId::UUID,      LogicalTypeId::GEOMETRY,      LogicalTypeId::GEOGRAPHY,
+	    LogicalTypeId::STRUCT,    LogicalTypeId::TUPLE,         LogicalTypeId::LIST,
+	    LogicalTypeId::MAP,       LogicalTypeId::ENUM,          LogicalTypeId::UNION,
+	    LogicalTypeId::ARRAY,     LogicalTypeId::VARIANT,
 	};
 	return types;
 }
@@ -547,6 +548,14 @@ string LogicalType::ToString() const {
 		auto crs_text = SQLString(crs.GetDefinition());
 		return StringUtil::Format("GEOMETRY(%s)", crs_text);
 	}
+	case LogicalTypeId::GEOGRAPHY: {
+		if (!type_info_ || !GeoType::HasCRS(*this)) {
+			return "GEOGRAPHY";
+		}
+		auto &crs = GeoType::GetCRS(*this);
+		auto crs_text = SQLString(crs.GetDefinition());
+		return StringUtil::Format("GEOGRAPHY(%s)", crs_text);
+	}
 	default:
 		return EnumUtil::ToString(id_);
 	}
@@ -745,7 +754,8 @@ bool LogicalType::SupportsRegularUpdate() const {
 	case LogicalTypeId::MAP:
 	case LogicalTypeId::UNION:
 	case LogicalTypeId::VARIANT:
-	case LogicalTypeId::GEOMETRY: // If geometry is shredded, its parts (lists/structs) can't be regularly updated.
+	case LogicalTypeId::GEOMETRY:  // If geometry is shredded, its parts (lists/structs) can't be regularly updated.
+	case LogicalTypeId::GEOGRAPHY: // Same shredded storage as geometry.
 		return false;
 	case LogicalTypeId::STRUCT:
 	case LogicalTypeId::TUPLE: {
@@ -1129,6 +1139,8 @@ static idx_t GetLogicalTypeScore(const LogicalType &type) {
 		return 103;
 	case LogicalTypeId::GEOMETRY:
 		return 104;
+	case LogicalTypeId::GEOGRAPHY:
+		return 106;
 	// nested types
 	case LogicalTypeId::STRUCT:
 	case LogicalTypeId::TUPLE:
@@ -1265,6 +1277,11 @@ void LogicalType::Serialize(Serializer &serializer) const {
 		auto legacy_geom = Geometry::GetSpatialGeometryType();
 		legacy_geom.Serialize(serializer);
 		return;
+	}
+
+	// GEOGRAPHY has no legacy representation, so it cannot be downgraded to older storage versions.
+	if (id_ == LogicalTypeId::GEOGRAPHY && !serializer.ShouldSerialize(StorageVersion::V1_5_0)) {
+		throw SerializationException("The GEOGRAPHY type cannot be written to a storage version older than v1.5.0");
 	}
 
 	// This is a UNBOUND type and we are writing to older storage.
@@ -1895,8 +1912,27 @@ LogicalType LogicalType::GEOMETRY(const CoordinateReferenceSystem &crs) {
 	return LogicalType(LogicalTypeId::GEOMETRY, std::move(info));
 }
 
+LogicalType LogicalType::GEOGRAPHY() {
+	return LogicalType(LogicalTypeId::GEOGRAPHY);
+}
+
+LogicalType LogicalType::GEOGRAPHY(const string &crs) {
+	if (crs.empty()) {
+		return LogicalType::GEOGRAPHY();
+	}
+	auto info = make_shared_ptr<GeoTypeInfo>();
+	info->crs = CoordinateReferenceSystem(crs);
+	return LogicalType(LogicalTypeId::GEOGRAPHY, std::move(info));
+}
+
+LogicalType LogicalType::GEOGRAPHY(const CoordinateReferenceSystem &crs) {
+	auto info = make_shared_ptr<GeoTypeInfo>();
+	info->crs = crs;
+	return LogicalType(LogicalTypeId::GEOGRAPHY, std::move(info));
+}
+
 bool GeoType::HasCRS(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::GEOMETRY);
+	D_ASSERT(type.id() == LogicalTypeId::GEOMETRY || type.id() == LogicalTypeId::GEOGRAPHY);
 	auto info = type.AuxInfo();
 	if (!info || info->type != ExtraTypeInfoType::GEO_TYPE_INFO) {
 		// a GEOMETRY type without geo type info has no CRS - this can happen when an alias is set on a geometry
@@ -1909,7 +1945,7 @@ bool GeoType::HasCRS(const LogicalType &type) {
 }
 
 const CoordinateReferenceSystem &GeoType::GetCRS(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::GEOMETRY);
+	D_ASSERT(type.id() == LogicalTypeId::GEOMETRY || type.id() == LogicalTypeId::GEOGRAPHY);
 	auto info = type.AuxInfo();
 	if (!info || info->type != ExtraTypeInfoType::GEO_TYPE_INFO) {
 		throw InternalException("Geometry type has no CRS information");

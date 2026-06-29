@@ -1481,6 +1481,9 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 
 	//! Geometry (spatial extension).
 	DUCKDB_V2_LOGICAL_TYPE_ID_GEOMETRY = 60,
+
+	//! Geography (spatial extension); like GEOMETRY, but with spherical edges.
+	DUCKDB_V2_LOGICAL_TYPE_ID_GEOGRAPHY = 61,
 	DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT = 100,
 	DUCKDB_V2_LOGICAL_TYPE_ID_LIST = 101,
 	DUCKDB_V2_LOGICAL_TYPE_ID_MAP = 102,
@@ -1523,8 +1526,8 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
  * parameter. Parameters are (name, value) pairs in two parallel arrays, exactly as for context_create_type_from_name.
  *
  * Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP,
- * ARRAY, UNION, ENUM, VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN), for TYPE — construct that via
- * context_create_type_from_text — and for INVALID.
+ * ARRAY, UNION, ENUM, VARIANT, GEOMETRY, GEOGRAPHY), for the bind-time-only ids (SQLNULL, UNKNOWN), for TYPE —
+ * construct that via context_create_type_from_text — and for INVALID.
  *
  * history:
  * - stable: v2.0.0
@@ -1637,8 +1640,8 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_context_create_type_from_text(duckdb_v2_c
  * connection_create_type_from_name.
  *
  * Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP,
- * ARRAY, UNION, ENUM, VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN), for TYPE — construct that via
- * connection_create_type_from_text — and for INVALID.
+ * ARRAY, UNION, ENUM, VARIANT, GEOMETRY, GEOGRAPHY), for the bind-time-only ids (SQLNULL, UNKNOWN), for TYPE —
+ * construct that via connection_create_type_from_text — and for INVALID.
  *
  * history:
  * - stable: v2.0.0
@@ -1835,8 +1838,9 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_to_text(duckdb_v2_logical_ty
  * The inspection dual of create_type_from_name: these are the parameters that reconstruct the type through it. Per
  * kind: DECIMAL 2 (width, scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2 (key type, value type);
  * STRUCT and TUPLE one per field; UNION one per member; ENUM one per dictionary entry; VARCHAR 1 when a collation is
- * set, else 0; GEOMETRY 1 when a coordinate system is set, else 0; everything else 0. A bound type reports only what it
- * actually carries, so a bind-time modifier that is not retained — an ignored VARCHAR length, say — does not reappear.
+ * set, else 0; GEOMETRY and GEOGRAPHY 1 when a coordinate system is set, else 0; everything else 0. A bound type
+ * reports only what it actually carries, so a bind-time modifier that is not retained — an ignored VARCHAR length, say
+ * — does not reappear.
  *
  * history:
  * - stable: v2.0.0

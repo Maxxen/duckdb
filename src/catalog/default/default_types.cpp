@@ -405,55 +405,67 @@ LogicalType BindVariantType(BindLogicalTypeInput &input) {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// GEOMETRY Type
+// GEOMETRY / GEOGRAPHY Types
 //----------------------------------------------------------------------------------------------------------------------
-LogicalType BindGeometryType(BindLogicalTypeInput &input) {
+static LogicalType BindGeoType(BindLogicalTypeInput &input, bool geography) {
 	auto &arguments = input.modifiers;
+	const char *type_name = geography ? "GEOGRAPHY" : "GEOMETRY";
+	const auto make_type = [&](const string &crs) {
+		return geography ? LogicalType::GEOGRAPHY(crs) : LogicalType::GEOMETRY(crs);
+	};
 
 	if (arguments.empty()) {
-		return LogicalType::GEOMETRY();
+		return geography ? LogicalType::GEOGRAPHY() : LogicalType::GEOMETRY();
 	}
 
 	if (arguments.size() > 1) {
-		throw BinderException(
-		    "GEOMETRY type takes a single optional type modifier with a coordinate system definition");
+		throw BinderException("%s type takes a single optional type modifier with a coordinate system definition",
+		                      type_name);
 	}
 
 	const auto &crs_value = arguments[0].GetValue();
 
 	// Don't do any casting here - only accept string type directly
 	if (crs_value.type() != LogicalTypeId::VARCHAR) {
-		throw BinderException("GEOMETRY type modifier must be a string with a coordinate system definition");
+		throw BinderException("%s type modifier must be a string with a coordinate system definition", type_name);
 	}
 	if (crs_value.IsNull()) {
-		throw BinderException("GEOMETRY type modifier cannot be NULL");
+		throw BinderException("%s type modifier cannot be NULL", type_name);
 	}
 
 	// FIXME: Use extension/ClientContext to expand incomplete/shorthand CRS definitions
 	auto &crs = StringValue::Get(crs_value);
 
 	if (!input.context) {
-		throw BinderException("Cannot create GEOMETRY type with coordinate system without a connection");
+		throw BinderException("Cannot create %s type with coordinate system without a connection", type_name);
 	}
 
 	const auto crs_result = CoordinateReferenceSystem::TryIdentify(*input.context, crs);
 	if (!crs_result) {
 		if (Settings::Get<IgnoreUnknownCrsSetting>(*input.context)) {
-			// Ignored by user configuration - return generic GEOMETRY type
-			return LogicalType::GEOMETRY();
+			// Ignored by user configuration - return generic GEOMETRY/GEOGRAPHY type
+			return geography ? LogicalType::GEOGRAPHY() : LogicalType::GEOMETRY();
 		}
 
 		throw BinderException(
-		    "Encountered unrecognized coordinate system '%s' when trying to create GEOMETRY type\n"
+		    "Encountered unrecognized coordinate system '%s' when trying to create %s type\n"
 		    "The coordinate system definition may be incomplete or invalid. Your options are as follows:\n"
 		    "* Load an extension that can identify this coordinate system\n"
 		    "* Provide a full coordinate system definition in e.g. \"PROJJSON\" or \"WKT2\" format\n"
 		    "* Set the 'ignore_unknown_crs' configuration option to drop the coordinate system from the resulting "
-		    "geometry type and make this error go away",
-		    crs);
+		    "type and make this error go away",
+		    crs, type_name);
 	}
 
-	return LogicalType::GEOMETRY(crs_result->GetDefinition());
+	return make_type(crs_result->GetDefinition());
+}
+
+LogicalType BindGeometryType(BindLogicalTypeInput &input) {
+	return BindGeoType(input, false);
+}
+
+LogicalType BindGeographyType(BindLogicalTypeInput &input) {
+	return BindGeoType(input, true);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -466,7 +478,7 @@ struct DefaultType {
 	bind_logical_type_function_t bind_function;
 };
 
-using builtin_type_array = std::array<DefaultType, 83>;
+using builtin_type_array = std::array<DefaultType, 84>;
 
 const builtin_type_array BUILTIN_TYPES = {{{"decimal", LogicalTypeId::DECIMAL, BindDecimalType},
                                            {"dec", LogicalTypeId::DECIMAL, BindDecimalType},
@@ -550,6 +562,7 @@ const builtin_type_array BUILTIN_TYPES = {{{"decimal", LogicalTypeId::DECIMAL, B
                                            {"double", LogicalTypeId::DOUBLE, nullptr},
                                            {"float8", LogicalTypeId::DOUBLE, nullptr},
                                            {"geometry", LogicalTypeId::GEOMETRY, BindGeometryType},
+                                           {"geography", LogicalTypeId::GEOGRAPHY, BindGeographyType},
                                            {"type", LogicalTypeId::TYPE, nullptr}}};
 
 optional_ptr<const DefaultType> TryGetDefaultTypeEntry(const Identifier &name) {

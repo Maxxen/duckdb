@@ -140,6 +140,7 @@ bool ParquetWriter::TryGetParquetType(const LogicalType &duckdb_type, optional_p
 	case LogicalTypeId::BLOB:
 	case LogicalTypeId::VARCHAR:
 	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		parquet_type = Type::BYTE_ARRAY;
 		break;
 	case LogicalTypeId::TIME:
@@ -371,6 +372,31 @@ void ParquetWriter::SetSchemaProperties(const LogicalType &duckdb_type, duckdb_p
 				schema_ele.logicalType.GEOMETRY.__isset.crs = true;
 				schema_ele.logicalType.GEOMETRY.crs = crs.GetDefinition();
 			}
+		}
+		break;
+	case LogicalTypeId::GEOGRAPHY:
+		// GEOGRAPHY is not a GeoParquet (planar) concept, so it always uses the native Parquet GEOGRAPHY logical
+		// type regardless of the GeoParquet version.
+		schema_ele.__isset.logicalType = true;
+		schema_ele.logicalType.__isset.GEOGRAPHY = true;
+		// GEOGRAPHY assumes geodesic (spherical) edge interpolation.
+		schema_ele.logicalType.GEOGRAPHY.__set_algorithm(duckdb_parquet::EdgeInterpolationAlgorithm::SPHERICAL);
+		if (GeoType::HasCRS(duckdb_type)) {
+			const auto &crs = GeoType::GetCRS(duckdb_type);
+
+			if (crs.GetType() != CoordinateReferenceSystemType::PROJJSON) {
+				// Try to convert to GeoJSON
+				const auto lookup =
+				    CoordinateReferenceSystem::TryConvert(context, crs, CoordinateReferenceSystemType::PROJJSON);
+				if (lookup) {
+					schema_ele.logicalType.GEOGRAPHY.__isset.crs = true;
+					schema_ele.logicalType.GEOGRAPHY.crs = lookup->GetDefinition();
+					break;
+				}
+			}
+
+			schema_ele.logicalType.GEOGRAPHY.__isset.crs = true;
+			schema_ele.logicalType.GEOGRAPHY.crs = crs.GetDefinition();
 		}
 		break;
 	case LogicalTypeId::SQLNULL:
@@ -1026,6 +1052,8 @@ struct GeoStatsUnifier : public ColumnStatsUnifier {
 			geo_stats = make_uniq<GeometryStatsData>();
 			geo_stats->extent = other.extent;
 			geo_stats->types = other.types;
+			// Carry the geodetic flag so subsequent merges use antimeridian-aware extent math for GEOGRAPHY.
+			geo_stats->geodetic = other.geodetic;
 		}
 	}
 
@@ -1147,6 +1175,7 @@ static unique_ptr<ColumnStatsUnifier> GetBaseStatsUnifier(const LogicalType &typ
 	case LogicalTypeId::BLOB:
 		return make_uniq<BlobStatsUnifier>();
 	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		return make_uniq<GeoStatsUnifier>();
 	case LogicalTypeId::VARCHAR:
 		return make_uniq<StringStatsUnifier>();
