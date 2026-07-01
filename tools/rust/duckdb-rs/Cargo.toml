@@ -1,0 +1,11 @@
+[package]
+name = "duckdb-rs"
+version = "2.0.0"
+edition = "2024"
+
+[features]
+# Forward static linking down to libduckdb-sys.
+bundled = ["libduckdb-sys/bundled"]
+
+[dependencies]
+libduckdb-sys = { path = "../libduckdb-sys" }

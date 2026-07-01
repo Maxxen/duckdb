@@ -32,6 +32,11 @@ jobs:
       # round-trips, etc.) without changing the optimization level.
       FORCE_DEBUG: 1
       FORCE_ASSERT: 1
+      # Disable the UBSan vptr check: it needs __ubsan_vptr_type_cache, which
+      # clang's ASan runtime provides but Rust's does not, so the sanitized
+      # libduckdb.so could not load into the ASan-instrumented Rust test binary.
+      # ASan + the rest of UBSan still apply to both the C++ and Rust runs.
+      DISABLE_VPTR_SANITIZER: 1
       ASAN_OPTIONS: "detect_leaks=1:halt_on_error=1:abort_on_error=0"
       UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
     steps:
@@ -66,3 +71,37 @@ jobs:
         # HT stays in the GROW strategy and the query succeeds. Upstream CI
         # passes because duckdb/duckdb runs on 4+ vCPU Namespace.so runners.
         run: make unittest_relassert T='"test/sql/table_function/duckdb_settings*","[reset]","[settings]" "~test/sql/settings/operator_memory_limit.test"'
+
+      # Exercise the Rust bindings (tools/rust) against the libduckdb built above,
+      # reusing it rather than rebuilding. That library is instrumented with
+      # -fsanitize=address,undefined, so the Rust test binaries are built with
+      # AddressSanitizer too (nightly -Zsanitizer=address + -Zbuild-std). This links
+      # the ASan runtime into the test binary, so the instrumented libduckdb loads
+      # natively; the remaining UBSan handlers resolve from Rust's ASan runtime (the
+      # vptr check is disabled in the build above, which Rust's runtime can't supply).
+      # Passing --target keeps host build scripts / bindgen uninstrumented.
+      - name: Install Rust toolchain (nightly + rust-src)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly-2026-03-03
+          components: rust-src
+          cache-workspaces: tools/rust
+          # Don't let the action inject its default `-D warnings`; we set RUSTFLAGS
+          # explicitly for the test step below.
+          rustflags: ""
+      - name: Test Rust bindings
+        timeout-minutes: 20
+        working-directory: tools/rust
+        env:
+          DUCKDB_LIB_DIR: ${{ github.workspace }}/build/relassert/src
+          DUCKDB_INCLUDE_DIR: ${{ github.workspace }}/src/include
+          LIBCLANG_PATH: /usr/lib/llvm-20/lib
+          ASAN_SYMBOLIZER_PATH: /usr/lib/llvm-20/bin/llvm-symbolizer
+          # --target keeps these flags off host build scripts / bindgen. Keep line
+          # info (debuginfo=1) so sanitizer reports carry file:line.
+          RUSTFLAGS: -Zsanitizer=address -C debuginfo=1
+          RUSTDOCFLAGS: -Zsanitizer=address
+          ASAN_OPTIONS: "detect_stack_use_after_return=1:detect_leaks=1:symbolize=1"
+        run: |
+          set -euo pipefail
+          cargo test --workspace --tests -Zbuild-std --target x86_64-unknown-linux-gnu
