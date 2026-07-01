@@ -49,6 +49,7 @@
 #include "duckdb/planner/operator/logical_execute.hpp"
 #include "duckdb/planner/planner.hpp"
 #include "duckdb/planner/statement_preprocessor.hpp"
+#include "duckdb/planner/binder.hpp"
 #include "duckdb/storage/data_table.hpp"
 #include "duckdb/transaction/meta_transaction.hpp"
 #include "duckdb/transaction/transaction_context.hpp"
@@ -874,6 +875,50 @@ unique_ptr<PreparedStatement> ClientContext::Prepare(unique_ptr<SQLStatement> st
 	} catch (std::exception &ex) {
 		return ErrorResult<PreparedStatement>(ErrorData(ex), query);
 	}
+}
+
+StatementSignature ClientContext::BindStatement(unique_ptr<SQLStatement> statement) {
+	auto lock = LockContext();
+	auto named_param_map = statement->named_param_map;
+	StatementSignature signature;
+	ErrorData bind_error;
+	RunFunctionInTransactionInternal(
+	    *lock,
+	    [&]() {
+		    try {
+			    Planner planner(*this);
+			    planner.CreatePlan(std::move(statement));
+			    signature.names = planner.names;
+			    signature.types = planner.types;
+			    signature.properties = std::move(planner.properties);
+			    // Parameter types from the bound parameter map (as in PreparedStatementData::TryGetType).
+			    // An un-anchored parameter (e.g. SELECT $1) gets no value_map entry, so its
+			    // type stays UNKNOWN; do not assume every parameter is present.
+			    for (auto &entry : named_param_map) {
+				    LogicalType type(LogicalTypeId::UNKNOWN);
+				    auto it = planner.value_map.find(entry.first);
+				    if (it != planner.value_map.end()) {
+					    type = it->second->return_type.id() != LogicalTypeId::INVALID ? it->second->return_type
+					                                                                  : it->second->GetValue().type();
+				    }
+				    signature.parameters.push_back({entry.first, entry.second, std::move(type)});
+			    }
+		    } catch (const std::exception &ex) {
+			    ErrorData error(ex);
+			    // Binding is read-only: a recoverable bind error changed nothing, so leave
+			    // the caller's transaction intact (rethrow after the wrapper). A database-
+			    // fatal error still propagates so invalidation runs as usual.
+			    if (Exception::InvalidatesDatabase(error.Type())) {
+				    throw;
+			    }
+			    bind_error = std::move(error);
+		    }
+	    },
+	    false);
+	if (bind_error.HasError()) {
+		bind_error.Throw();
+	}
+	return signature;
 }
 
 unique_ptr<PreparedStatement> ClientContext::Prepare(const string &query) {

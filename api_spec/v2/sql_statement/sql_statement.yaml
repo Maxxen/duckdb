@@ -7,15 +7,16 @@ module: sql_statement
 # loaded on it); statements parsed on one connection should be executed
 # on that connection. Statements are raw parser output: statement-level
 # rewrites (pragma reparsing, statement expansion, transaction wrapping)
-# happen inside connection_query, so one user statement is always one
+# happen inside statement_execute, so one user statement is always one
 # handle.
 #
 # The iterator yields one owned statement per statement_iterator_next
-# call. A statement is executed by transferring it to connection_query,
-# which consumes it; re-running a statement means parsing again (or,
-# in the future, preparing it). The statement handle is fully opaque:
-# execution-relevant introspection (result type, statement type, column
-# schema) lives on the result handle.
+# call. A statement is executed by passing it to statement_execute, which
+# is non-consuming (it runs a copy): the same statement can be executed
+# again, possibly with a different parameter value set, and the caller
+# destroys it via sql_statement_destroy. The statement handle is fully
+# opaque: execution-relevant introspection (result type, statement type,
+# column schema) lives on the result handle.
 #
 # A parse error surfaces either from parse_sql (an implementation that
 # parses eagerly reports it up front and yields no statements) or from
@@ -27,8 +28,8 @@ handles:
   sql_statement:
     description: |
       An opaque, owned handle to a single parsed SQL statement, produced
-      by statement_iterator_next. Consumed by connection_query; destroy
-      unconsumed statements via sql_statement_destroy.
+      by statement_iterator_next. statement_execute runs it without
+      consuming it; the caller always destroys it via sql_statement_destroy.
     cleanup_with: sql_statement_destroy
   statement_iterator:
     description: |
@@ -44,7 +45,7 @@ functions:
       Parses only: no binding, no catalog access, and no transaction.
       The connection supplies the parser options and parser extensions;
       it is not otherwise touched. Statements are raw parser output;
-      statement-level rewrites happen inside connection_query. The SQL
+      statement-level rewrites happen inside statement_execute. The SQL
       string is copied; the caller may free it after this call. An input
       with no statements (empty, whitespace, or separators only) yields
       an iterator that is immediately exhausted.
@@ -96,12 +97,58 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
+  statement_bind:
+    summary: Binds a parsed statement without executing, yielding its schema signature.
+    description: |
+      Preprocesses and binds the statement exactly as execution would, but runs
+      nothing: returns its signature as two schemas, no result. Borrowed, not
+      consumed: bind it as often as you like and execute it later. out_schema
+      receives the output schema (result columns), never empty since a non-SELECT
+      reports a single status column (a BIGINT changed-rows count, or a BOOLEAN
+      success). out_parameters, when non-NULL, receives the input schema (parameter
+      types, ordered by binding index). Both are owned; destroy via schema_destroy.
+
+      Binding is read-only and does not disturb a live result: it begins no query,
+      claims no cursor, reuses an active transaction read-only, and runs alongside a
+      paused stream. Single-consumer like the stepping functions, so for concurrent
+      binding open a second connection. Prepare-time errors (binder, catalog,
+      preprocessing) surface here. A statement that preprocessing expands into a
+      group (a dynamic PIVOT, or statement-expanding DDL such as ALTER ADD COLUMN
+      with a non-constant DEFAULT) is not bindable and is rejected with
+      ERROR_INVALID_INPUT; execute it instead.
+
+      *out_schema and *out_parameters are set to NULL on failure.
+    role: method
+    belongs_to: sql_statement
+    parameters:
+      conn:
+        type: connection
+        description: The connection supplying the catalog, transaction, and parser state.
+      statement:
+        type: sql_statement
+        description: The statement to bind. Borrowed; not consumed.
+      out_schema:
+        type: schema
+        indirection: 1
+        kind: OUT
+        description: Receives the owned output schema (result columns). Destroy via schema_destroy.
+      out_parameters:
+        type: schema
+        indirection: 1
+        kind: OUT
+        description: Optional. When non-NULL, receives the owned input schema (parameter types, ordered by binding index). Destroy via schema_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   sql_statement_destroy:
-    summary: Destroys an unconsumed statement handle.
+    summary: Destroys a statement handle.
     description: |
       Null-safe: passing nullptr or a slot already set to nullptr is a
-      no-op. Statements consumed by connection_query null their slot and
-      need no destroy. On success the slot is set to nullptr.
+      no-op. statement_execute is non-consuming, so every statement is
+      destroyed here once done with it. On success the slot is set to nullptr.
     role: destructor
     belongs_to: sql_statement
     parameters:

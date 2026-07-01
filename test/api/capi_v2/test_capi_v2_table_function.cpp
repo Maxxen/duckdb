@@ -149,7 +149,7 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 		REQUIRE(V2Query(fix.conn, "SELECT * FROM counter()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		idx_t col_count = 0;
-		duckdb_v2_result_column_count(result, &col_count, nullptr);
+		col_count = V2ColumnCount(result);
 		REQUIRE(col_count == 2);
 
 		duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -626,7 +626,7 @@ TEST_CASE("V2 table function: projection pushdown", "[capi_v2][table_function]")
 	REQUIRE(size == 1);
 
 	idx_t col_count = 0;
-	duckdb_v2_result_column_count(result, &col_count, nullptr);
+	col_count = V2ColumnCount(result);
 	REQUIRE(col_count == 2);
 
 	duckdb_v2_vector_handle vec0 = nullptr;
@@ -709,7 +709,7 @@ static std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sq
 	REQUIRE(V2Query(conn, sql, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	idx_t col_count = 0;
-	duckdb_v2_result_column_count(result, &col_count, nullptr);
+	col_count = V2ColumnCount(result);
 
 	std::string out;
 	while (auto chunk = V2StepChunk(result)) {
@@ -1281,7 +1281,7 @@ TEST_CASE("V2 table function: callback error code round-trips to the query", "[c
 	    nullptr, nullptr);
 
 	// The exec callback only runs once the result is stepped; the error
-	// surfaces from the step, not from connection_query.
+	// surfaces from the step, not from statement_execute.
 	duckdb_v2_result_handle result = nullptr;
 	duckdb_v2_error_info_handle qerr = nullptr;
 	REQUIRE(V2Query(fix.conn, "SELECT v FROM errcode_fn()", &result, &qerr) == DUCKDB_V2_ERROR_NONE);

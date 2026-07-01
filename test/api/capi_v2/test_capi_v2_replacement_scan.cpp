@@ -24,7 +24,7 @@ struct ReplScanQueryFailure {
 	std::string message;
 };
 
-// Runs a query that is expected to fail at connection_query time (binder
+// Runs a query that is expected to fail at statement_execute time (binder
 // errors surface there: prepare is eager, only execution is lazy). Returns
 // the failure code + message.
 ReplScanQueryFailure ReplScanExpectQueryFailure(duckdb_v2_connection_handle conn, const char *sql) {

@@ -25,10 +25,11 @@
 //   - duckdb_v2_result_handle is a heap-allocated duckdb::ResultWrapperV2
 //     cast to the handle type. The bridge's ToResult cast and destructor
 //     depend on this layout.
-//   - duckdb_v2_logical_type_handle returned by result_column_logical_type
-//     is owned (caller destroys). Lifetime is independent of the result.
-//   - Borrowed name strings returned by duckdb_v2_result_column_name are
-//     valid until duckdb_v2_result_destroy.
+//   - duckdb_v2_schema_handle returned by result_get_schema is owned (caller
+//     destroys via schema_destroy). Its lifetime is independent of the result:
+//     it is a snapshot, so it stays valid after the result is destroyed.
+//   - Names and types borrowed via schema_get_field are valid until the
+//     schema is destroyed.
 //   - Chunks returned by step / fetch_chunk are owned and independent
 //     of the producing result / connection / database.
 // ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ namespace {} // namespace
 // Smoke: SELECT round-trip, the canonical "SELECT 1" check.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query SELECT returns QUERY_RESULT with INTEGER column", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute SELECT returns QUERY_RESULT with INTEGER column", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
@@ -54,21 +55,8 @@ TEST_CASE("V2: connection_query SELECT returns QUERY_RESULT with INTEGER column"
 	REQUIRE(duckdb_v2_result_get_statement_type(r, &st, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(st == DUCKDB_V2_STATEMENT_TYPE_SELECT);
 
-	idx_t cols = 0;
-	REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(cols == 1);
-
-	duckdb_v2_str name = {nullptr, 0};
-	REQUIRE(duckdb_v2_result_column_name(r, 0, &name, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(V2StrTo(name) == "one");
-
-	duckdb_v2_logical_type_handle lt = nullptr;
-	REQUIRE(duckdb_v2_result_column_logical_type(r, 0, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(lt != nullptr);
-	DUCKDB_V2_LOGICAL_TYPE_ID lt_id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-	duckdb_v2_logical_type_get_id(lt, &lt_id, nullptr);
-	REQUIRE(lt_id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	duckdb_v2_logical_type_destroy(&lt);
+	REQUIRE(V2ColumnCount(r) == 1);
+	V2RequireColumn(r, 0, "one", DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
 	REQUIRE(V2DrainRowCount(r) == 1);
 
@@ -80,16 +68,14 @@ TEST_CASE("V2: connection_query SELECT returns QUERY_RESULT with INTEGER column"
 // Multi-column SELECT: column count, names, and types.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query multi-column SELECT", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute multi-column SELECT", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT 1::INTEGER AS a, 'hi' AS b, 3.14::DOUBLE AS c", &r, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
 
-	idx_t cols = 0;
-	duckdb_v2_result_column_count(r, &cols, nullptr);
-	REQUIRE(cols == 3);
+	REQUIRE(V2ColumnCount(r) == 3);
 
 	struct {
 		const char *name;
@@ -100,16 +86,7 @@ TEST_CASE("V2: connection_query multi-column SELECT", "[capi_v2][query_result]")
 	    {"c", DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE},
 	};
 	for (idx_t i = 0; i < 3; i++) {
-		duckdb_v2_str name = {nullptr, 0};
-		duckdb_v2_result_column_name(r, i, &name, nullptr);
-		REQUIRE(V2StrTo(name) == expected[i].name);
-
-		duckdb_v2_logical_type_handle lt = nullptr;
-		duckdb_v2_result_column_logical_type(r, i, &lt, nullptr);
-		DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-		duckdb_v2_logical_type_get_id(lt, &id, nullptr);
-		REQUIRE(id == expected[i].id);
-		duckdb_v2_logical_type_destroy(&lt);
+		V2RequireColumn(r, i, expected[i].name, expected[i].id);
 	}
 
 	duckdb_v2_result_destroy(&r);
@@ -188,18 +165,8 @@ TEST_CASE("V2: metadata valid before, during, and after consumption", "[capi_v2]
 		DUCKDB_V2_STATEMENT_TYPE st = DUCKDB_V2_STATEMENT_TYPE_INVALID;
 		REQUIRE(duckdb_v2_result_get_statement_type(r, &st, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(st == DUCKDB_V2_STATEMENT_TYPE_SELECT);
-		idx_t cols = 0;
-		REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(cols == 1);
-		duckdb_v2_str name = {nullptr, 0};
-		REQUIRE(duckdb_v2_result_column_name(r, 0, &name, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(V2StrTo(name) == "steady");
-		duckdb_v2_logical_type_handle lt = nullptr;
-		REQUIRE(duckdb_v2_result_column_logical_type(r, 0, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
-		DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-		duckdb_v2_logical_type_get_id(lt, &id, nullptr);
-		REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
-		duckdb_v2_logical_type_destroy(&lt);
+		REQUIRE(V2ColumnCount(r) == 1);
+		V2RequireColumn(r, 0, "steady", DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 	};
 
 	// Before the first step: nothing has executed yet.
@@ -325,24 +292,10 @@ TEST_CASE("V2: CHANGED_ROWS exposes synthetic Count column via column accessors"
 	duckdb_v2_result_handle ins = nullptr;
 	V2Query(fx.conn, "INSERT INTO t VALUES (1)", &ins, nullptr);
 
-	idx_t cols = 0;
-	duckdb_v2_result_column_count(ins, &cols, nullptr);
-	REQUIRE(cols == 1);
-
-	duckdb_v2_str name = {nullptr, 0};
-	duckdb_v2_result_column_name(ins, 0, &name, nullptr);
-	REQUIRE(name.ptr != nullptr);
-	REQUIRE(name.len > 0);
+	REQUIRE(V2ColumnCount(ins) == 1);
 	// The synthetic column name is set by core; pin the current spelling
 	// so a future rename surfaces here loud rather than silent.
-	REQUIRE(V2StrTo(name) == "Count");
-
-	duckdb_v2_logical_type_handle lt = nullptr;
-	duckdb_v2_result_column_logical_type(ins, 0, &lt, nullptr);
-	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-	duckdb_v2_logical_type_get_id(lt, &id, nullptr);
-	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
-	duckdb_v2_logical_type_destroy(&lt);
+	V2RequireColumn(ins, 0, "Count", DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 
 	duckdb_v2_result_destroy(&ins);
 }
@@ -353,26 +306,8 @@ TEST_CASE("V2: NOTHING result exposes the synthetic Count column with zero rows"
 	duckdb_v2_result_handle r = nullptr;
 	V2Query(fx.conn, "CREATE TABLE t (i INTEGER)", &r, nullptr);
 
-	idx_t cols = 99;
-	duckdb_v2_result_column_count(r, &cols, nullptr);
-	REQUIRE(cols == 1);
-
-	duckdb_v2_str name = {nullptr, 0};
-	REQUIRE(duckdb_v2_result_column_name(r, 0, &name, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(V2StrTo(name) == "Count");
-
-	duckdb_v2_logical_type_handle lt = nullptr;
-	REQUIRE(duckdb_v2_result_column_logical_type(r, 0, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
-	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-	duckdb_v2_logical_type_get_id(lt, &id, nullptr);
-	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
-	duckdb_v2_logical_type_destroy(&lt);
-
-	// Index past the single column fails.
-	REQUIRE(duckdb_v2_result_column_name(r, 1, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	duckdb_v2_logical_type_handle lt_oor = nullptr;
-	REQUIRE(duckdb_v2_result_column_logical_type(r, 1, &lt_oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(lt_oor == nullptr);
+	REQUIRE(V2ColumnCount(r) == 1);
+	V2RequireColumn(r, 0, "Count", DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 
 	// The stream itself yields no rows.
 	REQUIRE(V2DrainRowCount(r) == 0);
@@ -460,11 +395,11 @@ TEST_CASE("V2: result_wait before the first step is safe", "[capi_v2][query_resu
 }
 
 // ===========================================================================
-// Error paths at connection_query time: prepare runs eagerly, so parser
+// Error paths at statement_execute time: prepare runs eagerly, so parser
 // and binder errors surface here, not from the steps.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query surfaces parser error and leaves out_result null", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute surfaces parser error and leaves out_result null", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
@@ -480,7 +415,7 @@ TEST_CASE("V2: connection_query surfaces parser error and leaves out_result null
 	duckdb_v2_error_info_destroy(&err);
 }
 
-TEST_CASE("V2: connection_query binder error (unknown table)", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute binder error (unknown table)", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
@@ -491,7 +426,7 @@ TEST_CASE("V2: connection_query binder error (unknown table)", "[capi_v2][query_
 	duckdb_v2_error_info_destroy(&err);
 }
 
-TEST_CASE("V2: connection_query failure tolerates err == nullptr", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute failure tolerates err == nullptr", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
@@ -500,7 +435,7 @@ TEST_CASE("V2: connection_query failure tolerates err == nullptr", "[capi_v2][qu
 }
 
 // ===========================================================================
-// connection_query takes exactly one parsed statement: a NULL statement
+// statement_execute takes exactly one parsed statement: a NULL statement
 // handle (the iterator's end marker, or a no-statement input) is
 // rejected. Multi-statement strings are handled by the iterator; see the
 // sql_statement tests.
@@ -510,7 +445,7 @@ TEST_CASE("V2: querying with a NULL statement is rejected", "[capi_v2][query_res
 	V2EnvFixture fx;
 
 	// No-statement input parses to an immediately exhausted iterator; the
-	// NULL statement it yields is rejected by connection_query.
+	// NULL statement it yields is rejected by statement_execute.
 	for (const char *sql : {"", "   ", ";"}) {
 		INFO("sql: '" << sql << "'");
 		duckdb_v2_result_handle r = nullptr;
@@ -528,7 +463,7 @@ TEST_CASE("V2: execution error mid-stream is sticky", "[capi_v2][query_result]")
 	V2EnvFixture fx;
 
 	// The cast only fails on the last row, so the failure is raised during
-	// execution, after connection_query has returned successfully.
+	// execution, after statement_execute has returned successfully.
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn,
 	                "SELECT (CASE WHEN i < 99999 THEN CAST(i AS VARCHAR) ELSE 'oops' END)::INT FROM range(100000) t(i)",
@@ -572,9 +507,7 @@ TEST_CASE("V2: execution error mid-stream is sticky", "[capi_v2][query_result]")
 	REQUIRE(chunk == nullptr);
 
 	// Metadata still works after the failure (prepare-time information).
-	idx_t cols = 0;
-	REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(cols == 1);
+	REQUIRE(V2ColumnCount(r) == 1);
 
 	duckdb_v2_result_destroy(&r);
 }
@@ -914,83 +847,39 @@ TEST_CASE("V2: a fetched chunk outlives result, connection, and database", "[cap
 }
 
 // ===========================================================================
-// Lifetime: borrowed column name stays valid until result_destroy.
+// Lifetime: result_get_schema is a self-contained snapshot that outlives the
+// result it came from. (Borrow stability and out-of-range indices are covered
+// by the schema-type tests in test_capi_v2_schema.cpp.)
 // ===========================================================================
 
-TEST_CASE("V2: result_column_name borrow stays valid until destroy", "[capi_v2][query_result]") {
+TEST_CASE("V2: result_get_schema outlives the result", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
 	V2Query(fx.conn, "SELECT 1 AS only_column", &r, nullptr);
 
-	duckdb_v2_str first = {nullptr, 0};
-	duckdb_v2_result_column_name(r, 0, &first, nullptr);
-	REQUIRE(V2StrTo(first) == "only_column");
-
-	// Drain to FINISHED; the borrow must survive the internal results
-	// being closed (metadata is copied into the wrapper).
-	V2DrainRowCount(r);
-
-	duckdb_v2_str second = {nullptr, 0};
-	duckdb_v2_result_column_name(r, 0, &second, nullptr);
-	REQUIRE(first.ptr == second.ptr); // same storage: the wrapper's names vector
-	REQUIRE(first.len == second.len);
+	duckdb_v2_schema_handle schema = nullptr;
+	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_result_destroy(&r);
-}
 
-// ===========================================================================
-// Lifetime: column logical_type outlives the result it came from.
-// ===========================================================================
-
-TEST_CASE("V2: result_column_logical_type is owned and outlives the result", "[capi_v2][query_result]") {
-	V2EnvFixture fx;
-
-	duckdb_v2_result_handle r = nullptr;
-	V2Query(fx.conn, "SELECT 1 AS only_column", &r, nullptr);
-
+	// The schema is self-contained; it stays valid after the result is gone.
+	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_logical_type_handle lt = nullptr;
-	REQUIRE(duckdb_v2_result_column_logical_type(r, 0, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
-
-	duckdb_v2_result_destroy(&r);
-
-	// The handle is still valid after the result is gone; the
-	// LogicalType copy is self-contained.
+	REQUIRE(duckdb_v2_schema_get_field(schema, 0, &name, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2StrTo(name) == "only_column");
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 	REQUIRE(duckdb_v2_logical_type_get_id(lt, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-	duckdb_v2_logical_type_destroy(&lt);
-}
-
-// ===========================================================================
-// Out-of-range column indices.
-// ===========================================================================
-
-TEST_CASE("V2: result_column_name out-of-range index", "[capi_v2][query_result]") {
-	V2EnvFixture fx;
-
-	duckdb_v2_result_handle r = nullptr;
-	V2Query(fx.conn, "SELECT 1, 2", &r, nullptr);
-
-	duckdb_v2_str name = {nullptr, 0};
-	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_result_column_name(r, 2, &name, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(err != nullptr);
-	duckdb_v2_error_info_destroy(&err);
-
-	duckdb_v2_logical_type_handle lt = nullptr;
-	REQUIRE(duckdb_v2_result_column_logical_type(r, 2, &lt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(lt == nullptr);
-
-	duckdb_v2_result_destroy(&r);
+	duckdb_v2_schema_destroy(&schema);
 }
 
 // ===========================================================================
 // Null-arg validation across the surface.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query null-arg rejection", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute null-arg rejection", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	// Exercise the real duckdb_v2_str signature. A {NULL, 0} sql is a valid
@@ -1013,17 +902,13 @@ TEST_CASE("V2: result accessors reject null handle and null out-params", "[capi_
 
 	DUCKDB_V2_RESULT_TYPE rt;
 	DUCKDB_V2_STATEMENT_TYPE st;
-	idx_t count;
-	duckdb_v2_str name = {nullptr, 0};
-	duckdb_v2_logical_type_handle lt = nullptr;
+	duckdb_v2_schema_handle schema = nullptr;
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	DUCKDB_V2_RESULT_STEP_STATUS status;
 
 	REQUIRE(duckdb_v2_result_get_result_type(nullptr, &rt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_get_statement_type(nullptr, &st, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_column_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_column_name(nullptr, 0, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_column_logical_type(nullptr, 0, &lt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_schema(nullptr, &schema, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_step(nullptr, &chunk, &status, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_fetch_chunk(nullptr, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_wait(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
@@ -1041,9 +926,7 @@ TEST_CASE("V2: result accessors reject null handle and null out-params", "[capi_
 	V2Query(fx.conn, "SELECT 1", &r, nullptr);
 	REQUIRE(duckdb_v2_result_get_result_type(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_get_statement_type(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_column_count(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_column_name(r, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_column_logical_type(r, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_schema(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_step(r, nullptr, &status, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_step(r, &chunk, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_result_fetch_chunk(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
@@ -1061,7 +944,7 @@ TEST_CASE("V2: result accessors reject null handle and null out-params", "[capi_
 // Belt-and-braces: a succeeding call leaves a pre-existing *err untouched.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query leaves pre-existing err untouched on success", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute leaves pre-existing err untouched on success", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
@@ -1133,7 +1016,7 @@ TEST_CASE("V2: STATEMENT_TYPE has no gaps vs duckdb::StatementType", "[capi_v2][
 // result keeps its metadata usable while later queries run.
 // ===========================================================================
 
-TEST_CASE("V2: results are independent; destroying one leaves the other's metadata usable", "[capi_v2][query_result]") {
+TEST_CASE("V2: results are independent; destroying one leaves the other usable", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle a = nullptr;
@@ -1143,33 +1026,23 @@ TEST_CASE("V2: results are independent; destroying one leaves the other's metada
 	REQUIRE(V2DrainRowCount(a) == 1);
 	V2Query(fx.conn, "SELECT 'hi' AS bb", &b, nullptr);
 
-	duckdb_v2_str name_a = {nullptr, 0};
-	duckdb_v2_result_column_name(a, 0, &name_a, nullptr);
+	V2RequireColumn(a, 0, "aa", DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	V2RequireColumn(b, 0, "bb", DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 
-	duckdb_v2_str name_b = {nullptr, 0};
-	duckdb_v2_result_column_name(b, 0, &name_b, nullptr);
-
-	REQUIRE(name_a.ptr != name_b.ptr);
-	REQUIRE(V2StrTo(name_a) == "aa");
-	REQUIRE(V2StrTo(name_b) == "bb");
-
-	// Destroy a; b's borrowed name pointer must still be valid.
+	// Destroy a; b's schema is still fetchable.
 	duckdb_v2_result_destroy(&a);
-
-	duckdb_v2_str name_b_after = {nullptr, 0};
-	REQUIRE(duckdb_v2_result_column_name(b, 0, &name_b_after, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(V2StrTo(name_b_after) == "bb");
+	V2RequireColumn(b, 0, "bb", DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 
 	duckdb_v2_result_destroy(&b);
 }
 
 // ===========================================================================
-// One live result per connection: connection_query refuses with
+// One live result per connection: statement_execute refuses with
 // RESOURCE_IN_USE while a live result exists, and the connection is
 // freed by drain, destroy, interrupt-then-step, or a sticky error.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query refuses while a live result exists", "[capi_v2][query_result]") {
+TEST_CASE("V2: statement_execute refuses while a live result exists", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle live = nullptr;
@@ -1459,9 +1332,7 @@ TEST_CASE("V2: an undrained result survives disconnect and close", "[capi_v2][qu
 	duckdb_v2_close(&db);
 
 	// Metadata still reads off the wrapper.
-	idx_t cols = 0;
-	REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(cols == 1);
+	REQUIRE(V2ColumnCount(r) == 1);
 
 	// Consumption keeps working (the stream holds the context alive) or
 	// fails cleanly; either way destroy must be safe afterwards.
@@ -1505,22 +1376,20 @@ TEST_CASE("V2: PIVOT expands to a group and streams the pivoted rows", "[capi_v2
 	          "INSERT INTO sales VALUES ('ams', 2023, 10), ('ams', 2024, 20), ('rtm', 2023, 30), ('rtm', 2024, 40)");
 
 	// Auto-PIVOT parses to one raw statement (a MultiStatement) and
-	// expands at connection_query into CREATE TYPE (enum) + SELECT.
+	// expands at statement_execute into CREATE TYPE (enum) + SELECT.
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn, "PIVOT sales ON year USING sum(amount)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// Metadata is deferred until the row-producing fragment is prepared.
-	idx_t cols = 0;
 	DUCKDB_V2_RESULT_TYPE rt = DUCKDB_V2_RESULT_TYPE_NOTHING;
-	REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	V2RequireSchemaDeferred(r);
 	REQUIRE(duckdb_v2_result_get_result_type(r, &rt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	// Only the pivoted SELECT's rows surface: one row per city.
 	REQUIRE(V2DrainRowCount(r) == 2);
 
 	// The principal fragment's metadata is now available.
-	REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(cols == 3); // city + one column per year
+	REQUIRE(V2ColumnCount(r) == 3); // city + one column per year
 	REQUIRE(duckdb_v2_result_get_result_type(r, &rt, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(rt == DUCKDB_V2_RESULT_TYPE_QUERY_RESULT);
 	DUCKDB_V2_STATEMENT_TYPE st = DUCKDB_V2_STATEMENT_TYPE_INVALID;
@@ -1543,8 +1412,7 @@ TEST_CASE("V2: ALTER with a non-constant DEFAULT expands and executes fully", "[
 	        DUCKDB_V2_ERROR_NONE);
 
 	// Metadata deferred while the group runs.
-	idx_t cols = 0;
-	REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	V2RequireSchemaDeferred(r);
 
 	// No fragment produces rows; the internal UPDATE's Count chunk is
 	// discarded, exactly as ClientContext::Query discards it.
@@ -1587,7 +1455,7 @@ TEST_CASE("V2: result_drain runs an expanded group to completion", "[capi_v2][qu
 	duckdb_v2_result_destroy(&r);
 }
 
-TEST_CASE("V2: query-backed PRAGMA reparses at connection_query", "[capi_v2][query_result]") {
+TEST_CASE("V2: query-backed PRAGMA reparses at statement_execute", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	// Reparses one-to-one into a row-producing statement, so metadata is
@@ -1595,9 +1463,7 @@ TEST_CASE("V2: query-backed PRAGMA reparses at connection_query", "[capi_v2][que
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn, "PRAGMA database_size", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	idx_t cols = 0;
-	REQUIRE(duckdb_v2_result_column_count(r, &cols, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(cols > 0);
+	REQUIRE(V2ColumnCount(r) > 0);
 
 	REQUIRE(V2DrainRowCount(r) >= 1);
 	duckdb_v2_result_destroy(&r);
@@ -1711,5 +1577,65 @@ TEST_CASE("V2: destroying a half-executed expanded group is clean", "[capi_v2][q
 	REQUIRE(V2Query(fx.conn, "SELECT c FROM t", &r, nullptr) == DUCKDB_V2_ERROR_QUERY_BINDER);
 	REQUIRE(V2Query(fx.conn, "SELECT count(*) FROM t", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2DrainRowCount(r) == 1);
+	duckdb_v2_result_destroy(&r);
+}
+
+// ===========================================================================
+// result_get_schema: a result's output schema as one schema handle.
+// ===========================================================================
+
+TEST_CASE("V2: result_get_schema mirrors a SELECT's columns", "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT 1 AS a, 'x' AS b", &r) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_schema_handle schema = nullptr;
+	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_schema_get_count(schema, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 2);
+	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_logical_type_handle type = nullptr;
+	REQUIRE(duckdb_v2_schema_get_field(schema, 0, &name, &type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(std::string(name.ptr, name.len) == "a");
+	REQUIRE(duckdb_v2_schema_get_field(schema, 1, &name, &type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(std::string(name.ptr, name.len) == "b");
+
+	duckdb_v2_schema_destroy(&schema);
+	duckdb_v2_result_destroy(&r);
+}
+
+TEST_CASE("V2: result_get_schema of a CHANGED_ROWS statement is a BIGINT count", "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+	V2ExecSQL(fx.conn, "CREATE TABLE t(a INTEGER)");
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(fx.conn, "INSERT INTO t VALUES (1), (2)", &r) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_schema_handle schema = nullptr;
+	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_schema_get_count(schema, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 1);
+	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_logical_type_handle type = nullptr;
+	REQUIRE(duckdb_v2_schema_get_field(schema, 0, &name, &type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	DUCKDB_V2_LOGICAL_TYPE_ID id;
+	REQUIRE(duckdb_v2_logical_type_get_id(type, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+
+	duckdb_v2_schema_destroy(&schema);
+	duckdb_v2_result_destroy(&r);
+}
+
+TEST_CASE("V2: result_get_schema null arguments", "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT 1", &r) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_schema_handle schema = reinterpret_cast<duckdb_v2_schema_handle>(0x1);
+	REQUIRE(duckdb_v2_result_get_schema(nullptr, &schema, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(schema == nullptr); // pointer out-param nulled on failure
+	REQUIRE(duckdb_v2_result_get_schema(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+
 	duckdb_v2_result_destroy(&r);
 }

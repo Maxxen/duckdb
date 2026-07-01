@@ -39,6 +39,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <deque>
 
 #ifdef _WIN32
 #ifndef strdup
@@ -100,7 +101,7 @@ struct DatabaseWrapperV2 {
 };
 
 // A connection runs one result at a time: while a live, non-terminal
-// result exists, connection_query refuses with RESOURCE_IN_USE. The busy
+// result exists, statement_execute refuses with RESOURCE_IN_USE. The busy
 // check is bridge-side handle-liveness bookkeeping, deliberately not an
 // engine-state inspection (the engine's active_query slot is private and
 // cleared lazily, and "open transaction" is the wrong predicate under
@@ -212,9 +213,9 @@ inline QueryProgressWrapperV2 *ToQueryProgress(duckdb_v2_query_progress_handle p
 	return reinterpret_cast<QueryProgressWrapperV2 *>(ptr);
 }
 // duckdb_v2_sql_statement_handle is a heap-allocated duckdb::SQLStatement
-// (a derived class instance) with no wrapper. connection_query adopts it
-// back into a unique_ptr and transfers it to the engine; destroy deletes
-// through this cast.
+// (a derived class instance) with no wrapper. statement_execute reads it
+// through this cast to Copy() it (non-consuming); sql_statement_destroy
+// deletes through this cast.
 inline SQLStatement *ToSqlStatement(duckdb_v2_sql_statement_handle ptr) {
 	return reinterpret_cast<SQLStatement *>(ptr);
 }
@@ -244,10 +245,24 @@ inline LogicalType *ToLogicalType(duckdb_v2_logical_type_handle ptr) {
 inline Value *ToValue(duckdb_v2_value_handle ptr) {
 	return reinterpret_cast<Value *>(ptr);
 }
+// Backing struct for the opaque duckdb_v2_schema_handle: an ordered (name, type)
+// row schema (no single engine object represents one). A deque so the name and
+// type schema_get_field borrows stay valid for the schema's lifetime. The bind
+// verbs (statement_bind, result_get_schema) populate fields directly.
+struct SchemaFieldV2 {
+	std::string name;
+	LogicalType type;
+};
+struct SchemaWrapperV2 {
+	std::deque<SchemaFieldV2> fields;
+};
+inline SchemaWrapperV2 *ToSchema(duckdb_v2_schema_handle ptr) {
+	return reinterpret_cast<SchemaWrapperV2 *>(ptr);
+}
 // Backing struct for the opaque duckdb_v2_result_handle: the streaming
 // result's state machine.
 //
-// connection_query preprocesses the transferred statement (pragma
+// statement_execute preprocesses the copied statement (pragma
 // reparsing, expansion unpacking, transaction wrapping), which can turn
 // one user statement into a group of engine statements ("fragments",
 // e.g. PIVOT, or ALTER ... ADD COLUMN with a non-constant DEFAULT). The
@@ -281,7 +296,7 @@ inline Value *ToValue(duckdb_v2_value_handle ptr) {
 // NOT_IMPLEMENTED (no known expansion produces one).
 //
 // Schema metadata (types, names, statement_type, properties) is copied
-// from the principal fragment when it is prepared: at connection_query
+// from the principal fragment when it is prepared: at statement_execute
 // time for non-expanding statements (the common case), or once stepping
 // reaches the principal fragment otherwise. metadata_available gates the
 // getters.
@@ -317,6 +332,11 @@ struct ResultWrapperV2 {
 	vector<unique_ptr<SQLStatement>> fragments;
 	idx_t fragment_index = 0;
 	idx_t fragment_count = 0;
+	//! Positional parameter values for this execution, keyed by binding identifier
+	//! ("1".."N"). Empty for an unparameterized statement (StartNextFragment takes
+	//! the no-values path). Applied only to the first fragment (a parameterized
+	//! statement does not expand into a group).
+	identifier_map_t<BoundParameterData> param_values;
 	//! True while the currently executing fragment is the principal one
 	//! (its chunks are surfaced; other fragments' output is discarded).
 	bool principal_active = false;
@@ -324,7 +344,7 @@ struct ResultWrapperV2 {
 	bool principal_seen = false;
 	//! True once the principal fragment's metadata has been captured.
 	bool metadata_available = false;
-	//! True when connection_query injected its own wrapping transaction for
+	//! True when statement_execute injected its own wrapping transaction for
 	//! this group (autocommit input that preprocessing expanded and wrapped
 	//! in BEGIN ... COMMIT). Distinguishes a bridge-owned transaction, which
 	//! must be rolled back on incomplete destroy, from a user-managed one,
@@ -348,7 +368,7 @@ struct ResultWrapperV2 {
 
 	//! Mirrors ClientContext::Query's error handling for expanded groups
 	//! (client_context.cpp, chain-append loop): when the group cannot
-	//! complete, roll back the transaction connection_query injected to wrap
+	//! complete, roll back the transaction statement_execute injected to wrap
 	//! it. A no-op for non-expanded statements, for groups that ran inside a
 	//! user-managed transaction (which the bridge never wraps), and when the
 	//! transaction is already gone.
@@ -394,9 +414,13 @@ struct ResultWrapperV2 {
 	// them throw DuckDB exceptions on failure (callers wrap in
 	// WithErrorHandler) and record sticky errors before throwing.
 
+	//! Adopts an already-produced pending query into the state machine: the single
+	//! seam both the stateless (fragment) and prepared paths reach. When is_principal,
+	//! captures its metadata and surfaces its chunks. Throws on a pending prepare error.
+	void BeginPending(unique_ptr<PendingQueryResult> pending, bool is_principal);
 	//! Starts the pending query for the next fragment, selecting it as
-	//! principal per the engine-mirrored rule and capturing its metadata
-	//! when selected. Throws on prepare errors.
+	//! principal per the engine-mirrored rule and adopting it via BeginPending.
+	//! Throws on prepare errors.
 	void StartNextFragment();
 	//! Drives one unit of work; never blocks. On CHUNK, out_chunk holds the
 	//! produced chunk; on every other status it is reset.
@@ -602,12 +626,25 @@ inline void BuildOptionByIndex(OptionWrapperV2 &out, ClientContext &client, DBCo
 	throw InvalidInputException("option index out of range");
 }
 
+// Backing struct for the opaque duckdb_v2_prepared_statement_handle. The engine
+// PreparedStatement co-owns the ClientContext via shared_ptr, so the handle stays
+// valid across executions and even after the connection is destroyed (acceptable
+// for this opt-in cached path).
 struct PreparedStatementWrapperV2 {
-	case_insensitive_map_t<BoundParameterData> values;
-	unique_ptr<PreparedStatement> statement;
-	bool success = true;
-	ErrorData error_data;
+	unique_ptr<PreparedStatement> prepared;
 };
+inline PreparedStatementWrapperV2 *ToPreparedStatement(duckdb_v2_prepared_statement_handle ptr) {
+	return reinterpret_cast<PreparedStatementWrapperV2 *>(ptr);
+}
+
+// The honest reuse predicate: reuses iff all parameter types resolved at prepare
+// time and the plan is cacheable. The exact negation of the engine's rebind gate
+// (PreparedStatementData::RequireRebind: !bound_all_parameters or
+// always_require_rebind forces a rebind); always_require_rebind is set for a
+// non-cacheable plan (a table scan; PreparedStatement::CanCachePlan).
+inline bool PreparedReusesPlan(const StatementProperties &properties) {
+	return properties.bound_all_parameters && !properties.always_require_rebind;
+}
 
 // Backing struct for the opaque duckdb_v2_error_info_handle handle. Allocated
 // only on failure paths and only when the caller requested detail (i.e.

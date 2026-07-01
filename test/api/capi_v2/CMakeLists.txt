@@ -13,10 +13,12 @@ add_library_unity(
   test_capi_v2_function_property.cpp
   test_capi_v2_string_layout.cpp
   test_capi_v2_logical_type.cpp
+  test_capi_v2_prepared_statement.cpp
   test_capi_v2_query_execution.cpp
   test_capi_v2_query_result.cpp
   test_capi_v2_replacement_scan.cpp
   test_capi_v2_sql_statement.cpp
+  test_capi_v2_statement_bind.cpp
   test_capi_v2_string_heap.cpp
   test_capi_v2_value.cpp
   test_capi_v2_file_system.cpp

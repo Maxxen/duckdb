@@ -92,9 +92,9 @@ TEST_CASE("Stable C++-API: Basic", "[cpp_api]") {
 		    .Register(ctx);
 	});
 
-	auto result = conn.Query("SELECT MyFunction(1, 2) AS result");
-	REQUIRE(result.GetColumnCount() == 1);
-	REQUIRE(result.GetColumnName(0) == "result");
+	auto result = conn.Execute("SELECT MyFunction(1, 2) AS result");
+	REQUIRE(result.GetSchema().GetFieldCount() == 1);
+	REQUIRE(result.GetSchema().GetFieldName(0) == "result");
 
 	auto chunk = result.FetchChunk();
 	REQUIRE(chunk);
@@ -161,9 +161,9 @@ TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
 		    .Register(ctx);
 	});
 
-	auto result = conn.Query("SELECT MyAggregate(i) AS result FROM (VALUES (1), (2), (3)) AS t(i)");
-	REQUIRE(result.GetColumnCount() == 1);
-	REQUIRE(result.GetColumnName(0) == "result");
+	auto result = conn.Execute("SELECT MyAggregate(i) AS result FROM (VALUES (1), (2), (3)) AS t(i)");
+	REQUIRE(result.GetSchema().GetFieldCount() == 1);
+	REQUIRE(result.GetSchema().GetFieldName(0) == "result");
 
 	auto chunk = result.FetchChunk();
 	REQUIRE(chunk);
@@ -235,9 +235,9 @@ TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
 		    .Register(ctx);
 	});
 
-	auto result = conn.Query("SELECT * FROM MyRangeFunction(0, 10, step => 2)");
-	REQUIRE(result.GetColumnCount() == 1);
-	REQUIRE(result.GetColumnName(0) == "i");
+	auto result = conn.Execute("SELECT * FROM MyRangeFunction(0, 10, step => 2)");
+	REQUIRE(result.GetSchema().GetFieldCount() == 1);
+	REQUIRE(result.GetSchema().GetFieldName(0) == "i");
 
 	auto chunk = result.FetchChunk();
 	REQUIRE(chunk);
@@ -309,7 +309,8 @@ TEST_CASE("Stable C++API: Copy Function", "[cpp_api]") {
 		    .Register(ctx);
 	});
 
-	conn.Query("COPY (SELECT i FROM range(5) t(i)) TO '" + out_path + "' (FORMAT my_copy, USE_TMP_FILE FALSE)").Drain();
+	conn.Execute("COPY (SELECT i FROM range(5) t(i)) TO '" + out_path + "' (FORMAT my_copy, USE_TMP_FILE FALSE)")
+	    .Drain();
 
 	// Read the summary back through the file system API and verify the full bind -> init -> batch -> flush ->
 	// finalize chain observed 1 column and 5 rows.
@@ -365,10 +366,10 @@ TEST_CASE("Stable C++API: Cast Function", "[cpp_api]") {
 		    .Register(ctx);
 	});
 
-	auto result = conn.Query("SELECT CAST(CAST(42 AS TEMPERATURE) AS BIGINT) AS result");
-	REQUIRE(result.GetColumnCount() == 1);
-	REQUIRE(result.GetColumnName(0) == "result");
-	REQUIRE(result.GetColumnType(0) == LogicalType::BIGINT());
+	auto result = conn.Execute("SELECT CAST(CAST(42 AS TEMPERATURE) AS BIGINT) AS result");
+	REQUIRE(result.GetSchema().GetFieldCount() == 1);
+	REQUIRE(result.GetSchema().GetFieldName(0) == "result");
+	REQUIRE(result.GetSchema().GetFieldType(0) == LogicalType::BIGINT());
 
 	auto chunk = result.FetchChunk();
 	auto vec = chunk.GetVector(0);
@@ -425,8 +426,8 @@ TEST_CASE("Stable C++-API: Column Data Single Scan", "[cpp_api]") {
 	// Produce 4100 rows of (a, b) where b == a * 10. This spans several internal
 	// chunks (> STANDARD_VECTOR_SIZE), so both append and scan iterate multiple times.
 	constexpr int64_t ROW_COUNT = 4100;
-	auto result = conn.Query("SELECT i AS a, i * 10 AS b FROM range(4100) t(i)");
-	REQUIRE(result.GetColumnCount() == 2);
+	auto result = conn.Execute("SELECT i AS a, i * 10 AS b FROM range(4100) t(i)");
+	REQUIRE(result.GetSchema().GetFieldCount() == 2);
 
 	// Drain the stream up front: chunks are appended twice below, and the
 	// result must be consumed outside WithTransaction (the transaction
@@ -499,8 +500,8 @@ TEST_CASE("Stable C++-API: Column Data Multi Scan", "[cpp_api]") {
 	auto conn = db.Connect();
 
 	constexpr int64_t ROW_COUNT = 4100;
-	auto result = conn.Query("SELECT i AS a, i * 10 AS b FROM range(4100) t(i)");
-	REQUIRE(result.GetColumnCount() == 2);
+	auto result = conn.Execute("SELECT i AS a, i * 10 AS b FROM range(4100) t(i)");
+	REQUIRE(result.GetSchema().GetFieldCount() == 2);
 
 	// Drain the stream before entering the transaction callback (which
 	// holds the context lock the stream needs).
@@ -557,7 +558,7 @@ TEST_CASE("Stable C++-API: Logging", "[cpp_api]") {
 
 	auto conn = db.Connect();
 
-	conn.Query("CALL enable_logging(storage = 'memory')").Drain();
+	conn.Execute("CALL enable_logging(storage = 'memory')").Drain();
 
 	conn.Log(LogLevel::LOG_INFO, "This is an informational message from a connection");
 
@@ -568,8 +569,9 @@ TEST_CASE("Stable C++-API: Logging", "[cpp_api]") {
 	});
 
 	// We don't have a good way to inspect error messages, cause we cant consume VARCHARs yet.
-	auto res = conn.Query("SELECT case when log_level = 'INFO' then 1 when log_level = 'WARNING' then 2 when log_level "
-	                      "= 'ERROR' then 3 else -1 end as level FROM duckdb_logs");
+	auto res =
+	    conn.Execute("SELECT case when log_level = 'INFO' then 1 when log_level = 'WARNING' then 2 when log_level "
+	                 "= 'ERROR' then 3 else -1 end as level FROM duckdb_logs");
 	auto chunk = res.FetchChunk();
 	REQUIRE(chunk);
 	auto vec = chunk.GetVector(0);
@@ -634,12 +636,12 @@ TEST_CASE("Stable C++-API: Log Storage", "[cpp_api]") {
 	});
 
 	// Activate logging and route it to the storage we just registered.
-	conn.Query("SET enable_logging = true;").Drain();
-	conn.Query("SET logging_storage = 'cpp_custom_storage';").Drain();
+	conn.Execute("SET enable_logging = true;").Drain();
+	conn.Execute("SET logging_storage = 'cpp_custom_storage';").Drain();
 
 	// Emit a couple of log entries with a known type/level/message.
-	conn.Query("SELECT write_log('first message', log_type := 'cpp_api_test', level := 'WARNING');").Drain();
-	conn.Query("SELECT write_log('second message', log_type := 'cpp_api_test', level := 'ERROR');").Drain();
+	conn.Execute("SELECT write_log('first message', log_type := 'cpp_api_test', level := 'WARNING');").Drain();
+	conn.Execute("SELECT write_log('second message', log_type := 'cpp_api_test', level := 'ERROR');").Drain();
 
 	// The callback should have captured exactly our two entries, in order.
 	REQUIRE(sink.messages.size() == 2);
@@ -672,7 +674,7 @@ TEST_CASE("Stable C++-API: step loop drains a multi-chunk result", "[cpp_api]") 
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	auto result = conn.Query("SELECT i FROM range(100000) t(i)");
+	auto result = conn.Execute("SELECT i FROM range(100000) t(i)");
 
 	idx_t total_rows = 0;
 	idx_t chunk_count = 0;
@@ -709,12 +711,12 @@ TEST_CASE("Stable C++-API: Drain applies side effects and reports rows changed",
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	REQUIRE(conn.Query("CREATE TABLE t (i INTEGER)").Drain() == 0);
-	REQUIRE(conn.Query("INSERT INTO t VALUES (1), (2), (3)").Drain() == 3);
-	REQUIRE(conn.Query("DELETE FROM t WHERE i = 1").Drain() == 1);
-	REQUIRE(conn.Query("SELECT i FROM range(1000) t(i)").Drain() == 0); // rows drained and discarded
+	REQUIRE(conn.Execute("CREATE TABLE t (i INTEGER)").Drain() == 0);
+	REQUIRE(conn.Execute("INSERT INTO t VALUES (1), (2), (3)").Drain() == 3);
+	REQUIRE(conn.Execute("DELETE FROM t WHERE i = 1").Drain() == 1);
+	REQUIRE(conn.Execute("SELECT i FROM range(1000) t(i)").Drain() == 0); // rows drained and discarded
 
-	auto result = conn.Query("SELECT i FROM t");
+	auto result = conn.Execute("SELECT i FROM t");
 	idx_t rows = 0;
 	while (auto chunk = result.FetchChunk()) {
 		rows += chunk.GetRowCount();
@@ -729,14 +731,14 @@ TEST_CASE("Stable C++-API: a busy connection refuses new work with RESOURCE_IN_U
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	auto live = conn.Query("SELECT i FROM range(100000) t(i)");
+	auto live = conn.Execute("SELECT i FROM range(100000) t(i)");
 
-	REQUIRE_THROWS_MATCHES(conn.Query("SELECT 1"), Exception, HasErrorCode(DUCKDB_V2_ERROR_RESOURCE_IN_USE));
+	REQUIRE_THROWS_MATCHES(conn.Execute("SELECT 1"), Exception, HasErrorCode(DUCKDB_V2_ERROR_RESOURCE_IN_USE));
 
 	// Draining the live result frees the connection.
 	while (live.FetchChunk()) {
 	}
-	auto second = conn.Query("SELECT 1");
+	auto second = conn.Execute("SELECT 1");
 	REQUIRE(second.FetchChunk());
 }
 
@@ -747,7 +749,7 @@ TEST_CASE("Stable C++-API: Interrupt cancels a running query", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	auto result = conn.Query("SELECT i FROM range(10000000) t(i)");
+	auto result = conn.Execute("SELECT i FROM range(10000000) t(i)");
 	conn.Interrupt();
 
 	// Steps observe the cancellation as the sticky CANCELLED status.
@@ -761,7 +763,7 @@ TEST_CASE("Stable C++-API: Interrupt cancels a running query", "[cpp_api]") {
 	REQUIRE_THROWS_MATCHES(result.FetchChunk(), Exception, HasErrorCode(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT));
 
 	// The cancelled result freed the connection.
-	REQUIRE(conn.Query("SELECT 1").Drain() == 0);
+	REQUIRE(conn.Execute("SELECT 1").Drain() == 0);
 }
 
 TEST_CASE("Stable C++-API: GetQueryProgress reports idle values when no query is active", "[cpp_api]") {
@@ -777,7 +779,7 @@ TEST_CASE("Stable C++-API: GetQueryProgress reports idle values when no query is
 	REQUIRE(progress.total_rows_to_process == 0);
 }
 
-TEST_CASE("Stable C++-API: ParseSQL iterates statements into Query", "[cpp_api]") {
+TEST_CASE("Stable C++-API: ParseSQL iterates statements into Execute", "[cpp_api]") {
 	using namespace duckdb_api;
 
 	Environment env;
@@ -787,7 +789,7 @@ TEST_CASE("Stable C++-API: ParseSQL iterates statements into Query", "[cpp_api]"
 	auto statements = conn.ParseSQL("SELECT 42; SELECT 84; SELECT 126");
 	int statement_count = 0;
 	while (auto statement = statements.Next()) {
-		auto result = conn.Query(std::move(statement));
+		auto result = conn.Execute(statement);
 		REQUIRE(result.FetchChunk());
 		result.Drain();
 		statement_count++;
@@ -797,9 +799,9 @@ TEST_CASE("Stable C++-API: ParseSQL iterates statements into Query", "[cpp_api]"
 	// Exhaustion is idempotent.
 	REQUIRE(!statements.Next());
 
-	// The string-taking Query is single-statement sugar.
-	REQUIRE_THROWS_MATCHES(conn.Query("SELECT 1; SELECT 2"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(conn.Query(""), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	// The string-taking Execute is single-statement sugar.
+	REQUIRE_THROWS_MATCHES(conn.Execute("SELECT 1; SELECT 2"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(conn.Execute(""), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 }
 
 TEST_CASE("Stable C++-API: Exception carries the code and message body", "[cpp_api]") {
@@ -811,7 +813,7 @@ TEST_CASE("Stable C++-API: Exception carries the code and message body", "[cpp_a
 
 	// Binder error: GetCode() is the identity, GetRawMessage() the unprefixed body.
 	try {
-		conn.Query("SELECT * FROM no_such_table");
+		conn.Execute("SELECT * FROM no_such_table");
 		FAIL("expected a Catalog error");
 	} catch (const Exception &ex) {
 		REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_DATABASE_CATALOG);
@@ -912,7 +914,7 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 
 	auto drain = [&](const char *sql) -> idx_t {
 		g_property_exec_rows = 0;
-		auto result = conn.Query(sql);
+		auto result = conn.Execute(sql);
 		while (auto chunk = result.FetchChunk()) {
 		}
 		return g_property_exec_rows.load();
@@ -948,8 +950,8 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 			input.SetFunctionName("range");
 			input.AddParameter(Value::FromI64(5));
 		});
-		auto result = conn.Query("SELECT * FROM cpp_repl_no_such_table");
-		REQUIRE(result.GetColumnCount() == 1);
+		auto result = conn.Execute("SELECT * FROM cpp_repl_no_such_table");
+		REQUIRE(result.GetSchema().GetFieldCount() == 1);
 		auto chunk = result.FetchChunk();
 		REQUIRE(chunk);
 		REQUIRE(chunk.GetRowCount() == 5);
@@ -967,7 +969,7 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 			REQUIRE(input.GetCatalogName().empty());
 			REQUIRE(input.GetSchemaName().empty());
 		});
-		REQUIRE_THROWS_MATCHES(conn.Query("SELECT * FROM cpp_repl_no_such_table"), Exception,
+		REQUIRE_THROWS_MATCHES(conn.Execute("SELECT * FROM cpp_repl_no_such_table"), Exception,
 		                       HasErrorCode(DUCKDB_V2_ERROR_DATABASE_CATALOG));
 	}
 
@@ -975,13 +977,13 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 		db.AddReplacementScan([](Database::ReplacementScanInput &input) {
 			throw Exception(DUCKDB_V2_ERROR_IO_GENERAL, "cpp replacement scan failure");
 		});
-		REQUIRE_THROWS_MATCHES(conn.Query("SELECT * FROM cpp_repl_no_such_table"), Exception,
+		REQUIRE_THROWS_MATCHES(conn.Execute("SELECT * FROM cpp_repl_no_such_table"), Exception,
 		                       HasErrorCode(DUCKDB_V2_ERROR_IO_GENERAL));
 	}
 
 	SECTION("callback failure: a generic exception becomes a binder error") {
 		db.AddReplacementScan([](Database::ReplacementScanInput &input) { throw std::runtime_error("plain failure"); });
-		REQUIRE_THROWS_MATCHES(conn.Query("SELECT * FROM cpp_repl_no_such_table"), Exception,
+		REQUIRE_THROWS_MATCHES(conn.Execute("SELECT * FROM cpp_repl_no_such_table"), Exception,
 		                       HasErrorCode(DUCKDB_V2_ERROR_QUERY_BINDER));
 	}
 
@@ -1002,10 +1004,10 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 		    },
 		    csv_path);
 
-		auto result = conn.Query("SELECT * FROM cpp_repl_csv_placeholder");
+		auto result = conn.Execute("SELECT * FROM cpp_repl_csv_placeholder");
 		// `sep => ','` split each line into two columns; a wrong separator would
 		// collapse them into one.
-		REQUIRE(result.GetColumnCount() == 2);
+		REQUIRE(result.GetSchema().GetFieldCount() == 2);
 		REQUIRE(count_rows(std::move(result)) == 3);
 	}
 
@@ -1030,8 +1032,8 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 		    },
 		    csv_path);
 
-		auto result = conn.Query("SELECT * FROM cpp_repl_ctx_placeholder");
-		REQUIRE(result.GetColumnCount() == 2);
+		auto result = conn.Execute("SELECT * FROM cpp_repl_ctx_placeholder");
+		REQUIRE(result.GetSchema().GetFieldCount() == 2);
 		REQUIRE(count_rows(std::move(result)) == 2);
 	}
 }
@@ -1292,7 +1294,7 @@ TEST_CASE("Stable C++-API: Arrow stream export", "[cpp_api]") {
 	auto conn = db.Connect();
 
 	SECTION("default batch yields all rows and a stable schema") {
-		auto result = conn.Query("SELECT i FROM range(100000) t(i)");
+		auto result = conn.Execute("SELECT i FROM range(100000) t(i)");
 		auto stream = result.ToArrowStream();
 		// ToArrowStream consumes the result.
 		REQUIRE_FALSE(static_cast<bool>(result));
@@ -1318,7 +1320,7 @@ TEST_CASE("Stable C++-API: Arrow stream export", "[cpp_api]") {
 	}
 
 	SECTION("batch_size coalesces into multiple arrays") {
-		auto result = conn.Query("SELECT i FROM range(100000) t(i)");
+		auto result = conn.Execute("SELECT i FROM range(100000) t(i)");
 		auto stream = result.ToArrowStream(10000);
 
 		int64_t rows = 0;
@@ -1340,7 +1342,7 @@ TEST_CASE("Stable C++-API: Arrow stream export", "[cpp_api]") {
 	}
 
 	SECTION("export over a partially consumed result yields the remainder") {
-		auto result = conn.Query("SELECT i FROM range(5000) t(i)");
+		auto result = conn.Execute("SELECT i FROM range(5000) t(i)");
 		// Consume the first engine chunk (2048 rows).
 		auto first = result.FetchChunk();
 		REQUIRE(static_cast<bool>(first));
@@ -1370,17 +1372,17 @@ TEST_CASE("Stable C++-API: Arrow stream export", "[cpp_api]") {
 
 	SECTION("the stream owns the connection until destroyed") {
 		{
-			auto result = conn.Query("SELECT i FROM range(10) t(i)");
+			auto result = conn.Execute("SELECT i FROM range(10) t(i)");
 			auto stream = result.ToArrowStream();
 			// The connection is busy while the stream is live.
-			REQUIRE_THROWS_MATCHES(conn.Query("SELECT 1"), Exception, HasErrorCode(DUCKDB_V2_ERROR_RESOURCE_IN_USE));
+			REQUIRE_THROWS_MATCHES(conn.Execute("SELECT 1"), Exception, HasErrorCode(DUCKDB_V2_ERROR_RESOURCE_IN_USE));
 		}
 		// Stream destroyed: the connection is free again.
-		REQUIRE(static_cast<bool>(conn.Query("SELECT 1").FetchChunk()));
+		REQUIRE(static_cast<bool>(conn.Execute("SELECT 1").FetchChunk()));
 	}
 
 	SECTION("operations on a moved-from stream throw") {
-		auto result = conn.Query("SELECT i FROM range(10) t(i)");
+		auto result = conn.Execute("SELECT i FROM range(10) t(i)");
 		auto stream = result.ToArrowStream();
 		auto moved = std::move(stream);
 		REQUIRE_FALSE(static_cast<bool>(stream));
@@ -1390,5 +1392,239 @@ TEST_CASE("Stable C++-API: Arrow stream export", "[cpp_api]") {
 		REQUIRE_THROWS_MATCHES(stream.GetSchema(schema), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 		ArrowArray array {};
 		REQUIRE_THROWS_MATCHES(stream.Next(array), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	}
+}
+
+TEST_CASE("Stable C++API: Bind", "[cpp_api][statement_bind]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE t(a INTEGER, b VARCHAR)").Drain();
+
+	auto iter = conn.ParseSQL("SELECT a, b FROM t WHERE a = $1");
+	auto stmt = iter.Next();
+	REQUIRE(static_cast<bool>(stmt));
+
+	auto sig = conn.Bind(stmt);
+	REQUIRE(sig.output.GetFieldCount() == 2);
+	REQUIRE(sig.output.GetFieldName(0) == "a");
+	REQUIRE(sig.output.GetFieldType(0) == LogicalType::INTEGER());
+	REQUIRE(sig.output.GetFieldName(1) == "b");
+	REQUIRE(sig.output.GetFieldType(1) == LogicalType::VARCHAR());
+	REQUIRE(sig.parameters.GetFieldCount() == 1);
+	REQUIRE(sig.parameters.GetFieldName(0) == "1");
+	REQUIRE(sig.parameters.GetFieldType(0) == LogicalType::INTEGER());
+
+	// Non-consuming: the statement is still alive and re-bindable.
+	REQUIRE(static_cast<bool>(stmt));
+	auto sig2 = conn.Bind(stmt);
+	REQUIRE(sig2.output.GetFieldCount() == 2);
+
+	// Dynamic PIVOT is rejected with INVALID_INPUT.
+	conn.Execute("CREATE TABLE sales(product VARCHAR, quarter VARCHAR, amount INTEGER)").Drain();
+	auto piter = conn.ParseSQL("PIVOT sales ON quarter USING sum(amount)");
+	auto pstmt = piter.Next();
+	REQUIRE_THROWS_MATCHES(conn.Bind(pstmt), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+}
+
+TEST_CASE("Stable C++API: QueryResult GetSchema", "[cpp_api][query_result]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto result = conn.Execute("SELECT 1 AS a, 'x' AS b");
+	auto schema = result.GetSchema();
+	REQUIRE(schema.GetFieldCount() == 2);
+	REQUIRE(schema.GetFieldName(0) == "a");
+	REQUIRE(schema.GetFieldName(1) == "b");
+	REQUIRE(schema.GetFieldType(0) == LogicalType::INTEGER());
+}
+
+namespace {
+using namespace duckdb_api;
+
+// Collect two columns of a result into rows, reading each column as its C type.
+template <class TA, class TB>
+std::vector<std::pair<TA, TB>> Collect2(QueryResult result, idx_t a, idx_t b) {
+	std::vector<std::pair<TA, TB>> rows;
+	while (auto chunk = result.FetchChunk()) {
+		auto va = chunk.GetVector(a);
+		auto vb = chunk.GetVector(b);
+		va.Flatten();
+		vb.Flatten();
+		auto pa = va.GetDataMutable<const TA>();
+		auto pb = vb.GetDataMutable<const TB>();
+		for (idx_t i = 0; i < chunk.GetRowCount(); i++) {
+			rows.emplace_back(pa[i], pb[i]);
+		}
+	}
+	return rows;
+}
+
+} // namespace
+
+TEST_CASE("Stable C++API: prepared statements", "[cpp_api][prepared]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE scores(id INTEGER, score INTEGER)").Drain();
+	conn.Execute("INSERT INTO scores VALUES (1, 40), (2, 55), (3, 70), (4, 90)").Drain();
+
+	// Value is move-only, so a parameter list is built by move, not brace-init.
+	auto Params = [](std::initializer_list<int64_t> values) {
+		std::vector<Value> params;
+		for (auto value : values) {
+			params.push_back(Value::FromI64(value));
+		}
+		return params;
+	};
+
+	SECTION("bind once, execute many with different parameters") {
+		// Parse and bind once, then reuse across executions (binding neither executes
+		// nor consumes): the parse-once, bind-once, execute-many pattern.
+		auto iter = conn.ParseSQL("SELECT id, score FROM scores WHERE score >= $1 ORDER BY id");
+		auto stmt = iter.Next();
+
+		auto sig = conn.Bind(stmt);
+		REQUIRE(sig.output.GetFieldCount() == 2);
+		REQUIRE(sig.output.GetFieldName(0) == "id");
+		REQUIRE(sig.output.GetFieldType(0) == LogicalType::INTEGER());
+		REQUIRE(sig.output.GetFieldName(1) == "score");
+		REQUIRE(sig.parameters.GetFieldCount() == 1);
+		REQUIRE(sig.parameters.GetFieldName(0) == "1");                    // $1 -> "1"
+		REQUIRE(sig.parameters.GetFieldType(0) == LogicalType::INTEGER()); // inferred from score >= $1
+
+		// Execute with one value, then another: different results, same statement, no
+		// re-parse and no re-bind.
+		auto high = Collect2<int32_t, int32_t>(conn.Execute(stmt, Params({50})), 0, 1);
+		REQUIRE(high.size() == 3);
+		REQUIRE(high[0].first == 2);
+		REQUIRE(high[0].second == 55);
+		REQUIRE(high[2].first == 4);
+
+		auto higher = Collect2<int32_t, int32_t>(conn.Execute(stmt, Params({80})), 0, 1);
+		REQUIRE(higher.size() == 1);
+		REQUIRE(higher[0].first == 4);
+		REQUIRE(higher[0].second == 90);
+
+		// Still alive and re-bindable after executing.
+		REQUIRE(static_cast<bool>(stmt));
+		REQUIRE(conn.Bind(stmt).parameters.GetFieldCount() == 1);
+	}
+
+	SECTION("positional parameters bind in order") {
+		auto iter = conn.ParseSQL("SELECT id, score FROM scores WHERE score >= $1 AND score < $2 ORDER BY id");
+		auto stmt = iter.Next();
+		REQUIRE(conn.Bind(stmt).parameters.GetFieldCount() == 2);
+
+		// $1 = 50, $2 = 80 -> 50 <= score < 80.
+		auto rows = Collect2<int32_t, int32_t>(conn.Execute(stmt, Params({50, 80})), 0, 1);
+		REQUIRE(rows.size() == 2);
+		REQUIRE(rows[0].first == 2);
+		REQUIRE(rows[0].second == 55);
+		REQUIRE(rows[1].first == 3);
+		REQUIRE(rows[1].second == 70);
+	}
+
+	SECTION("a prepared DML statement reused to insert rows") {
+		conn.Execute("CREATE TABLE log(v INTEGER)").Drain();
+		auto iter = conn.ParseSQL("INSERT INTO log VALUES ($1)");
+		auto stmt = iter.Next();
+
+		auto sig = conn.Bind(stmt);
+		REQUIRE(sig.parameters.GetFieldCount() == 1);
+		REQUIRE(sig.output.GetFieldCount() == 1); // the changed-rows count column
+
+		// Each execution inserts one row and reports one changed row.
+		REQUIRE(conn.Execute(stmt, Params({10})).Drain() == 1);
+		REQUIRE(conn.Execute(stmt, Params({20})).Drain() == 1);
+		REQUIRE(conn.Execute(stmt, Params({30})).Drain() == 1);
+
+		auto summary = Collect2<int64_t, int32_t>(conn.Execute("SELECT count(*) AS c, max(v) AS m FROM log"), 0, 1);
+		REQUIRE(summary.size() == 1);
+		REQUIRE(summary[0].first == 3);   // three rows inserted
+		REQUIRE(summary[0].second == 30); // last value
+	}
+}
+
+TEST_CASE("Stable C++API: PreparedStatement handle", "[cpp_api][prepared_statement]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE t(x INTEGER)").Drain();
+	conn.Execute("INSERT INTO t VALUES (1),(2),(3),(4)").Drain();
+
+	// Value is move-only, so a parameter list is built by move.
+	auto Params = [](std::initializer_list<int64_t> values) {
+		std::vector<Value> params;
+		for (auto value : values) {
+			params.push_back(Value::FromI64(value));
+		}
+		return params;
+	};
+
+	auto Prepare = [&](const std::string &sql, bool require_cacheable = false) {
+		auto iter = conn.ParseSQL(sql);
+		auto stmt = iter.Next();
+		return conn.Prepare(stmt, require_cacheable);
+	};
+
+	SECTION("prepare once, execute many with different parameters") {
+		auto prepared = Prepare("SELECT x FROM t WHERE x > $1 ORDER BY x");
+		auto first = Collect2<int32_t, int32_t>(prepared.Execute(Params({2})), 0, 0);
+		REQUIRE(first.size() == 2);
+		REQUIRE(first[0].first == 3);
+		REQUIRE(first[1].first == 4);
+		// Same handle, different value: non-consuming.
+		auto second = Collect2<int32_t, int32_t>(prepared.Execute(Params({0})), 0, 0);
+		REQUIRE(second.size() == 4);
+		REQUIRE(second[0].first == 1);
+		REQUIRE(second[3].first == 4);
+	}
+
+	SECTION("ReusesPlan reports the honest cache signal") {
+		REQUIRE(Prepare("SELECT 42").ReusesPlan() == true);
+		REQUIRE(Prepare("SELECT $1::INTEGER + $2::INTEGER").ReusesPlan() == true);
+		REQUIRE(Prepare("SELECT $1 + $2").ReusesPlan() == false);
+		REQUIRE(Prepare("SELECT * FROM t WHERE x = $1").ReusesPlan() == false);
+	}
+
+	SECTION("require_cacheable accepts a cacheable plan and rejects an uncacheable one") {
+		// Cacheable: succeeds.
+		auto ok = Prepare("SELECT $1::INTEGER + $2::INTEGER", true);
+		REQUIRE(ok.ReusesPlan() == true);
+		// Uncacheable: throws INVALID_INPUT.
+		bool threw = false;
+		try {
+			Prepare("SELECT * FROM t WHERE x = $1", true);
+		} catch (const Exception &ex) {
+			threw = true;
+			REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_INVALID_INPUT);
+		}
+		REQUIRE(threw);
+	}
+
+	SECTION("no-parameter execute") {
+		auto prepared = Prepare("SELECT x FROM t ORDER BY x");
+		auto rows = Collect2<int32_t, int32_t>(prepared.Execute(), 0, 0);
+		REQUIRE(rows.size() == 4);
+	}
+
+	SECTION("prepared DML reused reports rows changed") {
+		conn.Execute("CREATE TABLE log(v INTEGER)").Drain();
+		auto prepared = Prepare("INSERT INTO log VALUES ($1)");
+		REQUIRE(prepared.Execute(Params({10})).Drain() == 1);
+		REQUIRE(prepared.Execute(Params({20})).Drain() == 1);
+		auto summary = Collect2<int64_t, int32_t>(conn.Execute("SELECT count(*) AS c, max(v) AS m FROM log"), 0, 1);
+		REQUIRE(summary[0].first == 2);
+		REQUIRE(summary[0].second == 20);
 	}
 }

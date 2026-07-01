@@ -32,6 +32,24 @@ DUCKDB_V2_RESULT_TYPE MapResultType(StatementReturnType t) {
 // ResultWrapperV2 state machine
 // ---------------------------------------------------------------------------
 
+void ResultWrapperV2::BeginPending(unique_ptr<PendingQueryResult> next_pending, bool is_principal) {
+	if (next_pending->HasError()) {
+		// Re-throw the typed ErrorData so the exception's ExceptionType is
+		// preserved and routed through GetErrorCodeFromExceptionType.
+		next_pending->GetErrorObject().Throw();
+	}
+	principal_active = is_principal;
+	if (is_principal) {
+		types = next_pending->types;
+		names = next_pending->names;
+		statement_type = next_pending->statement_type;
+		properties = next_pending->properties;
+		metadata_available = true;
+	}
+	pending = std::move(next_pending);
+	state = State::PENDING;
+}
+
 void ResultWrapperV2::StartNextFragment() {
 	D_ASSERT(fragment_index < fragments.size());
 	if (fragment_index > 0 && context->IsInterrupted()) {
@@ -42,15 +60,21 @@ void ResultWrapperV2::StartNextFragment() {
 		// interrupt must not poison a new query.)
 		throw InterruptException();
 	}
+	idx_t this_index = fragment_index;
 	auto stmt = std::move(fragments[fragment_index++]);
 	bool is_last = fragment_index == fragments.size();
-	auto next_pending = context->PendingQuery(std::move(stmt), QueryResultOutputType::ALLOW_STREAMING);
-	if (next_pending->HasError()) {
-		// Re-throw the typed ErrorData so the exception's ExceptionType is
-		// preserved and routed through GetErrorCodeFromExceptionType.
-		next_pending->GetErrorObject().Throw();
-	}
-	bool has_result = next_pending->properties.return_type == StatementReturnType::QUERY_RESULT;
+	// Parameters bind only to the first fragment (statement_execute rejects them on
+	// a statement that expands, so that fragment is the user's statement). Later
+	// fragments take the no-values path.
+	auto next_pending =
+	    (this_index == 0 && !param_values.empty())
+	        ? context->PendingQuery(std::move(stmt), param_values, QueryResultOutputType::ALLOW_STREAMING)
+	        : context->PendingQuery(std::move(stmt), QueryResultOutputType::ALLOW_STREAMING);
+	// Principal selection is a property of the fragment group; compute it here, then
+	// hand the pending to the shared BeginPending seam. A HasError() pending is left
+	// for BeginPending to raise (return_type is meaningless on it).
+	bool has_result =
+	    !next_pending->HasError() && next_pending->properties.return_type == StatementReturnType::QUERY_RESULT;
 	if (principal_seen && has_result) {
 		// ClientContext::Query would chain these as separate results with
 		// separate schemas; a single stream cannot. No known expansion
@@ -61,19 +85,11 @@ void ResultWrapperV2::StartNextFragment() {
 	// Result selection mirrors ClientContext::Query: the caller sees the
 	// first row-producing fragment, or the last fragment when none
 	// produces rows.
-	principal_active = has_result || (is_last && !principal_seen);
+	bool is_principal = has_result || (is_last && !principal_seen);
 	if (has_result) {
 		principal_seen = true;
 	}
-	if (principal_active) {
-		types = next_pending->types;
-		names = next_pending->names;
-		statement_type = next_pending->statement_type;
-		properties = next_pending->properties;
-		metadata_available = true;
-	}
-	pending = std::move(next_pending);
-	state = State::PENDING;
+	BeginPending(std::move(next_pending), is_principal);
 }
 
 void ResultWrapperV2::RequireMetadata() const {
@@ -332,17 +348,19 @@ unique_ptr<DataChunk> ResultWrapperV2::FetchChunkBlocking() {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn,
-                                                duckdb_v2_sql_statement_handle *statement,
-                                                duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_statement_execute(duckdb_v2_connection_handle conn,
+                                                 duckdb_v2_sql_statement_handle statement,
+                                                 const duckdb_v2_value_handle *parameter_values, idx_t parameter_count,
+                                                 duckdb_v2_result_handle *out_result,
+                                                 duckdb_v2_error_info_handle *err) {
 	if (out_result) {
 		*out_result = nullptr;
 	}
-	// The two refusals below never reach the engine and leave the
-	// statement intact (the spec commits to this).
-	if (!conn || !statement || !*statement || !out_result) {
+	// The refusals below never reach the engine and leave the statement intact
+	// (the spec commits to this).
+	if (!conn || !statement || !out_result || (parameter_count > 0 && !parameter_values)) {
 		return duckdb::WithErrorHandler(
-		    err, [&]() { throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_query"); });
+		    err, [&]() { throw duckdb::InvalidInputException("null argument to duckdb_v2_statement_execute"); });
 	}
 	auto *connection = duckdb::ToConn(conn);
 	auto wrapper = duckdb::make_uniq<duckdb::ResultWrapperV2>();
@@ -366,15 +384,21 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn
 	// clearing interrupt_state at query begin).
 	wrapper->busy_slot->cancel_requested.store(false, std::memory_order_relaxed);
 	return duckdb::WithErrorHandler(err, [&]() {
-		// Transfer: mirror the engine, which takes the statement by-value
-		// unique_ptr and consumes it on success and prepare-time failure
-		// alike.
-		duckdb::unique_ptr<duckdb::SQLStatement> stmt(duckdb::ToSqlStatement(*statement));
-		*statement = nullptr;
+		// Borrowed, not consumed: execute a copy so the caller keeps the original.
+		auto stmt = duckdb::ToSqlStatement(statement)->Copy();
+		// Positional values bound as constants; key "1".."N" is the engine's
+		// positional prepared-statement convention, so dense $1..$N and ? work directly.
+		for (duckdb::idx_t i = 0; i < parameter_count; i++) {
+			if (!parameter_values[i]) {
+				throw duckdb::InvalidInputException("null parameter value passed to duckdb_v2_statement_execute");
+			}
+			wrapper->param_values[duckdb::Identifier(std::to_string(i + 1))] =
+			    duckdb::BoundParameterData(*duckdb::ToValue(parameter_values[i]));
+		}
 		// Statement-level preprocessing (pragma reparsing, expansion
 		// unpacking, transaction wrapping): one user statement can expand
 		// into a group of engine statements that the wrapper executes in
-		// order. parse_sql deliberately leaves this to connection_query so
+		// order. parse_sql deliberately leaves this to statement_execute so
 		// parsing stays binder-free and a group is never split across the
 		// API boundary.
 		wrapper->fragments.push_back(std::move(stmt));
@@ -383,6 +407,13 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_query(duckdb_v2_connection_handle conn
 			throw duckdb::InvalidInputException("statement preprocessing yielded no executable statements");
 		}
 		wrapper->fragment_count = wrapper->fragments.size();
+		// Reject parameters on a statement that expands into a group: the values would
+		// bind to the first fragment, an injected BEGIN, not the user's statement. (A
+		// statement can carry a parameter and still expand, e.g. a volatile DEFAULT.)
+		if (!wrapper->param_values.empty() && wrapper->fragments.size() > 1) {
+			throw duckdb::InvalidInputException(
+			    "parameters are not supported for a statement that expands into multiple engine statements");
+		}
 		// Detect whether preprocessing wrapped this group in its own
 		// transaction (autocommit input expanded to BEGIN ... COMMIT).
 		// Preprocessing only injects the wrap for a multi-fragment group, as a
@@ -517,47 +548,21 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_get_statement_type(duckdb_v2_result_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_column_count(duckdb_v2_result_handle result, idx_t *out_count,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_result_get_schema(duckdb_v2_result_handle result, duckdb_v2_schema_handle *out_schema,
+                                                 duckdb_v2_error_info_handle *err) {
+	if (out_schema) {
+		*out_schema = nullptr;
+	}
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!result || !out_count) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_count");
+		if (!result || !out_schema) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_get_schema");
 		}
 		auto *r = duckdb::ToResult(result);
 		r->RequireMetadata();
-		*out_count = r->types.size();
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_result_column_name(duckdb_v2_result_handle result, idx_t index, duckdb_v2_str *out_name,
-                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!result || !out_name) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_name");
+		auto schema = duckdb::make_uniq<duckdb::SchemaWrapperV2>();
+		for (duckdb::idx_t i = 0; i < r->types.size(); i++) {
+			schema->fields.push_back({r->names[i], r->types[i]});
 		}
-		auto *r = duckdb::ToResult(result);
-		r->RequireMetadata();
-		if (index >= r->names.size()) {
-			throw duckdb::InvalidInputException("result column index out of range");
-		}
-		*out_name = duckdb::ToStr(r->names[index]);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_result_column_logical_type(duckdb_v2_result_handle result, idx_t index,
-                                                          duckdb_v2_logical_type_handle *out_type,
-                                                          duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!result || !out_type) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_column_logical_type");
-		}
-		*out_type = nullptr;
-		auto *r = duckdb::ToResult(result);
-		r->RequireMetadata();
-		if (index >= r->types.size()) {
-			throw duckdb::InvalidInputException("result column index out of range");
-		}
-		auto *lt = new duckdb::LogicalType(r->types[index]);
-		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(lt);
+		*out_schema = reinterpret_cast<_duckdb_v2_schema *>(schema.release());
 	});
 }

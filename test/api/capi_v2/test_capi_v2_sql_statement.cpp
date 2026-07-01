@@ -5,11 +5,41 @@
 #include <string>
 
 // ---------------------------------------------------------------------------
-// V2 sql_statement tests: parse_sql, the statement iterator, and the
-// transfer of statements into connection_query.
+// V2 sql_statement tests: parse_sql, the statement iterator, and executing
+// statements via statement_execute (non-consuming: it runs a copy, so the
+// statement stays alive and re-executable, and the caller destroys it).
 // ---------------------------------------------------------------------------
 
-namespace {} // namespace
+namespace {
+
+// Parse exactly one statement from sql (raw, unbound). Unique name to avoid a
+// unity-build clash with the same-shaped helper in other test files.
+duckdb_v2_sql_statement_handle StmtParseOne(duckdb_v2_connection_handle conn, const char *sql) {
+	duckdb_v2_statement_iterator_handle iter = nullptr;
+	REQUIRE(duckdb_v2_parse_sql(conn, sql, &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_sql_statement_handle stmt = nullptr;
+	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(stmt != nullptr);
+	duckdb_v2_statement_iterator_destroy(&iter);
+	return stmt;
+}
+
+// Reads the first row's column 0 as int64 and pins end-of-stream, for a single-row
+// scalar SELECT (e.g. SELECT $1 + $2).
+int64_t StmtScalarI64(duckdb_v2_result_handle r) {
+	auto chunk = V2StepChunk(r);
+	REQUIRE(chunk != nullptr);
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_view view {};
+	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
+	int64_t value = reinterpret_cast<const int64_t *>(view.data)[0];
+	duckdb_v2_data_chunk_destroy(&chunk);
+	REQUIRE(V2StepChunk(r) == nullptr); // single row only
+	return value;
+}
+
+} // namespace
 
 // ===========================================================================
 // The canonical loop: parse a multi-statement string, execute each
@@ -31,10 +61,11 @@ TEST_CASE("V2: parse_sql iterates a multi-statement string", "[capi_v2][sql_stat
 			break; // exhausted
 		}
 		duckdb_v2_result_handle r = nullptr;
-		REQUIRE(duckdb_v2_connection_query(fx.conn, &stmt, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(stmt == nullptr); // consumed by the transfer
+		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(stmt != nullptr); // not consumed: a copy was executed
 		REQUIRE(V2DrainRowCount(r) == 1);
 		duckdb_v2_result_destroy(&r);
+		duckdb_v2_sql_statement_destroy(&stmt);
 		statement_count++;
 	}
 	REQUIRE(statement_count == 3);
@@ -70,11 +101,14 @@ TEST_CASE("V2: statements are independently owned", "[capi_v2][sql_statement]") 
 	duckdb_v2_statement_iterator_destroy(&iter);
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fx.conn, &first, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, first, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2DrainRowCount(r) == 1);
 	duckdb_v2_result_destroy(&r);
 
-	// The second statement is never executed; destroy it directly.
+	// Both statements are caller-owned; the first survived its execution
+	// (non-consuming) and the second was never executed. Destroy each directly.
+	REQUIRE(duckdb_v2_sql_statement_destroy(&first) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(first == nullptr);
 	REQUIRE(duckdb_v2_sql_statement_destroy(&second) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(second == nullptr);
 }
@@ -132,24 +166,28 @@ TEST_CASE("V2: no-statement input parses to an exhausted iterator", "[capi_v2][s
 }
 
 // ===========================================================================
-// Transfer semantics at connection_query: consumed on success and on
-// prepare-time failure; left intact by the busy and null-arg refusals.
+// statement_execute is non-consuming: it executes a copy, so the statement
+// survives success and prepare-time failure alike and can be executed again.
+// The busy and null-arg refusals never reach the engine.
 // ===========================================================================
 
-TEST_CASE("V2: connection_query consumes the statement on prepare failure", "[capi_v2][sql_statement]") {
+TEST_CASE("V2: statement_execute leaves the statement intact on prepare failure", "[capi_v2][sql_statement]") {
 	V2EnvFixture fx;
 
-	duckdb_v2_statement_iterator_handle iter = nullptr;
-	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELECT * FROM no_such_table", &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_sql_statement_handle stmt = nullptr;
-	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(stmt != nullptr);
-	duckdb_v2_statement_iterator_destroy(&iter);
+	auto stmt = StmtParseOne(fx.conn, "SELECT * FROM no_such_table");
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fx.conn, &stmt, &r, nullptr) == DUCKDB_V2_ERROR_DATABASE_CATALOG);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	REQUIRE(r == nullptr);
-	REQUIRE(stmt == nullptr); // consumed: the engine took ownership
+	REQUIRE(stmt != nullptr); // not consumed: only the copy was
+
+	// The same statement now succeeds once the table exists (a copy is bound fresh).
+	V2ExecSQL(fx.conn, "CREATE TABLE no_such_table(i INTEGER)");
+	V2ExecSQL(fx.conn, "INSERT INTO no_such_table VALUES (1), (2)");
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2DrainRowCount(r) == 2);
+	duckdb_v2_result_destroy(&r);
+	duckdb_v2_sql_statement_destroy(&stmt);
 }
 
 TEST_CASE("V2: the busy refusal leaves the statement intact", "[capi_v2][sql_statement]") {
@@ -158,24 +196,109 @@ TEST_CASE("V2: the busy refusal leaves the statement intact", "[capi_v2][sql_sta
 	duckdb_v2_result_handle live = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT i FROM range(100000) t(i)", &live, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_statement_iterator_handle iter = nullptr;
-	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELECT 1", &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_sql_statement_handle stmt = nullptr;
-	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_statement_iterator_destroy(&iter);
+	auto stmt = StmtParseOne(fx.conn, "SELECT 1");
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_connection_query(fx.conn, &stmt, &r, nullptr) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
-	REQUIRE(stmt != nullptr); // not consumed: the engine was never reached
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
+	REQUIRE(stmt != nullptr); // intact: the engine was never reached
 
 	// Draining the live result frees the connection; the same statement
 	// then runs.
 	REQUIRE(V2DrainRowCount(live) == 100000);
 	duckdb_v2_result_destroy(&live);
-	REQUIRE(duckdb_v2_connection_query(fx.conn, &stmt, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(stmt == nullptr);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(stmt != nullptr); // still intact (non-consuming)
 	REQUIRE(V2DrainRowCount(r) == 1);
 	duckdb_v2_result_destroy(&r);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+// ===========================================================================
+// Parameter binding: positional values fold in as constants, and the same
+// statement re-executes with a different value set.
+// ===========================================================================
+
+TEST_CASE("V2: statement_execute binds positional parameters", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+
+	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
+
+	auto make_int = [](int64_t v) {
+		duckdb_v2_value_handle val = nullptr;
+		REQUIRE(duckdb_v2_value_create_int64(v, &val, nullptr) == DUCKDB_V2_ERROR_NONE);
+		return val;
+	};
+
+	// First execution: 10 + 20 = 30.
+	duckdb_v2_value_handle a = make_int(10);
+	duckdb_v2_value_handle b = make_int(20);
+	duckdb_v2_value_handle params[2] = {a, b};
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(r) == 30);
+	duckdb_v2_result_destroy(&r);
+
+	// Re-execute the same statement with a different value set (non-consuming).
+	duckdb_v2_value_handle c = make_int(100);
+	duckdb_v2_value_handle d = make_int(1);
+	duckdb_v2_value_handle params2[2] = {c, d};
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params2, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(r) == 101);
+	duckdb_v2_result_destroy(&r);
+
+	duckdb_v2_value_destroy(&a);
+	duckdb_v2_value_destroy(&b);
+	duckdb_v2_value_destroy(&c);
+	duckdb_v2_value_destroy(&d);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+TEST_CASE("V2: bound parameter values may be destroyed before the result is consumed", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+
+	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
+	duckdb_v2_value_handle a = nullptr, b = nullptr;
+	REQUIRE(duckdb_v2_value_create_int64(10, &a, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_value_create_int64(20, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle params[2] = {a, b};
+
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	// The values are copied in at execute, so destroying them before stepping
+	// the (lazy) result must not affect it.
+	duckdb_v2_value_destroy(&a);
+	duckdb_v2_value_destroy(&b);
+	REQUIRE(StmtScalarI64(r) == 30);
+
+	duckdb_v2_result_destroy(&r);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+TEST_CASE("V2: statement_execute rejects parameters on a statement that expands", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	V2ExecSQL(fx.conn, "CREATE TABLE et(i INTEGER)");
+	V2ExecSQL(fx.conn, "INSERT INTO et VALUES (1), (2), (3)");
+
+	// A volatile DEFAULT makes ALTER ADD COLUMN expand into BEGIN/.../COMMIT; the
+	// parameter would bind against the injected BEGIN, so the call is refused.
+	auto stmt = StmtParseOne(fx.conn, "ALTER TABLE et ADD COLUMN c INTEGER DEFAULT ((random() * 0)::INTEGER + $1)");
+	duckdb_v2_value_handle v = nullptr;
+	REQUIRE(duckdb_v2_value_create_int64(40, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle params[1] = {v};
+
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params, 1, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(r == nullptr);
+
+	// Rejected before any fragment ran: the table is untouched, the connection usable.
+	duckdb_v2_result_handle check = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT count(*) FROM et", &check, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(check) == 3);
+	duckdb_v2_result_destroy(&check);
+
+	duckdb_v2_value_destroy(&v);
+	duckdb_v2_sql_statement_destroy(&stmt);
 }
 
 // ===========================================================================
@@ -197,10 +320,13 @@ TEST_CASE("V2: sql_statement null-arg rejection and null-safe destroys", "[capi_
 	REQUIRE(duckdb_v2_statement_iterator_next(iter, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_statement_iterator_destroy(&iter);
 
-	// connection_query rejects a NULL statement handle and a NULL slot,
-	// leaving any statement intact.
-	REQUIRE(duckdb_v2_connection_query(fx.conn, nullptr, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_connection_query(fx.conn, &stmt, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT); // *stmt == NULL
+	// statement_execute rejects a NULL statement, a NULL out_result, and a
+	// positive parameter_count paired with NULL values.
+	auto valid = StmtParseOne(fx.conn, "SELECT 1");
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, valid, nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, valid, nullptr, 2, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	duckdb_v2_sql_statement_destroy(&valid);
 
 	// Destroys are null-safe.
 	REQUIRE(duckdb_v2_sql_statement_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);

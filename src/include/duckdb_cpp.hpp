@@ -352,11 +352,49 @@ private:
 	explicit StatementIterator(void *impl);
 };
 
+class QueryResult;
+class Value;
+
+// A statement bound and planned once, executable repeatedly. Produced by
+// Connection::Prepare. Unlike Connection::Execute (stateless, re-binds each call)
+// it MAY reuse its compiled plan across executions (see ReusesPlan). Execution
+// returns the same QueryResult, with identical streaming / draining behaviour.
+class PreparedStatement final : public detail::Handle<PreparedStatement> {
+	friend detail::Factory;
+
+public:
+	PreparedStatement(PreparedStatement &&) noexcept = default;
+	PreparedStatement &operator=(PreparedStatement &&) noexcept = default;
+
+	~PreparedStatement() override;
+
+	// Executes with positional parameters ($1 = parameters[0]), returning a lazy
+	// streaming result. Non-consuming, re-executable. Throws RESOURCE_IN_USE while a
+	// live result exists on the connection.
+	QueryResult Execute(const Value *parameters, idx_t parameter_count);
+	// No-parameter convenience.
+	QueryResult Execute();
+	// std::vector convenience (defined inline below, once Value and QueryResult are
+	// complete, to keep std::vector off the compiled boundary).
+	QueryResult Execute(const std::vector<Value> &parameters);
+
+	// True if it reuses its compiled plan across executions, false if it re-binds
+	// each time (no faster than Connection::Execute). A static property of the plan.
+	bool ReusesPlan() const;
+
+private:
+	explicit PreparedStatement(void *impl);
+};
+
 //----------------------------------------------------------------------------------------------------------------------
 // Connection
 //----------------------------------------------------------------------------------------------------------------------
 
 class QueryResult;
+class PreparedStatement;
+struct Signature;
+class Schema;
+class Value;
 
 class Connection final : public detail::Handle<Connection> {
 	friend detail::Factory;
@@ -399,14 +437,31 @@ public:
 		return ParseSQL(sql.c_str());
 	}
 
-	// Starts lazy, streaming execution of a parsed statement; nothing runs
-	// until the result is stepped. The statement is consumed. Throws
+	// Executes a parsed statement, returning a lazy streaming result; nothing runs
+	// until the result is stepped. Borrowed (executed via a copy), not consumed, so
+	// re-executable. parameters bind positionally ($1 = parameters[0]). Throws
 	// RESOURCE_IN_USE while a live result exists.
-	QueryResult Query(SqlStatement statement);
+	QueryResult Execute(const SqlStatement &statement, const Value *parameters, idx_t parameter_count);
+	// No-parameter convenience.
+	QueryResult Execute(const SqlStatement &statement);
+	// std::vector convenience (defined inline below, once Value is complete, to keep
+	// std::vector off the compiled boundary).
+	QueryResult Execute(const SqlStatement &statement, const std::vector<Value> &parameters);
 
-	// Single-statement convenience over ParseSQL + Query: throws
-	// INVALID_INPUT unless the input contains exactly one statement.
-	QueryResult Query(const std::string &sql);
+	// Single-statement SQL convenience over ParseSQL + Execute: throws INVALID_INPUT
+	// unless the input contains exactly one statement.
+	QueryResult Execute(const std::string &sql);
+
+	// Binds a parsed statement without executing, returning its signature (output
+	// schema of result columns, input schema of parameter types). Borrowed, not
+	// consumed.
+	Signature Bind(const SqlStatement &statement) const;
+
+	// Prepares a parsed statement into a reusable cached-execution handle, executed
+	// repeatedly via PreparedStatement::Execute. Borrowed (AST copied), not consumed.
+	// When require_cacheable is set, throws INVALID_INPUT unless the plan will be
+	// reused across executions (see PreparedStatement::ReusesPlan).
+	PreparedStatement Prepare(const SqlStatement &statement, bool require_cacheable = false) const;
 
 	// Requests cancellation of the active query. Safe to call from any
 	// thread; a no-op when no query is active.
@@ -541,6 +596,40 @@ public:
 
 private:
 	explicit LogicalType(void *impl);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Schema
+//----------------------------------------------------------------------------------------------------------------------
+
+// An ordered (name, type) row schema: a statement's input (parameters) or output
+// (result columns), or a result's columns. Field names may repeat or be empty,
+// and the list may be empty.
+class Schema final : public detail::Handle<Schema> {
+	friend detail::Factory;
+
+public:
+	Schema(Schema &&) noexcept = default;
+	Schema &operator=(Schema &&) noexcept = default;
+
+	~Schema() override;
+
+	// Number of fields.
+	idx_t GetFieldCount() const;
+	// Borrowed field name, valid for this Schema's lifetime; empty for an absent name.
+	std::string_view GetFieldName(idx_t index) const;
+	// An owned copy of the field type.
+	LogicalType GetFieldType(idx_t index) const;
+
+private:
+	explicit Schema(void *impl);
+};
+
+// A bound statement's signature: its output schema (result columns) and input
+// schema (parameter types). Returned by Connection::Bind.
+struct Signature {
+	Schema output;
+	Schema parameters;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -975,9 +1064,8 @@ public:
 
 	~QueryResult() override;
 
-	auto GetColumnCount() const -> idx_t;
-	auto GetColumnName(idx_t index) const -> std::string_view;
-	auto GetColumnType(idx_t index) const -> LogicalType;
+	// The result's output schema (its column names and types) as one owned Schema.
+	auto GetSchema() const -> Schema;
 
 	// The streaming primitive, built for async runtimes: runs a bounded
 	// unit of execution work and returns without blocking. Execution
@@ -1007,6 +1095,16 @@ public:
 private:
 	explicit QueryResult(void *impl);
 };
+
+// Defined here (not in-class) now that Value and QueryResult are complete: the
+// inline std::vector forwarder keeps std::vector off the compiled boundary.
+inline QueryResult Connection::Execute(const SqlStatement &statement, const std::vector<Value> &parameters) {
+	return Execute(statement, parameters.data(), parameters.size());
+}
+
+inline QueryResult PreparedStatement::Execute(const std::vector<Value> &parameters) {
+	return Execute(parameters.data(), parameters.size());
+}
 
 //----------------------------------------------------------------------------------------------------------------------
 // Log Storage

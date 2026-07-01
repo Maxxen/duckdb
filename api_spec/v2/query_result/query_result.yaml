@@ -5,7 +5,7 @@ module: query_result
 # Row-data access (chunks and typed vector views) lives in the data_chunk
 # and vector modules.
 #
-# connection_query() takes a statement parsed by the sql_statement
+# statement_execute() takes a statement parsed by the sql_statement
 # module, prepares it, and returns immediately; nothing executes until
 # the result is stepped. The primitive is result_step: non-blocking,
 # runs a bounded amount of execution work, reports a RESULT_STEP_STATUS.
@@ -25,7 +25,7 @@ module: query_result
 #
 # A connection runs one result at a time. While a live result exists
 # (one that is not finished, cancelled, errored, or destroyed),
-# connection_query refuses with ERROR_RESOURCE_IN_USE. For concurrent
+# statement_execute refuses with ERROR_RESOURCE_IN_USE. For concurrent
 # queries, open another connection.
 #
 # The result handle carries the schema (column names and types), the
@@ -33,7 +33,7 @@ module: query_result
 # metadata" in the getter descriptions below means: valid before the
 # first step, during consumption, and after the stream ends.
 #
-# Statement expansion: connection_query preprocesses the statement, and
+# Statement expansion: statement_execute preprocesses the statement, and
 # some single statements expand into a group of engine statements (e.g.
 # PIVOT, or ALTER ... ADD COLUMN with a non-constant DEFAULT, which the
 # engine wraps in a transaction). The group executes as one result,
@@ -43,7 +43,7 @@ module: query_result
 # output is discarded, as the engine discards it. For expanding
 # statements the metadata getters fail with ERROR_INVALID_INPUT until
 # stepping has prepared the result-producing statement; for every
-# non-expanding statement metadata is available from connection_query
+# non-expanding statement metadata is available from statement_execute
 # on, as described above.
 #
 # The result handle is single-consumer: step, fetch, and wait from one
@@ -169,8 +169,8 @@ enums:
         value: 3
         description: Query was interrupted. Sticky.
 functions:
-  connection_query:
-    summary: Starts lazy, streaming execution of a parsed statement on the connection.
+  statement_execute:
+    summary: Executes a parsed statement on the connection, streaming its result. Non-consuming.
     description: |
       Takes a statement produced by the sql_statement module
       (parse_sql / statement_iterator_next), preprocesses and prepares
@@ -181,6 +181,19 @@ functions:
       pragma preprocessing, ...); errors raised during execution
       surface from the stepping functions.
 
+      Borrowed, not consumed (a copy is executed), so the same statement can be
+      executed again (for example with a different value set) and the caller
+      destroys it with sql_statement_destroy.
+
+      parameter_values binds the statement's parameters as constants for this
+      execution. Pass one value per parameter, positionally: the i-th value binds
+      $(i+1) (the engine's positional prepared-statement convention, so dense
+      $1..$N and ? placeholders work directly). Pass (NULL, 0) for an
+      unparameterized statement. Borrowed (copied in); the caller still owns and
+      destroys them. Parameters and statement expansion are mutually exclusive:
+      passing values for a statement that preprocesses into a group is rejected
+      with ERROR_INVALID_INPUT.
+
       Preprocessing can expand one statement into a group of engine
       statements (see the module commentary); the group executes as one
       result through the same steps, and the stream surfaces the first
@@ -189,13 +202,10 @@ functions:
       statement cannot be streamed as a single result and reports
       ERROR_QUERY_NOT_IMPLEMENTED (no known expansion produces one).
 
-      The statement is transferred: the engine consumes it and the slot
-      is set to NULL, on success and on prepare-time failure alike. The
-      two refusals that never reach the engine leave the statement
-      intact: null arguments, and ERROR_RESOURCE_IN_USE while the
-      connection has a live result (a connection runs one result at a
-      time; drain, destroy, or interrupt the live result first, or open
-      another connection).
+      One live result per connection: the call refuses with
+      ERROR_RESOURCE_IN_USE while the connection has a live result (drain,
+      destroy, or interrupt it first, or open another connection). That
+      refusal and the null-argument refusals never reach the engine.
 
       Schema metadata (result type, statement type, column count, names,
       logical types) is available on the returned handle immediately,
@@ -210,9 +220,15 @@ functions:
         description: The connection on which to execute the statement.
       statement:
         type: sql_statement
+        description: The statement to execute. Borrowed and copied; not consumed. Destroy it with sql_statement_destroy.
+      parameter_values:
+        type: value
         indirection: 1
-        kind: IN_TRANSFER
-        description: The statement to execute; consumed and set to NULL unless the call refuses with ERROR_RESOURCE_IN_USE or rejects null arguments.
+        const: true
+        description: Optional. An array of parameter_count value handles bound positionally ($1 = element 0). Borrowed (copied in). Pass NULL for an unparameterized statement.
+      parameter_count:
+        type: idx
+        description: The number of values in parameter_values. Pass 0 for an unparameterized statement.
       out_result:
         type: result
         indirection: 1
@@ -418,74 +434,29 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  result_column_count:
-    summary: Returns the number of result columns.
+  result_get_schema:
+    summary: Returns the result's output schema as a single schema handle.
     description: |
-      For QUERY_RESULT, this is the number of columns in each chunk's
-      vector list. For CHANGED_ROWS and NOTHING, DuckDB emits a single
-      synthetic BIGINT "Count" column: for CHANGED_ROWS the stream
-      yields one chunk holding the affected row count, for NOTHING the
-      stream yields no rows. Prepare-time metadata.
-    role: getter
-    belongs_to: result
-    parameters:
-      result:
-        type: result
-      out_count:
-        type: idx
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  result_column_name:
-    summary: Borrows the name of a result column.
-    description: |
-      Returns a borrowed view of the column name, valid until the result
-      is destroyed. Prepare-time metadata. Out-of-range index returns ERROR_INVALID_INPUT.
-    role: getter
-    belongs_to: result
-    parameters:
-      result:
-        type: result
-      index:
-        type: idx
-      out_name:
-        type: str
-        indirection: 1
-        kind: OUT_BORROW
-        description: Receives a borrowed view of the column name.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  result_column_logical_type:
-    summary: Returns the logical type of a result column.
-    description: |
-      The returned logical type is caller-owned and must be destroyed via
-      logical_type_destroy. Prepare-time metadata. Out-of-range index
-      returns ERROR_INVALID_INPUT.
+      Builds an owned schema of the result's column names and types into
+      *out_schema; destroy via schema_destroy. Prepare-time metadata, available
+      before the first step (for an expanding statement, once stepping has prepared
+      the row-producing fragment). Never empty: a non-SELECT reports a single status
+      column (a BIGINT changed-rows count, or a BOOLEAN success).
 
-      Note: at the data-chunk level the same type is also reachable via
-      vector_get_logical_type on each chunk's vector. The vector
-      is the authoritative source; the result-level schema is a
-      convenience.
+      The same types are reachable per chunk via vector_get_logical_type. The vector
+      is authoritative; this result-level schema is a convenience.
+
+      *out_schema is set to NULL on failure.
     role: getter
     belongs_to: result
     parameters:
       result:
         type: result
-      index:
-        type: idx
-      out_type:
-        type: logical_type
+      out_schema:
+        type: schema
         indirection: 1
         kind: OUT
+        description: Receives the owned output schema. Destroy via schema_destroy.
       err:
         type: error_info
         indirection: 1

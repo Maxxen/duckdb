@@ -42,6 +42,14 @@ struct HandleTraits<StatementIterator> {
 	using handle = duckdb_v2_statement_iterator_handle;
 };
 template <>
+struct HandleTraits<PreparedStatement> {
+	using handle = duckdb_v2_prepared_statement_handle;
+};
+template <>
+struct HandleTraits<Schema> {
+	using handle = duckdb_v2_schema_handle;
+};
+template <>
 struct HandleTraits<Database> {
 	using handle = duckdb_v2_database_handle;
 };
@@ -613,28 +621,32 @@ StatementIterator Connection::ParseSQL(const char *sql) {
 	return detail::Factory::Make<StatementIterator>(iterator);
 }
 
-QueryResult Connection::Query(SqlStatement statement) {
-	auto stmt = static_cast<duckdb_v2_sql_statement_handle>(statement.release());
-	duckdb_v2_result_handle result = nullptr;
-	try {
-		CheckedAPICall(duckdb_v2_connection_query, handle(), &stmt, &result);
-	} catch (...) {
-		// The busy and null refusals do not consume the statement; the
-		// by-value parameter is gone either way, so free the handle.
-		duckdb_v2_sql_statement_destroy(&stmt);
-		throw;
+QueryResult Connection::Execute(const SqlStatement &statement, const Value *parameters, idx_t parameter_count) {
+	// Borrowed, not consumed: pass the handle without releasing it, so the
+	// caller's SqlStatement keeps ownership and can be executed again.
+	std::vector<duckdb_v2_value_handle> values;
+	values.reserve(parameter_count);
+	for (idx_t i = 0; i < parameter_count; i++) {
+		values.push_back(parameters[i].handle());
 	}
+	duckdb_v2_result_handle result = nullptr;
+	CheckedAPICall(duckdb_v2_statement_execute, handle(), statement.handle(), parameter_count ? values.data() : nullptr,
+	               parameter_count, &result);
 	return detail::Factory::Make<QueryResult>(result);
 }
 
-QueryResult Connection::Query(const std::string &sql) {
+QueryResult Connection::Execute(const SqlStatement &statement) {
+	return Execute(statement, nullptr, 0);
+}
+
+QueryResult Connection::Execute(const std::string &sql) {
 	auto statements = ParseSQL(sql);
 	auto statement = statements.Next();
 	if (!statement || statements.Next()) {
 		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                "Query expects exactly one statement; use ParseSQL for multi-statement input");
+		                "Execute expects exactly one statement; use ParseSQL for multi-statement input");
 	}
-	return Query(std::move(statement));
+	return Execute(statement);
 }
 
 void Connection::Interrupt() {
@@ -800,6 +812,84 @@ LogicalType LogicalType::WithAlias(std::string_view alias) const {
 LogicalType::~LogicalType() {
 	auto _h = handle();
 	duckdb_v2_logical_type_destroy(&_h);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Schema
+//----------------------------------------------------------------------------------------------------------------------
+Schema::Schema(void *impl) : detail::Handle<Schema>(impl) {
+}
+Schema::~Schema() {
+	auto _h = handle();
+	duckdb_v2_schema_destroy(&_h);
+}
+idx_t Schema::GetFieldCount() const {
+	idx_t count = 0;
+	CheckedAPICall(duckdb_v2_schema_get_count, handle(), &count);
+	return count;
+}
+std::string_view Schema::GetFieldName(idx_t index) const {
+	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_logical_type_handle type = nullptr; // borrowed; unused here
+	CheckedAPICall(duckdb_v2_schema_get_field, handle(), index, &name, &type);
+	return FromStr(name);
+}
+LogicalType Schema::GetFieldType(idx_t index) const {
+	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_logical_type_handle borrowed = nullptr;
+	CheckedAPICall(duckdb_v2_schema_get_field, handle(), index, &name, &borrowed);
+	// get_field borrows the type; copy it into an owned handle the wrapper manages.
+	duckdb_v2_logical_type_handle owned = nullptr;
+	CheckedAPICall(duckdb_v2_logical_type_copy, borrowed, &owned);
+	return detail::Factory::Make<LogicalType>(owned);
+}
+
+Signature Connection::Bind(const SqlStatement &statement) const {
+	duckdb_v2_schema_handle out_schema = nullptr;
+	duckdb_v2_schema_handle out_parameters = nullptr;
+	CheckedAPICall(duckdb_v2_statement_bind, handle(), statement.handle(), &out_schema, &out_parameters);
+	return Signature {detail::Factory::Make<Schema>(out_schema), detail::Factory::Make<Schema>(out_parameters)};
+}
+
+PreparedStatement Connection::Prepare(const SqlStatement &statement, bool require_cacheable) const {
+	// Borrowed, not consumed: pass the handle without releasing it.
+	duckdb_v2_prepared_statement_handle prepared = nullptr;
+	CheckedAPICall(duckdb_v2_statement_prepare, handle(), statement.handle(), require_cacheable, &prepared);
+	return detail::Factory::Make<PreparedStatement>(prepared);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Prepared Statement
+//----------------------------------------------------------------------------------------------------------------------
+
+PreparedStatement::PreparedStatement(void *impl) : detail::Handle<PreparedStatement>(impl) {
+}
+
+PreparedStatement::~PreparedStatement() {
+	auto _h = handle();
+	duckdb_v2_prepared_statement_destroy(&_h);
+}
+
+QueryResult PreparedStatement::Execute(const Value *parameters, idx_t parameter_count) {
+	std::vector<duckdb_v2_value_handle> values;
+	values.reserve(parameter_count);
+	for (idx_t i = 0; i < parameter_count; i++) {
+		values.push_back(parameters[i].handle());
+	}
+	duckdb_v2_result_handle result = nullptr;
+	CheckedAPICall(duckdb_v2_prepared_execute, handle(), parameter_count ? values.data() : nullptr, parameter_count,
+	               &result);
+	return detail::Factory::Make<QueryResult>(result);
+}
+
+QueryResult PreparedStatement::Execute() {
+	return Execute(nullptr, 0);
+}
+
+bool PreparedStatement::ReusesPlan() const {
+	bool reuses = false;
+	CheckedAPICall(duckdb_v2_prepared_reuses_plan, handle(), &reuses);
+	return reuses;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1102,22 +1192,10 @@ QueryResult::~QueryResult() {
 	duckdb_v2_result_destroy(&_h);
 }
 
-auto QueryResult::GetColumnCount() const -> idx_t {
-	idx_t count = 0;
-	CheckedAPICall(duckdb_v2_result_column_count, handle(), &count);
-	return count;
-}
-
-auto QueryResult::GetColumnName(idx_t index) const -> std::string_view {
-	duckdb_v2_str name = {nullptr, 0};
-	CheckedAPICall(duckdb_v2_result_column_name, handle(), index, &name);
-	return FromStr(name);
-}
-
-auto QueryResult::GetColumnType(idx_t index) const -> LogicalType {
-	duckdb_v2_logical_type_handle type = nullptr;
-	CheckedAPICall(duckdb_v2_result_column_logical_type, handle(), index, &type);
-	return detail::Factory::Make<LogicalType>(type);
+auto QueryResult::GetSchema() const -> Schema {
+	duckdb_v2_schema_handle schema = nullptr;
+	CheckedAPICall(duckdb_v2_result_get_schema, handle(), &schema);
+	return detail::Factory::Make<Schema>(schema);
 }
 
 // StepStatus mirrors DUCKDB_V2_RESULT_STEP_STATUS numerically; trip here if

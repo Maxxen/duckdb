@@ -127,12 +127,12 @@ inline bool RowValid(const duckdb_v2_vector_view &view, idx_t idx) {
 }
 
 // Parses a single-statement SQL string and starts it on the connection:
-// the string-taking equivalent of connection_query for tests
-// (parse_sql + statement_iterator_next + connection_query). FAILs when
+// the string-taking equivalent of statement_execute for tests
+// (parse_sql + statement_iterator_next + statement_execute). FAILs when
 // the input contains more than one statement, so a stray semicolon in a
 // test never truncates silently; multi-statement semantics have their
 // own iterator tests. An input with no statements propagates as
-// INVALID_INPUT from connection_query, via the NULL statement handle.
+// INVALID_INPUT from statement_execute, via the NULL statement handle.
 inline duckdb_v2_error_code_t V2Query(duckdb_v2_connection_handle conn, const char *sql,
                                       duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err = nullptr) {
 	if (out_result) {
@@ -157,10 +157,10 @@ inline duckdb_v2_error_code_t V2Query(duckdb_v2_connection_handle conn, const ch
 		}
 	}
 	if (rc == DUCKDB_V2_ERROR_NONE) {
-		rc = duckdb_v2_connection_query(conn, &stmt, out_result, err);
+		rc = duckdb_v2_statement_execute(conn, stmt, nullptr, 0, out_result, err);
 	}
-	// The statement is only left alive when connection_query refused
-	// without consuming it (busy or null-arg).
+	// statement_execute is non-consuming: the statement is always still alive
+	// (it executes a copy), so destroy it unconditionally.
 	duckdb_v2_sql_statement_destroy(&stmt);
 	duckdb_v2_statement_iterator_destroy(&iter);
 	return rc;
@@ -215,6 +215,40 @@ inline void V2ExecSQL(duckdb_v2_connection_handle conn, const char *sql) {
 	REQUIRE(V2Query(conn, sql, &r) == DUCKDB_V2_ERROR_NONE);
 	V2DrainRowCount(r);
 	duckdb_v2_result_destroy(&r);
+}
+
+// A result's output column count, read through its schema.
+inline idx_t V2ColumnCount(duckdb_v2_result_handle r) {
+	duckdb_v2_schema_handle schema = nullptr;
+	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_schema_get_count(schema, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_schema_destroy(&schema);
+	return count;
+}
+
+// Asserts result column `index` has the given name and type id, via the result
+// schema; fetches, borrows, and destroys so call sites stay one line.
+inline void V2RequireColumn(duckdb_v2_result_handle r, idx_t index, const char *name, DUCKDB_V2_LOGICAL_TYPE_ID id) {
+	duckdb_v2_schema_handle schema = nullptr;
+	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_str field_name = {nullptr, 0};
+	duckdb_v2_logical_type_handle field_type = nullptr; // borrowed; do not destroy
+	REQUIRE(duckdb_v2_schema_get_field(schema, index, &field_name, &field_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(std::string(field_name.ptr ? field_name.ptr : "", field_name.len) == name);
+	DUCKDB_V2_LOGICAL_TYPE_ID got = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+	REQUIRE(duckdb_v2_logical_type_get_id(field_type, &got, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(got == id);
+	duckdb_v2_schema_destroy(&schema);
+}
+
+// Asserts a result's schema is not yet available: the statement expanded to a
+// group whose row-producing fragment is not yet prepared, so result_get_schema
+// reports INVALID_INPUT.
+inline void V2RequireSchemaDeferred(duckdb_v2_result_handle r) {
+	duckdb_v2_schema_handle schema = nullptr;
+	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(schema == nullptr);
 }
 
 // Reads the affected-row count of a CHANGED_ROWS result by draining its

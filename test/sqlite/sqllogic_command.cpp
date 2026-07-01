@@ -67,12 +67,13 @@ unique_ptr<MaterializedQueryResult> MaterializeCppResult(duckdb_api::QueryResult
 
 	// Read column metadata only after stepping: an expanding statement (auto
 	// PIVOT, IMPORT DATABASE, ...) prepares its result-producing fragment
-	// lazily, so the metadata getters fail until the stream has been driven.
-	idx_t column_count = result.GetColumnCount();
+	// lazily, so the schema is unavailable until the stream has been driven.
+	auto schema = result.GetSchema();
+	idx_t column_count = schema.GetFieldCount();
 	vector<string> names;
 	names.reserve(column_count);
 	for (idx_t i = 0; i < column_count; i++) {
-		names.emplace_back(result.GetColumnName(i));
+		names.emplace_back(schema.GetFieldName(i));
 	}
 	if (!collection) {
 		// No chunks were produced (e.g. an empty result): recover the column
@@ -80,7 +81,7 @@ unique_ptr<MaterializedQueryResult> MaterializeCppResult(duckdb_api::QueryResult
 		vector<LogicalType> types;
 		types.reserve(column_count);
 		for (idx_t i = 0; i < column_count; i++) {
-			auto cpp_type = result.GetColumnType(i);
+			auto cpp_type = schema.GetFieldType(i);
 			unique_ptr<LogicalType> type(reinterpret_cast<LogicalType *>(cpp_type.release()));
 			types.push_back(*type);
 		}
@@ -102,7 +103,7 @@ public:
 			auto iterator = cpp_conn.ParseSQL(sql);
 			unique_ptr<MaterializedQueryResult> result;
 			for (auto statement = iterator.Next(); statement; statement = iterator.Next()) {
-				result = MaterializeCppResult(cpp_conn.Query(std::move(statement)), *connection.context);
+				result = MaterializeCppResult(cpp_conn.Execute(statement), *connection.context);
 			}
 			if (!result) {
 				// No statements parsed: surface an empty successful result.
