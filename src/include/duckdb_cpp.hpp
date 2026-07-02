@@ -493,6 +493,8 @@ class Database final : public detail::Handle<Database> {
 
 public:
 	~Database() override;
+	Database(Database &&) noexcept = default;
+	Database &operator=(Database &&) noexcept = default;
 
 	size_t GetOptionCount() const;
 	DatabaseOption GetOptionByIndex(size_t index) const;
@@ -564,6 +566,8 @@ class Environment final : public detail::Handle<Environment> {
 public:
 	Environment();
 	~Environment() override;
+	Environment(Environment &&) noexcept = default;
+	Environment &operator=(Environment &&) noexcept = default;
 
 	size_t GetOpenDatabaseCount() const;
 
