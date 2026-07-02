@@ -734,6 +734,10 @@ struct StringStorage {
 	auto Data() const -> const char * {
 		return IsInlined() ? value.inlined.inlined : value.pointer.ptr;
 	}
+	// The bytes as one view: {Data(), Length()}.
+	auto AsStringView() const -> std::string_view {
+		return std::string_view(Data(), Length());
+	}
 	auto GetDataWritable() -> char * {
 		return IsInlined() ? value.inlined.inlined : value.pointer.ptr;
 	}
@@ -797,6 +801,63 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Vector
 //----------------------------------------------------------------------------------------------------------------------
+
+// A vector's internal representation. Mirrors DUCKDB_V2_VECTOR_TYPE
+// (static_assert in the .cpp). Other is the zero value and covers FSST /
+// SEQUENCE / SHREDDED; Flatten() before reading such a vector via GetView().
+enum class VectorType : uint8_t {
+	Other = 0,
+	Flat = 1,
+	Constant = 2,
+	Dictionary = 3,
+};
+
+// Read view over a vector, mirroring the C ABI's duckdb_v2_vector_view: data +
+// validity + sel + count from one Vector::GetView() crossing; all per-row work
+// is inline. Pointers are borrowed and valid until the owning chunk is
+// destroyed. sel == nullptr means identity (FLAT); CONSTANT carries the zero
+// singleton, DICTIONARY its own sel. Validity follows sel, not the loop
+// counter: IsValid takes the logical index and resolves sel internally.
+struct VectorView {
+	const void *data;
+	const uint64_t *validity;
+	const uint32_t *sel; // mirrors duckdb_v2_sel_t (static_assert in the .cpp)
+	idx_t count;
+
+	template <class T>
+	auto Data() const -> const T * {
+		return static_cast<const T *>(data);
+	}
+	// Physical row index for logical index `i`: sel ? sel[i] : i.
+	auto SelAt(idx_t i) const -> idx_t {
+		return sel ? static_cast<idx_t>(sel[i]) : i;
+	}
+	// Validity at a physical (post-sel) row index; nullptr means all valid.
+	auto RowIsValid(idx_t row) const -> bool {
+		return !validity || (validity[row >> 6] & (uint64_t(1) << (row & 63))) != 0;
+	}
+	// Validity at a logical index: RowIsValid(SelAt(i)).
+	auto IsValid(idx_t i) const -> bool {
+		return RowIsValid(SelAt(i));
+	}
+};
+
+// Writer over a FLAT vector's validity mask (from Vector::GetValidityMutable).
+// Word W bit N covers row W*64+N; a set bit means valid (not NULL).
+struct ValidityMask {
+	uint64_t *words; // public: the raw mask remains reachable
+
+	auto SetValid(idx_t row) -> void {
+		words[row >> 6] |= uint64_t(1) << (row & 63);
+	}
+	auto SetInvalid(idx_t row) -> void {
+		words[row >> 6] &= ~(uint64_t(1) << (row & 63));
+	}
+	auto RowIsValid(idx_t row) const -> bool {
+		return (words[row >> 6] & (uint64_t(1) << (row & 63))) != 0;
+	}
+};
+
 class Vector final : public detail::Handle<Vector> {
 	friend detail::Factory;
 
@@ -820,6 +881,37 @@ public:
 
 	auto GetSize() const -> idx_t;
 	auto SetSize(idx_t size) -> void;
+
+	// ---- Vector read surface ----
+
+	// Reads the vector as a VectorView in one boundary crossing. Throws
+	// INVALID_INPUT on VectorType::Other; Flatten() first. On DICTIONARY
+	// vectors the underlying child may be flattened in place, invalidating
+	// pointers previously borrowed into it.
+	auto GetView() const -> VectorView;
+
+	// The internal representation kind.
+	auto GetVectorType() const -> VectorType;
+
+	// Mutable validity of a FLAT vector, lazily allocating the mask.
+	// Throws INVALID_INPUT on non-FLAT vectors.
+	auto GetValidityMutable() -> ValidityMask;
+
+	// Sets a CONSTANT vector's single validity bit. Throws INVALID_INPUT on
+	// non-CONSTANT vectors. Setting valid true does not write a value; slot 0
+	// holds whatever was last written.
+	auto SetConstantValid(bool valid) -> void;
+
+	// Turns the vector into a CONSTANT vector holding `value` for `count`
+	// logical rows. The value's type must match the vector's.
+	auto MakeConstant(const Value &value, idx_t count) -> void;
+
+	// Turns the vector into the arithmetic sequence start, start+increment,
+	// ... for `count` rows. Reads as VectorType::Other; Flatten() before
+	// reading via GetView().
+	auto MakeSequence(int64_t start, int64_t increment, idx_t count) -> void;
+
+	// ---- End vector read surface ----
 
 	// Copies `data` into the vector's string heap and places the resulting
 	// storage value into slot `index`. The vector must be a string-backed kind

@@ -6,6 +6,11 @@
 // For the DUCKDB_V2_ERROR_* codes asserted against Exception::GetCode().
 #include "duckdb_v2.h"
 
+// Internal engine headers: used only to construct a DICTIONARY vector, which
+// no public surface builds directly. Tests are the sanctioned mixing point.
+#include "duckdb/common/types/vector.hpp"
+#include "duckdb/common/vector/flat_vector.hpp"
+
 #include <atomic>
 #include <cstring>
 #include <fstream>
@@ -81,12 +86,14 @@ TEST_CASE("Stable C++-API: Basic", "[cpp_api]") {
 			    auto rhs_vec = chunk.GetVector(1);
 			    auto out_vec = input.GetResultVector();
 
-			    auto lhs_data = lhs_vec.GetDataMutable<const int32_t>();
-			    auto rhs_data = rhs_vec.GetDataMutable<const int32_t>();
+			    auto lhs = lhs_vec.GetView();
+			    auto rhs = rhs_vec.GetView();
+			    auto lhs_data = lhs.Data<int32_t>();
+			    auto rhs_data = rhs.Data<int32_t>();
 			    auto out_data = out_vec.GetDataMutable<int32_t>();
 
 			    for (idx_t i = 0; i < chunk.GetRowCount(); i++) {
-				    out_data[i] = lhs_data[i] + rhs_data[i];
+				    out_data[i] = lhs_data[lhs.SelAt(i)] + rhs_data[rhs.SelAt(i)];
 			    }
 		    })
 		    .Register(ctx);
@@ -99,10 +106,9 @@ TEST_CASE("Stable C++-API: Basic", "[cpp_api]") {
 	auto chunk = result.FetchChunk();
 	REQUIRE(chunk);
 
-	auto vec = chunk.GetVector(0);
-	auto data = vec.GetDataMutable<const int32_t>();
-
-	REQUIRE(data[0] == 3);
+	auto view = chunk.GetVector(0).GetView();
+	REQUIRE(view.IsValid(0));
+	REQUIRE(view.Data<int32_t>()[view.SelAt(0)] == 3);
 }
 
 TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
@@ -126,14 +132,13 @@ TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
 			    auto &chunk = input.GetInputChunk();
 			    auto vector = chunk.GetVector(0);
 
-			    vector.Flatten();
-
 			    const auto count = input.GetStateCount();
 			    const auto array = input.GetStateArray<int32_t>();
-			    const auto vdata = vector.GetDataMutable<const int32_t>();
+			    const auto view = vector.GetView();
+			    const auto vdata = view.Data<int32_t>();
 
 			    for (idx_t i = 0; i < count; i++) {
-				    *array[i] += vdata[i];
+				    *array[i] += vdata[view.SelAt(i)];
 			    }
 		    })
 		    .SetCombineCallback([](AggregateFunction::CombineInput &input) {
@@ -168,10 +173,9 @@ TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
 	auto chunk = result.FetchChunk();
 	REQUIRE(chunk);
 
-	auto vec = chunk.GetVector(0);
-	auto data = vec.GetDataMutable<const int32_t>();
-
-	REQUIRE(data[0] == 12); // (1 + 2 + 3) * 2
+	auto view = chunk.GetVector(0).GetView();
+	REQUIRE(view.IsValid(0));
+	REQUIRE(view.Data<int32_t>()[view.SelAt(0)] == 12); // (1 + 2 + 3) * 2
 }
 
 TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
@@ -241,15 +245,14 @@ TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
 
 	auto chunk = result.FetchChunk();
 	REQUIRE(chunk);
-	auto vec = chunk.GetVector(0);
 
-	auto data = vec.GetDataMutable<const int32_t>();
+	auto view = chunk.GetVector(0).GetView();
+	auto data = view.Data<int32_t>();
 	REQUIRE(chunk.GetRowCount() == 5);
-	REQUIRE(data[0] == 0);
-	REQUIRE(data[1] == 2);
-	REQUIRE(data[2] == 4);
-	REQUIRE(data[3] == 6);
-	REQUIRE(data[4] == 8);
+	for (idx_t i = 0; i < 5; i++) {
+		REQUIRE(view.IsValid(i));
+		REQUIRE(data[view.SelAt(i)] == static_cast<int32_t>(i * 2));
+	}
 }
 
 TEST_CASE("Stable C++API: Copy Function", "[cpp_api]") {
@@ -354,13 +357,13 @@ TEST_CASE("Stable C++API: Cast Function", "[cpp_api]") {
 		    .SetExecCallback([](CastFunction::ExecInput &input) {
 			    auto in_vec = input.GetInput();
 			    auto out_vec = input.GetOutput();
-			    // The bridge passes the input vector as-is (it is not flattened for us); flatten it so we can
-			    // index its data directly regardless of whether it arrived constant / dictionary-encoded.
-			    in_vec.Flatten();
-			    const auto in = in_vec.GetDataMutable<const int32_t>();
+			    // The bridge passes the input vector as-is; the view reads it
+			    // whether it arrived flat, constant or dictionary-encoded.
+			    const auto view = in_vec.GetView();
+			    const auto in = view.Data<int32_t>();
 			    const auto out = out_vec.GetDataMutable<int64_t>();
 			    for (idx_t i = 0; i < input.GetCount(); i++) {
-				    out[i] = static_cast<int64_t>(in[i]) + 1000;
+				    out[i] = static_cast<int64_t>(in[view.SelAt(i)]) + 1000;
 			    }
 		    })
 		    .Register(ctx);
@@ -372,10 +375,10 @@ TEST_CASE("Stable C++API: Cast Function", "[cpp_api]") {
 	REQUIRE(result.GetSchema().GetFieldType(0) == LogicalType::BIGINT());
 
 	auto chunk = result.FetchChunk();
-	auto vec = chunk.GetVector(0);
-	const auto data = vec.GetDataMutable<const int64_t>();
+	auto view = chunk.GetVector(0).GetView();
 	REQUIRE(chunk.GetRowCount() == 1);
-	REQUIRE(data[0] == 1042);
+	REQUIRE(view.IsValid(0));
+	REQUIRE(view.Data<int64_t>()[view.SelAt(0)] == 1042);
 }
 
 TEST_CASE("Stable C++-API: File System", "[cpp_api]") {
@@ -464,11 +467,13 @@ TEST_CASE("Stable C++-API: Column Data Single Scan", "[cpp_api]") {
 			int64_t sum_a = 0;
 			while (collection.Scan(scan_state, out)) {
 				const auto rows = out.GetRowCount();
-				const auto a = out.GetVector(0).GetDataMutable<const int64_t>();
-				const auto b = out.GetVector(1).GetDataMutable<const int64_t>();
+				const auto va = out.GetVector(0).GetView();
+				const auto vb = out.GetVector(1).GetView();
+				const auto a = va.Data<int64_t>();
+				const auto b = vb.Data<int64_t>();
 				for (idx_t r = 0; r < rows; r++) {
-					REQUIRE(b[r] == a[r] * 10);
-					sum_a += a[r];
+					REQUIRE(b[vb.SelAt(r)] == a[va.SelAt(r)] * 10);
+					sum_a += a[va.SelAt(r)];
 				}
 				scanned += rows;
 			}
@@ -535,11 +540,13 @@ TEST_CASE("Stable C++-API: Column Data Multi Scan", "[cpp_api]") {
 		int64_t sum_a = 0;
 		while (collection.Scan(shared_state, worker_state, out)) {
 			const auto rows = out.GetRowCount();
-			const auto a = out.GetVector(0).GetDataMutable<const int64_t>();
-			const auto b = out.GetVector(1).GetDataMutable<const int64_t>();
+			const auto va = out.GetVector(0).GetView();
+			const auto vb = out.GetVector(1).GetView();
+			const auto a = va.Data<int64_t>();
+			const auto b = vb.Data<int64_t>();
 			for (idx_t r = 0; r < rows; r++) {
-				REQUIRE(b[r] == a[r] * 10);
-				sum_a += a[r];
+				REQUIRE(b[vb.SelAt(r)] == a[va.SelAt(r)] * 10);
+				sum_a += a[va.SelAt(r)];
 			}
 			scanned += rows;
 		}
@@ -568,19 +575,18 @@ TEST_CASE("Stable C++-API: Logging", "[cpp_api]") {
 		ctx.Log(LogLevel::LOG_ERROR, "This is an error message.");
 	});
 
-	// We don't have a good way to inspect error messages, cause we cant consume VARCHARs yet.
 	auto res =
 	    conn.Execute("SELECT case when log_level = 'INFO' then 1 when log_level = 'WARNING' then 2 when log_level "
 	                 "= 'ERROR' then 3 else -1 end as level FROM duckdb_logs");
 	auto chunk = res.FetchChunk();
 	REQUIRE(chunk);
-	auto vec = chunk.GetVector(0);
-	auto data = vec.GetDataMutable<const int32_t>();
+	auto view = chunk.GetVector(0).GetView();
+	auto data = view.Data<int32_t>();
 
-	REQUIRE(data[0] == 1);
-	REQUIRE(data[1] == 1);
-	REQUIRE(data[2] == 2);
-	REQUIRE(data[3] == 3);
+	REQUIRE(data[view.SelAt(0)] == 1);
+	REQUIRE(data[view.SelAt(1)] == 1);
+	REQUIRE(data[view.SelAt(2)] == 2);
+	REQUIRE(data[view.SelAt(3)] == 3);
 }
 
 namespace {
@@ -956,9 +962,11 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 		REQUIRE(chunk);
 		REQUIRE(chunk.GetRowCount() == 5);
 		// range(5) yields the BIGINT sequence 0..4 in order.
-		auto data = chunk.GetVector(0).GetDataMutable<const int64_t>();
+		auto view = chunk.GetVector(0).GetView();
+		auto data = view.Data<int64_t>();
 		for (idx_t i = 0; i < 5; i++) {
-			REQUIRE(data[i] == static_cast<int64_t>(i));
+			REQUIRE(view.IsValid(i));
+			REQUIRE(data[view.SelAt(i)] == static_cast<int64_t>(i));
 		}
 	}
 
@@ -1283,6 +1291,310 @@ TEST_CASE("Stable C++API: AssignString rejects misuse", "[cpp_api]") {
 }
 
 // ---------------------------------------------------------------------------
+// Vector read surface (VectorView + validity + construction)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Stable C++API: VectorView NULL-aware read of a queried chunk", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto result = conn.Execute("SELECT CASE WHEN i % 3 = 0 THEN NULL ELSE i END AS v FROM range(10) t(i)");
+	auto chunk = result.FetchChunk();
+	REQUIRE(chunk);
+
+	auto vec = chunk.GetVector(0);
+	REQUIRE(vec.GetVectorType() == VectorType::Flat);
+
+	auto view = vec.GetView();
+	REQUIRE(view.count == 10);
+	REQUIRE(view.sel == nullptr); // FLAT: identity
+	auto data = view.Data<int64_t>();
+	for (idx_t i = 0; i < view.count; i++) {
+		if (i % 3 == 0) {
+			REQUIRE_FALSE(view.IsValid(i));
+			continue;
+		}
+		REQUIRE(view.IsValid(i));
+		REQUIRE(data[view.SelAt(i)] == static_cast<int64_t>(i));
+	}
+}
+
+TEST_CASE("Stable C++API: VectorView CONSTANT without flatten", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::BIGINT());
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+
+		vec.MakeConstant(Value::FromI64(7), 4);
+		REQUIRE(vec.GetVectorType() == VectorType::Constant);
+
+		auto view = vec.GetView();
+		REQUIRE(view.count == 4);
+		REQUIRE(view.sel != nullptr); // zero singleton, not identity
+		auto data = view.Data<int64_t>();
+		for (idx_t i = 0; i < view.count; i++) {
+			REQUIRE(view.SelAt(i) == 0); // every row resolves to the one slot
+			REQUIRE(view.IsValid(i));
+			REQUIRE(data[view.SelAt(i)] == 7);
+		}
+		// The view did not flatten.
+		REQUIRE(vec.GetVectorType() == VectorType::Constant);
+	});
+}
+
+TEST_CASE("Stable C++API: VectorView DICTIONARY resolves validity through sel", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	// Built via core (the vector handle is identity = duckdb::Vector *): a
+	// FLAT dictionary with physical row 1 NULL, sliced so logical row 3
+	// dispatches to it.
+	duckdb::Vector flat(duckdb::LogicalType::INTEGER);
+	auto *fd = duckdb::FlatVector::GetDataMutable<int32_t>(flat);
+	fd[0] = 10;
+	fd[1] = 20;
+	fd[2] = 30;
+	duckdb::FlatVector::SetNull(flat, 1, true);
+
+	duckdb::SelectionVector sel(4);
+	sel.set_index(0, 2);
+	sel.set_index(1, 0);
+	sel.set_index(2, 2);
+	sel.set_index(3, 1);
+	duckdb::Vector dict(flat, sel, 4);
+
+	auto vec = detail::Factory::Make<Vector>(reinterpret_cast<duckdb_v2_vector_handle>(&dict));
+	REQUIRE(vec.GetVectorType() == VectorType::Dictionary);
+
+	auto view = vec.GetView();
+	REQUIRE(view.count == 4);
+	REQUIRE(view.sel != nullptr); // the dictionary's own sel
+	auto data = view.Data<int32_t>();
+
+	// Reads dispatch through sel.
+	REQUIRE(view.SelAt(0) == 2);
+	REQUIRE(data[view.SelAt(0)] == 30);
+	REQUIRE(data[view.SelAt(1)] == 10);
+	REQUIRE(data[view.SelAt(2)] == 30);
+
+	// Validity follows sel: logical row 3 is NULL (physical 1), while the
+	// naive physical read of row 3 would answer valid.
+	REQUIRE_FALSE(view.IsValid(3));
+	REQUIRE(view.RowIsValid(3));
+	for (idx_t i = 0; i < 3; i++) {
+		REQUIRE(view.IsValid(i));
+	}
+
+	// The view did not flatten the parent.
+	REQUIRE(vec.GetVectorType() == VectorType::Dictionary);
+}
+
+TEST_CASE("Stable C++API: MakeSequence and MakeConstant round-trip", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::BIGINT());
+		types.push_back(LogicalType::BIGINT());
+		DataChunk chunk(ctx, types);
+
+		// A SEQUENCE reads as Other; Flatten materialises it to FLAT.
+		auto seq = chunk.GetVector(0);
+		seq.MakeSequence(100, 2, 4);
+		REQUIRE(seq.GetVectorType() == VectorType::Other);
+		seq.Flatten();
+		REQUIRE(seq.GetVectorType() == VectorType::Flat);
+		auto view = seq.GetView();
+		REQUIRE(view.count == 4);
+		auto data = view.Data<int64_t>();
+		for (idx_t i = 0; i < view.count; i++) {
+			REQUIRE(data[view.SelAt(i)] == 100 + 2 * static_cast<int64_t>(i));
+		}
+
+		// A CONSTANT holds one slot referenced by every logical row.
+		auto con = chunk.GetVector(1);
+		con.MakeConstant(Value::FromI64(-5), 3);
+		REQUIRE(con.GetVectorType() == VectorType::Constant);
+		auto cview = con.GetView();
+		REQUIRE(cview.count == 3);
+		REQUIRE(cview.Data<int64_t>()[cview.SelAt(2)] == -5);
+	});
+}
+
+TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringStorage", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	const std::string long_str = "this string is comfortably longer than twelve bytes";
+	auto result = conn.Execute("SELECT v, v::BLOB AS b FROM (VALUES ('tiny'), ('" + long_str + "'), (NULL)) t(v)");
+	auto chunk = result.FetchChunk();
+	REQUIRE(chunk);
+
+	auto view = chunk.GetVector(0).GetView();
+	REQUIRE(view.count == 3);
+	auto strings = view.Data<StringStorage>();
+
+	const auto &small = strings[view.SelAt(0)];
+	REQUIRE(view.IsValid(0));
+	REQUIRE(small.IsInlined());
+	REQUIRE(small.AsStringView() == "tiny");
+
+	const auto &large = strings[view.SelAt(1)];
+	REQUIRE(view.IsValid(1));
+	REQUIRE_FALSE(large.IsInlined());
+	REQUIRE(large.AsStringView() == long_str);
+
+	REQUIRE_FALSE(view.IsValid(2));
+
+	// BLOB shares the storage layout; the bytes read the same way.
+	auto bview = chunk.GetVector(1).GetView();
+	auto blobs = bview.Data<StringStorage>();
+	REQUIRE(blobs[bview.SelAt(0)].AsStringView() == "tiny");
+	REQUIRE(blobs[bview.SelAt(1)].AsStringView() == long_str);
+	REQUIRE_FALSE(bview.IsValid(2));
+}
+
+TEST_CASE("Stable C++API: validity write round-trip", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::INTEGER());
+		types.push_back(LogicalType::BIGINT());
+		DataChunk chunk(ctx, types);
+
+		// FLAT: ValidityMask writes are observed by the read view.
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(3);
+		auto data = vec.GetDataMutable<int32_t>();
+		data[0] = 1;
+		data[1] = 2;
+		data[2] = 3;
+
+		auto mask = vec.GetValidityMutable();
+		REQUIRE(mask.words != nullptr);
+		mask.SetInvalid(1);
+		REQUIRE(mask.RowIsValid(0));
+		REQUIRE_FALSE(mask.RowIsValid(1));
+
+		auto view = vec.GetView();
+		REQUIRE(view.IsValid(0));
+		REQUIRE_FALSE(view.IsValid(1));
+		REQUIRE(view.IsValid(2));
+
+		mask.SetValid(1);
+		REQUIRE(vec.GetView().IsValid(1));
+
+		// CONSTANT: SetConstantValid flips the single bit for every row.
+		auto con = chunk.GetVector(1);
+		con.MakeConstant(Value::FromI64(9), 4);
+		con.SetConstantValid(false);
+		auto cview = con.GetView();
+		for (idx_t i = 0; i < 4; i++) {
+			REQUIRE_FALSE(cview.IsValid(i));
+		}
+		con.SetConstantValid(true);
+		REQUIRE(con.GetView().IsValid(0));
+	});
+}
+
+TEST_CASE("Stable C++API: validity mask word-boundary rows", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::INTEGER());
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(130); // spans three 64-row validity words
+
+		// Clear the bits adjacent to both word boundaries (63|64 and 127|128).
+		auto mask = vec.GetValidityMutable();
+		for (idx_t row : {idx_t(63), idx_t(64), idx_t(127), idx_t(128)}) {
+			mask.SetInvalid(row);
+			REQUIRE_FALSE(mask.RowIsValid(row));
+		}
+		// Neighbours in the adjacent words are untouched: no cross-word bleed.
+		for (idx_t row : {idx_t(0), idx_t(62), idx_t(65), idx_t(126), idx_t(129)}) {
+			REQUIRE(mask.RowIsValid(row));
+		}
+
+		// A fresh view observes the same bits through VectorView's own bit math.
+		auto view = vec.GetView();
+		REQUIRE(view.count == 130);
+		for (idx_t row : {idx_t(63), idx_t(64), idx_t(127), idx_t(128)}) {
+			REQUIRE_FALSE(view.IsValid(row));
+		}
+		for (idx_t row : {idx_t(0), idx_t(62), idx_t(65), idx_t(126), idx_t(129)}) {
+			REQUIRE(view.IsValid(row));
+		}
+
+		// Flip one bit per word back; its boundary partner stays invalid.
+		mask.SetValid(64);
+		mask.SetValid(127);
+		auto reread = vec.GetView();
+		REQUIRE(reread.IsValid(64));
+		REQUIRE(reread.IsValid(127));
+		REQUIRE_FALSE(reread.IsValid(63));
+		REQUIRE_FALSE(reread.IsValid(128));
+	});
+}
+
+TEST_CASE("Stable C++API: vector read surface rejects misuse", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::BIGINT());
+		types.push_back(LogicalType::BIGINT());
+		DataChunk chunk(ctx, types);
+
+		// GetView rejects VectorType::Other (a SEQUENCE) until flattened.
+		auto seq = chunk.GetVector(0);
+		seq.MakeSequence(0, 1, 4);
+		REQUIRE(seq.GetVectorType() == VectorType::Other);
+		REQUIRE_THROWS_MATCHES(seq.GetView(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+
+		// GetValidityMutable is FLAT-only.
+		auto con = chunk.GetVector(1);
+		con.MakeConstant(Value::FromI64(1), 2);
+		REQUIRE_THROWS_MATCHES(con.GetValidityMutable(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+
+		// SetConstantValid is CONSTANT-only.
+		seq.Flatten();
+		REQUIRE_THROWS_MATCHES(seq.SetConstantValid(true), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	});
+}
+
+// ---------------------------------------------------------------------------
 // Arrow stream export
 // ---------------------------------------------------------------------------
 
@@ -1447,19 +1759,20 @@ TEST_CASE("Stable C++API: QueryResult GetSchema", "[cpp_api][query_result]") {
 namespace {
 using namespace duckdb_api;
 
-// Collect two columns of a result into rows, reading each column as its C type.
+// Collect two columns of a result into rows, reading each column as its C
+// type. Callers pass non-NULL columns; every row is asserted valid.
 template <class TA, class TB>
 std::vector<std::pair<TA, TB>> Collect2(QueryResult result, idx_t a, idx_t b) {
 	std::vector<std::pair<TA, TB>> rows;
 	while (auto chunk = result.FetchChunk()) {
-		auto va = chunk.GetVector(a);
-		auto vb = chunk.GetVector(b);
-		va.Flatten();
-		vb.Flatten();
-		auto pa = va.GetDataMutable<const TA>();
-		auto pb = vb.GetDataMutable<const TB>();
+		auto va = chunk.GetVector(a).GetView();
+		auto vb = chunk.GetVector(b).GetView();
+		auto pa = va.Data<TA>();
+		auto pb = vb.Data<TB>();
 		for (idx_t i = 0; i < chunk.GetRowCount(); i++) {
-			rows.emplace_back(pa[i], pb[i]);
+			REQUIRE(va.IsValid(i));
+			REQUIRE(vb.IsValid(i));
+			rows.emplace_back(pa[va.SelAt(i)], pb[vb.SelAt(i)]);
 		}
 	}
 	return rows;

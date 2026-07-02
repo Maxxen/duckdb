@@ -2,6 +2,8 @@
 #include "duckdb_cpp.hpp"
 #include "duckdb_v2.h"
 
+#include <type_traits>
+
 namespace duckdb_api {
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1044,6 +1046,22 @@ void StringHeap::ThrowStringTooLong(idx_t size) {
 //----------------------------------------------------------------------------------------------------------------------
 // Vector
 //----------------------------------------------------------------------------------------------------------------------
+// VectorType mirrors DUCKDB_V2_VECTOR_TYPE numerically; trip here if either
+// side is renumbered.
+static_assert(static_cast<uint8_t>(VectorType::Other) == DUCKDB_V2_VECTOR_TYPE_OTHER,
+              "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
+static_assert(static_cast<uint8_t>(VectorType::Flat) == DUCKDB_V2_VECTOR_TYPE_FLAT,
+              "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
+static_assert(static_cast<uint8_t>(VectorType::Constant) == DUCKDB_V2_VECTOR_TYPE_CONSTANT,
+              "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
+static_assert(static_cast<uint8_t>(VectorType::Dictionary) == DUCKDB_V2_VECTOR_TYPE_DICTIONARY,
+              "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
+
+// VectorView mirrors duckdb_v2_vector_view. GetView copies it field-for-field,
+// so the compiler checks the pointer types; this pins the one typedef the
+// header cannot see.
+static_assert(std::is_same<duckdb_v2_sel_t, uint32_t>::value, "VectorView::sel must mirror duckdb_v2_sel_t");
+
 Vector::Vector(void *impl) : detail::Handle<Vector>(impl) {
 }
 
@@ -1089,14 +1107,42 @@ auto Vector::SetSize(idx_t size) -> void {
 	CheckedAPICall(duckdb_v2_vector_set_size, handle(), size);
 }
 
+auto Vector::GetView() const -> VectorView {
+	duckdb_v2_vector_view view {};
+	CheckedAPICall(duckdb_v2_vector_get_view, handle(), &view);
+	return VectorView {view.data, view.validity, view.sel, view.count};
+}
+
+auto Vector::GetVectorType() const -> VectorType {
+	DUCKDB_V2_VECTOR_TYPE type = DUCKDB_V2_VECTOR_TYPE_OTHER;
+	CheckedAPICall(duckdb_v2_vector_get_vector_type, handle(), &type);
+	return static_cast<VectorType>(type);
+}
+
+auto Vector::GetValidityMutable() -> ValidityMask {
+	uint64_t *words = nullptr;
+	CheckedAPICall(duckdb_v2_vector_flat_get_validity_mutable, handle(), &words);
+	return ValidityMask {words};
+}
+
+auto Vector::SetConstantValid(bool valid) -> void {
+	CheckedAPICall(duckdb_v2_vector_constant_set_valid, handle(), valid);
+}
+
+auto Vector::MakeConstant(const Value &value, idx_t count) -> void {
+	CheckedAPICall(duckdb_v2_vector_make_constant, handle(), value.handle(), count);
+}
+
+auto Vector::MakeSequence(int64_t start, int64_t increment, idx_t count) -> void {
+	CheckedAPICall(duckdb_v2_vector_make_sequence, handle(), start, increment, count);
+}
+
 auto Vector::CheckWriteRange(idx_t start, idx_t count) const -> void {
 	if (count == 0) {
 		return;
 	}
-	DUCKDB_V2_VECTOR_TYPE type = DUCKDB_V2_VECTOR_TYPE_OTHER;
-	CheckedAPICall(duckdb_v2_vector_get_vector_type, handle(), &type);
 	// A CONSTANT vector's data array holds a single slot; only index 0 is writable.
-	if (type == DUCKDB_V2_VECTOR_TYPE_CONSTANT && (start != 0 || count > 1)) {
+	if (GetVectorType() == VectorType::Constant && (start != 0 || count > 1)) {
 		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
 		                "Invalid Input Error: cannot assign a string to a CONSTANT vector at index != 0");
 	}
