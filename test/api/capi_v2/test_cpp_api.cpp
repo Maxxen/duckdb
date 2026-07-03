@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -40,9 +41,12 @@ private:
 	int32_t code;
 };
 
-// Counts how many rows the scalar-property exec callback below is invoked over,
-// used to observe whether the optimizer constant-folded the function.
-std::atomic<duckdb_api::idx_t> g_property_exec_rows {0};
+// Read a transparent duckdb_v2_string slot's bytes (inlined or heap form).
+std::string SlotBytes(const duckdb_v2_string &s) {
+	uint32_t len = s.value.inlined.length;
+	const char *ptr = len <= DUCKDB_V2_STRING_INLINE_LENGTH ? s.value.inlined.inlined : s.value.pointer.ptr;
+	return std::string(ptr, len);
+}
 
 } // namespace
 
@@ -112,6 +116,142 @@ TEST_CASE("Stable C++-API: Basic", "[cpp_api]") {
 	REQUIRE(view.Data<int32_t>()[view.SelAt(0)] == 3);
 }
 
+TEST_CASE("Stable C++API: Database GetOption by name and option target scope", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+
+	// Database-resolved options carry their declared scope.
+	auto option = db.GetOption("allow_community_extensions");
+	REQUIRE(option.GetName() == "allow_community_extensions");
+	REQUIRE(option.GetTargetScope() == OptionTargetScope::GlobalOnly);
+
+	// Constructor-built options are unresolved: scope reports Unknown.
+	DatabaseOption fresh("memory_limit", "1GB");
+	REQUIRE(fresh.GetTargetScope() == OptionTargetScope::Unknown);
+
+	REQUIRE_THROWS_MATCHES(db.GetOption("no_such_option"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+}
+
+TEST_CASE("Stable C++API: LibraryVersion reports the engine version", "[cpp_api]") {
+	const auto version = duckdb_api::LibraryVersion();
+	REQUIRE_FALSE(version.empty());
+
+	// The engine agrees; two calls return equal owned copies.
+	char *raw = nullptr;
+	REQUIRE(duckdb_v2_library_version(&raw, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(version == raw);
+	free(raw);
+}
+
+namespace {
+
+// Single-row INTEGER result of `sql`; proves the function's callbacks ran.
+int32_t QueryI32(duckdb_api::Connection &conn, const std::string &sql) {
+	auto result = conn.Execute(sql);
+	auto chunk = result.FetchChunk();
+	REQUIRE(chunk);
+	auto view = chunk.GetVector(0).GetView();
+	REQUIRE(view.IsValid(0));
+	return view.Data<int32_t>()[view.SelAt(0)];
+}
+
+} // namespace
+
+TEST_CASE("Stable C++API: Scalar Function user data", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		// Set once; visible in bind, init and exec.
+		ScalarFunction function(ctx);
+		function.SetName("scalar_ud")
+		    .AddParameter("x", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetUserData<std::string>("scalar user data")
+		    .SetBindCallback([](ScalarFunction::BindInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "scalar user data");
+		    })
+		    .SetInitCallback([](ScalarFunction::InitInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "scalar user data");
+		    })
+		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "scalar user data");
+			    auto out = input.GetResultVector().GetDataMutable<int32_t>();
+			    const auto count = input.GetInputChunk().GetRowCount();
+			    for (idx_t i = 0; i < count; i++) {
+				    out[i] = 1;
+			    }
+		    })
+		    .Register(ctx);
+
+		// Never set: GetUserData and GetBindData throw clear errors.
+		ScalarFunction none(ctx);
+		none.SetName("scalar_ud_none")
+		    .AddParameter("x", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			    REQUIRE_THROWS_MATCHES(input.GetBindData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			    auto out = input.GetResultVector().GetDataMutable<int32_t>();
+			    const auto count = input.GetInputChunk().GetRowCount();
+			    for (idx_t i = 0; i < count; i++) {
+				    out[i] = 2;
+			    }
+		    })
+		    .Register(ctx);
+	});
+
+	REQUIRE(QueryI32(conn, "SELECT scalar_ud(1)") == 1);
+	REQUIRE(QueryI32(conn, "SELECT scalar_ud_none(1)") == 2);
+}
+
+TEST_CASE("Stable C++API: Scalar SetUserData is consumed by Register", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		ScalarFunction function(ctx);
+		function.SetName("scalar_ud_consume")
+		    .AddParameter("x", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetUserData<int>(7)
+		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
+			    auto out = input.GetResultVector().GetDataMutable<int32_t>();
+			    const auto count = input.GetInputChunk().GetRowCount();
+			    for (idx_t i = 0; i < count; i++) {
+				    out[i] = input.GetUserData<int>();
+			    }
+		    })
+		    .Register(ctx);
+
+		// Register consumed the user data: the second registration has none.
+		function.SetName("scalar_ud_consume2")
+		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			    auto out = input.GetResultVector().GetDataMutable<int32_t>();
+			    const auto count = input.GetInputChunk().GetRowCount();
+			    for (idx_t i = 0; i < count; i++) {
+				    out[i] = 0;
+			    }
+		    })
+		    .Register(ctx);
+	});
+
+	REQUIRE(QueryI32(conn, "SELECT scalar_ud_consume(1)") == 7);
+	REQUIRE(QueryI32(conn, "SELECT scalar_ud_consume2(1)") == 0);
+}
+
 TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
 	using namespace duckdb_api;
 
@@ -177,6 +317,190 @@ TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
 	auto view = chunk.GetVector(0).GetView();
 	REQUIRE(view.IsValid(0));
 	REQUIRE(view.Data<int32_t>()[view.SelAt(0)] == 12); // (1 + 2 + 3) * 2
+}
+
+namespace {
+
+// Plain int32 sum callbacks, shared by the aggregate user-data tests.
+void AggSumUpdate(duckdb_api::AggregateFunction::UpdateInput &input) {
+	auto vector = input.GetInputChunk().GetVector(0);
+	const auto view = vector.GetView();
+	const auto data = view.Data<int32_t>();
+	const auto array = input.GetStateArray<int32_t>();
+	for (duckdb_api::idx_t i = 0; i < input.GetStateCount(); i++) {
+		*array[i] += data[view.SelAt(i)];
+	}
+}
+void AggSumCombine(duckdb_api::AggregateFunction::CombineInput &input) {
+	const auto source = input.GetSourceStateArray<int32_t>();
+	const auto target = input.GetTargetStateArray<int32_t>();
+	for (duckdb_api::idx_t i = 0; i < input.GetStateCount(); i++) {
+		*target[i] += *source[i];
+	}
+}
+void AggSumFinalize(duckdb_api::AggregateFunction::FinalizeInput &input) {
+	const auto array = input.GetStateArray<int32_t>();
+	const auto result = input.GetResultVector().GetDataMutable<int32_t>();
+	for (duckdb_api::idx_t i = 0; i < input.GetStateCount(); i++) {
+		result[input.GetResultOffset() + i] = *array[i];
+	}
+}
+
+} // namespace
+
+TEST_CASE("Stable C++API: Aggregate Function user data", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		// Set once; asserted in the phases a serial aggregation always runs
+		// (size, initialize, update, finalize). Combine and destroy carry the
+		// same accessor but only run under parallel aggregation / state
+		// cleanup, so they are not asserted here.
+		AggregateFunction aggregate(ctx);
+		aggregate.SetName("agg_ud")
+		    .AddParameter("a", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetUserData<std::string>("aggregate user data")
+		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "aggregate user data");
+			    input.Reserve<int32_t>();
+		    })
+		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "aggregate user data");
+			    input.Initialize<int32_t>(0);
+		    })
+		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "aggregate user data");
+			    AggSumUpdate(input);
+		    })
+		    .SetCombineCallback(AggSumCombine)
+		    .SetFinalizeCallback([](AggregateFunction::FinalizeInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "aggregate user data");
+			    AggSumFinalize(input);
+		    })
+		    .Register(ctx);
+
+		// Never set: GetUserData throws a clear error.
+		AggregateFunction none(ctx);
+		none.SetName("agg_ud_none")
+		    .AddParameter("a", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			    input.Reserve<int32_t>();
+		    })
+		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
+		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			    AggSumUpdate(input);
+		    })
+		    .SetCombineCallback(AggSumCombine)
+		    .SetFinalizeCallback(AggSumFinalize)
+		    .Register(ctx);
+	});
+
+	// The sums round-trip, proving the callbacks (and their REQUIREs) ran.
+	REQUIRE(QueryI32(conn, "SELECT agg_ud(i) FROM (VALUES (1), (2), (3)) t(i)") == 6);
+	REQUIRE(QueryI32(conn, "SELECT agg_ud_none(i) FROM (VALUES (1), (2), (3)) t(i)") == 6);
+}
+
+TEST_CASE("Stable C++API: Aggregate SetUserData is consumed by Register", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		AggregateFunction aggregate(ctx);
+		aggregate.SetName("agg_ud_consume")
+		    .AddParameter("a", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetUserData<int>(7)
+		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
+			    REQUIRE(input.GetUserData<int>() == 7);
+			    input.Reserve<int32_t>();
+		    })
+		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
+		    .SetUpdateCallback(AggSumUpdate)
+		    .SetCombineCallback(AggSumCombine)
+		    .SetFinalizeCallback(AggSumFinalize)
+		    .Register(ctx);
+
+		// Register consumed the user data: the second registration has none.
+		aggregate.SetName("agg_ud_consume2")
+		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			    input.Reserve<int32_t>();
+		    })
+		    .Register(ctx);
+	});
+
+	REQUIRE(QueryI32(conn, "SELECT agg_ud_consume(i) FROM (VALUES (1), (2), (3)) t(i)") == 6);
+	REQUIRE(QueryI32(conn, "SELECT agg_ud_consume2(i) FROM (VALUES (1), (2), (3)) t(i)") == 6);
+}
+
+TEST_CASE("Stable C++API: Aggregate Function bind data", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		// Bind data (a multiplier) set at bind, read in update and finalize.
+		AggregateFunction aggregate(ctx);
+		aggregate.SetName("agg_bind")
+		    .AddParameter("a", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetBindCallback([](AggregateFunction::BindInput &input) {
+			    input.SetBindData<int32_t>(10);
+			    REQUIRE(input.GetBindData<int32_t>() == 10);
+		    })
+		    .SetSizeCallback([](AggregateFunction::SizeInput &input) { input.Reserve<int32_t>(); })
+		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
+		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
+			    REQUIRE(input.GetBindData<int32_t>() == 10);
+			    AggSumUpdate(input);
+		    })
+		    .SetCombineCallback(AggSumCombine)
+		    .SetFinalizeCallback([](AggregateFunction::FinalizeInput &input) {
+			    const auto multiplier = input.GetBindData<int32_t>();
+			    const auto array = input.GetStateArray<int32_t>();
+			    const auto result = input.GetResultVector().GetDataMutable<int32_t>();
+			    for (idx_t i = 0; i < input.GetStateCount(); i++) {
+				    result[input.GetResultOffset() + i] = *array[i] * multiplier;
+			    }
+		    })
+		    .Register(ctx);
+
+		// No bind callback: phase GetBindData throws a clear error.
+		AggregateFunction none(ctx);
+		none.SetName("agg_bind_none")
+		    .AddParameter("a", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSizeCallback([](AggregateFunction::SizeInput &input) { input.Reserve<int32_t>(); })
+		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
+		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetBindData<int32_t>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			    AggSumUpdate(input);
+		    })
+		    .SetCombineCallback(AggSumCombine)
+		    .SetFinalizeCallback(AggSumFinalize)
+		    .Register(ctx);
+	});
+
+	// (1 + 2 + 3) * 10; the multiplier travelled through the bind data.
+	REQUIRE(QueryI32(conn, "SELECT agg_bind(i) FROM (VALUES (1), (2), (3)) t(i)") == 60);
+	REQUIRE(QueryI32(conn, "SELECT agg_bind_none(i) FROM (VALUES (1), (2), (3)) t(i)") == 6);
 }
 
 TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
@@ -333,6 +657,98 @@ TEST_CASE("Stable C++API: Copy Function", "[cpp_api]") {
 		REQUIRE(columns == 1);
 		REQUIRE(rows == 5);
 	});
+}
+
+TEST_CASE("Stable C++API: Copy Function user data", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	const auto out_path = duckdb::TestCreatePath("cpp_api_copy_ud.txt");
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		// Set once; visible in all five phases.
+		CopyFunction copy_function(ctx);
+		copy_function.SetName("my_copy_ud")
+		    .SetUserData<std::string>("copy user data")
+		    .SetBindCallback(
+		        [](CopyFunction::BindInput &input) { REQUIRE(input.GetUserData<std::string>() == "copy user data"); })
+		    .SetInitCallback(
+		        [](CopyFunction::InitInput &input) { REQUIRE(input.GetUserData<std::string>() == "copy user data"); })
+		    .SetBatchCallback(
+		        [](CopyFunction::BatchInput &input) { REQUIRE(input.GetUserData<std::string>() == "copy user data"); })
+		    .SetFlushCallback(
+		        [](CopyFunction::FlushInput &input) { REQUIRE(input.GetUserData<std::string>() == "copy user data"); })
+		    .SetFinalizeCallback([](CopyFunction::FinalizeInput &input) {
+			    REQUIRE(input.GetUserData<std::string>() == "copy user data");
+		    })
+		    .Register(ctx);
+
+		// Never set: GetUserData throws a clear error.
+		CopyFunction none(ctx);
+		none.SetName("my_copy_ud_none")
+		    .SetBindCallback([](CopyFunction::BindInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		    })
+		    .SetInitCallback([](CopyFunction::InitInput &input) {
+			    // Bind data never set: a clear error, not a null deref.
+			    REQUIRE_THROWS_MATCHES(input.GetBindData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		    })
+		    .SetBatchCallback([](CopyFunction::BatchInput &) {})
+		    .SetFlushCallback([](CopyFunction::FlushInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		    })
+		    .SetFinalizeCallback([](CopyFunction::FinalizeInput &) {})
+		    .Register(ctx);
+	});
+
+	conn.Execute("COPY (SELECT i FROM range(3) t(i)) TO '" + out_path + "' (FORMAT my_copy_ud, USE_TMP_FILE FALSE)")
+	    .Drain();
+	conn.Execute("COPY (SELECT i FROM range(3) t(i)) TO '" + out_path +
+	             "' (FORMAT my_copy_ud_none, USE_TMP_FILE FALSE)")
+	    .Drain();
+}
+
+TEST_CASE("Stable C++API: Copy SetUserData is consumed by Register", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	const auto out_path = duckdb::TestCreatePath("cpp_api_copy_ud_consume.txt");
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		CopyFunction copy_function(ctx);
+		copy_function.SetName("my_copy_ud_consume")
+		    .SetUserData<int>(7)
+		    .SetBindCallback([](CopyFunction::BindInput &input) { REQUIRE(input.GetUserData<int>() == 7); })
+		    .SetInitCallback([](CopyFunction::InitInput &) {})
+		    .SetBatchCallback([](CopyFunction::BatchInput &) {})
+		    .SetFlushCallback([](CopyFunction::FlushInput &) {})
+		    .SetFinalizeCallback([](CopyFunction::FinalizeInput &) {})
+		    .Register(ctx);
+
+		// Register consumed the user data: the second registration has none.
+		copy_function.SetName("my_copy_ud_consume2")
+		    .SetBindCallback([](CopyFunction::BindInput &input) {
+			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
+			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		    })
+		    .Register(ctx);
+	});
+
+	conn.Execute("COPY (SELECT i FROM range(3) t(i)) TO '" + out_path +
+	             "' (FORMAT my_copy_ud_consume, USE_TMP_FILE FALSE)")
+	    .Drain();
+	conn.Execute("COPY (SELECT i FROM range(3) t(i)) TO '" + out_path +
+	             "' (FORMAT my_copy_ud_consume2, USE_TMP_FILE FALSE)")
+	    .Drain();
 }
 
 TEST_CASE("Stable C++API: Cast Function", "[cpp_api]") {
@@ -889,6 +1305,11 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
+	// Counts the rows the exec callback processes, to observe whether the
+	// optimizer constant-folded the function. Handed to each function via
+	// SetUserData, so the test needs no file-scope state.
+	std::atomic<idx_t> exec_rows {0};
+
 	// An exec callback that counts the rows it processes and writes a constant.
 	auto exec = [](ScalarFunction::ExecInput &input) {
 		auto chunk = input.GetInputChunk();
@@ -897,7 +1318,7 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 		for (idx_t i = 0; i < count; i++) {
 			out[i] = 0;
 		}
-		g_property_exec_rows += count;
+		*input.GetUserData<std::atomic<idx_t> *>() += count;
 	};
 
 	conn.WithTransaction([&](const Context &ctx) {
@@ -906,6 +1327,7 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 		consistent.SetName("prop_consistent")
 		    .AddParameter("x", LogicalType::INTEGER())
 		    .SetReturnType(LogicalType::INTEGER())
+		    .SetUserData<std::atomic<idx_t> *>(&exec_rows)
 		    .SetExecCallback(exec)
 		    .Register(ctx);
 
@@ -915,16 +1337,17 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 		    .AddParameter("x", LogicalType::INTEGER())
 		    .SetReturnType(LogicalType::INTEGER())
 		    .SetStability(FunctionStability::Volatile)
+		    .SetUserData<std::atomic<idx_t> *>(&exec_rows)
 		    .SetExecCallback(exec)
 		    .Register(ctx);
 	});
 
 	auto drain = [&](const char *sql) -> idx_t {
-		g_property_exec_rows = 0;
+		exec_rows = 0;
 		auto result = conn.Execute(sql);
 		while (auto chunk = result.FetchChunk()) {
 		}
-		return g_property_exec_rows.load();
+		return exec_rows.load();
 	};
 
 	// With a constant argument the consistent function is folded to a single
@@ -1068,16 +1491,12 @@ TEST_CASE("Stable C++API: Vector AssignString", "[cpp_api]") {
 		vec.AssignString(1, long_str); // copied into the heap
 		vec.AssignString(2, "");       // empty
 
-		// The cpp_api has no VARCHAR read path yet; decode through the C API to
-		// confirm the bytes round-trip.
+		// The cpp_api has no VARCHAR read path yet; read the transparent
+		// duckdb_v2_string slots directly to confirm the bytes round-trip.
 		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
-		duckdb_v2_str out = {nullptr, 0};
-		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == "hi");
-		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == long_str);
-		REQUIRE(duckdb_v2_varchar_decode(&slots[2], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(out.len == 0);
+		REQUIRE(SlotBytes(slots[0]) == "hi");
+		REQUIRE(SlotBytes(slots[1]) == long_str);
+		REQUIRE(SlotBytes(slots[2]).empty());
 	});
 }
 
@@ -1104,13 +1523,9 @@ TEST_CASE("Stable C++API: Vector AssignStrings (bulk)", "[cpp_api]") {
 		vec.AssignStrings(1, tail);
 
 		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
-		duckdb_v2_str out = {nullptr, 0};
-		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == "head");
-		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == owned[0]);
-		REQUIRE(duckdb_v2_varchar_decode(&slots[2], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == owned[1]);
+		REQUIRE(SlotBytes(slots[0]) == "head");
+		REQUIRE(SlotBytes(slots[1]) == owned[0]);
+		REQUIRE(SlotBytes(slots[2]) == owned[1]);
 
 		// An empty batch is a no-op.
 		vec.AssignStrings(0, {});
@@ -1147,15 +1562,10 @@ TEST_CASE("Stable C++API: StringHeap primitive (dedup + scatter)", "[cpp_api]") 
 		vec.SetString(1, tokens[1]);
 
 		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
-		duckdb_v2_str out = {nullptr, 0};
-		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == shared_str);
-		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == owned[1]);
-		REQUIRE(duckdb_v2_varchar_decode(&slots[2], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == shared_str);
-		REQUIRE(duckdb_v2_varchar_decode(&slots[3], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == "x");
+		REQUIRE(SlotBytes(slots[0]) == shared_str);
+		REQUIRE(SlotBytes(slots[1]) == owned[1]);
+		REQUIRE(SlotBytes(slots[2]) == shared_str);
+		REQUIRE(SlotBytes(slots[3]) == "x");
 
 		// An empty AddMany returns an empty vector.
 		REQUIRE(heap.AddMany({}).empty());
@@ -1198,11 +1608,8 @@ TEST_CASE("Stable C++API: StringHeap::Allocate write-in-place", "[cpp_api]") {
 		vec.SetString(1, small);
 
 		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
-		duckdb_v2_str out = {nullptr, 0};
-		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == std::string(len, 'q'));
-		REQUIRE(duckdb_v2_varchar_decode(&slots[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == "tiny");
+		REQUIRE(SlotBytes(slots[0]) == std::string(len, 'q'));
+		REQUIRE(SlotBytes(slots[1]) == "tiny");
 	});
 }
 
@@ -1243,9 +1650,7 @@ TEST_CASE("Stable C++API: StringStorage GetDataWritable + Finalize", "[cpp_api]"
 		vec.SetString(0, token);
 
 		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
-		duckdb_v2_str out = {nullptr, 0};
-		REQUIRE(duckdb_v2_varchar_decode(&slots[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(std::string(out.ptr, out.len) == payload);
+		REQUIRE(SlotBytes(slots[0]) == payload);
 	});
 }
 
@@ -1468,6 +1873,68 @@ TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringStorage", 
 	REQUIRE(blobs[bview.SelAt(0)].AsStringView() == "tiny");
 	REQUIRE(blobs[bview.SelAt(1)].AsStringView() == long_str);
 	REQUIRE_FALSE(bview.IsValid(2));
+}
+
+TEST_CASE("Stable C++API: Vector DecodeBit and DecodeBignum", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// '101' is 3 bits: one data byte, 5 padding bits.
+	{
+		auto result = conn.Execute("SELECT '101'::BIT");
+		auto chunk = result.FetchChunk();
+		auto view = chunk.GetVector(0).GetView();
+		auto *storage = view.Data<StringStorage>();
+
+		auto bit = Vector::DecodeBit(storage[view.SelAt(0)]);
+		REQUIRE(bit.length == 1);
+		REQUIRE(bit.padding_bits == 5);
+
+		// Bits read back 1, 0, 1 via the documented extraction formula.
+		auto bit_at = [&](idx_t n) {
+			const auto i = n + bit.padding_bits;
+			return (bit.data[i / 8] >> (7 - (i % 8))) & 1;
+		};
+		REQUIRE(bit_at(0) == 1);
+		REQUIRE(bit_at(1) == 0);
+		REQUIRE(bit_at(2) == 1);
+	}
+
+	// -256 decodes to magnitude {0x01, 0x00} with the sign flag set.
+	{
+		auto result = conn.Execute("SELECT (-256)::BIGNUM");
+		auto chunk = result.FetchChunk();
+		auto view = chunk.GetVector(0).GetView();
+		auto *storage = view.Data<StringStorage>();
+
+		auto big = Vector::DecodeBignum(storage[view.SelAt(0)]);
+		REQUIRE(big.is_negative);
+		REQUIRE(big.magnitude == std::vector<uint8_t> {0x01, 0x00});
+	}
+}
+
+TEST_CASE("Stable C++API: Value Null and the Bignum codec", "[cpp_api][types_values]") {
+	using namespace duckdb_api;
+
+	auto null_value = Value::Null(LogicalType::INTEGER());
+	REQUIRE(null_value.IsNull());
+	REQUIRE(null_value.GetLogicalType() == LogicalType::INTEGER());
+
+	// 2^64: a 0x01 byte followed by eight 0x00 bytes.
+	const std::vector<uint8_t> magnitude = {0x01, 0, 0, 0, 0, 0, 0, 0, 0};
+	auto positive = Value::FromBignum(magnitude.data(), magnitude.size(), false);
+	REQUIRE(positive.ToString() == "18446744073709551616");
+
+	auto decoded = positive.AsBignum();
+	REQUIRE(decoded.magnitude == magnitude);
+	REQUIRE_FALSE(decoded.is_negative);
+
+	auto negative = Value::FromBignum(magnitude.data(), magnitude.size(), true).AsBignum();
+	REQUIRE(negative.magnitude == magnitude);
+	REQUIRE(negative.is_negative);
 }
 
 TEST_CASE("Stable C++API: validity write round-trip", "[cpp_api]") {
@@ -1754,6 +2221,46 @@ TEST_CASE("Stable C++API: QueryResult GetSchema", "[cpp_api][query_result]") {
 	REQUIRE(schema.GetFieldName(0) == "a");
 	REQUIRE(schema.GetFieldName(1) == "b");
 	REQUIRE(schema.GetFieldType(0) == LogicalType::INTEGER());
+}
+
+TEST_CASE("Stable C++API: QueryResult result and statement types", "[cpp_api][query_result]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE rt(i INTEGER)").Drain();
+
+	// Consume-vs-drain decided purely from GetResultType, no SQL inspection.
+	auto run = [&](const char *sql) {
+		auto result = conn.Execute(sql);
+		auto types = std::make_pair(result.GetResultType(), result.GetStatementType());
+		if (types.first == QueryResult::ResultType::QUERY_RESULT) {
+			while (auto chunk = result.FetchChunk()) {
+			}
+		} else {
+			result.Drain();
+		}
+		return types;
+	};
+
+	auto select = run("SELECT * FROM rt");
+	REQUIRE(select.first == QueryResult::ResultType::QUERY_RESULT);
+	REQUIRE(select.second == QueryResult::StatementType::SELECT);
+
+	auto insert = run("INSERT INTO rt VALUES (1), (2)");
+	REQUIRE(insert.first == QueryResult::ResultType::CHANGED_ROWS);
+	REQUIRE(insert.second == QueryResult::StatementType::INSERT);
+
+	auto ddl = run("CREATE TABLE rt2(i INTEGER)");
+	REQUIRE(ddl.first == QueryResult::ResultType::NOTHING);
+	REQUIRE(ddl.second == QueryResult::StatementType::CREATE);
+
+	// The drain path applied the INSERT's side effects.
+	auto verify = conn.Execute("SELECT count(*) FROM rt");
+	auto chunk = verify.FetchChunk();
+	auto view = chunk.GetVector(0).GetView();
+	REQUIRE(view.Data<int64_t>()[view.SelAt(0)] == 2);
 }
 
 namespace {
@@ -2445,6 +2952,40 @@ TEST_CASE("Stable C++API: SetUserData is consumed by Register", "[cpp_api]") {
 
 	REQUIRE(CollectI64(conn.Execute("SELECT v FROM consume_ud_fn()")).empty());
 	REQUIRE(CollectI64(conn.Execute("SELECT v FROM consume_ud_fn2()")).empty());
+}
+
+TEST_CASE("Stable C++API: InitLocalInput reads the global state", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		TableFunction function(ctx);
+		function.SetName("local_global_fn")
+		    .SetBindCallback([](TableFunction::BindInput &input) { input.AddResultColumn("v", LogicalType::BIGINT()); })
+		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<int64_t>(41); })
+		    .SetInitLocalCallback([](TableFunction::InitLocalInput &input) {
+			    // Derive the local state from the shared global state.
+			    input.SetLocalState<int64_t>(input.GetGlobalState<int64_t>() + 1);
+		    })
+		    .SetExecCallback([](TableFunction::ExecInput &input) {
+			    auto &remaining = input.GetGlobalState<int64_t>();
+			    auto vec = input.GetResultChunk().GetVector(0);
+			    if (remaining == 0) {
+				    vec.SetSize(0);
+				    return;
+			    }
+			    remaining = 0;
+			    auto *data = vec.GetDataMutable<int64_t>();
+			    data[0] = input.GetLocalState<int64_t>();
+			    vec.SetSize(1);
+		    })
+		    .Register(ctx);
+	});
+
+	REQUIRE(CollectI64(conn.Execute("SELECT v FROM local_global_fn()")) == std::vector<int64_t> {42});
 }
 
 TEST_CASE("Stable C++API: Table Function projection pushdown reports projected columns", "[cpp_api]") {

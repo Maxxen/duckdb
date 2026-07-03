@@ -13,10 +13,10 @@
 // Out-param zeroing on failure:
 //   - Pointer-bearing out-params (out_view, out_child, out_data) are
 //     set to nullptr on every INVALID_INPUT path.
-//   - Scalar out-params (out_count, out_size, out_is_valid) are left
-//     unspecified on failure; callers must consult the return code
-//     first. vector_get_view zero-inits all three fields of out_view
-//     via std::memset.
+//   - Scalar out-params (out_count, out_size) are left unspecified on
+//     failure; callers must consult the return code first.
+//     vector_get_view zero-inits all three fields of out_view via
+//     std::memset.
 
 namespace duckdb {
 namespace {
@@ -405,37 +405,13 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_value(duckdb_v2_vector_handle vector, 
 // ---------------------------------------------------------------------------
 // String-backed kind decoders
 //
-// duckdb_v2_string_t (and its varchar/blob/bit/bignum aliases) is the
-// opaque 16-byte public storage type. The reinterpret_cast to
-// duckdb::string_t here is the one place in V2 source that depends on
-// the layout equivalence between the two — if duckdb::string_t ever
-// changes shape, these decoders are the only thing that needs to
-// follow. The opaque struct's size (16 bytes) is the ABI commitment
-// callers rely on.
+// duckdb_v2_string (and its bit/bignum aliases) is the transparent
+// 16-byte public storage type; the static_asserts in
+// capi_v2_internal.hpp pin its layout to duckdb::string_t, so the
+// reinterpret_casts here are guarded. Only BIT and BIGNUM carry a wire
+// encoding needing a decoder; VARCHAR / BLOB reads are direct field
+// reads on the transparent type.
 // ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_varchar_decode(const duckdb_v2_varchar_t *varchar, duckdb_v2_str *out_data,
-                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!varchar || !out_data) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_varchar_decode");
-		}
-		const auto *storage = reinterpret_cast<const duckdb::string_t *>(varchar);
-		*out_data = duckdb::ToStr(*storage);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_blob_decode(const duckdb_v2_blob_t *blob, const uint8_t **out_data, idx_t *out_length,
-                                           duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!blob || !out_data || !out_length) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_blob_decode");
-		}
-		const auto *storage = reinterpret_cast<const duckdb::string_t *>(blob);
-		*out_data = reinterpret_cast<const uint8_t *>(storage->GetData());
-		*out_length = storage->GetSize();
-	});
-}
 
 DUCKDB_V2_API_CALL_t duckdb_v2_bit_decode(const duckdb_v2_bit_t *bit, const uint8_t **out_data, idx_t *out_length,
                                           uint8_t *out_padding_bits, duckdb_v2_error_info_handle *err) {
@@ -460,32 +436,4 @@ DUCKDB_V2_API_CALL_t duckdb_v2_bignum_decode(const duckdb_v2_bignum_t *bignum, u
 	}
 	const auto *storage = reinterpret_cast<const duckdb::string_t *>(bignum);
 	return duckdb::DecodeBignumStringT(*storage, out_data, out_length, out_is_negative, "duckdb_v2_bignum_decode", err);
-}
-
-// ---------------------------------------------------------------------------
-// Per-row helpers
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_sel_at(const duckdb_v2_sel_t *sel, idx_t i, idx_t *out,
-                                      duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_sel_at");
-		}
-		*out = sel ? static_cast<idx_t>(sel[i]) : i;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(const uint64_t *validity, idx_t row, bool *out_is_valid,
-                                                     duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_is_valid) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_validity_row_is_valid");
-		}
-		if (!validity) {
-			*out_is_valid = true;
-			return;
-		}
-		*out_is_valid = (validity[row >> 6] & (UINT64_C(1) << (row & 63))) != 0;
-	});
 }

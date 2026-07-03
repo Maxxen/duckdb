@@ -86,8 +86,7 @@ void VarcharToTemperature(duckdb_v2_cast_function_exec_args *args, duckdb_v2_err
 			continue;
 		}
 
-		duckdb_v2_str bytes = {nullptr, 0};
-		REQUIRE(duckdb_v2_varchar_decode(&in[idx], &bytes, err) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_str bytes = V2StringView(in[idx]);
 
 		int32_t parsed = 0;
 		if (!ParseTemperature(bytes.ptr, bytes.len, parsed)) {
@@ -204,9 +203,7 @@ std::string QuerySingleVarchar(duckdb_v2_connection_handle conn, const std::stri
 	REQUIRE(RowValid(view, SelAt(view.sel, 0)));
 
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
-	duckdb_v2_str bytes = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 0)], &bytes, nullptr) == DUCKDB_V2_ERROR_NONE);
-	std::string value = V2StrTo(bytes);
+	std::string value = V2StrTo(V2StringView(arr[SelAt(view.sel, 0)]));
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_result_destroy(&result) == DUCKDB_V2_ERROR_NONE);

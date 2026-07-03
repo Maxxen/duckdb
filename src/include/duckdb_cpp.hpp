@@ -184,16 +184,38 @@ private:
 // Database Option
 //----------------------------------------------------------------------------------------------------------------------
 
+// Who may write an option. Mirrors DUCKDB_V2_OPTION_TARGET_SCOPE numerically
+// (parity pinned in the .cpp). Unknown covers options whose declaration
+// carries no explicit scope target, and options created via the constructor
+// that have not yet been resolved through a database get.
+enum class OptionTargetScope : uint8_t {
+	/* Target scope is not known. */
+	Unknown = 0,
+	/* May only be written at GLOBAL (database) scope. */
+	GlobalOnly = 1,
+	/* May only be written at LOCAL (session) scope. */
+	LocalOnly = 2,
+	/* May be written at either scope; defaults to GLOBAL when unspecified. */
+	GlobalDefault = 3,
+	/* May be written at either scope; defaults to LOCAL when unspecified. */
+	LocalDefault = 4,
+};
+
 class DatabaseOption final : public detail::Handle<DatabaseOption> {
 	friend detail::Factory;
 
 public:
 	DatabaseOption(const std::string &name, const std::string &value);
 
+	DatabaseOption(DatabaseOption &&) noexcept = default;
+	DatabaseOption &operator=(DatabaseOption &&) noexcept = default;
+
 	std::string_view GetName() const;
 	std::string_view GetValue() const;
 	std::string_view GetDefaultValue() const;
 	std::string_view GetDescription() const;
+
+	OptionTargetScope GetTargetScope() const;
 
 	size_t GetAliasCount() const;
 	std::string_view GetAliasByIndex(size_t index) const;
@@ -520,6 +542,9 @@ public:
 
 	size_t GetOptionCount() const;
 	DatabaseOption GetOptionByIndex(size_t index) const;
+	// By-name lookup over the index iteration; throws INVALID_INPUT for an
+	// unknown name (aliases do not match).
+	DatabaseOption GetOption(std::string_view name) const;
 	void SetOption(const DatabaseOption &option);
 
 	Connection Connect();
@@ -595,6 +620,9 @@ public:
 
 	Database Open(const std::string &path);
 };
+
+// The version string of the linked DuckDB engine.
+auto LibraryVersion() -> std::string;
 
 //----------------------------------------------------------------------------------------------------------------------
 // Logical Type
@@ -772,6 +800,13 @@ struct Signature {
 //----------------------------------------------------------------------------------------------------------------------
 // Value
 //----------------------------------------------------------------------------------------------------------------------
+// A decoded BIGNUM: big-endian magnitude bytes plus a sign flag. The integer
+// is (-1)**is_negative * unsigned_big_endian(magnitude). Owned bytes.
+struct Bignum {
+	std::vector<uint8_t> magnitude;
+	bool is_negative;
+};
+
 class Value final : public detail::Handle<Value> {
 	friend detail::Factory;
 
@@ -784,6 +819,14 @@ public:
 	// Construct an owned value. The library copies the input.
 	static Value FromI64(int64_t value);
 	static Value FromVarchar(const std::string &value);
+
+	// A NULL value of the given logical type (borrowed; copied in).
+	static Value Null(const LogicalType &type);
+
+	// A BIGNUM value from big-endian magnitude bytes plus a sign flag. The
+	// value zero is a single 0x00 byte with is_negative false; length 0 is
+	// invalid. Unwrap via AsBignum.
+	static Value FromBignum(const uint8_t *data, idx_t length, bool is_negative);
 
 	// Wraps a borrowed logical type as a TYPE value (a type carried as a
 	// value, e.g. a type parameter). Unwrap via AsType.
@@ -835,6 +878,9 @@ public:
 	// Unwraps the logical type carried by a TYPE value; throws INVALID_INPUT
 	// unless this is a non-NULL TYPE value. Joins the As* getters.
 	auto AsType() const -> LogicalType;
+
+	// The decoded magnitude bytes + sign of a BIGNUM value.
+	auto AsBignum() const -> Bignum;
 
 	// Unwraps a VARIANT value into the plain value it carries, with its
 	// real logical type (the in-surface inner-type discovery for VARIANT
@@ -1206,6 +1252,16 @@ struct VectorView {
 	}
 };
 
+// A decoded BIT: borrowed data bytes (lifetime = the owning vector's chunk)
+// plus the count of leading bits of the first byte that are not part of the
+// bit string. Bit n (0-indexed, leftmost first) is read as
+// (data[(n + padding_bits) / 8] >> (7 - ((n + padding_bits) % 8))) & 1.
+struct BitView {
+	const uint8_t *data;
+	idx_t length; // data bytes
+	uint8_t padding_bits;
+};
+
 // Writer over a FLAT vector's validity mask (from Vector::GetValidityMutable).
 // Word W bit N covers row W*64+N; a set bit means valid (not NULL).
 struct ValidityMask {
@@ -1274,6 +1330,13 @@ public:
 	// ... for `count` rows. Reads as VectorType::Other; Flatten() before
 	// reading via GetView().
 	auto MakeSequence(int64_t start, int64_t increment, idx_t count) -> void;
+
+	// Decodes one BIT storage value (a slot of a BIT vector's data array,
+	// read as StringStorage). Borrowed pointers; lifetime = the owning chunk.
+	static auto DecodeBit(const StringStorage &value) -> BitView;
+
+	// Decodes one BIGNUM storage value into an owned magnitude + sign.
+	static auto DecodeBignum(const StringStorage &value) -> Bignum;
 
 	// ---- End vector read surface ----
 
@@ -1567,6 +1630,54 @@ public:
 		DataChunk chunk;
 	};
 
+	// Shape of the result. Mirrors DUCKDB_V2_RESULT_TYPE numerically
+	// (parity pinned in the .cpp).
+	enum class ResultType : uint8_t {
+		/* Produces rows (SELECT, RETURNING, EXPLAIN). */
+		QUERY_RESULT = 0,
+		/* Carries an affected-row count (INSERT/UPDATE/DELETE without RETURNING). */
+		CHANGED_ROWS = 1,
+		/* No row output (DDL and other statements). */
+		NOTHING = 2,
+	};
+
+	// The SQL statement type that produced the result. Mirrors
+	// DUCKDB_V2_STATEMENT_TYPE / duckdb::StatementType numerically (parity
+	// pinned in the .cpp).
+	enum class StatementType : uint8_t {
+		INVALID = 0,
+		SELECT = 1,
+		INSERT = 2,
+		UPDATE = 3,
+		CREATE = 4,
+		DELETE = 5,
+		PREPARE = 6,
+		EXECUTE = 7,
+		ALTER = 8,
+		TRANSACTION = 9,
+		COPY = 10,
+		ANALYZE = 11,
+		VARIABLE_SET = 12,
+		CREATE_FUNC = 13,
+		EXPLAIN = 14,
+		DROP = 15,
+		EXPORT = 16,
+		PRAGMA = 17,
+		VACUUM = 18,
+		CALL = 19,
+		SET = 20,
+		LOAD = 21,
+		RELATION = 22,
+		EXTENSION = 23,
+		LOGICAL_PLAN = 24,
+		ATTACH = 25,
+		DETACH = 26,
+		MULTI = 27,
+		COPY_DATABASE = 28,
+		UPDATE_EXTENSIONS = 29,
+		MERGE_INTO = 30,
+	};
+
 	QueryResult(QueryResult &&) noexcept = default;
 	QueryResult &operator=(QueryResult &&) noexcept = default;
 
@@ -1574,6 +1685,13 @@ public:
 
 	// The result's output schema (its column names and types) as one owned Schema.
 	auto GetSchema() const -> Schema;
+
+	// The shape of the result: prepare-time metadata, so callers decide
+	// between consuming rows and draining without inspecting the SQL.
+	auto GetResultType() const -> ResultType;
+
+	// The SQL statement type that produced the result (prepare-time metadata).
+	auto GetStatementType() const -> StatementType;
 
 	// The streaming primitive, built for async runtimes: runs a bounded
 	// unit of execution work and returns without blocking. Execution
@@ -1736,6 +1854,17 @@ public:
 	auto AddParameter(const std::string &name, const LogicalType &type) & -> ScalarFunction &;
 	auto SetReturnType(const LogicalType &type) & -> ScalarFunction &;
 
+	// Constructs user data of type T, carried by the registered function and
+	// freed at engine teardown; read from any callback via the inputs'
+	// GetUserData<T>. Consumed by Register: set it again before
+	// re-registering.
+	template <class T, class... ARGS>
+	auto SetUserData(ARGS &&... args) & -> ScalarFunction & {
+		auto ptr = new T(std::forward<ARGS>(args)...);
+		SetUserDataInternal(ptr, detail::TypedDelete<T>);
+		return *this;
+	}
+
 	auto SetBindCallback(BindCallback callback) & -> ScalarFunction &;
 	auto SetInitCallback(InitCallback callback) & -> ScalarFunction &;
 	auto SetExecCallback(ExecCallback callback) & -> ScalarFunction &;
@@ -1755,6 +1884,9 @@ private:
 	BindCallback bind_callback = nullptr;
 	InitCallback init_callback = nullptr;
 	ExecCallback exec_callback = nullptr;
+	detail::UserData user_data;
+
+	auto SetUserDataInternal(void *data, void (*destructor)(void *)) -> void;
 
 public:
 	class BindInput {
@@ -1773,6 +1905,14 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
+		// The user data set via ScalarFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 	private:
 		explicit BindInput(void *args) : args(args) {
 		}
@@ -1781,6 +1921,7 @@ public:
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 		void *GetBindDataInternal() const;
+		void *GetUserDataInternal() const;
 	};
 
 	class InitInput {
@@ -1805,6 +1946,14 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
+		// The user data set via ScalarFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 	private:
 		explicit InitInput(void *args) : args(args) {
 		}
@@ -1814,6 +1963,7 @@ public:
 		void SetWorkerStateInternal(void *data, void (*destructor)(void *));
 		void *GetWorkerStateInternal() const;
 		void *GetBindDataInternal() const;
+		void *GetUserDataInternal() const;
 	};
 
 	class ExecInput {
@@ -1831,6 +1981,14 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
+		// The user data set via ScalarFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		auto GetInputChunk() const -> DataChunk;
 		auto GetResultVector() const -> Vector;
 
@@ -1842,6 +2000,7 @@ public:
 
 		void *GetBindDataInternal() const;
 		void *GetWorkerStateInternal() const;
+		void *GetUserDataInternal() const;
 	};
 };
 
@@ -1869,6 +2028,7 @@ public:
 		Independent = 1,
 	};
 
+	class BindInput;
 	class SizeInput;
 	class InitializeInput;
 	class UpdateInput;
@@ -1876,6 +2036,7 @@ public:
 	class FinalizeInput;
 	class DestroyInput;
 
+	using BindCallback = void (*)(BindInput &input);
 	using SizeCallback = void (*)(SizeInput &input);
 	using InitializeCallback = void (*)(InitializeInput &input);
 	using UpdateCallback = void (*)(UpdateInput &input);
@@ -1891,6 +2052,21 @@ public:
 	auto AddParameter(const std::string &name, const LogicalType &type) & -> AggregateFunction &;
 	auto SetReturnType(const LogicalType &type) & -> AggregateFunction &;
 
+	// Constructs user data of type T, carried by the registered function and
+	// freed at engine teardown; read from any callback via the inputs'
+	// GetUserData<T>. Consumed by Register: set it again before
+	// re-registering.
+	template <class T, class... ARGS>
+	auto SetUserData(ARGS &&... args) & -> AggregateFunction & {
+		auto ptr = new T(std::forward<ARGS>(args)...);
+		SetUserDataInternal(ptr, detail::TypedDelete<T>);
+		return *this;
+	}
+
+	// Optional. Invoked once during query planning; the bind data it sets is
+	// visible to the update, combine, finalize, and destroy callbacks (not
+	// to size and initialize).
+	auto SetBindCallback(BindCallback callback) & -> AggregateFunction &;
 	auto SetSizeCallback(SizeCallback callback) & -> AggregateFunction &;
 	auto SetInitializeCallback(InitializeCallback callback) & -> AggregateFunction &;
 	auto SetUpdateCallback(UpdateCallback callback) & -> AggregateFunction &;
@@ -1915,6 +2091,41 @@ public:
 	void Register(const Context &ctx);
 
 public:
+	class BindInput {
+		friend detail::Factory;
+
+	public:
+		template <class T, class... ARGS>
+		void SetBindData(ARGS &&... args) {
+			auto ptr = new T(std::forward<ARGS>(args)...);
+			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
+		}
+
+		template <class T>
+		auto GetBindData() -> T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		// The user data set via AggregateFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+	private:
+		explicit BindInput(void *args) : args(args) {
+		}
+
+		void *args;
+
+		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
+		void *GetBindDataInternal() const;
+		void *GetUserDataInternal() const;
+	};
+
 	class SizeInput {
 	public:
 		class Inner;
@@ -1926,11 +2137,21 @@ public:
 			Reserve(sizeof(T));
 		}
 
+		// The user data set via AggregateFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		explicit SizeInput(Inner &inner) : inner(inner) {
 		}
 
 	private:
 		Inner &inner;
+
+		auto GetUserDataInternal() const -> void *;
 	};
 
 	class InitializeInput {
@@ -1946,11 +2167,21 @@ public:
 
 		void *GetStatePointer() const;
 
+		// The user data set via AggregateFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		explicit InitializeInput(Inner &inner) : inner(inner) {
 		}
 
 	private:
 		Inner &inner;
+
+		auto GetUserDataInternal() const -> void *;
 	};
 
 	class UpdateInput {
@@ -1958,6 +2189,13 @@ public:
 		class Inner;
 
 		auto GetInputChunk() const -> const DataChunk &;
+
+		// Throws INVALID_INPUT when bind data was never set.
+		template <class T>
+		auto GetBindData() const -> const T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<const T *>(ptr);
+		}
 
 		auto GetStateCount() const -> idx_t;
 		auto GetStateArray() const -> void **;
@@ -1968,16 +2206,34 @@ public:
 			return reinterpret_cast<T **>(ptr);
 		}
 
+		// The user data set via AggregateFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		explicit UpdateInput(Inner &inner) : inner(inner) {
 		}
 
 	private:
 		Inner &inner;
+
+		auto GetUserDataInternal() const -> void *;
+		auto GetBindDataInternal() const -> const void *;
 	};
 
 	class CombineInput {
 	public:
 		class Inner;
+
+		// Throws INVALID_INPUT when bind data was never set.
+		template <class T>
+		auto GetBindData() const -> const T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<const T *>(ptr);
+		}
 
 		auto GetStateCount() const -> idx_t;
 		auto GetSourceStateArray() const -> void **;
@@ -1995,16 +2251,34 @@ public:
 			return reinterpret_cast<T **>(ptr);
 		}
 
+		// The user data set via AggregateFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		explicit CombineInput(Inner &inner) : inner(inner) {
 		}
 
 	private:
 		Inner &inner;
+
+		auto GetUserDataInternal() const -> void *;
+		auto GetBindDataInternal() const -> const void *;
 	};
 
 	class FinalizeInput {
 	public:
 		class Inner;
+
+		// Throws INVALID_INPUT when bind data was never set.
+		template <class T>
+		auto GetBindData() const -> const T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<const T *>(ptr);
+		}
 
 		auto GetStateCount() const -> idx_t;
 		auto GetStateArray() const -> void **;
@@ -2018,16 +2292,34 @@ public:
 		auto GetResultVector() const -> Vector &;
 		auto GetResultOffset() const -> idx_t;
 
+		// The user data set via AggregateFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		explicit FinalizeInput(Inner &inner) : inner(inner) {
 		}
 
 	private:
 		Inner &inner;
+
+		auto GetUserDataInternal() const -> void *;
+		auto GetBindDataInternal() const -> const void *;
 	};
 
 	class DestroyInput {
 	public:
 		class Inner;
+
+		// Throws INVALID_INPUT when bind data was never set.
+		template <class T>
+		auto GetBindData() const -> const T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<const T *>(ptr);
+		}
 
 		auto GetStateCount() const -> idx_t;
 		auto GetStateArray() const -> void **;
@@ -2038,20 +2330,35 @@ public:
 			return static_cast<const T **>(ptr);
 		}
 
+		// The user data set via AggregateFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		explicit DestroyInput(Inner &inner) : inner(inner) {
 		}
 
 	private:
 		Inner &inner;
+
+		auto GetUserDataInternal() const -> void *;
+		auto GetBindDataInternal() const -> const void *;
 	};
 
 private:
+	BindCallback bind_callback = nullptr;
 	SizeCallback size_callback = nullptr;
 	InitializeCallback initialize_callback = nullptr;
 	UpdateCallback update_callback = nullptr;
 	CombineCallback combine_callback = nullptr;
 	FinalizeCallback finalize_callback = nullptr;
 	DestroyCallback destroy_callback = nullptr;
+	detail::UserData user_data;
+
+	auto SetUserDataInternal(void *data, void (*destructor)(void *)) -> void;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2238,6 +2545,14 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
+		// The shared global state set in the init_global callback, to derive
+		// per-thread local state from.
+		template <class T>
+		auto GetGlobalState() const -> T & {
+			auto ptr = GetGlobalStateInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 		// Scan context (callback-duration).
 		auto GetContext() const -> Context;
 
@@ -2254,6 +2569,7 @@ public:
 		auto SetLocalStateInternal(void *data, void (*destructor)(void *)) -> void;
 		auto GetBindDataInternal() const -> void *;
 		auto GetUserDataInternal() const -> void *;
+		auto GetGlobalStateInternal() const -> void *;
 	};
 
 	class ExecInput {
@@ -2386,6 +2702,18 @@ public:
 	~CopyFunction() override;
 
 	auto SetName(const std::string &name) & -> CopyFunction &;
+
+	// Constructs user data of type T, carried by the registered function and
+	// freed at engine teardown; read from any callback via the inputs'
+	// GetUserData<T>. Consumed by Register: set it again before
+	// re-registering.
+	template <class T, class... ARGS>
+	auto SetUserData(ARGS &&... args) & -> CopyFunction & {
+		auto ptr = new T(std::forward<ARGS>(args)...);
+		SetUserDataInternal(ptr, detail::TypedDelete<T>);
+		return *this;
+	}
+
 	auto SetBindCallback(BindCallback callback) & -> CopyFunction &;
 	auto SetInitCallback(InitCallback callback) & -> CopyFunction &;
 	auto SetBatchCallback(BatchCallback callback) & -> CopyFunction &;
@@ -2413,6 +2741,14 @@ public:
 			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
 		}
 
+		// The user data set via CopyFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 	private:
 		explicit BindInput(void *args) : args(args) {
 		}
@@ -2420,6 +2756,7 @@ public:
 		void *args;
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
+		void *GetUserDataInternal() const;
 	};
 
 	class InitInput {
@@ -2443,6 +2780,14 @@ public:
 			SetInitDataInternal(ptr, detail::TypedDelete<T>);
 		}
 
+		// The user data set via CopyFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 	private:
 		explicit InitInput(void *args) : args(args) {
 		}
@@ -2451,6 +2796,7 @@ public:
 
 		const void *GetBindDataInternal() const;
 		void SetInitDataInternal(void *data, void (*destructor)(void *));
+		void *GetUserDataInternal() const;
 	};
 
 	class BatchInput {
@@ -2481,6 +2827,14 @@ public:
 			SetBatchDataInternal(ptr, detail::TypedDelete<T>);
 		}
 
+		// The user data set via CopyFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 	private:
 		BatchInput(void *args, ColumnDataCollection &&collection) : args(args), collection(std::move(collection)) {
 		}
@@ -2491,6 +2845,7 @@ public:
 		const void *GetBindDataInternal() const;
 		void *GetInitDataInternal() const;
 		void SetBatchDataInternal(void *data, void (*destructor)(void *));
+		void *GetUserDataInternal() const;
 	};
 
 	class FlushInput {
@@ -2514,6 +2869,14 @@ public:
 			return *static_cast<T *>(GetBatchDataInternal());
 		}
 
+		// The user data set via CopyFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 	private:
 		explicit FlushInput(void *args) : args(args) {
 		}
@@ -2523,6 +2886,7 @@ public:
 		const void *GetBindDataInternal() const;
 		void *GetInitDataInternal() const;
 		void *GetBatchDataInternal() const;
+		void *GetUserDataInternal() const;
 	};
 
 	class FinalizeInput {
@@ -2541,6 +2905,14 @@ public:
 			return *static_cast<T *>(GetInitDataInternal());
 		}
 
+		// The user data set via CopyFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
 	private:
 		explicit FinalizeInput(void *args) : args(args) {
 		}
@@ -2549,6 +2921,7 @@ public:
 
 		const void *GetBindDataInternal() const;
 		void *GetInitDataInternal() const;
+		void *GetUserDataInternal() const;
 	};
 
 private:
@@ -2557,6 +2930,9 @@ private:
 	BatchCallback batch_callback = nullptr;
 	FlushCallback flush_callback = nullptr;
 	FinalizeCallback finalize_callback = nullptr;
+	detail::UserData user_data;
+
+	auto SetUserDataInternal(void *data, void (*destructor)(void *)) -> void;
 };
 
 //----------------------------------------------------------------------------------------------------------------------

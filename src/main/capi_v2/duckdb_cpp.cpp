@@ -382,6 +382,14 @@ Database Environment::Open(const std::string &path) {
 	return detail::Factory::Make<Database>(db);
 }
 
+auto LibraryVersion() -> std::string {
+	char *version = nullptr;
+	CheckedAPICall(duckdb_v2_library_version, &version);
+	auto result = std::string(version);
+	free(version);
+	return result;
+}
+
 //---------------------------------------------------------------------------
 // Database Option
 //---------------------------------------------------------------------------
@@ -431,6 +439,24 @@ std::string_view DatabaseOption::GetAliasByIndex(size_t index) const {
 	return FromStr(alias);
 }
 
+// OptionTargetScope mirrors DUCKDB_V2_OPTION_TARGET_SCOPE numerically; every member is pinned.
+static_assert(static_cast<uint8_t>(OptionTargetScope::Unknown) == DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN,
+              "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
+static_assert(static_cast<uint8_t>(OptionTargetScope::GlobalOnly) == DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_ONLY,
+              "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
+static_assert(static_cast<uint8_t>(OptionTargetScope::LocalOnly) == DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_ONLY,
+              "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
+static_assert(static_cast<uint8_t>(OptionTargetScope::GlobalDefault) == DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_DEFAULT,
+              "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
+static_assert(static_cast<uint8_t>(OptionTargetScope::LocalDefault) == DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_DEFAULT,
+              "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
+
+OptionTargetScope DatabaseOption::GetTargetScope() const {
+	DUCKDB_V2_OPTION_TARGET_SCOPE scope = DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN;
+	CheckedAPICall(duckdb_v2_option_get_target_scope, handle(), &scope);
+	return static_cast<OptionTargetScope>(scope);
+}
+
 DatabaseOption::~DatabaseOption() {
 	auto _h = handle();
 	duckdb_v2_option_destroy(&_h);
@@ -458,6 +484,17 @@ DatabaseOption Database::GetOptionByIndex(size_t index) const {
 	duckdb_v2_option_handle option = nullptr;
 	CheckedAPICall(duckdb_v2_database_option_get_by_index, handle(), static_cast<idx_t>(index), &option);
 	return detail::Factory::Make<DatabaseOption>(option);
+}
+
+DatabaseOption Database::GetOption(std::string_view name) const {
+	const auto count = GetOptionCount();
+	for (size_t i = 0; i < count; i++) {
+		auto option = GetOptionByIndex(i);
+		if (option.GetName() == name) {
+			return option;
+		}
+	}
+	throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "unknown option: " + std::string(name));
 }
 
 void Database::SetOption(const DatabaseOption &option) {
@@ -1220,6 +1257,28 @@ Value Value::FromVarchar(const std::string &value) {
 	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, value.data(), value.size()));
 }
 
+Value Value::Null(const LogicalType &type) {
+	duckdb_v2_value_handle value = nullptr;
+	CheckedAPICall(duckdb_v2_value_create_null, type.handle(), &value);
+	return detail::Factory::Make<Value>(value);
+}
+
+Value Value::FromBignum(const uint8_t *data, idx_t length, bool is_negative) {
+	duckdb_v2_value_handle value = nullptr;
+	CheckedAPICall(duckdb_v2_value_create_bignum, data, length, is_negative, &value);
+	return detail::Factory::Make<Value>(value);
+}
+
+auto Value::AsBignum() const -> Bignum {
+	uint8_t *data = nullptr;
+	idx_t length = 0;
+	bool is_negative = false;
+	CheckedAPICall(duckdb_v2_value_get_bignum, handle(), &data, &length, &is_negative);
+	Bignum result {std::vector<uint8_t>(data, data + length), is_negative};
+	free(data);
+	return result;
+}
+
 auto Value::IsNull() const -> bool {
 	bool is_null = false;
 	CheckedAPICall(duckdb_v2_value_is_null, handle(), &is_null);
@@ -1581,6 +1640,29 @@ auto Vector::MakeSequence(int64_t start, int64_t increment, idx_t count) -> void
 	CheckedAPICall(duckdb_v2_vector_make_sequence, handle(), start, increment, count);
 }
 
+// The StringStorage <-> duckdb_v2_string casts below are sanctioned by the
+// layout static_asserts above.
+
+auto Vector::DecodeBit(const StringStorage &value) -> BitView {
+	const uint8_t *data = nullptr;
+	idx_t length = 0;
+	uint8_t padding_bits = 0;
+	CheckedAPICall(duckdb_v2_bit_decode, reinterpret_cast<const duckdb_v2_bit_t *>(&value), &data, &length,
+	               &padding_bits);
+	return BitView {data, length, padding_bits};
+}
+
+auto Vector::DecodeBignum(const StringStorage &value) -> Bignum {
+	uint8_t *data = nullptr;
+	idx_t length = 0;
+	bool is_negative = false;
+	CheckedAPICall(duckdb_v2_bignum_decode, reinterpret_cast<const duckdb_v2_bignum_t *>(&value), &data, &length,
+	               &is_negative);
+	Bignum result {std::vector<uint8_t>(data, data + length), is_negative};
+	free(data);
+	return result;
+}
+
 // --- Single-cell value bridge (owned by the types-values worktree) ---
 
 auto Vector::GetValue(idx_t row) const -> Value {
@@ -1731,6 +1813,63 @@ auto QueryResult::GetSchema() const -> Schema {
 	duckdb_v2_schema_handle schema = nullptr;
 	CheckedAPICall(duckdb_v2_result_get_schema, handle(), &schema);
 	return detail::Factory::Make<Schema>(schema);
+}
+
+// ResultType mirrors DUCKDB_V2_RESULT_TYPE numerically; every member is pinned.
+static_assert(static_cast<uint8_t>(QueryResult::ResultType::QUERY_RESULT) == DUCKDB_V2_RESULT_TYPE_QUERY_RESULT,
+              "ResultType must mirror DUCKDB_V2_RESULT_TYPE");
+static_assert(static_cast<uint8_t>(QueryResult::ResultType::CHANGED_ROWS) == DUCKDB_V2_RESULT_TYPE_CHANGED_ROWS,
+              "ResultType must mirror DUCKDB_V2_RESULT_TYPE");
+static_assert(static_cast<uint8_t>(QueryResult::ResultType::NOTHING) == DUCKDB_V2_RESULT_TYPE_NOTHING,
+              "ResultType must mirror DUCKDB_V2_RESULT_TYPE");
+
+// StatementType mirrors DUCKDB_V2_STATEMENT_TYPE numerically; every member is pinned.
+#define DUCKDB_CPP_ASSERT_STATEMENT_TYPE(member)                                                                       \
+	static_assert(static_cast<uint8_t>(QueryResult::StatementType::member) == DUCKDB_V2_STATEMENT_TYPE_##member,       \
+	              "StatementType::" #member " must mirror DUCKDB_V2_STATEMENT_TYPE_" #member)
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(INVALID);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(SELECT);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(INSERT);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(UPDATE);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(CREATE);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(DELETE);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(PREPARE);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(EXECUTE);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(ALTER);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(TRANSACTION);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(COPY);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(ANALYZE);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(VARIABLE_SET);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(CREATE_FUNC);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(EXPLAIN);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(DROP);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(EXPORT);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(PRAGMA);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(VACUUM);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(CALL);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(SET);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(LOAD);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(RELATION);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(EXTENSION);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(LOGICAL_PLAN);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(ATTACH);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(DETACH);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(MULTI);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(COPY_DATABASE);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(UPDATE_EXTENSIONS);
+DUCKDB_CPP_ASSERT_STATEMENT_TYPE(MERGE_INTO);
+#undef DUCKDB_CPP_ASSERT_STATEMENT_TYPE
+
+auto QueryResult::GetResultType() const -> ResultType {
+	DUCKDB_V2_RESULT_TYPE type = DUCKDB_V2_RESULT_TYPE_QUERY_RESULT;
+	CheckedAPICall(duckdb_v2_result_get_result_type, handle(), &type);
+	return static_cast<ResultType>(type);
+}
+
+auto QueryResult::GetStatementType() const -> StatementType {
+	DUCKDB_V2_STATEMENT_TYPE type = DUCKDB_V2_STATEMENT_TYPE_INVALID;
+	CheckedAPICall(duckdb_v2_result_get_statement_type, handle(), &type);
+	return static_cast<StatementType>(type);
 }
 
 // StepStatus mirrors DUCKDB_V2_RESULT_STEP_STATUS numerically; trip here if
@@ -2112,24 +2251,61 @@ auto ScalarFunction::GetCollationHandling() const -> FunctionCollationHandling {
 	return FromCCollationHandling(value);
 }
 
+namespace {
+
+// Shared guard for the function builders' GetUserData: the builder's info
+// table rides the C user_data slot; the user's own slot lives inside it.
+// `setter` names the builder's SetUserData for the error message.
+void *RequireUserData(const detail::UserData &user_data, const char *setter) {
+	auto ptr = user_data.get();
+	if (!ptr) {
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
+		                std::string("no user data was set; call ") + setter + " before Register");
+	}
+	return ptr;
+}
+
+// Shared guard for the function builders' phase GetBindData: a clear error
+// instead of a null deref. Templated so const and non-const pointers pass.
+template <class PTR>
+PTR *RequireBindData(PTR *ptr) {
+	if (!ptr) {
+		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
+		                "no bind data was set; call BindInput::SetBindData in the bind callback");
+	}
+	return ptr;
+}
+
+} // namespace
+
 struct ScalarFunctionInfo {
 	ScalarFunction::BindCallback bind_callback = nullptr;
 	ScalarFunction::InitCallback init_callback = nullptr;
 	ScalarFunction::ExecCallback exec_callback = nullptr;
+	// The user's own slot (ScalarFunction::SetUserData), destroyed with this
+	// object at engine teardown.
+	detail::UserData user_data;
 
 	ScalarFunctionInfo(ScalarFunction::BindCallback bind_callback, ScalarFunction::InitCallback init_callback,
-	                   ScalarFunction::ExecCallback exec_callback)
-	    : bind_callback(bind_callback), init_callback(init_callback), exec_callback(exec_callback) {
+	                   ScalarFunction::ExecCallback exec_callback, detail::UserData user_data)
+	    : bind_callback(bind_callback), init_callback(init_callback), exec_callback(exec_callback),
+	      user_data(std::move(user_data)) {
 	}
 
 	bool operator==(const ScalarFunctionInfo &other) const {
 		return bind_callback == other.bind_callback && init_callback == other.init_callback &&
-		       exec_callback == other.exec_callback;
+		       exec_callback == other.exec_callback && user_data.get() == other.user_data.get();
 	}
 };
 
 void *ScalarFunction::BindInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_scalar_function_bind_args *>(args)->out_bind_data.ptr;
+	return RequireBindData(static_cast<duckdb_v2_scalar_function_bind_args *>(args)->out_bind_data.ptr);
+}
+
+void *ScalarFunction::BindInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const ScalarFunctionInfo *>(static_cast<duckdb_v2_scalar_function_bind_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "ScalarFunction::SetUserData");
 }
 
 void ScalarFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(void *a, void *b),
@@ -2139,7 +2315,7 @@ void ScalarFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(v
 }
 
 void *ScalarFunction::InitInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_scalar_function_init_args *>(args)->bind_data;
+	return RequireBindData(static_cast<duckdb_v2_scalar_function_init_args *>(args)->bind_data);
 }
 
 void *ScalarFunction::InitInput::GetWorkerStateInternal() const {
@@ -2151,12 +2327,24 @@ void ScalarFunction::InitInput::SetWorkerStateInternal(void *data, void (*destru
 	args_struct->out_init_data = duckdb_v2_opaque {data, destructor, nullptr};
 }
 
+void *ScalarFunction::InitInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const ScalarFunctionInfo *>(static_cast<duckdb_v2_scalar_function_init_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "ScalarFunction::SetUserData");
+}
+
 void *ScalarFunction::ExecInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_scalar_function_exec_args *>(args)->bind_data;
+	return RequireBindData(static_cast<duckdb_v2_scalar_function_exec_args *>(args)->bind_data);
 }
 
 void *ScalarFunction::ExecInput::GetWorkerStateInternal() const {
 	return static_cast<duckdb_v2_scalar_function_exec_args *>(args)->init_data;
+}
+
+void *ScalarFunction::ExecInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const ScalarFunctionInfo *>(static_cast<duckdb_v2_scalar_function_exec_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "ScalarFunction::SetUserData");
 }
 
 auto ScalarFunction::ExecInput::GetInputChunk() const -> DataChunk {
@@ -2257,9 +2445,16 @@ auto ScalarFunction::SetExecCallback(ExecCallback callback) & -> ScalarFunction 
 	return *this;
 }
 
+auto ScalarFunction::SetUserDataInternal(void *data, void (*destructor)(void *)) -> void {
+	user_data = detail::UserData(data, destructor);
+}
+
 void ScalarFunction::Register(const Context &ctx) {
-	// Set the user data to the callbacks so they can be retrieved in the trampoline(s)
-	auto info = detail::MakeUserData<ScalarFunctionInfo>(bind_callback, init_callback, exec_callback);
+	// The callback table rides the C builder user_data slot so the
+	// trampolines can find it; the user's own data (SetUserData, moved out
+	// here) rides inside it.
+	auto info =
+	    detail::MakeUserData<ScalarFunctionInfo>(bind_callback, init_callback, exec_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_scalar_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_scalar_function_builder_register, ctx.handle(), handle());
@@ -2271,6 +2466,7 @@ void ScalarFunction::Register(const Context &ctx) {
 
 class AggregateFunctionInfo {
 public:
+	AggregateFunction::BindCallback bind_callback = nullptr;
 	AggregateFunction::SizeCallback size_callback = nullptr;
 	AggregateFunction::InitializeCallback initialize_callback = nullptr;
 	AggregateFunction::UpdateCallback update_callback = nullptr;
@@ -2278,25 +2474,32 @@ public:
 	AggregateFunction::FinalizeCallback finalize_callback = nullptr;
 	AggregateFunction::DestroyCallback destroy_callback = nullptr;
 
-	AggregateFunctionInfo(AggregateFunction::SizeCallback size_callback,
+	// The user's own slot (AggregateFunction::SetUserData), destroyed with
+	// this object at engine teardown.
+	detail::UserData user_data;
+
+	AggregateFunctionInfo(AggregateFunction::BindCallback bind_callback, AggregateFunction::SizeCallback size_callback,
 	                      AggregateFunction::InitializeCallback initialize_callback,
 	                      AggregateFunction::UpdateCallback update_callback,
 	                      AggregateFunction::CombineCallback combine_callback,
 	                      AggregateFunction::FinalizeCallback finalize_callback,
-	                      AggregateFunction::DestroyCallback destroy_callback)
-	    : size_callback(size_callback), initialize_callback(initialize_callback), update_callback(update_callback),
-	      combine_callback(combine_callback), finalize_callback(finalize_callback), destroy_callback(destroy_callback) {
+	                      AggregateFunction::DestroyCallback destroy_callback, detail::UserData user_data)
+	    : bind_callback(bind_callback), size_callback(size_callback), initialize_callback(initialize_callback),
+	      update_callback(update_callback), combine_callback(combine_callback), finalize_callback(finalize_callback),
+	      destroy_callback(destroy_callback), user_data(std::move(user_data)) {
 	}
 
 	bool operator==(const AggregateFunctionInfo &other) const {
 		// We only compare the presence of callbacks, not their actual function pointers, since the latter can be
 		// wrapped in different trampoline layers.
-		return (size_callback != nullptr) == (other.size_callback != nullptr) &&
+		return (bind_callback != nullptr) == (other.bind_callback != nullptr) &&
+		       (size_callback != nullptr) == (other.size_callback != nullptr) &&
 		       (initialize_callback != nullptr) == (other.initialize_callback != nullptr) &&
 		       (update_callback != nullptr) == (other.update_callback != nullptr) &&
 		       (combine_callback != nullptr) == (other.combine_callback != nullptr) &&
 		       (finalize_callback != nullptr) == (other.finalize_callback != nullptr) &&
-		       (destroy_callback != nullptr) == (other.destroy_callback != nullptr);
+		       (destroy_callback != nullptr) == (other.destroy_callback != nullptr) &&
+		       user_data.get() == other.user_data.get();
 	}
 };
 
@@ -2398,13 +2601,60 @@ auto AggregateFunction::GetDistinctDependence() const -> DistinctDependence {
 	return FromCDistinctDependence(value);
 }
 
+void AggregateFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(void *a, void *b),
+                                                       void (*destructor)(void *)) {
+	auto args_struct = static_cast<duckdb_v2_aggregate_function_bind_args *>(args);
+	args_struct->out_bind_data = duckdb_v2_opaque {data, destructor, equals};
+}
+
+void *AggregateFunction::BindInput::GetBindDataInternal() const {
+	return RequireBindData(static_cast<duckdb_v2_aggregate_function_bind_args *>(args)->out_bind_data.ptr);
+}
+
+void *AggregateFunction::BindInput::GetUserDataInternal() const {
+	const auto &function = *static_cast<const AggregateFunctionInfo *>(
+	    static_cast<duckdb_v2_aggregate_function_bind_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "AggregateFunction::SetUserData");
+}
+
+auto AggregateFunction::SetBindCallback(BindCallback callback) & -> AggregateFunction & {
+	if (!callback) {
+		// Reset
+		CheckedAPICall(duckdb_v2_aggregate_function_builder_set_bind_callback, handle(), nullptr);
+		bind_callback = nullptr;
+		return *this;
+	}
+
+	static auto trampoline = [](duckdb_v2_aggregate_function_bind_args *args, duckdb_v2_error_info_handle *err) {
+		WithExceptionGuard(err, [&]() {
+			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
+
+			auto input = detail::Factory::Make<BindInput>(args);
+
+			// Now call the user callback
+			function.bind_callback(input);
+		});
+	};
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_bind_callback, handle(), trampoline);
+
+	bind_callback = callback;
+
+	return *this;
+}
+
 class AggregateFunction::SizeInput::Inner {
 public:
 	idx_t size_in_bytes = 0;
+	const AggregateFunctionInfo *info = nullptr;
 };
 
 void AggregateFunction::SizeInput::Reserve(idx_t size_in_bytes) {
 	inner.size_in_bytes = size_in_bytes;
+}
+
+auto AggregateFunction::SizeInput::GetUserDataInternal() const -> void * {
+	return RequireUserData(inner.info->user_data, "AggregateFunction::SetUserData");
 }
 
 auto AggregateFunction::SetSizeCallback(SizeCallback callback) & -> AggregateFunction & {
@@ -2420,6 +2670,7 @@ auto AggregateFunction::SetSizeCallback(SizeCallback callback) & -> AggregateFun
 			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
 
 			SizeInput::Inner inner;
+			inner.info = &function;
 
 			SizeInput input {inner};
 
@@ -2441,10 +2692,15 @@ auto AggregateFunction::SetSizeCallback(SizeCallback callback) & -> AggregateFun
 class AggregateFunction::InitializeInput::Inner {
 public:
 	void *state = nullptr;
+	const AggregateFunctionInfo *info = nullptr;
 };
 
 void *AggregateFunction::InitializeInput::GetStatePointer() const {
 	return inner.state;
+}
+
+auto AggregateFunction::InitializeInput::GetUserDataInternal() const -> void * {
+	return RequireUserData(inner.info->user_data, "AggregateFunction::SetUserData");
 }
 
 auto AggregateFunction::SetInitializeCallback(InitializeCallback callback) & -> AggregateFunction & {
@@ -2461,6 +2717,7 @@ auto AggregateFunction::SetInitializeCallback(InitializeCallback callback) & -> 
 
 			InitializeInput::Inner inner;
 			inner.state = args->state;
+			inner.info = &function;
 
 			InitializeInput input {inner};
 
@@ -2481,6 +2738,8 @@ public:
 	idx_t count;
 	void **states;
 	DataChunk chunk;
+	const AggregateFunctionInfo *info = nullptr;
+	const void *bind_data = nullptr;
 };
 
 auto AggregateFunction::UpdateInput::GetInputChunk() const -> const DataChunk & {
@@ -2491,6 +2750,14 @@ auto AggregateFunction::UpdateInput::GetStateCount() const -> idx_t {
 }
 auto AggregateFunction::UpdateInput::GetStateArray() const -> void ** {
 	return inner.states;
+}
+
+auto AggregateFunction::UpdateInput::GetUserDataInternal() const -> void * {
+	return RequireUserData(inner.info->user_data, "AggregateFunction::SetUserData");
+}
+
+auto AggregateFunction::UpdateInput::GetBindDataInternal() const -> const void * {
+	return RequireBindData(inner.bind_data);
 }
 
 auto AggregateFunction::SetUpdateCallback(UpdateCallback callback) & -> AggregateFunction & {
@@ -2505,7 +2772,8 @@ auto AggregateFunction::SetUpdateCallback(UpdateCallback callback) & -> Aggregat
 		WithExceptionGuard(err, [&]() {
 			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
 
-			UpdateInput::Inner inner {args->count, args->states, detail::Factory::Make<DataChunk>(args->input, false)};
+			UpdateInput::Inner inner {args->count, args->states, detail::Factory::Make<DataChunk>(args->input, false),
+			                          &function, args->bind_data};
 
 			UpdateInput input {inner};
 
@@ -2526,6 +2794,8 @@ public:
 	idx_t count;
 	void **sources;
 	void **targets;
+	const AggregateFunctionInfo *info = nullptr;
+	const void *bind_data = nullptr;
 };
 
 auto AggregateFunction::CombineInput::GetStateCount() const -> idx_t {
@@ -2536,6 +2806,14 @@ auto AggregateFunction::CombineInput::GetSourceStateArray() const -> void ** {
 }
 auto AggregateFunction::CombineInput::GetTargetStateArray() const -> void ** {
 	return inner.targets;
+}
+
+auto AggregateFunction::CombineInput::GetUserDataInternal() const -> void * {
+	return RequireUserData(inner.info->user_data, "AggregateFunction::SetUserData");
+}
+
+auto AggregateFunction::CombineInput::GetBindDataInternal() const -> const void * {
+	return RequireBindData(inner.bind_data);
 }
 
 auto AggregateFunction::SetCombineCallback(CombineCallback callback) & -> AggregateFunction & {
@@ -2550,7 +2828,7 @@ auto AggregateFunction::SetCombineCallback(CombineCallback callback) & -> Aggreg
 		WithExceptionGuard(err, [&]() {
 			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
 
-			CombineInput::Inner inner {args->count, args->sources, args->targets};
+			CombineInput::Inner inner {args->count, args->sources, args->targets, &function, args->bind_data};
 
 			CombineInput input {inner};
 
@@ -2572,6 +2850,8 @@ public:
 	void **states;
 	Vector result_vector;
 	idx_t result_offset;
+	const AggregateFunctionInfo *info = nullptr;
+	const void *bind_data = nullptr;
 };
 
 auto AggregateFunction::FinalizeInput::GetStateCount() const -> idx_t {
@@ -2590,6 +2870,14 @@ auto AggregateFunction::FinalizeInput::GetResultOffset() const -> idx_t {
 	return inner.result_offset;
 }
 
+auto AggregateFunction::FinalizeInput::GetUserDataInternal() const -> void * {
+	return RequireUserData(inner.info->user_data, "AggregateFunction::SetUserData");
+}
+
+auto AggregateFunction::FinalizeInput::GetBindDataInternal() const -> const void * {
+	return RequireBindData(inner.bind_data);
+}
+
 auto AggregateFunction::SetFinalizeCallback(FinalizeCallback callback) & -> AggregateFunction & {
 	if (!callback) {
 		// Reset
@@ -2602,8 +2890,8 @@ auto AggregateFunction::SetFinalizeCallback(FinalizeCallback callback) & -> Aggr
 		WithExceptionGuard(err, [&]() {
 			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
 
-			FinalizeInput::Inner inner {args->count, args->states, detail::Factory::Make<Vector>(args->result),
-			                            args->result_offset};
+			FinalizeInput::Inner inner {args->count,         args->states, detail::Factory::Make<Vector>(args->result),
+			                            args->result_offset, &function,    args->bind_data};
 
 			FinalizeInput input {inner};
 
@@ -2623,6 +2911,8 @@ class AggregateFunction::DestroyInput::Inner {
 public:
 	idx_t count;
 	void **states;
+	const AggregateFunctionInfo *info = nullptr;
+	const void *bind_data = nullptr;
 };
 
 auto AggregateFunction::DestroyInput::GetStateArray() const -> void ** {
@@ -2631,6 +2921,14 @@ auto AggregateFunction::DestroyInput::GetStateArray() const -> void ** {
 
 auto AggregateFunction::DestroyInput::GetStateCount() const -> idx_t {
 	return inner.count;
+}
+
+auto AggregateFunction::DestroyInput::GetUserDataInternal() const -> void * {
+	return RequireUserData(inner.info->user_data, "AggregateFunction::SetUserData");
+}
+
+auto AggregateFunction::DestroyInput::GetBindDataInternal() const -> const void * {
+	return RequireBindData(inner.bind_data);
 }
 
 auto AggregateFunction::SetDestroyCallback(DestroyCallback callback) & -> AggregateFunction & {
@@ -2645,7 +2943,7 @@ auto AggregateFunction::SetDestroyCallback(DestroyCallback callback) & -> Aggreg
 		WithExceptionGuard(err, [&]() {
 			const auto &function = *static_cast<AggregateFunctionInfo *>(args->user_data);
 
-			DestroyInput::Inner inner {args->count, args->states};
+			DestroyInput::Inner inner {args->count, args->states, &function, args->bind_data};
 			DestroyInput input {inner};
 
 			// Now call the user callback
@@ -2660,10 +2958,17 @@ auto AggregateFunction::SetDestroyCallback(DestroyCallback callback) & -> Aggreg
 	return *this;
 }
 
+auto AggregateFunction::SetUserDataInternal(void *data, void (*destructor)(void *)) -> void {
+	user_data = detail::UserData(data, destructor);
+}
+
 void AggregateFunction::Register(const Context &ctx) {
-	// Set the user data to the callbacks so they can be retrieved in the trampoline(s)
-	auto info = detail::MakeUserData<AggregateFunctionInfo>(size_callback, initialize_callback, update_callback,
-	                                                        combine_callback, finalize_callback, destroy_callback);
+	// The callback table rides the C builder user_data slot so the
+	// trampolines can find it; the user's own data (SetUserData, moved out
+	// here) rides inside it.
+	auto info = detail::MakeUserData<AggregateFunctionInfo>(bind_callback, size_callback, initialize_callback,
+	                                                        update_callback, combine_callback, finalize_callback,
+	                                                        destroy_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_aggregate_function_builder_register, ctx.handle(), handle());
@@ -2703,21 +3008,7 @@ namespace {
 // The C user_data slot carries the wrapper's TableFunctionInfo; the user's
 // slot lives inside it.
 void *GetTableFunctionUserData(const TableFunctionInfo &function) {
-	auto ptr = function.user_data.get();
-	if (!ptr) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                "no user data was set; call TableFunction::SetUserData before Register");
-	}
-	return ptr;
-}
-
-// Guards every phase's GetBindData: a clear error instead of a null deref.
-void *RequireTableFunctionBindData(void *ptr) {
-	if (!ptr) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                "no bind data was set; call BindInput::SetBindData in the bind callback");
-	}
-	return ptr;
+	return RequireUserData(function.user_data, "TableFunction::SetUserData");
 }
 
 } // namespace
@@ -2863,7 +3154,7 @@ public:
 auto TableFunction::InitGlobalInput::GetBindDataInternal() const -> void * {
 	void *data = nullptr;
 	CheckedAPICall(duckdb_v2_table_function_init_get_bind_data, inner.info, &data);
-	return RequireTableFunctionBindData(data);
+	return RequireBindData(data);
 }
 
 auto TableFunction::InitGlobalInput::SetGlobalStateInternal(void *data, void (*destructor)(void *)) -> void {
@@ -2937,7 +3228,13 @@ public:
 auto TableFunction::InitLocalInput::GetBindDataInternal() const -> void * {
 	void *data = nullptr;
 	CheckedAPICall(duckdb_v2_table_function_init_get_bind_data, inner.info, &data);
-	return RequireTableFunctionBindData(data);
+	return RequireBindData(data);
+}
+
+auto TableFunction::InitLocalInput::GetGlobalStateInternal() const -> void * {
+	void *data = nullptr;
+	CheckedAPICall(duckdb_v2_table_function_init_get_global_state, inner.info, &data);
+	return data;
 }
 
 auto TableFunction::InitLocalInput::SetLocalStateInternal(void *data, void (*destructor)(void *)) -> void {
@@ -3008,7 +3305,7 @@ public:
 auto TableFunction::ExecInput::GetBindDataInternal() const -> void * {
 	void *data = nullptr;
 	CheckedAPICall(duckdb_v2_table_function_exec_get_bind_data, inner.info, &data);
-	return RequireTableFunctionBindData(data);
+	return RequireBindData(data);
 }
 
 auto TableFunction::ExecInput::GetGlobalStateInternal() const -> void * {
@@ -3079,7 +3376,7 @@ public:
 };
 
 auto TableFunction::PushdownInput::GetBindDataInternal() const -> void * {
-	return RequireTableFunctionBindData(inner.bind_data);
+	return RequireBindData(inner.bind_data);
 }
 
 auto TableFunction::PushdownInput::GetUserDataInternal() const -> void * {
@@ -3167,18 +3464,21 @@ struct CopyFunctionInfo {
 	CopyFunction::BatchCallback batch_callback = nullptr;
 	CopyFunction::FlushCallback flush_callback = nullptr;
 	CopyFunction::FinalizeCallback finalize_callback = nullptr;
+	// The user's own slot (CopyFunction::SetUserData), destroyed with this
+	// object at engine teardown.
+	detail::UserData user_data;
 
 	CopyFunctionInfo(CopyFunction::BindCallback bind, CopyFunction::InitCallback init,
 	                 CopyFunction::BatchCallback batch, CopyFunction::FlushCallback flush,
-	                 CopyFunction::FinalizeCallback finalize)
+	                 CopyFunction::FinalizeCallback finalize, detail::UserData user_data)
 	    : bind_callback(bind), init_callback(init), batch_callback(batch), flush_callback(flush),
-	      finalize_callback(finalize) {
+	      finalize_callback(finalize), user_data(std::move(user_data)) {
 	}
 
 	bool operator==(const CopyFunctionInfo &other) const {
 		return bind_callback == other.bind_callback && init_callback == other.init_callback &&
 		       batch_callback == other.batch_callback && flush_callback == other.flush_callback &&
-		       finalize_callback == other.finalize_callback;
+		       finalize_callback == other.finalize_callback && user_data.get() == other.user_data.get();
 	}
 };
 
@@ -3225,6 +3525,12 @@ void CopyFunction::BindInput::SetBindDataInternal(void *data, bool (*equals)(voi
 	args_struct->out_bind_data = duckdb_v2_opaque {data, destructor, equals};
 }
 
+void *CopyFunction::BindInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const CopyFunctionInfo *>(static_cast<duckdb_v2_copy_function_bind_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "CopyFunction::SetUserData");
+}
+
 // --- Init input ---
 
 auto CopyFunction::InitInput::GetContext() const -> Context {
@@ -3236,12 +3542,18 @@ auto CopyFunction::InitInput::GetFilePath() const -> std::string_view {
 }
 
 const void *CopyFunction::InitInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_copy_function_init_args *>(args)->bind_data;
+	return RequireBindData(static_cast<duckdb_v2_copy_function_init_args *>(args)->bind_data);
 }
 
 void CopyFunction::InitInput::SetInitDataInternal(void *data, void (*destructor)(void *)) {
 	auto args_struct = static_cast<duckdb_v2_copy_function_init_args *>(args);
 	args_struct->out_init_data = duckdb_v2_opaque {data, destructor, nullptr};
+}
+
+void *CopyFunction::InitInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const CopyFunctionInfo *>(static_cast<duckdb_v2_copy_function_init_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "CopyFunction::SetUserData");
 }
 
 // --- Batch input ---
@@ -3251,7 +3563,7 @@ auto CopyFunction::BatchInput::GetContext() const -> Context {
 }
 
 const void *CopyFunction::BatchInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_copy_function_batch_args *>(args)->bind_data;
+	return RequireBindData(static_cast<duckdb_v2_copy_function_batch_args *>(args)->bind_data);
 }
 
 void *CopyFunction::BatchInput::GetInitDataInternal() const {
@@ -3263,6 +3575,12 @@ void CopyFunction::BatchInput::SetBatchDataInternal(void *data, void (*destructo
 	args_struct->out_batch = duckdb_v2_opaque {data, destructor, nullptr};
 }
 
+void *CopyFunction::BatchInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const CopyFunctionInfo *>(static_cast<duckdb_v2_copy_function_batch_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "CopyFunction::SetUserData");
+}
+
 // --- Flush input ---
 
 auto CopyFunction::FlushInput::GetContext() const -> Context {
@@ -3270,7 +3588,7 @@ auto CopyFunction::FlushInput::GetContext() const -> Context {
 }
 
 const void *CopyFunction::FlushInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_copy_function_flush_args *>(args)->bind_data;
+	return RequireBindData(static_cast<duckdb_v2_copy_function_flush_args *>(args)->bind_data);
 }
 
 void *CopyFunction::FlushInput::GetInitDataInternal() const {
@@ -3281,6 +3599,12 @@ void *CopyFunction::FlushInput::GetBatchDataInternal() const {
 	return static_cast<duckdb_v2_copy_function_flush_args *>(args)->in_batch;
 }
 
+void *CopyFunction::FlushInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const CopyFunctionInfo *>(static_cast<duckdb_v2_copy_function_flush_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "CopyFunction::SetUserData");
+}
+
 // --- Finalize input ---
 
 auto CopyFunction::FinalizeInput::GetContext() const -> Context {
@@ -3288,11 +3612,17 @@ auto CopyFunction::FinalizeInput::GetContext() const -> Context {
 }
 
 const void *CopyFunction::FinalizeInput::GetBindDataInternal() const {
-	return static_cast<duckdb_v2_copy_function_finalize_args *>(args)->bind_data;
+	return RequireBindData(static_cast<duckdb_v2_copy_function_finalize_args *>(args)->bind_data);
 }
 
 void *CopyFunction::FinalizeInput::GetInitDataInternal() const {
 	return static_cast<duckdb_v2_copy_function_finalize_args *>(args)->init_data;
+}
+
+void *CopyFunction::FinalizeInput::GetUserDataInternal() const {
+	const auto &function =
+	    *static_cast<const CopyFunctionInfo *>(static_cast<duckdb_v2_copy_function_finalize_args *>(args)->user_data);
+	return RequireUserData(function.user_data, "CopyFunction::SetUserData");
 }
 
 // --- Callback registration ---
@@ -3399,10 +3729,16 @@ auto CopyFunction::SetFinalizeCallback(FinalizeCallback callback) & -> CopyFunct
 	return *this;
 }
 
+auto CopyFunction::SetUserDataInternal(void *data, void (*destructor)(void *)) -> void {
+	user_data = detail::UserData(data, destructor);
+}
+
 auto CopyFunction::Register(const Context &ctx) -> void {
-	// Stash the callbacks as the function's user data so the trampolines can recover them via args->user_data.
+	// The callback table rides the C builder user_data slot so the
+	// trampolines can find it; the user's own data (SetUserData, moved out
+	// here) rides inside it.
 	auto info = detail::MakeUserData<CopyFunctionInfo>(bind_callback, init_callback, batch_callback, flush_callback,
-	                                                   finalize_callback);
+	                                                   finalize_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_copy_function_builder_set_user_data, handle(), info);
 
 	CheckedAPICall(duckdb_v2_copy_function_builder_register, ctx.handle(), handle());

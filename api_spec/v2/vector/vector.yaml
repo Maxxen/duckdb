@@ -16,8 +16,9 @@ module: vector
 # Iteration is uniform across FLAT / CONSTANT / DICTIONARY:
 #
 #   for (idx_t i = 0; i < view.count; i++) {
-#       idx_t idx; sel_at(view.sel, i, &idx, NULL);
-#       bool valid; validity_row_is_valid(view.validity, idx, &valid, NULL);
+#       idx_t idx = view.sel ? view.sel[i] : i;
+#       bool valid = !view.validity ||
+#                    (view.validity[idx >> 6] & ((uint64_t)1 << (idx & 63)));
 #       if (!valid) continue;
 #       /* read via the appropriately-typed cast of view.data */
 #   }
@@ -45,13 +46,13 @@ module: vector
 #     dictionary size, contract: size <= 255 uint8, <= 65535 uint16,
 #     else uint32 (boundaries inclusive; an empty dictionary is uint8).
 #   - VARCHAR / BLOB / BIT / BIGNUM → const string_t * (typed via the
-#     varchar_t / blob_t / bit_t / bignum_t aliases). Decode via the
-#     per-kind bridge decoder (varchar_decode / blob_decode / bit_decode
-#     return borrowed pointers with lifetime = owning chunk;
-#     bignum_decode returns an owned magnitude buffer the caller frees).
-#     string_t is opaque to the public ABI — only the 16-byte size is
-#     committed so callers can stride arr[row]; the layout is private
-#     to the bridge.
+#     varchar_t / blob_t / bit_t / bignum_t aliases). string_t is a
+#     transparent union mirroring duckdb::string_t (see common.yaml):
+#     read its fields directly and stride arr[row]. VARCHAR / BLOB
+#     carry no wire encoding, so the field read is the read. BIT and
+#     BIGNUM do; decode via bit_decode (borrowed pointers, lifetime =
+#     owning chunk) or bignum_decode (owned magnitude buffer the
+#     caller frees).
 #   - LIST / MAP → const list_entry * (per-row {offset, length})
 #   - ARRAY / STRUCT / UNION → unspecified, typically NULL; the parent
 #     vector carries no per-row leaf data. Descend into children via
@@ -62,10 +63,10 @@ module: vector
 #   - CONSTANT   → view.sel non-null, the zero singleton
 #   - DICTIONARY → view.sel non-null, the dictionary's own sel
 #
-# The sel_at(sel, i, &out, err) bridge helper returns `sel ? sel[i] : i`.
-# Consumers in tight loops who want zero-overhead can write that
-# expression inline themselves — the `sel == NULL` identity convention
-# is part of the V2 contract.
+# Row resolution is the inline expression `sel ? sel[i] : i`; the
+# `sel == NULL` identity convention is part of the V2 contract.
+# Validity follows sel, not the loop counter: index the validity mask
+# with the sel-resolved row, as in the iteration example above.
 #
 # Nested-kind navigation is uniform via two generic accessors:
 #
@@ -93,11 +94,12 @@ module: vector
 # Layout typedefs:
 #   hugeint_t / uhugeint_t / interval_t / list_entry are declared as
 #   plain structs with visible fields — callers read those fields
-#   directly. string_t (declared in common.yaml) is an opaque 16-byte
-#   struct: only the size is part of the ABI so callers can stride
-#   arr[row]; the inline-vs-pointer dispatch lives entirely inside the
-#   bridge decoders. The four kind aliases (varchar_t / blob_t / bit_t
-#   / bignum_t) are semantic-marker typedefs of string_t.
+#   directly. string_t (declared in common.yaml) is a transparent
+#   16-byte union mirroring duckdb::string_t: callers read its fields
+#   directly, dispatching inline-vs-pointer on the
+#   STRING_INLINE_LENGTH cutoff, and stride arr[row]. The four kind
+#   aliases (varchar_t / blob_t / bit_t / bignum_t) are
+#   semantic-marker typedefs of string_t.
 
 structs:
   vector_view:
@@ -549,64 +551,13 @@ functions:
   # -----------------------------------------------------------------------
   # String-backed kind decoders
   #
-  # All four are bridge functions. varchar/blob/bit return borrowed
-  # pointers + lengths whose lifetime is the owning chunk. bignum
-  # allocates an owned magnitude buffer because storage stores negatives
-  # bit-inverted — the contiguous magnitude bytes don't exist on disk.
+  # Only BIT and BIGNUM carry a wire encoding on top of the transparent
+  # string_t bytes; VARCHAR / BLOB reads are direct field reads and have
+  # no decoder. bit returns borrowed pointers + lengths whose lifetime
+  # is the owning chunk. bignum allocates an owned magnitude buffer
+  # because storage stores negatives bit-inverted — the contiguous
+  # magnitude bytes don't exist on disk.
   # -----------------------------------------------------------------------
-  varchar_decode:
-    summary: Reads the bytes of a VARCHAR value from its storage as a view.
-    description: |
-      out_data receives a borrowed view into the VARCHAR's underlying
-      bytes. The view is valid for as long as the enclosing value's
-      owning chunk is alive — for short (inlined) strings the bytes
-      physically live inside the varchar_t value, so callers that need
-      a view outliving the value must memcpy.
-    parameters:
-      varchar:
-        type: varchar
-        indirection: 1
-        const: true
-        description: Pointer to the VARCHAR storage.
-      out_data:
-        type: str
-        indirection: 1
-        kind: OUT_BORROW
-        description: Receives a borrowed view of the bytes.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  blob_decode:
-    summary: Reads the bytes + length of a BLOB value from its storage.
-    description: |
-      Identical contract to varchar_decode but typed for raw bytes
-      rather than text.
-    parameters:
-      blob:
-        type: blob
-        indirection: 1
-        const: true
-        description: Pointer to the BLOB storage.
-      out_data:
-        type: u8
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-        description: Receives a borrowed pointer to the bytes.
-      out_length:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: Receives the byte length.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
   bit_decode:
     summary: Reads the bytes + length + padding-bits of a BIT value.
     description: |
@@ -686,73 +637,6 @@ functions:
         indirection: 1
         kind: OUT
         description: Receives true if the value is negative, false otherwise.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # Per-row helpers
-  #
-  # sel_at and validity_row_is_valid are standalone: they take raw
-  # pointers (a sel array, a validity bitmap), not a vector handle.
-  # That's why they have no `belongs_to: vector` — the asymmetry with
-  # the other vector_* entries is intentional. Both are bridge
-  # functions; the dynamic-library boundary cost is small versus the
-  # interop costs the target audience already pays, and consumers in
-  # tight loops can inline the bodies themselves (see §3 of the design
-  # doc's Open Questions).
-  # -----------------------------------------------------------------------
-  sel_at:
-    summary: Resolves a logical row index through a selection vector.
-    description: |
-      Returns `sel ? sel[i] : i` via out. The `sel == NULL` identity
-      convention matches duckdb::UnifiedVectorFormat: FLAT vectors carry
-      a NULL sel, CONSTANT vectors a non-null zero singleton, DICTIONARY
-      vectors their own sel. Consumers in tight loops can inline the
-      expression themselves to skip the bridge call.
-    role: getter
-    parameters:
-      sel:
-        type: sel
-        indirection: 1
-        const: true
-        description: The selection vector pointer; may be NULL (means identity).
-      i:
-        type: idx
-        description: The logical row index.
-      out:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: "Receives the physical row index: `sel ? sel[i] : i`."
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  validity_row_is_valid:
-    summary: Returns whether a row is valid (not NULL) in a validity mask.
-    description: |
-      Equivalent to `validity == NULL || (validity[row >> 6] & (1 << (row & 63)))`.
-      Returns true when validity is NULL (the all-valid fast path). Row
-      is the physical row index (post-selection).
-    role: getter
-    parameters:
-      validity:
-        type: u64
-        indirection: 1
-        const: true
-        description: The validity mask pointer; may be NULL (means all valid).
-      row:
-        type: idx
-        description: The physical row index (post-selection).
-      out_is_valid:
-        type: bool
-        indirection: 1
-        kind: OUT
       err:
         type: error_info
         indirection: 1

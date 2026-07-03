@@ -9,7 +9,7 @@
 // Tests for the transparent duckdb_v2_string layout: read its fields directly
 // (via the StrInlined / StrLength / StrData helpers below) and cross-validate
 // against the V1 string_t accessors (duckdb_string_is_inlined, _t_length,
-// _t_data) and the V2 bridge decoders (varchar/blob/bit/bignum_decode).
+// _t_data) and the V2 wire-codec decoders (bit/bignum_decode).
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -85,12 +85,6 @@ struct InlQueryRows {
 	}
 };
 
-idx_t InlSelAt(const duckdb_v2_sel_t *sel, idx_t i) {
-	idx_t out = 0;
-	REQUIRE(duckdb_v2_sel_at(sel, i, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	return out;
-}
-
 } // namespace
 
 // ===========================================================================
@@ -104,7 +98,7 @@ TEST_CASE("V2 string layout: direct reads match V1 equivalents", "[capi_v2][stri
 	const duckdb_v2_string *arr = qr.as<duckdb_v2_string>();
 
 	for (idx_t row = 0; row < qr.size; row++) {
-		idx_t phys = InlSelAt(qr.view.sel, row);
+		idx_t phys = SelAt(qr.view.sel, row);
 		const duckdb_v2_string *v2s = &arr[phys];
 		// V1 uses the same binary layout; cast is safe.
 		duckdb_string_t v1s = *reinterpret_cast<const duckdb_string_t *>(v2s);
@@ -117,67 +111,34 @@ TEST_CASE("V2 string layout: direct reads match V1 equivalents", "[capi_v2][stri
 
 	// Pin expected values for the two rows.
 	{
-		REQUIRE(StrInlined(&arr[InlSelAt(qr.view.sel, 0)]));       // "short" fits inline
-		REQUIRE_FALSE(StrInlined(&arr[InlSelAt(qr.view.sel, 1)])); // 50-char string does not
+		REQUIRE(StrInlined(&arr[SelAt(qr.view.sel, 0)]));       // "short" fits inline
+		REQUIRE_FALSE(StrInlined(&arr[SelAt(qr.view.sel, 1)])); // 50-char string does not
 
-		REQUIRE(StrLength(&arr[InlSelAt(qr.view.sel, 0)]) == 5);
-		REQUIRE(StrLength(&arr[InlSelAt(qr.view.sel, 1)]) == 50);
+		REQUIRE(StrLength(&arr[SelAt(qr.view.sel, 0)]) == 5);
+		REQUIRE(StrLength(&arr[SelAt(qr.view.sel, 1)]) == 50);
 
-		REQUIRE(std::string(StrData(&arr[InlSelAt(qr.view.sel, 0)]), 5) == "short");
-		REQUIRE(std::string(StrData(&arr[InlSelAt(qr.view.sel, 1)]), 50) == std::string(50, 'x'));
+		REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 0)]), 5) == "short");
+		REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 1)]), 50) == std::string(50, 'x'));
 	}
 }
 
 // ===========================================================================
-// Transparent VARCHAR reads vs varchar_decode.
-// Same two rows; confirms the field reads agree with the decoder.
-// ===========================================================================
-
-TEST_CASE("V2 string layout: VARCHAR reads match varchar_decode", "[capi_v2][string_layout]") {
-	V2InlineFixture fx;
-	InlQueryRows qr(fx.conn, "SELECT * FROM (VALUES ('short'), (repeat('x', 50))) t(s)", 2);
-	const duckdb_v2_varchar_t *arr = qr.as<duckdb_v2_varchar_t>();
-
-	for (idx_t row = 0; row < qr.size; row++) {
-		idx_t phys = InlSelAt(qr.view.sel, row);
-		duckdb_v2_str dec = {nullptr, 0};
-		REQUIRE(duckdb_v2_varchar_decode(&arr[phys], &dec, nullptr) == DUCKDB_V2_ERROR_NONE);
-
-		REQUIRE(StrLength(&arr[phys]) == static_cast<uint32_t>(dec.len));
-		REQUIRE(StrData(&arr[phys]) == dec.ptr);
-		REQUIRE(StrInlined(&arr[phys]) == (dec.len <= DUCKDB_V2_STRING_INLINE_LENGTH));
-	}
-}
-
-// ===========================================================================
-// Transparent BLOB reads vs blob_decode.
+// Transparent BLOB direct reads.
 // 4-byte blob (inlined) and 15-byte blob (pointer form).
 // ===========================================================================
 
-TEST_CASE("V2 string layout: BLOB reads match blob_decode", "[capi_v2][string_layout]") {
+TEST_CASE("V2 string layout: BLOB direct reads", "[capi_v2][string_layout]") {
 	V2InlineFixture fx;
 	// 'ABCD' = 4 bytes (inlined, <= 12); 'ABCDEFGHIJKLMNO' = 15 bytes (pointer form).
 	InlQueryRows qr(fx.conn, "SELECT * FROM (VALUES ('ABCD'::BLOB), ('ABCDEFGHIJKLMNO'::BLOB)) t(b)", 2);
 	const duckdb_v2_blob_t *arr = qr.as<duckdb_v2_blob_t>();
 
-	for (idx_t row = 0; row < qr.size; row++) {
-		idx_t phys = InlSelAt(qr.view.sel, row);
-		const uint8_t *dec_data = nullptr;
-		idx_t dec_len = 0;
-		REQUIRE(duckdb_v2_blob_decode(&arr[phys], &dec_data, &dec_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-
-		REQUIRE(StrLength(&arr[phys]) == static_cast<uint32_t>(dec_len));
-		REQUIRE(StrData(&arr[phys]) == reinterpret_cast<const char *>(dec_data));
-		REQUIRE(StrInlined(&arr[phys]) == (dec_len <= DUCKDB_V2_STRING_INLINE_LENGTH));
-	}
-
-	// Pin expected values.
-	{
-		REQUIRE(StrInlined(&arr[InlSelAt(qr.view.sel, 0)]));       // 4 bytes
-		REQUIRE_FALSE(StrInlined(&arr[InlSelAt(qr.view.sel, 1)])); // 15 bytes
-		REQUIRE(StrLength(&arr[InlSelAt(qr.view.sel, 0)]) == 4);
-		REQUIRE(StrLength(&arr[InlSelAt(qr.view.sel, 1)]) == 15);
-	}
+	REQUIRE(StrInlined(&arr[SelAt(qr.view.sel, 0)]));       // 4 bytes
+	REQUIRE_FALSE(StrInlined(&arr[SelAt(qr.view.sel, 1)])); // 15 bytes
+	REQUIRE(StrLength(&arr[SelAt(qr.view.sel, 0)]) == 4);
+	REQUIRE(StrLength(&arr[SelAt(qr.view.sel, 1)]) == 15);
+	REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 0)]), 4) == "ABCD");
+	REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 1)]), 15) == "ABCDEFGHIJKLMNO");
 }
 
 // ===========================================================================
@@ -192,7 +153,7 @@ TEST_CASE("V2 string layout: BIT reads match bit_decode", "[capi_v2][string_layo
 	const duckdb_v2_bit_t *arr = qr.as<duckdb_v2_bit_t>();
 
 	for (idx_t row = 0; row < qr.size; row++) {
-		idx_t phys = InlSelAt(qr.view.sel, row);
+		idx_t phys = SelAt(qr.view.sel, row);
 		const uint8_t *dec_data = nullptr;
 		idx_t dec_byte_len = 0;
 		uint8_t dec_padding = 0;
@@ -206,10 +167,10 @@ TEST_CASE("V2 string layout: BIT reads match bit_decode", "[capi_v2][string_layo
 
 	// Pin expected values for both rows.
 	{
-		REQUIRE(BitPadding(&arr[InlSelAt(qr.view.sel, 0)]) == 0);
-		REQUIRE(BitCount(&arr[InlSelAt(qr.view.sel, 0)]) == 8);
-		REQUIRE(BitPadding(&arr[InlSelAt(qr.view.sel, 1)]) == 5);
-		REQUIRE(BitCount(&arr[InlSelAt(qr.view.sel, 1)]) == 3);
+		REQUIRE(BitPadding(&arr[SelAt(qr.view.sel, 0)]) == 0);
+		REQUIRE(BitCount(&arr[SelAt(qr.view.sel, 0)]) == 8);
+		REQUIRE(BitPadding(&arr[SelAt(qr.view.sel, 1)]) == 5);
+		REQUIRE(BitCount(&arr[SelAt(qr.view.sel, 1)]) == 3);
 	}
 }
 
@@ -229,7 +190,7 @@ TEST_CASE("V2 string layout: BIGNUM sign matches bignum_decode", "[capi_v2][stri
 	const duckdb_v2_bignum_t *arr = qr.as<duckdb_v2_bignum_t>();
 
 	for (idx_t row = 0; row < qr.size; row++) {
-		idx_t phys = InlSelAt(qr.view.sel, row);
+		idx_t phys = SelAt(qr.view.sel, row);
 		uint8_t *mag = nullptr;
 		idx_t mag_len = 0;
 		bool dec_neg = false;
@@ -241,7 +202,7 @@ TEST_CASE("V2 string layout: BIGNUM sign matches bignum_decode", "[capi_v2][stri
 
 	// Pin expected signs.
 	{
-		REQUIRE_FALSE(BignumNegative(&arr[InlSelAt(qr.view.sel, 0)])); // 2^128-1, positive
-		REQUIRE(BignumNegative(&arr[InlSelAt(qr.view.sel, 1)]));       // -256, negative
+		REQUIRE_FALSE(BignumNegative(&arr[SelAt(qr.view.sel, 0)])); // 2^128-1, positive
+		REQUIRE(BignumNegative(&arr[SelAt(qr.view.sel, 1)]));       // -256, negative
 	}
 }

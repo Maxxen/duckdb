@@ -84,9 +84,7 @@ std::string GetVarchar(duckdb_v2_vector_handle vec, idx_t row) {
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(view.data != nullptr);
 	auto storage = reinterpret_cast<const duckdb_v2_varchar_t *>(view.data);
-	duckdb_v2_str s = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&storage[ResolveRow(view, row)], &s, nullptr) == DUCKDB_V2_ERROR_NONE);
-	return V2StrTo(s);
+	return V2StrTo(V2StringView(storage[ResolveRow(view, row)]));
 }
 
 // Steps the first chunk out of a single-statement query. The returned chunk is

@@ -1207,10 +1207,7 @@ void VarcharToFahrenheit(duckdb_v2_cast_function_exec_args *args, duckdb_v2_erro
 	auto *out = static_cast<int32_t *>(out_ptr);
 	for (idx_t i = 0; i < args->count; i++) {
 		idx_t idx = SelAt(view.sel, i);
-		duckdb_v2_str bytes = {nullptr, 0};
-		if (duckdb_v2_varchar_decode(&in[idx], &bytes, err) != DUCKDB_V2_ERROR_NONE) {
-			return;
-		}
+		duckdb_v2_str bytes = V2StringView(in[idx]);
 		int32_t parsed = 0;
 		bool ok = bytes.len >= 2 && bytes.ptr[bytes.len - 1] == 'F';
 		for (idx_t b = 0; ok && b + 1 < bytes.len; b++) {

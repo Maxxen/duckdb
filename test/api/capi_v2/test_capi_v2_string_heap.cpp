@@ -99,9 +99,7 @@ TEST_CASE("V2: string_heap_allocate write-in-place", "[capi_v2][string_heap]") {
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(fixture.vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
-	duckdb_v2_str out = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == std::string(len, 'x'));
+	REQUIRE(V2StringView(arr[0]) == std::string(len, 'x'));
 }
 
 TEST_CASE("V2: string_heap_allocate byte_len 0 is valid", "[capi_v2][string_heap]") {
@@ -157,11 +155,8 @@ TEST_CASE("V2: inline vs non-inline placement", "[capi_v2][string_heap]") {
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(fixture.vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
-	duckdb_v2_str out = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == "hi");
-	REQUIRE(duckdb_v2_varchar_decode(&arr[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == long_str);
+	REQUIRE(V2StringView(arr[0]) == "hi");
+	REQUIRE(V2StringView(arr[1]) == long_str);
 }
 
 TEST_CASE("V2: empty string is inlined", "[capi_v2][string_heap]") {
@@ -178,9 +173,7 @@ TEST_CASE("V2: empty string is inlined", "[capi_v2][string_heap]") {
 
 	for (auto *s : {&a, &b}) {
 		REQUIRE(IsInlined(*s));
-		duckdb_v2_str out = {reinterpret_cast<const char *>(0x1), 99};
-		REQUIRE(duckdb_v2_varchar_decode(s, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(out.len == 0);
+		REQUIRE(V2StringView(*s).len == 0);
 	}
 }
 
@@ -215,16 +208,16 @@ TEST_CASE("V2: BLOB with embedded nulls (inline + heap)", "[capi_v2][string_heap
 	REQUIRE(duckdb_v2_vector_get_view(fixture.vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_blob_t *>(view.data);
 
-	const uint8_t *out_data = nullptr;
-	idx_t out_len = 0;
-	REQUIRE(duckdb_v2_blob_decode(&arr[0], &out_data, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out_len == 5);
+	duckdb_v2_str out = V2StringView(arr[0]);
+	auto *out_data = reinterpret_cast<const uint8_t *>(out.ptr);
+	REQUIRE(out.len == 5);
 	REQUIRE(out_data[0] == 0xDE);
 	REQUIRE(out_data[2] == 0x00);
 	REQUIRE(out_data[4] == 0xEF);
 
-	REQUIRE(duckdb_v2_blob_decode(&arr[1], &out_data, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out_len == 20);
+	out = V2StringView(arr[1]);
+	out_data = reinterpret_cast<const uint8_t *>(out.ptr);
+	REQUIRE(out.len == 20);
 	REQUIRE(out_data[0] == 0xDE);
 	REQUIRE(out_data[5] == 0x00);
 	REQUIRE(out_data[10] == 0xAD);
@@ -259,9 +252,6 @@ TEST_CASE("V2: string heap write on constant vector", "[capi_v2][string_heap]") 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(fixture.vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
-	duckdb_v2_str out = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 0)], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == constant);
-	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 2)], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == constant);
+	REQUIRE(V2StringView(arr[SelAt(view.sel, 0)]) == constant);
+	REQUIRE(V2StringView(arr[SelAt(view.sel, 2)]) == constant);
 }

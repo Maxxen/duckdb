@@ -61,9 +61,9 @@ TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
 
 // ===========================================================================
 // Multi-row INTEGER FLAT vector with one NULL — checks validity bit
-// reading via duckdb_v2_validity_row_is_valid (bridge). Also pins that
-// view.sel is NULL for FLAT (identity), and that duckdb_v2_sel_at
-// returns the row index unchanged in that case.
+// reading via the documented inline formula (RowValid). Also pins that
+// view.sel is NULL for FLAT (identity), so sel resolution returns the
+// row index unchanged.
 // ===========================================================================
 
 TEST_CASE("V2: INTEGER vector with NULL — validity + identity sel", "[capi_v2][data_chunk]") {
@@ -89,29 +89,19 @@ TEST_CASE("V2: INTEGER vector with NULL — validity + identity sel", "[capi_v2]
 
 	const int32_t *data = static_cast<const int32_t *>(view.data);
 
-	// Identity sel: sel_at(NULL, i) == i.
+	// Identity sel: SelAt(NULL, i) == i.
 	for (idx_t i = 0; i < size; i++) {
 		REQUIRE(SelAt(view.sel, i) == i);
 	}
 
 	// Validity matches the VALUES (1), (NULL), (3) pattern.
-	bool is_valid = false;
-	duckdb_v2_validity_row_is_valid(view.validity, 0, &is_valid, nullptr);
-	REQUIRE(is_valid);
+	REQUIRE(RowValid(view, 0));
 	REQUIRE(data[0] == 1);
 
-	duckdb_v2_validity_row_is_valid(view.validity, 1, &is_valid, nullptr);
-	REQUIRE_FALSE(is_valid);
+	REQUIRE_FALSE(RowValid(view, 1));
 
-	duckdb_v2_validity_row_is_valid(view.validity, 2, &is_valid, nullptr);
-	REQUIRE(is_valid);
+	REQUIRE(RowValid(view, 2));
 	REQUIRE(data[2] == 3);
-
-	// All-valid fast path.
-	duckdb_v2_validity_row_is_valid(nullptr, 0, &is_valid, nullptr);
-	REQUIRE(is_valid);
-	duckdb_v2_validity_row_is_valid(nullptr, 12345, &is_valid, nullptr);
-	REQUIRE(is_valid);
 
 	duckdb_v2_data_chunk_destroy(&chunk);
 	duckdb_v2_result_destroy(&r);
@@ -241,12 +231,11 @@ TEST_CASE("V2: HUGEINT + INTERVAL via layout typedefs", "[capi_v2][data_chunk]")
 }
 
 // ===========================================================================
-// VARCHAR via duckdb_v2_varchar_decode. Exercises the bridge decoder
-// across both inlined (short) and pointer (long) string_t storage
-// forms — the inline-vs-pointer dispatch is inside the bridge.
+// VARCHAR via direct transparent-field reads (V2StringView), across
+// both inlined (short) and pointer (long) string_t storage forms.
 // ===========================================================================
 
-TEST_CASE("V2: VARCHAR via varchar_decode (inlined + pointer forms)", "[capi_v2][data_chunk]") {
+TEST_CASE("V2: VARCHAR direct reads (inlined + pointer forms)", "[capi_v2][data_chunk]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
@@ -269,13 +258,11 @@ TEST_CASE("V2: VARCHAR via varchar_decode (inlined + pointer forms)", "[capi_v2]
 
 	const duckdb_v2_varchar_t *arr = static_cast<const duckdb_v2_varchar_t *>(view.data);
 
-	duckdb_v2_str s0 = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 0)], &s0, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_str s0 = V2StringView(arr[SelAt(view.sel, 0)]);
 	REQUIRE(s0.len == 5);
 	REQUIRE(s0 == "short");
 
-	duckdb_v2_str s1 = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&arr[SelAt(view.sel, 1)], &s1, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_str s1 = V2StringView(arr[SelAt(view.sel, 1)]);
 	REQUIRE(s1.len == 50);
 	REQUIRE(s1 == std::string(50, 'x'));
 
@@ -284,10 +271,11 @@ TEST_CASE("V2: VARCHAR via varchar_decode (inlined + pointer forms)", "[capi_v2]
 }
 
 // ===========================================================================
-// BLOB via duckdb_v2_blob_decode. Same shape as varchar but uint8_t*.
+// BLOB via direct transparent-field reads. Same shape as varchar but
+// the bytes are raw.
 // ===========================================================================
 
-TEST_CASE("V2: BLOB via blob_decode", "[capi_v2][data_chunk]") {
+TEST_CASE("V2: BLOB direct reads", "[capi_v2][data_chunk]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
@@ -306,9 +294,9 @@ TEST_CASE("V2: BLOB via blob_decode", "[capi_v2][data_chunk]") {
 	duckdb_v2_vector_get_view(vec, &view, nullptr);
 
 	const duckdb_v2_blob_t *arr = static_cast<const duckdb_v2_blob_t *>(view.data);
-	const uint8_t *data = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_blob_decode(&arr[SelAt(view.sel, 0)], &data, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_str b = V2StringView(arr[SelAt(view.sel, 0)]);
+	const uint8_t *data = reinterpret_cast<const uint8_t *>(b.ptr);
+	idx_t len = b.len;
 	REQUIRE(len == 4);
 	REQUIRE(data[0] == 0xDE);
 	REQUIRE(data[1] == 0xAD);
@@ -569,11 +557,8 @@ TEST_CASE("V2: STRUCT(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]")
 	duckdb_v2_vector_get_view(b_child, &b_view, nullptr);
 	const duckdb_v2_varchar_t *barr = static_cast<const duckdb_v2_varchar_t *>(b_view.data);
 
-	duckdb_v2_str bd = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&barr[SelAt(b_view.sel, 0)], &bd, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(bd == "first");
-	REQUIRE(duckdb_v2_varchar_decode(&barr[SelAt(b_view.sel, 1)], &bd, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(bd == "second");
+	REQUIRE(V2StringView(barr[SelAt(b_view.sel, 0)]) == "first");
+	REQUIRE(V2StringView(barr[SelAt(b_view.sel, 1)]) == "second");
 
 	// Out-of-range field index rejected.
 	duckdb_v2_vector_handle oor = nullptr;
@@ -705,13 +690,10 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 		idx_t pi = SelAt(mview.sel, 0);
 		duckdb_v2_list_entry e = entries[pi];
 		REQUIRE(e.length == 2);
-		duckdb_v2_str kbytes = {nullptr, 0};
-		duckdb_v2_varchar_decode(&karr[SelAt(kview.sel, e.offset + 0)], &kbytes, nullptr);
-		REQUIRE(kbytes == "a");
+		REQUIRE(V2StringView(karr[SelAt(kview.sel, e.offset + 0)]) == "a");
 		REQUIRE(vdata[SelAt(vview.sel, e.offset + 0)] == 1);
 
-		duckdb_v2_varchar_decode(&karr[SelAt(kview.sel, e.offset + 1)], &kbytes, nullptr);
-		REQUIRE(kbytes == "b");
+		REQUIRE(V2StringView(karr[SelAt(kview.sel, e.offset + 1)]) == "b");
 		REQUIRE(vdata[SelAt(vview.sel, e.offset + 1)] == 2);
 	}
 	// Row 1: ('c' → 3)
@@ -719,9 +701,7 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 		idx_t pi = SelAt(mview.sel, 1);
 		duckdb_v2_list_entry e = entries[pi];
 		REQUIRE(e.length == 1);
-		duckdb_v2_str kbytes = {nullptr, 0};
-		duckdb_v2_varchar_decode(&karr[SelAt(kview.sel, e.offset + 0)], &kbytes, nullptr);
-		REQUIRE(kbytes == "c");
+		REQUIRE(V2StringView(karr[SelAt(kview.sel, e.offset + 0)]) == "c");
 		REQUIRE(vdata[SelAt(vview.sel, e.offset + 0)] == 3);
 	}
 
@@ -791,9 +771,7 @@ TEST_CASE("V2: UNION(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") 
 	// Row 1: tag = 1, str member = "hello".
 	REQUIRE(tags[SelAt(tag_view.sel, 1)] == 1);
 	const duckdb_v2_varchar_t *sarr = static_cast<const duckdb_v2_varchar_t *>(str_view.data);
-	duckdb_v2_str sbytes = {nullptr, 0};
-	duckdb_v2_varchar_decode(&sarr[SelAt(str_view.sel, 1)], &sbytes, nullptr);
-	REQUIRE(sbytes == "hello");
+	REQUIRE(V2StringView(sarr[SelAt(str_view.sel, 1)]) == "hello");
 
 	// Out-of-range member index (3 is past the last member at child-index 2).
 	duckdb_v2_vector_handle oor = nullptr;
@@ -914,7 +892,7 @@ TEST_CASE("V2: generic accessors handle non-nested vectors", "[capi_v2][data_chu
 // the V2 surface (the vector handle is identity = `duckdb::Vector *`).
 // Pins (a) view.data + sel for CONSTANT (zero-singleton sel, single
 // underlying element), and (b) the contract that every logical row
-// reads `data[sel_at(view.sel, i)] == data[0]`.
+// reads `data[view.sel[i]] == data[0]`.
 // ===========================================================================
 
 TEST_CASE("V2: CONSTANT vector view", "[capi_v2][data_chunk]") {
@@ -970,9 +948,7 @@ TEST_CASE("V2: CONSTANT NULL vector view", "[capi_v2][data_chunk]") {
 	REQUIRE(view.validity != nullptr); // not all-valid
 
 	for (idx_t i = 0; i < 4; i++) {
-		bool valid = true;
-		duckdb_v2_validity_row_is_valid(view.validity, SelAt(view.sel, i), &valid, nullptr);
-		REQUIRE_FALSE(valid);
+		REQUIRE_FALSE(RowValid(view, SelAt(view.sel, i)));
 	}
 }
 
@@ -1005,7 +981,7 @@ TEST_CASE("V2: vector_flatten CONSTANT → FLAT", "[capi_v2][data_chunk]") {
 // DICTIONARY vector view. Constructed via Vector(other, sel, count)
 // which routes through DictionaryVector internally. Pins:
 //   - view.sel is non-null and matches the constructed sel
-//   - data[sel_at(view.sel, i)] dispatches through the dictionary
+//   - data[view.sel[i]] dispatches through the dictionary
 //   - validity-follows-sel: indexing validity at the logical row i
 //     (without sel resolution) reads the WRONG cell — exercise this
 //     on a fixture that has different valid/invalid rows under sel.
@@ -1051,23 +1027,17 @@ TEST_CASE("V2: DICTIONARY vector view", "[capi_v2][data_chunk]") {
 
 	// Validity-follows-sel: the correct check is validity[sel[i]], NOT
 	// validity[i]. Pin both directions.
-	bool valid_correct = true;
-	REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, SelAt(view.sel, 3), &valid_correct, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
-	REQUIRE_FALSE(valid_correct); // physical 1 is invalid
+	REQUIRE_FALSE(RowValid(view, SelAt(view.sel, 3))); // physical 1 is invalid
 
-	bool valid_wrong = false;
-	REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, 3, &valid_wrong, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(valid_wrong); // physical 3 is valid (default), even though logical row 3 is the NULL one
+	// physical 3 is valid (default), even though logical row 3 is the NULL one
+	REQUIRE(RowValid(view, 3));
 	// The naive `validity[i]` read would have answered "valid" for an
 	// invalid row — exactly the footgun the API contract warns about.
 
 	// Logical rows 0, 1, 2 are valid (their sel-resolved physical rows
 	// are 2, 0, 2 — none of which is the NULLed row 1).
 	for (idx_t i = 0; i < 3; i++) {
-		bool v = false;
-		duckdb_v2_validity_row_is_valid(view.validity, SelAt(view.sel, i), &v, nullptr);
-		REQUIRE(v);
+		REQUIRE(RowValid(view, SelAt(view.sel, i)));
 	}
 }
 
@@ -1252,41 +1222,16 @@ TEST_CASE("V2: VECTOR_TYPE_OTHER is the zero value", "[capi_v2][data_chunk]") {
 }
 
 // ===========================================================================
-// Per-row bridge helpers: null-arg + identity behaviour for sel_at;
-// null-arg rejection for the four decoders.
+// Null-arg rejection for the two wire-codec decoders.
 // ===========================================================================
 
-TEST_CASE("V2: sel_at identity + null-arg", "[capi_v2][data_chunk]") {
-	// Identity (sel == NULL) returns i unchanged.
-	idx_t out = 99;
-	REQUIRE(duckdb_v2_sel_at(nullptr, 7, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == 7);
-
-	// Non-null sel returns sel[i].
-	duckdb_v2_sel_t sel[3] = {5, 2, 8};
-	REQUIRE(duckdb_v2_sel_at(sel, 0, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == 5);
-	REQUIRE(duckdb_v2_sel_at(sel, 1, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == 2);
-
-	// null out is rejected.
-	REQUIRE(duckdb_v2_sel_at(nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-}
-
 TEST_CASE("V2: string decoders reject null arguments", "[capi_v2][data_chunk]") {
-	duckdb_v2_string storage {};
 	const uint8_t *bdata = nullptr;
 	uint8_t *odata = nullptr;
 	idx_t len = 0;
 	uint8_t padding = 0;
 	bool is_neg = false;
 
-	duckdb_v2_str sview = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(nullptr, &sview, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_varchar_decode(reinterpret_cast<const duckdb_v2_varchar_t *>(&storage), nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
-
-	REQUIRE(duckdb_v2_blob_decode(nullptr, &bdata, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_bit_decode(nullptr, &bdata, &len, &padding, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_bignum_decode(nullptr, &odata, &len, &is_neg, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 }

@@ -121,9 +121,9 @@ structs:
       is documented by whichever function produced it (typically "valid
       until the owning handle is destroyed"). `{NULL, 0}` is the canonical
       empty view; `ptr` must not be dereferenced when `len` is 0. Not to be
-      confused with `string`, the opaque 16-byte VARCHAR *storage* format —
-      `str` is the decoded *view* shape that byte reads across the API
-      boundary use.
+      confused with `string`, the transparent 16-byte VARCHAR *storage*
+      format — `str` is the decoded *view* shape that byte reads across the
+      API boundary use.
     fields:
       - {name: ptr, type: char, pointer: 1, const: true}
       - {name: len, type: idx}
@@ -133,9 +133,8 @@ structs:
       BIGNUM), mirroring duckdb::string_t. Inlined when length <=
       STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise
       value.pointer.ptr holds the bytes and value.pointer.prefix the
-      first 4. Read the fields directly, or decode via the matching
-      varchar/blob/bit/bignum_decode (which applies each kind's wire
-      encoding).
+      first 4. Read the fields directly; BIT / BIGNUM additionally
+      carry a wire encoding, decoded via bit_decode / bignum_decode.
     fields:
       - name: value
         union:
@@ -198,10 +197,10 @@ aliases:
     description: Selection-vector entry. Mirrors duckdb::sel_t.
   varchar:
     underlying: string
-    description: VARCHAR storage. Decode via varchar_decode.
+    description: VARCHAR storage. Read the transparent string fields directly.
   blob:
     underlying: string
-    description: BLOB storage. Decode via blob_decode.
+    description: BLOB storage. Read the transparent string fields directly.
   bit:
     underlying: string
     description: BIT storage. Decode via bit_decode.

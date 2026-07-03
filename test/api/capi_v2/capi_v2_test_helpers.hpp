@@ -165,10 +165,19 @@ inline DUCKDB_V2_API_CALL_t V2VectorAssignString(duckdb_v2_vector_handle vec, id
 	return DUCKDB_V2_ERROR_NONE;
 }
 
+// Resolve a logical row through a selection vector. The inline expression
+// `sel ? sel[i] : i` is the documented V2 contract; there is no bridge call.
 inline idx_t SelAt(const duckdb_v2_sel_t *sel, idx_t i) {
-	idx_t out = 0;
-	REQUIRE(duckdb_v2_sel_at(sel, i, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	return out;
+	return sel ? static_cast<idx_t>(sel[i]) : i;
+}
+
+// Read a transparent duckdb_v2_string as a borrowed view. The length field
+// shares offset 0 across both union arms; the data is inlined or heap-backed
+// by the DUCKDB_V2_STRING_INLINE_LENGTH cutoff.
+inline duckdb_v2_str V2StringView(const duckdb_v2_string &s) {
+	uint32_t len = s.value.inlined.length;
+	const char *ptr = len <= DUCKDB_V2_STRING_INLINE_LENGTH ? s.value.inlined.inlined : s.value.pointer.ptr;
+	return duckdb_v2_str {ptr, len};
 }
 
 // True if row `idx` of a vector view is non-NULL. A null validity pointer means

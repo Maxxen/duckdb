@@ -178,8 +178,7 @@ TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]")
 
 			idx_t sidx = str_view.sel ? str_view.sel[i] : i;
 			REQUIRE(RowValid(str_view, sidx));
-			duckdb_v2_str s = {nullptr, 0};
-			REQUIRE(duckdb_v2_varchar_decode(&str_data[sidx], &s, nullptr) == DUCKDB_V2_ERROR_NONE);
+			duckdb_v2_str s = V2StringView(str_data[sidx]);
 			auto expected = "row_" + std::to_string(i);
 			REQUIRE(s == expected);
 		}
@@ -725,8 +724,8 @@ static std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sq
 				if (!RowValid(view, idx)) {
 					continue;
 				}
-				duckdb_v2_str s = {nullptr, 0};
-				if (duckdb_v2_varchar_decode(&data[idx], &s, nullptr) == DUCKDB_V2_ERROR_NONE && s.ptr) {
+				duckdb_v2_str s = V2StringView(data[idx]);
+				if (s.ptr) {
 					for (idx_t k = 0; k < s.len; k++) {
 						if (s.ptr[k] != ',') {
 							out.push_back(s.ptr[k]);

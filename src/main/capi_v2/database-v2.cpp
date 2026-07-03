@@ -142,3 +142,20 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_h
 		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
 	});
 }
+
+DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!out_version) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_library_version");
+		}
+		*out_version = nullptr;
+		const auto *version = duckdb::DuckDB::LibraryVersion();
+		const auto len = std::strlen(version);
+		auto *buf = static_cast<char *>(std::malloc(len + 1));
+		if (!buf) {
+			throw duckdb::OutOfMemoryException("malloc failed in duckdb_v2_library_version");
+		}
+		std::memcpy(buf, version, len + 1);
+		*out_version = buf;
+	});
+}

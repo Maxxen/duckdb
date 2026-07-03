@@ -300,15 +300,10 @@ TEST_CASE("V2: vector_flat_get_validity_mutable + set nulls", "[capi_v2][vector_
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(view.validity != nullptr);
 
-	bool is_valid = false;
-	REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, 0, &is_valid, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(is_valid);
-	REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, 1, &is_valid, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE_FALSE(is_valid);
-	REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, 2, &is_valid, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(is_valid);
-	REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, 3, &is_valid, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE_FALSE(is_valid);
+	REQUIRE(RowValid(view, 0));
+	REQUIRE_FALSE(RowValid(view, 1));
+	REQUIRE(RowValid(view, 2));
+	REQUIRE_FALSE(RowValid(view, 3));
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -365,19 +360,13 @@ TEST_CASE("V2: vector_constant_set_valid toggles validity", "[capi_v2][vector_wr
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(view.sel != nullptr);
 	for (idx_t i = 0; i < 3; i++) {
-		bool is_valid = true;
-		REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, SelAt(view.sel, i), &is_valid, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE_FALSE(is_valid);
+		REQUIRE_FALSE(RowValid(view, SelAt(view.sel, i)));
 	}
 
 	// Flip it back to valid.
 	REQUIRE(duckdb_v2_vector_constant_set_valid(vec, true, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
-	bool is_valid = false;
-	REQUIRE(duckdb_v2_validity_row_is_valid(view.validity, SelAt(view.sel, 0), &is_valid, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
-	REQUIRE(is_valid);
+	REQUIRE(RowValid(view, SelAt(view.sel, 0)));
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -544,9 +533,7 @@ TEST_CASE("V2: struct vector write via children", "[capi_v2][vector_write]") {
 	duckdb_v2_vector_view view_b {};
 	REQUIRE(duckdb_v2_vector_get_view(field_b, &view_b, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *b_data = static_cast<const duckdb_v2_varchar_t *>(view_b.data);
-	duckdb_v2_str out = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&b_data[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == "hello");
+	REQUIRE(V2StringView(b_data[0]) == "hello");
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -747,11 +734,8 @@ TEST_CASE("V2: LIST<VARCHAR> write", "[capi_v2][vector_write]") {
 	REQUIRE(duckdb_v2_vector_get_view(child, &child_view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *arr = static_cast<const duckdb_v2_varchar_t *>(child_view.data);
 
-	duckdb_v2_str out = {nullptr, 0};
-	REQUIRE(duckdb_v2_varchar_decode(&arr[0], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out == "alpha");
-	REQUIRE(duckdb_v2_varchar_decode(&arr[1], &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out.len == 200);
+	REQUIRE(V2StringView(arr[0]) == "alpha");
+	REQUIRE(V2StringView(arr[1]).len == 200);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }

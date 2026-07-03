@@ -136,18 +136,17 @@ typedef uint64_t idx_t;
 //! is documented by whichever function produced it (typically "valid
 //! until the owning handle is destroyed"). `{NULL, 0}` is the canonical
 //! empty view; `ptr` must not be dereferenced when `len` is 0. Not to be
-//! confused with `string`, the opaque 16-byte VARCHAR *storage* format —
-//! `str` is the decoded *view* shape that byte reads across the API
-//! boundary use.
+//! confused with `string`, the transparent 16-byte VARCHAR *storage*
+//! format — `str` is the decoded *view* shape that byte reads across the
+//! API boundary use.
 typedef struct duckdb_v2_str duckdb_v2_str;
 
 //! 16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT /
 //! BIGNUM), mirroring duckdb::string_t. Inlined when length <=
 //! STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise
 //! value.pointer.ptr holds the bytes and value.pointer.prefix the
-//! first 4. Read the fields directly, or decode via the matching
-//! varchar/blob/bit/bignum_decode (which applies each kind's wire
-//! encoding).
+//! first 4. Read the fields directly; BIT / BIGNUM additionally
+//! carry a wire encoding, decoded via bit_decode / bignum_decode.
 typedef struct duckdb_v2_string duckdb_v2_string;
 
 //! An opaque, owned handle to a user-defined resource. Bundles the pointer
@@ -282,10 +281,10 @@ typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
 //! Selection-vector entry. Mirrors duckdb::sel_t.
 typedef uint32_t duckdb_v2_sel_t;
 
-//! VARCHAR storage. Decode via varchar_decode.
+//! VARCHAR storage. Read the transparent string fields directly.
 typedef duckdb_v2_string duckdb_v2_varchar_t;
 
-//! BLOB storage. Decode via blob_decode.
+//! BLOB storage. Read the transparent string fields directly.
 typedef duckdb_v2_string duckdb_v2_blob_t;
 
 //! BIT storage. Decode via bit_decode.
@@ -4084,34 +4083,6 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_ha
                                                              duckdb_v2_vector_handle *out_child,
                                                              duckdb_v2_error_info_handle *err);
 /*!
-* Reads the bytes of a VARCHAR value from its storage as a view.
-* out_data receives a borrowed view into the VARCHAR's underlying
-bytes. The view is valid for as long as the enclosing value's
-owning chunk is alive — for short (inlined) strings the bytes
-physically live inside the varchar_t value, so callers that need
-a view outliving the value must memcpy.
-
-* @param varchar Pointer to the VARCHAR storage.
-* @param out_data Receives a borrowed view of the bytes.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_varchar_decode(const duckdb_v2_varchar_t *varchar, duckdb_v2_str *out_data,
-                                                           duckdb_v2_error_info_handle *err);
-/*!
-* Reads the bytes + length of a BLOB value from its storage.
-* Identical contract to varchar_decode but typed for raw bytes
-rather than text.
-
-* @param blob Pointer to the BLOB storage.
-* @param out_data Receives a borrowed pointer to the bytes.
-* @param out_length Receives the byte length.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_blob_decode(const duckdb_v2_blob_t *blob, const uint8_t **out_data,
-                                                        idx_t *out_length, duckdb_v2_error_info_handle *err);
-/*!
 * Reads the bytes + length + padding-bits of a BIT value.
 * The on-disk encoding is [padding_byte | data_bytes]: byte 0 is the
 number of leading bits in the first data byte that are NOT part
@@ -4161,36 +4132,6 @@ contiguous slice we could borrow.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bignum_decode(const duckdb_v2_bignum_t *bignum, uint8_t **out_data,
                                                           idx_t *out_length, bool *out_is_negative,
                                                           duckdb_v2_error_info_handle *err);
-/*!
-* Resolves a logical row index through a selection vector.
-* Returns `sel ? sel[i] : i` via out. The `sel == NULL` identity
-convention matches duckdb::UnifiedVectorFormat: FLAT vectors carry
-a NULL sel, CONSTANT vectors a non-null zero singleton, DICTIONARY
-vectors their own sel. Consumers in tight loops can inline the
-expression themselves to skip the bridge call.
-
-* @param sel The selection vector pointer; may be NULL (means identity).
-* @param i The logical row index.
-* @param out Receives the physical row index: `sel ? sel[i] : i`.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_sel_at(const duckdb_v2_sel_t *sel, idx_t i, idx_t *out,
-                                                   duckdb_v2_error_info_handle *err);
-/*!
-* Returns whether a row is valid (not NULL) in a validity mask.
-* Equivalent to `validity == NULL || (validity[row >> 6] & (1 << (row & 63)))`.
-Returns true when validity is NULL (the all-valid fast path). Row
-is the physical row index (post-selection).
-
-* @param validity The validity mask pointer; may be NULL (means all valid).
-* @param row The physical row index (post-selection).
-* @param out_is_valid
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_validity_row_is_valid(const uint64_t *validity, idx_t row,
-                                                                  bool *out_is_valid, duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for vector --- */
 struct duckdb_v2_vector_view {

@@ -112,7 +112,7 @@ struct CopyFunctionBuilderV2 {
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.file_path = ToStr(file_path);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data->GetData();
+		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 
 		// The init callback is optional: when absent, the global state simply carries no init data.
 		if (info.init_cb) {
@@ -139,7 +139,7 @@ struct CopyFunctionBuilderV2 {
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data->GetData();
+		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 		args.init_data = state.init_data.GetData();
 		// Ownership of the collection is transferred to the callback: the callback (or the C++ wrapper around
 		// it) is responsible for destroying it via duckdb_v2_column_data_collection_destroy. We release it from
@@ -168,7 +168,7 @@ struct CopyFunctionBuilderV2 {
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data->GetData();
+		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 		args.init_data = state.init_data.GetData();
 		args.in_batch = batch.Cast<CCopyFunctionBatchV2>().batch_data.GetData();
 
@@ -191,7 +191,7 @@ struct CopyFunctionBuilderV2 {
 		args.struct_size = sizeof(args);
 		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data->GetData();
+		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 		args.init_data = state.init_data.GetData();
 
 		duckdb::InvokeWithErrorSlot<InvalidInputException>(
