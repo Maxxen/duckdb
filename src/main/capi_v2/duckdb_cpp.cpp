@@ -487,14 +487,9 @@ DatabaseOption Database::GetOptionByIndex(size_t index) const {
 }
 
 DatabaseOption Database::GetOption(std::string_view name) const {
-	const auto count = GetOptionCount();
-	for (size_t i = 0; i < count; i++) {
-		auto option = GetOptionByIndex(i);
-		if (option.GetName() == name) {
-			return option;
-		}
-	}
-	throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "unknown option: " + std::string(name));
+	duckdb_v2_option_handle option = nullptr;
+	CheckedAPICall(duckdb_v2_database_option_get, handle(), duckdb_v2_str {name.data(), name.size()}, &option);
+	return detail::Factory::Make<DatabaseOption>(option);
 }
 
 void Database::SetOption(const DatabaseOption &option) {

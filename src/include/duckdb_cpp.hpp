@@ -542,8 +542,8 @@ public:
 
 	size_t GetOptionCount() const;
 	DatabaseOption GetOptionByIndex(size_t index) const;
-	// By-name lookup over the index iteration; throws INVALID_INPUT for an
-	// unknown name (aliases do not match).
+	// By-name get: an alias resolves to its canonical option. Throws
+	// INVALID_INPUT for an unknown name.
 	DatabaseOption GetOption(std::string_view name) const;
 	void SetOption(const DatabaseOption &option);
 

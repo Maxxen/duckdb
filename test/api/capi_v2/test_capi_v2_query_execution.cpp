@@ -18,7 +18,7 @@ using namespace std;
 // not roll back the user's open transaction.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("V2: user BEGIN ... ROLLBACK is not clobbered by the bridge", "[capi_v2][query_result]") {
+TEST_CASE("V2: user BEGIN ... ROLLBACK is not clobbered by the bridge", "[capi_v2][query_execution]") {
 	V2EnvFixture fx;
 
 	// A lone BEGIN TRANSACTION is a single fragment the user owns. Draining and
@@ -37,7 +37,7 @@ TEST_CASE("V2: user BEGIN ... ROLLBACK is not clobbered by the bridge", "[capi_v
 	duckdb_v2_error_info_destroy(&err);
 }
 
-TEST_CASE("V2: user BEGIN / INSERT / ROLLBACK discards the inserted row", "[capi_v2][query_result]") {
+TEST_CASE("V2: user BEGIN / INSERT / ROLLBACK discards the inserted row", "[capi_v2][query_execution]") {
 	V2EnvFixture fx;
 
 	V2ExecSQL(fx.conn, "CREATE TABLE t (i INTEGER)");
@@ -56,7 +56,7 @@ TEST_CASE("V2: user BEGIN / INSERT / ROLLBACK discards the inserted row", "[capi
 	duckdb_v2_result_destroy(&r);
 }
 
-TEST_CASE("V2: user BEGIN / INSERT / COMMIT keeps the inserted row", "[capi_v2][query_result]") {
+TEST_CASE("V2: user BEGIN / INSERT / COMMIT keeps the inserted row", "[capi_v2][query_execution]") {
 	V2EnvFixture fx;
 
 	V2ExecSQL(fx.conn, "CREATE TABLE t (i INTEGER)");
@@ -82,7 +82,8 @@ TEST_CASE("V2: user BEGIN / INSERT / COMMIT keeps the inserted row", "[capi_v2][
 // A timeout can land in either the pending or streaming phase, depending on
 // scheduling; [!mayfail] absorbs the rare run where the bounded step loop
 // exits before the timeout fires under heavy load.
-TEST_CASE("V2: a max_execution_time timeout surfaces as an error, not CANCELLED", "[capi_v2][query_result][!mayfail]") {
+TEST_CASE("V2: a max_execution_time timeout surfaces as an error, not CANCELLED",
+          "[capi_v2][query_execution][!mayfail]") {
 	V2EnvFixture fx;
 
 	// 50ms timeout on a slow cross product, mirroring max_execution_time.test.
@@ -125,7 +126,7 @@ TEST_CASE("V2: a max_execution_time timeout surfaces as an error, not CANCELLED"
 	duckdb_v2_error_info_destroy(&err);
 }
 
-TEST_CASE("V2: a consumer interrupt still surfaces as CANCELLED, not an error", "[capi_v2][query_result]") {
+TEST_CASE("V2: a consumer interrupt still surfaces as CANCELLED, not an error", "[capi_v2][query_execution]") {
 	V2EnvFixture fx;
 
 	// No timeout set: the only cancellation channel is connection_interrupt.

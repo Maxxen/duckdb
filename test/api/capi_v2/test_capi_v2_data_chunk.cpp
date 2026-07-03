@@ -275,17 +275,21 @@ TEST_CASE("V2: VARCHAR direct reads (inlined + pointer forms)", "[capi_v2][data_
 // the bytes are raw.
 // ===========================================================================
 
-TEST_CASE("V2: BLOB direct reads", "[capi_v2][data_chunk]") {
+TEST_CASE("V2: BLOB direct reads (inlined + pointer forms)", "[capi_v2][data_chunk]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(V2Query(fx.conn, "SELECT '\\xDE\\xAD\\xBE\\xEF'::BLOB AS b", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	// 4 bytes fit inline (<= DUCKDB_V2_STRING_INLINE_LENGTH); 15 bytes take
+	// the pointer form. The two rows straddle the cutoff.
+	REQUIRE(V2Query(fx.conn, "SELECT * FROM (VALUES ('\\xDE\\xAD\\xBE\\xEF'::BLOB), ('ABCDEFGHIJKLMNO'::BLOB)) t(b)",
+	                &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	chunk = V2StepChunk(r);
 
 	idx_t size = 0;
 	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
+	REQUIRE(size == 2);
 
 	duckdb_v2_vector_handle vec = nullptr;
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
@@ -294,14 +298,21 @@ TEST_CASE("V2: BLOB direct reads", "[capi_v2][data_chunk]") {
 	duckdb_v2_vector_get_view(vec, &view, nullptr);
 
 	const duckdb_v2_blob_t *arr = static_cast<const duckdb_v2_blob_t *>(view.data);
-	duckdb_v2_str b = V2StringView(arr[SelAt(view.sel, 0)]);
+	const duckdb_v2_string &short_form = arr[SelAt(view.sel, 0)];
+	duckdb_v2_str b = V2StringView(short_form);
 	const uint8_t *data = reinterpret_cast<const uint8_t *>(b.ptr);
-	idx_t len = b.len;
-	REQUIRE(len == 4);
+	REQUIRE(b.len == 4);
+	REQUIRE(short_form.value.inlined.length <= DUCKDB_V2_STRING_INLINE_LENGTH); // inlined form
 	REQUIRE(data[0] == 0xDE);
 	REQUIRE(data[1] == 0xAD);
 	REQUIRE(data[2] == 0xBE);
 	REQUIRE(data[3] == 0xEF);
+
+	const duckdb_v2_string &long_form = arr[SelAt(view.sel, 1)];
+	duckdb_v2_str b1 = V2StringView(long_form);
+	REQUIRE(b1.len == 15);
+	REQUIRE(long_form.value.inlined.length > DUCKDB_V2_STRING_INLINE_LENGTH); // pointer form
+	REQUIRE(b1 == "ABCDEFGHIJKLMNO");
 
 	duckdb_v2_data_chunk_destroy(&chunk);
 	duckdb_v2_result_destroy(&r);

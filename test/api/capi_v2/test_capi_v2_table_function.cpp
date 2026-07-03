@@ -7,10 +7,12 @@
 // V2 table function tests.
 // ---------------------------------------------------------------------------
 
+namespace {
+
 // The V2 vector-write API sizes per vector; the table-function bridge derives
 // the output chunk's cardinality from the first output vector after exec. So an
 // exec callback reports its row count by sizing output vector 0.
-static void SetChunkSize(duckdb_v2_data_chunk_handle chunk, idx_t size) {
+void SetChunkSize(duckdb_v2_data_chunk_handle chunk, idx_t size) {
 	duckdb_v2_vector_handle vec = nullptr;
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
 	duckdb_v2_vector_set_size(vec, size, nullptr);
@@ -23,14 +25,18 @@ static void SetChunkSize(duckdb_v2_data_chunk_handle chunk, idx_t size) {
 // Produces rows: (0, "row_0"), (1, "row_1"), ..., (4, "row_4")
 // ---------------------------------------------------------------------------
 
-static constexpr idx_t COUNTER_NUM_ROWS = 5;
+constexpr idx_t COUNTER_NUM_ROWS = 5;
+
+} // namespace
 
 struct CounterGlobalState {
 	idx_t next_row = 0;
 };
 
-static void counter_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                         duckdb_v2_error_info_handle *err) {
+namespace {
+
+void counter_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                  duckdb_v2_error_info_handle *err) {
 	// Declare output columns
 	duckdb_v2_logical_type_handle int_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, err);
@@ -48,15 +54,15 @@ static void counter_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_
 	duckdb_v2_logical_type_destroy(&varchar_type);
 }
 
-static void counter_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                                duckdb_v2_error_info_handle *err) {
+void counter_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                         duckdb_v2_error_info_handle *err) {
 	auto *state = new CounterGlobalState();
 	duckdb_v2_table_function_init_set_global_state(
 	    info, {state, [](void *p) { delete static_cast<CounterGlobalState *>(p); }, nullptr}, err);
 }
 
-static void counter_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                         duckdb_v2_error_info_handle *err) {
+void counter_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+                  duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
@@ -92,7 +98,7 @@ static void counter_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_
 }
 
 // Helper: register the counter table function within a context callback
-static void register_counter(duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
+void register_counter(duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
 	duckdb_v2_table_function_builder_handle builder = nullptr;
 	REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
 
@@ -105,6 +111,8 @@ static void register_counter(duckdb_v2_context_handle ctx, duckdb_v2_error_info_
 	REQUIRE(duckdb_v2_table_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_table_function_builder_destroy(&builder);
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: simplest end-to-end", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -229,8 +237,10 @@ struct CounterNGlobalState {
 	int64_t end_row;
 };
 
-static void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                           duckdb_v2_error_info_handle *err) {
+namespace {
+
+void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                    duckdb_v2_error_info_handle *err) {
 	duckdb_v2_value_handle n_val = nullptr;
 	REQUIRE(duckdb_v2_table_function_bind_get_parameter(info, 0, &n_val, err) == DUCKDB_V2_ERROR_NONE);
 	int64_t n = V2LeafPayload<int64_t>(n_val);
@@ -258,8 +268,8 @@ static void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckd
 	duckdb_v2_table_function_bind_set_cardinality(info, static_cast<idx_t>(n), true, err);
 }
 
-static void counter_n_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                                  duckdb_v2_error_info_handle *err) {
+void counter_n_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                           duckdb_v2_error_info_handle *err) {
 	void *raw_bd = nullptr;
 	duckdb_v2_table_function_init_get_bind_data(info, &raw_bd, err);
 	auto *bd = static_cast<CounterNBindData *>(raw_bd);
@@ -271,8 +281,8 @@ static void counter_n_init_global(duckdb_v2_table_function_init_info_handle info
 	    info, {state, [](void *p) { delete static_cast<CounterNGlobalState *>(p); }, nullptr}, err);
 }
 
-static void counter_n_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                           duckdb_v2_error_info_handle *err) {
+void counter_n_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+                    duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
@@ -301,7 +311,7 @@ static void counter_n_exec(duckdb_v2_table_function_exec_info_handle info, duckd
 	SetChunkSize(chunk, count);
 }
 
-static void register_counter_n(duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
+void register_counter_n(duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
 	duckdb_v2_table_function_builder_handle builder = nullptr;
 	REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
 
@@ -322,6 +332,8 @@ static void register_counter_n(duckdb_v2_context_handle ctx, duckdb_v2_error_inf
 	REQUIRE(duckdb_v2_table_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_table_function_builder_destroy(&builder);
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: positional parameter", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -419,8 +431,10 @@ struct UserDataConfig {
 	int64_t magic_value;
 };
 
-static void userdata_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                          duckdb_v2_error_info_handle *err) {
+namespace {
+
+void userdata_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                   duckdb_v2_error_info_handle *err) {
 	void *ud = nullptr;
 	REQUIRE(duckdb_v2_table_function_bind_get_user_data(info, &ud, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(ud != nullptr);
@@ -436,8 +450,8 @@ static void userdata_bind(duckdb_v2_table_function_bind_info_handle info, duckdb
 	                                            err);
 }
 
-static void userdata_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                                 duckdb_v2_error_info_handle *err) {
+void userdata_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                          duckdb_v2_error_info_handle *err) {
 	void *ud = nullptr;
 	REQUIRE(duckdb_v2_table_function_init_get_user_data(info, &ud, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(ud != nullptr);
@@ -449,8 +463,8 @@ static void userdata_init_global(duckdb_v2_table_function_init_info_handle info,
 	    info, {state, [](void *p) { delete static_cast<int64_t *>(p); }, nullptr}, err);
 }
 
-static void userdata_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                          duckdb_v2_error_info_handle *err) {
+void userdata_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+                   duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
@@ -476,6 +490,8 @@ static void userdata_exec(duckdb_v2_table_function_exec_info_handle info, duckdb
 	SetChunkSize(chunk, 1);
 	emitted = 1;
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: builder user_data flows to bind and init", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -538,8 +554,10 @@ struct ProjGlobalState {
 	std::vector<idx_t> projected_originals;
 };
 
-static void proj_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                      duckdb_v2_error_info_handle *err) {
+namespace {
+
+void proj_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+               duckdb_v2_error_info_handle *err) {
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
 	duckdb_v2_table_function_bind_add_result_column(info, V2Str("a"), bigint_type, err);
@@ -548,8 +566,8 @@ static void proj_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_
 	duckdb_v2_logical_type_destroy(&bigint_type);
 }
 
-static void proj_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                             duckdb_v2_error_info_handle *err) {
+void proj_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                      duckdb_v2_error_info_handle *err) {
 	idx_t col_count = 0;
 	REQUIRE(duckdb_v2_table_function_init_get_column_count(info, &col_count, err) == DUCKDB_V2_ERROR_NONE);
 
@@ -565,8 +583,8 @@ static void proj_init_global(duckdb_v2_table_function_init_info_handle info, duc
 	    info, {state, [](void *p) { delete static_cast<ProjGlobalState *>(p); }, nullptr}, err);
 }
 
-static void proj_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                      duckdb_v2_error_info_handle *err) {
+void proj_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+               duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
@@ -589,6 +607,8 @@ static void proj_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_
 	SetChunkSize(chunk, 1);
 	state.emitted = 1;
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: projection pushdown", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -655,8 +675,10 @@ struct CardState {
 	bool done = false;
 };
 
-static void card_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                      duckdb_v2_error_info_handle *err) {
+namespace {
+
+void card_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+               duckdb_v2_error_info_handle *err) {
 	duckdb_v2_logical_type_handle t = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &t, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_table_function_bind_add_result_column(info, V2Str("v"), t, err) == DUCKDB_V2_ERROR_NONE);
@@ -664,29 +686,29 @@ static void card_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_
 }
 
 // Variant whose bind sets a static cardinality (no cardinality callback).
-static void card_bind_static(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                             duckdb_v2_error_info_handle *err) {
+void card_bind_static(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                      duckdb_v2_error_info_handle *err) {
 	card_bind(info, ctx, err);
 	duckdb_v2_table_function_bind_set_cardinality(info, 555555, true, err);
 }
 
-static void card_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                             duckdb_v2_error_info_handle *err) {
+void card_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                      duckdb_v2_error_info_handle *err) {
 	auto *s = new CardState();
 	duckdb_v2_table_function_init_set_global_state(
 	    info, {s, [](void *p) { delete static_cast<CardState *>(p); }, nullptr}, err);
 }
 
-static void card_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                      duckdb_v2_error_info_handle *err) {
+void card_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+               duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
 	SetChunkSize(chunk, 0);
 }
 
-static void card_cb(void *bind_data, idx_t *out_estimated, bool *out_is_exact, duckdb_v2_context_handle ctx,
-                    duckdb_v2_error_info_handle *err) {
+void card_cb(void *bind_data, idx_t *out_estimated, bool *out_is_exact, duckdb_v2_context_handle ctx,
+             duckdb_v2_error_info_handle *err) {
 	*out_estimated = 777777;
 	*out_is_exact = false;
 }
@@ -694,15 +716,15 @@ static void card_cb(void *bind_data, idx_t *out_estimated, bool *out_is_exact, d
 // Exact-cardinality callback returning a value distinct from card_bind_static's
 // 555555, used to pin (a) callback precedence over the static value and (b) the
 // is_exact=true branch via the callback path.
-static void card_cb_exact(void *bind_data, idx_t *out_estimated, bool *out_is_exact, duckdb_v2_context_handle ctx,
-                          duckdb_v2_error_info_handle *err) {
+void card_cb_exact(void *bind_data, idx_t *out_estimated, bool *out_is_exact, duckdb_v2_context_handle ctx,
+                   duckdb_v2_error_info_handle *err) {
 	*out_estimated = 123456;
 	*out_is_exact = true;
 }
 
 // Concatenate all VARCHAR cells of a query result into one string, stripping
 // thousands separators so numeric matches are locale/format independent.
-static std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sql) {
+std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sql) {
 	duckdb_v2_result_handle result = nullptr;
 	REQUIRE(V2Query(conn, sql, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
@@ -740,6 +762,8 @@ static std::string RunQueryText(duckdb_v2_connection_handle conn, const char *sq
 	duckdb_v2_result_destroy(&result);
 	return out;
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: cardinality callback reaches the optimizer", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -822,6 +846,8 @@ TEST_CASE("V2 table function: cardinality callback overrides static value (exact
 	REQUIRE(plan.find("555555") == std::string::npos); // static value is overridden
 }
 
+namespace {
+
 // Progress is timer/progress-bar driven and the materialized-only V2 result API
 // exposes no progress accessor, so neither end-to-end invocation nor the bridge's
 // 0.0-1.0 -> 0-100 scaling can be observed deterministically here: the scaled
@@ -831,10 +857,12 @@ TEST_CASE("V2 table function: cardinality callback overrides static value (exact
 // asserts the reported percentage. For now this exercises the registration +
 // table_scan_progress wiring and confirms a query with a progress callback runs
 // and returns correct results.
-static void prog_cb(void *bind_data, void *global_state, double *out_progress, duckdb_v2_context_handle ctx,
-                    duckdb_v2_error_info_handle *err) {
+void prog_cb(void *bind_data, void *global_state, double *out_progress, duckdb_v2_context_handle ctx,
+             duckdb_v2_error_info_handle *err) {
 	*out_progress = 0.5;
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: progress callback registers and runs", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -886,15 +914,17 @@ struct GsGlobal {
 	bool done;
 };
 
-static void gs_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                           duckdb_v2_error_info_handle *err) {
+namespace {
+
+void gs_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                    duckdb_v2_error_info_handle *err) {
 	auto *g = new GsGlobal {99, false};
 	duckdb_v2_table_function_init_set_global_state(
 	    info, {g, [](void *p) { delete static_cast<GsGlobal *>(p); }, nullptr}, err);
 }
 
-static void gs_init_local(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                          duckdb_v2_error_info_handle *err) {
+void gs_init_local(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                   duckdb_v2_error_info_handle *err) {
 	void *gs = nullptr;
 	REQUIRE(duckdb_v2_table_function_init_get_global_state(info, &gs, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(gs != nullptr);
@@ -904,8 +934,8 @@ static void gs_init_local(duckdb_v2_table_function_init_info_handle info, duckdb
 	                                              err);
 }
 
-static void gs_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                    duckdb_v2_error_info_handle *err) {
+void gs_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+             duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
@@ -929,6 +959,8 @@ static void gs_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_co
 	SetChunkSize(chunk, 1);
 	g.done = true;
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: init_local reads global state", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -985,8 +1017,10 @@ struct GsgGlobal {
 	bool done;
 };
 
-static void gsg_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                            duckdb_v2_error_info_handle *err) {
+namespace {
+
+void gsg_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                     duckdb_v2_error_info_handle *err) {
 	auto *g = new GsgGlobal {42, -1, false};
 	duckdb_v2_table_function_init_set_global_state(
 	    info, {g, [](void *p) { delete static_cast<GsgGlobal *>(p); }, nullptr}, err);
@@ -998,8 +1032,8 @@ static void gsg_init_global(duckdb_v2_table_function_init_info_handle info, duck
 	g->readback = static_cast<GsgGlobal *>(gs)->magic;
 }
 
-static void gsg_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                     duckdb_v2_error_info_handle *err) {
+void gsg_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+              duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
@@ -1019,6 +1053,8 @@ static void gsg_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_c
 	SetChunkSize(chunk, 1);
 	g.done = true;
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: init_global reads back the global state it set", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -1076,23 +1112,25 @@ struct PdGlobal {
 	bool done;
 };
 
-static void pd_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                    duckdb_v2_error_info_handle *err) {
+namespace {
+
+void pd_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+             duckdb_v2_error_info_handle *err) {
 	card_bind(info, ctx, err); // one BIGINT column "v"
 	auto *bd = new PdBindData {false, 0};
 	duckdb_v2_table_function_bind_set_bind_data(
 	    info, {bd, [](void *p) { delete static_cast<PdBindData *>(p); }, nullptr}, err);
 }
 
-static void pd_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
-                           duckdb_v2_error_info_handle *err) {
+void pd_init_global(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                    duckdb_v2_error_info_handle *err) {
 	auto *g = new PdGlobal {false};
 	duckdb_v2_table_function_init_set_global_state(
 	    info, {g, [](void *p) { delete static_cast<PdGlobal *>(p); }, nullptr}, err);
 }
 
-static void pd_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_handle info, duckdb_v2_context_handle ctx,
-                        duckdb_v2_error_info_handle *err) {
+void pd_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_handle info, duckdb_v2_context_handle ctx,
+                 duckdb_v2_error_info_handle *err) {
 	auto &bd = *static_cast<PdBindData *>(bind_data);
 
 	idx_t count = 0;
@@ -1148,8 +1186,8 @@ static void pd_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_ha
 	}
 }
 
-static void pd_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                    duckdb_v2_error_info_handle *err) {
+void pd_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+             duckdb_v2_error_info_handle *err) {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
 
@@ -1175,6 +1213,8 @@ static void pd_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_co
 	SetChunkSize(chunk, 1);
 	g.done = true;
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -1247,11 +1287,13 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 // routing through bind data.
 // ---------------------------------------------------------------------------
 
-static int fud_marker = 0;
-static void *g_fud_seen = nullptr;
+namespace {
 
-static void fud_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_handle info,
-                         duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
+int fud_marker = 0;
+void *g_fud_seen = nullptr;
+
+void fud_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_handle info, duckdb_v2_context_handle ctx,
+                  duckdb_v2_error_info_handle *err) {
 	REQUIRE(duckdb_v2_table_function_filter_get_user_data(info, &g_fud_seen, err) == DUCKDB_V2_ERROR_NONE);
 	// Null-arg misuse; pass no err slot so the deliberate failure does not
 	// mark the callback as failed.
@@ -1259,6 +1301,8 @@ static void fud_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_h
 	REQUIRE(duckdb_v2_table_function_filter_get_user_data(nullptr, &dummy, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_table_function_filter_get_user_data(info, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: filter info exposes builder user_data", "[capi_v2][table_function]") {
 	V2EnvFixture fix;
@@ -1303,11 +1347,15 @@ TEST_CASE("V2 table function: filter info exposes builder user_data", "[capi_v2]
 // code and round-trips back to RESOURCE_OUT_OF_MEMORY.
 // ---------------------------------------------------------------------------
 
-static void errcode_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
-                         duckdb_v2_error_info_handle *err) {
+namespace {
+
+void errcode_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+                  duckdb_v2_error_info_handle *err) {
 	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY);
 	duckdb_v2_error_info_set_text(*err, V2Str("synthetic OOM from exec"));
 }
+
+} // namespace
 
 TEST_CASE("V2 table function: callback error code round-trips to the query", "[capi_v2][table_function]") {
 	V2EnvFixture fix;

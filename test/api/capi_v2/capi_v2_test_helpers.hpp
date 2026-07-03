@@ -13,6 +13,15 @@ inline duckdb_v2_logical_type_handle V1ToV2(duckdb_logical_type t) {
 	return reinterpret_cast<duckdb_v2_logical_type_handle>(t);
 }
 
+// Owned V2-native primitive type fixture; destroy via logical_type_destroy.
+// Composites go through V2CreateType and its per-kind sugar below, which
+// build via logical_type_create in a context scope.
+inline duckdb_v2_logical_type_handle V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID id) {
+	duckdb_v2_logical_type_handle t = nullptr;
+	REQUIRE(duckdb_v2_logical_type_create_from_id(id, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return t;
+}
+
 // Runs fn(ctx) inside the connection's context scope: the external path to a
 // duckdb_v2_context_handle. The scope call itself must succeed; failures of
 // calls made inside fn are asserted by fn.
@@ -111,6 +120,33 @@ inline std::string V2LeafBytes(duckdb_v2_value_handle value) {
 	REQUIRE(duckdb_v2_value_get_data(value, &data, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
 	return len ? std::string(static_cast<const char *>(data), len) : std::string();
 }
+// Consuming forms: read, destroy the owned value, then assert, so a failing
+// REQUIRE cannot leak it.
+template <class T>
+inline T V2LeafPayloadConsume(duckdb_v2_value_handle &value) {
+	const void *data = nullptr;
+	idx_t len = 0;
+	auto rc = duckdb_v2_value_get_data(value, &data, &len, nullptr);
+	T out {};
+	const bool size_ok = (len == sizeof(T));
+	if (rc == DUCKDB_V2_ERROR_NONE && size_ok) {
+		std::memcpy(&out, data, sizeof(T));
+	}
+	duckdb_v2_value_destroy(&value);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(size_ok);
+	return out;
+}
+inline std::string V2LeafBytesConsume(duckdb_v2_value_handle &value) {
+	const void *data = nullptr;
+	idx_t len = 0;
+	auto rc = duckdb_v2_value_get_data(value, &data, &len, nullptr);
+	std::string out =
+	    (rc == DUCKDB_V2_ERROR_NONE && len) ? std::string(static_cast<const char *>(data), len) : std::string();
+	duckdb_v2_value_destroy(&value);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	return out;
+}
 // Assemble a non-inlined duckdb_v2_string over already-written heap bytes (no
 // allocation, no payload copy): the single hand-assembler for write-in-place flows.
 inline duckdb_v2_string V2StringFromHeapBytes(uint8_t *bytes, idx_t len) {
@@ -171,13 +207,76 @@ inline idx_t SelAt(const duckdb_v2_sel_t *sel, idx_t i) {
 	return sel ? static_cast<idx_t>(sel[i]) : i;
 }
 
-// Read a transparent duckdb_v2_string as a borrowed view. The length field
+// Read a transparent duckdb_v2_string as a borrowed view (the C++ suite
+// keeps its own SlotBytes; this header includes V1). The length field
 // shares offset 0 across both union arms; the data is inlined or heap-backed
 // by the DUCKDB_V2_STRING_INLINE_LENGTH cutoff.
 inline duckdb_v2_str V2StringView(const duckdb_v2_string &s) {
 	uint32_t len = s.value.inlined.length;
 	const char *ptr = len <= DUCKDB_V2_STRING_INLINE_LENGTH ? s.value.inlined.inlined : s.value.pointer.ptr;
 	return duckdb_v2_str {ptr, len};
+}
+
+// TYPE value wrapping a borrowed type handle.
+inline duckdb_v2_value_handle V2TypeValueOf(duckdb_v2_logical_type_handle t) {
+	duckdb_v2_value_handle v = nullptr;
+	REQUIRE(duckdb_v2_value_create_type(t, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return v;
+}
+
+// TYPE value wrapping an owned primitive built from `id`.
+inline duckdb_v2_value_handle V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID id) {
+	duckdb_v2_logical_type_handle t = nullptr;
+	duckdb_v2_logical_type_create_from_id(id, &t, nullptr);
+	duckdb_v2_value_handle v = nullptr;
+	auto rc = duckdb_v2_value_create_type(t, &v, nullptr);
+	duckdb_v2_logical_type_destroy(&t);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	return v;
+}
+
+// Runs logical_type_create inside a context scope. Destroys the borrowed
+// param values. `names` entries may be nullptr (positional); pass nullptr
+// for all-positional.
+inline duckdb_v2_logical_type_handle V2CreateType(duckdb_v2_connection_handle conn, const char *name,
+                                                  const std::vector<const char *> *names,
+                                                  std::vector<duckdb_v2_value_handle> values) {
+	std::vector<duckdb_v2_str> name_views;
+	if (names) {
+		for (auto *n : *names) {
+			name_views.push_back(V2Str(n));
+		}
+	}
+	duckdb_v2_logical_type_handle t = nullptr;
+	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
+		rc = duckdb_v2_logical_type_create(ctx, V2Str(name), names ? name_views.data() : nullptr,
+		                                   values.empty() ? nullptr : values.data(), values.size(), &t, nullptr);
+	});
+	for (auto &v : values) {
+		duckdb_v2_value_destroy(&v);
+	}
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(t != nullptr);
+	return t;
+}
+
+// Per-kind sugar over V2CreateType for the common composite fixtures.
+inline duckdb_v2_logical_type_handle V2ListType(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID elem) {
+	return V2CreateType(conn, "list", nullptr, {V2TypeValueOfId(elem)});
+}
+inline duckdb_v2_logical_type_handle V2MapType(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID key,
+                                               DUCKDB_V2_LOGICAL_TYPE_ID value) {
+	return V2CreateType(conn, "map", nullptr, {V2TypeValueOfId(key), V2TypeValueOfId(value)});
+}
+inline duckdb_v2_logical_type_handle V2StructType(duckdb_v2_connection_handle conn,
+                                                  const std::vector<const char *> &names,
+                                                  const std::vector<DUCKDB_V2_LOGICAL_TYPE_ID> &ids) {
+	std::vector<duckdb_v2_value_handle> values;
+	for (auto id : ids) {
+		values.push_back(V2TypeValueOfId(id));
+	}
+	return V2CreateType(conn, "struct", &names, std::move(values));
 }
 
 // True if row `idx` of a vector view is non-NULL. A null validity pointer means
@@ -210,13 +309,15 @@ inline duckdb_v2_error_code_t V2Query(duckdb_v2_connection_handle conn, const ch
 	duckdb_v2_sql_statement_handle stmt = nullptr;
 	rc = duckdb_v2_statement_iterator_next(iter, &stmt, err);
 	if (rc == DUCKDB_V2_ERROR_NONE && stmt) {
-		// Guard single-statement intent before running anything.
+		// Guard single-statement intent before running anything. Destroy the
+		// fixtures before any REQUIRE/FAIL so an assertion failure cannot leak.
 		duckdb_v2_sql_statement_handle extra = nullptr;
-		REQUIRE(duckdb_v2_statement_iterator_next(iter, &extra, nullptr) == DUCKDB_V2_ERROR_NONE);
-		if (extra) {
+		auto extra_rc = duckdb_v2_statement_iterator_next(iter, &extra, nullptr);
+		if (extra_rc != DUCKDB_V2_ERROR_NONE || extra) {
 			duckdb_v2_sql_statement_destroy(&extra);
 			duckdb_v2_sql_statement_destroy(&stmt);
 			duckdb_v2_statement_iterator_destroy(&iter);
+			REQUIRE(extra_rc == DUCKDB_V2_ERROR_NONE);
 			FAIL("V2Query input contains more than one statement: " << sql);
 		}
 	}
@@ -346,15 +447,20 @@ struct V2Progress {
 };
 inline V2Progress V2ReadProgress(duckdb_v2_connection_handle conn) {
 	duckdb_v2_query_progress_handle progress = nullptr;
-	REQUIRE(duckdb_v2_connection_query_progress(conn, &progress, nullptr) == DUCKDB_V2_ERROR_NONE);
+	auto capture_rc = duckdb_v2_connection_query_progress(conn, &progress, nullptr);
+	REQUIRE(capture_rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(progress != nullptr);
+	// Read all three accessors, destroy, then assert: a failing REQUIRE
+	// between capture and destroy would leak the snapshot.
 	V2Progress out;
-	REQUIRE(duckdb_v2_query_progress_get_percentage(progress, &out.percentage, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_query_progress_get_rows_processed(progress, &out.rows_processed, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_query_progress_get_total_rows_to_process(progress, &out.total_rows_to_process, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_query_progress_destroy(&progress) == DUCKDB_V2_ERROR_NONE);
+	auto pct_rc = duckdb_v2_query_progress_get_percentage(progress, &out.percentage, nullptr);
+	auto rows_rc = duckdb_v2_query_progress_get_rows_processed(progress, &out.rows_processed, nullptr);
+	auto total_rc = duckdb_v2_query_progress_get_total_rows_to_process(progress, &out.total_rows_to_process, nullptr);
+	auto destroy_rc = duckdb_v2_query_progress_destroy(&progress);
+	REQUIRE(pct_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(rows_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(total_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(progress == nullptr);
 	return out;
 }

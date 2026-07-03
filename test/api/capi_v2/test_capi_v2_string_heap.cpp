@@ -6,24 +6,29 @@
 // ---------------------------------------------------------------------------
 // V2 string-heap write surface: vector_get_string_heap + string_heap_allocate.
 // Borrow the heap, allocate vector-lifetime bytes, assemble a duckdb_v2_string
-// over the transparent layout, and place it via the mutable data array. Type
-// fixtures come from V1 helpers cast to V2; intermediates die before any REQUIRE.
+// over the transparent layout, and place it via the mutable data array.
+// Intermediates die before any REQUIRE.
 // ---------------------------------------------------------------------------
 
 namespace {
 
-// Build a single-column chunk of the given V1 type and borrow its vector.
+// Build a single-column chunk of the given type and borrow its vector.
 struct StringChunk {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_vector_handle vec = nullptr;
 
-	explicit StringChunk(duckdb_type type) {
-		auto v1 = duckdb_create_logical_type(type);
-		duckdb_v2_logical_type_handle types[1] = {V1ToV2(v1)};
+	explicit StringChunk(DUCKDB_V2_LOGICAL_TYPE_ID id) {
+		auto t = V2TypeOf(id);
+		duckdb_v2_logical_type_handle types[1] = {t};
 		auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-		duckdb_destroy_logical_type(&v1);
+		duckdb_v2_logical_type_destroy(&t);
 		REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+		// A REQUIRE throw in a ctor skips the dtor: destroy before failing.
+		auto vec_rc = duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
+		if (vec_rc != DUCKDB_V2_ERROR_NONE) {
+			duckdb_v2_data_chunk_destroy(&chunk);
+		}
+		REQUIRE(vec_rc == DUCKDB_V2_ERROR_NONE);
 	}
 	~StringChunk() {
 		duckdb_v2_data_chunk_destroy(&chunk);
@@ -42,7 +47,8 @@ bool IsInlined(const duckdb_v2_string &s) {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_get_string_heap on string-backed kinds", "[capi_v2][string_heap]") {
-	for (auto type : {DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_BLOB, DUCKDB_TYPE_BIT, DUCKDB_TYPE_BIGNUM}) {
+	for (auto type : {DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, DUCKDB_V2_LOGICAL_TYPE_ID_BLOB, DUCKDB_V2_LOGICAL_TYPE_ID_BIT,
+	                  DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM}) {
 		StringChunk fixture(type);
 		duckdb_v2_string_heap_handle heap = nullptr;
 		REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -56,7 +62,7 @@ TEST_CASE("V2: vector_get_string_heap on string-backed kinds", "[capi_v2][string
 }
 
 TEST_CASE("V2: vector_get_string_heap rejects non-string vector", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_INTEGER);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_string_heap_handle heap = reinterpret_cast<duckdb_v2_string_heap_handle>(0x1);
 	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	// out_heap is nulled on the INVALID_INPUT path.
@@ -67,7 +73,7 @@ TEST_CASE("V2: vector_get_string_heap null args", "[capi_v2][string_heap]") {
 	duckdb_v2_string_heap_handle heap = nullptr;
 	REQUIRE(duckdb_v2_vector_get_string_heap(nullptr, &heap, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
-	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 }
 
@@ -76,7 +82,7 @@ TEST_CASE("V2: vector_get_string_heap null args", "[capi_v2][string_heap]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: string_heap_allocate write-in-place", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	REQUIRE(duckdb_v2_vector_set_size(fixture.vec, 1, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_string_heap_handle heap = nullptr;
@@ -103,7 +109,7 @@ TEST_CASE("V2: string_heap_allocate write-in-place", "[capi_v2][string_heap]") {
 }
 
 TEST_CASE("V2: string_heap_allocate byte_len 0 is valid", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	duckdb_v2_string_heap_handle heap = nullptr;
 	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_NONE);
 
@@ -113,7 +119,7 @@ TEST_CASE("V2: string_heap_allocate byte_len 0 is valid", "[capi_v2][string_heap
 }
 
 TEST_CASE("V2: string_heap_allocate null args", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	duckdb_v2_string_heap_handle heap = nullptr;
 	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_NONE);
 
@@ -130,7 +136,7 @@ TEST_CASE("V2: string_heap_allocate null args", "[capi_v2][string_heap]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: inline vs non-inline placement", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	REQUIRE(duckdb_v2_vector_set_size(fixture.vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_string_heap_handle heap = nullptr;
@@ -160,7 +166,7 @@ TEST_CASE("V2: inline vs non-inline placement", "[capi_v2][string_heap]") {
 }
 
 TEST_CASE("V2: empty string is inlined", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	duckdb_v2_string_heap_handle heap = nullptr;
 	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_NONE);
 
@@ -178,7 +184,7 @@ TEST_CASE("V2: empty string is inlined", "[capi_v2][string_heap]") {
 }
 
 TEST_CASE("V2: BLOB with embedded nulls (inline + heap)", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_BLOB);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_BLOB);
 	REQUIRE(duckdb_v2_vector_set_size(fixture.vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_string_heap_handle heap = nullptr;
@@ -229,7 +235,7 @@ TEST_CASE("V2: BLOB with embedded nulls (inline + heap)", "[capi_v2][string_heap
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: string heap write on constant vector", "[capi_v2][string_heap]") {
-	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
+	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 
 	duckdb_v2_value_handle value = V2VarcharValue("init");
 	REQUIRE(duckdb_v2_vector_make_constant(fixture.vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);

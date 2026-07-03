@@ -13,6 +13,8 @@ add_library_unity(
   test_capi_v2_function_property.cpp
   test_capi_v2_string_layout.cpp
   test_capi_v2_logical_type.cpp
+  test_capi_v2_option.cpp
+  test_capi_v2_scalar_function.cpp
   test_capi_v2_prepared_statement.cpp
   test_capi_v2_query_execution.cpp
   test_capi_v2_query_result.cpp
@@ -24,7 +26,13 @@ add_library_unity(
   test_capi_v2_file_system.cpp
   test_capi_v2_table_function.cpp
   test_capi_v2_vector_write.cpp
-  test_cpp_api.cpp)
+  test_cpp_api_core.cpp
+  test_cpp_api_function.cpp
+  test_cpp_api_table_function.cpp
+  test_cpp_api_query.cpp
+  test_cpp_api_vector.cpp
+  test_cpp_api_arrow.cpp
+  test_cpp_api_types_values.cpp)
 
 set(UNITTEST_OBJECT_FILES
     ${UNITTEST_OBJECT_FILES} $<TARGET_OBJECTS:test_sql_capi_v2>

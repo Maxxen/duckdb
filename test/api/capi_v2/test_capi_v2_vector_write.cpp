@@ -7,9 +7,10 @@
 // ---------------------------------------------------------------------------
 // V2 vector write API tests.
 //
-// Type fixtures are built via V1 helpers and cast to V2 via the handle
-// identity invariant. Intermediates are destroyed before any REQUIRE to
-// avoid leaks on Catch2 assertion failure.
+// Type fixtures are V2-native: primitives via V2TypeOf, composites via the
+// context-scoped V2CreateType sugar (V2ListType / V2StructType / V2MapType),
+// each test carrying its own V2EnvFixture. Intermediates are destroyed
+// before any REQUIRE to avoid leaks on Catch2 assertion failure.
 //
 // There is no chunk-level size setter: each vector carries its own logical
 // size, set via vector_set_size (the child of a LIST/MAP is sized the same
@@ -23,14 +24,14 @@
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: data_chunk_create basic", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-	duckdb_v2_logical_type_handle types[2] = {V1ToV2(int_type), V1ToV2(varchar_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto varchar_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
+	duckdb_v2_logical_type_handle types[2] = {int_type, varchar_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 2, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
-	duckdb_destroy_logical_type(&varchar_type);
+	duckdb_v2_logical_type_destroy(&int_type);
+	duckdb_v2_logical_type_destroy(&varchar_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(chunk != nullptr);
 
@@ -67,20 +68,20 @@ TEST_CASE("V2: data_chunk_create null args", "[capi_v2][vector_write]") {
 	REQUIRE(chunk == nullptr);
 
 	// Null out_chunk.
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 	auto rc = duckdb_v2_data_chunk_create(types, 1, nullptr, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
 }
 
 TEST_CASE("V2: data_chunk_create with null element in types", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[2] = {V1ToV2(int_type), nullptr};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[2] = {int_type, nullptr};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 2, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(chunk == nullptr);
 }
@@ -94,14 +95,14 @@ TEST_CASE("V2: vector_set_size null arg", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: per-column sizing", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto double_type = duckdb_create_logical_type(DUCKDB_TYPE_DOUBLE);
-	duckdb_v2_logical_type_handle types[2] = {V1ToV2(int_type), V1ToV2(double_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto double_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
+	duckdb_v2_logical_type_handle types[2] = {int_type, double_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 2, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
-	duckdb_destroy_logical_type(&double_type);
+	duckdb_v2_logical_type_destroy(&int_type);
+	duckdb_v2_logical_type_destroy(&double_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	for (idx_t col = 0; col < 2; col++) {
@@ -118,12 +119,12 @@ TEST_CASE("V2: per-column sizing", "[capi_v2][vector_write]") {
 
 // vector_set_size beyond the default capacity must auto-reserve.
 TEST_CASE("V2: vector_set_size auto-reserves", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -147,12 +148,12 @@ TEST_CASE("V2: vector_set_size auto-reserves", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_make_constant from value", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -179,12 +180,12 @@ TEST_CASE("V2: vector_make_constant from value", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector_flatten resets constant", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -212,12 +213,12 @@ TEST_CASE("V2: vector_flatten resets constant", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector_make_sequence", "[capi_v2][vector_write]") {
-	auto bigint_type = duckdb_create_logical_type(DUCKDB_TYPE_BIGINT);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(bigint_type)};
+	auto bigint_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	duckdb_v2_logical_type_handle types[1] = {bigint_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&bigint_type);
+	duckdb_v2_logical_type_destroy(&bigint_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -247,12 +248,12 @@ TEST_CASE("V2: vector_make_* null args", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector_make_constant null value", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -269,12 +270,12 @@ TEST_CASE("V2: vector_make_constant null value", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_flat_get_validity_mutable + set nulls", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -315,12 +316,12 @@ TEST_CASE("V2: vector_flat_get_validity_mutable null args", "[capi_v2][vector_wr
 }
 
 TEST_CASE("V2: vector_flat_get_validity_mutable rejects SEQUENCE vector", "[capi_v2][vector_write]") {
-	auto i64_type = duckdb_create_logical_type(DUCKDB_TYPE_BIGINT);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(i64_type)};
+	auto i64_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	duckdb_v2_logical_type_handle types[1] = {i64_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&i64_type);
+	duckdb_v2_logical_type_destroy(&i64_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -338,12 +339,12 @@ TEST_CASE("V2: vector_flat_get_validity_mutable rejects SEQUENCE vector", "[capi
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_constant_set_valid toggles validity", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -372,12 +373,12 @@ TEST_CASE("V2: vector_constant_set_valid toggles validity", "[capi_v2][vector_wr
 }
 
 TEST_CASE("V2: vector_constant_set_valid rejects FLAT vector", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -395,15 +396,14 @@ TEST_CASE("V2: vector_constant_set_valid rejects FLAT vector", "[capi_v2][vector
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: list vector write round-trip", "[capi_v2][vector_write]") {
-	auto int_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto list_v1 = duckdb_create_list_type(int_v1);
-	duckdb_destroy_logical_type(&int_v1);
+	V2EnvFixture fx;
+	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	duckdb_v2_logical_type_handle types[1] = {list_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&list_v1);
+	duckdb_v2_logical_type_destroy(&list_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -455,15 +455,14 @@ TEST_CASE("V2: list vector write round-trip", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: list child set_size auto-reserves", "[capi_v2][vector_write]") {
-	auto int_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto list_v1 = duckdb_create_list_type(int_v1);
-	duckdb_destroy_logical_type(&int_v1);
+	V2EnvFixture fx;
+	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	duckdb_v2_logical_type_handle types[1] = {list_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&list_v1);
+	duckdb_v2_logical_type_destroy(&list_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -493,19 +492,15 @@ TEST_CASE("V2: list child set_size auto-reserves", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: struct vector write via children", "[capi_v2][vector_write]") {
-	duckdb_logical_type members[2];
-	members[0] = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	members[1] = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-	const char *names[2] = {"a", "b"};
-	auto struct_v1 = duckdb_create_struct_type(members, names, 2);
-	duckdb_destroy_logical_type(&members[0]);
-	duckdb_destroy_logical_type(&members[1]);
+	V2EnvFixture fx;
+	auto struct_type =
+	    V2StructType(fx.conn, {"a", "b"}, {DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR});
 
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(struct_v1)};
+	duckdb_v2_logical_type_handle types[1] = {struct_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&struct_v1);
+	duckdb_v2_logical_type_destroy(&struct_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -543,12 +538,12 @@ TEST_CASE("V2: struct vector write via children", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: flat integer write + read round-trip", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -579,12 +574,12 @@ TEST_CASE("V2: flat integer write + read round-trip", "[capi_v2][vector_write]")
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: chunk outlives type handles", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -621,12 +616,12 @@ TEST_CASE("V2: data_chunk_create zero columns", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector with zero rows", "[capi_v2][vector_write]") {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -645,15 +640,14 @@ TEST_CASE("V2: vector with zero rows", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: incremental list append", "[capi_v2][vector_write]") {
-	auto int_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto list_v1 = duckdb_create_list_type(int_v1);
-	duckdb_destroy_logical_type(&int_v1);
+	V2EnvFixture fx;
+	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	duckdb_v2_logical_type_handle types[1] = {list_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&list_v1);
+	duckdb_v2_logical_type_destroy(&list_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -703,15 +697,14 @@ TEST_CASE("V2: incremental list append", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: LIST<VARCHAR> write", "[capi_v2][vector_write]") {
-	auto varchar_v1 = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-	auto list_v1 = duckdb_create_list_type(varchar_v1);
-	duckdb_destroy_logical_type(&varchar_v1);
+	V2EnvFixture fx;
+	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	duckdb_v2_logical_type_handle types[1] = {list_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&list_v1);
+	duckdb_v2_logical_type_destroy(&list_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -745,17 +738,14 @@ TEST_CASE("V2: LIST<VARCHAR> write", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: MAP write via child vectors", "[capi_v2][vector_write]") {
-	auto key_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto val_v1 = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-	auto map_v1 = duckdb_create_map_type(key_v1, val_v1);
-	duckdb_destroy_logical_type(&key_v1);
-	duckdb_destroy_logical_type(&val_v1);
+	V2EnvFixture fx;
+	auto map_type = V2MapType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(map_v1)};
+	duckdb_v2_logical_type_handle types[1] = {map_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&map_v1);
+	duckdb_v2_logical_type_destroy(&map_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_vector_handle vec = nullptr;
@@ -795,23 +785,22 @@ TEST_CASE("V2: MAP write via child vectors", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: write multiple primitive types", "[capi_v2][vector_write]") {
-	auto bool_t = duckdb_create_logical_type(DUCKDB_TYPE_BOOLEAN);
-	auto i8_t = duckdb_create_logical_type(DUCKDB_TYPE_TINYINT);
-	auto i16_t = duckdb_create_logical_type(DUCKDB_TYPE_SMALLINT);
-	auto i64_t = duckdb_create_logical_type(DUCKDB_TYPE_BIGINT);
-	auto f32_t = duckdb_create_logical_type(DUCKDB_TYPE_FLOAT);
-	auto f64_t = duckdb_create_logical_type(DUCKDB_TYPE_DOUBLE);
-	duckdb_v2_logical_type_handle types[6] = {V1ToV2(bool_t), V1ToV2(i8_t),  V1ToV2(i16_t),
-	                                          V1ToV2(i64_t),  V1ToV2(f32_t), V1ToV2(f64_t)};
+	auto bool_t = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN);
+	auto i8_t = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT);
+	auto i16_t = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT);
+	auto i64_t = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	auto f32_t = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT);
+	auto f64_t = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
+	duckdb_v2_logical_type_handle types[6] = {bool_t, i8_t, i16_t, i64_t, f32_t, f64_t};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 6, &chunk, nullptr);
-	duckdb_destroy_logical_type(&bool_t);
-	duckdb_destroy_logical_type(&i8_t);
-	duckdb_destroy_logical_type(&i16_t);
-	duckdb_destroy_logical_type(&i64_t);
-	duckdb_destroy_logical_type(&f32_t);
-	duckdb_destroy_logical_type(&f64_t);
+	duckdb_v2_logical_type_destroy(&bool_t);
+	duckdb_v2_logical_type_destroy(&i8_t);
+	duckdb_v2_logical_type_destroy(&i16_t);
+	duckdb_v2_logical_type_destroy(&i64_t);
+	duckdb_v2_logical_type_destroy(&f32_t);
+	duckdb_v2_logical_type_destroy(&f64_t);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 
 	auto write_and_check = [&](idx_t col, auto write_val) {
@@ -841,25 +830,31 @@ TEST_CASE("V2: write multiple primitive types", "[capi_v2][vector_write]") {
 // Single-cell value bridge: vector_get_value / vector_set_value
 // ===========================================================================
 
+namespace {
+
 // Owned INTEGER chunk with one column; caller destroys.
-static duckdb_v2_data_chunk_handle MakeIntChunk(duckdb_v2_vector_handle *out_vec) {
-	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+duckdb_v2_data_chunk_handle MakeIntChunk(duckdb_v2_vector_handle *out_vec) {
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&int_type);
+	duckdb_v2_logical_type_destroy(&int_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, out_vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	auto vec_rc = duckdb_v2_data_chunk_get_vector(chunk, 0, out_vec, nullptr);
+	if (vec_rc != DUCKDB_V2_ERROR_NONE) {
+		duckdb_v2_data_chunk_destroy(&chunk);
+	}
+	REQUIRE(vec_rc == DUCKDB_V2_ERROR_NONE);
 	return chunk;
 }
 
-static int32_t V2CellI32(duckdb_v2_vector_handle vec, idx_t row) {
+int32_t V2CellI32(duckdb_v2_vector_handle vec, idx_t row) {
 	duckdb_v2_value_handle cell = nullptr;
 	REQUIRE(duckdb_v2_vector_get_value(vec, row, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
-	auto out = V2LeafPayload<int32_t>(cell);
-	duckdb_v2_value_destroy(&cell);
-	return out;
+	return V2LeafPayloadConsume<int32_t>(cell);
 }
+
+} // namespace
 
 TEST_CASE("V2: vector_get_value reads FLAT and CONSTANT rows", "[capi_v2][vector_write][cell]") {
 	duckdb_v2_vector_handle vec = nullptr;
@@ -949,11 +944,11 @@ TEST_CASE("V2: vector_get_value is the VARIANT cell path", "[capi_v2][vector_wri
 }
 
 TEST_CASE("V2: vector_set_value writes FLAT cells with casts and NULLs", "[capi_v2][vector_write][cell]") {
-	auto bigint_type = duckdb_create_logical_type(DUCKDB_TYPE_BIGINT);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(bigint_type)};
+	auto bigint_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	duckdb_v2_logical_type_handle types[1] = {bigint_type};
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
-	duckdb_destroy_logical_type(&bigint_type);
+	duckdb_v2_logical_type_destroy(&bigint_type);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1026,10 +1021,9 @@ TEST_CASE("V2: vector_set_value refuses non-FLAT vectors and bad rows", "[capi_v
 }
 
 TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip", "[capi_v2][vector_write][cell]") {
-	auto int_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto list_v1 = duckdb_create_list_type(int_v1);
-	duckdb_destroy_logical_type(&int_v1);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	V2EnvFixture fx;
+	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {list_type};
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
@@ -1041,7 +1035,7 @@ TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip",
 	elems[0] = V2Int32Value(1);
 	elems[1] = V2Int32Value(2);
 	duckdb_v2_value_handle list_value = nullptr;
-	rc = duckdb_v2_value_create(V1ToV2(list_v1), elems, 2, &list_value, nullptr);
+	rc = duckdb_v2_value_create(list_type, elems, 2, &list_value, nullptr);
 	duckdb_v2_value_destroy(&elems[0]);
 	duckdb_v2_value_destroy(&elems[1]);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
@@ -1072,15 +1066,14 @@ TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip",
 	duckdb_v2_value_destroy(&wrong);
 
 	duckdb_v2_value_destroy(&list_value);
-	duckdb_destroy_logical_type(&list_v1);
+	duckdb_v2_logical_type_destroy(&list_type);
 	duckdb_v2_data_chunk_destroy(&chunk);
 }
 
 TEST_CASE("V2: nested cells round trip through set_value / get_value", "[capi_v2][vector_write][cell]") {
-	auto int_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
-	auto list_v1 = duckdb_create_list_type(int_v1);
-	duckdb_destroy_logical_type(&int_v1);
-	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	V2EnvFixture fx;
+	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {list_type};
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
@@ -1092,13 +1085,13 @@ TEST_CASE("V2: nested cells round trip through set_value / get_value", "[capi_v2
 	elems[0] = V2Int32Value(5);
 	elems[1] = V2Int32Value(6);
 	duckdb_v2_value_handle full = nullptr;
-	rc = duckdb_v2_value_create(V1ToV2(list_v1), elems, 2, &full, nullptr);
+	rc = duckdb_v2_value_create(list_type, elems, 2, &full, nullptr);
 	duckdb_v2_value_destroy(&elems[0]);
 	duckdb_v2_value_destroy(&elems[1]);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_handle empty = nullptr;
-	REQUIRE(duckdb_v2_value_create(V1ToV2(list_v1), nullptr, 0, &empty, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_destroy_logical_type(&list_v1);
+	REQUIRE(duckdb_v2_value_create(list_type, nullptr, 0, &empty, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_destroy(&list_type);
 
 	REQUIRE(duckdb_v2_vector_set_value(vec, 0, full, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vector_set_value(vec, 1, empty, nullptr) == DUCKDB_V2_ERROR_NONE);

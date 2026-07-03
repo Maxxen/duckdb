@@ -105,8 +105,15 @@ TEST_CASE("V2 string layout: direct reads match V1 equivalents", "[capi_v2][stri
 
 		REQUIRE(StrInlined(v2s) == duckdb_string_is_inlined(v1s));
 		REQUIRE(StrLength(v2s) == duckdb_string_t_length(v1s));
-		REQUIRE(StrData(v2s) ==
-		        duckdb_string_t_data(reinterpret_cast<duckdb_string_t *>(const_cast<duckdb_v2_string *>(v2s))));
+		// duckdb_string_t_data wants a mutable pointer; compare through a local
+		// copy instead of casting away const. Inlined data lives in the value,
+		// so compare bytes; pointer-form data must be the same address.
+		duckdb_string_t v1s_copy = v1s;
+		if (duckdb_string_is_inlined(v1s)) {
+			REQUIRE(std::memcmp(StrData(v2s), duckdb_string_t_data(&v1s_copy), StrLength(v2s)) == 0);
+		} else {
+			REQUIRE(StrData(v2s) == duckdb_string_t_data(&v1s_copy));
+		}
 	}
 
 	// Pin expected values for the two rows.
@@ -120,25 +127,6 @@ TEST_CASE("V2 string layout: direct reads match V1 equivalents", "[capi_v2][stri
 		REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 0)]), 5) == "short");
 		REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 1)]), 50) == std::string(50, 'x'));
 	}
-}
-
-// ===========================================================================
-// Transparent BLOB direct reads.
-// 4-byte blob (inlined) and 15-byte blob (pointer form).
-// ===========================================================================
-
-TEST_CASE("V2 string layout: BLOB direct reads", "[capi_v2][string_layout]") {
-	V2InlineFixture fx;
-	// 'ABCD' = 4 bytes (inlined, <= 12); 'ABCDEFGHIJKLMNO' = 15 bytes (pointer form).
-	InlQueryRows qr(fx.conn, "SELECT * FROM (VALUES ('ABCD'::BLOB), ('ABCDEFGHIJKLMNO'::BLOB)) t(b)", 2);
-	const duckdb_v2_blob_t *arr = qr.as<duckdb_v2_blob_t>();
-
-	REQUIRE(StrInlined(&arr[SelAt(qr.view.sel, 0)]));       // 4 bytes
-	REQUIRE_FALSE(StrInlined(&arr[SelAt(qr.view.sel, 1)])); // 15 bytes
-	REQUIRE(StrLength(&arr[SelAt(qr.view.sel, 0)]) == 4);
-	REQUIRE(StrLength(&arr[SelAt(qr.view.sel, 1)]) == 15);
-	REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 0)]), 4) == "ABCD");
-	REQUIRE(std::string(StrData(&arr[SelAt(qr.view.sel, 1)]), 15) == "ABCDEFGHIJKLMNO");
 }
 
 // ===========================================================================
