@@ -1245,6 +1245,59 @@ TEST_CASE("V2 table function: complex filter pushdown", "[capi_v2][table_functio
 }
 
 // ---------------------------------------------------------------------------
+// Filter info exposes the builder user_data, mirroring the other phase info
+// handles: the pushdown callback reaches registration-scoped state without
+// routing through bind data.
+// ---------------------------------------------------------------------------
+
+static int fud_marker = 0;
+static void *g_fud_seen = nullptr;
+
+static void fud_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_handle info,
+                         duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
+	REQUIRE(duckdb_v2_table_function_filter_get_user_data(info, &g_fud_seen, err) == DUCKDB_V2_ERROR_NONE);
+	// Null-arg misuse; pass no err slot so the deliberate failure does not
+	// mark the callback as failed.
+	void *dummy = nullptr;
+	REQUIRE(duckdb_v2_table_function_filter_get_user_data(nullptr, &dummy, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_table_function_filter_get_user_data(info, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+}
+
+TEST_CASE("V2 table function: filter info exposes builder user_data", "[capi_v2][table_function]") {
+	V2EnvFixture fix;
+
+	g_fud_seen = nullptr;
+
+	duckdb_v2_connection_execute_with_context(
+	    fix.conn,
+	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
+		    duckdb_v2_table_function_builder_handle builder = nullptr;
+		    REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("fud_fn"), err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_user_data(builder, {&fud_marker, nullptr, nullptr}, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, card_bind, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, card_init_global, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_exec_callback(builder, card_exec, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_set_pushdown_complex_filter_callback(builder, fud_pushdown, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_table_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
+		    duckdb_v2_table_function_builder_destroy(&builder);
+	    },
+	    nullptr, nullptr);
+
+	duckdb_v2_result_handle result = nullptr;
+	REQUIRE(V2Query(fix.conn, "SELECT v FROM fud_fn() WHERE v = 3", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	V2DrainRowCount(result);
+	duckdb_v2_result_destroy(&result);
+
+	REQUIRE(g_fud_seen == &fud_marker);
+}
+
+// ---------------------------------------------------------------------------
 // Error-code fidelity: a callback that signals a specific V2 error code surfaces
 // that code to the query, rather than being collapsed to a generic category.
 // The exec callback below signals RESOURCE_OUT_OF_MEMORY; the old behavior threw

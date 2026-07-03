@@ -22,8 +22,8 @@ ClientContext &ToContextRef(duckdb_v2_context_handle context) {
 	return *reinterpret_cast<ClientContext *>(context);
 }
 
-ArrowTableSchema &ToArrowTableSchema(duckdb_v2_arrow_converted_schema_handle converted) {
-	return *reinterpret_cast<ArrowTableSchema *>(converted);
+ArrowTableSchema &ToArrowTableSchema(duckdb_v2_arrow_conversion_plan_handle plan) {
+	return *reinterpret_cast<ArrowTableSchema *>(plan);
 }
 
 // ---------------------------------------------------------------------------
@@ -312,44 +312,44 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_to_arrow_array(duckdb_v2_context_handl
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_arrow_converted_schema_create(duckdb_v2_context_handle context,
-                                                             struct ArrowSchema *schema,
-                                                             duckdb_v2_arrow_converted_schema_handle *out_converted,
-                                                             duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_create(duckdb_v2_context_handle context,
+                                                            struct ArrowSchema *schema,
+                                                            duckdb_v2_arrow_conversion_plan_handle *out_plan,
+                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context || !schema || !out_converted) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_converted_schema_create");
+		if (!context || !schema || !out_plan) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_conversion_plan_create");
 		}
-		*out_converted = nullptr;
+		*out_plan = nullptr;
 		auto &ctx = duckdb::ToContextRef(context);
 		auto arrow_table = duckdb::make_uniq<duckdb::ArrowTableSchema>();
 		duckdb::ArrowTableFunction::PopulateArrowTableSchema(ctx, *arrow_table, *schema);
-		*out_converted = reinterpret_cast<duckdb_v2_arrow_converted_schema_handle>(arrow_table.release());
+		*out_plan = reinterpret_cast<duckdb_v2_arrow_conversion_plan_handle>(arrow_table.release());
 	});
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_arrow_array_to_data_chunk(duckdb_v2_context_handle context, struct ArrowArray *array,
-                                                         duckdb_v2_arrow_converted_schema_handle converted,
+                                                         duckdb_v2_arrow_conversion_plan_handle plan,
                                                          duckdb_v2_data_chunk_handle *out_chunk,
                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context || !array || !converted || !out_chunk) {
+		if (!context || !array || !plan || !out_chunk) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_array_to_data_chunk");
 		}
 		*out_chunk = nullptr;
 		auto &ctx = duckdb::ToContextRef(context);
-		auto &arrow_table = duckdb::ToArrowTableSchema(converted);
+		auto &arrow_table = duckdb::ToArrowTableSchema(plan);
 		auto &types = arrow_table.GetTypes();
 
 		auto dchunk = duckdb::make_uniq<duckdb::DataChunk>();
 		dchunk->Initialize(duckdb::Allocator::DefaultAllocator(), types, duckdb::NumericCast<idx_t>(array->length));
 
 		auto &arrow_types = arrow_table.GetColumns();
-		// Guard against an array whose layout disagrees with the converted schema
+		// Guard against an array whose layout disagrees with the conversion plan
 		// before indexing array->children, which would otherwise be out of bounds.
 		if (duckdb::NumericCast<idx_t>(array->n_children) != dchunk->ColumnCount()) {
 			throw duckdb::InvalidInputException(
-			    "Arrow array child count does not match the converted schema column count");
+			    "Arrow array child count does not match the conversion plan column count");
 		}
 		dchunk->SetChildCardinality(duckdb::NumericCast<idx_t>(array->length));
 
@@ -405,11 +405,33 @@ DUCKDB_V2_API_CALL_t duckdb_v2_arrow_array_to_data_chunk(duckdb_v2_context_handl
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_arrow_converted_schema_destroy(duckdb_v2_arrow_converted_schema_handle *converted) {
+DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_get_schema(duckdb_v2_arrow_conversion_plan_handle plan,
+                                                                duckdb_v2_schema_handle *out_schema,
+                                                                duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!plan || !out_schema) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_conversion_plan_get_schema");
+		}
+		*out_schema = nullptr;
+		auto &arrow_table = duckdb::ToArrowTableSchema(plan);
+		auto &types = arrow_table.GetTypes();
+		auto &names = arrow_table.GetNames();
+		D_ASSERT(names.size() == types.size());
+		// Copy into the standard owned schema wrapper (the same shape
+		// statement_bind produces); the caller destroys it via schema_destroy.
+		auto wrapper = duckdb::make_uniq<duckdb::SchemaWrapperV2>();
+		for (duckdb::idx_t i = 0; i < types.size(); i++) {
+			wrapper->fields.push_back({names[i], types[i]});
+		}
+		*out_schema = reinterpret_cast<duckdb_v2_schema_handle>(wrapper.release());
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_destroy(duckdb_v2_arrow_conversion_plan_handle *plan) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
-		if (converted && *converted) {
-			delete reinterpret_cast<duckdb::ArrowTableSchema *>(*converted);
-			*converted = nullptr;
+		if (plan && *plan) {
+			delete reinterpret_cast<duckdb::ArrowTableSchema *>(*plan);
+			*plan = nullptr;
 		}
 	});
 }

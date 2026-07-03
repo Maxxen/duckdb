@@ -17,7 +17,7 @@ module: arrow
 # The converters key on `context`, not a connection: a callback (a UDF, a type
 # extension cast) already has a context; a non-callback caller obtains one (and
 # a transaction) via connection_execute_with_context. Schema and data
-# conversion are split on purpose: arrow_converted_schema_create builds a
+# conversion are split on purpose: arrow_conversion_plan_create builds a
 # reusable bound schema once, and arrow_array_to_data_chunk consumes it per
 # array (so a UDF binds the schema in init and reuses it per chunk).
 #
@@ -51,16 +51,18 @@ module: arrow
 # this core converter surface.
 
 handles:
-  arrow_converted_schema:
+  arrow_conversion_plan:
     description: |
-      An opaque, owned handle to a converted Arrow schema: the bound
+      An opaque, owned handle to an Arrow conversion plan: the bound
       DuckDB-side interpretation of an ArrowSchema (the column logical types
       plus the per-column Arrow type info needed to import arrays). Built once
-      from an ArrowSchema via arrow_converted_schema_create and reused across
+      from an ArrowSchema via arrow_conversion_plan_create and reused across
       many arrays by arrow_array_to_data_chunk (e.g. a UDF binds it in init and
-      reuses it per chunk, avoiding per-array schema overhead). Always destroy
-      via arrow_converted_schema_destroy.
-    cleanup_with: arrow_converted_schema_destroy
+      reuses it per chunk, avoiding per-array schema overhead). Read the
+      resolved field names and logical types back via
+      arrow_conversion_plan_get_schema. Always destroy via
+      arrow_conversion_plan_destroy.
+    cleanup_with: arrow_conversion_plan_destroy
 functions:
   result_to_arrow_stream:
     summary: Exports a native streaming result as a lazy ArrowArrayStream.
@@ -186,17 +188,17 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  arrow_converted_schema_create:
-    summary: Builds a reusable converted schema from an Arrow schema.
+  arrow_conversion_plan_create:
+    summary: Builds a reusable conversion plan from an Arrow schema.
     description: |
       Resolves `schema` against `context` (column logical types plus per-column
-      Arrow type info) and writes an owned arrow_converted_schema handle into
-      *out_converted. Reuse it across many arrays via arrow_array_to_data_chunk.
-      Always destroy via arrow_converted_schema_destroy. `schema` is read, not
-      consumed; the caller retains ownership of it. *out_converted is set to
+      Arrow type info) and writes an owned arrow_conversion_plan handle into
+      *out_plan. Reuse it across many arrays via arrow_array_to_data_chunk.
+      Always destroy via arrow_conversion_plan_destroy. `schema` is read, not
+      consumed; the caller retains ownership of it. *out_plan is set to
       NULL on failure.
     role: constructor
-    belongs_to: arrow_converted_schema
+    belongs_to: arrow_conversion_plan
     parameters:
       context:
         type: context
@@ -205,11 +207,11 @@ functions:
         type: ArrowSchema
         indirection: 1
         description: The Arrow schema to convert. Read, not consumed; the caller retains ownership.
-      out_converted:
-        type: arrow_converted_schema
+      out_plan:
+        type: arrow_conversion_plan
         indirection: 1
         kind: OUT
-        description: Receives the new converted-schema handle.
+        description: Receives the new conversion-plan handle.
       err:
         type: error_info
         indirection: 1
@@ -217,10 +219,10 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   arrow_array_to_data_chunk:
-    summary: Converts an Arrow array into a DuckDB data chunk using a converted schema.
+    summary: Converts an Arrow array into a DuckDB data chunk using a conversion plan.
     description: |
-      Builds a data chunk from `array`, interpreted through `converted` (from
-      arrow_converted_schema_create). Data ownership transfers to the produced
+      Builds a data chunk from `array`, interpreted through `plan` (from
+      arrow_conversion_plan_create). Data ownership transfers to the produced
       chunk: the chunk holds the Arrow buffers zero-copy and `array`'s `release`
       is set to NULL, so the caller must not release `array` afterward. The
       produced chunk is owned by the caller and destroyed via data_chunk_destroy.
@@ -233,7 +235,7 @@ functions:
       run-end-encoded layouts are supported; other layouts return
       ERROR_QUERY_NOT_IMPLEMENTED.
     role: method
-    belongs_to: arrow_converted_schema
+    belongs_to: arrow_conversion_plan
     parameters:
       context:
         type: context
@@ -242,9 +244,9 @@ functions:
         type: ArrowArray
         indirection: 1
         description: The Arrow array to convert. Its data is adopted by the chunk and its `release` is set to NULL.
-      converted:
-        type: arrow_converted_schema
-        description: The converted schema describing the array, from arrow_converted_schema_create.
+      plan:
+        type: arrow_conversion_plan
+        description: The conversion plan describing the array, from arrow_conversion_plan_create.
       out_chunk:
         type: data_chunk
         indirection: 1
@@ -256,16 +258,44 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  arrow_converted_schema_destroy:
-    summary: Destroys a converted schema handle.
+  arrow_conversion_plan_get_schema:
+    summary: Returns the conversion plan's fields as an owned schema handle.
+    description: |
+      Writes an owned schema handle carrying the plan's field names and DuckDB
+      logical types into *out_schema; destroy it via schema_destroy. This is
+      how a caller learns the DuckDB-side shape of an arbitrary ArrowSchema
+      (e.g. to declare a table function's result columns): mapping Arrow
+      format strings to logical types is engine knowledge, not something a
+      binding reimplements. The fields are copied from the plan resolved at
+      creation; no catalog or transaction access. *out_schema is set to NULL
+      on failure.
+    role: getter
+    belongs_to: arrow_conversion_plan
+    parameters:
+      plan:
+        type: arrow_conversion_plan
+        description: The conversion plan to read.
+      out_schema:
+        type: schema
+        indirection: 1
+        kind: OUT
+        description: Receives an owned schema handle. Destroy via schema_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  arrow_conversion_plan_destroy:
+    summary: Destroys a conversion plan handle.
     description: |
       Null-safe: passing NULL or a slot already set to NULL is a no-op. On
       return the slot is set to NULL to prevent double-free.
     role: destructor
-    belongs_to: arrow_converted_schema
+    belongs_to: arrow_conversion_plan
     parameters:
-      converted:
-        type: arrow_converted_schema
+      plan:
+        type: arrow_conversion_plan
         indirection: 1
-        description: The converted schema to destroy.
+        description: The conversion plan to destroy.
     return_type: API_CALL

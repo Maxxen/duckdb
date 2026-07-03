@@ -166,6 +166,8 @@ callbacks:
       needs (e.g. via the expression API) into bind data and call table_function_filter_mark_handled; the engine drops
       the marked filters and applies the rest above the scan. Filters are bound expression trees: dispatch on the
       expression class/type and read operands with the expression accessors. Treat the filters as read-only.
+      bind_data is the mutable bind data set in the bind callback; the builder user data is reached via
+      table_function_filter_get_user_data.
     return_type: void
     parameters:
       bind_data:
@@ -720,6 +722,22 @@ functions:
       index:
         type: idx
         description: Zero-based filter index to mark handled.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_filter_get_user_data:
+    summary: Retrieves user data set on the builder.
+    parameters:
+      info:
+        type: table_function_filter_info
+        description: The filter info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer.
       err:
         type: error_info
         indirection: 1

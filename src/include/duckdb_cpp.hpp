@@ -625,6 +625,14 @@ public:
 	// An owned copy of the field type.
 	LogicalType GetFieldType(idx_t index) const;
 
+	// ---- Arrow export ----
+
+	// Exports the fields as an Arrow schema into caller-allocated `out`; the
+	// caller owns it and frees it via out.release(&out). `context` needs an
+	// active transaction (extension types and ENUM dictionaries can touch the
+	// catalog).
+	auto ToArrowSchema(const Context &context, ArrowSchema &out) const -> void;
+
 private:
 	explicit Schema(void *impl);
 };
@@ -679,6 +687,193 @@ public:
 
 private:
 	explicit Value(void *impl);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Expression
+//----------------------------------------------------------------------------------------------------------------------
+
+// The class of a bound expression node; selects which class-specific
+// Expression accessors are valid. Mirrors DUCKDB_V2_EXPRESSION_CLASS /
+// duckdb::ExpressionClass numerically (sentinel static_asserts in the .cpp).
+// Only Bound* values appear in the trees this API exposes; parsed classes
+// exist for numeric fidelity. Switch on Bound* (BoundColumnRef, not ColumnRef).
+enum class ExpressionClass : uint32_t {
+	Invalid = 0,
+	Aggregate = 1,
+	Case = 2,
+	Cast = 3,
+	ColumnRef = 4,
+	Comparison = 5,
+	Conjunction = 6,
+	Constant = 7,
+	Default = 8,
+	Function = 9,
+	Operator = 10,
+	Star = 11,
+	Subquery = 13,
+	Window = 14,
+	Parameter = 15,
+	Collate = 16,
+	Lambda = 17,
+	PositionalReference = 18,
+	Between = 19,
+	LambdaRef = 20,
+	Type = 21,
+	BoundAggregate = 25,
+	BoundCase = 26,
+	BoundCast = 27,
+	BoundColumnRef = 28,
+	/* Legacy; comparisons are now BoundFunction. */
+	LegacyBoundComparison = 29,
+	BoundConjunction = 30,
+	BoundConstant = 31,
+	BoundDefault = 32,
+	BoundFunction = 33,
+	BoundOperator = 34,
+	BoundParameter = 35,
+	BoundRef = 36,
+	BoundSubquery = 37,
+	BoundWindow = 38,
+	LegacyBoundBetween = 39,
+	BoundUnnest = 40,
+	BoundLambda = 41,
+	BoundLambdaRef = 42,
+	BoundExpression = 50,
+	BoundExpanded = 51,
+};
+
+// The semantic operation of an expression node; distinguishes two nodes of the
+// same class (e.g. CompareEqual vs CompareGreaterThan on two BoundFunction
+// nodes). Mirrors DUCKDB_V2_EXPRESSION_TYPE / duckdb::ExpressionType
+// numerically (sentinel static_asserts in the .cpp); only a subset arises in
+// the bound trees this API exposes.
+enum class ExpressionType : uint32_t {
+	Invalid = 0,
+	OperatorCast = 12,
+	OperatorNot = 13,
+	OperatorIsNull = 14,
+	OperatorIsNotNull = 15,
+	OperatorUnpack = 16,
+	CompareEqual = 25,
+	CompareNotEqual = 26,
+	CompareLessThan = 27,
+	CompareGreaterThan = 28,
+	CompareLessThanOrEqualTo = 29,
+	CompareGreaterThanOrEqualTo = 30,
+	CompareIn = 35,
+	CompareNotIn = 36,
+	CompareDistinctFrom = 37,
+	CompareBetween = 38,
+	CompareNotBetween = 39,
+	CompareNotDistinctFrom = 40,
+	ConjunctionAnd = 50,
+	ConjunctionOr = 51,
+	ValueConstant = 75,
+	ValueParameter = 76,
+	ValueTuple = 77,
+	ValueTupleAddress = 78,
+	ValueNull = 79,
+	ValueVector = 80,
+	ValueScalar = 81,
+	ValueDefault = 82,
+	Aggregate = 100,
+	BoundAggregate = 101,
+	GroupingFunction = 102,
+	WindowAggregate = 110,
+	WindowFunction = 111,
+	WindowRank = 120,
+	WindowRankDense = 121,
+	WindowNtile = 122,
+	WindowPercentRank = 123,
+	WindowCumeDist = 124,
+	WindowRowNumber = 125,
+	WindowFirstValue = 130,
+	WindowLastValue = 131,
+	WindowLead = 132,
+	WindowLag = 133,
+	WindowNthValue = 134,
+	WindowFill = 135,
+	Function = 140,
+	BoundFunction = 141,
+	CaseExpr = 150,
+	OperatorNullif = 151,
+	OperatorCoalesce = 152,
+	ArrayExtract = 153,
+	ArraySlice = 154,
+	StructExtract = 155,
+	ArrayConstructor = 156,
+	Arrow = 157,
+	OperatorTry = 158,
+	Subquery = 175,
+	Star = 200,
+	TableStar = 201,
+	Placeholder = 202,
+	ColumnRef = 203,
+	FunctionRef = 204,
+	TableRef = 205,
+	LambdaRef = 206,
+	Type = 207,
+	Cast = 225,
+	BoundRef = 227,
+	BoundColumnRef = 228,
+	BoundUnnest = 229,
+	Collate = 230,
+	Lambda = 231,
+	PositionalReference = 232,
+	BoundLambdaRef = 233,
+	BoundExpanded = 234,
+};
+
+// The logical column identity of a BoundColumnRef: table_index is the binding
+// namespace id, column_index is relative to the producing operator's output.
+struct ColumnBinding {
+	idx_t table_index;
+	idx_t column_index;
+};
+
+// A borrowed, read-only handle to a bound expression node in the engine's
+// plan. Valid only for the duration of the callback that hands it out (e.g.
+// TableFunction::PushdownInput); do not store it past the callback's return.
+// Children share the parent's lifetime. Class-specific accessors throw
+// INVALID_INPUT on a class mismatch.
+class Expression final : public detail::Handle<Expression> {
+	friend detail::Factory;
+
+public:
+	Expression(Expression &&) noexcept = default;
+	Expression &operator=(Expression &&) noexcept = default;
+
+	~Expression() override;
+
+	// Universal: valid for every bound class.
+	auto GetClass() const -> ExpressionClass;
+	auto GetType() const -> ExpressionType;
+	// An owned copy of the expression's result type.
+	auto GetReturnType() const -> LogicalType;
+
+	// Traversal is total over every bound class (the engine's
+	// ExpressionIterator): nodes this API does not model specially still
+	// expose their children. Child order follows the iterator.
+	auto GetChildCount() const -> idx_t;
+	// Borrowed child; throws INVALID_INPUT when index is out of range.
+	auto GetChild(idx_t index) const -> Expression;
+
+	// BoundFunction only. Borrowed, valid for this handle's lifetime. For
+	// comparison operators the registered name is an internal symbol (e.g.
+	// "__comparison"): dispatch on GetType(), not the name.
+	auto GetFunctionName() const -> std::string_view;
+	// BoundConstant only; owned.
+	auto GetConstantValue() const -> Value;
+	// BoundColumnRef only: the logical binding seen during binding and
+	// optimization, including filter pushdown.
+	auto GetColumnBinding() const -> ColumnBinding;
+	// BoundRef only: the physical chunk slot assigned after physical
+	// planning; pushdown-stage trees carry BoundColumnRef instead.
+	auto GetReferenceIndex() const -> idx_t;
+
+private:
+	explicit Expression(void *impl);
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -972,9 +1167,49 @@ public:
 	auto GetRowCount() const -> idx_t;
 	auto GetVector(idx_t index) const -> Vector;
 
+	// ---- Arrow export ----
+
+	// Exports this chunk as an Arrow array into caller-allocated `out`; the
+	// caller owns it and frees it via out.release(&out). The chunk is not
+	// consumed.
+	auto ToArrowArray(const Context &context, ArrowArray &out) const -> void;
+
 private:
 	explicit DataChunk(void *impl, bool owned);
 	bool owned = false; // UGLY, this should probably be done c++-side.
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Arrow Conversion Plan
+//----------------------------------------------------------------------------------------------------------------------
+
+// An owned handle to the bound DuckDB-side interpretation of an ArrowSchema:
+// the column logical types plus the per-column Arrow type info needed to
+// import arrays. Built once (e.g. at table-function bind time) and reused
+// across many arrays via Convert. The context is a per-call parameter, not
+// captured at construction: a plan built under a bind-time context is used
+// at exec time under a different one.
+class ArrowConversionPlan final : public detail::Handle<ArrowConversionPlan> {
+public:
+	// Resolves `schema` against `context` (extension types included).
+	// `schema` is read, not consumed; the caller retains ownership of it.
+	ArrowConversionPlan(const Context &context, ArrowSchema &schema);
+
+	ArrowConversionPlan(ArrowConversionPlan &&) noexcept = default;
+	ArrowConversionPlan &operator=(ArrowConversionPlan &&) noexcept = default;
+
+	~ArrowConversionPlan() override;
+
+	// Converts `array` into an owned DataChunk sized to the array length
+	// (which may exceed the pipeline chunk size). The chunk adopts the
+	// array's buffers zero-copy and `array.release` is set to NULL, so the
+	// caller must not release `array` afterward.
+	auto Convert(const Context &context, ArrowArray &array) const -> DataChunk;
+
+	// The resolved fields as an owned Schema: the DuckDB-side (name, type)
+	// pairs of the source ArrowSchema (e.g. to declare a table function's
+	// result columns).
+	auto GetSchema() const -> Schema;
 };
 
 class ColumnDataCollection final : public detail::Handle<ColumnDataCollection> {
@@ -1654,11 +1889,13 @@ public:
 	class InitGlobalInput;
 	class InitLocalInput;
 	class ExecInput;
+	class PushdownInput;
 
 	using BindCallback = void (*)(BindInput &input);
 	using InitGlobalCallback = void (*)(InitGlobalInput &input);
 	using InitLocalCallback = void (*)(InitLocalInput &input);
 	using ExecCallback = void (*)(ExecInput &input);
+	using PushdownCallback = void (*)(PushdownInput &input);
 
 	explicit TableFunction(const Context &ctx);
 
@@ -1668,10 +1905,30 @@ public:
 	auto AddParameter(const LogicalType &type) & -> TableFunction &;
 	auto AddNamedParameter(const std::string &name, const LogicalType &type) & -> TableFunction &;
 
+	// Constructs user data of type T, carried by the registered function and
+	// freed at engine teardown; read from any callback via the inputs'
+	// GetUserData<T>. Consumed by Register: set it again before
+	// re-registering.
+	template <class T, class... ARGS>
+	auto SetUserData(ARGS &&... args) & -> TableFunction & {
+		auto ptr = new T(std::forward<ARGS>(args)...);
+		SetUserDataInternal(ptr, detail::TypedDelete<T>);
+		return *this;
+	}
+
 	auto SetBindCallback(BindCallback callback) & -> TableFunction &;
 	auto SetInitGlobalCallback(InitGlobalCallback callback) & -> TableFunction &;
 	auto SetInitLocalCallback(InitLocalCallback callback) & -> TableFunction &;
 	auto SetExecCallback(ExecCallback callback) & -> TableFunction &;
+
+	// Optional. Invoked during optimization with the candidate filter
+	// expressions; the function claims the ones it will apply itself (see
+	// PushdownInput).
+	auto SetPushdownComplexFilterCallback(PushdownCallback callback) & -> TableFunction &;
+	// When enabled, the engine may remove unused columns from the scan: the
+	// init inputs report the projected columns and the exec chunk is sized to
+	// them.
+	auto SetProjectionPushdown(bool enable) & -> TableFunction &;
 
 	void Register(const Context &ctx);
 
@@ -1680,6 +1937,10 @@ private:
 	InitGlobalCallback init_global_callback = nullptr;
 	InitLocalCallback init_local_callback = nullptr;
 	ExecCallback exec_callback = nullptr;
+	PushdownCallback pushdown_callback = nullptr;
+	detail::UserData user_data;
+
+	auto SetUserDataInternal(void *data, void (*destructor)(void *)) -> void;
 
 public:
 	class BindInput {
@@ -1692,19 +1953,31 @@ public:
 			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
 		}
 
+		// The user data set via TableFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
 		template <class T>
-		auto GetUserData() -> T & {
+		auto GetUserData() const -> T & {
 			auto ptr = GetUserDataInternal();
 			return *static_cast<T *>(ptr);
 		}
 
 		auto AddResultColumn(const std::string &name, const LogicalType &type) -> void;
 
+		// Declares one result column per schema field, in order (e.g. from
+		// ArrowConversionPlan::GetSchema).
+		auto AddResultColumns(const Schema &schema) -> void;
+
 		auto GetParameter(idx_t index) const -> Value;
 		auto GetNamedParameter(const std::string &name) const -> Value;
 
 		auto TryGetParameter(idx_t index) const -> std::optional<Value>;
 		auto TryGetNamedParameter(const std::string &name) const -> std::optional<Value>;
+
+		// Binding context (callback-duration).
+		auto GetContext() const -> Context;
+
+		// Static row-count hint for the optimizer.
+		auto SetCardinality(idx_t cardinality, bool is_exact) -> void;
 
 		explicit BindInput(Inner &inner) : inner(inner) {
 		}
@@ -1726,11 +1999,31 @@ public:
 			SetGlobalStateInternal(ptr, detail::TypedDelete<T>);
 		}
 
+		// Throws INVALID_INPUT when bind data was never set.
 		template <class T>
 		auto GetBindData() const -> const T & {
 			auto ptr = GetBindDataInternal();
 			return *static_cast<const T *>(ptr);
 		}
+
+		// The user data set via TableFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		// Scan context (callback-duration).
+		auto GetContext() const -> Context;
+
+		// The projected columns (see SetProjectionPushdown): how many columns
+		// the engine needs, and each one's original bind-time index.
+		auto GetColumnCount() const -> idx_t;
+		auto GetColumnIndex(idx_t projected_index) const -> idx_t;
+
+		// Upper bound on worker threads for this scan (default 1).
+		auto SetMaxThreads(idx_t max_threads) -> void;
 
 		explicit InitGlobalInput(Inner &inner) : inner(inner) {
 		}
@@ -1740,6 +2033,7 @@ public:
 
 		auto SetGlobalStateInternal(void *data, void (*destructor)(void *)) -> void;
 		auto GetBindDataInternal() const -> void *;
+		auto GetUserDataInternal() const -> void *;
 	};
 
 	class InitLocalInput {
@@ -1752,11 +2046,27 @@ public:
 			SetLocalStateInternal(ptr, detail::TypedDelete<T>);
 		}
 
+		// Throws INVALID_INPUT when bind data was never set.
 		template <class T>
 		auto GetBindData() const -> const T & {
 			auto ptr = GetBindDataInternal();
 			return *static_cast<const T *>(ptr);
 		}
+
+		// The user data set via TableFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		// Scan context (callback-duration).
+		auto GetContext() const -> Context;
+
+		// The projected columns, as on InitGlobalInput.
+		auto GetColumnCount() const -> idx_t;
+		auto GetColumnIndex(idx_t projected_index) const -> idx_t;
 
 		explicit InitLocalInput(Inner &inner) : inner(inner) {
 		}
@@ -1766,12 +2076,14 @@ public:
 
 		auto SetLocalStateInternal(void *data, void (*destructor)(void *)) -> void;
 		auto GetBindDataInternal() const -> void *;
+		auto GetUserDataInternal() const -> void *;
 	};
 
 	class ExecInput {
 	public:
 		class Inner;
 
+		// Throws INVALID_INPUT when bind data was never set.
 		template <class T>
 		auto GetBindData() const -> const T & {
 			auto ptr = GetBindDataInternal();
@@ -1792,6 +2104,17 @@ public:
 
 		auto GetResultChunk() const -> DataChunk &;
 
+		// The user data set via TableFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		// Execution context (callback-duration).
+		auto GetContext() const -> Context;
+
 		explicit ExecInput(Inner &inner) : inner(inner) {
 		}
 
@@ -1801,6 +2124,54 @@ public:
 		auto GetBindDataInternal() const -> void *;
 		auto GetGlobalStateInternal() const -> void *;
 		auto GetLocalStateInternal() const -> void *;
+		auto GetUserDataInternal() const -> void *;
+	};
+
+	// Passed to the pushdown callback with the candidate filter expressions
+	// the engine would otherwise apply above the scan. Valid only for the
+	// callback duration, as are the borrowed expressions it hands out. Claim
+	// a filter with MarkHandled after extracting what exec needs into bind
+	// data; the engine drops claimed filters and applies the rest.
+	class PushdownInput {
+	public:
+		class Inner;
+
+		// Mutable, unlike the other phases: this callback exists to extract
+		// claimed predicates into bind data. Throws INVALID_INPUT when bind
+		// data was never set.
+		template <class T>
+		auto GetBindData() -> T & {
+			auto ptr = GetBindDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		// The user data set via TableFunction::SetUserData; throws
+		// INVALID_INPUT when none was set.
+		template <class T>
+		auto GetUserData() const -> T & {
+			auto ptr = GetUserDataInternal();
+			return *static_cast<T *>(ptr);
+		}
+
+		// Optimization context (callback-duration).
+		auto GetContext() const -> Context;
+
+		// The candidate filters: read-only bound expression trees.
+		auto GetCount() const -> idx_t;
+		auto GetExpression(idx_t index) const -> Expression;
+
+		// Claims filter `index`: the engine drops it and the function must
+		// apply it itself (e.g. while producing rows in exec).
+		auto MarkHandled(idx_t index) -> void;
+
+		explicit PushdownInput(Inner &inner) : inner(inner) {
+		}
+
+	private:
+		Inner &inner;
+
+		auto GetBindDataInternal() const -> void *;
+		auto GetUserDataInternal() const -> void *;
 	};
 };
 

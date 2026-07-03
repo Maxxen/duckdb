@@ -92,6 +92,7 @@ struct TableFunctionExecInfoV2 {
 struct TableFunctionFilterInfoV2 {
 	vector<unique_ptr<Expression>> *expressions = nullptr;
 	vector<bool> handled;
+	void *user_data = nullptr;
 };
 
 // --- RuntimeInfo: stored on the TableFunction's function_info ----------------
@@ -298,6 +299,7 @@ struct TableFunctionBuilderV2 {
 		TableFunctionFilterInfoV2 filter_info;
 		filter_info.expressions = &filters;
 		filter_info.handled.resize(filters.size(), false);
+		filter_info.user_data = rt_info.user_data ? rt_info.user_data->GetData() : nullptr;
 
 		auto info_handle = reinterpret_cast<duckdb_v2_table_function_filter_info_handle>(&filter_info);
 		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
@@ -864,6 +866,20 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_mark_handled(duckdb_v2_tabl
 			                                    fi.handled.size());
 		}
 		fi.handled[index] = true;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_get_user_data(duckdb_v2_table_function_filter_info_handle info,
+                                                                   void **out_data, duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Filter info pointer cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output data pointer cannot be null.");
+		}
+		auto &fi = *reinterpret_cast<TableFunctionFilterInfoV2 *>(info);
+		*out_data = fi.user_data;
 	});
 }
 
