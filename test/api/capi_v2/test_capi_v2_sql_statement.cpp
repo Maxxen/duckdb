@@ -224,9 +224,7 @@ TEST_CASE("V2: statement_execute binds positional parameters", "[capi_v2][sql_st
 	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
 
 	auto make_int = [](int64_t v) {
-		duckdb_v2_value_handle val = nullptr;
-		REQUIRE(duckdb_v2_value_create_int64(v, &val, nullptr) == DUCKDB_V2_ERROR_NONE);
-		return val;
+		return V2Int64Value(v);
 	};
 
 	// First execution: 10 + 20 = 30.
@@ -257,9 +255,8 @@ TEST_CASE("V2: bound parameter values may be destroyed before the result is cons
 	V2EnvFixture fx;
 
 	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
-	duckdb_v2_value_handle a = nullptr, b = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(10, &a, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_value_create_int64(20, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle a = V2Int64Value(10);
+	duckdb_v2_value_handle b = V2Int64Value(20);
 	duckdb_v2_value_handle params[2] = {a, b};
 
 	duckdb_v2_result_handle r = nullptr;
@@ -283,8 +280,7 @@ TEST_CASE("V2: statement_execute rejects parameters on a statement that expands"
 	// A volatile DEFAULT makes ALTER ADD COLUMN expand into BEGIN/.../COMMIT; the
 	// parameter would bind against the injected BEGIN, so the call is refused.
 	auto stmt = StmtParseOne(fx.conn, "ALTER TABLE et ADD COLUMN c INTEGER DEFAULT ((random() * 0)::INTEGER + $1)");
-	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(40, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle v = V2Int64Value(40);
 	duckdb_v2_value_handle params[1] = {v};
 
 	duckdb_v2_result_handle r = nullptr;

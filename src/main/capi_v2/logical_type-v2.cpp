@@ -1,8 +1,17 @@
 #include "capi_v2_internal.hpp"
 
+#include "duckdb/catalog/catalog_entry/type_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry_retriever.hpp"
+#include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/extra_type_info.hpp"
+#include "duckdb/common/types/geometry_crs.hpp"
 #include "duckdb/common/types/string_type.hpp"
 #include "duckdb/common/types/vector.hpp"
+#include "duckdb/main/database_manager.hpp"
+#include "duckdb/parser/parsed_data/create_type_info.hpp"
+
+#include <cstdlib>
+#include <cstring>
 
 namespace duckdb {
 namespace {
@@ -52,33 +61,103 @@ bool IsPrimitiveCreatable(LogicalTypeId id) {
 	}
 }
 
-// Map a PhysicalType used by DECIMAL storage to the matching logical id.
-DUCKDB_V2_LOGICAL_TYPE_ID DecimalPhysicalToLogical(PhysicalType physical) {
-	switch (physical) {
-	case PhysicalType::INT16:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT;
-	case PhysicalType::INT32:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER;
-	case PhysicalType::INT64:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT;
-	case PhysicalType::INT128:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT;
+bool IsValidTypeEntry(optional_ptr<CatalogEntry> entry) {
+	if (!entry) {
+		return false;
+	}
+	return entry->Cast<TypeCatalogEntry>().user_type.id() != LogicalTypeId::INVALID;
+}
+
+// Hand-mirrors ExpressionBinder::BindExpression(TypeExpression&) in
+// src/planner/binder/expression/bind_type_expression.cpp: search path
+// first, then the system catalog (where custom_type_builder registers).
+// Intentional omissions vs the mirrored source, per the unqualified-only
+// contract: qualified names (catalog/schema splitting and the 4-step
+// lookup), expression-valued params (values arrive pre-folded here), and
+// query-location error context. If engine type binding changes, this
+// mirror must follow. Runs inside a transaction; the caller provides it.
+LogicalType BindTypeByNameV2(ClientContext &context, const string &name, const vector<TypeArgument> &args) {
+	EntryLookupInfo lookup(CatalogType::TYPE_ENTRY, Identifier(name));
+	CatalogEntryRetriever retriever(context);
+	optional_ptr<CatalogEntry> entry;
+	if (!DatabaseManager::Get(context).HasDefaultDatabase()) {
+		entry = retriever.GetEntry(Identifier::SystemCatalog(), Identifier::InvalidSchema(), lookup);
+	} else {
+		entry = retriever.GetEntry(Identifier::InvalidCatalog(), Identifier::InvalidSchema(), lookup,
+		                           OnEntryNotFound::RETURN_NULL);
+		if (!IsValidTypeEntry(entry)) {
+			entry = retriever.GetEntry(Identifier::SystemCatalog(), Identifier::DefaultSchema(), lookup,
+			                           OnEntryNotFound::THROW_EXCEPTION);
+		}
+	}
+	auto &type_entry = entry->Cast<TypeCatalogEntry>();
+	if (!type_entry.bind_function) {
+		if (!args.empty()) {
+			throw BinderException("Type '%s' does not take any type parameters", name);
+		}
+		return type_entry.user_type;
+	}
+	BindLogicalTypeInput input {context, type_entry.user_type, args};
+	return type_entry.bind_function(input);
+}
+
+// The value-parameter view of a bound type: the exact dual of
+// logical_type_create. Kinds without retained parameters report 0.
+idx_t TypeParamCount(const LogicalType &type) {
+	switch (type.id()) {
+	case LogicalTypeId::DECIMAL:
+	case LogicalTypeId::ARRAY:
+	case LogicalTypeId::MAP:
+		return 2;
+	case LogicalTypeId::LIST:
+		return 1;
+	case LogicalTypeId::STRUCT:
+		return StructType::GetChildCount(type);
+	case LogicalTypeId::UNION:
+		return UnionType::GetMemberCount(type);
+	case LogicalTypeId::ENUM:
+		return EnumType::GetSize(type);
+	case LogicalTypeId::VARCHAR:
+		return StringType::GetCollation(type).empty() ? 0 : 1;
+	case LogicalTypeId::GEOMETRY:
+		return GeoType::HasCRS(type) ? 1 : 0;
 	default:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+		return 0;
 	}
 }
 
-// Map a PhysicalType used by ENUM index storage to the matching logical id.
-DUCKDB_V2_LOGICAL_TYPE_ID EnumPhysicalToLogical(PhysicalType physical) {
-	switch (physical) {
-	case PhysicalType::UINT8:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT;
-	case PhysicalType::UINT16:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_USMALLINT;
-	case PhysicalType::UINT32:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_UINTEGER;
+// Produces param `index` of `type`: the owned value is returned, the
+// borrowed name (off the type, or a static literal) goes into out_name,
+// which arrives pre-set to the positional {NULL, 0}. The caller has
+// bounds-checked index against TypeParamCount.
+Value TypeParamValue(const LogicalType &type, idx_t index, duckdb_v2_str &out_name) {
+	switch (type.id()) {
+	case LogicalTypeId::DECIMAL:
+		return index == 0 ? Value::UTINYINT(DecimalType::GetWidth(type)) : Value::UTINYINT(DecimalType::GetScale(type));
+	case LogicalTypeId::LIST:
+		return Value::TYPE(ListType::GetChildType(type));
+	case LogicalTypeId::ARRAY:
+		return index == 0 ? Value::TYPE(ArrayType::GetChildType(type))
+		                  : Value::BIGINT(NumericCast<int64_t>(ArrayType::GetSize(type)));
+	case LogicalTypeId::MAP:
+		return Value::TYPE(index == 0 ? MapType::KeyType(type) : MapType::ValueType(type));
+	case LogicalTypeId::STRUCT:
+		if (!StructType::IsUnnamed(type)) {
+			out_name = ToStr(StructType::GetChildName(type, index));
+		}
+		return Value::TYPE(StructType::GetChildType(type, index));
+	case LogicalTypeId::UNION:
+		out_name = ToStr(UnionType::GetMemberName(type, index));
+		return Value::TYPE(UnionType::GetMemberType(type, index));
+	case LogicalTypeId::ENUM:
+		return Value(EnumType::GetString(type, index).GetString());
+	case LogicalTypeId::VARCHAR:
+		out_name = duckdb_v2_str {"collation", 9};
+		return Value(StringType::GetCollation(type));
+	case LogicalTypeId::GEOMETRY:
+		return Value(GeoType::GetCRS(type).GetDefinition());
 	default:
-		return DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+		throw InternalException("TypeParamValue called for a kind without parameters");
 	}
 }
 
@@ -104,6 +183,49 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYP
 		}
 		auto *lt = new duckdb::LogicalType(id);
 		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(lt);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
+                                                             duckdb_v2_logical_type_handle *out_type,
+                                                             duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!ctx || !out_type || (!text.ptr && text.len > 0)) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create_from_text");
+		}
+		*out_type = nullptr;
+		// A context arrives with the lock held and a transaction active, so no
+		// lock or transaction management here. Parse and bind errors propagate.
+		auto &context = *duckdb::ToContext(ctx);
+		auto parsed = duckdb::TransformStringToLogicalType(duckdb::ToString(text), context);
+		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(new duckdb::LogicalType(std::move(parsed)));
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx, duckdb_v2_str name,
+                                                   const duckdb_v2_str *param_names,
+                                                   const duckdb_v2_value_handle *param_values, idx_t param_count,
+                                                   duckdb_v2_logical_type_handle *out_type,
+                                                   duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!ctx || !out_type || (!name.ptr && name.len > 0) || (param_count > 0 && !param_values)) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create");
+		}
+		*out_type = nullptr;
+		duckdb::vector<duckdb::TypeArgument> args;
+		args.reserve(param_count);
+		for (idx_t i = 0; i < param_count; i++) {
+			auto param_name = param_names ? param_names[i] : duckdb_v2_str {nullptr, 0};
+			if ((!param_name.ptr && param_name.len > 0) || !param_values[i]) {
+				throw duckdb::InvalidInputException("null parameter in duckdb_v2_logical_type_create");
+			}
+			args.emplace_back(duckdb::ToString(param_name), *duckdb::ToValue(param_values[i]));
+		}
+		// A context arrives with the lock held and a transaction active, so no
+		// lock or transaction management here. Bind errors propagate.
+		auto &context = *duckdb::ToContext(ctx);
+		auto bound = duckdb::BindTypeByNameV2(context, duckdb::ToString(name), args);
+		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(new duckdb::LogicalType(std::move(bound)));
 	});
 }
 
@@ -162,330 +284,73 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_alias(duckdb_v2_logical_type_handle type, duckdb_v2_str *out_alias,
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_handle type, duckdb_v2_str *out_name,
+                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!type || !out_name) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_name");
+		}
+		auto *lt = duckdb::ToLogicalType(type);
+		auto info = lt->AuxInfo();
+		if (info && !info->alias.empty()) {
+			*out_name = duckdb::ToStr(info->alias);
+			return;
+		}
+		// Canonical fixed name of the id: static storage, so the borrowed
+		// view outlives even the handle.
+		const char *canonical = duckdb::EnumUtil::ToChars<duckdb::LogicalTypeId>(lt->id());
+		*out_name = duckdb_v2_str {canonical, std::strlen(canonical)};
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_to_text(duckdb_v2_logical_type_handle type, char **out_text,
+                                                    duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!type || !out_text) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_to_text");
+		}
+		*out_text = nullptr;
+		auto str = duckdb::ToLogicalType(type)->ToString();
+		auto *buf = static_cast<char *>(std::malloc(str.size() + 1));
+		if (!buf) {
+			throw duckdb::OutOfMemoryException("malloc failed in duckdb_v2_logical_type_to_text");
+		}
+		std::memcpy(buf, str.data(), str.size());
+		buf[str.size()] = '\0';
+		*out_text = buf;
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Generic parameter inspection
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param_count(duckdb_v2_logical_type_handle type, idx_t *out_count,
+                                                            duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!type || !out_count) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_param_count");
+		}
+		*out_count = duckdb::TypeParamCount(*duckdb::ToLogicalType(type));
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle type, idx_t index,
+                                                      duckdb_v2_str *out_name, duckdb_v2_value_handle *out_value,
                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_alias) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_alias");
+		if (!type || !out_name || !out_value) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_param");
 		}
-		auto info = duckdb::ToLogicalType(type)->AuxInfo();
-		*out_alias = (info && !info->alias.empty()) ? duckdb::ToStr(info->alias) : duckdb_v2_str {nullptr, 0};
-	});
-}
-
-// ---------------------------------------------------------------------------
-// DECIMAL
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_width(duckdb_v2_logical_type_handle type, uint8_t *out_width,
-                                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_width) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_decimal_width");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::DECIMAL) {
-			throw duckdb::InvalidInputException("not a DECIMAL logical type");
-		}
-		*out_width = duckdb::DecimalType::GetWidth(*lt);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_scale(duckdb_v2_logical_type_handle type, uint8_t *out_scale,
-                                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_scale) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_decimal_scale");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::DECIMAL) {
-			throw duckdb::InvalidInputException("not a DECIMAL logical type");
-		}
-		*out_scale = duckdb::DecimalType::GetScale(*lt);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_internal_type_id(duckdb_v2_logical_type_handle type,
-                                                                         DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
-                                                                         duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_id) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_decimal_internal_type_id");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::DECIMAL) {
-			throw duckdb::InvalidInputException("not a DECIMAL logical type");
-		}
-		auto mapped = duckdb::DecimalPhysicalToLogical(lt->InternalType());
-		if (mapped == DUCKDB_V2_LOGICAL_TYPE_ID_INVALID) {
-			throw duckdb::InternalException("DECIMAL has unexpected internal physical type: %s",
-			                                duckdb::TypeIdToString(lt->InternalType()));
-		}
-		*out_id = mapped;
-	});
-}
-
-// ---------------------------------------------------------------------------
-// ENUM
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_size(duckdb_v2_logical_type_handle type, idx_t *out_size,
-                                                          duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_size) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_enum_size");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::ENUM) {
-			throw duckdb::InvalidInputException("not an ENUM logical type");
-		}
-		*out_size = duckdb::EnumType::GetSize(*lt);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_value(duckdb_v2_logical_type_handle type, idx_t index,
-                                                           duckdb_v2_str *out_value, duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_enum_value");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::ENUM) {
-			throw duckdb::InvalidInputException("not an ENUM logical type");
-		}
-		if (index >= duckdb::EnumType::GetSize(*lt)) {
-			throw duckdb::InvalidInputException("enum index out of range");
-		}
-		// Borrow from the stored Vector directly: FlatVector::GetData<string_t>
-		// hands back the buffer-resident string_t entries (not a copy), so the
-		// data pointer stays valid for the lifetime of the EnumTypeInfo. The
-		// call throws if the dictionary is not FLAT — unreachable today but the
-		// catch keeps the C ABI clean.
-		auto &dict = duckdb::EnumType::GetValuesInsertOrder(*lt);
-		auto *entries = duckdb::FlatVector::GetData<duckdb::string_t>(dict);
-		*out_value = duckdb::ToStr(entries[index]);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_internal_type_id(duckdb_v2_logical_type_handle type,
-                                                                      DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
-                                                                      duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_id) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_enum_internal_type_id");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::ENUM) {
-			throw duckdb::InvalidInputException("not an ENUM logical type");
-		}
-		auto enum_physical = duckdb::EnumType::GetPhysicalType(*lt);
-		auto mapped = duckdb::EnumPhysicalToLogical(enum_physical);
-		if (mapped == DUCKDB_V2_LOGICAL_TYPE_ID_INVALID) {
-			throw duckdb::InternalException("ENUM has unexpected internal physical type: %s",
-			                                duckdb::TypeIdToString(enum_physical));
-		}
-		*out_id = mapped;
-	});
-}
-
-// ---------------------------------------------------------------------------
-// LIST / ARRAY
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_list_child_type(duckdb_v2_logical_type_handle type,
-                                                                duckdb_v2_logical_type_handle *out_child,
-                                                                duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_child) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_list_child_type");
-		}
-		*out_child = nullptr;
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::LIST) {
-			throw duckdb::InvalidInputException("not a LIST logical type");
-		}
-		auto *child = new duckdb::LogicalType(duckdb::ListType::GetChildType(*lt));
-		*out_child = reinterpret_cast<_duckdb_v2_logical_type *>(child);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_array_child_type(duckdb_v2_logical_type_handle type,
-                                                                 duckdb_v2_logical_type_handle *out_child,
-                                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_child) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_array_child_type");
-		}
-		*out_child = nullptr;
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::ARRAY) {
-			throw duckdb::InvalidInputException("not an ARRAY logical type");
-		}
-		auto *child = new duckdb::LogicalType(duckdb::ArrayType::GetChildType(*lt));
-		*out_child = reinterpret_cast<_duckdb_v2_logical_type *>(child);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_array_size(duckdb_v2_logical_type_handle type, idx_t *out_size,
-                                                           duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_size) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_array_size");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::ARRAY) {
-			throw duckdb::InvalidInputException("not an ARRAY logical type");
-		}
-		*out_size = duckdb::ArrayType::GetSize(*lt);
-	});
-}
-
-// ---------------------------------------------------------------------------
-// MAP
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_map_key_type(duckdb_v2_logical_type_handle type,
-                                                             duckdb_v2_logical_type_handle *out_key,
-                                                             duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_key) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_map_key_type");
-		}
-		*out_key = nullptr;
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::MAP) {
-			throw duckdb::InvalidInputException("not a MAP logical type");
-		}
-		auto *key = new duckdb::LogicalType(duckdb::MapType::KeyType(*lt));
-		*out_key = reinterpret_cast<_duckdb_v2_logical_type *>(key);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_map_value_type(duckdb_v2_logical_type_handle type,
-                                                               duckdb_v2_logical_type_handle *out_value,
-                                                               duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_map_value_type");
-		}
+		*out_name = duckdb_v2_str {nullptr, 0};
 		*out_value = nullptr;
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::MAP) {
-			throw duckdb::InvalidInputException("not a MAP logical type");
+		auto &lt = *duckdb::ToLogicalType(type);
+		if (index >= duckdb::TypeParamCount(lt)) {
+			throw duckdb::InvalidInputException("parameter index out of range in duckdb_v2_logical_type_get_param");
 		}
-		auto *val = new duckdb::LogicalType(duckdb::MapType::ValueType(*lt));
-		*out_value = reinterpret_cast<_duckdb_v2_logical_type *>(val);
-	});
-}
-
-// ---------------------------------------------------------------------------
-// STRUCT
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_count(duckdb_v2_logical_type_handle type, idx_t *out_count,
-                                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_count) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_struct_child_count");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::STRUCT) {
-			throw duckdb::InvalidInputException("not a STRUCT logical type");
-		}
-		*out_count = duckdb::StructType::GetChildCount(*lt);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_name(duckdb_v2_logical_type_handle type, idx_t index,
-                                                                  duckdb_v2_str *out_name,
-                                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_name) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_struct_child_name");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::STRUCT) {
-			throw duckdb::InvalidInputException("not a STRUCT logical type");
-		}
-		if (index >= duckdb::StructType::GetChildCount(*lt)) {
-			throw duckdb::InvalidInputException("struct child index out of range");
-		}
-		*out_name = duckdb::ToStr(duckdb::StructType::GetChildName(*lt, index));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_type(duckdb_v2_logical_type_handle type, idx_t index,
-                                                                  duckdb_v2_logical_type_handle *out_child,
-                                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_child) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_struct_child_type");
-		}
-		*out_child = nullptr;
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::STRUCT) {
-			throw duckdb::InvalidInputException("not a STRUCT logical type");
-		}
-		if (index >= duckdb::StructType::GetChildCount(*lt)) {
-			throw duckdb::InvalidInputException("struct child index out of range");
-		}
-		auto *child = new duckdb::LogicalType(duckdb::StructType::GetChildType(*lt, index));
-		*out_child = reinterpret_cast<_duckdb_v2_logical_type *>(child);
-	});
-}
-
-// ---------------------------------------------------------------------------
-// UNION
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_count(duckdb_v2_logical_type_handle type, idx_t *out_count,
-                                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_count) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_union_member_count");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::UNION) {
-			throw duckdb::InvalidInputException("not a UNION logical type");
-		}
-		*out_count = duckdb::UnionType::GetMemberCount(*lt);
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_name(duckdb_v2_logical_type_handle type, idx_t index,
-                                                                  duckdb_v2_str *out_name,
-                                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_name) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_union_member_name");
-		}
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::UNION) {
-			throw duckdb::InvalidInputException("not a UNION logical type");
-		}
-		if (index >= duckdb::UnionType::GetMemberCount(*lt)) {
-			throw duckdb::InvalidInputException("union member index out of range");
-		}
-		*out_name = duckdb::ToStr(duckdb::UnionType::GetMemberName(*lt, index));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_type(duckdb_v2_logical_type_handle type, idx_t index,
-                                                                  duckdb_v2_logical_type_handle *out_child,
-                                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!type || !out_child) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_union_member_type");
-		}
-		*out_child = nullptr;
-		auto *lt = duckdb::ToLogicalType(type);
-		if (lt->id() != duckdb::LogicalTypeId::UNION) {
-			throw duckdb::InvalidInputException("not a UNION logical type");
-		}
-		if (index >= duckdb::UnionType::GetMemberCount(*lt)) {
-			throw duckdb::InvalidInputException("union member index out of range");
-		}
-		auto *child = new duckdb::LogicalType(duckdb::UnionType::GetMemberType(*lt, index));
-		*out_child = reinterpret_cast<_duckdb_v2_logical_type *>(child);
+		duckdb_v2_str name {nullptr, 0};
+		auto *value = new duckdb::Value(duckdb::TypeParamValue(lt, index, name));
+		*out_name = name;
+		*out_value = reinterpret_cast<_duckdb_v2_value *>(value);
 	});
 }

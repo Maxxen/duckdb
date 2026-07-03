@@ -6,9 +6,24 @@
 
 #include <cstring>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 inline duckdb_v2_logical_type_handle V1ToV2(duckdb_logical_type t) {
 	return reinterpret_cast<duckdb_v2_logical_type_handle>(t);
+}
+
+// Runs fn(ctx) inside the connection's context scope: the external path to a
+// duckdb_v2_context_handle. The scope call itself must succeed; failures of
+// calls made inside fn are asserted by fn.
+template <class FN>
+inline void V2WithContext(duckdb_v2_connection_handle conn, FN &&fn) {
+	using Fn = typename std::decay<FN>::type;
+	Fn body = std::forward<FN>(fn);
+	auto trampoline = [](duckdb_v2_context_handle ctx, void *user_data, duckdb_v2_error_info_handle *) {
+		(*static_cast<Fn *>(user_data))(ctx);
+	};
+	REQUIRE(duckdb_v2_connection_execute_with_context(conn, trampoline, &body, nullptr) == DUCKDB_V2_ERROR_NONE);
 }
 
 // Build a borrowed string view from a null-terminated C string. A null
@@ -52,9 +67,49 @@ inline bool operator!=(const char *a, duckdb_v2_str b) {
 	return !(b == a);
 }
 
-inline DUCKDB_V2_API_CALL_t V2ValueCreateVarchar(const char *data, idx_t len, duckdb_v2_value_handle *out_value,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb_v2_value_create_varchar(duckdb_v2_str {data, len}, out_value, err);
+// Leaf-value helpers over the generic payload codec (the per-kind value
+// constructors and getters are gone; the committed physical layout is the
+// contract). All REQUIRE success; error paths are tested directly.
+inline duckdb_v2_value_handle V2LeafValue(DUCKDB_V2_LOGICAL_TYPE_ID id, const void *data, idx_t len) {
+	duckdb_v2_logical_type_handle type = nullptr;
+	duckdb_v2_logical_type_create_from_id(id, &type, nullptr);
+	duckdb_v2_value_handle value = nullptr;
+	auto rc = duckdb_v2_value_create_from_data(type, data, len, &value, nullptr);
+	duckdb_v2_logical_type_destroy(&type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(value != nullptr);
+	return value;
+}
+template <class T>
+inline duckdb_v2_value_handle V2LeafValue(DUCKDB_V2_LOGICAL_TYPE_ID id, T payload) {
+	return V2LeafValue(id, &payload, sizeof(T));
+}
+inline duckdb_v2_value_handle V2Int32Value(int32_t payload) {
+	return V2LeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, payload);
+}
+inline duckdb_v2_value_handle V2Int64Value(int64_t payload) {
+	return V2LeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, payload);
+}
+inline duckdb_v2_value_handle V2VarcharValue(const char *s) {
+	return V2LeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, s, s ? std::strlen(s) : 0);
+}
+// Fixed-size payload read; REQUIREs the committed layout size.
+template <class T>
+inline T V2LeafPayload(duckdb_v2_value_handle value) {
+	const void *data = nullptr;
+	idx_t len = 0;
+	REQUIRE(duckdb_v2_value_get_data(value, &data, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(len == sizeof(T));
+	T out;
+	std::memcpy(&out, data, sizeof(T));
+	return out;
+}
+// Wire-bytes payload read as a std::string (VARCHAR / BLOB / BIT).
+inline std::string V2LeafBytes(duckdb_v2_value_handle value) {
+	const void *data = nullptr;
+	idx_t len = 0;
+	REQUIRE(duckdb_v2_value_get_data(value, &data, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return len ? std::string(static_cast<const char *>(data), len) : std::string();
 }
 // Assemble a non-inlined duckdb_v2_string over already-written heap bytes (no
 // allocation, no payload copy): the single hand-assembler for write-in-place flows.

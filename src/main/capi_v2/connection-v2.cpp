@@ -99,7 +99,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connect
 
 		ctx.RunFunctionInTransaction([&]() {
 			auto cb_ctx_handle = reinterpret_cast<_duckdb_v2_context *>(&ctx);
-			callback(cb_ctx_handle, user_data, err);
+			// Hand the callback a stack-backed slot per the uniform err model:
+			// a code set by the callback becomes a thrown engine exception, so
+			// the transaction rolls back and the overall call fails with it.
+			duckdb::InvokeWithErrorSlot<duckdb::InvalidInputException>(
+			    [&](duckdb_v2_error_info_handle *slot) { callback(cb_ctx_handle, user_data, slot); });
 		});
 	});
 }

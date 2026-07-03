@@ -234,8 +234,7 @@ static void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckd
                            duckdb_v2_error_info_handle *err) {
 	duckdb_v2_value_handle n_val = nullptr;
 	REQUIRE(duckdb_v2_table_function_bind_get_parameter(info, 0, &n_val, err) == DUCKDB_V2_ERROR_NONE);
-	int64_t n = 0;
-	duckdb_v2_value_get_int64(n_val, &n, err);
+	int64_t n = V2LeafPayload<int64_t>(n_val);
 	duckdb_v2_value_destroy(&n_val);
 
 	int64_t start = 0;
@@ -243,7 +242,7 @@ static void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckd
 	duckdb_v2_error_info_handle local_err = nullptr;
 	if (duckdb_v2_table_function_bind_get_named_parameter(info, V2Str("start"), &start_val, &local_err) ==
 	    DUCKDB_V2_ERROR_NONE) {
-		duckdb_v2_value_get_int64(start_val, &start, err);
+		start = V2LeafPayload<int64_t>(start_val);
 		duckdb_v2_value_destroy(&start_val);
 	}
 	duckdb_v2_error_info_destroy(&local_err);
@@ -1141,8 +1140,7 @@ static void pd_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_ha
 
 		duckdb_v2_value_handle val = nullptr;
 		REQUIRE(duckdb_v2_expression_get_constant_value(const_expr, &val, err) == DUCKDB_V2_ERROR_NONE);
-		int64_t k = 0;
-		duckdb_v2_value_get_int64(val, &k, err);
+		int64_t k = V2LeafPayload<int64_t>(val);
 		duckdb_v2_value_destroy(&val);
 
 		bd.captured = k;

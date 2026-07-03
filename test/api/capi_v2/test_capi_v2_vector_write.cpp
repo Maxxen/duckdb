@@ -158,8 +158,7 @@ TEST_CASE("V2: vector_make_constant from value", "[capi_v2][vector_write]") {
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(duckdb_v2_value_create_int32(42, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle value = V2Int32Value(42);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 5, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
@@ -191,8 +190,7 @@ TEST_CASE("V2: vector_flatten resets constant", "[capi_v2][vector_write]") {
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(duckdb_v2_value_create_int32(7, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle value = V2Int32Value(7);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
@@ -356,8 +354,7 @@ TEST_CASE("V2: vector_constant_set_valid toggles validity", "[capi_v2][vector_wr
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(duckdb_v2_value_create_int32(77, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle value = V2Int32Value(77);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
@@ -854,4 +851,291 @@ TEST_CASE("V2: write multiple primitive types", "[capi_v2][vector_write]") {
 	write_and_check(5, 2.718281828);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+}
+
+// ===========================================================================
+// Single-cell value bridge: vector_get_value / vector_set_value
+// ===========================================================================
+
+// Owned INTEGER chunk with one column; caller destroys.
+static duckdb_v2_data_chunk_handle MakeIntChunk(duckdb_v2_vector_handle *out_vec) {
+	auto int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {V1ToV2(int_type)};
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_destroy_logical_type(&int_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, out_vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return chunk;
+}
+
+static int32_t V2CellI32(duckdb_v2_vector_handle vec, idx_t row) {
+	duckdb_v2_value_handle cell = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(vec, row, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	auto out = V2LeafPayload<int32_t>(cell);
+	duckdb_v2_value_destroy(&cell);
+	return out;
+}
+
+TEST_CASE("V2: vector_get_value reads FLAT and CONSTANT rows", "[capi_v2][vector_write][cell]") {
+	duckdb_v2_vector_handle vec = nullptr;
+	auto chunk = MakeIntChunk(&vec);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+	void *raw = nullptr;
+	REQUIRE(duckdb_v2_vector_get_data_mutable(vec, &raw, nullptr) == DUCKDB_V2_ERROR_NONE);
+	auto *data = static_cast<int32_t *>(raw);
+	data[0] = 10;
+	data[1] = 20;
+	data[2] = 30;
+
+	REQUIRE(V2CellI32(vec, 0) == 10);
+	REQUIRE(V2CellI32(vec, 2) == 30);
+
+	// Row bounds are checked against the logical size.
+	auto cell = reinterpret_cast<duckdb_v2_value_handle>(0x1);
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(vec, 3, &cell, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(cell == nullptr);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
+
+	// CONSTANT: every logical row reads the single value.
+	duckdb_v2_value_handle forty_two = V2Int32Value(42);
+	REQUIRE(duckdb_v2_vector_make_constant(vec, forty_two, 5, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_destroy(&forty_two);
+	REQUIRE(V2CellI32(vec, 0) == 42);
+	REQUIRE(V2CellI32(vec, 4) == 42);
+	REQUIRE(duckdb_v2_vector_get_value(vec, 5, &cell, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+
+	duckdb_v2_data_chunk_destroy(&chunk);
+}
+
+TEST_CASE("V2: vector_get_value resolves DICTIONARY rows through the selection", "[capi_v2][vector_write][cell]") {
+	// Same internal fixture shape as the DICTIONARY view test: a FLAT
+	// backing vector sliced by a non-identity sel, with one NULLed slot.
+	duckdb::Vector flat(duckdb::LogicalType::INTEGER);
+	auto *fd = duckdb::FlatVector::GetDataMutable<int32_t>(flat);
+	fd[0] = 10;
+	fd[1] = 20;
+	fd[2] = 30;
+	duckdb::FlatVector::SetNull(flat, 1, true);
+	duckdb::SelectionVector sel(4);
+	sel.set_index(0, 2);
+	sel.set_index(1, 0);
+	sel.set_index(2, 2);
+	sel.set_index(3, 1);
+	duckdb::Vector dict(flat, sel, 4);
+	auto handle = reinterpret_cast<duckdb_v2_vector_handle>(&dict);
+
+	REQUIRE(V2CellI32(handle, 0) == 30);
+	REQUIRE(V2CellI32(handle, 1) == 10);
+	REQUIRE(V2CellI32(handle, 2) == 30);
+	// Logical row 3 resolves to the NULLed physical slot.
+	duckdb_v2_value_handle cell = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(handle, 3, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	bool is_null = false;
+	REQUIRE(duckdb_v2_value_is_null(cell, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(is_null);
+	duckdb_v2_value_destroy(&cell);
+	REQUIRE(duckdb_v2_vector_get_value(handle, 4, &cell, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+}
+
+TEST_CASE("V2: vector_get_value is the VARIANT cell path", "[capi_v2][vector_write][cell]") {
+	V2EnvFixture f;
+	V2Result r;
+	REQUIRE(V2Query(f.conn, "SELECT 42::VARIANT AS v", &r) == DUCKDB_V2_ERROR_NONE);
+	auto chunk = V2StepChunk(r);
+	REQUIRE(chunk != nullptr);
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle cell = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(vec, 0, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle t = nullptr;
+	REQUIRE(duckdb_v2_value_get_logical_type(cell, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
+	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+	REQUIRE(duckdb_v2_logical_type_get_id(t, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT);
+	duckdb_v2_logical_type_destroy(&t);
+	char *text = nullptr;
+	REQUIRE(duckdb_v2_value_to_string(cell, &text, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(std::string(text).find("42") != std::string::npos);
+	std::free(text);
+	duckdb_v2_value_destroy(&cell);
+	duckdb_v2_data_chunk_destroy(&chunk);
+}
+
+TEST_CASE("V2: vector_set_value writes FLAT cells with casts and NULLs", "[capi_v2][vector_write][cell]") {
+	auto bigint_type = duckdb_create_logical_type(DUCKDB_TYPE_BIGINT);
+	duckdb_v2_logical_type_handle types[1] = {V1ToV2(bigint_type)};
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_destroy_logical_type(&bigint_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	// An INTEGER value is cast to the vector's BIGINT on write.
+	duckdb_v2_value_handle small = V2Int32Value(7);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 0, small, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_destroy(&small);
+
+	// A NULL value clears the row's validity.
+	duckdb_v2_logical_type_handle bigint_v2 = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_v2, nullptr);
+	duckdb_v2_value_handle null_value = nullptr;
+	REQUIRE(duckdb_v2_value_create_null(bigint_v2, &null_value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_destroy(&bigint_v2);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 1, null_value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_destroy(&null_value);
+
+	duckdb_v2_value_handle cell = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(vec, 0, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2LeafPayload<int64_t>(cell) == 7);
+	duckdb_v2_value_destroy(&cell);
+	REQUIRE(duckdb_v2_vector_get_value(vec, 1, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	bool is_null = false;
+	REQUIRE(duckdb_v2_value_is_null(cell, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(is_null);
+	duckdb_v2_value_destroy(&cell);
+
+	// An uncastable value surfaces the conversion error.
+	duckdb_v2_value_handle bad = V2VarcharValue("abc");
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_vector_set_value(vec, 2, bad, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
+	duckdb_v2_value_destroy(&bad);
+
+	duckdb_v2_data_chunk_destroy(&chunk);
+}
+
+TEST_CASE("V2: vector_set_value refuses non-FLAT vectors and bad rows", "[capi_v2][vector_write][cell]") {
+	duckdb_v2_vector_handle vec = nullptr;
+	auto chunk = MakeIntChunk(&vec);
+
+	duckdb_v2_value_handle value = V2Int32Value(1);
+
+	// Out-of-range row on a FLAT vector.
+	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 2, value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+
+	// A CONSTANT vector is not row-addressable; flatten first.
+	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 4, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_vector_set_value(vec, 0, value, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
+	REQUIRE(duckdb_v2_vector_flatten(vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 0, value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2CellI32(vec, 0) == 1);
+
+	// Null-arg refusals.
+	REQUIRE(duckdb_v2_vector_set_value(nullptr, 0, value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	duckdb_v2_value_handle out_cell = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(nullptr, 0, &out_cell, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_value(vec, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+
+	duckdb_v2_value_destroy(&value);
+	duckdb_v2_data_chunk_destroy(&chunk);
+}
+
+TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip", "[capi_v2][vector_write][cell]") {
+	auto int_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
+	auto list_v1 = duckdb_create_list_type(int_v1);
+	duckdb_destroy_logical_type(&int_v1);
+	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	// Build the LIST value [1, 2] and make the vector constant over it.
+	duckdb_v2_value_handle elems[2] = {nullptr, nullptr};
+	elems[0] = V2Int32Value(1);
+	elems[1] = V2Int32Value(2);
+	duckdb_v2_value_handle list_value = nullptr;
+	rc = duckdb_v2_value_create(V1ToV2(list_v1), elems, 2, &list_value, nullptr);
+	duckdb_v2_value_destroy(&elems[0]);
+	duckdb_v2_value_destroy(&elems[1]);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_make_constant(vec, list_value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	DUCKDB_V2_VECTOR_TYPE vtype = DUCKDB_V2_VECTOR_TYPE_OTHER;
+	REQUIRE(duckdb_v2_vector_get_vector_type(vec, &vtype, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(vtype == DUCKDB_V2_VECTOR_TYPE_CONSTANT);
+
+	// Every logical row reads back the same list.
+	duckdb_v2_value_handle cell = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(vec, 2, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	idx_t child_count = 0;
+	REQUIRE(duckdb_v2_value_get_child_count(cell, &child_count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(child_count == 2);
+	duckdb_v2_value_handle elem = nullptr;
+	REQUIRE(duckdb_v2_value_get_child(cell, 1, &elem, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2LeafPayload<int32_t>(elem) == 2);
+	duckdb_v2_value_destroy(&elem);
+	duckdb_v2_value_destroy(&cell);
+
+	// The type-mismatch hardening: an INTEGER value cannot constant a LIST vector.
+	duckdb_v2_value_handle wrong = V2Int32Value(9);
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_vector_make_constant(vec, wrong, 3, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
+	duckdb_v2_value_destroy(&wrong);
+
+	duckdb_v2_value_destroy(&list_value);
+	duckdb_destroy_logical_type(&list_v1);
+	duckdb_v2_data_chunk_destroy(&chunk);
+}
+
+TEST_CASE("V2: nested cells round trip through set_value / get_value", "[capi_v2][vector_write][cell]") {
+	auto int_v1 = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
+	auto list_v1 = duckdb_create_list_type(int_v1);
+	duckdb_destroy_logical_type(&int_v1);
+	duckdb_v2_logical_type_handle types[1] = {V1ToV2(list_v1)};
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_value_handle elems[2] = {nullptr, nullptr};
+	elems[0] = V2Int32Value(5);
+	elems[1] = V2Int32Value(6);
+	duckdb_v2_value_handle full = nullptr;
+	rc = duckdb_v2_value_create(V1ToV2(list_v1), elems, 2, &full, nullptr);
+	duckdb_v2_value_destroy(&elems[0]);
+	duckdb_v2_value_destroy(&elems[1]);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle empty = nullptr;
+	REQUIRE(duckdb_v2_value_create(V1ToV2(list_v1), nullptr, 0, &empty, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_destroy_logical_type(&list_v1);
+
+	REQUIRE(duckdb_v2_vector_set_value(vec, 0, full, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 1, empty, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_destroy(&full);
+	duckdb_v2_value_destroy(&empty);
+
+	duckdb_v2_value_handle cell = nullptr;
+	REQUIRE(duckdb_v2_vector_get_value(vec, 0, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_value_get_child_count(cell, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 2);
+	duckdb_v2_value_handle elem = nullptr;
+	REQUIRE(duckdb_v2_value_get_child(cell, 0, &elem, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2LeafPayload<int32_t>(elem) == 5);
+	duckdb_v2_value_destroy(&elem);
+	duckdb_v2_value_destroy(&cell);
+
+	REQUIRE(duckdb_v2_vector_get_value(vec, 1, &cell, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_value_get_child_count(cell, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 0);
+	duckdb_v2_value_destroy(&cell);
+
+	duckdb_v2_data_chunk_destroy(&chunk);
 }

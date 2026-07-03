@@ -3,17 +3,18 @@
 #include "duckdb/common/hugeint.hpp"
 #include "duckdb/common/types/bignum.hpp"
 #include "duckdb/common/types/uuid.hpp"
+#include "duckdb/common/types/variant_value.hpp"
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 // Out-param zeroing on failure:
 //   - Pointer out-params (out_value, out_type, out_data) are set to nullptr
 //     on every INVALID_INPUT path to keep dangling-pointer hazards out of
 //     caller code.
-//   - Scalar out-params (out_micros, out_lower, out_width, ...) are
-//     unspecified on failure. Callers must check the return code before
-//     reading scalars.
+//   - Scalar out-params (out_len, out_count, ...) are unspecified on
+//     failure. Callers must check the return code before reading scalars.
 
 namespace duckdb {
 namespace {
@@ -33,39 +34,244 @@ void RequireTypedValue(duckdb_v2_value_handle value, LogicalTypeId expected, con
 		throw InvalidInputException(std::string(function_name) + ": value is NULL");
 	}
 }
-
-// Allocating constructor used by every primitive create_*: wraps `new Value(...)`
-// in WithErrorHandler and handles the null-out-param check uniformly.
-template <class Make>
-DUCKDB_V2_API_CALL_t MakePrimitive(duckdb_v2_value_handle *out_value, duckdb_v2_error_info_handle *err,
-                                   const char *function_name, Make make) {
-	return WithErrorHandler(err, [&]() {
-		if (!out_value) {
-			throw InvalidInputException(std::string("null argument to ") + function_name);
-		}
-		*out_value = nullptr;
-		auto *v = new Value(make());
-		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
-	});
+// The child-count view of a value: LIST/ARRAY/STRUCT elements or fields,
+// MAP 2 x entries (children alternate key, value), UNION 2 (tag + active
+// member). NULL values of any type, and non-composites, report 0.
+idx_t CompositeChildCount(const Value &v) {
+	if (v.IsNull()) {
+		return 0;
+	}
+	switch (v.type().id()) {
+	case LogicalTypeId::LIST:
+		return ListValue::GetChildren(v).size();
+	case LogicalTypeId::ARRAY:
+		return ArrayValue::GetChildren(v).size();
+	case LogicalTypeId::STRUCT:
+		return StructValue::GetChildren(v).size();
+	case LogicalTypeId::MAP:
+		return MapValue::GetChildren(v).size() * 2;
+	case LogicalTypeId::UNION:
+		return 2;
+	default:
+		return 0;
+	}
 }
 
-// Borrowed-bytes getter for the string-backed types (VARCHAR/BLOB/BIT). The
-// returned pointer is into the Value's StringValueInfo and stays valid until
-// the value is destroyed.
-template <class CharT>
-DUCKDB_V2_API_CALL_t GetStringBytes(duckdb_v2_value_handle value, LogicalTypeId expected, const char *function_name,
-                                    const CharT **out_data, idx_t *out_length, duckdb_v2_error_info_handle *err) {
-	return WithErrorHandler(err, [&]() {
-		if (!out_data || !out_length) {
-			throw InvalidInputException(std::string("null argument to ") + function_name);
+// Leaf payload codec. The committed physical layouts are contract text: the
+// vector view layout table plus the DECIMAL / ENUM storage tier tables.
+// Fixed-size kinds carry GetTypeIdSize(InternalType()) bytes; VARCHAR / BLOB /
+// BIT carry their wire bytes. TYPE, BIGNUM (wire encoding not committed),
+// GEOMETRY (no committed layout), composites, and bind-time ids are not
+// leaf-data addressable.
+
+bool IsWireBytesKind(LogicalTypeId id) {
+	switch (id) {
+	case LogicalTypeId::VARCHAR:
+	case LogicalTypeId::BLOB:
+	case LogicalTypeId::BIT:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool IsFixedLeafKind(LogicalTypeId id) {
+	switch (id) {
+	case LogicalTypeId::BOOLEAN:
+	case LogicalTypeId::TINYINT:
+	case LogicalTypeId::SMALLINT:
+	case LogicalTypeId::INTEGER:
+	case LogicalTypeId::BIGINT:
+	case LogicalTypeId::UTINYINT:
+	case LogicalTypeId::USMALLINT:
+	case LogicalTypeId::UINTEGER:
+	case LogicalTypeId::UBIGINT:
+	case LogicalTypeId::HUGEINT:
+	case LogicalTypeId::UHUGEINT:
+	case LogicalTypeId::FLOAT:
+	case LogicalTypeId::DOUBLE:
+	case LogicalTypeId::DATE:
+	case LogicalTypeId::TIME:
+	case LogicalTypeId::TIME_NS:
+	case LogicalTypeId::TIME_TZ:
+	case LogicalTypeId::TIMESTAMP_SEC:
+	case LogicalTypeId::TIMESTAMP_MS:
+	case LogicalTypeId::TIMESTAMP:
+	case LogicalTypeId::TIMESTAMP_NS:
+	case LogicalTypeId::TIMESTAMP_TZ:
+	case LogicalTypeId::TIMESTAMP_TZ_NS:
+	case LogicalTypeId::INTERVAL:
+	case LogicalTypeId::UUID:
+	case LogicalTypeId::DECIMAL:
+	case LogicalTypeId::ENUM:
+		return true;
+	default:
+		return false;
+	}
+}
+
+// Builds the leaf value from its payload. len is pre-validated against the
+// layout size for fixed-size kinds. Layout-raw: no semantic validation
+// beyond the gates documented on value_create_from_data.
+Value LeafValueFromData(const LogicalType &lt, const_data_ptr_t data, idx_t len) {
+	switch (lt.id()) {
+	case LogicalTypeId::BOOLEAN:
+		return Value::BOOLEAN(Load<bool>(data));
+	case LogicalTypeId::TINYINT:
+		return Value::TINYINT(Load<int8_t>(data));
+	case LogicalTypeId::SMALLINT:
+		return Value::SMALLINT(Load<int16_t>(data));
+	case LogicalTypeId::INTEGER:
+		return Value::INTEGER(Load<int32_t>(data));
+	case LogicalTypeId::BIGINT:
+		return Value::BIGINT(Load<int64_t>(data));
+	case LogicalTypeId::UTINYINT:
+		return Value::UTINYINT(Load<uint8_t>(data));
+	case LogicalTypeId::USMALLINT:
+		return Value::USMALLINT(Load<uint16_t>(data));
+	case LogicalTypeId::UINTEGER:
+		return Value::UINTEGER(Load<uint32_t>(data));
+	case LogicalTypeId::UBIGINT:
+		return Value::UBIGINT(Load<uint64_t>(data));
+	case LogicalTypeId::HUGEINT:
+		return Value::HUGEINT(Load<hugeint_t>(data));
+	case LogicalTypeId::UHUGEINT:
+		return Value::UHUGEINT(Load<uhugeint_t>(data));
+	case LogicalTypeId::UUID:
+		// The internal hugeint form, exactly as the vector view exposes it.
+		return Value::UUID(Load<hugeint_t>(data));
+	case LogicalTypeId::FLOAT:
+		return Value::FLOAT(Load<float>(data));
+	case LogicalTypeId::DOUBLE:
+		return Value::DOUBLE(Load<double>(data));
+	case LogicalTypeId::DATE:
+		return Value::DATE(Load<date_t>(data));
+	case LogicalTypeId::TIME:
+		return Value::TIME(Load<dtime_t>(data));
+	case LogicalTypeId::TIME_NS:
+		return Value::TIME_NS(Load<dtime_ns_t>(data));
+	case LogicalTypeId::TIME_TZ:
+		// The packed 64-bit form.
+		return Value::TIMETZ(Load<dtime_tz_t>(data));
+	case LogicalTypeId::TIMESTAMP_SEC:
+		return Value::TIMESTAMPSEC(Load<timestamp_sec_t>(data));
+	case LogicalTypeId::TIMESTAMP_MS:
+		return Value::TIMESTAMPMS(Load<timestamp_ms_t>(data));
+	case LogicalTypeId::TIMESTAMP:
+		return Value::TIMESTAMP(Load<timestamp_t>(data));
+	case LogicalTypeId::TIMESTAMP_NS:
+		return Value::TIMESTAMPNS(Load<timestamp_ns_t>(data));
+	case LogicalTypeId::TIMESTAMP_TZ:
+		return Value::TIMESTAMPTZ(Load<timestamp_tz_t>(data));
+	case LogicalTypeId::TIMESTAMP_TZ_NS:
+		return Value::TIMESTAMPTZNS(Load<timestamp_tz_ns_t>(data));
+	case LogicalTypeId::INTERVAL:
+		return Value::INTERVAL(Load<interval_t>(data));
+	case LogicalTypeId::DECIMAL: {
+		// The scaled integer of the width tier.
+		auto width = DecimalType::GetWidth(lt);
+		auto scale = DecimalType::GetScale(lt);
+		switch (lt.InternalType()) {
+		case PhysicalType::INT16:
+			return Value::DECIMAL(Load<int16_t>(data), width, scale);
+		case PhysicalType::INT32:
+			return Value::DECIMAL(Load<int32_t>(data), width, scale);
+		case PhysicalType::INT64:
+			return Value::DECIMAL(Load<int64_t>(data), width, scale);
+		default:
+			return Value::DECIMAL(Load<hugeint_t>(data), width, scale);
 		}
-		*out_data = nullptr;
-		*out_length = 0;
-		RequireTypedValue(value, expected, function_name);
-		auto &str = StringValue::Get(*ToValue(value));
-		*out_data = reinterpret_cast<const CharT *>(str.data());
-		*out_length = str.size();
-	});
+	}
+	case LogicalTypeId::ENUM: {
+		// The dictionary index of the size tier, bounds-checked: an
+		// out-of-range index is not addressable storage.
+		uint64_t index = 0;
+		switch (lt.InternalType()) {
+		case PhysicalType::UINT8:
+			index = Load<uint8_t>(data);
+			break;
+		case PhysicalType::UINT16:
+			index = Load<uint16_t>(data);
+			break;
+		default:
+			index = Load<uint32_t>(data);
+			break;
+		}
+		if (index >= EnumType::GetSize(lt)) {
+			throw InvalidInputException("duckdb_v2_value_create_from_data: enum index out of range");
+		}
+		return Value::ENUM(index, lt);
+	}
+	case LogicalTypeId::VARCHAR:
+		// The engine rejects invalid UTF-8 at construction.
+		return Value(data ? std::string(const_char_ptr_cast(data), len) : std::string());
+	case LogicalTypeId::BLOB:
+		return Value::BLOB(data, len);
+	case LogicalTypeId::BIT:
+		return Value::BIT(data, len);
+	default:
+		throw InternalException("LeafValueFromData called for a kind without a committed leaf layout");
+	}
+}
+
+// Address + size of a non-NULL leaf value's payload, borrowed until the
+// value is destroyed. Wire-bytes kinds borrow from the managed string;
+// fixed-size kinds borrow the internal storage slot, dispatched by
+// physical type.
+std::pair<const void *, idx_t> LeafPayload(const Value &v) {
+	if (IsWireBytesKind(v.type().id())) {
+		auto &str = StringValue::Get(v);
+		return {str.data(), str.size()};
+	}
+	auto physical = v.type().InternalType();
+	const void *ptr = nullptr;
+	switch (physical) {
+	case PhysicalType::BOOL:
+		ptr = &v.GetReferenceUnsafe<bool>();
+		break;
+	case PhysicalType::INT8:
+		ptr = &v.GetReferenceUnsafe<int8_t>();
+		break;
+	case PhysicalType::INT16:
+		ptr = &v.GetReferenceUnsafe<int16_t>();
+		break;
+	case PhysicalType::INT32:
+		ptr = &v.GetReferenceUnsafe<int32_t>();
+		break;
+	case PhysicalType::INT64:
+		ptr = &v.GetReferenceUnsafe<int64_t>();
+		break;
+	case PhysicalType::UINT8:
+		ptr = &v.GetReferenceUnsafe<uint8_t>();
+		break;
+	case PhysicalType::UINT16:
+		ptr = &v.GetReferenceUnsafe<uint16_t>();
+		break;
+	case PhysicalType::UINT32:
+		ptr = &v.GetReferenceUnsafe<uint32_t>();
+		break;
+	case PhysicalType::UINT64:
+		ptr = &v.GetReferenceUnsafe<uint64_t>();
+		break;
+	case PhysicalType::INT128:
+		ptr = &v.GetReferenceUnsafe<hugeint_t>();
+		break;
+	case PhysicalType::UINT128:
+		ptr = &v.GetReferenceUnsafe<uhugeint_t>();
+		break;
+	case PhysicalType::FLOAT:
+		ptr = &v.GetReferenceUnsafe<float>();
+		break;
+	case PhysicalType::DOUBLE:
+		ptr = &v.GetReferenceUnsafe<double>();
+		break;
+	case PhysicalType::INTERVAL:
+		ptr = &v.GetReferenceUnsafe<interval_t>();
+		break;
+	default:
+		throw InternalException("LeafPayload called for a kind without a committed leaf layout");
+	}
+	return {ptr, GetTypeIdSize(physical)};
 }
 
 } // anonymous namespace
@@ -142,142 +348,66 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_to_string(duckdb_v2_value_handle value, cha
 }
 
 // ---------------------------------------------------------------------------
-// Primitive numeric constructors (mechanical: dispatch through Value::TYPE())
+// Leaf payload codec
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_bool(bool input, duckdb_v2_value_handle *out_value,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_bool",
-	                             [input]() { return duckdb::Value::BOOLEAN(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int8(int8_t input, duckdb_v2_value_handle *out_value,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_int8",
-	                             [input]() { return duckdb::Value::TINYINT(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int16(int16_t input, duckdb_v2_value_handle *out_value,
-                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_int16",
-	                             [input]() { return duckdb::Value::SMALLINT(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int32(int32_t input, duckdb_v2_value_handle *out_value,
-                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_int32",
-	                             [input]() { return duckdb::Value::INTEGER(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int64(int64_t input, duckdb_v2_value_handle *out_value,
-                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_int64",
-	                             [input]() { return duckdb::Value::BIGINT(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint8(uint8_t input, duckdb_v2_value_handle *out_value,
-                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_uint8",
-	                             [input]() { return duckdb::Value::UTINYINT(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint16(uint16_t input, duckdb_v2_value_handle *out_value,
-                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_uint16",
-	                             [input]() { return duckdb::Value::USMALLINT(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint32(uint32_t input, duckdb_v2_value_handle *out_value,
-                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_uint32",
-	                             [input]() { return duckdb::Value::UINTEGER(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint64(uint64_t input, duckdb_v2_value_handle *out_value,
-                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_uint64",
-	                             [input]() { return duckdb::Value::UBIGINT(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_hugeint(uint64_t lower, int64_t upper, duckdb_v2_value_handle *out_value,
-                                                    duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_hugeint",
-	                             [lower, upper]() { return duckdb::Value::HUGEINT(duckdb::hugeint_t(upper, lower)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uhugeint(uint64_t lower, uint64_t upper, duckdb_v2_value_handle *out_value,
-                                                     duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_uhugeint", [lower, upper]() {
-		return duckdb::Value::UHUGEINT(duckdb::uhugeint_t(upper, lower));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_float(float input, duckdb_v2_value_handle *out_value,
-                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_float",
-	                             [input]() { return duckdb::Value::FLOAT(input); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_double(double input, duckdb_v2_value_handle *out_value,
-                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_double",
-	                             [input]() { return duckdb::Value::DOUBLE(input); });
-}
-
-// ---------------------------------------------------------------------------
-// VARCHAR / BLOB / BIT / BIGNUM constructors
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_varchar(duckdb_v2_str data, duckdb_v2_value_handle *out_value,
-                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_data(duckdb_v2_logical_type_handle type, const void *data, idx_t len,
+                                                      duckdb_v2_value_handle *out_value,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_varchar");
+		if (!type || !out_value || (!data && len > 0)) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_from_data");
 		}
 		*out_value = nullptr;
-		if (!data.ptr && data.len > 0) {
-			throw duckdb::InvalidInputException("null data with positive length in duckdb_v2_value_create_varchar");
+		auto &lt = *duckdb::ToLogicalType(type);
+		if (duckdb::IsFixedLeafKind(lt.id())) {
+			auto expected = duckdb::GetTypeIdSize(lt.InternalType());
+			if (len != expected) {
+				throw duckdb::InvalidInputException("duckdb_v2_value_create_from_data: len " + std::to_string(len) +
+				                                    " does not match the committed layout size " +
+				                                    std::to_string(expected));
+			}
+		} else if (duckdb::IsWireBytesKind(lt.id())) {
+			if (lt.id() == duckdb::LogicalTypeId::BIT && len == 0) {
+				throw duckdb::InvalidInputException(
+				    "duckdb_v2_value_create_from_data: the BIT wire form carries a mandatory padding header byte");
+			}
+		} else {
+			throw duckdb::InvalidInputException(
+			    "duckdb_v2_value_create_from_data: type has no committed leaf layout; use value_create_type, "
+			    "value_create_bignum, or value_create");
 		}
-		// Only run UTF-8 validation when there is something to validate.
-		if (data.len > 0 && !duckdb::Value::StringIsValid(data.ptr, data.len)) {
-			throw duckdb::InvalidInputException("invalid UTF-8 in duckdb_v2_value_create_varchar");
-		}
-		// len=0 + ptr=NULL is the documented empty-value shape (see spec).
-		auto *v = new duckdb::Value(duckdb::ToString(data));
+		auto *v = new duckdb::Value(duckdb::LeafValueFromData(lt, duckdb::const_data_ptr_cast(data), len));
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_blob(const uint8_t *data, idx_t length, duckdb_v2_value_handle *out_value,
-                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_data(duckdb_v2_value_handle value, const void **out_data, idx_t *out_len,
+                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_blob");
+		if (!value || !out_data || !out_len) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_data");
 		}
-		*out_value = nullptr;
-		if (!data && length > 0) {
-			throw duckdb::InvalidInputException("null data with positive length in duckdb_v2_value_create_blob");
+		*out_data = nullptr;
+		*out_len = 0;
+		auto &v = *duckdb::ToValue(value);
+		auto id = v.type().id();
+		if (!duckdb::IsFixedLeafKind(id) && !duckdb::IsWireBytesKind(id)) {
+			throw duckdb::InvalidInputException("duckdb_v2_value_get_data: type has no committed leaf layout; use "
+			                                    "value_get_type, value_get_bignum, or value_get_child");
 		}
-		auto *v = new duckdb::Value(duckdb::Value::BLOB(data, length));
-		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
+		if (v.IsNull()) {
+			throw duckdb::InvalidInputException("duckdb_v2_value_get_data: value is NULL");
+		}
+		auto payload = duckdb::LeafPayload(v);
+		*out_data = payload.first;
+		*out_len = payload.second;
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_bit(const uint8_t *data, idx_t length, duckdb_v2_value_handle *out_value,
-                                                duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_bit");
-		}
-		*out_value = nullptr;
-		// BIT has no empty encoding: the padding header byte is mandatory.
-		if (!data || length == 0) {
-			throw duckdb::InvalidInputException("duckdb_v2_value_create_bit requires data != NULL and length >= 1");
-		}
-		auto *v = new duckdb::Value(duckdb::Value::BIT(data, length));
-		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
-	});
-}
+// ---------------------------------------------------------------------------
+// BIGNUM codec (wire encoding not committed; see the module spec)
+// ---------------------------------------------------------------------------
 
 DUCKDB_V2_API_CALL_t duckdb_v2_value_create_bignum(const uint8_t *data, idx_t length, bool is_negative,
                                                    duckdb_v2_value_handle *out_value,
@@ -302,299 +432,6 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_create_bignum(const uint8_t *data, idx_t le
 	});
 }
 
-// ---------------------------------------------------------------------------
-// Date / time / timestamp / interval constructors
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_date(int32_t days, duckdb_v2_value_handle *out_value,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_date",
-	                             [days]() { return duckdb::Value::DATE(duckdb::date_t(days)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_time(int64_t micros, duckdb_v2_value_handle *out_value,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_time",
-	                             [micros]() { return duckdb::Value::TIME(duckdb::dtime_t(micros)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_time_ns(int64_t nanos, duckdb_v2_value_handle *out_value,
-                                                    duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_time_ns",
-	                             [nanos]() { return duckdb::Value::TIME_NS(duckdb::dtime_ns_t(nanos)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_time_tz(int64_t micros, int32_t offset_seconds,
-                                                    duckdb_v2_value_handle *out_value,
-                                                    duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_time_tz", [micros, offset_seconds]() {
-		return duckdb::Value::TIMETZ(duckdb::dtime_tz_t(duckdb::dtime_t(micros), offset_seconds));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp(int64_t micros, duckdb_v2_value_handle *out_value,
-                                                      duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_timestamp",
-	                             [micros]() { return duckdb::Value::TIMESTAMP(duckdb::timestamp_t(micros)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_sec(int64_t seconds, duckdb_v2_value_handle *out_value,
-                                                          duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_timestamp_sec",
-	                             [seconds]() { return duckdb::Value::TIMESTAMPSEC(duckdb::timestamp_sec_t(seconds)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_ms(int64_t millis, duckdb_v2_value_handle *out_value,
-                                                         duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_timestamp_ms",
-	                             [millis]() { return duckdb::Value::TIMESTAMPMS(duckdb::timestamp_ms_t(millis)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_ns(int64_t nanos, duckdb_v2_value_handle *out_value,
-                                                         duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_timestamp_ns",
-	                             [nanos]() { return duckdb::Value::TIMESTAMPNS(duckdb::timestamp_ns_t(nanos)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_tz(int64_t micros, duckdb_v2_value_handle *out_value,
-                                                         duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_timestamp_tz",
-	                             [micros]() { return duckdb::Value::TIMESTAMPTZ(duckdb::timestamp_tz_t(micros)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_tz_ns(int64_t nanos, duckdb_v2_value_handle *out_value,
-                                                            duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_timestamp_tz_ns",
-	                             [nanos]() { return duckdb::Value::TIMESTAMPTZNS(duckdb::timestamp_tz_ns_t(nanos)); });
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_interval(int32_t months, int32_t days, int64_t micros,
-                                                     duckdb_v2_value_handle *out_value,
-                                                     duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_interval",
-	                             [months, days, micros]() { return duckdb::Value::INTERVAL(months, days, micros); });
-}
-
-// ---------------------------------------------------------------------------
-// DECIMAL / UUID constructors
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_decimal(uint64_t lower, int64_t upper, uint8_t width, uint8_t scale,
-                                                    duckdb_v2_value_handle *out_value,
-                                                    duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_decimal");
-		}
-		*out_value = nullptr;
-		// Dispatch on width, not on whether the payload fits in int64. Width
-		// determines physical storage in core (SMALLINT for width<=4, INTEGER
-		// <=9, BIGINT <=18, HUGEINT >=19), and a (width=38, payload=5) caller
-		// expects HUGEINT physical even though 5 fits int64. The int64 ctor
-		// goes up to BIGINT physical only; the hugeint ctor is the only one
-		// that produces HUGEINT physical regardless of payload magnitude.
-		constexpr uint8_t MAX_WIDTH_INT64 = 18;
-		duckdb::hugeint_t hi(upper, lower);
-		duckdb::Value v;
-		if (width <= MAX_WIDTH_INT64) {
-			int64_t fit = 0;
-			if (!duckdb::Hugeint::TryCast<int64_t>(hi, fit)) {
-				throw duckdb::InvalidInputException("decimal payload does not fit the chosen width");
-			}
-			v = duckdb::Value::DECIMAL(fit, width, scale);
-		} else {
-			v = duckdb::Value::DECIMAL(hi, width, scale);
-		}
-		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(v)));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uuid(uint64_t lower, uint64_t upper, duckdb_v2_value_handle *out_value,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::MakePrimitive(out_value, err, "duckdb_v2_value_create_uuid", [lower, upper]() {
-		return duckdb::Value::UUID(duckdb::UUID::FromUHugeint(duckdb::uhugeint_t(upper, lower)));
-	});
-}
-
-// ---------------------------------------------------------------------------
-// Primitive getters
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bool(duckdb_v2_value_handle value, bool *out,
-                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_bool");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::BOOLEAN, "duckdb_v2_value_get_bool");
-		*out = duckdb::BooleanValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int8(duckdb_v2_value_handle value, int8_t *out,
-                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_int8");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TINYINT, "duckdb_v2_value_get_int8");
-		*out = duckdb::TinyIntValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int16(duckdb_v2_value_handle value, int16_t *out,
-                                               duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_int16");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::SMALLINT, "duckdb_v2_value_get_int16");
-		*out = duckdb::SmallIntValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int32(duckdb_v2_value_handle value, int32_t *out,
-                                               duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_int32");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::INTEGER, "duckdb_v2_value_get_int32");
-		*out = duckdb::IntegerValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int64(duckdb_v2_value_handle value, int64_t *out,
-                                               duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_int64");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::BIGINT, "duckdb_v2_value_get_int64");
-		*out = duckdb::BigIntValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint8(duckdb_v2_value_handle value, uint8_t *out,
-                                               duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_uint8");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::UTINYINT, "duckdb_v2_value_get_uint8");
-		*out = duckdb::UTinyIntValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint16(duckdb_v2_value_handle value, uint16_t *out,
-                                                duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_uint16");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::USMALLINT, "duckdb_v2_value_get_uint16");
-		*out = duckdb::USmallIntValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint32(duckdb_v2_value_handle value, uint32_t *out,
-                                                duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_uint32");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::UINTEGER, "duckdb_v2_value_get_uint32");
-		*out = duckdb::UIntegerValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint64(duckdb_v2_value_handle value, uint64_t *out,
-                                                duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_uint64");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::UBIGINT, "duckdb_v2_value_get_uint64");
-		*out = duckdb::UBigIntValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_float(duckdb_v2_value_handle value, float *out,
-                                               duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_float");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::FLOAT, "duckdb_v2_value_get_float");
-		*out = duckdb::FloatValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_double(duckdb_v2_value_handle value, double *out,
-                                                duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_double");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::DOUBLE, "duckdb_v2_value_get_double");
-		*out = duckdb::DoubleValue::Get(*duckdb::ToValue(value));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_hugeint(duckdb_v2_value_handle value, uint64_t *out_lower, int64_t *out_upper,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_lower || !out_upper) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_hugeint");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::HUGEINT, "duckdb_v2_value_get_hugeint");
-		auto hi = duckdb::HugeIntValue::Get(*duckdb::ToValue(value));
-		*out_lower = hi.lower;
-		*out_upper = hi.upper;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uhugeint(duckdb_v2_value_handle value, uint64_t *out_lower,
-                                                  uint64_t *out_upper, duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_lower || !out_upper) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_uhugeint");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::UHUGEINT, "duckdb_v2_value_get_uhugeint");
-		auto uhi = duckdb::UhugeIntValue::Get(*duckdb::ToValue(value));
-		*out_lower = uhi.lower;
-		*out_upper = uhi.upper;
-	});
-}
-
-// ---------------------------------------------------------------------------
-// VARCHAR / BLOB / BIT getters (borrowed) and BIGNUM getter (owned)
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_varchar(duckdb_v2_value_handle value, duckdb_v2_str *out_data,
-                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_data) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_varchar");
-		}
-		*out_data = duckdb_v2_str {nullptr, 0};
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::VARCHAR, "duckdb_v2_value_get_varchar");
-		*out_data = duckdb::ToStr(duckdb::StringValue::Get(*duckdb::ToValue(value)));
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_blob(duckdb_v2_value_handle value, const uint8_t **out_data, idx_t *out_length,
-                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::GetStringBytes(value, duckdb::LogicalTypeId::BLOB, "duckdb_v2_value_get_blob", out_data, out_length,
-	                              err);
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bit(duckdb_v2_value_handle value, const uint8_t **out_data, idx_t *out_length,
-                                             duckdb_v2_error_info_handle *err) {
-	return duckdb::GetStringBytes(value, duckdb::LogicalTypeId::BIT, "duckdb_v2_value_get_bit", out_data, out_length,
-	                              err);
-}
-
 DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bignum(duckdb_v2_value_handle value, uint8_t **out_data, idx_t *out_length,
                                                 bool *out_is_negative, duckdb_v2_error_info_handle *err) {
 	if (!out_data || !out_length || !out_is_negative) {
@@ -616,169 +453,182 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bignum(duckdb_v2_value_handle value, ui
 }
 
 // ---------------------------------------------------------------------------
-// Date / time / timestamp / interval getters
+// VARIANT codec (wire encoding not committed; unwrap is the read path)
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_date(duckdb_v2_value_handle value, int32_t *out_days,
-                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_days) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_date");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::DATE, "duckdb_v2_value_get_date");
-		*out_days = duckdb::DateValue::Get(*duckdb::ToValue(value)).days;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_time(duckdb_v2_value_handle value, int64_t *out_micros,
-                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_micros) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_time");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIME, "duckdb_v2_value_get_time");
-		*out_micros = duckdb::TimeValue::Get(*duckdb::ToValue(value)).micros;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_time_ns(duckdb_v2_value_handle value, int64_t *out_nanos,
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_variant(duckdb_v2_value_handle value, duckdb_v2_value_handle *out_value,
                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_nanos) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_time_ns");
+		if (!out_value) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_variant");
 		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIME_NS, "duckdb_v2_value_get_time_ns");
-		// dtime_ns_t inherits dtime_t and reuses its `micros` field name, but
-		// for TIME_NS the stored int64 actually carries nanoseconds (core
-		// naming inconsistency — see duckdb/common/types/datetime.hpp).
-		*out_nanos = duckdb::ToValue(value)->GetValueUnsafe<duckdb::dtime_ns_t>().micros;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_time_tz(duckdb_v2_value_handle value, int64_t *out_micros,
-                                                 int32_t *out_offset_seconds, duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_micros || !out_offset_seconds) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_time_tz");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIME_TZ, "duckdb_v2_value_get_time_tz");
-		auto packed = duckdb::ToValue(value)->GetValueUnsafe<duckdb::dtime_tz_t>();
-		*out_micros = packed.time().micros;
-		*out_offset_seconds = packed.offset();
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp(duckdb_v2_value_handle value, int64_t *out_micros,
-                                                   duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_micros) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_timestamp");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIMESTAMP, "duckdb_v2_value_get_timestamp");
-		*out_micros = duckdb::TimestampValue::Get(*duckdb::ToValue(value)).value;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_sec(duckdb_v2_value_handle value, int64_t *out_seconds,
-                                                       duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_seconds) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_timestamp_sec");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIMESTAMP_SEC, "duckdb_v2_value_get_timestamp_sec");
-		*out_seconds = duckdb::TimestampSValue::Get(*duckdb::ToValue(value)).value;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_ms(duckdb_v2_value_handle value, int64_t *out_millis,
-                                                      duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_millis) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_timestamp_ms");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIMESTAMP_MS, "duckdb_v2_value_get_timestamp_ms");
-		*out_millis = duckdb::TimestampMSValue::Get(*duckdb::ToValue(value)).value;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_ns(duckdb_v2_value_handle value, int64_t *out_nanos,
-                                                      duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_nanos) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_timestamp_ns");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIMESTAMP_NS, "duckdb_v2_value_get_timestamp_ns");
-		*out_nanos = duckdb::TimestampNSValue::Get(*duckdb::ToValue(value)).value;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_tz(duckdb_v2_value_handle value, int64_t *out_micros,
-                                                      duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_micros) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_timestamp_tz");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIMESTAMP_TZ, "duckdb_v2_value_get_timestamp_tz");
-		*out_micros = duckdb::TimestampTZValue::Get(*duckdb::ToValue(value)).value;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_tz_ns(duckdb_v2_value_handle value, int64_t *out_nanos,
-                                                         duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_nanos) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_timestamp_tz_ns");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TIMESTAMP_TZ_NS, "duckdb_v2_value_get_timestamp_tz_ns");
-		*out_nanos = duckdb::TimestampTZNSValue::Get(*duckdb::ToValue(value)).value;
-	});
-}
-
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_interval(duckdb_v2_value_handle value, int32_t *out_months, int32_t *out_days,
-                                                  int64_t *out_micros, duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_months || !out_days || !out_micros) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_interval");
-		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::INTERVAL, "duckdb_v2_value_get_interval");
-		auto iv = duckdb::IntervalValue::Get(*duckdb::ToValue(value));
-		*out_months = iv.months;
-		*out_days = iv.days;
-		*out_micros = iv.micros;
+		*out_value = nullptr;
+		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::VARIANT, "duckdb_v2_value_get_variant");
+		// Engine-side decode of the uncommitted variant wire encoding.
+		auto unwrapped = duckdb::VariantValue::GetValue(*duckdb::ToValue(value));
+		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(unwrapped)));
 	});
 }
 
 // ---------------------------------------------------------------------------
-// DECIMAL / UUID getters
+// TYPE values (a logical type carried as a value)
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_decimal(duckdb_v2_value_handle value, uint64_t *out_lower, int64_t *out_upper,
-                                                 uint8_t *out_width, uint8_t *out_scale,
+DUCKDB_V2_API_CALL_t duckdb_v2_value_create_type(duckdb_v2_logical_type_handle type, duckdb_v2_value_handle *out_value,
                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_lower || !out_upper || !out_width || !out_scale) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_decimal");
+		if (!type || !out_value) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_type");
 		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::DECIMAL, "duckdb_v2_value_get_decimal");
+		*out_value = nullptr;
+		// Value::TYPE stores its own serialized copy of the borrowed type.
+		auto *v = new duckdb::Value(duckdb::Value::TYPE(*duckdb::ToLogicalType(type)));
+		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_value_handle value, duckdb_v2_logical_type_handle *out_type,
+                                              duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!out_type) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_type");
+		}
+		*out_type = nullptr;
+		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::TYPE, "duckdb_v2_value_get_type");
+		// TypeValue::GetType deserializes the stored type into a fresh copy.
+		auto *lt = new duckdb::LogicalType(duckdb::TypeValue::GetType(*duckdb::ToValue(value)));
+		*out_type = reinterpret_cast<_duckdb_v2_logical_type *>(lt);
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Composite construction + descent + cast
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_value_create(duckdb_v2_logical_type_handle type, const duckdb_v2_value_handle *children,
+                                            idx_t child_count, duckdb_v2_value_handle *out_value,
+                                            duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!type || !out_value || (child_count > 0 && !children)) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create");
+		}
+		*out_value = nullptr;
+		duckdb::vector<duckdb::Value> vals;
+		vals.reserve(child_count);
+		for (idx_t i = 0; i < child_count; i++) {
+			if (!children[i]) {
+				throw duckdb::InvalidInputException("null child in duckdb_v2_value_create");
+			}
+			vals.push_back(*duckdb::ToValue(children[i]));
+		}
+		auto &lt = *duckdb::ToLogicalType(type);
+		duckdb::Value v;
+		// The engine constructors cast each child to the declared child/field
+		// type (DefaultCastAs); cast failures propagate.
+		switch (lt.id()) {
+		case duckdb::LogicalTypeId::LIST:
+			v = duckdb::Value::LIST(duckdb::ListType::GetChildType(lt), std::move(vals));
+			break;
+		case duckdb::LogicalTypeId::ARRAY:
+			if (child_count != duckdb::ArrayType::GetSize(lt)) {
+				throw duckdb::InvalidInputException(
+				    "duckdb_v2_value_create: child count must equal the declared array size");
+			}
+			v = duckdb::Value::ARRAY(duckdb::ArrayType::GetChildType(lt), std::move(vals));
+			break;
+		case duckdb::LogicalTypeId::STRUCT:
+			if (child_count != duckdb::StructType::GetChildCount(lt)) {
+				throw duckdb::InvalidInputException(
+				    "duckdb_v2_value_create: child count must equal the declared field count");
+			}
+			v = duckdb::Value::STRUCT(lt, std::move(vals));
+			break;
+		case duckdb::LogicalTypeId::MAP: {
+			if (child_count % 2 != 0) {
+				throw duckdb::InvalidInputException(
+				    "duckdb_v2_value_create: MAP children alternate key, value; count must be even");
+			}
+			duckdb::vector<duckdb::Value> keys;
+			duckdb::vector<duckdb::Value> values;
+			keys.reserve(child_count / 2);
+			values.reserve(child_count / 2);
+			for (idx_t i = 0; i < child_count; i += 2) {
+				keys.push_back(std::move(vals[i]));
+				values.push_back(std::move(vals[i + 1]));
+			}
+			v = duckdb::Value::MAP(duckdb::MapType::KeyType(lt), duckdb::MapType::ValueType(lt), std::move(keys),
+			                       std::move(values));
+			break;
+		}
+		default:
+			throw duckdb::InvalidInputException("duckdb_v2_value_create builds LIST, ARRAY, STRUCT, and MAP values; "
+			                                    "build UNION and ENUM values via duckdb_v2_value_cast");
+		}
+		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(v)));
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child_count(duckdb_v2_value_handle value, idx_t *out_count,
+                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!value || !out_count) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_child_count");
+		}
+		*out_count = duckdb::CompositeChildCount(*duckdb::ToValue(value));
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_value_handle value, idx_t index,
+                                               duckdb_v2_value_handle *out_child, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!value || !out_child) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_child");
+		}
+		*out_child = nullptr;
 		auto &v = *duckdb::ToValue(value);
-		auto packed = duckdb::IntegralValue::Get(v);
-		*out_lower = packed.lower;
-		*out_upper = packed.upper;
-		*out_width = duckdb::DecimalType::GetWidth(v.type());
-		*out_scale = duckdb::DecimalType::GetScale(v.type());
+		if (index >= duckdb::CompositeChildCount(v)) {
+			throw duckdb::InvalidInputException("child index out of range in duckdb_v2_value_get_child");
+		}
+		duckdb::Value child;
+		switch (v.type().id()) {
+		case duckdb::LogicalTypeId::LIST:
+			child = duckdb::ListValue::GetChildren(v)[index];
+			break;
+		case duckdb::LogicalTypeId::ARRAY:
+			child = duckdb::ArrayValue::GetChildren(v)[index];
+			break;
+		case duckdb::LogicalTypeId::STRUCT:
+			child = duckdb::StructValue::GetChildren(v)[index];
+			break;
+		case duckdb::LogicalTypeId::MAP: {
+			// Entries are STRUCT(key, value) internally; surface them
+			// alternating, symmetric with value_create.
+			auto &entry = duckdb::MapValue::GetChildren(v)[index / 2];
+			child = duckdb::StructValue::GetChildren(entry)[index % 2];
+			break;
+		}
+		case duckdb::LogicalTypeId::UNION:
+			child =
+			    index == 0 ? duckdb::Value::UTINYINT(duckdb::UnionValue::GetTag(v)) : duckdb::UnionValue::GetValue(v);
+			break;
+		default:
+			throw duckdb::InternalException("unreachable: bounds check rejects non-composites");
+		}
+		*out_child = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(child)));
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uuid(duckdb_v2_value_handle value, uint64_t *out_lower, uint64_t *out_upper,
-                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_value_cast(duckdb_v2_context_handle ctx, duckdb_v2_value_handle value,
+                                          duckdb_v2_logical_type_handle target_type, duckdb_v2_value_handle *out_value,
+                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!out_lower || !out_upper) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_uuid");
+		if (!ctx || !value || !target_type || !out_value) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_cast");
 		}
-		duckdb::RequireTypedValue(value, duckdb::LogicalTypeId::UUID, "duckdb_v2_value_get_uuid");
-		auto hi = duckdb::HugeIntValue::Get(*duckdb::ToValue(value));
-		auto uhi = duckdb::UUID::ToUHugeint(hi);
-		*out_lower = uhi.lower;
-		*out_upper = uhi.upper;
+		*out_value = nullptr;
+		// Non-strict, through the context's cast function set (registered
+		// custom casts included). Cast failures propagate.
+		auto casted = duckdb::ToValue(value)->CastAs(*duckdb::ToContext(ctx), *duckdb::ToLogicalType(target_type));
+		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(casted)));
 	});
 }

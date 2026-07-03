@@ -1,37 +1,37 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: value
 #
-# Primitive value constructors + getters + NULL + introspection.
+# Value construction + reading + NULL + composition + descent + cast.
 #
 # Mirrors duckdb::Value. A value carries a logical type plus a typed payload.
 # Internal storage:
 #   - primitives: inline union (bool, integer widths, float/double, hugeint,
 #     interval, all date/time/timestamp variants).
 #   - varchar/blob/bit/bignum/geometry: StringValueInfo (a managed std::string).
+#   - type: StringValueInfo holding the serialized logical type
+#     (value_create_type / value_get_type wrap and unwrap it).
 #   - composites (list/struct/map/array/union): NestedValueInfo (a vector of
-#     child Values). Composite construction is not part of this surface yet.
+#     child Values). Built via value_create (LIST/ARRAY/STRUCT/MAP) or
+#     value_cast (UNION from a member value, ENUM from VARCHAR); read via
+#     value_get_child_count / value_get_child.
 #
-# All constructors copy their input. *_create_varchar and *_create_blob
-# take (data, len) and copy. Pass len = 0 with a null data pointer to create
-# an empty value; pass len > 0 with a null data pointer to get
-# ERROR_INVALID_INPUT. *_create_bit and *_create_bignum are
-# stricter: data must not be NULL and len must be >= 1, because neither
-# encoding has a valid empty form (BIT carries a mandatory padding header
-# byte; BIGNUM expresses zero as a single 0x00 magnitude byte).
+# Leaf payloads cross the boundary through one generic codec pair:
+# value_create_from_data / value_get_data speak each kind's committed
+# physical layout (the vector view layout table plus the DECIMAL / ENUM
+# storage tier tables). There are no per-kind leaf constructors or
+# getters. BIGNUM is the one exception: its wire encoding (bit-inverted
+# negatives, engine-side details) is not committed contract, so it keeps
+# a dedicated codec pair, mirroring the vector module's bignum_decode.
 #
-# All getters return owned outputs (caller-destroyed) or borrowed pointers
-# (valid until the value handle is destroyed). The contract is documented
-# per-function.
+# All constructors copy their input. Getters return owned outputs
+# (caller-destroyed or caller-freed) or borrowed pointers (valid until the
+# value handle is destroyed); the contract is documented per function.
 #
-# NULL handling for typed-payload getters. Every primitive getter
-# (value_get_bool, value_get_int*, value_get_uint*, value_get_float,
-# value_get_double, value_get_hugeint, value_get_uhugeint, value_get_varchar,
-# value_get_blob, value_get_bit, value_get_bignum, value_get_date,
-# value_get_time*, value_get_timestamp*, value_get_interval,
-# value_get_decimal, value_get_uuid) returns ERROR_INVALID_INPUT
-# when the value is NULL — a NULL has no typed payload to hand back. Use
-# value_is_null first (or value_get_logical_type / value_to_string, which
-# both accept NULL values).
+# NULL handling: the payload readers (value_get_data, value_get_bignum,
+# value_get_type, value_get_variant) return ERROR_INVALID_INPUT when the value is NULL: a
+# NULL has no typed payload to hand back. Use value_is_null first (or
+# value_get_logical_type / value_to_string, which both accept NULL
+# values).
 
 functions:
   # -----------------------------------------------------------------------
@@ -73,313 +73,94 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   # -----------------------------------------------------------------------
-  # Primitive constructors
+  # Leaf payload codec
   # -----------------------------------------------------------------------
-  value_create_bool:
-    summary: Creates a BOOLEAN value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: bool
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_int8:
-    summary: Creates a TINYINT value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: i8
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_int16:
-    summary: Creates a SMALLINT value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: i16
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_int32:
-    summary: Creates an INTEGER value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: i32
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_int64:
-    summary: Creates a BIGINT value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_uint8:
-    summary: Creates a UTINYINT value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: u8
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_uint16:
-    summary: Creates a USMALLINT value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: u16
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_uint32:
-    summary: Creates a UINTEGER value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: u32
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_uint64:
-    summary: Creates a UBIGINT value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: u64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_hugeint:
-    summary: Creates a HUGEINT value.
+  value_create_from_data:
+    summary: Creates a leaf value of the given type from its committed physical layout.
     description: |
-      hugeint_t is a 128-bit signed integer represented as
-      (u64 lower, i64 upper).
-    role: constructor
-    belongs_to: value
-    parameters:
-      lower:
-        type: u64
-        description: Low 64 bits of the hugeint.
-      upper:
-        type: i64
-        description: High 64 bits of the hugeint.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_uhugeint:
-    summary: Creates a UHUGEINT value.
-    description: |
-      uhugeint_t is a 128-bit unsigned integer represented as
-      (u64 lower, u64 upper).
-    role: constructor
-    belongs_to: value
-    parameters:
-      lower:
-        type: u64
-      upper:
-        type: u64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_float:
-    summary: Creates a FLOAT value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: f32
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_double:
-    summary: Creates a DOUBLE value.
-    role: constructor
-    belongs_to: value
-    parameters:
-      input:
-        type: f64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_varchar:
-    summary: Creates a VARCHAR value (UTF-8 string).
-    description: |
-      Copies the input. Returns ERROR_INVALID_INPUT if data.ptr is
-      null but data.len > 0, or if the bytes are not valid UTF-8.
-    role: constructor
-    belongs_to: value
-    parameters:
-      data:
-        type: str
-        description: View of the UTF-8 bytes to copy. The pointer may be null when the length is 0.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_blob:
-    summary: Creates a BLOB value (uninterpreted bytes).
-    description: Copies the input. INVALID_INPUT if data is null but length > 0.
-    role: constructor
-    belongs_to: value
-    parameters:
-      data:
-        type: u8
-        indirection: 1
-        const: true
-        description: Pointer to byte payload. May be null when length is 0.
-      length:
-        type: idx
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_bit:
-    summary: Creates a BIT value (raw bit string with padding byte + data).
-    description: |
-      Takes the raw on-disk bit-string encoding: a single padding byte at
-      offset 0 followed by data bytes. Copies the input.
+      The generic leaf constructor: data holds the payload in exactly the
+      committed physical layout of the type, the same bytes a vector view
+      exposes. Fixed-size kinds (BOOLEAN, the integer and float widths,
+      DATE, all TIME and TIMESTAMP variants including the packed TIME_TZ
+      form, INTERVAL, HUGEINT and UHUGEINT, UUID in its internal hugeint
+      form, DECIMAL as the scaled integer of its width tier, ENUM as a
+      dictionary index of its size tier) require len equal to the layout
+      size; any other len returns ERROR_INVALID_INPUT. Variable-length
+      kinds take their wire bytes: VARCHAR (byte string; the engine
+      rejects invalid UTF-8 at construction), BLOB (any bytes), BIT (the
+      mandatory padding header byte plus data bytes, so len >= 1).
 
-      data must not be NULL and length must be >= 1. The padding header
-      byte is mandatory, so a length-0 BIT is malformed by encoding. A
-      NULL data pointer or length = 0 returns ERROR_INVALID_INPUT.
+      Layout-raw: beyond the length and layout gates above, semantic
+      invariants are NOT validated, the same stance as the data plane;
+      validation is value_cast's job. Two exceptions: the ENUM dictionary
+      index is bounds-checked (an out-of-range index is not addressable
+      storage), and VARCHAR rejects invalid UTF-8 (the engine enforces it
+      at construction).
+
+      Every other type id returns ERROR_INVALID_INPUT: TYPE values are
+      built via value_create_type, BIGNUM via value_create_bignum (its
+      wire encoding is not committed), composites via value_create;
+      GEOMETRY has no committed layout. The type is borrowed; the payload
+      is copied in.
     role: constructor
     belongs_to: value
     parameters:
+      type:
+        type: logical_type
+        description: The borrowed leaf logical type to instantiate.
       data:
-        type: u8
+        type: void
         indirection: 1
         const: true
-      length:
+        description: Pointer to the payload in the type's committed physical layout. May be null only when len is 0 (empty VARCHAR / BLOB).
+      len:
         type: idx
+        description: Payload size in bytes. Must equal the layout size for fixed-size kinds.
       out_value:
         type: value
         indirection: 1
         kind: OUT
+        description: Receives the new leaf value.
       err:
         type: error_info
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
+  value_get_data:
+    summary: Borrows a leaf value's payload in its committed physical layout.
+    description: |
+      The inverse of value_create_from_data: a borrowed view of the
+      payload in the same committed layout, valid until the value is
+      destroyed. Fixed-size kinds report the layout size; VARCHAR, BLOB,
+      and BIT report their wire bytes. Returns ERROR_INVALID_INPUT for
+      NULL values (a NULL has no payload to hand back; use value_is_null
+      first) and for the kinds value_create_from_data rejects.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_data:
+        type: void
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Receives a borrowed pointer to the payload bytes.
+      out_len:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the payload size in bytes.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # BIGNUM codec (wire encoding not committed; see module commentary)
+  # -----------------------------------------------------------------------
   value_create_bignum:
     summary: Creates a BIGNUM (arbitrary-precision integer) value from raw bytes.
     description: |
@@ -414,258 +195,272 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  value_create_date:
-    summary: Creates a DATE value (days since the Unix epoch).
-    role: constructor
-    belongs_to: value
-    parameters:
-      days:
-        type: i32
-        description: Days since 1970-01-01.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_time:
-    summary: Creates a TIME value (microseconds since midnight).
-    role: constructor
-    belongs_to: value
-    parameters:
-      micros:
-        type: i64
-        description: Microseconds since midnight.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_time_ns:
-    summary: Creates a TIME_NS value (nanoseconds since midnight).
-    role: constructor
-    belongs_to: value
-    parameters:
-      nanos:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_time_tz:
-    summary: Creates a TIME_TZ value (micros since midnight + timezone offset).
+  value_get_bignum:
+    summary: Returns the magnitude bytes and sign flag of a BIGNUM value.
     description: |
-      Microseconds since midnight plus a timezone offset in seconds.
-      Internally packed into a 64-bit dtime_tz_t.
-    role: constructor
+      Returns the decoded big-endian magnitude bytes (no VARINT header)
+      and the sign flag. Caller reconstructs the integer as
+      (-1)**is_negative * unsigned_big_endian(out_data[0..out_length]).
+
+      The magnitude buffer is caller-owned and must be freed with free().
+      Allocation is required even for positive bignums (and unavoidable
+      for negative ones, where core stores the magnitude bit-inverted):
+      the buffer is a fresh malloc'd copy in both cases.
+    role: getter
     belongs_to: value
     parameters:
-      micros:
-        type: i64
-        description: Microseconds since midnight.
-      offset_seconds:
-        type: i32
-        description: Timezone offset in seconds (east of UTC positive).
-      out_value:
+      value:
         type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_timestamp:
-    summary: Creates a TIMESTAMP value (microseconds since epoch).
-    role: constructor
-    belongs_to: value
-    parameters:
-      micros:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_timestamp_sec:
-    summary: Creates a TIMESTAMP_S value (seconds since epoch).
-    role: constructor
-    belongs_to: value
-    parameters:
-      seconds:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_timestamp_ms:
-    summary: Creates a TIMESTAMP_MS value (milliseconds since epoch).
-    role: constructor
-    belongs_to: value
-    parameters:
-      millis:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_timestamp_ns:
-    summary: Creates a TIMESTAMP_NS value (nanoseconds since epoch).
-    role: constructor
-    belongs_to: value
-    parameters:
-      nanos:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_timestamp_tz:
-    summary: Creates a TIMESTAMP_TZ value (microseconds since epoch, UTC-anchored).
-    role: constructor
-    belongs_to: value
-    parameters:
-      micros:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_timestamp_tz_ns:
-    summary: Creates a TIMESTAMP_TZ_NS value (nanoseconds since epoch, UTC-anchored).
-    role: constructor
-    belongs_to: value
-    parameters:
-      nanos:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_interval:
-    summary: Creates an INTERVAL value.
-    description: |
-      DuckDB intervals are (months, days, microseconds) triples. Months and
-      days have variable lengths (calendar arithmetic), microseconds are a
-      fixed duration.
-    role: constructor
-    belongs_to: value
-    parameters:
-      months:
-        type: i32
-      days:
-        type: i32
-      micros:
-        type: i64
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_create_decimal:
-    summary: Creates a DECIMAL value from a hugeint payload + width/scale.
-    description: |
-      DECIMAL values internally store a scaled signed integer. Pass the
-      integer as the two halves of a 128-bit signed value (the internal
-      representation widens as needed for widths above 18). For widths
-      <= 18, the lower 64 bits hold the entire value (signed).
-    role: constructor
-    belongs_to: value
-    parameters:
-      lower:
-        type: u64
-        description: Low 64 bits of the scaled signed integer.
-      upper:
-        type: i64
-        description: High 64 bits of the scaled signed integer.
-      width:
+      out_data:
         type: u8
-        description: Total digit count, in [1, 38].
-      scale:
-        type: u8
-        description: Number of fractional digits, in [0, width].
-      out_value:
-        type: value
+        indirection: 2
+        kind: OUT
+        description: Receives a malloc'd buffer of magnitude bytes. Caller frees.
+      out_length:
+        type: idx
         indirection: 1
         kind: OUT
+        description: Receives the length of the magnitude buffer in bytes.
+      out_is_negative:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives true if the value is negative, false otherwise.
       err:
         type: error_info
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  value_create_uuid:
-    summary: Creates a UUID value from its 128-bit representation.
+  # -----------------------------------------------------------------------
+  # VARIANT codec (wire encoding not committed; unwrap is the read path)
+  # -----------------------------------------------------------------------
+  value_get_variant:
+    summary: Unwraps a VARIANT value into the plain value it carries.
     description: |
-      A UUID is encoded as a hugeint internally. Pass the 128 bits as
-      (lower 64, upper 64).
-    role: constructor
+      Decodes the variant payload engine-side and returns the carried
+      value with its real logical type, so per-row inner-type discovery
+      needs no prior knowledge: inspect the result via
+      value_get_logical_type and descend or read it like any other value.
+      Returns ERROR_INVALID_INPUT unless the input is a non-NULL VARIANT
+      value. The returned value is caller-owned; destroy via
+      value_destroy.
+
+      Decoding is faithful to the variant encoding, not to the original
+      SQL type: homogeneous arrays come back as typed LISTs, variant
+      objects as STRUCTs with field names, MAPs as their key-value-array
+      form (LIST of STRUCT(key, value)), and heterogeneous arrays as
+      LIST(VARIANT) whose elements unwrap individually.
+
+      The variant wire encoding itself is not committed contract:
+      vector_get_value hands out the boxed VARIANT cell and this unwrap
+      decodes it, mirroring how the BIGNUM codec pair owns that kind's
+      uncommitted encoding.
+    role: getter
     belongs_to: value
     parameters:
-      lower:
-        type: u64
-      upper:
-        type: u64
+      value:
+        type: value
       out_value:
         type: value
         indirection: 1
         kind: OUT
+        description: Receives the owned unwrapped value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # TYPE values (a logical type carried as a value)
+  # -----------------------------------------------------------------------
+  value_create_type:
+    summary: Creates a TYPE value wrapping a logical type.
+    description: |
+      The input logical type is borrowed; the value stores its own copy
+      (serialized form), so the caller can destroy the logical type
+      independently. TYPE values carry types where a value is expected,
+      e.g. as type parameters.
+    role: constructor
+    belongs_to: value
+    parameters:
+      type:
+        type: logical_type
+        description: The borrowed logical type to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new TYPE value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  value_get_type:
+    summary: Unwraps the logical type carried by a TYPE value.
+    description: |
+      Returns ERROR_INVALID_INPUT unless the value is a non-NULL TYPE
+      value. The returned logical type is caller-owned and must be
+      destroyed via logical_type_destroy.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the owned logical type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
+  # Composite construction + descent + cast
+  # -----------------------------------------------------------------------
+  value_create:
+    summary: Creates a composite value from a type plus child values.
+    description: |
+      The generic composite constructor. Per type kind:
+      LIST, children are the elements, any count including 0;
+      ARRAY, count must equal the declared array size;
+      STRUCT, positional per declared field order, count = field count;
+      MAP, alternating key, value, so count is even and 2 x the entry
+      count. Every other type id returns ERROR_INVALID_INPUT: UNION and
+      ENUM values are built via value_cast (a member value to the union
+      type, a VARCHAR to the enum type), primitives via their typed
+      constructors.
+
+      The type and children are borrowed (copied in). The engine casts
+      each child to the declared child or field type (non-strict default
+      cast); cast failures surface. NULL children become typed NULLs.
+      MAP keys must be non-NULL and unique; violations surface.
+      LIST, ARRAY, and MAP rebuild the outer type from its components, so
+      an alias on the outer type is not preserved; STRUCT keeps its
+      declared type, alias included. value_cast is the alias-preserving
+      construction path.
+    role: constructor
+    belongs_to: value
+    parameters:
+      type:
+        type: logical_type
+        description: The borrowed composite logical type to instantiate.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of child_count child values. Borrowed (copied in). Pass NULL when child_count is 0.
+      child_count:
+        type: idx
+        description: The number of child values.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  value_get_child_count:
+    summary: Returns the number of child values of a value.
+    description: |
+      Per type kind: LIST and ARRAY, the element count; STRUCT, the field
+      count; MAP, 2 x the entry count (children alternate key, value);
+      UNION, 2 (tag plus active member). Everything else, including NULL
+      values of any nested type, reports 0.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of children.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  value_get_child:
+    summary: Returns one child of a composite value as an owned copy.
+    description: |
+      LIST and ARRAY children are the elements; STRUCT children are the
+      fields in declared order (field names come from the type, e.g.
+      logical_type_get_param); MAP children alternate key, value,
+      symmetric with value_create. UNION children are [0] the tag as a
+      UTINYINT value and [1] the active member: a union VALUE holds only
+      its active member. LOUD divergence for generic-descent authors: the
+      vector module's vector_get_child uses [0] = tag, [1..N] = ALL
+      members (structural descent); see that module's index convention
+      before writing code generic over both. Out-of-range index (including
+      any index on a non-composite or NULL value) returns
+      ERROR_INVALID_INPUT. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      index:
+        type: idx
+        description: The child index, in [0, child_count).
+      out_child:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned child value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  value_cast:
+    summary: Casts a value to a target type through the engine's cast machinery.
+    description: |
+      The SQL-faithful conversion (non-strict), registered custom casts
+      included. Cast failures surface from the call. With a VARCHAR built
+      through value_create_from_data this constructs any value from text,
+      extension values included; casting a member value to a union type
+      or a VARCHAR to an enum type is the sanctioned way to build UNION
+      and ENUM values.
+
+      Runs in the caller's context scope (see
+      logical_type_create_from_text): reach it through
+      connection_execute_with_context or from a bind-phase callback, not
+      an exec-phase worker callback.
+
+      The input value and target type are borrowed. The returned value is
+      caller-owned; destroy via value_destroy.
+    role: method
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context supplying the cast function set.
+      value:
+        type: value
+        description: The borrowed value to cast.
+      target_type:
+        type: logical_type
+        description: The borrowed target logical type.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned cast result.
       err:
         type: error_info
         indirection: 1
@@ -728,596 +523,6 @@ functions:
         indirection: 2
         kind: OUT
         description: Receives a malloc'd null-terminated string. Caller frees.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # Primitive getters
-  # -----------------------------------------------------------------------
-  value_get_bool:
-    summary: Reads a BOOLEAN value.
-    description: INVALID_INPUT if the value is not BOOLEAN or is NULL.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: bool
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_int8:
-    summary: Reads a TINYINT value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: i8
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_int16:
-    summary: Reads a SMALLINT value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: i16
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_int32:
-    summary: Reads an INTEGER value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: i32
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_int64:
-    summary: Reads a BIGINT value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_uint8:
-    summary: Reads a UTINYINT value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: u8
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_uint16:
-    summary: Reads a USMALLINT value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: u16
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_uint32:
-    summary: Reads a UINTEGER value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: u32
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_uint64:
-    summary: Reads a UBIGINT value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: u64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_hugeint:
-    summary: Reads a HUGEINT value as (lower, upper) halves.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_lower:
-        type: u64
-        indirection: 1
-        kind: OUT
-      out_upper:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_uhugeint:
-    summary: Reads a UHUGEINT value as (lower, upper) halves.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_lower:
-        type: u64
-        indirection: 1
-        kind: OUT
-      out_upper:
-        type: u64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_float:
-    summary: Reads a FLOAT value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: f32
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_double:
-    summary: Reads a DOUBLE value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out:
-        type: f64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_varchar:
-    summary: Borrows the bytes of a VARCHAR value.
-    description: |
-      Returns a borrowed view. The data is valid until the value is
-      destroyed; the bytes are not null-terminated by contract.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_data:
-        type: str
-        indirection: 1
-        kind: OUT_BORROW
-        description: Receives a borrowed view of the VARCHAR bytes.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_blob:
-    summary: Borrows the bytes of a BLOB value.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_data:
-        type: u8
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-      out_length:
-        type: idx
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_bit:
-    summary: Borrows the raw bit-string bytes of a BIT value.
-    description: |
-      Includes the leading padding byte and the trailing data bytes — the
-      same on-disk encoding accepted by value_create_bit.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_data:
-        type: u8
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-      out_length:
-        type: idx
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_bignum:
-    summary: Returns the magnitude bytes and sign flag of a BIGNUM value.
-    description: |
-      Returns the decoded big-endian magnitude bytes (no VARINT header)
-      and the sign flag. Caller reconstructs the integer as
-      (-1)**is_negative * unsigned_big_endian(out_data[0..out_length]).
-
-      The magnitude buffer is caller-owned and must be freed with free().
-      Allocation is required even for positive bignums (and unavoidable
-      for negative ones, where core stores the magnitude bit-inverted) —
-      the buffer is a fresh malloc'd copy in both cases.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_data:
-        type: u8
-        indirection: 2
-        kind: OUT
-        description: Receives a malloc'd buffer of magnitude bytes. Caller frees.
-      out_length:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: Receives the length of the magnitude buffer in bytes.
-      out_is_negative:
-        type: bool
-        indirection: 1
-        kind: OUT
-        description: Receives true if the value is negative, false otherwise.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_date:
-    summary: Reads a DATE value (days since the Unix epoch).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_days:
-        type: i32
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_time:
-    summary: Reads a TIME value (microseconds since midnight).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_micros:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_time_ns:
-    summary: Reads a TIME_NS value (nanoseconds since midnight).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_nanos:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_time_tz:
-    summary: Reads a TIME_TZ value as (microseconds, offset_seconds).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_micros:
-        type: i64
-        indirection: 1
-        kind: OUT
-      out_offset_seconds:
-        type: i32
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_timestamp:
-    summary: Reads a TIMESTAMP value (microseconds since epoch).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_micros:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_timestamp_sec:
-    summary: Reads a TIMESTAMP_S value (seconds since epoch).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_seconds:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_timestamp_ms:
-    summary: Reads a TIMESTAMP_MS value (milliseconds since epoch).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_millis:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_timestamp_ns:
-    summary: Reads a TIMESTAMP_NS value (nanoseconds since epoch).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_nanos:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_timestamp_tz:
-    summary: Reads a TIMESTAMP_TZ value (microseconds since epoch, UTC-anchored).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_micros:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_timestamp_tz_ns:
-    summary: Reads a TIMESTAMP_TZ_NS value (nanoseconds since epoch, UTC-anchored).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_nanos:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_interval:
-    summary: Reads an INTERVAL value as (months, days, micros).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_months:
-        type: i32
-        indirection: 1
-        kind: OUT
-      out_days:
-        type: i32
-        indirection: 1
-        kind: OUT
-      out_micros:
-        type: i64
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_decimal:
-    summary: Reads a DECIMAL value as (scaled lower, scaled upper, width, scale).
-    description: |
-      Returns the underlying scaled 128-bit signed integer in two halves.
-      For widths <= 18, the value fits in the lower half (as signed int64).
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_lower:
-        type: u64
-        indirection: 1
-        kind: OUT
-      out_upper:
-        type: i64
-        indirection: 1
-        kind: OUT
-      out_width:
-        type: u8
-        indirection: 1
-        kind: OUT
-      out_scale:
-        type: u8
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  value_get_uuid:
-    summary: Reads a UUID value as (lower, upper) 64-bit halves.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_lower:
-        type: u64
-        indirection: 1
-        kind: OUT
-      out_upper:
-        type: u64
-        indirection: 1
-        kind: OUT
       err:
         type: error_info
         indirection: 1

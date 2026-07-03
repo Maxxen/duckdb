@@ -31,14 +31,19 @@ module: vector
 #   - primitives (BOOL, INT*, UINT*, FLOAT, DOUBLE, DATE, TIME*, TIMESTAMP*)
 #     → typed leaf array (cast to const T *)
 #   - HUGEINT / UUID / DECIMAL128 → cast to const hugeint_t *
-#     (decimal width+scale via logical_type_get_decimal_*; uuid stores
+#     (decimal width+scale via logical_type_get_param; uuid stores
 #     the 128-bit value in hugeint layout)
 #   - UHUGEINT → const uhugeint_t *
 #   - INTERVAL → const interval_t * (months, days, micros)
 #   - DECIMAL16/32/64 → typed leaf array (i16/i32/i64); width+scale via
-#     logical_type_get_decimal_*
+#     logical_type_get_param. Storage tier by width, contract:
+#     width <= 4 int16, <= 9 int32, <= 18 int64, <= 38 int128
+#     (boundaries inclusive).
 #   - ENUM (u8/u16/u32) → typed leaf array of dictionary indices;
-#     resolve via logical_type_get_enum_value
+#     resolve via logical_type_get_param (one owned VARCHAR value per
+#     entry; read the dictionary once, not per row). Storage tier by
+#     dictionary size, contract: size <= 255 uint8, <= 65535 uint16,
+#     else uint32 (boundaries inclusive; an empty dictionary is uint8).
 #   - VARCHAR / BLOB / BIT / BIGNUM → const string_t * (typed via the
 #     varchar_t / blob_t / bit_t / bignum_t aliases). Decode via the
 #     per-kind bridge decoder (varchar_decode / blob_decode / bit_decode
@@ -74,11 +79,13 @@ module: vector
 #   ARRAY   → 1 child:  [0] = elements
 #   STRUCT  → N children: [i] = field i
 #   UNION   → N+1 children: [0] = tag, [1..N] = members
+#             LOUD divergence: value_get_child on a UNION value returns
+#             [0] = tag, [1] = the ACTIVE member only (child_count 2); a
+#             union value holds one member, a union vector holds all.
 #   others  → 0
 #
 # The "how many fields / how many members" questions are answered by
-# PR1's logical_type_get_struct_child_count / _get_union_member_count,
-# not by vector-side accessors.
+# logical_type_get_param_count, not by vector-side accessors.
 #
 # View constructor rejects FSST / SEQUENCE / SHREDDED vectors (kind
 # VECTOR_TYPE_OTHER). Call vector_flatten first.
@@ -243,6 +250,74 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   # -----------------------------------------------------------------------
+  # Single-cell value bridge
+  # -----------------------------------------------------------------------
+  vector_get_value:
+    summary: Reads one cell of a vector as an owned value.
+    description: |
+      The total fallback reader: reads any logical row of any vector
+      representation without flattening (FLAT, CONSTANT, DICTIONARY, and
+      the compressed kinds the view getter rejects) and over every type
+      kind, including kinds without a committed view layout (VARIANT,
+      GEOMETRY today), where this is the only cell access path.
+
+      One owned value allocation per call: a control-plane single-cell
+      bridge, not a per-row loop primitive; use vector_get_view on hot
+      paths. The row index is logical and bounds-checked against
+      vector_get_size. The returned value is caller-owned; destroy via
+      value_destroy.
+    role: getter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      row:
+        type: idx
+        description: The logical row index, in [0, vector_get_size).
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned cell value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  vector_set_value:
+    summary: Writes one cell of a FLAT vector from a value.
+    description: |
+      The total fallback writer over every type kind, including kinds
+      without a committed view layout (VARIANT, GEOMETRY today), where
+      this is the only cell write path. The value is borrowed (copied
+      in) and cast to the vector's type (non-strict default cast); cast
+      failures surface. A NULL value clears the row's validity.
+
+      Requires a FLAT vector: constant, dictionary, and compressed
+      representations are not row-addressable, call vector_flatten
+      first. One engine value write per call: a control-plane
+      single-cell bridge, not a per-row loop primitive; use the typed
+      mutable-data paths on hot paths. The row index is logical and
+      bounds-checked against vector_get_size.
+    role: setter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      row:
+        type: idx
+        description: The logical row index, in [0, vector_get_size).
+      value:
+        type: value
+        description: The borrowed value to write. Copied in; cast to the vector's type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  # -----------------------------------------------------------------------
   # Mutable Access
   # -----------------------------------------------------------------------
   vector_get_data_mutable:
@@ -292,7 +367,8 @@ functions:
       After this call the vector holds a single value that applies to every
       logical row. Write the value via vector_get_data_mutable (which
       returns a pointer to the single element). For STRUCT vectors the
-      type change propagates to all children.
+      type change propagates to all children. The value's logical type
+      must equal the vector's; a mismatch returns ERROR_INVALID_INPUT.
     role: method
     belongs_to: vector
     parameters:
@@ -417,6 +493,7 @@ functions:
   #   ARRAY   → 1 child:  [0] = elements
   #   STRUCT  → N children: [i] = field i
   #   UNION   → N+1 children: [0] = tag, [1..N] = members
+  #             (value_get_child diverges: [0] = tag, [1] = active member)
   #   others  → 0
   #
   # The child Vector returned by get_child is borrowed; its lifetime

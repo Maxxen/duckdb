@@ -226,6 +226,9 @@ public:
 	// type of the value. Only use this if you know what you are doing.
 	template <class T>
 	T GetValueUnsafe() const;
+	//! Returns a reference to the internally stored value. Can only be used for primitive types.
+	template <class T>
+	const T &GetReferenceUnsafe() const;
 
 	//! Return a copy of this value
 	Value Copy() const {
@@ -653,6 +656,35 @@ template <>
 DUCKDB_API timestamp_tz_ns_t Value::GetValueUnsafe() const;
 template <>
 DUCKDB_API interval_t Value::GetValueUnsafe() const;
+
+template <>
+DUCKDB_API const bool &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const int8_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const int16_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const int32_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const int64_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const hugeint_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const uhugeint_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const uint8_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const uint16_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const uint32_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const uint64_t &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const float &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const double &Value::GetReferenceUnsafe() const;
+template <>
+DUCKDB_API const interval_t &Value::GetReferenceUnsafe() const;
 
 template <>
 DUCKDB_API bool Value::IsNan(float input);

@@ -88,9 +88,7 @@ std::string DrainVarcharScalar(duckdb_v2_result_handle r) {
 }
 
 duckdb_v2_value_handle Int32Value(int32_t v) {
-	duckdb_v2_value_handle handle = nullptr;
-	REQUIRE(duckdb_v2_value_create_int32(v, &handle, nullptr) == DUCKDB_V2_ERROR_NONE);
-	return handle;
+	return V2Int32Value(v);
 }
 
 // Seed a 4-row table t(x INTEGER) with {1,2,3,4}.
@@ -180,10 +178,8 @@ TEST_CASE("V2: prepared_execute binds positional parameters correctly", "[capi_v
 	auto prepared = PsPrepare(fx.conn, "SELECT $1::VARCHAR || $2::VARCHAR", false);
 	REQUIRE(prepared != nullptr);
 
-	duckdb_v2_value_handle a = nullptr;
-	duckdb_v2_value_handle b = nullptr;
-	REQUIRE(V2ValueCreateVarchar("a", 1, &a, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(V2ValueCreateVarchar("b", 1, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle a = V2VarcharValue("a");
+	duckdb_v2_value_handle b = V2VarcharValue("b");
 	duckdb_v2_value_handle values[2] = {a, b};
 
 	duckdb_v2_result_handle r = nullptr;

@@ -238,8 +238,7 @@ TEST_CASE("V2: BLOB with embedded nulls (inline + heap)", "[capi_v2][string_heap
 TEST_CASE("V2: string heap write on constant vector", "[capi_v2][string_heap]") {
 	StringChunk fixture(DUCKDB_TYPE_VARCHAR);
 
-	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(V2ValueCreateVarchar("init", 4, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle value = V2VarcharValue("init");
 	REQUIRE(duckdb_v2_vector_make_constant(fixture.vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 

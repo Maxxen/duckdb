@@ -159,7 +159,15 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_constant(duckdb_v2_vector_handle vect
 		if (!value) {
 			throw duckdb::InvalidInputException("Value cannot be null.");
 		}
-		duckdb::ConstantVector::Reference(*duckdb::ToVector(vector), *duckdb::ToValue(value), duckdb::count_t(count));
+		auto *vec = duckdb::ToVector(vector);
+		auto *val = duckdb::ToValue(value);
+		// The engine only debug-asserts this in ConstantVector::Reference; a
+		// mismatch in release would corrupt the vector silently.
+		if (vec->GetType() != val->type()) {
+			throw duckdb::InvalidInputException(
+			    "duckdb_v2_vector_make_constant: value type does not match the vector's logical type");
+		}
+		duckdb::ConstantVector::Reference(*vec, *val, duckdb::count_t(count));
 	});
 }
 
@@ -351,6 +359,46 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_handle vector, i
 			vec->Reserve(size);
 		}
 		duckdb::FlatVector::SetSize(*vec, size);
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Single-cell value bridge
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_value(duckdb_v2_vector_handle vector, idx_t row,
+                                                duckdb_v2_value_handle *out_value, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector || !out_value) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_value");
+		}
+		*out_value = nullptr;
+		auto *vec = duckdb::ToVector(vector);
+		if (row >= vec->size()) {
+			throw duckdb::InvalidInputException("row out of range in duckdb_v2_vector_get_value");
+		}
+		// Buffer-dispatched read: total over vector representations (constant
+		// clamps, dictionary resolves through its selection vector).
+		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(vec->GetValue(row)));
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_value(duckdb_v2_vector_handle vector, idx_t row, duckdb_v2_value_handle value,
+                                                duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector || !value) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_set_value");
+		}
+		auto *vec = duckdb::ToVector(vector);
+		if (vec->GetVectorType() != duckdb::VectorType::FLAT_VECTOR) {
+			throw duckdb::InvalidInputException(
+			    "duckdb_v2_vector_set_value requires a FLAT vector; call duckdb_v2_vector_flatten first");
+		}
+		if (row >= vec->size()) {
+			throw duckdb::InvalidInputException("row out of range in duckdb_v2_vector_set_value");
+		}
+		// The buffer casts the value to the vector's type; cast failures propagate.
+		vec->SetValue(row, *duckdb::ToValue(value));
 	});
 }
 

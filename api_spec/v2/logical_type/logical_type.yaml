@@ -1,20 +1,24 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
 module: logical_type
 #
-# Read-side introspection of logical types. The construction surface is
-# primitive-only (logical_type_create_from_id) until a real consumer (UDF
-# API, extension-type registration) needs composite constructors; composite
-# construction is not part of this surface yet.
+# Introspection plus three construction paths: primitive ids
+# (logical_type_create_from_id, context-free), SQL text
+# (logical_type_create_from_text), and generic (name, params)
+# construction (logical_type_create), all covering built-in and
+# catalog-registered types alike. The two catalog-aware constructors
+# take a context; external callers reach them through
+# connection_execute_with_context. logical_type_to_text renders back to
+# SQL text.
 #
-# Mirrors duckdb::LogicalType and the kind-specific accessors it exposes
-# internally (decimal width/scale, enum dictionary, list/array/struct/map/
-# union children).
+# Inspection is generic: logical_type_get_param_count /
+# logical_type_get_param are the exact dual of logical_type_create.
+# There are no per-kind getters. DECIMAL and ENUM physical storage tiers
+# are committed contract text in the vector module's view docstring
+# (derivable from width / dictionary size), not getters.
 #
-# Borrowed pointers returned by *_get_alias, *_get_enum_value,
-# *_get_struct_child_name, *_get_union_member_name are valid until the
-# owning logical_type handle is destroyed. Logical types returned by
-# *_get_list_child_type / *_get_struct_child_type / etc. are owned by the
-# caller and must be destroyed.
+# Borrowed views returned by *_get_name and *_get_param (the name) are
+# valid until the owning logical_type handle is destroyed. Values
+# returned by *_get_param are owned by the caller.
 #
 # The LOGICAL_TYPE_ID enum values mirror duckdb::LogicalTypeId
 # integer values exactly, so the numeric round-trip matches what's stored
@@ -40,6 +44,9 @@ enums:
       LOGICAL_TYPE_ID_ANY:
         value: 3
         description: ANY — used for functions that accept any type.
+      LOGICAL_TYPE_ID_TYPE:
+        value: 6
+        description: A type carried as a value (type parameters). Values of this type are built via value_create_type.
       LOGICAL_TYPE_ID_BOOLEAN:
         value: 10
       LOGICAL_TYPE_ID_TINYINT:
@@ -143,7 +150,8 @@ functions:
 
       Returns ERROR_INVALID_INPUT for parameterised type ids
       (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
-      for bind-time-only ids (SQLNULL, ANY, UNKNOWN), and for INVALID.
+      for bind-time-only ids (SQLNULL, ANY, UNKNOWN), for TYPE (construct
+      it via logical_type_create_from_text), and for INVALID.
       Composite construction is not part of this surface yet.
     role: constructor
     belongs_to: logical_type
@@ -151,6 +159,116 @@ functions:
       type_id:
         type: LOGICAL_TYPE_ID
         description: The primitive type id to instantiate.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_create_from_text:
+    summary: Creates a logical type by parsing SQL text.
+    description: |
+      Parses a SQL type expression in the given context and returns the
+      bound logical type: primitives ("INTEGER"), parameterized kinds
+      ("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)",
+      "MAP(VARCHAR, INTEGER)", "INTEGER[3]", "UNION(i INTEGER, s VARCHAR)",
+      "ENUM('a', 'b')"), and catalog-registered type names (user-defined
+      and extension types). A catalog type name binds to its structural
+      type; the name is not preserved as an alias. Names are
+      case-insensitive. Parse and bind errors surface from the call.
+
+      Runs in the caller's context scope: a context handle arrives with
+      the context lock held and a transaction active
+      (connection_execute_with_context, function bind callbacks, custom
+      type registration). External callers reach this call through
+      connection_execute_with_context. Catalog-touching context calls
+      belong in bind-phase callbacks and with-context scopes, not
+      exec-phase worker callbacks.
+
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy. A type resolved from the catalog shares
+      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      closing the database. Inverse of logical_type_to_text for every
+      constructible kind.
+    role: constructor
+    belongs_to: logical_type
+    parameters:
+      ctx:
+        type: context
+        description: The context supplying the catalog and active transaction.
+      text:
+        type: str
+        description: View of the SQL type expression to parse.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  logical_type_create:
+    summary: Creates a logical type from a type name plus value parameters.
+    description: |
+      The generic constructor: resolves the name in the context's catalog
+      (search path first, then the system catalog) and binds it with the
+      given parameters, mirroring how SQL binds a type expression.
+      Built-in parameterized kinds and registered extension types
+      construct through the same call.
+
+      Parameters are (name, value) pairs in two parallel arrays.
+      param_names may be NULL (all positional); a {NULL, 0} entry makes
+      that one parameter positional. Child types cross as TYPE values
+      (value_create_type). Built-in shapes: decimal(width, scale);
+      list(T); array(T, size); map(K, V); struct(fields as named or all
+      positional TYPE values); union(members as named TYPE values);
+      enum(entries as VARCHAR values); varchar with a named "collation"
+      VARCHAR parameter.
+
+      A name that resolves to a type without a bind function takes no
+      parameters: passing any fails. Bind errors (unknown name, wrong
+      parameter count or types) surface from the call.
+
+      Runs in the caller's context scope (see
+      logical_type_create_from_text): reach it through
+      connection_execute_with_context or from a bind-phase callback, not
+      an exec-phase worker callback.
+
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy. A type resolved from the catalog shares
+      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      closing the database. Inverse of logical_type_get_param_count /
+      logical_type_get_param.
+    role: constructor
+    belongs_to: logical_type
+    parameters:
+      ctx:
+        type: context
+        description: The context supplying the catalog and active transaction.
+      name:
+        type: str
+        description: View of the type name to resolve. Unqualified; case-insensitive.
+      param_names:
+        type: str
+        indirection: 1
+        const: true
+        description: Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for all-positional parameters.
+      param_values:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+      param_count:
+        type: idx
+        description: The number of parameters.
       out_type:
         type: logical_type
         indirection: 1
@@ -244,339 +362,50 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  logical_type_get_alias:
-    summary: Borrows the logical type's alias (extension/user-defined name) if any.
+  logical_type_get_name:
+    summary: Borrows the logical type's name.
     description: |
-      On success, writes a borrowed view of the alias into *out_alias
-      if the type has a non-empty alias, or the empty view {NULL, 0} if
-      the type has no alias (or only an empty alias). For spatial types
-      the alias is e.g. "POINT_2D"; for arbitrary user-defined types it
-      is the configured name. A non-empty view is valid until the
-      logical type is destroyed.
+      The alias when one is set (an extension or user-defined name, e.g.
+      "POINT_2D"), otherwise the canonical fixed name of the type id
+      (e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the
+      empty view. This is exactly the name vocabulary logical_type_create
+      consumes. The view is valid until the logical type is destroyed
+      (the canonical-name arm points at static storage).
     role: getter
     belongs_to: logical_type
     parameters:
       type:
         type: logical_type
         description: The logical type.
-      out_alias:
-        type: str
-        indirection: 1
-        kind: OUT_BORROW
-        description: Receives a borrowed view of the alias, or the empty view {NULL, 0} if the type has no alias (or only an empty alias).
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # DECIMAL
-  # -----------------------------------------------------------------------
-  logical_type_get_decimal_width:
-    summary: Returns the width of a DECIMAL logical type.
-    description: Returns ERROR_INVALID_INPUT if the type id is not DECIMAL.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_width:
-        type: u8
-        indirection: 1
-        kind: OUT
-        description: Receives the decimal width.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_decimal_scale:
-    summary: Returns the scale of a DECIMAL logical type.
-    description: Returns ERROR_INVALID_INPUT if the type id is not DECIMAL.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_scale:
-        type: u8
-        indirection: 1
-        kind: OUT
-        description: Receives the decimal scale.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_decimal_internal_type_id:
-    summary: Returns the internal storage type id for a DECIMAL.
-    description: |
-      Returns one of SMALLINT, INTEGER, BIGINT, or HUGEINT, depending on
-      the decimal's width. Used by callers to pick the right typed
-      accessor for DECIMAL storage.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_id:
-        type: LOGICAL_TYPE_ID
-        indirection: 1
-        kind: OUT
-        description: Receives the internal storage type id.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # ENUM
-  # -----------------------------------------------------------------------
-  logical_type_get_enum_size:
-    summary: Returns the dictionary entry count of an ENUM logical type.
-    description: |
-      The size is the entry count (cardinality of the dictionary), not a
-      byte size. It is returned as idx_t for ABI uniformity, but the
-      effective cap is UINT32_MAX (2^32 - 1) entries: the largest physical
-      index type used by ENUM storage is UINTEGER. Returns
-      ERROR_INVALID_INPUT if the type id is not ENUM.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_size:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: Receives the number of entries in the enum dictionary.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_enum_value:
-    summary: Borrows the dictionary value at the given index of an ENUM.
-    description: |
-      Out-of-range index returns ERROR_INVALID_INPUT. The
-      returned view is a borrowed byte string valid until the logical
-      type is destroyed. Bytes are not validated as UTF-8 — VARCHAR
-      storage holds whatever bytes were inserted.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      index:
-        type: idx
-        description: The dictionary index, in [0, enum_size).
-      out_value:
-        type: str
-        indirection: 1
-        kind: OUT_BORROW
-        description: Receives a borrowed view of the dictionary string.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_enum_internal_type_id:
-    summary: Returns the internal index type id for an ENUM.
-    description: |
-      Returns UTINYINT (dict <= 255), USMALLINT (dict <= 65535), or
-      UINTEGER (larger), matching the physical storage width.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_id:
-        type: LOGICAL_TYPE_ID
-        indirection: 1
-        kind: OUT
-        description: Receives the internal index type id.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # LIST / ARRAY
-  # -----------------------------------------------------------------------
-  logical_type_get_list_child_type:
-    summary: Returns the child logical type of a LIST.
-    description: |
-      The returned logical type is caller-owned and must be destroyed via
-      logical_type_destroy. Returns ERROR_INVALID_INPUT
-      if the input type id is not LIST.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_child:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the owned child logical type.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_array_child_type:
-    summary: Returns the child logical type of a fixed-size ARRAY.
-    description: |
-      The returned logical type is caller-owned and must be destroyed.
-      Returns ERROR_INVALID_INPUT if the input is not ARRAY.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_child:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the owned child logical type.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_array_size:
-    summary: Returns the fixed size of an ARRAY logical type.
-    description: Returns ERROR_INVALID_INPUT if the input is not ARRAY.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_size:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: Receives the array size.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # MAP
-  # -----------------------------------------------------------------------
-  logical_type_get_map_key_type:
-    summary: Returns the key logical type of a MAP.
-    description: Owned by the caller. INVALID_INPUT if the input is not MAP.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_key:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the owned key logical type.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_map_value_type:
-    summary: Returns the value logical type of a MAP.
-    description: Owned by the caller. INVALID_INPUT if the input is not MAP.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_value:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the owned value logical type.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  # -----------------------------------------------------------------------
-  # STRUCT
-  # -----------------------------------------------------------------------
-  logical_type_get_struct_child_count:
-    summary: Returns the number of fields in a STRUCT logical type.
-    description: Returns ERROR_INVALID_INPUT if the input is not STRUCT.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      out_count:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: Receives the number of struct fields.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_struct_child_name:
-    summary: Borrows the field name at the given index of a STRUCT.
-    description: |
-      The returned view is a borrowed name valid until the logical type
-      is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      index:
-        type: idx
-        description: The field index, in [0, struct_child_count).
       out_name:
         type: str
         indirection: 1
         kind: OUT_BORROW
-        description: Receives a borrowed view of the field name.
+        description: Receives a borrowed view of the name (alias when set, else the id's canonical name).
       err:
         type: error_info
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  logical_type_get_struct_child_type:
-    summary: Returns the field logical type at the given index of a STRUCT.
+  logical_type_to_text:
+    summary: Renders a logical type as SQL text.
     description: |
-      The returned logical type is caller-owned. Out-of-range index returns
-      ERROR_INVALID_INPUT.
+      Mirrors duckdb::LogicalType::ToString(). An aliased type renders as
+      its alias; logical_type_create_from_text resolves that spelling only
+      when the name is registered in the connection's catalog. Round-trips
+      through logical_type_create_from_text for every constructible kind.
     role: getter
     belongs_to: logical_type
     parameters:
       type:
         type: logical_type
-      index:
-        type: idx
-        description: The field index, in [0, struct_child_count).
-      out_child:
-        type: logical_type
-        indirection: 1
+        description: The logical type.
+      out_text:
+        type: char
+        indirection: 2
         kind: OUT
-        description: Receives the owned field logical type.
+        description: Receives a malloc'd null-terminated string. Caller frees.
       err:
         type: error_info
         indirection: 1
@@ -584,69 +413,68 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   # -----------------------------------------------------------------------
-  # UNION
+  # Generic parameter inspection
   # -----------------------------------------------------------------------
-  logical_type_get_union_member_count:
-    summary: Returns the number of members in a UNION logical type.
-    description: Returns ERROR_INVALID_INPUT if the input is not UNION.
+  logical_type_get_param_count:
+    summary: Returns the number of value parameters of a logical type.
+    description: |
+      The inspection dual of logical_type_create: the parameters that
+      reconstruct the type through it. Per kind: DECIMAL 2 (width,
+      scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
+      (key type, value type); STRUCT one per field; UNION one per
+      member; ENUM one per dictionary entry; VARCHAR 1 when a collation
+      is set, else 0; GEOMETRY 1 when a coordinate system is set, else
+      0; everything else 0. A bound type reports what it carries:
+      bind-time modifiers the engine does not retain (e.g. an ignored
+      VARCHAR length) do not reappear.
     role: getter
     belongs_to: logical_type
     parameters:
       type:
         type: logical_type
+        description: The logical type.
       out_count:
         type: idx
         indirection: 1
         kind: OUT
-        description: Receives the number of union members.
+        description: Receives the number of parameters.
       err:
         type: error_info
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
-  logical_type_get_union_member_name:
-    summary: Borrows the member name at the given index of a UNION.
+  logical_type_get_param:
+    summary: Returns one value parameter of a logical type.
     description: |
-      The returned view is a borrowed name valid until the logical type
-      is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
+      out_name receives a borrowed view of the parameter name (a STRUCT
+      field name, a UNION member name, "collation"), or the empty view
+      {NULL, 0} for a positional parameter; a non-empty view is valid
+      until the logical type is destroyed. out_value receives an owned
+      value the caller destroys via value_destroy: child types come back
+      as TYPE values (unwrap via value_get_type), DECIMAL width and
+      scale as UTINYINT, ARRAY size as BIGINT, ENUM dictionary entries
+      and collations as VARCHAR. Out-of-range index returns
+      ERROR_INVALID_INPUT. One owned value allocation per call.
     role: getter
     belongs_to: logical_type
     parameters:
       type:
         type: logical_type
+        description: The logical type.
       index:
         type: idx
-        description: The member index, in [0, union_member_count).
+        description: The parameter index, in [0, param_count).
       out_name:
         type: str
         indirection: 1
         kind: OUT_BORROW
-        description: Receives a borrowed view of the member name.
-      err:
-        type: error_info
+        description: Receives a borrowed view of the parameter name, or the empty view {NULL, 0} for a positional parameter.
+      out_value:
+        type: value
         indirection: 1
         kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
-  logical_type_get_union_member_type:
-    summary: Returns the member logical type at the given index of a UNION.
-    description: |
-      The returned logical type is caller-owned. Out-of-range index returns
-      ERROR_INVALID_INPUT.
-    role: getter
-    belongs_to: logical_type
-    parameters:
-      type:
-        type: logical_type
-      index:
-        type: idx
-        description: The member index, in [0, union_member_count).
-      out_child:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the owned member logical type.
+        description: Receives the owned parameter value.
       err:
         type: error_info
         indirection: 1

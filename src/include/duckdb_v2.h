@@ -2658,6 +2658,8 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 	DUCKDB_V2_LOGICAL_TYPE_ID_UNKNOWN = 2,
 	/* ANY — used for functions that accept any type. */
 	DUCKDB_V2_LOGICAL_TYPE_ID_ANY = 3,
+	/* A type carried as a value (type parameters). Values of this type are built via value_create_type. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TYPE = 6,
 	DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN = 10,
 	DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT = 11,
 	DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT = 12,
@@ -2731,7 +2733,8 @@ VARCHAR, BLOB, BIT, BIGNUM, UUID.
 
 Returns ERROR_INVALID_INPUT for parameterised type ids
 (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
-for bind-time-only ids (SQLNULL, ANY, UNKNOWN), and for INVALID.
+for bind-time-only ids (SQLNULL, ANY, UNKNOWN), for TYPE (construct
+it via logical_type_create_from_text), and for INVALID.
 Composite construction is not part of this surface yet.
 
 * @param type_id The primitive type id to instantiate.
@@ -2742,6 +2745,89 @@ Composite construction is not part of this surface yet.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID type_id,
                                                                         duckdb_v2_logical_type_handle *out_type,
                                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Creates a logical type by parsing SQL text.
+* Parses a SQL type expression in the given context and returns the
+bound logical type: primitives ("INTEGER"), parameterized kinds
+("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)",
+"MAP(VARCHAR, INTEGER)", "INTEGER[3]", "UNION(i INTEGER, s VARCHAR)",
+"ENUM('a', 'b')"), and catalog-registered type names (user-defined
+and extension types). A catalog type name binds to its structural
+type; the name is not preserved as an alias. Names are
+case-insensitive. Parse and bind errors surface from the call.
+
+Runs in the caller's context scope: a context handle arrives with
+the context lock held and a transaction active
+(connection_execute_with_context, function bind callbacks, custom
+type registration). External callers reach this call through
+connection_execute_with_context. Catalog-touching context calls
+belong in bind-phase callbacks and with-context scopes, not
+exec-phase worker callbacks.
+
+The returned logical type is caller-owned and must be destroyed via
+logical_type_destroy. A type resolved from the catalog shares
+database-owned storage (e.g. an ENUM dictionary): destroy it before
+closing the database. Inverse of logical_type_to_text for every
+constructible kind.
+
+* @param ctx The context supplying the catalog and active transaction.
+* @param text View of the SQL type expression to parse.
+* @param out_type Receives the new logical type handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle ctx,
+                                                                          duckdb_v2_str text,
+                                                                          duckdb_v2_logical_type_handle *out_type,
+                                                                          duckdb_v2_error_info_handle *err);
+/*!
+* Creates a logical type from a type name plus value parameters.
+* The generic constructor: resolves the name in the context's catalog
+(search path first, then the system catalog) and binds it with the
+given parameters, mirroring how SQL binds a type expression.
+Built-in parameterized kinds and registered extension types
+construct through the same call.
+
+Parameters are (name, value) pairs in two parallel arrays.
+param_names may be NULL (all positional); a {NULL, 0} entry makes
+that one parameter positional. Child types cross as TYPE values
+(value_create_type). Built-in shapes: decimal(width, scale);
+list(T); array(T, size); map(K, V); struct(fields as named or all
+positional TYPE values); union(members as named TYPE values);
+enum(entries as VARCHAR values); varchar with a named "collation"
+VARCHAR parameter.
+
+A name that resolves to a type without a bind function takes no
+parameters: passing any fails. Bind errors (unknown name, wrong
+parameter count or types) surface from the call.
+
+Runs in the caller's context scope (see
+logical_type_create_from_text): reach it through
+connection_execute_with_context or from a bind-phase callback, not
+an exec-phase worker callback.
+
+The returned logical type is caller-owned and must be destroyed via
+logical_type_destroy. A type resolved from the catalog shares
+database-owned storage (e.g. an ENUM dictionary): destroy it before
+closing the database. Inverse of logical_type_get_param_count /
+logical_type_get_param.
+
+* @param ctx The context supplying the catalog and active transaction.
+* @param name View of the type name to resolve. Unqualified; case-insensitive.
+* @param param_names Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for
+all-positional parameters.
+* @param param_values An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+* @param param_count The number of parameters.
+* @param out_type Receives the new logical type handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx, duckdb_v2_str name,
+                                                                const duckdb_v2_str *param_names,
+                                                                const duckdb_v2_value_handle *param_values,
+                                                                idx_t param_count,
+                                                                duckdb_v2_logical_type_handle *out_type,
+                                                                duckdb_v2_error_info_handle *err);
 /*!
  * Creates a copy of a logical type
  * On success, writes the new handle into *out_type.
@@ -2790,243 +2876,80 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logica
                                                                 DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
                                                                 duckdb_v2_error_info_handle *err);
 /*!
-* Borrows the logical type's alias (extension/user-defined name) if any.
-* On success, writes a borrowed view of the alias into *out_alias
-if the type has a non-empty alias, or the empty view {NULL, 0} if
-the type has no alias (or only an empty alias). For spatial types
-the alias is e.g. "POINT_2D"; for arbitrary user-defined types it
-is the configured name. A non-empty view is valid until the
-logical type is destroyed.
+* Borrows the logical type's name.
+* The alias when one is set (an extension or user-defined name, e.g.
+"POINT_2D"), otherwise the canonical fixed name of the type id
+(e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the
+empty view. This is exactly the name vocabulary logical_type_create
+consumes. The view is valid until the logical type is destroyed
+(the canonical-name arm points at static storage).
 
 * @param type The logical type.
-* @param out_alias Receives a borrowed view of the alias, or the empty view {NULL, 0} if the type has no alias (or only
-an empty alias).
+* @param out_name Receives a borrowed view of the name (alias when set, else the id's canonical name).
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_alias(duckdb_v2_logical_type_handle type,
-                                                                   duckdb_v2_str *out_alias,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_handle type,
+                                                                  duckdb_v2_str *out_name,
+                                                                  duckdb_v2_error_info_handle *err);
+/*!
+* Renders a logical type as SQL text.
+* Mirrors duckdb::LogicalType::ToString(). An aliased type renders as
+its alias; logical_type_create_from_text resolves that spelling only
+when the name is registered in the connection's catalog. Round-trips
+through logical_type_create_from_text for every constructible kind.
+
+* @param type The logical type.
+* @param out_text Receives a malloc'd null-terminated string. Caller frees.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_to_text(duckdb_v2_logical_type_handle type, char **out_text,
+                                                                 duckdb_v2_error_info_handle *err);
+/*!
+* Returns the number of value parameters of a logical type.
+* The inspection dual of logical_type_create: the parameters that
+reconstruct the type through it. Per kind: DECIMAL 2 (width,
+scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
+(key type, value type); STRUCT one per field; UNION one per
+member; ENUM one per dictionary entry; VARCHAR 1 when a collation
+is set, else 0; GEOMETRY 1 when a coordinate system is set, else
+0; everything else 0. A bound type reports what it carries:
+bind-time modifiers the engine does not retain (e.g. an ignored
+VARCHAR length) do not reappear.
+
+* @param type The logical type.
+* @param out_count Receives the number of parameters.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param_count(duckdb_v2_logical_type_handle type,
+                                                                         idx_t *out_count,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Returns one value parameter of a logical type.
+* out_name receives a borrowed view of the parameter name (a STRUCT
+field name, a UNION member name, "collation"), or the empty view
+{NULL, 0} for a positional parameter; a non-empty view is valid
+until the logical type is destroyed. out_value receives an owned
+value the caller destroys via value_destroy: child types come back
+as TYPE values (unwrap via value_get_type), DECIMAL width and
+scale as UTINYINT, ARRAY size as BIGINT, ENUM dictionary entries
+and collations as VARCHAR. Out-of-range index returns
+ERROR_INVALID_INPUT. One owned value allocation per call.
+
+* @param type The logical type.
+* @param index The parameter index, in [0, param_count).
+* @param out_name Receives a borrowed view of the parameter name, or the empty view {NULL, 0} for a positional
+parameter.
+* @param out_value Receives the owned parameter value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle type, idx_t index,
+                                                                   duckdb_v2_str *out_name,
+                                                                   duckdb_v2_value_handle *out_value,
                                                                    duckdb_v2_error_info_handle *err);
-/*!
- * Returns the width of a DECIMAL logical type.
- * Returns ERROR_INVALID_INPUT if the type id is not DECIMAL.
- * @param type
- * @param out_width Receives the decimal width.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_width(duckdb_v2_logical_type_handle type,
-                                                                           uint8_t *out_width,
-                                                                           duckdb_v2_error_info_handle *err);
-/*!
- * Returns the scale of a DECIMAL logical type.
- * Returns ERROR_INVALID_INPUT if the type id is not DECIMAL.
- * @param type
- * @param out_scale Receives the decimal scale.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_scale(duckdb_v2_logical_type_handle type,
-                                                                           uint8_t *out_scale,
-                                                                           duckdb_v2_error_info_handle *err);
-/*!
-* Returns the internal storage type id for a DECIMAL.
-* Returns one of SMALLINT, INTEGER, BIGINT, or HUGEINT, depending on
-the decimal's width. Used by callers to pick the right typed
-accessor for DECIMAL storage.
-
-* @param type
-* @param out_id Receives the internal storage type id.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_decimal_internal_type_id(
-    duckdb_v2_logical_type_handle type, DUCKDB_V2_LOGICAL_TYPE_ID *out_id, duckdb_v2_error_info_handle *err);
-/*!
-* Returns the dictionary entry count of an ENUM logical type.
-* The size is the entry count (cardinality of the dictionary), not a
-byte size. It is returned as idx_t for ABI uniformity, but the
-effective cap is UINT32_MAX (2^32 - 1) entries: the largest physical
-index type used by ENUM storage is UINTEGER. Returns
-ERROR_INVALID_INPUT if the type id is not ENUM.
-
-* @param type
-* @param out_size Receives the number of entries in the enum dictionary.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_size(duckdb_v2_logical_type_handle type,
-                                                                       idx_t *out_size,
-                                                                       duckdb_v2_error_info_handle *err);
-/*!
-* Borrows the dictionary value at the given index of an ENUM.
-* Out-of-range index returns ERROR_INVALID_INPUT. The
-returned view is a borrowed byte string valid until the logical
-type is destroyed. Bytes are not validated as UTF-8 — VARCHAR
-storage holds whatever bytes were inserted.
-
-* @param type
-* @param index The dictionary index, in [0, enum_size).
-* @param out_value Receives a borrowed view of the dictionary string.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_value(duckdb_v2_logical_type_handle type, idx_t index,
-                                                                        duckdb_v2_str *out_value,
-                                                                        duckdb_v2_error_info_handle *err);
-/*!
-* Returns the internal index type id for an ENUM.
-* Returns UTINYINT (dict <= 255), USMALLINT (dict <= 65535), or
-UINTEGER (larger), matching the physical storage width.
-
-* @param type
-* @param out_id Receives the internal index type id.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_enum_internal_type_id(duckdb_v2_logical_type_handle type,
-                                                                                   DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
-                                                                                   duckdb_v2_error_info_handle *err);
-/*!
-* Returns the child logical type of a LIST.
-* The returned logical type is caller-owned and must be destroyed via
-logical_type_destroy. Returns ERROR_INVALID_INPUT
-if the input type id is not LIST.
-
-* @param type
-* @param out_child Receives the owned child logical type.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_list_child_type(duckdb_v2_logical_type_handle type,
-                                                                             duckdb_v2_logical_type_handle *out_child,
-                                                                             duckdb_v2_error_info_handle *err);
-/*!
-* Returns the child logical type of a fixed-size ARRAY.
-* The returned logical type is caller-owned and must be destroyed.
-Returns ERROR_INVALID_INPUT if the input is not ARRAY.
-
-* @param type
-* @param out_child Receives the owned child logical type.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_array_child_type(duckdb_v2_logical_type_handle type,
-                                                                              duckdb_v2_logical_type_handle *out_child,
-                                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Returns the fixed size of an ARRAY logical type.
- * Returns ERROR_INVALID_INPUT if the input is not ARRAY.
- * @param type
- * @param out_size Receives the array size.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_array_size(duckdb_v2_logical_type_handle type,
-                                                                        idx_t *out_size,
-                                                                        duckdb_v2_error_info_handle *err);
-/*!
- * Returns the key logical type of a MAP.
- * Owned by the caller. INVALID_INPUT if the input is not MAP.
- * @param type
- * @param out_key Receives the owned key logical type.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_map_key_type(duckdb_v2_logical_type_handle type,
-                                                                          duckdb_v2_logical_type_handle *out_key,
-                                                                          duckdb_v2_error_info_handle *err);
-/*!
- * Returns the value logical type of a MAP.
- * Owned by the caller. INVALID_INPUT if the input is not MAP.
- * @param type
- * @param out_value Receives the owned value logical type.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_map_value_type(duckdb_v2_logical_type_handle type,
-                                                                            duckdb_v2_logical_type_handle *out_value,
-                                                                            duckdb_v2_error_info_handle *err);
-/*!
- * Returns the number of fields in a STRUCT logical type.
- * Returns ERROR_INVALID_INPUT if the input is not STRUCT.
- * @param type
- * @param out_count Receives the number of struct fields.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_count(duckdb_v2_logical_type_handle type,
-                                                                                idx_t *out_count,
-                                                                                duckdb_v2_error_info_handle *err);
-/*!
-* Borrows the field name at the given index of a STRUCT.
-* The returned view is a borrowed name valid until the logical type
-is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
-
-* @param type
-* @param index The field index, in [0, struct_child_count).
-* @param out_name Receives a borrowed view of the field name.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_name(duckdb_v2_logical_type_handle type,
-                                                                               idx_t index, duckdb_v2_str *out_name,
-                                                                               duckdb_v2_error_info_handle *err);
-/*!
-* Returns the field logical type at the given index of a STRUCT.
-* The returned logical type is caller-owned. Out-of-range index returns
-ERROR_INVALID_INPUT.
-
-* @param type
-* @param index The field index, in [0, struct_child_count).
-* @param out_child Receives the owned field logical type.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_struct_child_type(duckdb_v2_logical_type_handle type,
-                                                                               idx_t index,
-                                                                               duckdb_v2_logical_type_handle *out_child,
-                                                                               duckdb_v2_error_info_handle *err);
-/*!
- * Returns the number of members in a UNION logical type.
- * Returns ERROR_INVALID_INPUT if the input is not UNION.
- * @param type
- * @param out_count Receives the number of union members.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_count(duckdb_v2_logical_type_handle type,
-                                                                                idx_t *out_count,
-                                                                                duckdb_v2_error_info_handle *err);
-/*!
-* Borrows the member name at the given index of a UNION.
-* The returned view is a borrowed name valid until the logical type
-is destroyed. Out-of-range index returns ERROR_INVALID_INPUT.
-
-* @param type
-* @param index The member index, in [0, union_member_count).
-* @param out_name Receives a borrowed view of the member name.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_name(duckdb_v2_logical_type_handle type,
-                                                                               idx_t index, duckdb_v2_str *out_name,
-                                                                               duckdb_v2_error_info_handle *err);
-/*!
-* Returns the member logical type at the given index of a UNION.
-* The returned logical type is caller-owned. Out-of-range index returns
-ERROR_INVALID_INPUT.
-
-* @param type
-* @param index The member index, in [0, union_member_count).
-* @param out_child Receives the owned member logical type.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_union_member_type(duckdb_v2_logical_type_handle type,
-                                                                               idx_t index,
-                                                                               duckdb_v2_logical_type_handle *out_child,
-                                                                               duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for logical_type --- */
 
@@ -3576,174 +3499,60 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_null(duckdb_v2_logical_
                                                               duckdb_v2_value_handle *out_value,
                                                               duckdb_v2_error_info_handle *err);
 /*!
- * Creates a BOOLEAN value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_bool(bool input, duckdb_v2_value_handle *out_value,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TINYINT value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int8(int8_t input, duckdb_v2_value_handle *out_value,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Creates a SMALLINT value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int16(int16_t input, duckdb_v2_value_handle *out_value,
-                                                               duckdb_v2_error_info_handle *err);
-/*!
- * Creates an INTEGER value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int32(int32_t input, duckdb_v2_value_handle *out_value,
-                                                               duckdb_v2_error_info_handle *err);
-/*!
- * Creates a BIGINT value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_int64(int64_t input, duckdb_v2_value_handle *out_value,
-                                                               duckdb_v2_error_info_handle *err);
-/*!
- * Creates a UTINYINT value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint8(uint8_t input, duckdb_v2_value_handle *out_value,
-                                                               duckdb_v2_error_info_handle *err);
-/*!
- * Creates a USMALLINT value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint16(uint16_t input, duckdb_v2_value_handle *out_value,
-                                                                duckdb_v2_error_info_handle *err);
-/*!
- * Creates a UINTEGER value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint32(uint32_t input, duckdb_v2_value_handle *out_value,
-                                                                duckdb_v2_error_info_handle *err);
-/*!
- * Creates a UBIGINT value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uint64(uint64_t input, duckdb_v2_value_handle *out_value,
-                                                                duckdb_v2_error_info_handle *err);
-/*!
-* Creates a HUGEINT value.
-* hugeint_t is a 128-bit signed integer represented as
-(u64 lower, i64 upper).
+* Creates a leaf value of the given type from its committed physical layout.
+* The generic leaf constructor: data holds the payload in exactly the
+committed physical layout of the type, the same bytes a vector view
+exposes. Fixed-size kinds (BOOLEAN, the integer and float widths,
+DATE, all TIME and TIMESTAMP variants including the packed TIME_TZ
+form, INTERVAL, HUGEINT and UHUGEINT, UUID in its internal hugeint
+form, DECIMAL as the scaled integer of its width tier, ENUM as a
+dictionary index of its size tier) require len equal to the layout
+size; any other len returns ERROR_INVALID_INPUT. Variable-length
+kinds take their wire bytes: VARCHAR (byte string; the engine
+rejects invalid UTF-8 at construction), BLOB (any bytes), BIT (the
+mandatory padding header byte plus data bytes, so len >= 1).
 
-* @param lower Low 64 bits of the hugeint.
-* @param upper High 64 bits of the hugeint.
-* @param out_value
+Layout-raw: beyond the length and layout gates above, semantic
+invariants are NOT validated, the same stance as the data plane;
+validation is value_cast's job. Two exceptions: the ENUM dictionary
+index is bounds-checked (an out-of-range index is not addressable
+storage), and VARCHAR rejects invalid UTF-8 (the engine enforces it
+at construction).
+
+Every other type id returns ERROR_INVALID_INPUT: TYPE values are
+built via value_create_type, BIGNUM via value_create_bignum (its
+wire encoding is not committed), composites via value_create;
+GEOMETRY has no committed layout. The type is borrowed; the payload
+is copied in.
+
+* @param type The borrowed leaf logical type to instantiate.
+* @param data Pointer to the payload in the type's committed physical layout. May be null only when len is 0 (empty
+VARCHAR / BLOB).
+* @param len Payload size in bytes. Must equal the layout size for fixed-size kinds.
+* @param out_value Receives the new leaf value.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_hugeint(uint64_t lower, int64_t upper,
-                                                                 duckdb_v2_value_handle *out_value,
-                                                                 duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_data(duckdb_v2_logical_type_handle type, const void *data,
+                                                                   idx_t len, duckdb_v2_value_handle *out_value,
+                                                                   duckdb_v2_error_info_handle *err);
 /*!
-* Creates a UHUGEINT value.
-* uhugeint_t is a 128-bit unsigned integer represented as
-(u64 lower, u64 upper).
+* Borrows a leaf value's payload in its committed physical layout.
+* The inverse of value_create_from_data: a borrowed view of the
+payload in the same committed layout, valid until the value is
+destroyed. Fixed-size kinds report the layout size; VARCHAR, BLOB,
+and BIT report their wire bytes. Returns ERROR_INVALID_INPUT for
+NULL values (a NULL has no payload to hand back; use value_is_null
+first) and for the kinds value_create_from_data rejects.
 
-* @param lower
-* @param upper
-* @param out_value
+* @param value
+* @param out_data Receives a borrowed pointer to the payload bytes.
+* @param out_len Receives the payload size in bytes.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uhugeint(uint64_t lower, uint64_t upper,
-                                                                  duckdb_v2_value_handle *out_value,
-                                                                  duckdb_v2_error_info_handle *err);
-/*!
- * Creates a FLOAT value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_float(float input, duckdb_v2_value_handle *out_value,
-                                                               duckdb_v2_error_info_handle *err);
-/*!
- * Creates a DOUBLE value.
- * @param input
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_double(double input, duckdb_v2_value_handle *out_value,
-                                                                duckdb_v2_error_info_handle *err);
-/*!
-* Creates a VARCHAR value (UTF-8 string).
-* Copies the input. Returns ERROR_INVALID_INPUT if data.ptr is
-null but data.len > 0, or if the bytes are not valid UTF-8.
-
-* @param data View of the UTF-8 bytes to copy. The pointer may be null when the length is 0.
-* @param out_value
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_varchar(duckdb_v2_str data, duckdb_v2_value_handle *out_value,
-                                                                 duckdb_v2_error_info_handle *err);
-/*!
- * Creates a BLOB value (uninterpreted bytes).
- * Copies the input. INVALID_INPUT if data is null but length > 0.
- * @param data Pointer to byte payload. May be null when length is 0.
- * @param length
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_blob(const uint8_t *data, idx_t length,
-                                                              duckdb_v2_value_handle *out_value,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
-* Creates a BIT value (raw bit string with padding byte + data).
-* Takes the raw on-disk bit-string encoding: a single padding byte at
-offset 0 followed by data bytes. Copies the input.
-
-data must not be NULL and length must be >= 1. The padding header
-byte is mandatory, so a length-0 BIT is malformed by encoding. A
-NULL data pointer or length = 0 returns ERROR_INVALID_INPUT.
-
-* @param data
-* @param length
-* @param out_value
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_bit(const uint8_t *data, idx_t length,
-                                                             duckdb_v2_value_handle *out_value,
-                                                             duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_data(duckdb_v2_value_handle value, const void **out_data,
+                                                           idx_t *out_len, duckdb_v2_error_info_handle *err);
 /*!
 * Creates a BIGNUM (arbitrary-precision integer) value from raw bytes.
 * Takes the magnitude bytes (big-endian) plus a sign flag. The library
@@ -3767,150 +3576,182 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_bignum(const uint8_t *d
                                                                 duckdb_v2_value_handle *out_value,
                                                                 duckdb_v2_error_info_handle *err);
 /*!
- * Creates a DATE value (days since the Unix epoch).
- * @param days Days since 1970-01-01.
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_date(int32_t days, duckdb_v2_value_handle *out_value,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TIME value (microseconds since midnight).
- * @param micros Microseconds since midnight.
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_time(int64_t micros, duckdb_v2_value_handle *out_value,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TIME_NS value (nanoseconds since midnight).
- * @param nanos
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_time_ns(int64_t nanos, duckdb_v2_value_handle *out_value,
-                                                                 duckdb_v2_error_info_handle *err);
-/*!
-* Creates a TIME_TZ value (micros since midnight + timezone offset).
-* Microseconds since midnight plus a timezone offset in seconds.
-Internally packed into a 64-bit dtime_tz_t.
+* Returns the magnitude bytes and sign flag of a BIGNUM value.
+* Returns the decoded big-endian magnitude bytes (no VARINT header)
+and the sign flag. Caller reconstructs the integer as
+(-1)**is_negative * unsigned_big_endian(out_data[0..out_length]).
 
-* @param micros Microseconds since midnight.
-* @param offset_seconds Timezone offset in seconds (east of UTC positive).
-* @param out_value
+The magnitude buffer is caller-owned and must be freed with free().
+Allocation is required even for positive bignums (and unavoidable
+for negative ones, where core stores the magnitude bit-inverted):
+the buffer is a fresh malloc'd copy in both cases.
+
+* @param value
+* @param out_data Receives a malloc'd buffer of magnitude bytes. Caller frees.
+* @param out_length Receives the length of the magnitude buffer in bytes.
+* @param out_is_negative Receives true if the value is negative, false otherwise.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_time_tz(int64_t micros, int32_t offset_seconds,
-                                                                 duckdb_v2_value_handle *out_value,
-                                                                 duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bignum(duckdb_v2_value_handle value, uint8_t **out_data,
+                                                             idx_t *out_length, bool *out_is_negative,
+                                                             duckdb_v2_error_info_handle *err);
 /*!
- * Creates a TIMESTAMP value (microseconds since epoch).
- * @param micros
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp(int64_t micros, duckdb_v2_value_handle *out_value,
-                                                                   duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TIMESTAMP_S value (seconds since epoch).
- * @param seconds
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_sec(int64_t seconds,
-                                                                       duckdb_v2_value_handle *out_value,
-                                                                       duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TIMESTAMP_MS value (milliseconds since epoch).
- * @param millis
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_ms(int64_t millis, duckdb_v2_value_handle *out_value,
-                                                                      duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TIMESTAMP_NS value (nanoseconds since epoch).
- * @param nanos
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_ns(int64_t nanos, duckdb_v2_value_handle *out_value,
-                                                                      duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TIMESTAMP_TZ value (microseconds since epoch, UTC-anchored).
- * @param micros
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_tz(int64_t micros, duckdb_v2_value_handle *out_value,
-                                                                      duckdb_v2_error_info_handle *err);
-/*!
- * Creates a TIMESTAMP_TZ_NS value (nanoseconds since epoch, UTC-anchored).
- * @param nanos
- * @param out_value
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_timestamp_tz_ns(int64_t nanos,
-                                                                         duckdb_v2_value_handle *out_value,
-                                                                         duckdb_v2_error_info_handle *err);
-/*!
-* Creates an INTERVAL value.
-* DuckDB intervals are (months, days, microseconds) triples. Months and
-days have variable lengths (calendar arithmetic), microseconds are a
-fixed duration.
+* Unwraps a VARIANT value into the plain value it carries.
+* Decodes the variant payload engine-side and returns the carried
+value with its real logical type, so per-row inner-type discovery
+needs no prior knowledge: inspect the result via
+value_get_logical_type and descend or read it like any other value.
+Returns ERROR_INVALID_INPUT unless the input is a non-NULL VARIANT
+value. The returned value is caller-owned; destroy via
+value_destroy.
 
-* @param months
-* @param days
-* @param micros
-* @param out_value
+Decoding is faithful to the variant encoding, not to the original
+SQL type: homogeneous arrays come back as typed LISTs, variant
+objects as STRUCTs with field names, MAPs as their key-value-array
+form (LIST of STRUCT(key, value)), and heterogeneous arrays as
+LIST(VARIANT) whose elements unwrap individually.
+
+The variant wire encoding itself is not committed contract:
+vector_get_value hands out the boxed VARIANT cell and this unwrap
+decodes it, mirroring how the BIGNUM codec pair owns that kind's
+uncommitted encoding.
+
+* @param value
+* @param out_value Receives the owned unwrapped value.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_interval(int32_t months, int32_t days, int64_t micros,
-                                                                  duckdb_v2_value_handle *out_value,
-                                                                  duckdb_v2_error_info_handle *err);
-/*!
-* Creates a DECIMAL value from a hugeint payload + width/scale.
-* DECIMAL values internally store a scaled signed integer. Pass the
-integer as the two halves of a 128-bit signed value (the internal
-representation widens as needed for widths above 18). For widths
-<= 18, the lower 64 bits hold the entire value (signed).
-
-* @param lower Low 64 bits of the scaled signed integer.
-* @param upper High 64 bits of the scaled signed integer.
-* @param width Total digit count, in [1, 38].
-* @param scale Number of fractional digits, in [0, width].
-* @param out_value
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_decimal(uint64_t lower, int64_t upper, uint8_t width,
-                                                                 uint8_t scale, duckdb_v2_value_handle *out_value,
-                                                                 duckdb_v2_error_info_handle *err);
-/*!
-* Creates a UUID value from its 128-bit representation.
-* A UUID is encoded as a hugeint internally. Pass the 128 bits as
-(lower 64, upper 64).
-
-* @param lower
-* @param upper
-* @param out_value
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_uuid(uint64_t lower, uint64_t upper,
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_variant(duckdb_v2_value_handle value,
                                                               duckdb_v2_value_handle *out_value,
                                                               duckdb_v2_error_info_handle *err);
+/*!
+* Creates a TYPE value wrapping a logical type.
+* The input logical type is borrowed; the value stores its own copy
+(serialized form), so the caller can destroy the logical type
+independently. TYPE values carry types where a value is expected,
+e.g. as type parameters.
+
+* @param type The borrowed logical type to wrap.
+* @param out_value Receives the new TYPE value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create_type(duckdb_v2_logical_type_handle type,
+                                                              duckdb_v2_value_handle *out_value,
+                                                              duckdb_v2_error_info_handle *err);
+/*!
+* Unwraps the logical type carried by a TYPE value.
+* Returns ERROR_INVALID_INPUT unless the value is a non-NULL TYPE
+value. The returned logical type is caller-owned and must be
+destroyed via logical_type_destroy.
+
+* @param value
+* @param out_type Receives the owned logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_value_handle value,
+                                                           duckdb_v2_logical_type_handle *out_type,
+                                                           duckdb_v2_error_info_handle *err);
+/*!
+* Creates a composite value from a type plus child values.
+* The generic composite constructor. Per type kind:
+LIST, children are the elements, any count including 0;
+ARRAY, count must equal the declared array size;
+STRUCT, positional per declared field order, count = field count;
+MAP, alternating key, value, so count is even and 2 x the entry
+count. Every other type id returns ERROR_INVALID_INPUT: UNION and
+ENUM values are built via value_cast (a member value to the union
+type, a VARCHAR to the enum type), primitives via their typed
+constructors.
+
+The type and children are borrowed (copied in). The engine casts
+each child to the declared child or field type (non-strict default
+cast); cast failures surface. NULL children become typed NULLs.
+MAP keys must be non-NULL and unique; violations surface.
+LIST, ARRAY, and MAP rebuild the outer type from its components, so
+an alias on the outer type is not preserved; STRUCT keeps its
+declared type, alias included. value_cast is the alias-preserving
+construction path.
+
+* @param type The borrowed composite logical type to instantiate.
+* @param children An array of child_count child values. Borrowed (copied in). Pass NULL when child_count is 0.
+* @param child_count The number of child values.
+* @param out_value Receives the new composite value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create(duckdb_v2_logical_type_handle type,
+                                                         const duckdb_v2_value_handle *children, idx_t child_count,
+                                                         duckdb_v2_value_handle *out_value,
+                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Returns the number of child values of a value.
+* Per type kind: LIST and ARRAY, the element count; STRUCT, the field
+count; MAP, 2 x the entry count (children alternate key, value);
+UNION, 2 (tag plus active member). Everything else, including NULL
+values of any nested type, reports 0.
+
+* @param value
+* @param out_count Receives the number of children.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child_count(duckdb_v2_value_handle value, idx_t *out_count,
+                                                                  duckdb_v2_error_info_handle *err);
+/*!
+* Returns one child of a composite value as an owned copy.
+* LIST and ARRAY children are the elements; STRUCT children are the
+fields in declared order (field names come from the type, e.g.
+logical_type_get_param); MAP children alternate key, value,
+symmetric with value_create. UNION children are [0] the tag as a
+UTINYINT value and [1] the active member: a union VALUE holds only
+its active member. LOUD divergence for generic-descent authors: the
+vector module's vector_get_child uses [0] = tag, [1..N] = ALL
+members (structural descent); see that module's index convention
+before writing code generic over both. Out-of-range index (including
+any index on a non-composite or NULL value) returns
+ERROR_INVALID_INPUT. The returned value is caller-owned; destroy
+via value_destroy.
+
+* @param value
+* @param index The child index, in [0, child_count).
+* @param out_child Receives the owned child value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_value_handle value, idx_t index,
+                                                            duckdb_v2_value_handle *out_child,
+                                                            duckdb_v2_error_info_handle *err);
+/*!
+* Casts a value to a target type through the engine's cast machinery.
+* The SQL-faithful conversion (non-strict), registered custom casts
+included. Cast failures surface from the call. With a VARCHAR built
+through value_create_from_data this constructs any value from text,
+extension values included; casting a member value to a union type
+or a VARCHAR to an enum type is the sanctioned way to build UNION
+and ENUM values.
+
+Runs in the caller's context scope (see
+logical_type_create_from_text): reach it through
+connection_execute_with_context or from a bind-phase callback, not
+an exec-phase worker callback.
+
+The input value and target type are borrowed. The returned value is
+caller-owned; destroy via value_destroy.
+
+* @param ctx The context supplying the cast function set.
+* @param value The borrowed value to cast.
+* @param target_type The borrowed target logical type.
+* @param out_value Receives the owned cast result.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_cast(duckdb_v2_context_handle ctx, duckdb_v2_value_handle value,
+                                                       duckdb_v2_logical_type_handle target_type,
+                                                       duckdb_v2_value_handle *out_value,
+                                                       duckdb_v2_error_info_handle *err);
 /*!
  * Returns whether the value is NULL.
  * @param value
@@ -3945,312 +3786,6 @@ Mirrors duckdb::Value::ToString().
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_to_string(duckdb_v2_value_handle value, char **out_string,
                                                             duckdb_v2_error_info_handle *err);
-/*!
- * Reads a BOOLEAN value.
- * INVALID_INPUT if the value is not BOOLEAN or is NULL.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bool(duckdb_v2_value_handle value, bool *out,
-                                                           duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TINYINT value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int8(duckdb_v2_value_handle value, int8_t *out,
-                                                           duckdb_v2_error_info_handle *err);
-/*!
- * Reads a SMALLINT value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int16(duckdb_v2_value_handle value, int16_t *out,
-                                                            duckdb_v2_error_info_handle *err);
-/*!
- * Reads an INTEGER value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int32(duckdb_v2_value_handle value, int32_t *out,
-                                                            duckdb_v2_error_info_handle *err);
-/*!
- * Reads a BIGINT value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int64(duckdb_v2_value_handle value, int64_t *out,
-                                                            duckdb_v2_error_info_handle *err);
-/*!
- * Reads a UTINYINT value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint8(duckdb_v2_value_handle value, uint8_t *out,
-                                                            duckdb_v2_error_info_handle *err);
-/*!
- * Reads a USMALLINT value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint16(duckdb_v2_value_handle value, uint16_t *out,
-                                                             duckdb_v2_error_info_handle *err);
-/*!
- * Reads a UINTEGER value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint32(duckdb_v2_value_handle value, uint32_t *out,
-                                                             duckdb_v2_error_info_handle *err);
-/*!
- * Reads a UBIGINT value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uint64(duckdb_v2_value_handle value, uint64_t *out,
-                                                             duckdb_v2_error_info_handle *err);
-/*!
- * Reads a HUGEINT value as (lower, upper) halves.
- * @param value
- * @param out_lower
- * @param out_upper
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_hugeint(duckdb_v2_value_handle value, uint64_t *out_lower,
-                                                              int64_t *out_upper, duckdb_v2_error_info_handle *err);
-/*!
- * Reads a UHUGEINT value as (lower, upper) halves.
- * @param value
- * @param out_lower
- * @param out_upper
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uhugeint(duckdb_v2_value_handle value, uint64_t *out_lower,
-                                                               uint64_t *out_upper, duckdb_v2_error_info_handle *err);
-/*!
- * Reads a FLOAT value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_float(duckdb_v2_value_handle value, float *out,
-                                                            duckdb_v2_error_info_handle *err);
-/*!
- * Reads a DOUBLE value.
- * @param value
- * @param out
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_double(duckdb_v2_value_handle value, double *out,
-                                                             duckdb_v2_error_info_handle *err);
-/*!
-* Borrows the bytes of a VARCHAR value.
-* Returns a borrowed view. The data is valid until the value is
-destroyed; the bytes are not null-terminated by contract.
-
-* @param value
-* @param out_data Receives a borrowed view of the VARCHAR bytes.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_varchar(duckdb_v2_value_handle value, duckdb_v2_str *out_data,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Borrows the bytes of a BLOB value.
- * @param value
- * @param out_data
- * @param out_length
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_blob(duckdb_v2_value_handle value, const uint8_t **out_data,
-                                                           idx_t *out_length, duckdb_v2_error_info_handle *err);
-/*!
-* Borrows the raw bit-string bytes of a BIT value.
-* Includes the leading padding byte and the trailing data bytes — the
-same on-disk encoding accepted by value_create_bit.
-
-* @param value
-* @param out_data
-* @param out_length
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bit(duckdb_v2_value_handle value, const uint8_t **out_data,
-                                                          idx_t *out_length, duckdb_v2_error_info_handle *err);
-/*!
-* Returns the magnitude bytes and sign flag of a BIGNUM value.
-* Returns the decoded big-endian magnitude bytes (no VARINT header)
-and the sign flag. Caller reconstructs the integer as
-(-1)**is_negative * unsigned_big_endian(out_data[0..out_length]).
-
-The magnitude buffer is caller-owned and must be freed with free().
-Allocation is required even for positive bignums (and unavoidable
-for negative ones, where core stores the magnitude bit-inverted) —
-the buffer is a fresh malloc'd copy in both cases.
-
-* @param value
-* @param out_data Receives a malloc'd buffer of magnitude bytes. Caller frees.
-* @param out_length Receives the length of the magnitude buffer in bytes.
-* @param out_is_negative Receives true if the value is negative, false otherwise.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_bignum(duckdb_v2_value_handle value, uint8_t **out_data,
-                                                             idx_t *out_length, bool *out_is_negative,
-                                                             duckdb_v2_error_info_handle *err);
-/*!
- * Reads a DATE value (days since the Unix epoch).
- * @param value
- * @param out_days
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_date(duckdb_v2_value_handle value, int32_t *out_days,
-                                                           duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIME value (microseconds since midnight).
- * @param value
- * @param out_micros
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_time(duckdb_v2_value_handle value, int64_t *out_micros,
-                                                           duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIME_NS value (nanoseconds since midnight).
- * @param value
- * @param out_nanos
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_time_ns(duckdb_v2_value_handle value, int64_t *out_nanos,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIME_TZ value as (microseconds, offset_seconds).
- * @param value
- * @param out_micros
- * @param out_offset_seconds
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_time_tz(duckdb_v2_value_handle value, int64_t *out_micros,
-                                                              int32_t *out_offset_seconds,
-                                                              duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIMESTAMP value (microseconds since epoch).
- * @param value
- * @param out_micros
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp(duckdb_v2_value_handle value, int64_t *out_micros,
-                                                                duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIMESTAMP_S value (seconds since epoch).
- * @param value
- * @param out_seconds
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_sec(duckdb_v2_value_handle value, int64_t *out_seconds,
-                                                                    duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIMESTAMP_MS value (milliseconds since epoch).
- * @param value
- * @param out_millis
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_ms(duckdb_v2_value_handle value, int64_t *out_millis,
-                                                                   duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIMESTAMP_NS value (nanoseconds since epoch).
- * @param value
- * @param out_nanos
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_ns(duckdb_v2_value_handle value, int64_t *out_nanos,
-                                                                   duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIMESTAMP_TZ value (microseconds since epoch, UTC-anchored).
- * @param value
- * @param out_micros
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_tz(duckdb_v2_value_handle value, int64_t *out_micros,
-                                                                   duckdb_v2_error_info_handle *err);
-/*!
- * Reads a TIMESTAMP_TZ_NS value (nanoseconds since epoch, UTC-anchored).
- * @param value
- * @param out_nanos
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_timestamp_tz_ns(duckdb_v2_value_handle value, int64_t *out_nanos,
-                                                                      duckdb_v2_error_info_handle *err);
-/*!
- * Reads an INTERVAL value as (months, days, micros).
- * @param value
- * @param out_months
- * @param out_days
- * @param out_micros
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_interval(duckdb_v2_value_handle value, int32_t *out_months,
-                                                               int32_t *out_days, int64_t *out_micros,
-                                                               duckdb_v2_error_info_handle *err);
-/*!
-* Reads a DECIMAL value as (scaled lower, scaled upper, width, scale).
-* Returns the underlying scaled 128-bit signed integer in two halves.
-For widths <= 18, the value fits in the lower half (as signed int64).
-
-* @param value
-* @param out_lower
-* @param out_upper
-* @param out_width
-* @param out_scale
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_decimal(duckdb_v2_value_handle value, uint64_t *out_lower,
-                                                              int64_t *out_upper, uint8_t *out_width,
-                                                              uint8_t *out_scale, duckdb_v2_error_info_handle *err);
-/*!
- * Reads a UUID value as (lower, upper) 64-bit halves.
- * @param value
- * @param out_lower
- * @param out_upper
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_uuid(duckdb_v2_value_handle value, uint64_t *out_lower,
-                                                           uint64_t *out_upper, duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for value --- */
 
@@ -4371,6 +3906,53 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_size(duckdb_v2_vector_han
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_size(duckdb_v2_vector_handle vector, idx_t size,
                                                             duckdb_v2_error_info_handle *err);
 /*!
+* Reads one cell of a vector as an owned value.
+* The total fallback reader: reads any logical row of any vector
+representation without flattening (FLAT, CONSTANT, DICTIONARY, and
+the compressed kinds the view getter rejects) and over every type
+kind, including kinds without a committed view layout (VARIANT,
+GEOMETRY today), where this is the only cell access path.
+
+One owned value allocation per call: a control-plane single-cell
+bridge, not a per-row loop primitive; use vector_get_view on hot
+paths. The row index is logical and bounds-checked against
+vector_get_size. The returned value is caller-owned; destroy via
+value_destroy.
+
+* @param vector
+* @param row The logical row index, in [0, vector_get_size).
+* @param out_value Receives the owned cell value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_value(duckdb_v2_vector_handle vector, idx_t row,
+                                                             duckdb_v2_value_handle *out_value,
+                                                             duckdb_v2_error_info_handle *err);
+/*!
+* Writes one cell of a FLAT vector from a value.
+* The total fallback writer over every type kind, including kinds
+without a committed view layout (VARIANT, GEOMETRY today), where
+this is the only cell write path. The value is borrowed (copied
+in) and cast to the vector's type (non-strict default cast); cast
+failures surface. A NULL value clears the row's validity.
+
+Requires a FLAT vector: constant, dictionary, and compressed
+representations are not row-addressable, call vector_flatten
+first. One engine value write per call: a control-plane
+single-cell bridge, not a per-row loop primitive; use the typed
+mutable-data paths on hot paths. The row index is logical and
+bounds-checked against vector_get_size.
+
+* @param vector
+* @param row The logical row index, in [0, vector_get_size).
+* @param value The borrowed value to write. Copied in; cast to the vector's type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_value(duckdb_v2_vector_handle vector, idx_t row,
+                                                             duckdb_v2_value_handle value,
+                                                             duckdb_v2_error_info_handle *err);
+/*!
 * For a FLAT or CONSTANT vector, returns a mutable pointer to the data.
 * Returns ERROR_INVALID_INPUT if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning
 chunk is destroyed; callers must not mutate the vector's storage shape (e.g. by flattening) while using the
@@ -4402,7 +3984,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_flatten(duckdb_v2_vector_hand
 * After this call the vector holds a single value that applies to every
 logical row. Write the value via vector_get_data_mutable (which
 returns a pointer to the single element). For STRUCT vectors the
-type change propagates to all children.
+type change propagates to all children. The value's logical type
+must equal the vector's; a mismatch returns ERROR_INVALID_INPUT.
 
 * @param vector
 * @param value

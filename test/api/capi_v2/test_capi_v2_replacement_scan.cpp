@@ -62,8 +62,7 @@ idx_t ReplScanQueryRowCount(duckdb_v2_connection_handle conn, const char *sql) {
 static void ReplScanClaimRange(duckdb_v2_replacement_scan_info_handle info, duckdb_v2_context_handle ctx,
                                duckdb_v2_error_info_handle *err) {
 	REQUIRE(duckdb_v2_replacement_scan_set_function_name(info, V2Str("range"), err) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_value_handle count = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(5, &count, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle count = V2Int64Value(5);
 	REQUIRE(duckdb_v2_replacement_scan_add_parameter(info, count, err) == DUCKDB_V2_ERROR_NONE);
 	// borrowed and copied at the call: destroying the value immediately must
 	// not affect the query
@@ -97,8 +96,7 @@ static void ReplScanSeqBind(duckdb_v2_table_function_bind_info_handle info, duck
                             duckdb_v2_error_info_handle *err) {
 	duckdb_v2_value_handle n_val = nullptr;
 	REQUIRE(duckdb_v2_table_function_bind_get_parameter(info, 0, &n_val, err) == DUCKDB_V2_ERROR_NONE);
-	int64_t n = 0;
-	duckdb_v2_value_get_int64(n_val, &n, err);
+	int64_t n = V2LeafPayload<int64_t>(n_val);
 	duckdb_v2_value_destroy(&n_val);
 
 	int64_t start = 0;
@@ -106,7 +104,7 @@ static void ReplScanSeqBind(duckdb_v2_table_function_bind_info_handle info, duck
 	duckdb_v2_error_info_handle local_err = nullptr;
 	if (duckdb_v2_table_function_bind_get_named_parameter(info, V2Str("start"), &start_val, &local_err) ==
 	    DUCKDB_V2_ERROR_NONE) {
-		duckdb_v2_value_get_int64(start_val, &start, err);
+		start = V2LeafPayload<int64_t>(start_val);
 		duckdb_v2_value_destroy(&start_val);
 	}
 	duckdb_v2_error_info_destroy(&local_err);
@@ -182,13 +180,11 @@ static void ReplScanClaimSeq(duckdb_v2_replacement_scan_info_handle info, duckdb
                              duckdb_v2_error_info_handle *err) {
 	REQUIRE(duckdb_v2_replacement_scan_set_function_name(info, V2Str("repl_seq_fn"), err) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_value_handle n = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(4, &n, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle n = V2Int64Value(4);
 	REQUIRE(duckdb_v2_replacement_scan_add_parameter(info, n, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&n);
 
-	duckdb_v2_value_handle start = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(10, &start, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle start = V2Int64Value(10);
 	REQUIRE(duckdb_v2_replacement_scan_add_named_parameter(info, V2Str("start"), start, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&start);
 }
@@ -343,8 +339,7 @@ static void ReplScanOrderFirst(duckdb_v2_replacement_scan_info_handle info, duck
 		return;
 	}
 	REQUIRE(duckdb_v2_replacement_scan_set_function_name(info, V2Str("range"), err) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_value_handle count = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(7, &count, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle count = V2Int64Value(7);
 	REQUIRE(duckdb_v2_replacement_scan_add_parameter(info, count, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&count);
 }
@@ -356,8 +351,7 @@ static void ReplScanOrderSecond(duckdb_v2_replacement_scan_info_handle info, duc
 	auto &flags = *static_cast<ReplScanOrderFlags *>(ud);
 	flags.second_invocations++;
 	REQUIRE(duckdb_v2_replacement_scan_set_function_name(info, V2Str("range"), err) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_value_handle count = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(3, &count, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle count = V2Int64Value(3);
 	REQUIRE(duckdb_v2_replacement_scan_add_parameter(info, count, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&count);
 }
@@ -452,8 +446,7 @@ static void ReplScanClaimTwice(duckdb_v2_replacement_scan_info_handle info, duck
 	REQUIRE(duckdb_v2_replacement_scan_set_function_name(info, V2Str("repl_scan_definitely_missing_fn"), err) ==
 	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_replacement_scan_set_function_name(info, V2Str("range"), err) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_value_handle count = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(2, &count, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle count = V2Int64Value(2);
 	REQUIRE(duckdb_v2_replacement_scan_add_parameter(info, count, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&count);
 }
@@ -543,8 +536,7 @@ static void ReplScanProbeNullArgs(duckdb_v2_replacement_scan_info_handle info, d
 	probe.bad_fn_name = duckdb_v2_replacement_scan_set_function_name(info, duckdb_v2_str {nullptr, 5}, nullptr);
 	probe.null_param_value = duckdb_v2_replacement_scan_add_parameter(info, nullptr, nullptr);
 
-	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(duckdb_v2_value_create_int64(1, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle value = V2Int64Value(1);
 	probe.bad_named_name =
 	    duckdb_v2_replacement_scan_add_named_parameter(info, duckdb_v2_str {nullptr, 5}, value, nullptr);
 	duckdb_v2_value_destroy(&value);
@@ -582,8 +574,7 @@ TEST_CASE("V2 replacement scan: null argument rejection", "[capi_v2][replacement
 		REQUIRE(duckdb_v2_replacement_scan_set_function_name(nullptr, V2Str("range"), nullptr) ==
 		        DUCKDB_V2_ERROR_INVALID_INPUT);
 
-		duckdb_v2_value_handle value = nullptr;
-		REQUIRE(duckdb_v2_value_create_int64(1, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_value_handle value = V2Int64Value(1);
 		REQUIRE(duckdb_v2_replacement_scan_add_parameter(nullptr, value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		REQUIRE(duckdb_v2_replacement_scan_add_named_parameter(nullptr, V2Str("start"), value, nullptr) ==
 		        DUCKDB_V2_ERROR_INVALID_INPUT);

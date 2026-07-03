@@ -298,6 +298,9 @@ enum class LogLevel : uint8_t {
 // Context
 //----------------------------------------------------------------------------------------------------------------------
 
+class LogicalType;
+struct TypeParam;
+
 class Context final : public detail::Handle<Context> {
 	friend detail::Factory;
 
@@ -305,6 +308,18 @@ public:
 	~Context() override;
 
 	FileSystem GetFileSystem() const;
+
+	// Parses a SQL type expression into an owned logical type: primitives,
+	// parameterized kinds, and catalog-registered names alike. The primary
+	// form, usable wherever a Context is live (WithTransaction scopes,
+	// function bind callbacks). Connection::ParseType is the sugar.
+	auto ParseType(std::string_view text) const -> LogicalType;
+
+	// Builds a logical type from a catalog type name plus value parameters,
+	// mirroring how SQL binds a type expression; registered extension types
+	// construct through the same call. A TypeParam with an empty name is
+	// positional. Connection::CreateType is the sugar.
+	auto CreateType(const std::string &name, const std::vector<TypeParam> &params) const -> LogicalType;
 
 	// Log a message from this connection. This is infallible and will not throw exceptions.
 	void Log(LogLevel level, const std::string &message) const noexcept;
@@ -463,6 +478,13 @@ public:
 	// reused across executions (see PreparedStatement::ReusesPlan).
 	PreparedStatement Prepare(const SqlStatement &statement, bool require_cacheable = false) const;
 
+	// Connection-level sugar over Context::ParseType: runs the with-context
+	// dance internally via WithTransaction.
+	auto ParseType(std::string_view text) -> LogicalType;
+
+	// Connection-level sugar over Context::CreateType.
+	auto CreateType(const std::string &name, const std::vector<TypeParam> &params) -> LogicalType;
+
 	// Requests cancellation of the active query. Safe to call from any
 	// thread; a no-op when no query is active.
 	void Interrupt();
@@ -577,6 +599,59 @@ public:
 //----------------------------------------------------------------------------------------------------------------------
 // Logical Type
 //----------------------------------------------------------------------------------------------------------------------
+
+// Logical type identifier. Mirrors the C API's LOGICAL_TYPE_ID (and thereby
+// duckdb::LogicalTypeId) numerically; parity pinned by static_asserts in the
+// implementation.
+enum class TypeId : uint32_t {
+	INVALID = 0,
+	SQLNULL = 1,
+	UNKNOWN = 2,
+	ANY = 3,
+	// A type carried as a value (type parameters); see Value::Type.
+	TYPE = 6,
+	BOOLEAN = 10,
+	TINYINT = 11,
+	SMALLINT = 12,
+	INTEGER = 13,
+	BIGINT = 14,
+	DATE = 15,
+	TIME = 16,
+	TIMESTAMP_SEC = 17,
+	TIMESTAMP_MS = 18,
+	TIMESTAMP = 19,
+	TIMESTAMP_NS = 20,
+	DECIMAL = 21,
+	FLOAT = 22,
+	DOUBLE = 23,
+	VARCHAR = 25,
+	BLOB = 26,
+	INTERVAL = 27,
+	UTINYINT = 28,
+	USMALLINT = 29,
+	UINTEGER = 30,
+	UBIGINT = 31,
+	TIMESTAMP_TZ = 32,
+	TIMESTAMP_TZ_NS = 33,
+	TIME_TZ = 34,
+	TIME_NS = 35,
+	BIT = 36,
+	BIGNUM = 39,
+	UHUGEINT = 49,
+	HUGEINT = 50,
+	UUID = 54,
+	GEOMETRY = 60,
+	STRUCT = 100,
+	LIST = 101,
+	MAP = 102,
+	ENUM = 104,
+	UNION = 107,
+	ARRAY = 108,
+	VARIANT = 109,
+};
+
+class Value;
+
 class LogicalType final : public detail::Handle<LogicalType> {
 	friend detail::Factory;
 
@@ -592,14 +667,64 @@ public:
 
 	LogicalType WithAlias(std::string_view alias) const;
 
-	std::string_view GetAlias() const;
+	// The type's name: the alias when set, otherwise the canonical fixed
+	// name of the type id. Never empty; exactly the vocabulary CreateType
+	// consumes. Borrowed; valid until this LogicalType is destroyed.
+	std::string_view GetName() const;
 	bool operator==(const LogicalType &other) const;
 	bool operator!=(const LogicalType &other) const {
 		return !(*this == other);
 	}
 
+	auto GetId() const -> TypeId;
+
+	// Renders as SQL text (an aliased type renders as its alias). The inverse
+	// of Context::ParseType for every constructible kind.
+	auto ToText() const -> std::string;
+
+	// Generic parameter inspection: the exact dual of Context::CreateType.
+	// DECIMAL 2 (width, scale); LIST 1 (element type); ARRAY 2 (element
+	// type, size); MAP 2 (key, value types); STRUCT one per field; UNION one
+	// per member; ENUM one per dictionary entry; VARCHAR 1 when a collation
+	// is set; GEOMETRY 1 when a coordinate system is set; else 0.
+	auto GetParamCount() const -> idx_t;
+	// One parameter: owned name (empty = positional) plus owned value. Child
+	// types come back as TYPE values (unwrap via Value::AsType).
+	auto GetParam(idx_t index) const -> TypeParam;
+
+	// Per-kind sugar over GetParam / GetParamCount. Each throws
+	// INVALID_INPUT when this type is not the matching kind. Names and
+	// dictionary entries return owned strings: the backing values are owned
+	// per call, so views would dangle.
+	auto GetDecimalWidth() const -> uint8_t;
+	auto GetDecimalScale() const -> uint8_t;
+	auto GetEnumSize() const -> idx_t;
+	auto GetEnumValue(idx_t index) const -> std::string;
+	auto GetListChildType() const -> LogicalType;
+	auto GetArrayChildType() const -> LogicalType;
+	auto GetArraySize() const -> idx_t;
+	auto GetMapKeyType() const -> LogicalType;
+	auto GetMapValueType() const -> LogicalType;
+	auto GetStructChildCount() const -> idx_t;
+	auto GetStructChildName(idx_t index) const -> std::string;
+	auto GetStructChildType(idx_t index) const -> LogicalType;
+	auto GetUnionMemberCount() const -> idx_t;
+	auto GetUnionMemberName(idx_t index) const -> std::string;
+	auto GetUnionMemberType(idx_t index) const -> LogicalType;
+
+	// Storage-tier conveniences, computed locally from the committed
+	// width / dictionary-size tables (see the vector module's view
+	// docstring); no extra boundary crossings. Gate on the type kind like
+	// the other sugars.
+	auto GetDecimalInternalTypeId() const -> TypeId;
+	auto GetEnumInternalTypeId() const -> TypeId;
+
 private:
 	explicit LogicalType(void *impl);
+
+	// Shared gate for the per-kind sugar: throws INVALID_INPUT unless this
+	// type's id is `expected`.
+	auto RequireKind(TypeId expected, const char *what) const -> void;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -660,9 +785,33 @@ public:
 	static Value FromI64(int64_t value);
 	static Value FromVarchar(const std::string &value);
 
+	// Wraps a borrowed logical type as a TYPE value (a type carried as a
+	// value, e.g. a type parameter). Unwrap via AsType.
+	static Value Type(const LogicalType &type);
+
+	// Builds a composite value from a borrowed type plus borrowed children
+	// (copied in, cast to the declared child/field types). LIST: elements,
+	// any count; ARRAY: count = declared size; STRUCT: positional fields;
+	// MAP: alternating key, value. UNION and ENUM values are built via Cast
+	// (member value to union type, VARCHAR to enum type).
+	static Value Create(const LogicalType &type, const std::vector<Value> &children);
+
 	auto IsNull() const -> bool;
 	auto GetLogicalType() const -> LogicalType;
 	auto ToString() const -> std::string;
+
+	// Casts through the engine's cast machinery (non-strict; registered
+	// custom casts included). The primary form takes a live Context; the
+	// Connection overload is sugar that runs a with-context scope.
+	auto Cast(const Context &ctx, const LogicalType &target) const -> Value;
+	auto Cast(Connection &conn, const LogicalType &target) const -> Value;
+
+	// Composite descent: LIST/ARRAY/STRUCT children are elements or fields,
+	// MAP children alternate key, value, UNION children are [0] the tag as a
+	// UTINYINT value and [1] the active member. Primitives and NULL
+	// composites report 0. Children are owned copies.
+	auto GetChildCount() const -> idx_t;
+	auto GetChild(idx_t index) const -> Value;
 
 	auto AsBool() const -> bool;
 
@@ -683,10 +832,26 @@ public:
 
 	auto AsVarchar() const -> std::string_view;
 
+	// Unwraps the logical type carried by a TYPE value; throws INVALID_INPUT
+	// unless this is a non-NULL TYPE value. Joins the As* getters.
+	auto AsType() const -> LogicalType;
+
+	// Unwraps a VARIANT value into the plain value it carries, with its
+	// real logical type (the in-surface inner-type discovery for VARIANT
+	// cells). Throws INVALID_INPUT unless this is a non-NULL VARIANT value.
+	auto UnwrapVariant() const -> Value;
+
 	// TODO: Add more
 
 private:
 	explicit Value(void *impl);
+};
+
+// One type parameter: the unit of Context::CreateType and
+// LogicalType::GetParam. An empty name means positional.
+struct TypeParam {
+	std::string name;
+	Value value;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1111,6 +1276,18 @@ public:
 	auto MakeSequence(int64_t start, int64_t increment, idx_t count) -> void;
 
 	// ---- End vector read surface ----
+
+	// --- Single-cell value bridge (owned by the types-values worktree) ---
+	// Total fallback reader: any representation (constant, dictionary,
+	// compressed) without flattening, any type kind including those without
+	// a committed view layout (VARIANT, GEOMETRY). One owned Value per call;
+	// not for per-row loops.
+	auto GetValue(idx_t row) const -> Value;
+	// Total fallback writer over every type kind; FLAT vectors only
+	// (flatten first). The value is copied in and cast to the vector's
+	// type. One engine value write per call; not for per-row loops.
+	auto SetValue(idx_t row, const Value &value) -> void;
+	// --- end single-cell value bridge ---
 
 	// Copies `data` into the vector's string heap and places the resulting
 	// storage value into slot `index`. The vector must be a string-backed kind

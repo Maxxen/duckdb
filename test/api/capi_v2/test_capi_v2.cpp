@@ -906,18 +906,23 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_exec_callback(builder, exec_callback, err) ==
 			            DUCKDB_V2_ERROR_NONE);
 
+			    // Expected-failure probes opt out of detail (nullptr err): writing
+			    // their codes into the callback's slot would fail the whole scope,
+			    // since a non-NONE code left on the slot at return is the callback's
+			    // failure signal.
+
 			    // Empty name not supported
-			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, V2Str(""), err) ==
+			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, V2Str(""), nullptr) ==
 			            DUCKDB_V2_ERROR_INVALID_INPUT);
 
 			    // Does not work with NULL
-			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(nullptr, V2Str("my_func"), err) ==
+			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(nullptr, V2Str("my_func"), nullptr) ==
 			            DUCKDB_V2_ERROR_INVALID_INPUT);
-			    REQUIRE(duckdb_v2_scalar_function_builder_set_bind_callback(nullptr, bind_callback, err) ==
+			    REQUIRE(duckdb_v2_scalar_function_builder_set_bind_callback(nullptr, bind_callback, nullptr) ==
 			            DUCKDB_V2_ERROR_INVALID_INPUT);
-			    REQUIRE(duckdb_v2_scalar_function_builder_set_init_callback(nullptr, init_callback, err) ==
+			    REQUIRE(duckdb_v2_scalar_function_builder_set_init_callback(nullptr, init_callback, nullptr) ==
 			            DUCKDB_V2_ERROR_INVALID_INPUT);
-			    REQUIRE(duckdb_v2_scalar_function_builder_set_exec_callback(nullptr, exec_callback, err) ==
+			    REQUIRE(duckdb_v2_scalar_function_builder_set_exec_callback(nullptr, exec_callback, nullptr) ==
 			            DUCKDB_V2_ERROR_INVALID_INPUT);
 
 			    // Register

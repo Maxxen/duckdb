@@ -18,10 +18,6 @@ namespace {
 // it coalesces a clean 64 engine chunks per Arrow array.
 constexpr idx_t kDefaultArrowBatchSize = 131072;
 
-ClientContext &ToContextRef(duckdb_v2_context_handle context) {
-	return *reinterpret_cast<ClientContext *>(context);
-}
-
 ArrowTableSchema &ToArrowTableSchema(duckdb_v2_arrow_conversion_plan_handle plan) {
 	return *reinterpret_cast<ArrowTableSchema *>(plan);
 }
@@ -279,7 +275,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_types_to_arrow_schema(duckdb_v2_context_h
 		if (count > 0 && (!types || !names)) {
 			throw duckdb::InvalidInputException("null types/names array with nonzero count");
 		}
-		auto &ctx = duckdb::ToContextRef(context);
+		auto &ctx = *duckdb::ToContext(context);
 		duckdb::vector<duckdb::LogicalType> schema_types;
 		duckdb::vector<duckdb::string> schema_names;
 		schema_types.reserve(count);
@@ -304,7 +300,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_to_arrow_array(duckdb_v2_context_handl
 		if (!context || !chunk || !out_array) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_to_arrow_array");
 		}
-		auto &ctx = duckdb::ToContextRef(context);
+		auto &ctx = *duckdb::ToContext(context);
 		auto &dchunk = *duckdb::ToDataChunk(chunk);
 		auto properties = ctx.GetClientProperties();
 		auto extension_type_cast = duckdb::ArrowTypeExtensionData::GetExtensionTypes(ctx, dchunk.GetTypes());
@@ -321,7 +317,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_create(duckdb_v2_context_ha
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_conversion_plan_create");
 		}
 		*out_plan = nullptr;
-		auto &ctx = duckdb::ToContextRef(context);
+		auto &ctx = *duckdb::ToContext(context);
 		auto arrow_table = duckdb::make_uniq<duckdb::ArrowTableSchema>();
 		duckdb::ArrowTableFunction::PopulateArrowTableSchema(ctx, *arrow_table, *schema);
 		*out_plan = reinterpret_cast<duckdb_v2_arrow_conversion_plan_handle>(arrow_table.release());
@@ -337,7 +333,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_arrow_array_to_data_chunk(duckdb_v2_context_handl
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_array_to_data_chunk");
 		}
 		*out_chunk = nullptr;
-		auto &ctx = duckdb::ToContextRef(context);
+		auto &ctx = *duckdb::ToContext(context);
 		auto &arrow_table = duckdb::ToArrowTableSchema(plan);
 		auto &types = arrow_table.GetTypes();
 
