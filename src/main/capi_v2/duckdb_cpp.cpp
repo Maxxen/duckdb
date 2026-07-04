@@ -688,8 +688,25 @@ QueryResult Connection::Execute(const SqlStatement &statement, const Value *para
 		values.push_back(parameters[i].handle());
 	}
 	duckdb_v2_result_handle result = nullptr;
-	CheckedAPICall(duckdb_v2_statement_execute, handle(), statement.handle(), parameter_count ? values.data() : nullptr,
-	               parameter_count, &result);
+	CheckedAPICall(duckdb_v2_statement_execute, handle(), statement.handle(), nullptr,
+	               parameter_count ? values.data() : nullptr, parameter_count, &result);
+	return detail::Factory::Make<QueryResult>(result);
+}
+
+QueryResult Connection::Execute(const SqlStatement &statement, const std::vector<NamedParam> &parameters) {
+	// Split into the C API's parallel arrays; an empty name crosses as the positional
+	// {NULL, 0} view (mirrors Context::CreateType).
+	std::vector<duckdb_v2_str> names;
+	std::vector<duckdb_v2_value_handle> values;
+	names.reserve(parameters.size());
+	values.reserve(parameters.size());
+	for (const auto &param : parameters) {
+		names.push_back(param.name.empty() ? duckdb_v2_str {nullptr, 0} : ToStr(param.name));
+		values.push_back(param.value.handle());
+	}
+	duckdb_v2_result_handle result = nullptr;
+	CheckedAPICall(duckdb_v2_statement_execute, handle(), statement.handle(), names.empty() ? nullptr : names.data(),
+	               values.empty() ? nullptr : values.data(), static_cast<idx_t>(parameters.size()), &result);
 	return detail::Factory::Make<QueryResult>(result);
 }
 
@@ -1158,8 +1175,25 @@ QueryResult PreparedStatement::Execute(const Value *parameters, idx_t parameter_
 		values.push_back(parameters[i].handle());
 	}
 	duckdb_v2_result_handle result = nullptr;
-	CheckedAPICall(duckdb_v2_prepared_execute, handle(), parameter_count ? values.data() : nullptr, parameter_count,
-	               &result);
+	CheckedAPICall(duckdb_v2_prepared_execute, handle(), nullptr, parameter_count ? values.data() : nullptr,
+	               parameter_count, &result);
+	return detail::Factory::Make<QueryResult>(result);
+}
+
+QueryResult PreparedStatement::Execute(const std::vector<NamedParam> &parameters) {
+	// Split into the C API's parallel arrays; an empty name crosses as the positional
+	// {NULL, 0} view (mirrors Context::CreateType).
+	std::vector<duckdb_v2_str> names;
+	std::vector<duckdb_v2_value_handle> values;
+	names.reserve(parameters.size());
+	values.reserve(parameters.size());
+	for (const auto &param : parameters) {
+		names.push_back(param.name.empty() ? duckdb_v2_str {nullptr, 0} : ToStr(param.name));
+		values.push_back(param.value.handle());
+	}
+	duckdb_v2_result_handle result = nullptr;
+	CheckedAPICall(duckdb_v2_prepared_execute, handle(), names.empty() ? nullptr : names.data(),
+	               values.empty() ? nullptr : values.data(), static_cast<idx_t>(parameters.size()), &result);
 	return detail::Factory::Make<QueryResult>(result);
 }
 

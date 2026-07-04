@@ -527,3 +527,52 @@ TEST_CASE("Stable C++API: PreparedStatement handle", "[cpp_api][prepared_stateme
 		REQUIRE(summary[0].second == 20);
 	}
 }
+
+TEST_CASE("Stable C++API: named parameters", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE scores(id INTEGER, score INTEGER)").Drain();
+	conn.Execute("INSERT INTO scores VALUES (1, 40), (2, 55), (3, 70), (4, 90)").Drain();
+
+	SECTION("Connection::Execute binds by name") {
+		auto iter = conn.ParseSQL("SELECT id, score FROM scores WHERE score >= $min ORDER BY id");
+		auto stmt = iter.Next();
+		std::vector<NamedParam> params;
+		params.push_back(NamedParam {"min", Value::FromI64(70)});
+		auto rows = Collect2<int32_t, int32_t>(conn.Execute(stmt, params), 0, 1);
+		REQUIRE(rows.size() == 2);
+		REQUIRE(rows[0].first == 3);
+		REQUIRE(rows[1].first == 4);
+	}
+
+	SECTION("PreparedStatement::Execute binds by name") {
+		auto iter = conn.ParseSQL("SELECT id FROM scores WHERE score >= $min ORDER BY id");
+		auto prepared = conn.Prepare(iter.Next());
+		std::vector<NamedParam> params;
+		params.push_back(NamedParam {"min", Value::FromI64(90)});
+		auto rows = Collect2<int32_t, int32_t>(prepared.Execute(params), 0, 0);
+		REQUIRE(rows.size() == 1);
+		REQUIRE(rows[0].first == 4);
+	}
+
+	SECTION("an empty NamedParam name binds positionally") {
+		auto iter = conn.ParseSQL("SELECT id FROM scores WHERE score >= $1 ORDER BY id");
+		auto stmt = iter.Next();
+		std::vector<NamedParam> params;
+		params.push_back(NamedParam {"", Value::FromI64(90)}); // empty name -> positional $1
+		auto rows = Collect2<int32_t, int32_t>(conn.Execute(stmt, params), 0, 0);
+		REQUIRE(rows.size() == 1);
+		REQUIRE(rows[0].first == 4);
+	}
+
+	SECTION("a wrong key set throws INVALID_INPUT") {
+		auto iter = conn.ParseSQL("SELECT id FROM scores WHERE score >= $min");
+		auto stmt = iter.Next();
+		std::vector<NamedParam> params;
+		params.push_back(NamedParam {"wrong", Value::FromI64(1)});
+		REQUIRE_THROWS_MATCHES(conn.Execute(stmt, params), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	}
+}

@@ -186,13 +186,19 @@ functions:
       destroys it with sql_statement_destroy.
 
       parameter_values binds the statement's parameters as constants for this
-      execution. Pass one value per parameter, positionally: the i-th value binds
-      $(i+1) (the engine's positional prepared-statement convention, so dense
-      $1..$N and ? placeholders work directly). Pass (NULL, 0) for an
-      unparameterized statement. Borrowed (copied in); the caller still owns and
-      destroys them. Parameters and statement expansion are mutually exclusive:
-      passing values for a statement that preprocesses into a group is rejected
-      with ERROR_INVALID_INPUT.
+      execution. By default binding is positional: the i-th value binds $(i+1)
+      (the engine's positional convention, so dense $1..$N and ? placeholders
+      work directly). Supply parameter_names to bind by name instead: a non-empty
+      name binds its value to that named parameter ($name, matched
+      case-insensitively), while a {NULL, 0} name entry keeps that value
+      positional. The parameter schema from statement_bind lists the names to use.
+      Pass NULL for both arrays (or count 0) for an unparameterized statement.
+      Borrowed (copied in); the caller still owns and destroys them. A key set that
+      does not match the statement's parameters (names for a positional statement,
+      or the reverse) is rejected with ERROR_INVALID_INPUT. Named and positional
+      parameters cannot be mixed within one statement. Parameters and statement
+      expansion are mutually exclusive: passing values for a statement that
+      preprocesses into a group is rejected with ERROR_INVALID_INPUT.
 
       Preprocessing can expand one statement into a group of engine
       statements (see the module commentary); the group executes as one
@@ -221,14 +227,19 @@ functions:
       statement:
         type: sql_statement
         description: The statement to execute. Borrowed and copied; not consumed. Destroy it with sql_statement_destroy.
+      parameter_names:
+        type: str
+        indirection: 1
+        const: true
+        description: Optional. An array of parameter_count parameter names; a non-empty entry binds its value to the named parameter ($name, case-insensitive), a {NULL, 0} entry keeps it positional ($1 = element 0). Pass NULL for all-positional binding. Named and positional parameters cannot be mixed within one statement.
       parameter_values:
         type: value
         indirection: 1
         const: true
-        description: Optional. An array of parameter_count value handles bound positionally ($1 = element 0). Borrowed (copied in). Pass NULL for an unparameterized statement.
+        description: Optional. An array of parameter_count value handles. Each binds by name when parameter_names supplies one, otherwise positionally ($1 = element 0). Borrowed (copied in). Pass NULL for an unparameterized statement.
       parameter_count:
         type: idx
-        description: The number of values in parameter_values. Pass 0 for an unparameterized statement.
+        description: The number of parameters in parameter_names and parameter_values. Pass 0 for an unparameterized statement.
       out_result:
         type: result
         indirection: 1

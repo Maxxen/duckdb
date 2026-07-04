@@ -44,6 +44,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_prepare(duckdb_v2_connection_handle con
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_prepared_execute(duckdb_v2_prepared_statement_handle prepared,
+                                                const duckdb_v2_str *parameter_names,
                                                 const duckdb_v2_value_handle *parameter_values, idx_t parameter_count,
                                                 duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err) {
 	if (out_result) {
@@ -71,16 +72,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_prepared_execute(duckdb_v2_prepared_statement_han
 	result->busy_slot = std::move(busy_slot);
 	result->busy_slot->cancel_requested.store(false, std::memory_order_relaxed);
 	return duckdb::WithErrorHandler(err, [&]() {
-		// Positional values bound as constants; key "1".."N" is the engine's
-		// positional prepared-statement convention.
+		// Fold parameter values in as constants, keyed by name when parameter_names
+		// supplies one and positionally ("1".."N") otherwise.
 		duckdb::identifier_map_t<duckdb::BoundParameterData> values;
-		for (duckdb::idx_t i = 0; i < parameter_count; i++) {
-			if (!parameter_values[i]) {
-				throw duckdb::InvalidInputException("null parameter value passed to duckdb_v2_prepared_execute");
-			}
-			values[duckdb::Identifier(std::to_string(i + 1))] =
-			    duckdb::BoundParameterData(*duckdb::ToValue(parameter_values[i]));
-		}
+		duckdb::BuildParameterMap(parameter_names, parameter_values, parameter_count, "duckdb_v2_prepared_execute",
+		                          values);
 		// A prepared statement is a single engine statement: no expansion, no
 		// fragment group, no bridge-injected transaction. It reaches the shared
 		// BeginPending seam directly, always principal (fragments stays empty;

@@ -252,6 +252,35 @@ inline LogicalType *ToLogicalType(duckdb_v2_logical_type_handle ptr) {
 inline Value *ToValue(duckdb_v2_value_handle ptr) {
 	return reinterpret_cast<Value *>(ptr);
 }
+
+// Builds the engine's name-keyed parameter map from the parallel (names, values)
+// arrays that statement_execute / prepared_execute receive. A parameter binds by
+// name when parameter_names supplies a non-empty view for it (a case-insensitive
+// Identifier, so $Name matches "name"); an absent or empty name binds positionally,
+// keyed "1".."N" (the engine's positional convention, so dense $1..$N and ? work).
+// parameter_names may be null (all positional). Throws InvalidInputException on a
+// malformed name view ({NULL, len > 0}) or a null value handle. Shared by both
+// execute bridges so the keying rule lives in exactly one place and cannot drift.
+// The wrong key set (names for a positional statement, or the reverse) is not
+// policed here: it surfaces as a bind error from the engine's VerifyParameters.
+inline void BuildParameterMap(const duckdb_v2_str *parameter_names, const duckdb_v2_value_handle *parameter_values,
+                              idx_t parameter_count, const char *function_name,
+                              identifier_map_t<BoundParameterData> &out) {
+	for (idx_t i = 0; i < parameter_count; i++) {
+		auto name = parameter_names ? parameter_names[i] : duckdb_v2_str {nullptr, 0};
+		// A {NULL, 0} view is a valid (empty) name; only a null pointer with a
+		// nonzero length is malformed.
+		if (!name.ptr && name.len > 0) {
+			throw InvalidInputException("malformed parameter name passed to %s", function_name);
+		}
+		if (!parameter_values[i]) {
+			throw InvalidInputException("null parameter value passed to %s", function_name);
+		}
+		// Named iff the name view is non-empty; otherwise positional.
+		Identifier key = (name.ptr && name.len > 0) ? ToIdentifier(name) : Identifier(std::to_string(i + 1));
+		out[key] = BoundParameterData(*ToValue(parameter_values[i]));
+	}
+}
 // Backing struct for the opaque duckdb_v2_schema_handle: an ordered (name, type)
 // row schema (no single engine object represents one). A deque so the name and
 // type schema_get_field borrows stay valid for the schema's lifetime. The bind

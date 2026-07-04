@@ -112,7 +112,7 @@ TEST_CASE("V2: prepared_execute runs the same handle repeatedly with params", "[
 	// First execution: x > 2 -> {3, 4}.
 	auto v2 = Int32Value(2);
 	duckdb_v2_result_handle r1 = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, &v2, 1, &r1, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, &v2, 1, &r1, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(DrainInt32Column(r1) == std::vector<int32_t> {3, 4});
 	duckdb_v2_result_destroy(&r1);
 	duckdb_v2_value_destroy(&v2);
@@ -120,7 +120,7 @@ TEST_CASE("V2: prepared_execute runs the same handle repeatedly with params", "[
 	// Same handle, different value: x > 0 -> {1, 2, 3, 4}.
 	auto v0 = Int32Value(0);
 	duckdb_v2_result_handle r2 = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, &v0, 1, &r2, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, &v0, 1, &r2, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(DrainInt32Column(r2) == std::vector<int32_t> {1, 2, 3, 4});
 	duckdb_v2_result_destroy(&r2);
 	duckdb_v2_value_destroy(&v0);
@@ -183,9 +183,37 @@ TEST_CASE("V2: prepared_execute binds positional parameters correctly", "[capi_v
 	duckdb_v2_value_handle values[2] = {a, b};
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, values, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, values, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(DrainVarcharScalar(r) == "ab");
 	duckdb_v2_result_destroy(&r);
+
+	duckdb_v2_value_destroy(&a);
+	duckdb_v2_value_destroy(&b);
+	duckdb_v2_prepared_statement_destroy(&prepared);
+}
+
+TEST_CASE("V2: prepared_execute binds named parameters correctly", "[capi_v2][prepared_statement]") {
+	V2EnvFixture fx;
+	auto prepared = PsPrepare(fx.conn, "SELECT $x::VARCHAR || $y::VARCHAR", false);
+	REQUIRE(prepared != nullptr);
+
+	duckdb_v2_value_handle a = V2VarcharValue("a");
+	duckdb_v2_value_handle b = V2VarcharValue("b");
+
+	// Bind by name with the arrays deliberately in the reverse order of the SQL: the
+	// result follows the names, not the positions.
+	duckdb_v2_str names[2] = {V2Str("y"), V2Str("x")};
+	duckdb_v2_value_handle values[2] = {b, a}; // y=b, x=a -> $x || $y == "ab"
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_prepared_execute(prepared, names, values, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(DrainVarcharScalar(r) == "ab");
+	duckdb_v2_result_destroy(&r);
+
+	// A wrong key set (a name the statement does not declare) is a bind error.
+	duckdb_v2_str wrong[2] = {V2Str("x"), V2Str("z")};
+	duckdb_v2_value_handle wrong_values[2] = {a, b};
+	REQUIRE(duckdb_v2_prepared_execute(prepared, wrong, wrong_values, 2, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(r == nullptr);
 
 	duckdb_v2_value_destroy(&a);
 	duckdb_v2_value_destroy(&b);
@@ -204,7 +232,7 @@ TEST_CASE("V2: prepared_execute rows match statement_execute", "[capi_v2][prepar
 	auto stmt = PsParseOne(fx.conn, "SELECT x FROM t WHERE x > $1 ORDER BY x");
 	auto v2a = Int32Value(2);
 	duckdb_v2_result_handle re = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, &v2a, 1, &re, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, &v2a, 1, &re, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto stateless_rows = DrainInt32Column(re);
 	duckdb_v2_result_destroy(&re);
 	duckdb_v2_value_destroy(&v2a);
@@ -214,7 +242,7 @@ TEST_CASE("V2: prepared_execute rows match statement_execute", "[capi_v2][prepar
 	auto prepared = PsPrepare(fx.conn, "SELECT x FROM t WHERE x > $1 ORDER BY x", false);
 	auto v2b = Int32Value(2);
 	duckdb_v2_result_handle rp = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, &v2b, 1, &rp, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, &v2b, 1, &rp, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto prepared_rows = DrainInt32Column(rp);
 	duckdb_v2_result_destroy(&rp);
 	duckdb_v2_value_destroy(&v2b);
@@ -232,7 +260,7 @@ TEST_CASE("V2: prepared_execute result metadata matches statement_execute", "[ca
 	auto prepared = PsPrepare(fx.conn, "SELECT a, b FROM t", false);
 	REQUIRE(prepared != nullptr);
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// Schema, statement type, result type all available before the first step.
 	REQUIRE(V2ColumnCount(r) == 2);
@@ -259,7 +287,7 @@ TEST_CASE("V2: prepared_execute of a DML reports rows-changed like statement_exe
 
 	auto v99 = Int32Value(99);
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, &v99, 1, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, &v99, 1, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// CHANGED_ROWS result type, and drain reports one affected row.
 	DUCKDB_V2_RESULT_TYPE result_type = DUCKDB_V2_RESULT_TYPE_NOTHING;
@@ -274,7 +302,7 @@ TEST_CASE("V2: prepared_execute of a DML reports rows-changed like statement_exe
 	// own per-query transaction).
 	auto v7 = Int32Value(7);
 	duckdb_v2_result_handle r2 = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, &v7, 1, &r2, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, &v7, 1, &r2, nullptr) == DUCKDB_V2_ERROR_NONE);
 	V2DrainRowCount(r2);
 	duckdb_v2_result_destroy(&r2);
 
@@ -310,7 +338,7 @@ TEST_CASE("V2: a result outlives its prepared handle", "[capi_v2][prepared_state
 	auto prepared = PsPrepare(fx.conn, "SELECT x FROM t ORDER BY x", false);
 	REQUIRE(prepared != nullptr);
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	// Destroy the prepared handle while its result is live; the result keeps the
 	// context alive and stays drainable.
 	REQUIRE(duckdb_v2_prepared_statement_destroy(&prepared) == DUCKDB_V2_ERROR_NONE);
@@ -336,13 +364,14 @@ TEST_CASE("V2: prepared_execute refuses while a live result exists", "[capi_v2][
 	REQUIRE(V2Query(fx.conn, "SELECT x FROM t", &live, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_result_handle blocked = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, 0, &blocked, nullptr) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, &blocked, nullptr) ==
+	        DUCKDB_V2_ERROR_RESOURCE_IN_USE);
 	REQUIRE(blocked == nullptr);
 
 	// Drain and destroy the live result: now prepared_execute succeeds.
 	V2DrainRowCount(live);
 	duckdb_v2_result_destroy(&live);
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, 0, &blocked, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, &blocked, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_result_destroy(&blocked);
 	duckdb_v2_prepared_statement_destroy(&prepared);
 }
@@ -376,7 +405,7 @@ TEST_CASE("V2: a live prepared result blocks statement_execute", "[capi_v2][prep
 	auto prepared = PsPrepare(fx.conn, "SELECT x FROM t", false);
 	REQUIRE(prepared != nullptr);
 	duckdb_v2_result_handle live = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, 0, &live, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, &live, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_result_handle blocked = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT 1", &blocked, nullptr) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
@@ -400,7 +429,7 @@ TEST_CASE("V2: a prepared_execute that errors frees the connection", "[capi_v2][
 	auto prepared = PsPrepare(fx.conn, "SELECT 1 / (x - x) FROM t", false);
 	REQUIRE(prepared != nullptr);
 	duckdb_v2_result_handle r = nullptr;
-	auto rc = duckdb_v2_prepared_execute(prepared, nullptr, 0, &r, nullptr);
+	auto rc = duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, &r, nullptr);
 	if (rc == DUCKDB_V2_ERROR_NONE) {
 		// The error may surface lazily while stepping; drain to force it.
 		duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -449,11 +478,12 @@ TEST_CASE("V2: prepared_execute guards null arguments", "[capi_v2][prepared_stat
 	auto prepared = PsPrepare(fx.conn, "SELECT $1::INTEGER", false);
 	REQUIRE(prepared != nullptr);
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_prepared_execute(nullptr, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(r == nullptr);
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, nullptr, nullptr) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
 	// A positive count with a null value array is refused.
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, 1, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 1, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(r == nullptr);
 	duckdb_v2_prepared_statement_destroy(&prepared);
 }

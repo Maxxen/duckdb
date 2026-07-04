@@ -61,7 +61,7 @@ TEST_CASE("V2: parse_sql iterates a multi-statement string", "[capi_v2][sql_stat
 			break; // exhausted
 		}
 		duckdb_v2_result_handle r = nullptr;
-		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(stmt != nullptr); // not consumed: a copy was executed
 		REQUIRE(V2DrainRowCount(r) == 1);
 		duckdb_v2_result_destroy(&r);
@@ -101,7 +101,7 @@ TEST_CASE("V2: statements are independently owned", "[capi_v2][sql_statement]") 
 	duckdb_v2_statement_iterator_destroy(&iter);
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, first, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, first, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2DrainRowCount(r) == 1);
 	duckdb_v2_result_destroy(&r);
 
@@ -177,14 +177,15 @@ TEST_CASE("V2: statement_execute leaves the statement intact on prepare failure"
 	auto stmt = StmtParseOne(fx.conn, "SELECT * FROM no_such_table");
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_DATABASE_CATALOG);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, nullptr, 0, &r, nullptr) ==
+	        DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	REQUIRE(r == nullptr);
 	REQUIRE(stmt != nullptr); // not consumed: only the copy was
 
 	// The same statement now succeeds once the table exists (a copy is bound fresh).
 	V2ExecSQL(fx.conn, "CREATE TABLE no_such_table(i INTEGER)");
 	V2ExecSQL(fx.conn, "INSERT INTO no_such_table VALUES (1), (2)");
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2DrainRowCount(r) == 2);
 	duckdb_v2_result_destroy(&r);
 	duckdb_v2_sql_statement_destroy(&stmt);
@@ -199,14 +200,15 @@ TEST_CASE("V2: the busy refusal leaves the statement intact", "[capi_v2][sql_sta
 	auto stmt = StmtParseOne(fx.conn, "SELECT 1");
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_RESOURCE_IN_USE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, nullptr, 0, &r, nullptr) ==
+	        DUCKDB_V2_ERROR_RESOURCE_IN_USE);
 	REQUIRE(stmt != nullptr); // intact: the engine was never reached
 
 	// Draining the live result frees the connection; the same statement
 	// then runs.
 	REQUIRE(V2DrainRowCount(live) == 100000);
 	duckdb_v2_result_destroy(&live);
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(stmt != nullptr); // still intact (non-consuming)
 	REQUIRE(V2DrainRowCount(r) == 1);
 	duckdb_v2_result_destroy(&r);
@@ -232,7 +234,7 @@ TEST_CASE("V2: statement_execute binds positional parameters", "[capi_v2][sql_st
 	duckdb_v2_value_handle b = make_int(20);
 	duckdb_v2_value_handle params[2] = {a, b};
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, params, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(StmtScalarI64(r) == 30);
 	duckdb_v2_result_destroy(&r);
 
@@ -240,7 +242,7 @@ TEST_CASE("V2: statement_execute binds positional parameters", "[capi_v2][sql_st
 	duckdb_v2_value_handle c = make_int(100);
 	duckdb_v2_value_handle d = make_int(1);
 	duckdb_v2_value_handle params2[2] = {c, d};
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params2, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, params2, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(StmtScalarI64(r) == 101);
 	duckdb_v2_result_destroy(&r);
 
@@ -260,7 +262,7 @@ TEST_CASE("V2: bound parameter values may be destroyed before the result is cons
 	duckdb_v2_value_handle params[2] = {a, b};
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, params, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// The values are copied in at execute, so destroying them before stepping
 	// the (lazy) result must not affect it.
@@ -284,7 +286,8 @@ TEST_CASE("V2: statement_execute rejects parameters on a statement that expands"
 	duckdb_v2_value_handle params[1] = {v};
 
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, params, 1, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, params, 1, &r, nullptr) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(r == nullptr);
 
 	// Rejected before any fragment ran: the table is untouched, the connection usable.
@@ -294,6 +297,217 @@ TEST_CASE("V2: statement_execute rejects parameters on a statement that expands"
 	duckdb_v2_result_destroy(&check);
 
 	duckdb_v2_value_destroy(&v);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+// ===========================================================================
+// Named parameters. parameter_names selects each value's target by name; an
+// absent or empty name binds positionally. Keys are case-insensitive
+// Identifiers, and the wrong key set surfaces as a bind error from the engine's
+// parameter verification, not a bridge check.
+// ===========================================================================
+
+TEST_CASE("V2: statement_execute binds named parameters", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	auto stmt = StmtParseOne(fx.conn, "SELECT $a + $b");
+
+	duckdb_v2_value_handle va = V2Int64Value(10);
+	duckdb_v2_value_handle vb = V2Int64Value(20);
+
+	// Bind by name: order of the arrays is irrelevant, only the name matches.
+	duckdb_v2_str names[2] = {V2Str("a"), V2Str("b")};
+	duckdb_v2_value_handle values[2] = {va, vb};
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(r) == 30);
+	duckdb_v2_result_destroy(&r);
+
+	// Same statement, names and values reordered together: keying is by name, so the
+	// result is unchanged (a - b would differ; a + b proves order independence via
+	// the swap below with distinct values).
+	duckdb_v2_value_handle vx = V2Int64Value(100);
+	duckdb_v2_value_handle vy = V2Int64Value(1);
+	duckdb_v2_str swapped[2] = {V2Str("b"), V2Str("a")};
+	duckdb_v2_value_handle swapped_values[2] = {vy, vx}; // b=1, a=100
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, swapped, swapped_values, 2, &r, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(r) == 101);
+	duckdb_v2_result_destroy(&r);
+
+	duckdb_v2_value_destroy(&va);
+	duckdb_v2_value_destroy(&vb);
+	duckdb_v2_value_destroy(&vx);
+	duckdb_v2_value_destroy(&vy);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+TEST_CASE("V2: statement_execute matches named parameters case-insensitively", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	// $Name in the SQL, bound with the differently-cased key "name": Identifier keys
+	// compare case-insensitively, so the bind succeeds.
+	auto stmt = StmtParseOne(fx.conn, "SELECT $Name");
+	duckdb_v2_value_handle v = V2Int64Value(42);
+	duckdb_v2_str names[1] = {V2Str("name")};
+	duckdb_v2_value_handle values[1] = {v};
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 1, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(r) == 42);
+	duckdb_v2_result_destroy(&r);
+
+	duckdb_v2_value_destroy(&v);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+TEST_CASE("V2: statement_execute rejects positional binding of a named parameter", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	// $val is a NAMED parameter (not positional): binding it by name works, and
+	// binding it positionally (names == NULL) fails the key-set check below, which is
+	// what proves $val is named.
+	auto stmt = StmtParseOne(fx.conn, "SELECT $val");
+	duckdb_v2_value_handle v = V2Int64Value(7);
+	duckdb_v2_str names[1] = {V2Str("val")};
+	duckdb_v2_value_handle values[1] = {v};
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 1, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(r) == 7);
+	duckdb_v2_result_destroy(&r);
+
+	// Positional binding of a named parameter provides key "1" but the statement
+	// expects "val": a bind error.
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, nullptr, values, 1, &r, nullptr) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(r == nullptr);
+
+	duckdb_v2_value_destroy(&v);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+TEST_CASE("V2: statement_execute rejects a wrong parameter key set", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	duckdb_v2_value_handle v1 = V2Int64Value(1);
+	duckdb_v2_value_handle v2 = V2Int64Value(2);
+
+	SECTION("names supplied for a positional statement") {
+		auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
+		duckdb_v2_str names[2] = {V2Str("a"), V2Str("b")};
+		duckdb_v2_value_handle values[2] = {v1, v2};
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 2, &r, nullptr) ==
+		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(r == nullptr);
+		duckdb_v2_sql_statement_destroy(&stmt);
+	}
+	SECTION("a name that does not exist in the statement") {
+		auto stmt = StmtParseOne(fx.conn, "SELECT $a");
+		duckdb_v2_str names[1] = {V2Str("nope")};
+		duckdb_v2_value_handle values[1] = {v1};
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 1, &r, nullptr) ==
+		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(r == nullptr);
+		duckdb_v2_sql_statement_destroy(&stmt);
+	}
+	SECTION("a missing name") {
+		auto stmt = StmtParseOne(fx.conn, "SELECT $a + $b");
+		duckdb_v2_str names[1] = {V2Str("a")};
+		duckdb_v2_value_handle values[1] = {v1};
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 1, &r, nullptr) ==
+		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(r == nullptr);
+		duckdb_v2_sql_statement_destroy(&stmt);
+	}
+
+	duckdb_v2_value_destroy(&v1);
+	duckdb_v2_value_destroy(&v2);
+}
+
+TEST_CASE("V2: statement_execute rejects a malformed parameter name", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	auto stmt = StmtParseOne(fx.conn, "SELECT $a");
+	duckdb_v2_value_handle v = V2Int64Value(1);
+	// {NULL, len > 0} is malformed per the duckdb_v2_str contract.
+	duckdb_v2_str names[1] = {duckdb_v2_str {nullptr, 5}};
+	duckdb_v2_value_handle values[1] = {v};
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 1, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(r == nullptr);
+
+	duckdb_v2_value_destroy(&v);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+TEST_CASE("V2: statement_execute treats empty name entries as positional", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
+	duckdb_v2_value_handle va = V2Int64Value(10);
+	duckdb_v2_value_handle vb = V2Int64Value(20);
+	duckdb_v2_value_handle values[2] = {va, vb};
+
+	SECTION("a non-NULL array of empty views binds positionally") {
+		duckdb_v2_str names[2] = {duckdb_v2_str {nullptr, 0}, duckdb_v2_str {nullptr, 0}};
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(StmtScalarI64(r) == 30);
+		duckdb_v2_result_destroy(&r);
+	}
+	SECTION("explicit numeric keys bind the positional parameters") {
+		duckdb_v2_str names[2] = {V2Str("1"), V2Str("2")};
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(StmtScalarI64(r) == 30);
+		duckdb_v2_result_destroy(&r);
+	}
+
+	duckdb_v2_value_destroy(&va);
+	duckdb_v2_value_destroy(&vb);
+	duckdb_v2_sql_statement_destroy(&stmt);
+}
+
+TEST_CASE("V2: mixing named and positional parameters fails at parse", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	// The parser forbids mixing $1 and $name in one statement, so the failure is at
+	// parse_sql, never at execute. Pin the actual code the bridge surfaces.
+	duckdb_v2_statement_iterator_handle iter = nullptr;
+	auto rc = duckdb_v2_parse_sql(fx.conn, "SELECT $1 + $a", &iter, nullptr);
+	CAPTURE(rc);
+	REQUIRE(rc == DUCKDB_V2_ERROR_QUERY_NOT_IMPLEMENTED);
+	REQUIRE(iter == nullptr);
+}
+
+TEST_CASE("V2: statement_bind parameter names are the statement_execute keys", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+	auto stmt = StmtParseOne(fx.conn, "SELECT $a + $b");
+
+	// Introspect: statement_bind reports the parameter names ...
+	duckdb_v2_schema_handle out = nullptr;
+	duckdb_v2_schema_handle params = nullptr;
+	REQUIRE(duckdb_v2_statement_bind(fx.conn, stmt, &out, &params, nullptr) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_schema_get_count(params, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 2);
+	duckdb_v2_str n0 = {nullptr, 0};
+	duckdb_v2_str n1 = {nullptr, 0};
+	duckdb_v2_logical_type_handle t = nullptr;
+	REQUIRE(duckdb_v2_schema_get_field(params, 0, &n0, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_schema_get_field(params, 1, &n1, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2StrTo(n0) == "a");
+	REQUIRE(V2StrTo(n1) == "b");
+	duckdb_v2_schema_destroy(&out);
+	duckdb_v2_schema_destroy(&params);
+
+	// ... and those exact names are the execute keys.
+	duckdb_v2_value_handle va = V2Int64Value(3);
+	duckdb_v2_value_handle vb = V2Int64Value(4);
+	duckdb_v2_str names[2] = {V2Str("a"), V2Str("b")};
+	duckdb_v2_value_handle values[2] = {va, vb};
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, names, values, 2, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(StmtScalarI64(r) == 7);
+	duckdb_v2_result_destroy(&r);
+
+	duckdb_v2_value_destroy(&va);
+	duckdb_v2_value_destroy(&vb);
 	duckdb_v2_sql_statement_destroy(&stmt);
 }
 
@@ -319,9 +533,12 @@ TEST_CASE("V2: sql_statement null-arg rejection and null-safe destroys", "[capi_
 	// statement_execute rejects a NULL statement, a NULL out_result, and a
 	// positive parameter_count paired with NULL values.
 	auto valid = StmtParseOne(fx.conn, "SELECT 1");
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, valid, nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, valid, nullptr, 2, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, nullptr, nullptr, nullptr, 0, &r, nullptr) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, valid, nullptr, nullptr, 0, nullptr, nullptr) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, valid, nullptr, nullptr, 2, &r, nullptr) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
 	duckdb_v2_sql_statement_destroy(&valid);
 
 	// Destroys are null-safe.

@@ -203,7 +203,7 @@ TEST_CASE("V2: statement_bind does not cancel a live result", "[capi_v2][stateme
 	// Start a streaming result and partially consume it (the stream is now live/paused).
 	auto qstmt = SbParseOne(fx.conn, "SELECT a FROM t");
 	duckdb_v2_result_handle result = nullptr;
-	REQUIRE(duckdb_v2_statement_execute(fx.conn, qstmt, nullptr, 0, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(fx.conn, qstmt, nullptr, nullptr, 0, &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_sql_statement_destroy(&qstmt); // non-consuming: the result holds its own copy
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	REQUIRE(duckdb_v2_result_fetch_chunk(result, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);

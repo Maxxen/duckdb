@@ -350,6 +350,7 @@ unique_ptr<DataChunk> ResultWrapperV2::FetchChunkBlocking() {
 
 DUCKDB_V2_API_CALL_t duckdb_v2_statement_execute(duckdb_v2_connection_handle conn,
                                                  duckdb_v2_sql_statement_handle statement,
+                                                 const duckdb_v2_str *parameter_names,
                                                  const duckdb_v2_value_handle *parameter_values, idx_t parameter_count,
                                                  duckdb_v2_result_handle *out_result,
                                                  duckdb_v2_error_info_handle *err) {
@@ -386,15 +387,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_execute(duckdb_v2_connection_handle con
 	return duckdb::WithErrorHandler(err, [&]() {
 		// Borrowed, not consumed: execute a copy so the caller keeps the original.
 		auto stmt = duckdb::ToSqlStatement(statement)->Copy();
-		// Positional values bound as constants; key "1".."N" is the engine's
-		// positional prepared-statement convention, so dense $1..$N and ? work directly.
-		for (duckdb::idx_t i = 0; i < parameter_count; i++) {
-			if (!parameter_values[i]) {
-				throw duckdb::InvalidInputException("null parameter value passed to duckdb_v2_statement_execute");
-			}
-			wrapper->param_values[duckdb::Identifier(std::to_string(i + 1))] =
-			    duckdb::BoundParameterData(*duckdb::ToValue(parameter_values[i]));
-		}
+		// Fold parameter values in as constants, keyed by name when parameter_names
+		// supplies one and positionally ("1".."N") otherwise.
+		duckdb::BuildParameterMap(parameter_names, parameter_values, parameter_count, "duckdb_v2_statement_execute",
+		                          wrapper->param_values);
 		// Statement-level preprocessing (pragma reparsing, expansion
 		// unpacking, transaction wrapping): one user statement can expand
 		// into a group of engine statements that the wrapper executes in

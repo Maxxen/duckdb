@@ -1295,7 +1295,8 @@ TEST_CASE("V2: extension type end to end: register, construct, cast, query, read
 	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_result_handle insert_result = nullptr;
 	const duckdb_v2_value_handle params[1] = {fval};
-	REQUIRE(duckdb_v2_statement_execute(f.conn, stmt, params, 1, &insert_result, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_statement_execute(f.conn, stmt, nullptr, params, 1, &insert_result, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	V2DrainRowCount(insert_result);
 	duckdb_v2_result_destroy(&insert_result);
 	duckdb_v2_sql_statement_destroy(&stmt);

@@ -8,8 +8,8 @@ module: prepared_statement
 #
 # statement_prepare copies the statement's AST, binds and plans it once (borrowed,
 # not consumed), and returns a reusable handle. prepared_execute runs it with
-# positional parameter values, as often as you like, and returns the same result
-# handle statement_execute does (consumed through the query_result module).
+# named or positional parameter values, as often as you like, and returns the same
+# result handle statement_execute does (consumed through the query_result module).
 #
 # Reuse is honest, not assumed: prepared_reuses_plan reports it. A statement
 # reuses its plan iff all parameter types were resolved at prepare time AND the
@@ -85,7 +85,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   prepared_execute:
-    summary: Executes a prepared statement with positional parameters, streaming its result. Non-consuming.
+    summary: Executes a prepared statement with named or positional parameters, streaming its result. Non-consuming.
     description: |
       Returns a result without executing anything: execution happens incrementally
       as the result is stepped or drained, exactly like statement_execute. The
@@ -93,9 +93,13 @@ functions:
       draining, DML changed-row count, output schema, statement type, result type).
 
       parameter_values binds the statement's parameters as constants for this
-      execution. Pass one value per parameter, positionally: the i-th value binds
-      $(i+1). Pass (NULL, 0) for an unparameterized statement. Borrowed (copied in);
-      the caller still owns and destroys them.
+      execution. By default binding is positional (the i-th value binds $(i+1));
+      supply parameter_names to bind by name instead, a non-empty entry binding its
+      value to that named parameter ($name, matched case-insensitively) and
+      a {NULL, 0} entry keeping it positional. Pass NULL for both arrays (or count 0)
+      for an unparameterized statement. Borrowed (copied in); the caller still owns
+      and destroys them. A key set that does not match the statement's parameters is
+      rejected with ERROR_INVALID_INPUT.
 
       Not consumed: execute it again, same or different value set, as often as you
       like. Goes through the engine's execute-prepared path, so a catalog change
@@ -114,14 +118,19 @@ functions:
       prepared:
         type: prepared_statement
         description: The prepared statement to execute. Borrowed; not consumed.
+      parameter_names:
+        type: str
+        indirection: 1
+        const: true
+        description: Optional. An array of parameter_count parameter names; a non-empty entry binds its value to the named parameter ($name, case-insensitive), a {NULL, 0} entry keeps it positional ($1 = element 0). Pass NULL for all-positional binding. Named and positional parameters cannot be mixed within one statement.
       parameter_values:
         type: value
         indirection: 1
         const: true
-        description: Optional. An array of parameter_count value handles bound positionally ($1 = element 0). Borrowed (copied in). Pass NULL for an unparameterized statement.
+        description: Optional. An array of parameter_count value handles. Each binds by name when parameter_names supplies one, otherwise positionally ($1 = element 0). Borrowed (copied in). Pass NULL for an unparameterized statement.
       parameter_count:
         type: idx
-        description: The number of values in parameter_values. Pass 0 for an unparameterized statement.
+        description: The number of parameters in parameter_names and parameter_values. Pass 0 for an unparameterized statement.
       out_result:
         type: result
         indirection: 1

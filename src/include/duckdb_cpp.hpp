@@ -322,6 +322,7 @@ enum class LogLevel : uint8_t {
 
 class LogicalType;
 struct TypeParam;
+struct NamedParam;
 
 class Context final : public detail::Handle<Context> {
 	friend detail::Factory;
@@ -414,6 +415,9 @@ public:
 	// std::vector convenience (defined inline below, once Value and QueryResult are
 	// complete, to keep std::vector off the compiled boundary).
 	QueryResult Execute(const std::vector<Value> &parameters);
+	// Named-parameter convenience: each NamedParam binds its value to the named
+	// parameter, or positionally when its name is empty.
+	QueryResult Execute(const std::vector<NamedParam> &parameters);
 
 	// True if it reuses its compiled plan across executions, false if it re-binds
 	// each time (no faster than Connection::Execute). A static property of the plan.
@@ -484,6 +488,9 @@ public:
 	// std::vector convenience (defined inline below, once Value is complete, to keep
 	// std::vector off the compiled boundary).
 	QueryResult Execute(const SqlStatement &statement, const std::vector<Value> &parameters);
+	// Named-parameter convenience: each NamedParam binds its value to the named
+	// parameter, or positionally when its name is empty.
+	QueryResult Execute(const SqlStatement &statement, const std::vector<NamedParam> &parameters);
 
 	// Single-statement SQL convenience over ParseSQL + Execute: throws INVALID_INPUT
 	// unless the input contains exactly one statement.
@@ -896,6 +903,14 @@ private:
 // One type parameter: the unit of Context::CreateType and
 // LogicalType::GetParam. An empty name means positional.
 struct TypeParam {
+	std::string name;
+	Value value;
+};
+
+// One statement parameter binding for the named-parameter Execute overloads. An
+// empty name binds positionally ($1 = the first NamedParam); a non-empty name binds
+// by name (case-insensitive), matching $name.
+struct NamedParam {
 	std::string name;
 	Value value;
 };

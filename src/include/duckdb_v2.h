@@ -5485,16 +5485,20 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_statement_prepare(duckdb_v2_connecti
                                                               duckdb_v2_prepared_statement_handle *out_prepared,
                                                               duckdb_v2_error_info_handle *err);
 /*!
-* Executes a prepared statement with positional parameters, streaming its result. Non-consuming.
+* Executes a prepared statement with named or positional parameters, streaming its result. Non-consuming.
 * Returns a result without executing anything: execution happens incrementally
 as the result is stepped or drained, exactly like statement_execute. The
 returned handle is the same query_result with identical behaviour (streaming,
 draining, DML changed-row count, output schema, statement type, result type).
 
 parameter_values binds the statement's parameters as constants for this
-execution. Pass one value per parameter, positionally: the i-th value binds
-$(i+1). Pass (NULL, 0) for an unparameterized statement. Borrowed (copied in);
-the caller still owns and destroys them.
+execution. By default binding is positional (the i-th value binds $(i+1));
+supply parameter_names to bind by name instead, a non-empty entry binding its
+value to that named parameter ($name, matched case-insensitively) and
+a {NULL, 0} entry keeping it positional. Pass NULL for both arrays (or count 0)
+for an unparameterized statement. Borrowed (copied in); the caller still owns
+and destroys them. A key set that does not match the statement's parameters is
+rejected with ERROR_INVALID_INPUT.
 
 Not consumed: execute it again, same or different value set, as often as you
 like. Goes through the engine's execute-prepared path, so a catalog change
@@ -5509,14 +5513,19 @@ engine.
 *out_result is set to NULL on failure.
 
 * @param prepared The prepared statement to execute. Borrowed; not consumed.
-* @param parameter_values Optional. An array of parameter_count value handles bound positionally ($1 = element 0).
-Borrowed (copied in). Pass NULL for an unparameterized statement.
-* @param parameter_count The number of values in parameter_values. Pass 0 for an unparameterized statement.
+* @param parameter_names Optional. An array of parameter_count parameter names; a non-empty entry binds its value to the
+named parameter ($name, case-insensitive), a {NULL, 0} entry keeps it positional ($1 = element 0). Pass NULL for
+all-positional binding. Named and positional parameters cannot be mixed within one statement.
+* @param parameter_values Optional. An array of parameter_count value handles. Each binds by name when parameter_names
+supplies one, otherwise positionally ($1 = element 0). Borrowed (copied in). Pass NULL for an unparameterized statement.
+* @param parameter_count The number of parameters in parameter_names and parameter_values. Pass 0 for an unparameterized
+statement.
 * @param out_result Receives the new result handle.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_prepared_execute(duckdb_v2_prepared_statement_handle prepared,
+                                                             const duckdb_v2_str *parameter_names,
                                                              const duckdb_v2_value_handle *parameter_values,
                                                              idx_t parameter_count, duckdb_v2_result_handle *out_result,
                                                              duckdb_v2_error_info_handle *err);
@@ -5654,13 +5663,19 @@ executed again (for example with a different value set) and the caller
 destroys it with sql_statement_destroy.
 
 parameter_values binds the statement's parameters as constants for this
-execution. Pass one value per parameter, positionally: the i-th value binds
-$(i+1) (the engine's positional prepared-statement convention, so dense
-$1..$N and ? placeholders work directly). Pass (NULL, 0) for an
-unparameterized statement. Borrowed (copied in); the caller still owns and
-destroys them. Parameters and statement expansion are mutually exclusive:
-passing values for a statement that preprocesses into a group is rejected
-with ERROR_INVALID_INPUT.
+execution. By default binding is positional: the i-th value binds $(i+1)
+(the engine's positional convention, so dense $1..$N and ? placeholders
+work directly). Supply parameter_names to bind by name instead: a non-empty
+name binds its value to that named parameter ($name, matched
+case-insensitively), while a {NULL, 0} name entry keeps that value
+positional. The parameter schema from statement_bind lists the names to use.
+Pass NULL for both arrays (or count 0) for an unparameterized statement.
+Borrowed (copied in); the caller still owns and destroys them. A key set that
+does not match the statement's parameters (names for a positional statement,
+or the reverse) is rejected with ERROR_INVALID_INPUT. Named and positional
+parameters cannot be mixed within one statement. Parameters and statement
+expansion are mutually exclusive: passing values for a statement that
+preprocesses into a group is rejected with ERROR_INVALID_INPUT.
 
 Preprocessing can expand one statement into a group of engine
 statements (see the module commentary); the group executes as one
@@ -5683,19 +5698,21 @@ before the first step.
 
 * @param conn The connection on which to execute the statement.
 * @param statement The statement to execute. Borrowed and copied; not consumed. Destroy it with sql_statement_destroy.
-* @param parameter_values Optional. An array of parameter_count value handles bound positionally ($1 = element 0).
-Borrowed (copied in). Pass NULL for an unparameterized statement.
-* @param parameter_count The number of values in parameter_values. Pass 0 for an unparameterized statement.
+* @param parameter_names Optional. An array of parameter_count parameter names; a non-empty entry binds its value to the
+named parameter ($name, case-insensitive), a {NULL, 0} entry keeps it positional ($1 = element 0). Pass NULL for
+all-positional binding. Named and positional parameters cannot be mixed within one statement.
+* @param parameter_values Optional. An array of parameter_count value handles. Each binds by name when parameter_names
+supplies one, otherwise positionally ($1 = element 0). Borrowed (copied in). Pass NULL for an unparameterized statement.
+* @param parameter_count The number of parameters in parameter_names and parameter_values. Pass 0 for an unparameterized
+statement.
 * @param out_result Receives the new result handle.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_API_CALL_t
 */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_statement_execute(duckdb_v2_connection_handle conn,
-                                                              duckdb_v2_sql_statement_handle statement,
-                                                              const duckdb_v2_value_handle *parameter_values,
-                                                              idx_t parameter_count,
-                                                              duckdb_v2_result_handle *out_result,
-                                                              duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_statement_execute(
+    duckdb_v2_connection_handle conn, duckdb_v2_sql_statement_handle statement, const duckdb_v2_str *parameter_names,
+    const duckdb_v2_value_handle *parameter_values, idx_t parameter_count, duckdb_v2_result_handle *out_result,
+    duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a result handle.
 * Null-safe: passing nullptr or a slot already set to nullptr is a

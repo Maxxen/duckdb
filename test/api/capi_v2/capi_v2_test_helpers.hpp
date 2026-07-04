@@ -322,7 +322,7 @@ inline duckdb_v2_error_code_t V2Query(duckdb_v2_connection_handle conn, const ch
 		}
 	}
 	if (rc == DUCKDB_V2_ERROR_NONE) {
-		rc = duckdb_v2_statement_execute(conn, stmt, nullptr, 0, out_result, err);
+		rc = duckdb_v2_statement_execute(conn, stmt, nullptr, nullptr, 0, out_result, err);
 	}
 	// statement_execute is non-consuming: the statement is always still alive
 	// (it executes a copy), so destroy it unconditionally.
