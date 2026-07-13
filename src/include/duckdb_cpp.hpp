@@ -1969,11 +1969,20 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
+		// The context in which the function is being initialized; absent for
+		// invocations that initialize the function without a client context
+		// (some internal expression evaluations, e.g. index expressions, run
+		// this way). Gate with HasContext(); GetContext() throws INVALID_INPUT
+		// when absent. Borrowed, valid only for the callback duration.
+		auto GetContext() const -> Context;
+		auto HasContext() const -> bool;
+
 	private:
-		explicit InitInput(void *args) : args(args) {
+		InitInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		void SetWorkerStateInternal(void *data, void (*destructor)(void *));
 		void *GetWorkerStateInternal() const;
@@ -2007,11 +2016,21 @@ public:
 		auto GetInputChunk() const -> DataChunk;
 		auto GetResultVector() const -> Vector;
 
+		// The execution context. Present during query execution; absent for
+		// invocations that evaluate the function without a client context (some
+		// internal expression evaluations run this way). Gate with HasContext();
+		// GetContext() throws INVALID_INPUT when absent. Borrowed, valid only
+		// for the callback duration. Enables context-dependent exec work: Arrow
+		// conversions, casts.
+		auto GetContext() const -> Context;
+		auto HasContext() const -> bool;
+
 	private:
-		explicit ExecInput(void *args) : args(args) {
+		ExecInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		void *GetBindDataInternal() const;
 		void *GetWorkerStateInternal() const;
@@ -2668,6 +2687,14 @@ public:
 		auto GetCount() const -> idx_t;
 		auto GetExpression(idx_t index) const -> Expression;
 
+		// The scan's pushdown-time column list: what BoundColumnRef
+		// column_index values in the candidate filters index. Resolve each
+		// position to its bind-declared column via GetColumnIndex (the engine
+		// may re-prune the projection after handled filters drop, so the init
+		// callbacks' projected list cannot decode filter references).
+		auto GetColumnCount() const -> idx_t;
+		auto GetColumnIndex(idx_t index) const -> idx_t;
+
 		// Claims filter `index`: the engine drops it and the function must
 		// apply it itself (e.g. while producing rows in exec).
 		auto MarkHandled(idx_t index) -> void;
@@ -2765,10 +2792,11 @@ public:
 		}
 
 	private:
-		explicit BindInput(void *args) : args(args) {
+		BindInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 		void *GetUserDataInternal() const;
@@ -2804,10 +2832,11 @@ public:
 		}
 
 	private:
-		explicit InitInput(void *args) : args(args) {
+		InitInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		const void *GetBindDataInternal() const;
 		void SetInitDataInternal(void *data, void (*destructor)(void *));
@@ -2851,10 +2880,12 @@ public:
 		}
 
 	private:
-		BatchInput(void *args, ColumnDataCollection &&collection) : args(args), collection(std::move(collection)) {
+		BatchInput(void *args, void *context, ColumnDataCollection &&collection)
+		    : args(args), context(context), collection(std::move(collection)) {
 		}
 
 		void *args;
+		void *context;
 		ColumnDataCollection collection;
 
 		const void *GetBindDataInternal() const;
@@ -2893,10 +2924,11 @@ public:
 		}
 
 	private:
-		explicit FlushInput(void *args) : args(args) {
+		FlushInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		const void *GetBindDataInternal() const;
 		void *GetInitDataInternal() const;
@@ -2929,10 +2961,11 @@ public:
 		}
 
 	private:
-		explicit FinalizeInput(void *args) : args(args) {
+		FinalizeInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		const void *GetBindDataInternal() const;
 		void *GetInitDataInternal() const;

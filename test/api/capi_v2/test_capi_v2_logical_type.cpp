@@ -830,10 +830,11 @@ namespace {
 // on the context it receives (catalog lookup included).
 bool type_probe_bind_ok = false;
 
-void TypeProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_error_info_handle *err) {
+void TypeProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_handle context,
+                   duckdb_v2_error_info_handle *err) {
 	type_probe_bind_ok = false;
 	duckdb_v2_logical_type_handle mood = nullptr;
-	if (duckdb_v2_logical_type_create_from_text(args->context, V2Str("mood"), &mood, err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_logical_type_create_from_text(context, V2Str("mood"), &mood, err) != DUCKDB_V2_ERROR_NONE) {
 		return; // nested call populated the borrowed err slot
 	}
 	duckdb_v2_value_handle elem = nullptr;
@@ -843,7 +844,7 @@ void TypeProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_error_in
 	}
 	duckdb_v2_logical_type_handle list = nullptr;
 	const duckdb_v2_value_handle params[1] = {elem};
-	auto rc = duckdb_v2_logical_type_create(args->context, V2Str("list"), nullptr, params, 1, &list, err);
+	auto rc = duckdb_v2_logical_type_create(context, V2Str("list"), nullptr, params, 1, &list, err);
 	duckdb_v2_value_destroy(&elem);
 	duckdb_v2_logical_type_destroy(&mood);
 	if (rc != DUCKDB_V2_ERROR_NONE) {
@@ -855,10 +856,11 @@ void TypeProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_error_in
 	type_probe_bind_ok = (id == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
 }
 
-void TypeProbeInit(duckdb_v2_scalar_function_init_args *, duckdb_v2_error_info_handle *) {
+void TypeProbeInit(duckdb_v2_scalar_function_init_args *, duckdb_v2_context_handle, duckdb_v2_error_info_handle *) {
 }
 
-void TypeProbeExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_error_info_handle *err) {
+void TypeProbeExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle,
+                   duckdb_v2_error_info_handle *err) {
 	duckdb_v2_vector_handle in_vec = nullptr;
 	if (duckdb_v2_data_chunk_get_vector(args->input, 0, &in_vec, err) != DUCKDB_V2_ERROR_NONE) {
 		return;

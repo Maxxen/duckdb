@@ -9,14 +9,12 @@ structs:
   scalar_function_bind_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: context, type: context, description: "The DuckDB context in which the function is being bound."}
       - {name: function_name, type: str, description: "The name of the function being bound. Borrowed; only valid for the duration of the callback."}
       - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
       - {name: out_bind_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to user data (the function's \"bind data\") plus optional destructor and equality callbacks. The bind data is accessible from later callbacks (e.g. \"init\" and \"exec\"), which is useful for sharing information between the planning and execution phases such as resolved argument types, prepared statements, or other metadata computed during binding. The destructor, if provided, is used to destroy the bind data when it's no longer needed (e.g. at the end of query execution). The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse); otherwise a default pointer equality check is used."}
   scalar_function_init_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: context, type: context, description: "The DuckDB context in which the function is being initialized."}
       - {name: function_name, type: str, description: "The name of the function being initialized. Borrowed; only valid for the duration of the callback."}
       - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
       - {name: bind_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the function's \"bind\" callback, if any"}
@@ -39,6 +37,9 @@ callbacks:
         type: scalar_function_bind_args
         indirection: 1
         description: "The bind callback's arguments struct, providing access to information about the function being bound as well as user data set at registration time. \nThe library owns this struct and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
+      context:
+        type: context
+        description: "The DuckDB context in which the function is being bound. Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1
@@ -50,6 +51,9 @@ callbacks:
         type: scalar_function_init_args
         indirection: 1
         description: "The init callback's arguments struct, providing access to information about the function being initialized as well as user data set at registration time and by the function's bind callback. \nThe library owns this struct and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
+      context:
+        type: context
+        description: "The DuckDB context in which the function is being initialized, or null for invocations that initialize the function without a client context (some internal expression evaluations, e.g. index expressions, run this way). Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1
@@ -61,6 +65,9 @@ callbacks:
         type: scalar_function_exec_args
         indirection: 1
         description: "The exec callback's arguments struct, providing access to information about the function being executed as well as user data set at registration time and by the function's bind and init callbacks. \nThe library owns this struct and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
+      context:
+        type: context
+        description: "The execution context, or null for invocations that evaluate the function without a client context (some internal expression evaluations, e.g. index expressions, run this way). Borrowed; only valid for the duration of the callback. Enables context-dependent work in exec such as Arrow conversions and value casts."
       err:
         type: error_info
         indirection: 1

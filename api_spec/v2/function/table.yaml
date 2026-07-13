@@ -727,6 +727,46 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
+  table_function_filter_get_column_count:
+    summary: Returns the number of columns in the scan's pushdown-time column list.
+    description: |
+      BoundColumnRef expressions in the candidate filters carry column_index values that index this list (the scan's
+      column ids at pushdown time), NOT the function's bind-declared result columns and NOT the projected column list
+      the init callbacks later observe (the engine may re-prune the projection after handled filters are dropped).
+      Resolve a filter's column reference to a bind-declared column via table_function_filter_get_column_index.
+    parameters:
+      info:
+        type: table_function_filter_info
+        description: The filter info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the pushdown-time column count.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_filter_get_column_index:
+    summary: Resolves a pushdown-time column position to its bind-declared column index.
+    parameters:
+      info:
+        type: table_function_filter_info
+        description: The filter info handle.
+      index:
+        type: idx
+        description: Zero-based position in the pushdown-time column list (what a filter's BoundColumnRef column_index means).
+      out_column_index:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the bind-declared (result-schema) column index.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   table_function_filter_get_user_data:
     summary: Retrieves user data set on the builder.
     parameters:

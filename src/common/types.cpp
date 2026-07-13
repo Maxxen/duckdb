@@ -699,8 +699,9 @@ bool LogicalType::IsComplete() const {
 			}
 			return type.AuxInfo()->Cast<StructTypeInfo>().child_types.empty();
 		case ExtraTypeInfoType::DECIMAL_TYPE_INFO:
-			return DecimalType::GetWidth(type) >= 1 && DecimalType::GetWidth(type) <= Decimal::MAX_WIDTH_DECIMAL &&
-			       DecimalType::GetScale(type) <= DecimalType::GetWidth(type);
+			// contract: true == incomplete, so a well-formed decimal is complete (return NOT well-formed)
+			return !(DecimalType::GetWidth(type) >= 1 && DecimalType::GetWidth(type) <= Decimal::MAX_WIDTH_DECIMAL &&
+			         DecimalType::GetScale(type) <= DecimalType::GetWidth(type));
 		default:
 			return false; // Nested types are checked by TypeVisitor recursion
 		}

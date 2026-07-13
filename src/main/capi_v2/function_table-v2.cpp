@@ -93,6 +93,10 @@ struct TableFunctionFilterInfoV2 {
 	vector<unique_ptr<Expression>> *expressions = nullptr;
 	vector<bool> handled;
 	void *user_data = nullptr;
+	// The scan's column ids at pushdown time: what BoundColumnRef column_index
+	// values in the candidate filters index. The engine may re-prune the
+	// projection after handled filters drop, so this list is exposed here.
+	const vector<ColumnIndex> *column_ids = nullptr;
 };
 
 // --- RuntimeInfo: stored on the TableFunction's function_info ----------------
@@ -300,6 +304,7 @@ struct TableFunctionBuilderV2 {
 		filter_info.expressions = &filters;
 		filter_info.handled.resize(filters.size(), false);
 		filter_info.user_data = rt_info.user_data ? rt_info.user_data->GetData() : nullptr;
+		filter_info.column_ids = &get.GetColumnIds();
 
 		auto info_handle = reinterpret_cast<duckdb_v2_table_function_filter_info_handle>(&filter_info);
 		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
@@ -866,6 +871,40 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_mark_handled(duckdb_v2_tabl
 			                                    fi.handled.size());
 		}
 		fi.handled[index] = true;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_get_column_count(duckdb_v2_table_function_filter_info_handle info,
+                                                                      idx_t *out_count,
+                                                                      duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Filter info pointer cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output count pointer cannot be null.");
+		}
+		auto &fi = *reinterpret_cast<TableFunctionFilterInfoV2 *>(info);
+		*out_count = fi.column_ids ? fi.column_ids->size() : 0;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_get_column_index(duckdb_v2_table_function_filter_info_handle info,
+                                                                      idx_t index, idx_t *out_column_index,
+                                                                      duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Filter info pointer cannot be null.");
+		}
+		if (!out_column_index) {
+			throw duckdb::InvalidInputException("Output column index pointer cannot be null.");
+		}
+		auto &fi = *reinterpret_cast<TableFunctionFilterInfoV2 *>(info);
+		if (!fi.column_ids || index >= fi.column_ids->size()) {
+			throw duckdb::InvalidInputException("Column position %llu out of range (have %llu).", index,
+			                                    fi.column_ids ? fi.column_ids->size() : 0);
+		}
+		*out_column_index = (*fi.column_ids)[index].GetPrimaryIndex();
 	});
 }
 

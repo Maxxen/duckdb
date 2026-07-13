@@ -78,11 +78,13 @@ struct AggregateFunctionV2 {
 		if (info.bind_cb) {
 			duckdb_v2_aggregate_function_bind_args args = {};
 			args.struct_size = sizeof(args);
-			args.context = reinterpret_cast<_duckdb_v2_context *>(&input.GetClientContext());
 			args.function_name = ToStr(input.GetBoundFunction().GetName());
 			args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 
-			InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, err); });
+			// Binding always runs under a client context.
+			auto context = reinterpret_cast<duckdb_v2_context_handle>(&input.GetClientContext());
+			InvokeWithErrorSlot<BinderException>(
+			    [&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, context, err); });
 
 			if (args.out_bind_data.ptr) {
 				result->user_bind_data = make_shared_ptr<OpaqueDataHandle>(

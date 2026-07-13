@@ -758,3 +758,176 @@ TEST_CASE("Stable C++API: SetCardinality and SetMaxThreads smoke", "[cpp_api]") 
 	// SetMaxThreads(2) runs on the real scan and the result stays correct.
 	REQUIRE(CollectI64(conn.Execute("SELECT v FROM card_fn()")) == std::vector<int64_t> {42});
 }
+
+// ---------------------------------------------------------------------------
+// The pushdown-time column list on PushdownInput.
+//
+// A candidate filter's BoundColumnRef.column_index indexes the scan's
+// pushdown-time column list (filter-ordered, projection-pruned), NOT the
+// function's bind-declared result columns. Without GetColumnIndex to resolve
+// it, an index-based consumer builds the WRONG filter (e.g. `WHERE b > 7`
+// becomes a filter on column a). These tests read the resolved index and
+// assert it maps to the correct bind-declared column, and that the raw index
+// would map to a different (wrong) one.
+// ---------------------------------------------------------------------------
+namespace {
+
+struct PushdownFilterObs {
+	int64_t constant = 0;
+	duckdb_api::idx_t raw_index = 0;      // BoundColumnRef.column_index (pushdown-list position)
+	duckdb_api::idx_t resolved_index = 0; // GetColumnIndex(raw_index): bind-declared column
+};
+
+struct PushdownColumnObservations {
+	duckdb_api::idx_t pushdown_col_count = 0;
+	std::vector<duckdb_api::idx_t> pushdown_cols; // GetColumnIndex(0..count)
+	std::vector<PushdownFilterObs> filters;
+	std::vector<duckdb_api::idx_t> init_cols; // the projected list init observes
+};
+PushdownColumnObservations g_pushdown_col_obs;
+bool g_pushdown_mark_equal_handled = false;
+
+} // namespace
+
+TEST_CASE("Stable C++API: pushdown-time column list resolves filter columns", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		TableFunction function(ctx);
+		function.SetName("pushdown_col_fn")
+		    .SetProjectionPushdown(true)
+		    .SetBindCallback([](TableFunction::BindInput &input) {
+			    // Bind schema: a=0, b=1, c=2, d=3.
+			    input.AddResultColumn("a", LogicalType::BIGINT());
+			    input.AddResultColumn("b", LogicalType::BIGINT());
+			    input.AddResultColumn("c", LogicalType::BIGINT());
+			    input.AddResultColumn("d", LogicalType::BIGINT());
+			    input.SetBindData<int>(0);
+		    })
+		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
+			    g_pushdown_col_obs.init_cols.clear();
+			    for (idx_t i = 0; i < input.GetColumnCount(); i++) {
+				    g_pushdown_col_obs.init_cols.push_back(input.GetColumnIndex(i));
+			    }
+			    input.SetGlobalState<bool>(false);
+		    })
+		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
+			    g_pushdown_col_obs.pushdown_col_count = input.GetColumnCount();
+			    g_pushdown_col_obs.pushdown_cols.clear();
+			    for (idx_t j = 0; j < input.GetColumnCount(); j++) {
+				    g_pushdown_col_obs.pushdown_cols.push_back(input.GetColumnIndex(j));
+			    }
+			    g_pushdown_col_obs.filters.clear();
+			    for (idx_t i = 0; i < input.GetCount(); i++) {
+				    auto expr = input.GetExpression(i);
+				    PushdownFilterObs obs;
+				    bool saw_column = false;
+				    for (idx_t c = 0; c < expr.GetChildCount(); c++) {
+					    auto child = expr.GetChild(c);
+					    if (child.GetClass() == ExpressionClass::BoundColumnRef) {
+						    obs.raw_index = child.GetColumnBinding().column_index;
+						    obs.resolved_index = input.GetColumnIndex(obs.raw_index);
+						    saw_column = true;
+					    } else if (child.GetClass() == ExpressionClass::BoundConstant) {
+						    obs.constant = child.GetConstantValue().AsI64();
+					    }
+				    }
+				    REQUIRE(saw_column);
+				    g_pushdown_col_obs.filters.push_back(obs);
+				    if (g_pushdown_mark_equal_handled && expr.GetType() == ExpressionType::CompareEqual) {
+					    input.MarkHandled(i);
+				    }
+			    }
+		    })
+		    .SetExecCallback([](TableFunction::ExecInput &input) {
+			    auto &done = input.GetGlobalState<bool>();
+			    auto &out = input.GetResultChunk();
+			    if (done) {
+				    out.GetVector(0).SetSize(0);
+				    return;
+			    }
+			    done = true;
+			    for (idx_t col = 0; col < out.GetVectorCount(); col++) {
+				    out.GetVector(col).GetDataMutable<int64_t>()[0] = 0;
+			    }
+			    out.GetVector(0).SetSize(1);
+		    })
+		    .Register(ctx);
+	});
+
+	SECTION("filter on a non-first column, projection pruned") {
+		g_pushdown_col_obs = PushdownColumnObservations {};
+		g_pushdown_mark_equal_handled = false;
+
+		// Project only c; filter only b. The pushdown-time list is pruned to
+		// the referenced columns, so it differs from the 4-column bind schema.
+		auto rows = CollectI64(conn.Execute("SELECT c FROM pushdown_col_fn() WHERE b > 7"));
+		(void)rows;
+
+		// Pruned from 4 bind columns to the referenced {b, c}.
+		REQUIRE(g_pushdown_col_obs.pushdown_col_count == 2);
+		REQUIRE(g_pushdown_col_obs.pushdown_cols.size() == 2);
+		auto sorted = g_pushdown_col_obs.pushdown_cols;
+		std::sort(sorted.begin(), sorted.end());
+		REQUIRE(sorted == std::vector<idx_t> {1, 2}); // b=1, c=2 (a and d are gone)
+
+		// The single filter is `b > 7`. Its raw column_index does NOT equal b's
+		// bind-declared index; only GetColumnIndex resolves it correctly.
+		REQUIRE(g_pushdown_col_obs.filters.size() == 1);
+		const auto &f = g_pushdown_col_obs.filters[0];
+		REQUIRE(f.constant == 7);
+		REQUIRE(f.resolved_index == 1); // correctly resolves to b (bind index 1)
+		// Proof the naive path is wrong: using the raw index as the bind column
+		// would select a DIFFERENT column than b.
+		REQUIRE(f.raw_index != f.resolved_index);
+		REQUIRE(g_pushdown_col_obs.pushdown_cols[f.raw_index] == 1); // raw index only makes sense THROUGH the list
+	}
+
+	SECTION("two filters, one marked handled: the list re-prunes") {
+		g_pushdown_col_obs = PushdownColumnObservations {};
+		g_pushdown_mark_equal_handled = true;
+
+		// Filter on b (bind 1) and d (bind 3); project c. Mark the `d = 3`
+		// filter handled, so column d, referenced only by the dropped filter,
+		// is no longer needed and the projected list init sees re-prunes.
+		auto rows = CollectI64(conn.Execute("SELECT c FROM pushdown_col_fn() WHERE b > 7 AND d = 3"));
+		(void)rows;
+
+		// Pushdown-time list carries all three referenced columns {b, c, d}.
+		REQUIRE(g_pushdown_col_obs.pushdown_col_count == 3);
+		auto sorted_pd = g_pushdown_col_obs.pushdown_cols;
+		std::sort(sorted_pd.begin(), sorted_pd.end());
+		REQUIRE(sorted_pd == std::vector<idx_t> {1, 2, 3}); // b, c, d
+
+		// Both filters resolve to the correct bind-declared column.
+		REQUIRE(g_pushdown_col_obs.filters.size() == 2);
+		bool checked_gt = false, checked_eq = false;
+		for (const auto &fo : g_pushdown_col_obs.filters) {
+			if (fo.constant == 7) { // b > 7
+				REQUIRE(fo.resolved_index == 1);
+				REQUIRE(g_pushdown_col_obs.pushdown_cols[fo.raw_index] == 1);
+				checked_gt = true;
+			} else if (fo.constant == 3) { // d = 3
+				REQUIRE(fo.resolved_index == 3);
+				REQUIRE(fo.raw_index != fo.resolved_index); // naive index would pick the wrong column
+				REQUIRE(g_pushdown_col_obs.pushdown_cols[fo.raw_index] == 3);
+				checked_eq = true;
+			}
+		}
+		REQUIRE(checked_gt);
+		REQUIRE(checked_eq);
+
+		// The init callback observes a DIFFERENTLY pruned list: d was dropped
+		// with the handled filter, so it is absent from what init sees. Decoding
+		// the pushdown filters through the init list would therefore be wrong;
+		// only the pushdown-time list decodes them.
+		auto sorted_init = g_pushdown_col_obs.init_cols;
+		std::sort(sorted_init.begin(), sorted_init.end());
+		REQUIRE(sorted_init == std::vector<idx_t> {1, 2}); // b, c (d re-pruned away)
+		REQUIRE(sorted_init != sorted_pd);                 // the two lists genuinely differ
+	}
+}

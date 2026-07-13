@@ -214,7 +214,8 @@ namespace {
 std::atomic<bool> g_bind_data_seen_in_update {false};
 std::atomic<int> g_bind_data_destroyed {0};
 
-void BindDataBindCallback(duckdb_v2_aggregate_function_bind_args *args, duckdb_v2_error_info_handle *err) {
+void BindDataBindCallback(duckdb_v2_aggregate_function_bind_args *args, duckdb_v2_context_handle,
+                          duckdb_v2_error_info_handle *err) {
 	// Compute a "multiplier" at bind time and hand it to execution as bind data.
 	args->out_bind_data.ptr = new int32_t(10);
 	args->out_bind_data.destroy = [](void *p) {

@@ -23,15 +23,18 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 	REQUIRE(conn != nullptr);
 
 	// Function callbacks
-	static auto bind_callback = [](duckdb_v2_scalar_function_bind_args *args, duckdb_v2_error_info_handle *err) {
+	static auto bind_callback = [](duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_handle context,
+	                               duckdb_v2_error_info_handle *err) {
 		/* TODO */
 	};
 
-	static auto init_callback = [](duckdb_v2_scalar_function_init_args *args, duckdb_v2_error_info_handle *err) {
+	static auto init_callback = [](duckdb_v2_scalar_function_init_args *args, duckdb_v2_context_handle context,
+	                               duckdb_v2_error_info_handle *err) {
 		/* TODO */
 	};
 
-	static auto exec_callback = [](duckdb_v2_scalar_function_exec_args *args, duckdb_v2_error_info_handle *err) {
+	static auto exec_callback = [](duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle context,
+	                               duckdb_v2_error_info_handle *err) {
 		duckdb_v2_data_chunk_handle chunk = args->input;
 
 		duckdb_v2_vector_handle lhs_vec = nullptr;

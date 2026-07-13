@@ -7,7 +7,6 @@ structs:
   copy_function_bind_args:
     fields:
       - {name: struct_size, type: u32}
-      - {name: context, type: context}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: column_types, type: logical_type, pointer: 1}
       - {name: column_names, type: str, pointer: 1, const: true, description: "Array of column_count borrowed name views; only valid for the duration of the callback."}
@@ -16,7 +15,6 @@ structs:
   copy_function_init_args:
     fields:
       - {name: struct_size, type: u32}
-      - {name: context, type: context}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: bind_data, type: void, pointer: 1, const: true}
       - {name: file_path, type: str, description: "The target file path. Borrowed; only valid for the duration of the callback."}
@@ -24,7 +22,6 @@ structs:
   copy_function_batch_args:
     fields:
       - {name: struct_size, type: u32}
-      - {name: context, type: context}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: bind_data, type: void, pointer: 1, const: true}
       - {name: init_data, type: void, pointer: 1}
@@ -33,7 +30,6 @@ structs:
   copy_function_flush_args:
     fields:
       - {name: struct_size, type: u32}
-      - {name: context, type: context}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: bind_data, type: void, pointer: 1, const: true}
       - {name: init_data, type: void, pointer: 1}
@@ -41,7 +37,6 @@ structs:
   copy_function_finalize_args:
     fields:
       - {name: struct_size, type: u32}
-      - {name: context, type: context}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: bind_data, type: void, pointer: 1, const: true}
       - {name: init_data, type: void, pointer: 1}
@@ -53,6 +48,9 @@ callbacks:
         type: copy_function_bind_args
         indirection: 1
         description: "Pointer to a struct containing the arguments for the callback."
+      context:
+        type: context
+        description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1
@@ -64,6 +62,9 @@ callbacks:
         type: copy_function_init_args
         indirection: 1
         description: "Pointer to a struct containing the arguments for the callback."
+      context:
+        type: context
+        description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1
@@ -75,6 +76,9 @@ callbacks:
         type: copy_function_batch_args
         indirection: 1
         description: "Pointer to a struct containing the arguments for the callback."
+      context:
+        type: context
+        description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1
@@ -86,6 +90,9 @@ callbacks:
         type: copy_function_flush_args
         indirection: 1
         description: "Pointer to a struct containing the arguments for the callback."
+      context:
+        type: context
+        description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1
@@ -97,6 +104,9 @@ callbacks:
         type: copy_function_finalize_args
         indirection: 1
         description: "Pointer to a struct containing the arguments for the callback."
+      context:
+        type: context
+        description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
       err:
         type: error_info
         indirection: 1

@@ -47,11 +47,13 @@ struct ScalarFunctionV2 {
 
 		duckdb_v2_scalar_function_bind_args args = {};
 		args.struct_size = sizeof(args);
-		args.context = reinterpret_cast<_duckdb_v2_context *>(&input.GetClientContext());
 		args.function_name = ToStr(input.GetBoundFunction().GetName());
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 
-		InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, err); });
+		// Binding always runs under a client context.
+		auto context = reinterpret_cast<duckdb_v2_context_handle>(&input.GetClientContext());
+		InvokeWithErrorSlot<BinderException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, context, err); });
 
 		// If the user set the bind data, move it out here
 
@@ -74,14 +76,16 @@ struct ScalarFunctionV2 {
 
 		duckdb_v2_scalar_function_init_args args = {};
 		args.struct_size = sizeof(args);
-		args.context = reinterpret_cast<_duckdb_v2_context *>(&state.GetContext());
 		args.function_name = ToStr(expr.Function().GetName());
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 
 		auto user_bind_data = bind_data ? bind_data->Cast<ScalarFunctionBindDataV2>().user_data : nullptr;
 		args.bind_data = user_bind_data ? user_bind_data->GetData() : nullptr;
 
-		InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) { info.init_cb(&args, err); });
+		// Null when initialized by a context-free ExpressionExecutor (e.g. an index expression).
+		auto context = state.HasContext() ? reinterpret_cast<duckdb_v2_context_handle>(&state.GetContext()) : nullptr;
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.init_cb(&args, context, err); });
 
 		// If the user set the local state, move it out here
 		if (args.out_init_data.ptr) {
@@ -119,8 +123,10 @@ struct ScalarFunctionV2 {
 			args.init_data = state_data.user_data.GetData();
 		}
 
+		// Null for invocations that evaluate the function without a client context (e.g. an index expression).
+		auto context = state.HasContext() ? reinterpret_cast<duckdb_v2_context_handle>(&state.GetContext()) : nullptr;
 		InvokeWithErrorSlot<InvalidInputException>(
-		    [&](duckdb_v2_error_info_handle *err_ptr) { info.exec_cb(&args, err_ptr); });
+		    [&](duckdb_v2_error_info_handle *err_ptr) { info.exec_cb(&args, context, err_ptr); });
 	}
 };
 

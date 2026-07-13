@@ -579,6 +579,7 @@ typedef struct _duckdb_v2_aggregate_function_builder {
 
 /* --- Function pointer typedefs for aggregate --- */
 typedef void (*duckdb_v2_aggregate_function_bind_callback_fn)(duckdb_v2_aggregate_function_bind_args *args,
+                                                              duckdb_v2_context_handle context,
                                                               duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_aggregate_function_size_callback_fn)(duckdb_v2_aggregate_function_size_args *args,
@@ -811,8 +812,6 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
 struct duckdb_v2_aggregate_function_bind_args {
 	//! The size of this struct. This can be used for versioning and compatibility checks.
 	uint32_t struct_size;
-	//! The DuckDB context in which the function is being bound.
-	duckdb_v2_context_handle context;
 	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
 	duckdb_v2_str function_name;
 	//! The user data pointer that was set for the function builder via `aggregate_function_builder_set_user_data`, if
@@ -3128,12 +3127,15 @@ typedef struct _duckdb_v2_scalar_function_builder {
 
 /* --- Function pointer typedefs for scalar --- */
 typedef void (*duckdb_v2_scalar_function_bind_callback_fn)(duckdb_v2_scalar_function_bind_args *args,
+                                                           duckdb_v2_context_handle context,
                                                            duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_scalar_function_init_callback_fn)(duckdb_v2_scalar_function_init_args *args,
+                                                           duckdb_v2_context_handle context,
                                                            duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_function_exec_args *args,
+                                                           duckdb_v2_context_handle context,
                                                            duckdb_v2_error_info_handle *err);
 
 /* --- Functions for scalar --- */
@@ -3308,8 +3310,6 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property
 struct duckdb_v2_scalar_function_bind_args {
 	//! The size of this struct. This can be used for versioning and compatibility checks.
 	uint32_t struct_size;
-	//! The DuckDB context in which the function is being bound.
-	duckdb_v2_context_handle context;
 	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
 	duckdb_v2_str function_name;
 	//! Opaque pointer to user data set by the caller when registering the function, if any
@@ -3327,8 +3327,6 @@ struct duckdb_v2_scalar_function_bind_args {
 struct duckdb_v2_scalar_function_init_args {
 	//! The size of this struct. This can be used for versioning and compatibility checks.
 	uint32_t struct_size;
-	//! The DuckDB context in which the function is being initialized.
-	duckdb_v2_context_handle context;
 	//! The name of the function being initialized. Borrowed; only valid for the duration of the callback.
 	duckdb_v2_str function_name;
 	//! Opaque pointer to user data set by the caller when registering the function, if any
@@ -4608,18 +4606,23 @@ typedef struct _duckdb_v2_copy_function_builder {
 
 /* --- Function pointer typedefs for copy --- */
 typedef void (*duckdb_v2_copy_function_bind_callback_fn)(duckdb_v2_copy_function_bind_args *args,
+                                                         duckdb_v2_context_handle context,
                                                          duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_copy_function_init_callback_fn)(duckdb_v2_copy_function_init_args *args,
+                                                         duckdb_v2_context_handle context,
                                                          duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_copy_function_batch_callback_fn)(duckdb_v2_copy_function_batch_args *args,
+                                                          duckdb_v2_context_handle context,
                                                           duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_copy_function_flush_callback_fn)(duckdb_v2_copy_function_flush_args *args,
+                                                          duckdb_v2_context_handle context,
                                                           duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_copy_function_finalize_callback_fn)(duckdb_v2_copy_function_finalize_args *args,
+                                                             duckdb_v2_context_handle context,
                                                              duckdb_v2_error_info_handle *err);
 
 /* --- Functions for copy --- */
@@ -4730,7 +4733,6 @@ duckdb_v2_copy_function_builder_destroy(duckdb_v2_copy_function_builder_handle *
 /* --- Struct definitions for copy --- */
 struct duckdb_v2_copy_function_bind_args {
 	uint32_t struct_size;
-	duckdb_v2_context_handle context;
 	const void *user_data;
 	duckdb_v2_logical_type_handle *column_types;
 	//! Array of column_count borrowed name views; only valid for the duration of the callback.
@@ -4744,7 +4746,6 @@ struct duckdb_v2_copy_function_bind_args {
 
 struct duckdb_v2_copy_function_init_args {
 	uint32_t struct_size;
-	duckdb_v2_context_handle context;
 	const void *user_data;
 	const void *bind_data;
 	//! The target file path. Borrowed; only valid for the duration of the callback.
@@ -4757,7 +4758,6 @@ struct duckdb_v2_copy_function_init_args {
 
 struct duckdb_v2_copy_function_batch_args {
 	uint32_t struct_size;
-	duckdb_v2_context_handle context;
 	const void *user_data;
 	const void *bind_data;
 	void *init_data;
@@ -4770,7 +4770,6 @@ struct duckdb_v2_copy_function_batch_args {
 
 struct duckdb_v2_copy_function_flush_args {
 	uint32_t struct_size;
-	duckdb_v2_context_handle context;
 	const void *user_data;
 	const void *bind_data;
 	void *init_data;
@@ -4779,7 +4778,6 @@ struct duckdb_v2_copy_function_flush_args {
 
 struct duckdb_v2_copy_function_finalize_args {
 	uint32_t struct_size;
-	duckdb_v2_context_handle context;
 	const void *user_data;
 	const void *bind_data;
 	void *init_data;
@@ -5369,6 +5367,32 @@ data during this callback.
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_mark_handled(
     duckdb_v2_table_function_filter_info_handle info, idx_t index, duckdb_v2_error_info_handle *err);
+/*!
+* Returns the number of columns in the scan's pushdown-time column list.
+* BoundColumnRef expressions in the candidate filters carry column_index values that index this list (the scan's
+column ids at pushdown time), NOT the function's bind-declared result columns and NOT the projected column list
+the init callbacks later observe (the engine may re-prune the projection after handled filters are dropped).
+Resolve a filter's column reference to a bind-declared column via table_function_filter_get_column_index.
+
+* @param info The filter info handle.
+* @param out_count Receives the pushdown-time column count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_filter_get_column_count(
+    duckdb_v2_table_function_filter_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
+/*!
+ * Resolves a pushdown-time column position to its bind-declared column index.
+ * @param info The filter info handle.
+ * @param index Zero-based position in the pushdown-time column list (what a filter's BoundColumnRef column_index
+ * means).
+ * @param out_column_index Receives the bind-declared (result-schema) column index.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_table_function_filter_get_column_index(duckdb_v2_table_function_filter_info_handle info, idx_t index,
+                                                 idx_t *out_column_index, duckdb_v2_error_info_handle *err);
 /*!
  * Retrieves user data set on the builder.
  * @param info The filter info handle.

@@ -744,3 +744,258 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 	REQUIRE(volatile_rows == 1000);
 	REQUIRE(consistent_rows < volatile_rows);
 }
+
+// ---------------------------------------------------------------------------
+// The execution context on scalar exec.
+//
+// ScalarFunction::ExecInput exposes the client context when the invocation
+// runs under one (HasContext()/GetContext()); context-free invocations report
+// no context and GetContext() throws rather than returning a stale pointer.
+// ---------------------------------------------------------------------------
+namespace {
+struct ScalarExecContextProbe {
+	std::atomic<idx_t> with_context {0};
+	std::atomic<idx_t> without_context {0};
+	std::atomic<idx_t> context_used_ok {0};
+};
+} // namespace
+
+TEST_CASE("Stable C++API: Scalar exec sees the execution context", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	ScalarExecContextProbe probe;
+
+	auto exec = [](ScalarFunction::ExecInput &input) {
+		auto &p = *input.GetUserData<ScalarExecContextProbe *>();
+		auto out = input.GetResultVector().GetDataMutable<int32_t>();
+		const auto count = input.GetInputChunk().GetRowCount();
+		if (input.HasContext()) {
+			// The pointer must be LIVE, not merely non-null: parsing a type
+			// dereferences the ClientContext (parser + catalog).
+			auto parsed = input.GetContext().ParseType("DECIMAL(10,2)");
+			if (parsed.GetId() == TypeId::DECIMAL) {
+				p.context_used_ok += 1;
+			}
+			p.with_context += (count == 0 ? 1 : count);
+		} else {
+			// A context-free invocation reports no context and GetContext()
+			// throws rather than handing back a dangling/garbage pointer.
+			REQUIRE_THROWS_MATCHES(input.GetContext(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			p.without_context += (count == 0 ? 1 : count);
+		}
+		for (idx_t i = 0; i < count; i++) {
+			out[i] = 0;
+		}
+	};
+
+	conn.WithTransaction([&](const Context &ctx) {
+		ScalarFunction f(ctx);
+		f.SetName("exec_ctx_probe")
+		    .AddParameter("x", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetUserData<ScalarExecContextProbe *>(&probe)
+		    .SetExecCallback(exec)
+		    .Register(ctx);
+	});
+
+	auto reset = [&]() {
+		probe.with_context = 0;
+		probe.without_context = 0;
+		probe.context_used_ok = 0;
+	};
+	auto drain = [&](const char *sql) {
+		auto r = conn.Execute(sql);
+		while (auto c = r.FetchChunk()) {
+		}
+	};
+
+	SECTION("real query over a table: context present and live") {
+		reset();
+		drain("SELECT exec_ctx_probe(x) FROM (VALUES (1),(2),(3)) t(x)");
+		REQUIRE(probe.with_context.load() == 3);
+		REQUIRE(probe.without_context.load() == 0);
+		REQUIRE(probe.context_used_ok.load() >= 1); // the context was actually USED
+	}
+
+	SECTION("optimizer constant folding still carries a context") {
+		// The optimizer's ConstantFoldingRule evaluates the folded expression
+		// with the client context (TryEvaluateScalar(GetContext(), ...)), so
+		// HasContext() is TRUE even here. The genuine context-free path is the
+		// index expression below, NOT constant folding.
+		reset();
+		drain("SELECT exec_ctx_probe(42)");
+		REQUIRE(probe.with_context.load() >= 1);
+		REQUIRE(probe.without_context.load() == 0);
+		REQUIRE(probe.context_used_ok.load() >= 1);
+	}
+
+	SECTION("context-free invocation: index expression") {
+		// Index-expression evaluation runs through a context-free
+		// ExpressionExecutor (BoundIndex owns one built with the default
+		// constructor), so exec sees no context.
+		reset();
+		drain("CREATE TABLE exec_ctx_tbl(x INTEGER)");
+		drain("CREATE INDEX exec_ctx_idx ON exec_ctx_tbl(exec_ctx_probe(x))");
+		drain("INSERT INTO exec_ctx_tbl VALUES (7),(8),(9)");
+		REQUIRE(probe.without_context.load() == 3);
+		REQUIRE(probe.with_context.load() == 0);
+		REQUIRE(probe.context_used_ok.load() == 0);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The init context is nullable too, delivered as a positional callback param.
+//
+// A scalar function's init callback runs on whatever ExpressionExecutor
+// initializes the expression state tree. That executor is context-free for an
+// index expression (BoundIndex owns a default-constructed executor), so init
+// must tolerate a null context exactly as exec does. Before context became a
+// nullable positional param, the bridge dereferenced the context unconditionally
+// while building init's args, so a function with an init callback threw
+// "Cannot use <fn> in this context" at index-build time.
+// ---------------------------------------------------------------------------
+namespace {
+struct ScalarInitContextProbe {
+	std::atomic<idx_t> init_with_context {0};
+	std::atomic<idx_t> init_without_context {0};
+	std::atomic<idx_t> init_context_used_ok {0};
+};
+} // namespace
+
+TEST_CASE("Stable C++API: Scalar init sees a nullable execution context", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	ScalarInitContextProbe probe;
+
+	auto init = [](ScalarFunction::InitInput &input) {
+		auto &p = *input.GetUserData<ScalarInitContextProbe *>();
+		if (input.HasContext()) {
+			// The pointer must be LIVE, not merely non-null: parsing a type
+			// dereferences the ClientContext (parser + catalog).
+			auto parsed = input.GetContext().ParseType("DECIMAL(10,2)");
+			if (parsed.GetId() == TypeId::DECIMAL) {
+				p.init_context_used_ok += 1;
+			}
+			p.init_with_context += 1;
+		} else {
+			// A context-free invocation reports no context and GetContext()
+			// throws rather than handing back a dangling/garbage pointer.
+			REQUIRE_THROWS_MATCHES(input.GetContext(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			p.init_without_context += 1;
+		}
+	};
+
+	auto exec = [](ScalarFunction::ExecInput &input) {
+		auto out = input.GetResultVector().GetDataMutable<int32_t>();
+		const auto count = input.GetInputChunk().GetRowCount();
+		for (idx_t i = 0; i < count; i++) {
+			out[i] = 0;
+		}
+	};
+
+	conn.WithTransaction([&](const Context &ctx) {
+		ScalarFunction f(ctx);
+		f.SetName("init_ctx_fn")
+		    .AddParameter("x", LogicalType::INTEGER())
+		    .SetReturnType(LogicalType::INTEGER())
+		    .SetUserData<ScalarInitContextProbe *>(&probe)
+		    .SetInitCallback(init)
+		    .SetExecCallback(exec)
+		    .Register(ctx);
+	});
+
+	auto reset = [&]() {
+		probe.init_with_context = 0;
+		probe.init_without_context = 0;
+		probe.init_context_used_ok = 0;
+	};
+	auto drain = [&](const char *sql) {
+		auto r = conn.Execute(sql);
+		while (auto c = r.FetchChunk()) {
+		}
+	};
+
+	SECTION("real query: init sees a live context") {
+		reset();
+		drain("SELECT init_ctx_fn(x) FROM (VALUES (1),(2),(3)) t(x)");
+		REQUIRE(probe.init_with_context.load() >= 1);
+		REQUIRE(probe.init_without_context.load() == 0);
+		REQUIRE(probe.init_context_used_ok.load() >= 1); // the context was actually USED
+	}
+
+	SECTION("index expression: init runs context-free without throwing") {
+		reset();
+		drain("CREATE TABLE init_tbl(x INTEGER)");
+		// The persistent index owns a context-free ExpressionExecutor, so it
+		// initializes the function's state with no context at least once. Before
+		// the fix this threw "Cannot use <fn> in this context" and the statement
+		// failed (drain would throw). CREATE INDEX also runs a context-bearing
+		// executor to populate the index, so init may additionally be invoked
+		// with a context here; what this pins is that the context-free path no
+		// longer throws.
+		drain("CREATE INDEX init_idx ON init_tbl(init_ctx_fn(x))");
+		drain("INSERT INTO init_tbl VALUES (7),(8),(9)");
+		REQUIRE(probe.init_without_context.load() >= 1);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// A scalar function whose return type is DECIMAL registers and runs end to end.
+// This relies on the engine reporting a well-formed DECIMAL as a complete type;
+// when it did not, Register rejected the return type as not "fully defined".
+// ---------------------------------------------------------------------------
+TEST_CASE("Stable C++API: scalar function with a DECIMAL return type", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		// Before the IsComplete fix, Register threw "Return type must be a
+		// fully defined concrete type" here.
+		ScalarFunction f(ctx);
+		f.SetName("decimal_ret")
+		    .AddParameter("x", LogicalType::BIGINT())
+		    .SetReturnType(ctx.ParseType("DECIMAL(18,3)"))
+		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
+			    // DECIMAL(18,3) is INT64-backed: value x is written as x.000.
+			    auto out = input.GetResultVector().GetDataMutable<int64_t>();
+			    auto in = input.GetInputChunk().GetVector(0).GetView();
+			    const auto count = input.GetInputChunk().GetRowCount();
+			    for (idx_t i = 0; i < count; i++) {
+				    out[i] = in.Data<int64_t>()[in.SelAt(i)] * 1000;
+			    }
+		    })
+		    .Register(ctx);
+	});
+
+	{
+		// Registration and a query through the DECIMAL(18,3) return succeed.
+		auto result = conn.Execute("SELECT decimal_ret(2) AS d");
+		REQUIRE(result.GetSchema().GetFieldCount() == 1);
+		REQUIRE(result.GetSchema().GetFieldType(0).GetId() == TypeId::DECIMAL);
+
+		auto chunk = result.FetchChunk();
+		REQUIRE(chunk);
+		auto view = chunk.GetVector(0).GetView();
+		REQUIRE(view.IsValid(0));
+		REQUIRE(view.Data<int64_t>()[view.SelAt(0)] == 2000); // 2.000 scaled by 10^3
+		while (result.FetchChunk()) {                         // drain: free the connection
+		}
+	}
+
+	// The rendered value confirms the scale is honored end to end.
+	auto text_result = conn.Execute("SELECT decimal_ret(2)::VARCHAR AS d");
+	auto text_chunk = text_result.FetchChunk();
+	REQUIRE(text_chunk);
+	auto text_view = text_chunk.GetVector(0).GetView();
+	REQUIRE(text_view.IsValid(0));
+	REQUIRE(text_view.Data<StringStorage>()[text_view.SelAt(0)].AsStringView() == "2.000");
+}

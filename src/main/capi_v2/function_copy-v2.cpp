@@ -79,7 +79,6 @@ struct CopyFunctionBuilderV2 {
 
 		duckdb_v2_copy_function_bind_args args = {};
 		args.struct_size = sizeof(args);
-		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.column_count = names.size();
 		args.column_names = names_array.data();
@@ -87,8 +86,9 @@ struct CopyFunctionBuilderV2 {
 
 		// The bind callback is optional: a copy function may not need any bind-time setup.
 		if (info.bind_cb) {
-			duckdb::InvokeWithErrorSlot<BinderException>(
-			    [&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, err); });
+			duckdb::InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_handle *err) {
+				info.bind_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
+			});
 		}
 
 		auto result = make_uniq<CCopyFunctionBindDataV2>(info);
@@ -109,15 +109,15 @@ struct CopyFunctionBuilderV2 {
 
 		duckdb_v2_copy_function_init_args args = {};
 		args.struct_size = sizeof(args);
-		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.file_path = ToStr(file_path);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 
 		// The init callback is optional: when absent, the global state simply carries no init data.
 		if (info.init_cb) {
-			duckdb::InvokeWithErrorSlot<InvalidInputException>(
-			    [&](duckdb_v2_error_info_handle *err) { info.init_cb(&args, err); });
+			duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
+				info.init_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
+			});
 		}
 
 		auto result = make_uniq<CCopyFunctionStateV2>();
@@ -137,7 +137,6 @@ struct CopyFunctionBuilderV2 {
 
 		duckdb_v2_copy_function_batch_args args = {};
 		args.struct_size = sizeof(args);
-		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 		args.init_data = state.init_data.GetData();
@@ -146,8 +145,9 @@ struct CopyFunctionBuilderV2 {
 		// the unique_ptr so it outlives this scope.
 		args.in_batch = reinterpret_cast<duckdb_v2_column_data_collection_handle>(collection.release());
 
-		duckdb::InvokeWithErrorSlot<InvalidInputException>(
-		    [&](duckdb_v2_error_info_handle *err) { info.batch_cb(&args, err); });
+		duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
+			info.batch_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
+		});
 
 		auto result = make_uniq<CCopyFunctionBatchV2>();
 
@@ -166,14 +166,14 @@ struct CopyFunctionBuilderV2 {
 
 		duckdb_v2_copy_function_flush_args args = {};
 		args.struct_size = sizeof(args);
-		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 		args.init_data = state.init_data.GetData();
 		args.in_batch = batch.Cast<CCopyFunctionBatchV2>().batch_data.GetData();
 
-		duckdb::InvokeWithErrorSlot<InvalidInputException>(
-		    [&](duckdb_v2_error_info_handle *err) { info.flush_cb(&args, err); });
+		duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
+			info.flush_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
+		});
 	}
 
 	static auto CopyToFinalize(ClientContext &context, FunctionData &bind_data, GlobalFunctionData &gstate) -> void {
@@ -189,13 +189,13 @@ struct CopyFunctionBuilderV2 {
 
 		duckdb_v2_copy_function_finalize_args args = {};
 		args.struct_size = sizeof(args);
-		args.context = reinterpret_cast<duckdb_v2_context_handle>(&context);
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 		args.init_data = state.init_data.GetData();
 
-		duckdb::InvokeWithErrorSlot<InvalidInputException>(
-		    [&](duckdb_v2_error_info_handle *err) { info.finalize_cb(&args, err); });
+		duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
+			info.finalize_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
+		});
 	}
 };
 
