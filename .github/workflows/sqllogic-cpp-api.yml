@@ -183,3 +183,10 @@ jobs:
         # limit (see the job comment above). Larger batch timeout: sanitized
         # builds run the suite much slower.
         run: python scripts/ci/sqllogic_executor_diff.py -- ./build/relassert/test/run --test-config=test/configs/${{ matrix.config }}.json --batch-timeout 600 "~[.]"
+      - name: Free build tree for the cache save
+        # The ~16GB relassert build fills the disk, leaving the post-job ccache
+        # save to die with ENOSPC, so every nightly relassert build starts cold.
+        # Regular steps run before post-job actions; dropping the build tree
+        # here gives the save its headroom back.
+        if: always()
+        run: rm -rf build

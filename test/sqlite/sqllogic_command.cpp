@@ -85,7 +85,11 @@ unique_ptr<MaterializedQueryResult> MaterializeCppResult(duckdb_api::QueryResult
 			unique_ptr<LogicalType> type(reinterpret_cast<LogicalType *>(cpp_type.release()));
 			types.push_back(*type);
 		}
-		collection = make_uniq<ColumnDataCollection>(context, std::move(types));
+		if (types.empty()) {
+			collection = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator());
+		} else {
+			collection = make_uniq<ColumnDataCollection>(context, std::move(types));
+		}
 	}
 
 	return make_uniq<MaterializedQueryResult>(StatementType::SELECT_STATEMENT, StatementProperties(), std::move(names),
@@ -106,8 +110,10 @@ public:
 				result = MaterializeCppResult(cpp_conn.Execute(statement), *connection.context);
 			}
 			if (!result) {
-				// No statements parsed: surface an empty successful result.
-				auto collection = make_uniq<ColumnDataCollection>(*connection.context, vector<LogicalType>());
+				// No statements parsed: surface an empty successful result. The
+				// allocator-only collection constructor is the internal path's
+				// zero-column shape (the types-taking constructors assert non-empty).
+				auto collection = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator());
 				result = make_uniq<MaterializedQueryResult>(StatementType::SELECT_STATEMENT, StatementProperties(),
 				                                            vector<string>(), std::move(collection),
 				                                            connection.context->GetClientProperties());
