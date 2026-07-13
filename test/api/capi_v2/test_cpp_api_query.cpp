@@ -393,7 +393,7 @@ TEST_CASE("Stable C++API: prepared statements", "[cpp_api][prepared_statement]")
 	auto Params = [](std::initializer_list<int64_t> values) {
 		std::vector<Value> params;
 		for (auto value : values) {
-			params.push_back(Value::FromI64(value));
+			params.push_back(Value::Bigint(value));
 		}
 		return params;
 	};
@@ -478,7 +478,7 @@ TEST_CASE("Stable C++API: PreparedStatement handle", "[cpp_api][prepared_stateme
 	auto Params = [](std::initializer_list<int64_t> values) {
 		std::vector<Value> params;
 		for (auto value : values) {
-			params.push_back(Value::FromI64(value));
+			params.push_back(Value::Bigint(value));
 		}
 		return params;
 	};
@@ -554,7 +554,7 @@ TEST_CASE("Stable C++API: named parameters", "[cpp_api]") {
 		auto iter = conn.ParseSQL("SELECT id, score FROM scores WHERE score >= $min ORDER BY id");
 		auto stmt = iter.Next();
 		std::vector<NamedParam> params;
-		params.push_back(NamedParam {"min", Value::FromI64(70)});
+		params.push_back(NamedParam {"min", Value::Bigint(70)});
 		auto rows = Collect2<int32_t, int32_t>(conn.Execute(stmt, params), 0, 1);
 		REQUIRE(rows.size() == 2);
 		REQUIRE(rows[0].first == 3);
@@ -565,7 +565,7 @@ TEST_CASE("Stable C++API: named parameters", "[cpp_api]") {
 		auto iter = conn.ParseSQL("SELECT id FROM scores WHERE score >= $min ORDER BY id");
 		auto prepared = conn.Prepare(iter.Next());
 		std::vector<NamedParam> params;
-		params.push_back(NamedParam {"min", Value::FromI64(90)});
+		params.push_back(NamedParam {"min", Value::Bigint(90)});
 		auto rows = Collect2<int32_t, int32_t>(prepared.Execute(params), 0, 0);
 		REQUIRE(rows.size() == 1);
 		REQUIRE(rows[0].first == 4);
@@ -575,7 +575,7 @@ TEST_CASE("Stable C++API: named parameters", "[cpp_api]") {
 		auto iter = conn.ParseSQL("SELECT id FROM scores WHERE score >= $1 ORDER BY id");
 		auto stmt = iter.Next();
 		std::vector<NamedParam> params;
-		params.push_back(NamedParam {"", Value::FromI64(90)}); // empty name -> positional $1
+		params.push_back(NamedParam {"", Value::Bigint(90)}); // empty name -> positional $1
 		auto rows = Collect2<int32_t, int32_t>(conn.Execute(stmt, params), 0, 0);
 		REQUIRE(rows.size() == 1);
 		REQUIRE(rows[0].first == 4);
@@ -585,7 +585,7 @@ TEST_CASE("Stable C++API: named parameters", "[cpp_api]") {
 		auto iter = conn.ParseSQL("SELECT id FROM scores WHERE score >= $min");
 		auto stmt = iter.Next();
 		std::vector<NamedParam> params;
-		params.push_back(NamedParam {"wrong", Value::FromI64(1)});
+		params.push_back(NamedParam {"wrong", Value::Bigint(1)});
 		REQUIRE_THROWS_MATCHES(conn.Execute(stmt, params), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 	}
 }

@@ -997,5 +997,5 @@ TEST_CASE("Stable C++API: scalar function with a DECIMAL return type", "[cpp_api
 	REQUIRE(text_chunk);
 	auto text_view = text_chunk.GetVector(0).GetView();
 	REQUIRE(text_view.IsValid(0));
-	REQUIRE(text_view.Data<StringStorage>()[text_view.SelAt(0)].AsStringView() == "2.000");
+	REQUIRE(text_view.Data<StringLayout>()[text_view.SelAt(0)].AsStringView() == "2.000");
 }

@@ -319,25 +319,21 @@ TEST_CASE("V2: BLOB direct reads (inlined + pointer forms)", "[capi_v2][data_chu
 }
 
 // ===========================================================================
-// BIT via duckdb_v2_bit_decode. Peels the leading padding-bits byte.
-// Exercise two patterns:
+// BIT via the client-side split: byte 0 is the padding-bit count, bytes 1..
+// are the data. Exercise two patterns:
 //   '11111111' → 8 bits, padding=0, data[0]=0xFF (unambiguous, no bit
 //                                                  ordering dependency)
 //   '101'      → 3 bits, padding=5 (pins the padding peel)
 // ===========================================================================
 
-TEST_CASE("V2: BIT via bit_decode", "[capi_v2][data_chunk]") {
+TEST_CASE("V2: BIT via the transparent split", "[capi_v2][data_chunk]") {
 	V2EnvFixture fx;
 
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT * FROM (VALUES ('11111111'::BIT), ('101'::BIT)) t(b)", &r, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_data_chunk_handle chunk = nullptr;
-	chunk = V2StepChunk(r);
-
-	idx_t size = 0;
-	duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
+	duckdb_v2_data_chunk_handle chunk = V2StepChunk(r);
 
 	duckdb_v2_vector_handle vec = nullptr;
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
@@ -347,57 +343,26 @@ TEST_CASE("V2: BIT via bit_decode", "[capi_v2][data_chunk]") {
 
 	const duckdb_v2_bit_t *arr = static_cast<const duckdb_v2_bit_t *>(view.data);
 
-	const uint8_t *d0 = nullptr;
-	idx_t l0 = 0;
-	uint8_t p0 = 0xFF;
-	REQUIRE(duckdb_v2_bit_decode(&arr[SelAt(view.sel, 0)], &d0, &l0, &p0, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(l0 == 1);
-	REQUIRE(p0 == 0);
-	REQUIRE(d0[0] == 0xFF); // all-ones byte, padding-free
+	// Row 0: '11111111'. The storage is [padding_byte, data...].
+	duckdb_v2_str c0 = V2StringView(arr[SelAt(view.sel, 0)]);
+	const uint8_t *b0 = reinterpret_cast<const uint8_t *>(c0.ptr);
+	REQUIRE(c0.len == 2); // padding byte + one data byte
+	REQUIRE(b0[0] == 0);  // padding = 0
+	REQUIRE(b0[1] == 0xFF);
 
-	const uint8_t *d1 = nullptr;
-	idx_t l1 = 0;
-	uint8_t p1 = 0;
-	REQUIRE(duckdb_v2_bit_decode(&arr[SelAt(view.sel, 1)], &d1, &l1, &p1, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(l1 == 1); // 3 bits fit in 1 byte
-	REQUIRE(p1 == 5); // 8 - 3 = 5 leading padding bits
-	// Bit-position contract (see bit_decode spec): bit n of the bit
-	// string lives at byte (n+padding)/8, MSB-first within the byte.
-	// Consumers should mask through the formula and ignore the
-	// padding-bit positions — DuckDB happens to set them to 1 (a
-	// Finalize invariant load-bearing for byte-wise comparisons), but
-	// that's an implementation detail. For '101' (padding=5), only
-	// bit positions 5, 6, 7 of d1[0] matter:
-	uint8_t string_bit_5 = (d1[0] >> (7 - 5)) & 1; // '1'
-	uint8_t string_bit_6 = (d1[0] >> (7 - 6)) & 1; // '0'
-	uint8_t string_bit_7 = (d1[0] >> (7 - 7)) & 1; // '1'
-	REQUIRE(string_bit_5 == 1);
-	REQUIRE(string_bit_6 == 0);
-	REQUIRE(string_bit_7 == 1);
+	// Row 1: '101' → 3 bits, padding 5.
+	duckdb_v2_str c1 = V2StringView(arr[SelAt(view.sel, 1)]);
+	const uint8_t *b1 = reinterpret_cast<const uint8_t *>(c1.ptr);
+	REQUIRE(c1.len == 2);
+	REQUIRE(b1[0] == 5);
+	// Bit-position contract: bit n lives at data[(n+padding)/8], MSB-first.
+	// For '101' (padding=5), positions 5, 6, 7 of the data byte are the bits.
+	REQUIRE(((b1[1] >> (7 - 5)) & 1) == 1); // '1'
+	REQUIRE(((b1[1] >> (7 - 6)) & 1) == 0); // '0'
+	REQUIRE(((b1[1] >> (7 - 7)) & 1) == 1); // '1'
 
 	duckdb_v2_data_chunk_destroy(&chunk);
 	duckdb_v2_result_destroy(&r);
-}
-
-// ===========================================================================
-// bit_decode degenerate input: a string_t with raw_len == 0 (which
-// can't be produced through SQL because BIT rejects empty strings, but
-// the opaque-zero-init path can be constructed in C). Exercises the
-// `raw_len > 0` branch of bit_decode — out_padding_bits / out_length
-// resolve to 0 and out_data points at the unread inline bytes.
-// ===========================================================================
-
-TEST_CASE("V2: bit_decode handles zero-length storage", "[capi_v2][data_chunk]") {
-	// Opaque-zero string_t: length field reads as 0 → storage->GetSize() == 0.
-	duckdb_v2_bit_t empty {};
-
-	const uint8_t *data = reinterpret_cast<const uint8_t *>(0x1); // poison
-	idx_t len = 99;
-	uint8_t pad = 99;
-	REQUIRE(duckdb_v2_bit_decode(&empty, &data, &len, &pad, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 0);
-	REQUIRE(pad == 0);
-	REQUIRE(data != nullptr); // points at the inline buffer; length is 0 so no read
 }
 
 // ===========================================================================
@@ -1233,16 +1198,13 @@ TEST_CASE("V2: VECTOR_TYPE_OTHER is the zero value", "[capi_v2][data_chunk]") {
 }
 
 // ===========================================================================
-// Null-arg rejection for the two wire-codec decoders.
+// Null-arg rejection for the BIGNUM wire-codec decoder.
 // ===========================================================================
 
 TEST_CASE("V2: string decoders reject null arguments", "[capi_v2][data_chunk]") {
-	const uint8_t *bdata = nullptr;
 	uint8_t *odata = nullptr;
 	idx_t len = 0;
-	uint8_t padding = 0;
 	bool is_neg = false;
 
-	REQUIRE(duckdb_v2_bit_decode(nullptr, &bdata, &len, &padding, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_bignum_decode(nullptr, &odata, &len, &is_neg, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 }

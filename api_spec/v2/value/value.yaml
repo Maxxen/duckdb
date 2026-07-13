@@ -19,9 +19,11 @@ module: value
 # value_create_from_data / value_get_data speak each kind's committed
 # physical layout (the vector view layout table plus the DECIMAL / ENUM
 # storage tier tables). There are no per-kind leaf constructors or
-# getters. BIGNUM is the one exception: its wire encoding (bit-inverted
-# negatives, engine-side details) is not committed contract, so it keeps
-# a dedicated codec pair, mirroring the vector module's bignum_decode.
+# getters. BIGNUM is the one exception: decoding it un-inverts the
+# bit-inverted magnitude of negatives, which allocates an owned buffer
+# (the contiguous magnitude bytes don't exist on disk) and is owned by
+# the engine. So it keeps a dedicated codec pair rather than a
+# client-side split, mirroring the vector module's bignum_decode.
 #
 # All constructors copy their input. Getters return owned outputs
 # (caller-destroyed or caller-freed) or borrowed pointers (valid until the
@@ -99,7 +101,7 @@ functions:
 
       Every other type id returns ERROR_INVALID_INPUT: TYPE values are
       built via value_create_type, BIGNUM via value_create_bignum (its
-      wire encoding is not committed), composites via value_create;
+      engine-owned codec un-inverts negatives), composites via value_create;
       GEOMETRY has no committed layout. The type is borrowed; the payload
       is copied in.
     role: constructor
@@ -159,7 +161,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
   # -----------------------------------------------------------------------
-  # BIGNUM codec (wire encoding not committed; see module commentary)
+  # BIGNUM codec (engine-owned decode + allocation; see module commentary)
   # -----------------------------------------------------------------------
   value_create_bignum:
     summary: Creates a BIGNUM (arbitrary-precision integer) value from raw bytes.

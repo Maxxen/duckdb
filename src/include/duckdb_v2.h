@@ -145,8 +145,10 @@ typedef struct duckdb_v2_str duckdb_v2_str;
 //! BIGNUM), mirroring duckdb::string_t. Inlined when length <=
 //! STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise
 //! value.pointer.ptr holds the bytes and value.pointer.prefix the
-//! first 4. Read the fields directly; BIT / BIGNUM additionally
-//! carry a wire encoding, decoded via bit_decode / bignum_decode.
+//! first 4. Read the fields directly; BIT / BIGNUM additionally carry
+//! a wire encoding. BIT is a trivial client-side split (byte 0 is the
+//! padding-bit count, bytes 1.. the data); BIGNUM is decoded via
+//! bignum_decode.
 typedef struct duckdb_v2_string duckdb_v2_string;
 
 //! An opaque, owned handle to a user-defined resource. Bundles the pointer
@@ -287,7 +289,7 @@ typedef duckdb_v2_string duckdb_v2_varchar_t;
 //! BLOB storage. Read the transparent string fields directly.
 typedef duckdb_v2_string duckdb_v2_blob_t;
 
-//! BIT storage. Decode via bit_decode.
+//! BIT storage. Byte 0 is the padding-bit count, bytes 1.. the data.
 typedef duckdb_v2_string duckdb_v2_bit_t;
 
 //! BIGNUM storage. Decode via bignum_decode.
@@ -3518,7 +3520,7 @@ at construction).
 
 Every other type id returns ERROR_INVALID_INPUT: TYPE values are
 built via value_create_type, BIGNUM via value_create_bignum (its
-wire encoding is not committed), composites via value_create;
+engine-owned codec un-inverts negatives), composites via value_create;
 GEOMETRY has no committed layout. The type is borrowed; the payload
 is copied in.
 
@@ -4080,36 +4082,6 @@ is out of range.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_handle vector, idx_t index,
                                                              duckdb_v2_vector_handle *out_child,
                                                              duckdb_v2_error_info_handle *err);
-/*!
-* Reads the bytes + length + padding-bits of a BIT value.
-* The on-disk encoding is [padding_byte | data_bytes]: byte 0 is the
-number of leading bits in the first data byte that are NOT part
-of the bit string (0 if the bit count is a multiple of 8). out_data
-receives a borrowed pointer to the data bytes (one past the
-padding byte), out_length the number of data bytes, and
-out_padding_bits the padding count. Pointer lifetime is the owning
-chunk.
-
-Bit-position contract: bit n (0-indexed, leftmost bit of the bit
-string first) is read as:
-
-    bit_index = n + out_padding_bits
-    byte      = out_data[bit_index / 8]
-    value     = (byte >> (7 - (bit_index % 8))) & 1
-
-The value of bits in the `out_padding_bits` positions is
-unspecified (the bit-extraction formula masks them out).
-
-* @param bit Pointer to the BIT storage.
-* @param out_data Receives a borrowed pointer to the data bytes (skipping the padding byte).
-* @param out_length Receives the number of data bytes.
-* @param out_padding_bits Receives the number of unused trailing bits in the last data byte.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bit_decode(const duckdb_v2_bit_t *bit, const uint8_t **out_data,
-                                                       idx_t *out_length, uint8_t *out_padding_bits,
-                                                       duckdb_v2_error_info_handle *err);
 /*!
 * Decodes a BIGNUM value into a fresh magnitude buffer + sign flag.
 * Allocates a malloc'd buffer of big-endian magnitude bytes and

@@ -682,6 +682,10 @@ inline bool PreparedReusesPlan(const StatementProperties &properties) {
 	return properties.bound_all_parameters && !properties.always_require_rebind;
 }
 
+// Forward declaration (defined below); lets ErrorInfoV2::ThrowAsException
+// rethrow with the mapped exception class.
+inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_API_CALL_t code, ExceptionType &out_type);
+
 // Backing struct for the opaque duckdb_v2_error_info_handle handle. Allocated
 // only on failure paths and only when the caller requested detail (i.e.
 // passed a non-null err out-parameter).
@@ -702,7 +706,13 @@ struct ErrorInfoV2 {
 		// Only throw if there's actually an error!
 		D_ASSERT(HasError());
 
-		// TODO: map code to more specific exception types.
+		// Rethrow with the exception class the code maps to, so the error class
+		// round-trips (mirrors InvokeWithErrorSlot); InvalidInput is the fallback
+		// for codes with no specific type.
+		ExceptionType type;
+		if (TryGetExceptionTypeFromErrorCode(code, type)) {
+			throw duckdb::Exception(type, message);
+		}
 		throw duckdb::InvalidInputException(message);
 	}
 };

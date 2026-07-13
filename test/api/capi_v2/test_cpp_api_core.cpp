@@ -241,7 +241,7 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 	SECTION("claim a builtin table function") {
 		db.AddReplacementScan([](Database::ReplacementScanInput &input) {
 			input.SetFunctionName("range");
-			input.AddParameter(Value::FromI64(5));
+			input.AddParameter(Value::Bigint(5));
 		});
 		auto result = conn.Execute("SELECT * FROM cpp_repl_no_such_table");
 		REQUIRE(result.GetSchema().GetFieldCount() == 1);
@@ -294,8 +294,8 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 		    [](Database::ReplacementScanInput &input) {
 			    const auto &path = input.GetUserData<std::string>();
 			    input.SetFunctionName("read_csv");
-			    input.AddParameter(Value::FromVarchar(path));
-			    input.AddNamedParameter("sep", Value::FromVarchar(","));
+			    input.AddParameter(Value::Varchar(path));
+			    input.AddNamedParameter("sep", Value::Varchar(","));
 		    },
 		    csv_path);
 
@@ -322,13 +322,126 @@ TEST_CASE("Stable C++API: Replacement Scan", "[cpp_api]") {
 			    char head[1] = {0};
 			    REQUIRE(file.Read(head, 1) == 1);
 			    input.SetFunctionName("read_csv");
-			    input.AddParameter(Value::FromVarchar(path));
-			    input.AddNamedParameter("sep", Value::FromVarchar(","));
+			    input.AddParameter(Value::Varchar(path));
+			    input.AddNamedParameter("sep", Value::Varchar(","));
 		    },
 		    csv_path);
 
 		auto result = conn.Execute("SELECT * FROM cpp_repl_ctx_placeholder");
 		REQUIRE(result.GetSchema().GetFieldCount() == 2);
 		REQUIRE(count_rows(std::move(result)) == 2);
+	}
+}
+TEST_CASE("Stable C++API: Connection::SetOption scope split is visible correctly across connections", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn_a = db.Connect();
+	auto conn_b = db.Connect();
+
+	// max_execution_time is LOCAL_DEFAULT: a LOCAL write on conn_a stays
+	// invisible to conn_b.
+	conn_a.SetOption(DatabaseOption("max_execution_time", "5000"), SettingScope::Local);
+	REQUIRE(conn_a.GetOption("max_execution_time").GetValue() == "5000");
+	REQUIRE(conn_b.GetOption("max_execution_time").GetValue() != "5000");
+
+	// A GLOBAL write on conn_a is visible identically on conn_b.
+	conn_a.SetOption(DatabaseOption("memory_limit", "987MB"), SettingScope::Global);
+	auto seen_a = conn_a.GetOption("memory_limit").GetValue();
+	auto seen_b = conn_b.GetOption("memory_limit").GetValue();
+	REQUIRE_FALSE(seen_a.empty());
+	REQUIRE(std::string(seen_a) == std::string(seen_b));
+
+	// A GLOBAL_ONLY option rejects a LOCAL scope.
+	REQUIRE_THROWS_MATCHES(conn_a.SetOption(DatabaseOption("allow_community_extensions", "false"), SettingScope::Local),
+	                       Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+}
+TEST_CASE("Stable C++API: Connection::GetOption by name and the scopeless SetOption default", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto option = conn.GetOption("allow_community_extensions");
+	REQUIRE(option.GetName() == "allow_community_extensions");
+
+	// The scopeless overload uses Automatic scope (SQL `SET` semantics).
+	conn.SetOption(DatabaseOption("max_execution_time", "4242"));
+	REQUIRE(conn.GetOption("max_execution_time").GetValue() == "4242");
+
+	REQUIRE_THROWS_MATCHES(conn.GetOption("no_such_option_xyz"), Exception,
+	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+}
+TEST_CASE("Stable C++API: Environment::Open with pre-open options enforces read-only", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	auto path = duckdb::TestCreatePath("cpp_api_readonly.duckdb");
+	duckdb::DeleteDatabase(path);
+
+	Environment env;
+	{
+		// Seed the database, then close (scope exit) to free the exclusive-open
+		// slot for the read-only reopen.
+		auto db = env.Open(path);
+		auto conn = db.Connect();
+		conn.Execute("CREATE TABLE t(i INTEGER)").Drain();
+		conn.Execute("INSERT INTO t VALUES (1), (2)").Drain();
+	}
+
+	{
+		std::vector<DatabaseOption> options;
+		options.push_back(DatabaseOption("access_mode", "READ_ONLY"));
+		auto ro_db = env.Open(path, options);
+		auto ro_conn = ro_db.Connect();
+
+		// Reads see the seeded data. Scoped so the live result is released
+		// before the write attempts below.
+		{
+			auto result = ro_conn.Execute("SELECT count(*) FROM t");
+			auto chunk = result.FetchChunk();
+			REQUIRE(chunk.GetVector(0).GetValue(0).AsBigint() == 2);
+		}
+
+		// Writes are rejected: both DML and DDL.
+		REQUIRE_THROWS_AS(ro_conn.Execute("INSERT INTO t VALUES (3)"), Exception);
+		REQUIRE_THROWS_AS(ro_conn.Execute("CREATE TABLE u(i INTEGER)"), Exception);
+
+		// The data is unchanged after the rejected write attempts.
+		auto after = ro_conn.Execute("SELECT count(*) FROM t");
+		REQUIRE(after.FetchChunk().GetVector(0).GetValue(0).AsBigint() == 2);
+	}
+
+	duckdb::DeleteDatabase(path);
+}
+TEST_CASE("Stable C++API: typed exceptions carry their error code", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	// Each typed exception fixes its code in the implementation; throwing one
+	// is how a callback names its error class without any code vocabulary.
+	REQUIRE(InvalidInputException("boom").GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE(InterruptException("stop").GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT));
+
+	// They are catchable through the Exception base, preserving the code.
+	try {
+		throw InvalidInputException("bad arg");
+	} catch (const Exception &caught) {
+		REQUIRE(caught.GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_INVALID_INPUT));
+	}
+
+	// The base Exception with a raw code still works.
+	Exception raw(static_cast<uint32_t>(DUCKDB_V2_ERROR_QUERY_BINDER), "parse boom");
+	REQUIRE(raw.GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_QUERY_BINDER));
+
+	// A thrown-and-caught engine error classifies back correctly end to end.
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	try {
+		conn.Execute("SELECT * FROM no_such_table_xyz");
+		FAIL("expected a Catalog error");
+	} catch (const Exception &caught) {
+		REQUIRE(caught.GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_DATABASE_CATALOG));
 	}
 }

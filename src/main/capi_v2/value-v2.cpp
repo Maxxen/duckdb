@@ -377,7 +377,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_create_from_data(duckdb_v2_logical_type_han
 			    "duckdb_v2_value_create_from_data: type has no committed leaf layout; use value_create_type, "
 			    "value_create_bignum, or value_create");
 		}
-		auto *v = new duckdb::Value(duckdb::LeafValueFromData(lt, duckdb::const_data_ptr_cast(data), len));
+		auto value = duckdb::LeafValueFromData(lt, duckdb::const_data_ptr_cast(data), len);
+		// The base-typed leaf constructors drop the caller's alias / extension
+		// info; re-stamp with the exact type (same physical layout, so this only
+		// relabels) so extension types can be built straight from raw bytes.
+		value.Reinterpret(lt);
+		auto *v = new duckdb::Value(std::move(value));
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
 	});
 }

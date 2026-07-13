@@ -97,9 +97,9 @@ Internal patterns new cpp_api surface should reuse rather than reinvent:
 - `WithExceptionGuard(err, fn)` is the callback-boundary guard: trampolines that the engine
   invokes (transactions, log storage, function callbacks) wrap the user's C++ code in it, so
   thrown exceptions become code + text on the borrowed err slot instead of crossing the C
-  ABI. A `duckdb_api::Exception` with a mapped code round-trips exactly (the bridge rethrows
-  it engine-side via its err-slot machinery); any other exception becomes the generic
-  sentinel and surfaces with the phase-appropriate default code. Idiom: throw to fail.
+  ABI. Idiom: throw to fail, with a typed facade exception when the error class matters.
+  Full contract (tiers, typed subclasses, round trip, growth rules): "The stable C++ API's
+  exception model" under Error handling.
 - Wrapper objects follow the `detail::Handle<T>` / `detail::Factory` pattern; constructors
   taking raw handles stay private.
 - Nullable borrowed strings (the C API returns `{NULL, 0}` for "no value") map to an empty
@@ -111,6 +111,73 @@ Internal patterns new cpp_api surface should reuse rather than reinvent:
   `Database::AddReplacementScan<T>`), the wrapper bundles its own C++ callback together with
   the caller's user data into that one opaque slot, destroying both via `detail::TypedDelete`
   at engine teardown.
+- Data crosses as `Value` (one owned cell) or `Vector` / `VectorView` (columnar batch); both
+  expose the committed layout through shared structs. Full contract: "The stable C++ API's
+  value and vector data model" below.
+
+### The stable C++ API's value and vector data model
+
+Two representations of data, opposite grains. Pick by whether you hold one cell or a batch.
+
+| | `Value` | `Vector` (via `VectorView`) |
+| --- | --- | --- |
+| shape | one owned cell | columnar batch |
+| ownership | owns type + payload; movable, standalone | borrowed; valid only while the chunk lives |
+| self-describing | yes (carries its own type) | no (dispatch on the column type once) |
+| use for | bind parameters, out-of-band single-cell reads, any type incl. VARIANT / GEOMETRY (no flat layout) | bulk read/write on the hot path |
+
+**Naming: four families, kept distinct.**
+
+| family | role | convention | examples |
+| --- | --- | --- | --- |
+| type | logical / SQL type | `TypeId::NAME`, `LogicalType` | `TypeId::HUGEINT` |
+| value | build / read one cell | `Value::Name(...)` / `v.AsName()`, named by **logical type**, no `From` | `Value::Hugeint(...)`, `v.AsBigint()` |
+| layout | committed byte mirror (cast target) | `NameLayout` | `HugeintLayout`, `IntervalLayout`, `StringLayout` |
+| convenience | decoded form of an encoded kind | `DecodedName` (pairs with `Decode*`) | `DecodedBit`, `DecodedTimeTz`, `DecodedUuid`, `DecodedBignum` |
+
+Value factories/getters are named by the value's **logical type**, never its physical width
+(`Value::Bigint`, not `FromI64`): a value's type is what it *is*, and many logical types share a
+width (int64 backs BIGINT, TIMESTAMP, TIME). The generic raw trio is the deliberate exception:
+`GetData` / `GetDataAs<T>` / `FromData` name the *operation* (the committed payload), so
+`FromData` reads "from raw data", not "from a logical type".
+
+**Layout is committed and shared.** The physical layout (`api_spec value.yaml`) is public API
+on both paths. Fixed multi-field kinds cast to one shared set of top-level `*Layout` structs:
+`IntervalLayout`, `HugeintLayout`, `UhugeintLayout`, `StringLayout`, used by both
+`VectorView::Data<T>()` and `Value::GetDataAs<T>()`. A fixed-layout leaf with more than one
+field earns a `*Layout` struct mirroring its committed bytes. Kinds whose storage is an
+*encoded* form rather than the value get a `convenience` struct, produced by `Decode*`: BIT,
+TIME_TZ, and UUID decode inline in C++ (committed bit-layouts, allocation-free, so they inline
+into a per-row loop); BIGNUM keeps a C codec (`bignum_decode`) because un-inverting a negative
+magnitude must allocate an owned buffer.
+
+**Raw payload access is symmetric.**
+
+| | read (borrowed) | read (copy) | build / write |
+| --- | --- | --- | --- |
+| `Value` | `GetData() -> {ptr, len}` | `GetDataAs<T>()` | `FromData(type, ptr, len)` |
+| `Vector` | `VectorView::data` / `Data<T>()` | (stride the pointer) | `GetDataMutable<T>()` |
+
+`GetData` borrows for the lifetime of the value (a view off a temporary dangles); `GetDataAs`
+copies. Idiom on both paths: **dispatch on the logical type, then cast to the layout struct.**
+This is the complete path. It covers every type with no per-type code, including the
+metadata-resolved kinds (DECIMAL: backing integer + `GetDecimalScale`; ENUM: index +
+`GetEnumValue`) and unknown extension types. Var-length differs by design: a `Value` payload is
+the decoded wire bytes (VARCHAR content), a vector slot is the `StringLayout` string_t.
+
+**Typed `As*` / `From*` are gated sugar** over `GetData` / `FromData` for the everyday kinds
+(bool, ints, floats, temporal, interval, the 128-bit widths): a type-id gate plus a name. They
+are not the completeness mechanism; the long tail is not hand-wrapped, and reading an unknown
+type never requires a VARCHAR cast.
+
+**Value-only semantic operations** (no raw-layout equivalent): `UnwrapVariant` (dynamic inner
+type), `Cast` (conversion), `ToString` (human display).
+
+**Raw layout lives in C++, not C-only.** The committed layout is already public on the vector
+path, and language bindings (which reconstruct native types from bytes) are C++ consumers of
+this API, so byte access belongs here. `Value::GetData` / `FromData` wrap the C
+`value_get_data` / `value_create_from_data`; they add no ABI surface beyond what the vector
+path already commits.
 
 ## Getting started
 
@@ -255,6 +322,64 @@ Two consequences of the uniform model:
 
 The `WithErrorHandler` template in `capi_v2_internal.hpp` is the bridge-level helper for external entry points: it wraps a lambda with try/catch, translates thrown DuckDB exceptions to V2 error codes via `GetErrorCodeFromExceptionType`, and writes the resulting code/message into the slot **only on failure** (lazy-allocating on first use, never destroying); on success it returns `DUCKDB_V2_ERROR_NONE` and leaves the slot untouched. Callback trampolines (e.g. inside `connection_execute_with_context` or the scalar-function bind/init/exec bridges) allocate a stack `ErrorInfoV2`, hand the callback a slot pointing at it, inspect its code after the callback returns, and translate a set code into a thrown DuckDB exception that the outer `WithErrorHandler` catches.
 
+### The stable C++ API's exception model
+
+Exceptions are the failure channel in both directions. One type family. The C
+error-code vocabulary never appears in the public header; it lives only in
+`duckdb_cpp.cpp`.
+
+**Incoming** (C call fails → C++ exception). Every wrapper calls its C function
+through `CheckedAPICall(fn, args...)`, which on failure throws
+`duckdb_api::Exception` carrying:
+
+- `GetCode()`: raw `uint32_t`, opaque, preserved so it can cross back into C. Do not interpret numerically.
+- `what()`: rendered message. `GetRawMessage()`: body without the "<Type> Error: " prefix.
+
+New wrapper surface MUST use `CheckedAPICall`; hand-rolled code checks are a review smell.
+
+**Outgoing** (callback throws → C error). Engine-invoked trampolines
+(transactions, functions, replacement scans, log storage) wrap the implementor's
+code in `WithExceptionGuard(err, fn)`. Three tiers:
+
+| thrown | code on slot | class survives? |
+| --- | --- | --- |
+| `duckdb_api::Exception` / subclass | its `GetCode()` | yes, round-trips end to end |
+| other `std::exception` | `DUCKDB_V2_API_ERROR` | no; message kept |
+| anything else | `DUCKDB_V2_API_ERROR` | no; "An unknown error occurred." |
+
+Implementor rule: **throw to fail; throw a typed exception when the class
+matters** (it usually does: it decides what a Python/JS/... consumer catches).
+
+**Typed exceptions** name an error class without exposing a code. Subclasses of
+`Exception`, constructors DEFINED IN THE `.cpp` (class→code mapping in one place,
+no code in the header):
+
+```cpp
+throw duckdb_api::InvalidInputException("scalar function returned the wrong arity");
+throw duckdb_api::InterruptException("query cancelled");
+```
+
+`WithExceptionGuard` catches the base by reference, so subclasses need zero guard
+changes. Rules:
+
+- **Grow on demand.** Add a subclass when a real thrower or catcher needs it. Never a bulk mirror of the code table (hand-maintained mirrors drift; the C macros already serve C consumers).
+- **Constructor in the `.cpp`, never the header.**
+- **Base `Exception` stays public and catchable** (the "any facade error" handler); `GetCode()` stays the raw passthrough for bindings that translate codes wholesale (a binding's job, not a C++ consumer's).
+- **Not built yet: typed catching on incoming.** `CheckedAPICall` throws the base for every C failure. To let a C++ consumer `catch (const CatalogException &)`, map incoming codes to the subclass family at that one throw site, not in consumer code. Until then, discriminate via `GetCode()` vs `duckdb_v2.h` macros (accepting the include).
+
+**Destructors and moves never throw.** They call the infallible C destructors (no
+err slot). A wrapper destructor that can fail is a spec-level design error, not
+something to catch around.
+
+**Round trip** (Python UDF, every layer): implementor throws
+`InvalidInputException` → `WithExceptionGuard` writes code+message to the
+trampoline's stack slot → bridge rethrows engine-side as the mapped DuckDB
+exception (`ErrorInfoV2::ThrowAsException` / `InvokeWithErrorSlot`, both via
+`TryGetExceptionTypeFromErrorCode`) → engine unwinds → outer `WithErrorHandler`
+writes the same code to the caller's slot → caller's `CheckedAPICall` throws
+`duckdb_api::Exception` → binding maps the code to its native class. One class,
+chosen once, visible at every layer in its native vocabulary.
+
 ## Streaming result model
 
 Query results are streaming-only; there is no materialized result surface and no random access into a result. The mechanics below are contracts, and the motivations are part of them — they explain which alternatives were considered and rejected, so they don't get re-litigated.
@@ -343,7 +468,7 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
 
 - **String-backed kinds: transparent storage, decoders only for real wire codecs.** The storage type `duckdb_v2_string` is a **transparent** union mirroring `duckdb::string_t` (`value.pointer.{length,prefix,ptr}` / `value.inlined.{length,inlined}`, inline cutoff `DUCKDB_V2_STRING_INLINE_LENGTH`), spec-declared and capigen-emitted: callers read its fields directly and stride `arr[row]`; `static_assert`s in `capi_v2_internal.hpp` guard the layout match. VARCHAR / BLOB carry no wire encoding, so reading them is that direct field read and there is no varchar/blob decoder (one would be a redundant field read, failing the primitives test). BIT and BIGNUM do carry one and keep their bridge decoders: `duckdb_v2_bit_decode` peels the padding byte, `duckdb_v2_bignum_decode` produces an owned magnitude buffer from the bit-inverted negative storage (sharing `DecodeBignumStringT` with `value_get_bignum`). Per-kind read conveniences live in the stable C++ API.
 
-- **Writing string-backed values is decomposed: get-heap, allocate, assemble, place.** There is no per-value `assign_string` and no copy-in bridge. Borrow the vector's string heap once with `duckdb_v2_vector_get_string_heap` (the single string-ness check; valid for the physical-VARCHAR kinds VARCHAR / BLOB / BIT / BIGNUM), reserve vector-lifetime bytes with `duckdb_v2_string_heap_allocate` (raw arena allocation: any `byte_len` incl. 0, no string semantics, no gating), write them, assemble a `duckdb_v2_string` over the transparent layout, and place it through `duckdb_v2_vector_get_data_mutable`. Values fitting `DUCKDB_V2_STRING_INLINE_LENGTH` need no allocation. The raw C layer is deliberately *only* arena allocation: now that `duckdb_v2_string` is transparent, assembling the value is plain layout work the caller (or the C++ layer) does without crossing the boundary, so a copy-in bridge would be redundant. Lifetime: allocated bytes, and any non-inlined `duckdb_v2_string` referencing them, are valid only in a slot of the owning vector; inlined values are self-contained. Ergonomics live in the C++ API: `Vector::AssignString` / `AssignStrings` for in-order fills, and `Vector::GetStringHeap` -> `StringHeap::Allocate` / `Add` / `AddMany` -> `Vector::SetString` for dedup / scatter / write-in-place, with `StringStorage` mirroring `duckdb_v2_string`.
+- **Writing string-backed values is decomposed: get-heap, allocate, assemble, place.** There is no per-value `assign_string` and no copy-in bridge. Borrow the vector's string heap once with `duckdb_v2_vector_get_string_heap` (the single string-ness check; valid for the physical-VARCHAR kinds VARCHAR / BLOB / BIT / BIGNUM), reserve vector-lifetime bytes with `duckdb_v2_string_heap_allocate` (raw arena allocation: any `byte_len` incl. 0, no string semantics, no gating), write them, assemble a `duckdb_v2_string` over the transparent layout, and place it through `duckdb_v2_vector_get_data_mutable`. Values fitting `DUCKDB_V2_STRING_INLINE_LENGTH` need no allocation. The raw C layer is deliberately *only* arena allocation: now that `duckdb_v2_string` is transparent, assembling the value is plain layout work the caller (or the C++ layer) does without crossing the boundary, so a copy-in bridge would be redundant. Lifetime: allocated bytes, and any non-inlined `duckdb_v2_string` referencing them, are valid only in a slot of the owning vector; inlined values are self-contained. Ergonomics live in the C++ API: `Vector::AssignString` / `AssignStrings` for in-order fills, and `Vector::GetStringHeap` -> `StringHeap::Allocate` / `Add` / `AddMany` -> `Vector::SetString` for dedup / scatter / write-in-place, with `StringLayout` mirroring `duckdb_v2_string`.
 
 - **Expressions are one generic handle, scoped to *bound* expressions.** `duckdb_v2_expression` is a single borrowed handle over `duckdb::Expression` — the post-binding tree. Unbound/parser-level `duckdb::ParsedExpression` is a separate internal hierarchy and out of scope, so `get_class` only ever yields `BOUND_*` values; the parsed-class values exist in `EXPRESSION_CLASS` purely for numeric fidelity with `duckdb::ExpressionClass` (switch on `BOUND_COLUMN_REF`, not the parsed `COLUMN_REF`, etc.). The generic core never errors on class grounds: `get_class` / `get_type` / `get_return_type`; `get_child_count` / `get_child`, which traverse via the engine's own `ExpressionIterator` so they're **total over every bound class** (a node this API doesn't model specially, e.g. `BOUND_CASE`, still exposes its children rather than looking like a leaf — child order follows the iterator). The class-specific accessors return a class-mismatch error off their class: `get_function_name` (`BOUND_FUNCTION`; the registered name — an internal symbol like `__comparison` for comparisons, so dispatch on `get_type` for the operator), `get_constant_value` (`BOUND_CONSTANT`), `get_column_binding` (`BOUND_COLUMN_REF` — the logical `{table_index, column_index}` seen during binding/optimization incl. filter pushdown), and `get_reference_index` (`BOUND_REF` — the execution-stage chunk slot assigned after physical planning, *not* what pushdown sees). We deliberately did *not* introduce a base handle plus narrowed sub-handles (`expression_as_function` / `_as_constant` / …): with so few class-specific accessors, a narrowing gate fails in exactly the same way and at the same call site as the direct accessor. Revisit when the class-specific surface grows (cast `try_cast` / target type, aggregate `distinct` / `filter`, function bind-info) — at that point a successful `expression_as_X` becomes a single checkpoint validating a whole cluster of X-only accessors. `get_name`/`get_function_name` naming and `get_column_binding` vs `get_reference_index` mirror the bound class names exactly.
 

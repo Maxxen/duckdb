@@ -1,5 +1,7 @@
 // Include the C++ API header (which includes the C API header)
 #include "duckdb_cpp.hpp"
+
+#include <cstring>
 #include "duckdb_v2.h"
 
 #include <type_traits>
@@ -9,6 +11,14 @@ namespace duckdb_api {
 //----------------------------------------------------------------------------------------------------------------------
 // Internal Implementation Details
 //----------------------------------------------------------------------------------------------------------------------
+
+InvalidInputException::InvalidInputException(std::string message)
+    : Exception(DUCKDB_V2_ERROR_INVALID_INPUT, std::move(message)) {
+}
+
+InterruptException::InterruptException(std::string message)
+    : Exception(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT, std::move(message)) {
+}
 
 namespace detail {
 
@@ -212,8 +222,7 @@ DUCKDB_V2_API_CALL_t WithExceptionGuard(duckdb_v2_error_info_handle *err, T call
 // from the corresponding DUCKDB_V2_FUNCTION_PROPERTY_VALUE.
 
 [[noreturn]] void ThrowUnexpectedPropertyValue(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
-	throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-	                "Unexpected function property value " + std::to_string(static_cast<uint32_t>(value)));
+	throw InvalidInputException("Unexpected function property value " + std::to_string(static_cast<uint32_t>(value)));
 }
 
 DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(FunctionStability value) {
@@ -379,6 +388,18 @@ size_t Environment::GetOpenDatabaseCount() const {
 Database Environment::Open(const std::string &path) {
 	duckdb_v2_database_handle db = nullptr;
 	CheckedAPICall(duckdb_v2_open, handle(), ToStr(path), nullptr, static_cast<idx_t>(0), &db);
+	return detail::Factory::Make<Database>(db);
+}
+
+Database Environment::Open(const std::string &path, const std::vector<DatabaseOption> &options) {
+	std::vector<duckdb_v2_option_handle> handles;
+	handles.reserve(options.size());
+	for (const auto &option : options) {
+		handles.push_back(option.handle());
+	}
+	duckdb_v2_database_handle db = nullptr;
+	CheckedAPICall(duckdb_v2_open, handle(), ToStr(path), handles.empty() ? nullptr : handles.data(),
+	               static_cast<idx_t>(handles.size()), &db);
 	return detail::Factory::Make<Database>(db);
 }
 
@@ -606,9 +627,23 @@ DatabaseOption Connection::GetOptionByIndex(size_t index) const {
 	return detail::Factory::Make<DatabaseOption>(option);
 }
 
+DatabaseOption Connection::GetOption(std::string_view name) const {
+	duckdb_v2_option_handle option = nullptr;
+	CheckedAPICall(duckdb_v2_connection_option_get, handle(), duckdb_v2_str {name.data(), name.size()}, &option);
+	return detail::Factory::Make<DatabaseOption>(option);
+}
+
 void Connection::SetOption(const DatabaseOption &option) {
-	// TODO: Pass scope
-	CheckedAPICall(duckdb_v2_connection_option_set, handle(), option.handle(), DUCKDB_V2_SETTING_SCOPE_AUTOMATIC);
+	SetOption(option, SettingScope::Automatic);
+}
+
+void Connection::SetOption(const DatabaseOption &option, SettingScope scope) {
+	static_assert(static_cast<int>(SettingScope::Automatic) == DUCKDB_V2_SETTING_SCOPE_AUTOMATIC &&
+	                  static_cast<int>(SettingScope::Global) == DUCKDB_V2_SETTING_SCOPE_GLOBAL &&
+	                  static_cast<int>(SettingScope::Local) == DUCKDB_V2_SETTING_SCOPE_LOCAL,
+	              "SettingScope must mirror DUCKDB_V2_SETTING_SCOPE");
+	CheckedAPICall(duckdb_v2_connection_option_set, handle(), option.handle(),
+	               static_cast<DUCKDB_V2_SETTING_SCOPE>(scope));
 }
 
 void Connection::WithTransaction(std::function<void(const Context &ctx)> callback) {
@@ -718,8 +753,7 @@ QueryResult Connection::Execute(const std::string &sql) {
 	auto statements = ParseSQL(sql);
 	auto statement = statements.Next();
 	if (!statement || statements.Next()) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                "Execute expects exactly one statement; use ParseSQL for multi-statement input");
+		throw InvalidInputException("Execute expects exactly one statement; use ParseSQL for multi-statement input");
 	}
 	return Execute(statement);
 }
@@ -990,19 +1024,18 @@ auto LogicalType::GetParam(idx_t index) const -> TypeParam {
 
 auto LogicalType::RequireKind(TypeId expected, const char *what) const -> void {
 	if (GetId() != expected) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                std::string("Invalid Input Error: ") + what + " requires the matching type kind");
+		throw InvalidInputException(std::string("Invalid Input Error: ") + what + " requires the matching type kind");
 	}
 }
 
 auto LogicalType::GetDecimalWidth() const -> uint8_t {
 	RequireKind(TypeId::DECIMAL, "GetDecimalWidth");
-	return GetParam(0).value.AsU8();
+	return GetParam(0).value.AsUtinyint();
 }
 
 auto LogicalType::GetDecimalScale() const -> uint8_t {
 	RequireKind(TypeId::DECIMAL, "GetDecimalScale");
-	return GetParam(1).value.AsU8();
+	return GetParam(1).value.AsUtinyint();
 }
 
 auto LogicalType::GetEnumSize() const -> idx_t {
@@ -1028,7 +1061,7 @@ auto LogicalType::GetArrayChildType() const -> LogicalType {
 
 auto LogicalType::GetArraySize() const -> idx_t {
 	RequireKind(TypeId::ARRAY, "GetArraySize");
-	return static_cast<idx_t>(GetParam(1).value.AsI64());
+	return static_cast<idx_t>(GetParam(1).value.AsBigint());
 }
 
 auto LogicalType::GetMapKeyType() const -> LogicalType {
@@ -1255,8 +1288,8 @@ DUCKDB_V2_LOGICAL_TYPE_ID LeafTypeId(duckdb_v2_value_handle value) {
 std::pair<const void *, idx_t> LeafPayload(duckdb_v2_value_handle value, DUCKDB_V2_LOGICAL_TYPE_ID expected,
                                            const char *what) {
 	if (LeafTypeId(value) != expected) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                std::string("Invalid Input Error: ") + what + ": value is not of the expected type");
+		throw InvalidInputException(std::string("Invalid Input Error: ") + what +
+		                            ": value is not of the expected type");
 	}
 	const void *data = nullptr;
 	idx_t len = 0;
@@ -1268,21 +1301,161 @@ template <class T>
 T LeafPayloadAs(duckdb_v2_value_handle value, DUCKDB_V2_LOGICAL_TYPE_ID expected, const char *what) {
 	auto payload = LeafPayload(value, expected, what);
 	if (payload.second != sizeof(T)) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                std::string("Invalid Input Error: ") + what + ": unexpected payload size");
+		throw InvalidInputException(std::string("Invalid Input Error: ") + what + ": unexpected payload size");
 	}
 	T out;
 	std::memcpy(&out, payload.first, sizeof(T));
 	return out;
 }
 
+// Like LeafPayload but accepts any of a set of type ids (the timestamp family
+// shares one int64 layout). Gates on the id set, then returns the borrowed view.
+std::pair<const void *, idx_t> LeafPayloadOneOf(duckdb_v2_value_handle value,
+                                                std::initializer_list<DUCKDB_V2_LOGICAL_TYPE_ID> accepted,
+                                                const char *what) {
+	auto id = LeafTypeId(value);
+	for (auto candidate : accepted) {
+		if (id == candidate) {
+			const void *data = nullptr;
+			idx_t len = 0;
+			CheckedAPICall(duckdb_v2_value_get_data, value, &data, &len);
+			return {data, len};
+		}
+	}
+	throw InvalidInputException(std::string("Invalid Input Error: ") + what + ": value is not of the expected type");
+}
+
 } // namespace
 
-Value Value::FromI64(int64_t value) {
+Value Value::Bigint(int64_t value) {
 	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &value, sizeof(value)));
 }
 
-Value Value::FromVarchar(const std::string &value) {
+auto Value::GetData() const -> std::pair<const void *, idx_t> {
+	const void *data = nullptr;
+	idx_t len = 0;
+	CheckedAPICall(duckdb_v2_value_get_data, handle(), &data, &len);
+	return {data, len};
+}
+
+Value Value::FromData(const LogicalType &type, const void *data, idx_t length) {
+	duckdb_v2_value_handle value = nullptr;
+	CheckedAPICall(duckdb_v2_value_create_from_data, type.handle(), data, length, &value);
+	return detail::Factory::Make<Value>(value);
+}
+
+namespace {
+
+// The committed fixed layouts (api_spec value.yaml layout table); UUID shares
+// HUGEINT's. Pinned against the public layout structs and the C typedefs.
+static_assert(sizeof(IntervalLayout) == 16, "INTERVAL committed layout is 16 bytes");
+static_assert(sizeof(HugeintLayout) == 16 && sizeof(duckdb_v2_hugeint_t) == 16, "HUGEINT committed layout is 16 bytes");
+static_assert(sizeof(UhugeintLayout) == 16 && sizeof(duckdb_v2_uhugeint_t) == 16,
+              "UHUGEINT committed layout is 16 bytes");
+
+} // namespace
+
+Value Value::Boolean(bool value) {
+	uint8_t byte = value ? 1 : 0;
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN, &byte, sizeof(byte)));
+}
+
+Value Value::Ubigint(uint64_t value) {
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_UBIGINT, &value, sizeof(value)));
+}
+
+Value Value::Double(double value) {
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE, &value, sizeof(value)));
+}
+
+Value Value::Blob(const void *data, idx_t length) {
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_BLOB, data, length));
+}
+
+Value Value::Date(int32_t days) {
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_DATE, &days, sizeof(days)));
+}
+
+Value Value::Time(int64_t micros) {
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_TIME, &micros, sizeof(micros)));
+}
+
+Value Value::Timestamp(int64_t micros) {
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP, &micros, sizeof(micros)));
+}
+
+Value Value::TimestampTz(int64_t micros) {
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ, &micros, sizeof(micros)));
+}
+
+Value Value::Interval(IntervalLayout value) {
+	IntervalLayout layout {value.months, value.days, value.micros};
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_INTERVAL, &layout, sizeof(layout)));
+}
+
+Value Value::Hugeint(HugeintLayout value) {
+	duckdb_v2_hugeint_t raw {value.lower, value.upper};
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT, &raw, sizeof(raw)));
+}
+
+Value Value::Uhugeint(UhugeintLayout value) {
+	duckdb_v2_uhugeint_t raw {value.lower, value.upper};
+	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_UHUGEINT, &raw, sizeof(raw)));
+}
+
+auto Value::AsBlob() const -> std::pair<const void *, idx_t> {
+	return LeafPayload(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_BLOB, "AsBlob");
+}
+
+auto Value::AsDate() const -> int32_t {
+	return LeafPayloadAs<int32_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_DATE, "AsDate");
+}
+
+auto Value::AsTime() const -> int64_t {
+	return LeafPayloadAs<int64_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_TIME, "AsTime");
+}
+
+auto Value::AsTimestampRaw() const -> int64_t {
+	// Polymorphic across the timestamp family; every variant is int64 in its
+	// native unit (TIMESTAMP us, _S s, _MS ms, _NS ns, TIMESTAMPTZ us).
+	auto payload = LeafPayloadOneOf(handle(),
+	                                {DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_SEC,
+	                                 DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_MS, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_NS,
+	                                 DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ},
+	                                "AsTimestampRaw");
+	if (payload.second != sizeof(int64_t)) {
+		throw InvalidInputException("Invalid Input Error: AsTimestampRaw: unexpected payload size");
+	}
+	int64_t out;
+	std::memcpy(&out, payload.first, sizeof(int64_t));
+	return out;
+}
+
+auto Value::AsInterval() const -> IntervalLayout {
+	auto layout = LeafPayloadAs<IntervalLayout>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_INTERVAL, "AsInterval");
+	return IntervalLayout {layout.months, layout.days, layout.micros};
+}
+
+auto Value::AsHugeint() const -> HugeintLayout {
+	auto raw = LeafPayloadAs<duckdb_v2_hugeint_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT, "AsHugeint");
+	return HugeintLayout {raw.lower, raw.upper};
+}
+
+auto Value::AsUhugeint() const -> UhugeintLayout {
+	auto raw = LeafPayloadAs<duckdb_v2_uhugeint_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UHUGEINT, "AsUhugeint");
+	return UhugeintLayout {raw.lower, raw.upper};
+}
+
+auto Value::AsUuid() const -> DecodedUuid {
+	auto raw = LeafPayloadAs<duckdb_v2_hugeint_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UUID, "AsUuid");
+	return Vector::DecodeUuid(HugeintLayout {raw.lower, raw.upper});
+}
+
+auto Value::AsTimeTz() const -> DecodedTimeTz {
+	return Vector::DecodeTimeTz(LeafPayloadAs<uint64_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_TIME_TZ, "AsTimeTz"));
+}
+
+Value Value::Varchar(const std::string &value) {
 	return detail::Factory::Make<Value>(MakeLeafValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, value.data(), value.size()));
 }
 
@@ -1292,18 +1465,18 @@ Value Value::Null(const LogicalType &type) {
 	return detail::Factory::Make<Value>(value);
 }
 
-Value Value::FromBignum(const uint8_t *data, idx_t length, bool is_negative) {
+Value Value::Bignum(const uint8_t *data, idx_t length, bool is_negative) {
 	duckdb_v2_value_handle value = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_bignum, data, length, is_negative, &value);
 	return detail::Factory::Make<Value>(value);
 }
 
-auto Value::AsBignum() const -> Bignum {
+auto Value::AsBignum() const -> DecodedBignum {
 	uint8_t *data = nullptr;
 	idx_t length = 0;
 	bool is_negative = false;
 	CheckedAPICall(duckdb_v2_value_get_bignum, handle(), &data, &length, &is_negative);
-	Bignum result {std::vector<uint8_t>(data, data + length), is_negative};
+	DecodedBignum result {std::vector<uint8_t>(data, data + length), is_negative};
 	free(data);
 	return result;
 }
@@ -1328,48 +1501,48 @@ auto Value::ToString() const -> std::string {
 	return result;
 }
 
-auto Value::AsBool() const -> bool {
-	return LeafPayloadAs<bool>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN, "AsBool");
+auto Value::AsBoolean() const -> bool {
+	return LeafPayloadAs<bool>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN, "AsBoolean");
 }
 
-auto Value::AsI8() const -> int8_t {
-	return LeafPayloadAs<int8_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT, "AsI8");
+auto Value::AsTinyint() const -> int8_t {
+	return LeafPayloadAs<int8_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT, "AsTinyint");
 }
 
-auto Value::AsI16() const -> int16_t {
-	return LeafPayloadAs<int16_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT, "AsI16");
+auto Value::AsSmallint() const -> int16_t {
+	return LeafPayloadAs<int16_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT, "AsSmallint");
 }
 
-auto Value::AsU8() const -> uint8_t {
-	return LeafPayloadAs<uint8_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT, "AsU8");
+auto Value::AsUtinyint() const -> uint8_t {
+	return LeafPayloadAs<uint8_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT, "AsUtinyint");
 }
 
-auto Value::AsU16() const -> uint16_t {
-	return LeafPayloadAs<uint16_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_USMALLINT, "AsU16");
+auto Value::AsUsmallint() const -> uint16_t {
+	return LeafPayloadAs<uint16_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_USMALLINT, "AsUsmallint");
 }
 
-auto Value::AsI32() const -> int32_t {
-	return LeafPayloadAs<int32_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, "AsI32");
+auto Value::AsInteger() const -> int32_t {
+	return LeafPayloadAs<int32_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, "AsInteger");
 }
 
-auto Value::AsU32() const -> uint32_t {
-	return LeafPayloadAs<uint32_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UINTEGER, "AsU32");
+auto Value::AsUinteger() const -> uint32_t {
+	return LeafPayloadAs<uint32_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UINTEGER, "AsUinteger");
 }
 
-auto Value::AsI64() const -> int64_t {
-	return LeafPayloadAs<int64_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, "AsI64");
+auto Value::AsBigint() const -> int64_t {
+	return LeafPayloadAs<int64_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, "AsBigint");
 }
 
-auto Value::AsU64() const -> uint64_t {
-	return LeafPayloadAs<uint64_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UBIGINT, "AsU64");
+auto Value::AsUbigint() const -> uint64_t {
+	return LeafPayloadAs<uint64_t>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_UBIGINT, "AsUbigint");
 }
 
-auto Value::AsF32() const -> float {
-	return LeafPayloadAs<float>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT, "AsF32");
+auto Value::AsFloat() const -> float {
+	return LeafPayloadAs<float>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT, "AsFloat");
 }
 
-auto Value::AsF64() const -> double {
-	return LeafPayloadAs<double>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE, "AsF64");
+auto Value::AsDouble() const -> double {
+	return LeafPayloadAs<double>(handle(), DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE, "AsDouble");
 }
 
 auto Value::AsVarchar() const -> std::string_view {
@@ -1545,17 +1718,17 @@ auto Expression::GetReferenceIndex() const -> idx_t {
 //----------------------------------------------------------------------------------------------------------------------
 // String Heap
 //----------------------------------------------------------------------------------------------------------------------
-// StringStorage mirrors duckdb_v2_string; pin it here (both types visible) so any
+// StringLayout mirrors duckdb_v2_string; pin it here (both types visible) so any
 // layout drift breaks the build rather than the ABI.
-static_assert(sizeof(StringStorage) == sizeof(duckdb_v2_string) && alignof(StringStorage) == alignof(duckdb_v2_string),
-              "StringStorage must mirror the C ABI's duckdb_v2_string");
-static_assert(offsetof(StringStorage, value.pointer.length) == offsetof(duckdb_v2_string, value.pointer.length) &&
-                  offsetof(StringStorage, value.pointer.prefix) == offsetof(duckdb_v2_string, value.pointer.prefix) &&
-                  offsetof(StringStorage, value.pointer.ptr) == offsetof(duckdb_v2_string, value.pointer.ptr) &&
-                  offsetof(StringStorage, value.inlined.inlined) == offsetof(duckdb_v2_string, value.inlined.inlined),
-              "StringStorage field offsets must match duckdb_v2_string");
-static_assert(StringStorage::INLINE_LENGTH == DUCKDB_V2_STRING_INLINE_LENGTH,
-              "StringStorage::INLINE_LENGTH must match DUCKDB_V2_STRING_INLINE_LENGTH");
+static_assert(sizeof(StringLayout) == sizeof(duckdb_v2_string) && alignof(StringLayout) == alignof(duckdb_v2_string),
+              "StringLayout must mirror the C ABI's duckdb_v2_string");
+static_assert(offsetof(StringLayout, value.pointer.length) == offsetof(duckdb_v2_string, value.pointer.length) &&
+                  offsetof(StringLayout, value.pointer.prefix) == offsetof(duckdb_v2_string, value.pointer.prefix) &&
+                  offsetof(StringLayout, value.pointer.ptr) == offsetof(duckdb_v2_string, value.pointer.ptr) &&
+                  offsetof(StringLayout, value.inlined.inlined) == offsetof(duckdb_v2_string, value.inlined.inlined),
+              "StringLayout field offsets must match duckdb_v2_string");
+static_assert(StringLayout::INLINE_LENGTH == DUCKDB_V2_STRING_INLINE_LENGTH,
+              "StringLayout::INLINE_LENGTH must match DUCKDB_V2_STRING_INLINE_LENGTH");
 
 StringHeap::StringHeap(void *impl) : detail::Handle<StringHeap>(impl) {
 }
@@ -1669,25 +1842,16 @@ auto Vector::MakeSequence(int64_t start, int64_t increment, idx_t count) -> void
 	CheckedAPICall(duckdb_v2_vector_make_sequence, handle(), start, increment, count);
 }
 
-// The StringStorage <-> duckdb_v2_string casts below are sanctioned by the
+// The StringLayout <-> duckdb_v2_string casts below are sanctioned by the
 // layout static_asserts above.
 
-auto Vector::DecodeBit(const StringStorage &value) -> BitView {
-	const uint8_t *data = nullptr;
-	idx_t length = 0;
-	uint8_t padding_bits = 0;
-	CheckedAPICall(duckdb_v2_bit_decode, reinterpret_cast<const duckdb_v2_bit_t *>(&value), &data, &length,
-	               &padding_bits);
-	return BitView {data, length, padding_bits};
-}
-
-auto Vector::DecodeBignum(const StringStorage &value) -> Bignum {
+auto Vector::DecodeBignum(const StringLayout &value) -> DecodedBignum {
 	uint8_t *data = nullptr;
 	idx_t length = 0;
 	bool is_negative = false;
 	CheckedAPICall(duckdb_v2_bignum_decode, reinterpret_cast<const duckdb_v2_bignum_t *>(&value), &data, &length,
 	               &is_negative);
-	Bignum result {std::vector<uint8_t>(data, data + length), is_negative};
+	DecodedBignum result {std::vector<uint8_t>(data, data + length), is_negative};
 	free(data);
 	return result;
 }
@@ -1712,15 +1876,14 @@ auto Vector::CheckWriteRange(idx_t start, idx_t count) const -> void {
 	}
 	// A CONSTANT vector's data array holds a single slot; only index 0 is writable.
 	if (GetVectorType() == VectorType::Constant && (start != 0 || count > 1)) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                "Invalid Input Error: cannot assign a string to a CONSTANT vector at index != 0");
+		throw InvalidInputException("Invalid Input Error: cannot assign a string to a CONSTANT vector at index != 0");
 	}
 }
 
 auto Vector::AssignString(idx_t index, std::string_view data) -> void {
 	CheckWriteRange(index, 1);
 	auto heap = GetStringHeap();
-	GetDataMutable<StringStorage>()[index] = heap.Add(data);
+	GetDataMutable<StringLayout>()[index] = heap.Add(data);
 }
 
 auto Vector::AssignStrings(idx_t start, const std::vector<std::string_view> &data) -> void {
@@ -1731,7 +1894,7 @@ auto Vector::AssignStrings(idx_t start, const std::vector<std::string_view> &dat
 	auto heap = GetStringHeap();
 	// Intern and place into the data array in one pass. On throw, slots
 	// [start, start+i) are already written; the vector is left partially filled.
-	auto *slots = GetDataMutable<StringStorage>();
+	auto *slots = GetDataMutable<StringLayout>();
 	for (idx_t i = 0; i < data.size(); i++) {
 		slots[start + i] = heap.Add(data[i]);
 	}
@@ -1743,8 +1906,8 @@ auto Vector::GetStringHeap() -> StringHeap {
 	return detail::Factory::Make<StringHeap>(heap);
 }
 
-auto Vector::SetString(idx_t index, StringStorage value) -> void {
-	GetDataMutable<StringStorage>()[index] = value;
+auto Vector::SetString(idx_t index, StringLayout value) -> void {
+	GetDataMutable<StringLayout>()[index] = value;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1984,22 +2147,22 @@ ArrowStream::~ArrowStream() {
 // real detail comes through get_last_error and is carried in the message.
 void ArrowStream::GetSchema(ArrowSchema &out) const {
 	if (!stream || !stream->release) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "ArrowStream::GetSchema on an empty stream");
+		throw InvalidInputException("ArrowStream::GetSchema on an empty stream");
 	}
 	if (stream->get_schema(stream, &out) != 0) {
 		const char *msg = stream->get_last_error ? stream->get_last_error(stream) : nullptr;
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, msg ? msg : "Arrow stream get_schema failed");
+		throw InvalidInputException(msg ? msg : "Arrow stream get_schema failed");
 	}
 }
 
 bool ArrowStream::Next(ArrowArray &out) const {
 	out.release = nullptr;
 	if (!stream || !stream->release) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "ArrowStream::Next on an empty stream");
+		throw InvalidInputException("ArrowStream::Next on an empty stream");
 	}
 	if (stream->get_next(stream, &out) != 0) {
 		const char *msg = stream->get_last_error ? stream->get_last_error(stream) : nullptr;
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, msg ? msg : "Arrow stream get_next failed");
+		throw InvalidInputException(msg ? msg : "Arrow stream get_next failed");
 	}
 	return out.release != nullptr;
 }
@@ -2300,8 +2463,7 @@ namespace {
 void *RequireUserData(const detail::UserData &user_data, const char *setter) {
 	auto ptr = user_data.get();
 	if (!ptr) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                std::string("no user data was set; call ") + setter + " before Register");
+		throw InvalidInputException(std::string("no user data was set; call ") + setter + " before Register");
 	}
 	return ptr;
 }
@@ -2311,8 +2473,7 @@ void *RequireUserData(const detail::UserData &user_data, const char *setter) {
 template <class PTR>
 PTR *RequireBindData(PTR *ptr) {
 	if (!ptr) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
-		                "no bind data was set; call BindInput::SetBindData in the bind callback");
+		throw InvalidInputException("no bind data was set; call BindInput::SetBindData in the bind callback");
 	}
 	return ptr;
 }

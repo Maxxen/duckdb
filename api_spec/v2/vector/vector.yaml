@@ -50,9 +50,9 @@ module: vector
 #     transparent union mirroring duckdb::string_t (see common.yaml):
 #     read its fields directly and stride arr[row]. VARCHAR / BLOB
 #     carry no wire encoding, so the field read is the read. BIT and
-#     BIGNUM do; decode via bit_decode (borrowed pointers, lifetime =
-#     owning chunk) or bignum_decode (owned magnitude buffer the
-#     caller frees).
+#     BIGNUM do: BIT is a trivial client-side split (byte 0 = padding
+#     count, bytes 1.. = data); BIGNUM is decoded via bignum_decode
+#     (owned magnitude buffer the caller frees).
 #   - LIST / MAP → const list_entry * (per-row {offset, length})
 #   - ARRAY / STRUCT / UNION → unspecified, typically NULL; the parent
 #     vector carries no per-row leaf data. Descend into children via
@@ -552,60 +552,13 @@ functions:
   # String-backed kind decoders
   #
   # Only BIT and BIGNUM carry a wire encoding on top of the transparent
-  # string_t bytes; VARCHAR / BLOB reads are direct field reads and have
-  # no decoder. bit returns borrowed pointers + lengths whose lifetime
-  # is the owning chunk. bignum allocates an owned magnitude buffer
-  # because storage stores negatives bit-inverted — the contiguous
-  # magnitude bytes don't exist on disk.
+  # string_t bytes; VARCHAR / BLOB reads are direct field reads. BIT is a
+  # committed, trivial split (byte 0 is the padding-bit count, bytes 1..
+  # are the data), so it is decoded client-side with no C entry point.
+  # BIGNUM keeps a decoder: it allocates an owned magnitude buffer because
+  # storage stores negatives bit-inverted, so the contiguous magnitude
+  # bytes don't exist on disk.
   # -----------------------------------------------------------------------
-  bit_decode:
-    summary: Reads the bytes + length + padding-bits of a BIT value.
-    description: |
-      The on-disk encoding is [padding_byte | data_bytes]: byte 0 is the
-      number of leading bits in the first data byte that are NOT part
-      of the bit string (0 if the bit count is a multiple of 8). out_data
-      receives a borrowed pointer to the data bytes (one past the
-      padding byte), out_length the number of data bytes, and
-      out_padding_bits the padding count. Pointer lifetime is the owning
-      chunk.
-
-      Bit-position contract: bit n (0-indexed, leftmost bit of the bit
-      string first) is read as:
-
-          bit_index = n + out_padding_bits
-          byte      = out_data[bit_index / 8]
-          value     = (byte >> (7 - (bit_index % 8))) & 1
-
-      The value of bits in the `out_padding_bits` positions is
-      unspecified (the bit-extraction formula masks them out).
-    parameters:
-      bit:
-        type: bit
-        indirection: 1
-        const: true
-        description: Pointer to the BIT storage.
-      out_data:
-        type: u8
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-        description: Receives a borrowed pointer to the data bytes (skipping the padding byte).
-      out_length:
-        type: idx
-        indirection: 1
-        kind: OUT
-        description: Receives the number of data bytes.
-      out_padding_bits:
-        type: u8
-        indirection: 1
-        kind: OUT
-        description: Receives the number of unused trailing bits in the last data byte.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
   bignum_decode:
     summary: Decodes a BIGNUM value into a fresh magnitude buffer + sign flag.
     description: |

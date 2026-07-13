@@ -153,7 +153,7 @@ TEST_CASE("Stable C++API: StringHeap::Allocate write-in-place", "[cpp_api]") {
 		auto *bytes = heap.Allocate(len);
 		REQUIRE(bytes != nullptr);
 		std::memset(bytes, 'q', len);
-		auto token = StringStorage::FromHeapData(reinterpret_cast<char *>(bytes), len);
+		auto token = StringLayout::FromHeapData(reinterpret_cast<char *>(bytes), len);
 		REQUIRE_FALSE(token.IsInlined());
 		REQUIRE(token.Length() == len);
 		REQUIRE(token.Data() == reinterpret_cast<const char *>(bytes));
@@ -171,7 +171,7 @@ TEST_CASE("Stable C++API: StringHeap::Allocate write-in-place", "[cpp_api]") {
 		REQUIRE(SlotBytes(slots[1]) == "tiny");
 	});
 }
-TEST_CASE("Stable C++API: StringStorage GetDataWritable + Finalize", "[cpp_api]") {
+TEST_CASE("Stable C++API: StringLayout GetDataWritable + Finalize", "[cpp_api]") {
 	using namespace duckdb_api;
 
 	Environment env;
@@ -193,7 +193,7 @@ TEST_CASE("Stable C++API: StringStorage GetDataWritable + Finalize", "[cpp_api]"
 		auto *bytes = heap.Allocate(len);
 		REQUIRE(bytes != nullptr);
 
-		StringStorage token {};
+		StringLayout token {};
 		token.value.pointer.length = len;
 		token.value.pointer.ptr = reinterpret_cast<char *>(bytes);
 		REQUIRE_FALSE(token.IsInlined());
@@ -204,7 +204,7 @@ TEST_CASE("Stable C++API: StringStorage GetDataWritable + Finalize", "[cpp_api]"
 		token.Finalize();
 
 		// Finalize seals the prefix to the first PREFIX_LENGTH bytes.
-		REQUIRE(std::memcmp(token.value.pointer.prefix, payload.data(), StringStorage::PREFIX_LENGTH) == 0);
+		REQUIRE(std::memcmp(token.value.pointer.prefix, payload.data(), StringLayout::PREFIX_LENGTH) == 0);
 		vec.SetString(0, token);
 
 		auto *slots = vec.GetDataMutable<duckdb_v2_string>();
@@ -239,7 +239,7 @@ TEST_CASE("Stable C++API: AssignString rejects misuse", "[cpp_api]") {
 			types.push_back(LogicalType::VARCHAR());
 			DataChunk chunk(ctx, types);
 			auto vec = chunk.GetVector(0);
-			vec.MakeConstant(Value::FromVarchar("const"), 2);
+			vec.MakeConstant(Value::Varchar("const"), 2);
 			REQUIRE_THROWS_MATCHES(vec.AssignString(1, "x"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 			REQUIRE_NOTHROW(vec.AssignString(0, "ok"));
 		});
@@ -285,7 +285,7 @@ TEST_CASE("Stable C++API: VectorView CONSTANT without flatten", "[cpp_api]") {
 		DataChunk chunk(ctx, types);
 		auto vec = chunk.GetVector(0);
 
-		vec.MakeConstant(Value::FromI64(7), 4);
+		vec.MakeConstant(Value::Bigint(7), 4);
 		REQUIRE(vec.GetVectorType() == VectorType::Constant);
 
 		auto view = vec.GetView();
@@ -374,14 +374,14 @@ TEST_CASE("Stable C++API: MakeSequence and MakeConstant round-trip", "[cpp_api]"
 
 		// A CONSTANT holds one slot referenced by every logical row.
 		auto con = chunk.GetVector(1);
-		con.MakeConstant(Value::FromI64(-5), 3);
+		con.MakeConstant(Value::Bigint(-5), 3);
 		REQUIRE(con.GetVectorType() == VectorType::Constant);
 		auto cview = con.GetView();
 		REQUIRE(cview.count == 3);
 		REQUIRE(cview.Data<int64_t>()[cview.SelAt(2)] == -5);
 	});
 }
-TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringStorage", "[cpp_api]") {
+TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringLayout", "[cpp_api]") {
 	using namespace duckdb_api;
 
 	Environment env;
@@ -395,7 +395,7 @@ TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringStorage", 
 
 	auto view = chunk.GetVector(0).GetView();
 	REQUIRE(view.count == 3);
-	auto strings = view.Data<StringStorage>();
+	auto strings = view.Data<StringLayout>();
 
 	const auto &small = strings[view.SelAt(0)];
 	REQUIRE(view.IsValid(0));
@@ -411,7 +411,7 @@ TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringStorage", 
 
 	// BLOB shares the storage layout; the bytes read the same way.
 	auto bview = chunk.GetVector(1).GetView();
-	auto blobs = bview.Data<StringStorage>();
+	auto blobs = bview.Data<StringLayout>();
 	REQUIRE(blobs[bview.SelAt(0)].AsStringView() == "tiny");
 	REQUIRE(blobs[bview.SelAt(1)].AsStringView() == long_str);
 	REQUIRE_FALSE(bview.IsValid(2));
@@ -428,7 +428,7 @@ TEST_CASE("Stable C++API: Vector DecodeBit and DecodeBignum", "[cpp_api]") {
 		auto result = conn.Execute("SELECT '101'::BIT");
 		auto chunk = result.FetchChunk();
 		auto view = chunk.GetVector(0).GetView();
-		auto *storage = view.Data<StringStorage>();
+		auto *storage = view.Data<StringLayout>();
 
 		auto bit = Vector::DecodeBit(storage[view.SelAt(0)]);
 		REQUIRE(bit.length == 1);
@@ -449,7 +449,7 @@ TEST_CASE("Stable C++API: Vector DecodeBit and DecodeBignum", "[cpp_api]") {
 		auto result = conn.Execute("SELECT (-256)::BIGNUM");
 		auto chunk = result.FetchChunk();
 		auto view = chunk.GetVector(0).GetView();
-		auto *storage = view.Data<StringStorage>();
+		auto *storage = view.Data<StringLayout>();
 
 		auto big = Vector::DecodeBignum(storage[view.SelAt(0)]);
 		REQUIRE(big.is_negative);
@@ -493,7 +493,7 @@ TEST_CASE("Stable C++API: validity write round-trip", "[cpp_api]") {
 
 		// CONSTANT: SetConstantValid flips the single bit for every row.
 		auto con = chunk.GetVector(1);
-		con.MakeConstant(Value::FromI64(9), 4);
+		con.MakeConstant(Value::Bigint(9), 4);
 		con.SetConstantValid(false);
 		auto cview = con.GetView();
 		for (idx_t i = 0; i < 4; i++) {
@@ -569,7 +569,7 @@ TEST_CASE("Stable C++API: vector read surface rejects misuse", "[cpp_api]") {
 
 		// GetValidityMutable is FLAT-only.
 		auto con = chunk.GetVector(1);
-		con.MakeConstant(Value::FromI64(1), 2);
+		con.MakeConstant(Value::Bigint(1), 2);
 		REQUIRE_THROWS_MATCHES(con.GetValidityMutable(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 
 		// SetConstantValid is CONSTANT-only.

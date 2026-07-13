@@ -408,26 +408,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_value(duckdb_v2_vector_handle vector, 
 // duckdb_v2_string (and its bit/bignum aliases) is the transparent
 // 16-byte public storage type; the static_asserts in
 // capi_v2_internal.hpp pin its layout to duckdb::string_t, so the
-// reinterpret_casts here are guarded. Only BIT and BIGNUM carry a wire
-// encoding needing a decoder; VARCHAR / BLOB reads are direct field
-// reads on the transparent type.
+// reinterpret_casts here are guarded. Only BIGNUM keeps a C decoder (it
+// allocates an owned buffer); BIT is a trivial client-side split and
+// VARCHAR / BLOB reads are direct field reads on the transparent type.
 // ---------------------------------------------------------------------------
-
-DUCKDB_V2_API_CALL_t duckdb_v2_bit_decode(const duckdb_v2_bit_t *bit, const uint8_t **out_data, idx_t *out_length,
-                                          uint8_t *out_padding_bits, duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!bit || !out_data || !out_length || !out_padding_bits) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_bit_decode");
-		}
-		const auto *storage = reinterpret_cast<const duckdb::string_t *>(bit);
-		auto raw = reinterpret_cast<const uint8_t *>(storage->GetData());
-		auto raw_len = storage->GetSize();
-		// On-disk: byte 0 is the padding count; bytes 1.. are the bit data.
-		*out_padding_bits = (raw_len > 0) ? raw[0] : static_cast<uint8_t>(0);
-		*out_data = (raw_len > 0) ? raw + 1 : raw;
-		*out_length = (raw_len > 0) ? raw_len - 1 : 0;
-	});
-}
 
 DUCKDB_V2_API_CALL_t duckdb_v2_bignum_decode(const duckdb_v2_bignum_t *bignum, uint8_t **out_data, idx_t *out_length,
                                              bool *out_is_negative, duckdb_v2_error_info_handle *err) {

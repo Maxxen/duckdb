@@ -180,6 +180,19 @@ private:
 	std::string raw_message;
 };
 
+// Typed exceptions for callback implementors (UDF / table-function /
+// replacement-scan trampolines). Throwing one names an error class; its code
+// lives only in the implementation.
+class InvalidInputException : public Exception {
+public:
+	explicit InvalidInputException(std::string message);
+};
+
+class InterruptException : public Exception {
+public:
+	explicit InterruptException(std::string message);
+};
+
 //----------------------------------------------------------------------------------------------------------------------
 // Database Option
 //----------------------------------------------------------------------------------------------------------------------
@@ -199,6 +212,15 @@ enum class OptionTargetScope : uint8_t {
 	GlobalDefault = 3,
 	/* May be written at either scope; defaults to LOCAL when unspecified. */
 	LocalDefault = 4,
+};
+
+// Scope of a connection-level option write. Mirrors DUCKDB_V2_SETTING_SCOPE
+// numerically (parity pinned in the .cpp). Automatic resolves from the
+// option's declared target scope, exactly like SQL `SET name = value`.
+enum class SettingScope : uint8_t {
+	Automatic = 0,
+	Global = 1,
+	Local = 2,
 };
 
 class DatabaseOption final : public detail::Handle<DatabaseOption> {
@@ -466,7 +488,9 @@ public:
 
 	size_t GetOptionCount() const;
 	DatabaseOption GetOptionByIndex(size_t index) const;
+	DatabaseOption GetOption(std::string_view name) const;
 	void SetOption(const DatabaseOption &option);
+	void SetOption(const DatabaseOption &option, SettingScope scope);
 
 	void WithTransaction(std::function<void(const Context &ctx)> callback);
 
@@ -626,6 +650,9 @@ public:
 	size_t GetOpenDatabaseCount() const;
 
 	Database Open(const std::string &path);
+	// Open with pre-open DBConfig options (access_mode, memory_limit, storage
+	// options, ...). Options are borrowed; the engine copies what it needs.
+	Database Open(const std::string &path, const std::vector<DatabaseOption> &options);
 };
 
 // The version string of the linked DuckDB engine.
@@ -809,9 +836,40 @@ struct Signature {
 //----------------------------------------------------------------------------------------------------------------------
 // A decoded BIGNUM: big-endian magnitude bytes plus a sign flag. The integer
 // is (-1)**is_negative * unsigned_big_endian(magnitude). Owned bytes.
-struct Bignum {
+struct DecodedBignum {
 	std::vector<uint8_t> magnitude;
 	bool is_negative;
+};
+
+// A decoded TIME_TZ: time-of-day microseconds plus the UTC offset in seconds
+// (positive = east of UTC). Unpacks the committed packed-uint64 storage.
+struct DecodedTimeTz {
+	int64_t micros;
+	int32_t offset_seconds;
+};
+
+// A decoded UUID: the canonical 16 big-endian bytes. The storage is an int128
+// with its high bit flipped for sort order; this is the real value.
+struct DecodedUuid {
+	uint8_t bytes[16];
+};
+
+// Committed fixed-layout mirrors for multi-field leaf types, shared by both
+// the Value payload path (Value::GetDataAs<T>) and the vector view path
+// (VectorView::Data<T>). Layout pinned by static_assert in the .cpp. HugeintLayout's
+// halves also carry UUID in its internal storage form.
+struct IntervalLayout {
+	int32_t months;
+	int32_t days;
+	int64_t micros;
+};
+struct HugeintLayout {
+	uint64_t lower;
+	int64_t upper;
+};
+struct UhugeintLayout {
+	uint64_t lower;
+	uint64_t upper;
 };
 
 class Value final : public detail::Handle<Value> {
@@ -824,8 +882,8 @@ public:
 	Value &operator=(Value &&) noexcept = default;
 
 	// Construct an owned value. The library copies the input.
-	static Value FromI64(int64_t value);
-	static Value FromVarchar(const std::string &value);
+	static Value Bigint(int64_t value);
+	static Value Varchar(const std::string &value);
 
 	// A NULL value of the given logical type (borrowed; copied in).
 	static Value Null(const LogicalType &type);
@@ -833,7 +891,7 @@ public:
 	// A BIGNUM value from big-endian magnitude bytes plus a sign flag. The
 	// value zero is a single 0x00 byte with is_negative false; length 0 is
 	// invalid. Unwrap via AsBignum.
-	static Value FromBignum(const uint8_t *data, idx_t length, bool is_negative);
+	static Value Bignum(const uint8_t *data, idx_t length, bool is_negative);
 
 	// Wraps a borrowed logical type as a TYPE value (a type carried as a
 	// value, e.g. a type parameter). Unwrap via AsType.
@@ -863,22 +921,22 @@ public:
 	auto GetChildCount() const -> idx_t;
 	auto GetChild(idx_t index) const -> Value;
 
-	auto AsBool() const -> bool;
+	auto AsBoolean() const -> bool;
 
-	auto AsI8() const -> int8_t;
-	auto AsU8() const -> uint8_t;
+	auto AsTinyint() const -> int8_t;
+	auto AsUtinyint() const -> uint8_t;
 
-	auto AsI16() const -> int16_t;
-	auto AsU16() const -> uint16_t;
+	auto AsSmallint() const -> int16_t;
+	auto AsUsmallint() const -> uint16_t;
 
-	auto AsI32() const -> int32_t;
-	auto AsU32() const -> uint32_t;
+	auto AsInteger() const -> int32_t;
+	auto AsUinteger() const -> uint32_t;
 
-	auto AsI64() const -> int64_t;
-	auto AsU64() const -> uint64_t;
+	auto AsBigint() const -> int64_t;
+	auto AsUbigint() const -> uint64_t;
 
-	auto AsF32() const -> float;
-	auto AsF64() const -> double;
+	auto AsFloat() const -> float;
+	auto AsDouble() const -> double;
 
 	auto AsVarchar() const -> std::string_view;
 
@@ -887,12 +945,65 @@ public:
 	auto AsType() const -> LogicalType;
 
 	// The decoded magnitude bytes + sign of a BIGNUM value.
-	auto AsBignum() const -> Bignum;
+	auto AsBignum() const -> DecodedBignum;
 
 	// Unwraps a VARIANT value into the plain value it carries, with its
 	// real logical type (the in-surface inner-type discovery for VARIANT
 	// cells). Throws INVALID_INPUT unless this is a non-NULL VARIANT value.
 	auto UnwrapVariant() const -> Value;
+
+	// Generic committed-layout payload access, the single-cell analog of
+	// VectorView. GetData borrows the payload in exactly the committed physical
+	// layout (fixed layout for fixed kinds; decoded wire bytes for VARCHAR /
+	// BLOB / BIT / BIGNUM); dispatch on GetLogicalType and cast, e.g. a DECIMAL
+	// reads its backing integer plus GetDecimalScale. FromData builds a value of
+	// any type from that layout. Both throw INVALID_INPUT on a NULL value or a
+	// length that does not match the type. This is the complete path; the As* /
+	// From* below are gated conveniences over it for the everyday types.
+	auto GetData() const -> std::pair<const void *, idx_t>; // borrowed, lifetime = this value
+	static Value FromData(const LogicalType &type, const void *data, idx_t length);
+
+	// Size-checked typed copy of GetData for a fixed-layout kind. T must match
+	// the value's committed layout width (dispatch on GetLogicalType first).
+	template <class T>
+	auto GetDataAs() const -> T {
+		auto raw = GetData();
+		if (raw.second != sizeof(T)) {
+			throw InvalidInputException("GetDataAs: payload size does not match the requested layout");
+		}
+		T out;
+		std::memcpy(&out, raw.first, sizeof(T));
+		return out;
+	}
+
+	// Gated conveniences over GetData/FromData for the everyday types. Temporal
+	// payloads use the type's native unit; getters throw on a type mismatch.
+	static Value Boolean(bool value);
+	static Value Ubigint(uint64_t value);
+	static Value Double(double value);
+	static Value Blob(const void *data, idx_t length);
+	static Value Date(int32_t days);
+	static Value Time(int64_t micros);
+	static Value Timestamp(int64_t micros);
+	static Value TimestampTz(int64_t micros);
+	static Value Interval(IntervalLayout value);
+	static Value Hugeint(HugeintLayout value);
+	static Value Uhugeint(UhugeintLayout value);
+
+	auto AsBlob() const -> std::pair<const void *, idx_t>; // borrowed view
+	auto AsDate() const -> int32_t;                        // days since epoch
+	auto AsTime() const -> int64_t;                        // micros since midnight
+	// raw temporal payload in the type's native unit (TIMESTAMP us, _S s,
+	// _MS ms, _NS ns, TIMESTAMPTZ us)
+	auto AsTimestampRaw() const -> int64_t;
+	auto AsInterval() const -> IntervalLayout;
+	auto AsHugeint() const -> HugeintLayout;
+	auto AsUhugeint() const -> UhugeintLayout;
+	// Canonical UUID bytes (the storage's high-bit flip is undone). The raw
+	// internal hugeint form is still reachable via GetDataAs<HugeintLayout>.
+	auto AsUuid() const -> DecodedUuid;
+	// Time-of-day micros + UTC offset, unpacked from the packed TIME_TZ storage.
+	auto AsTimeTz() const -> DecodedTimeTz;
 
 	// TODO: Add more
 
@@ -1111,7 +1222,7 @@ private:
 // when length <= INLINE_LENGTH. A non-inlined value is valid only in a slot of
 // the vector whose heap produced it. Aggregate, so it writes straight into a
 // slot; layout pinned by static_assert in the .cpp.
-struct StringStorage {
+struct StringLayout {
 	static constexpr uint32_t INLINE_LENGTH = 12;
 	static constexpr uint32_t PREFIX_LENGTH = 4;
 
@@ -1128,9 +1239,9 @@ struct StringStorage {
 	} value;
 
 	// Inlined token; the bytes live in the value. `len` must fit INLINE_LENGTH.
-	static auto Inlined(const char *data, uint32_t len) -> StringStorage {
+	static auto Inlined(const char *data, uint32_t len) -> StringLayout {
 		assert(len <= INLINE_LENGTH);
-		StringStorage storage {};
+		StringLayout storage {};
 		storage.value.inlined.length = len;
 		if (len > 0) {
 			std::memcpy(storage.value.inlined.inlined, data, len);
@@ -1140,9 +1251,9 @@ struct StringStorage {
 
 	// Non-inlined token over `len` bytes at `heap_data` (from Allocate); sets the
 	// prefix. `len` must exceed INLINE_LENGTH, else it would read as inlined.
-	static auto FromHeapData(char *heap_data, uint32_t len) -> StringStorage {
+	static auto FromHeapData(char *heap_data, uint32_t len) -> StringLayout {
 		assert(len > INLINE_LENGTH);
-		StringStorage storage {};
+		StringLayout storage {};
 		storage.value.pointer.length = len;
 		storage.value.pointer.ptr = heap_data;
 		std::memcpy(storage.value.pointer.prefix, heap_data, PREFIX_LENGTH);
@@ -1175,7 +1286,7 @@ struct StringStorage {
 };
 
 // Borrowed handle to a vector's string heap. Reserves vector-lifetime bytes and
-// returns StringStorage tokens to place in any order (dedup, scatter). Borrowed;
+// returns StringLayout tokens to place in any order (dedup, scatter). Borrowed;
 // invalid across a flatten or reallocation of the owning vector.
 class StringHeap final : public detail::Handle<StringHeap> {
 	friend detail::Factory;
@@ -1193,22 +1304,22 @@ public:
 	// Interns `data`, returning the token. <= INLINE_LENGTH builds inline (no
 	// allocation, no boundary crossing); larger allocates and copies. Throws if
 	// `data` exceeds the uint32 length a duckdb_v2_string can hold.
-	auto Add(std::string_view data) -> StringStorage {
+	auto Add(std::string_view data) -> StringLayout {
 		if (data.size() > UINT32_MAX) {
 			ThrowStringTooLong(data.size());
 		}
-		if (data.size() <= StringStorage::INLINE_LENGTH) {
-			return StringStorage::Inlined(data.data(), static_cast<uint32_t>(data.size()));
+		if (data.size() <= StringLayout::INLINE_LENGTH) {
+			return StringLayout::Inlined(data.data(), static_cast<uint32_t>(data.size()));
 		}
 		auto len = static_cast<uint32_t>(data.size());
 		auto *bytes = Allocate(len);
 		std::memcpy(bytes, data.data(), len);
-		return StringStorage::FromHeapData(reinterpret_cast<char *>(bytes), len);
+		return StringLayout::FromHeapData(reinterpret_cast<char *>(bytes), len);
 	}
 
 	// Bulk Add: interns every view, returning the tokens in order.
-	auto AddMany(const std::vector<std::string_view> &data) -> std::vector<StringStorage> {
-		std::vector<StringStorage> out;
+	auto AddMany(const std::vector<std::string_view> &data) -> std::vector<StringLayout> {
+		std::vector<StringLayout> out;
 		out.reserve(data.size());
 		for (const auto &view : data) {
 			out.push_back(Add(view));
@@ -1271,7 +1382,7 @@ struct VectorView {
 // plus the count of leading bits of the first byte that are not part of the
 // bit string. Bit n (0-indexed, leftmost first) is read as
 // (data[(n + padding_bits) / 8] >> (7 - ((n + padding_bits) % 8))) & 1.
-struct BitView {
+struct DecodedBit {
 	const uint8_t *data;
 	idx_t length; // data bytes
 	uint8_t padding_bits;
@@ -1346,12 +1457,41 @@ public:
 	// reading via GetView().
 	auto MakeSequence(int64_t start, int64_t increment, idx_t count) -> void;
 
-	// Decodes one BIT storage value (a slot of a BIT vector's data array,
-	// read as StringStorage). Borrowed pointers; lifetime = the owning chunk.
-	static auto DecodeBit(const StringStorage &value) -> BitView;
+	// Decodes one BIT storage value (a slot of a BIT vector's data array, read
+	// as StringLayout): byte 0 is the padding-bit count, bytes 1.. are the data.
+	// Borrowed pointers; lifetime = the owning chunk. Inline pointer arithmetic,
+	// no allocation or ABI crossing, so it inlines into a per-row vector loop.
+	static auto DecodeBit(const StringLayout &value) -> DecodedBit {
+		const auto len = value.Length();
+		const auto *bytes = reinterpret_cast<const uint8_t *>(value.Data());
+		return DecodedBit {len > 0 ? bytes + 1 : bytes, len > 0 ? len - 1 : 0, len > 0 ? bytes[0] : uint8_t(0)};
+	}
 
 	// Decodes one BIGNUM storage value into an owned magnitude + sign.
-	static auto DecodeBignum(const StringStorage &value) -> Bignum;
+	static auto DecodeBignum(const StringLayout &value) -> DecodedBignum;
+
+	// Unpacks one TIME_TZ slot (read as uint64) into micros + UTC offset.
+	// Defined inline: a pure-arithmetic decode of the committed layout with no
+	// allocation and no ABI crossing, so it inlines into a per-row vector loop.
+	static auto DecodeTimeTz(uint64_t packed) -> DecodedTimeTz {
+		constexpr uint64_t OFFSET_MASK = ~uint64_t(0) >> 40;
+		constexpr int32_t MAX_OFFSET = 16 * 60 * 60 - 1;
+		return DecodedTimeTz {static_cast<int64_t>(packed >> 24),
+		                      MAX_OFFSET - static_cast<int32_t>(packed & OFFSET_MASK)};
+	}
+
+	// Undoes the sort-order high-bit flip on one UUID slot (read as
+	// HugeintLayout) and returns the canonical 16 big-endian bytes. Inline for
+	// the same reason as DecodeTimeTz.
+	static auto DecodeUuid(HugeintLayout internal) -> DecodedUuid {
+		const uint64_t upper = static_cast<uint64_t>(internal.upper) ^ (uint64_t(1) << 63);
+		DecodedUuid out {};
+		for (int i = 0; i < 8; i++) {
+			out.bytes[i] = static_cast<uint8_t>((upper >> (56 - 8 * i)) & 0xFF);
+			out.bytes[8 + i] = static_cast<uint8_t>((internal.lower >> (56 - 8 * i)) & 0xFF);
+		}
+		return out;
+	}
 
 	// ---- End vector read surface ----
 
@@ -1387,7 +1527,7 @@ public:
 
 	// Places an interned storage token into slot `index`. The token must come
 	// from this vector's heap (a non-inlined token from another vector dangles).
-	auto SetString(idx_t index, StringStorage value) -> void;
+	auto SetString(idx_t index, StringLayout value) -> void;
 
 private:
 	explicit Vector(void *impl);

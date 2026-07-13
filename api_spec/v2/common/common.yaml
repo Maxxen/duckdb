@@ -133,8 +133,10 @@ structs:
       BIGNUM), mirroring duckdb::string_t. Inlined when length <=
       STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise
       value.pointer.ptr holds the bytes and value.pointer.prefix the
-      first 4. Read the fields directly; BIT / BIGNUM additionally
-      carry a wire encoding, decoded via bit_decode / bignum_decode.
+      first 4. Read the fields directly; BIT / BIGNUM additionally carry
+      a wire encoding. BIT is a trivial client-side split (byte 0 is the
+      padding-bit count, bytes 1.. the data); BIGNUM is decoded via
+      bignum_decode.
     fields:
       - name: value
         union:
@@ -203,7 +205,7 @@ aliases:
     description: BLOB storage. Read the transparent string fields directly.
   bit:
     underlying: string
-    description: BIT storage. Decode via bit_decode.
+    description: BIT storage. Byte 0 is the padding-bit count, bytes 1.. the data.
   bignum:
     underlying: string
     description: BIGNUM storage. Decode via bignum_decode.

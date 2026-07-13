@@ -36,13 +36,13 @@ TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
 			    input.AddResultColumn("i", LogicalType::INTEGER());
 
 			    // Get parameters
-			    const auto start = input.GetParameter(0).AsI32();
-			    const auto stop = input.GetParameter(1).AsI32();
+			    const auto start = input.GetParameter(0).AsInteger();
+			    const auto stop = input.GetParameter(1).AsInteger();
 
 			    // "Step" is optional and named, so we try to get it and default to 1 if it's not provided
 			    int32_t step = 1;
 			    if (const auto step_arg = input.TryGetNamedParameter("step")) {
-				    step = step_arg->AsI32();
+				    step = step_arg->AsInteger();
 			    }
 
 			    // Store the parameters in the bind data for use in exec
@@ -246,7 +246,7 @@ TEST_CASE("Stable C++API: Arrow round-trip through a table function", "[cpp_api]
 			    auto s_validity = out_s.GetValidityMutable();
 			    for (idx_t i = 0; i < rows; i++) {
 				    if (in_s.IsValid(i)) {
-					    out_s.AssignString(i, in_s.Data<StringStorage>()[in_s.SelAt(i)].AsStringView());
+					    out_s.AssignString(i, in_s.Data<StringLayout>()[in_s.SelAt(i)].AsStringView());
 				    } else {
 					    s_validity.SetInvalid(i);
 				    }
@@ -282,7 +282,7 @@ TEST_CASE("Stable C++API: Arrow round-trip through a table function", "[cpp_api]
 			} else {
 				REQUIRE(vs.IsValid(i));
 				const auto expected = "str_" + std::string(10, static_cast<char>('0' + src));
-				REQUIRE(vs.Data<StringStorage>()[vs.SelAt(i)].AsStringView() == expected);
+				REQUIRE(vs.Data<StringLayout>()[vs.SelAt(i)].AsStringView() == expected);
 			}
 		}
 	}
@@ -323,7 +323,7 @@ TEST_CASE("Stable C++API: Table Function complex filter pushdown", "[cpp_api]") 
 				    for (idx_t c = 0; c < expr.GetChildCount(); c++) {
 					    auto child = expr.GetChild(c);
 					    if (child.GetClass() == ExpressionClass::BoundConstant) {
-						    capture.captured = child.GetConstantValue().AsI64();
+						    capture.captured = child.GetConstantValue().AsBigint();
 					    }
 				    }
 				    capture.handled = true;
@@ -417,7 +417,7 @@ TEST_CASE("Stable C++API: Expression walk in the pushdown callback", "[cpp_api]"
 					    REQUIRE(column->GetColumnBinding().column_index == 0);
 					    REQUIRE(column->GetReturnType() == LogicalType::BIGINT());
 					    REQUIRE(constant->GetReturnType() == LogicalType::BIGINT());
-					    REQUIRE(constant->GetConstantValue().AsI64() == 5);
+					    REQUIRE(constant->GetConstantValue().AsBigint() == 5);
 					    g_walk.saw_greater_than = true;
 
 					    // Class-mismatch accessors throw INVALID_INPUT.
@@ -745,7 +745,7 @@ TEST_CASE("Stable C++API: SetCardinality and SetMaxThreads smoke", "[cpp_api]") 
 					continue;
 				}
 				// Strip thousands separators so the match is format-independent.
-				for (char ch : view.Data<StringStorage>()[view.SelAt(i)].AsStringView()) {
+				for (char ch : view.Data<StringLayout>()[view.SelAt(i)].AsStringView()) {
 					if (ch != ',') {
 						text.push_back(ch);
 					}
@@ -833,7 +833,7 @@ TEST_CASE("Stable C++API: pushdown-time column list resolves filter columns", "[
 						    obs.resolved_index = input.GetColumnIndex(obs.raw_index);
 						    saw_column = true;
 					    } else if (child.GetClass() == ExpressionClass::BoundConstant) {
-						    obs.constant = child.GetConstantValue().AsI64();
+						    obs.constant = child.GetConstantValue().AsBigint();
 					    }
 				    }
 				    REQUIRE(saw_column);

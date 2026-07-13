@@ -130,36 +130,25 @@ TEST_CASE("V2 string layout: direct reads match V1 equivalents", "[capi_v2][stri
 }
 
 // ===========================================================================
-// Transparent BIT reads vs bit_decode.
+// Transparent BIT reads (the client-side split: byte 0 is the padding-bit
+// count, bytes 1.. are the data).
 //   '11111111' → 8 bits, padding=0, data[0]=0xFF
 //   '101'      → 3 bits, padding=5
 // ===========================================================================
 
-TEST_CASE("V2 string layout: BIT reads match bit_decode", "[capi_v2][string_layout]") {
+TEST_CASE("V2 string layout: BIT reads via the transparent split", "[capi_v2][string_layout]") {
 	V2InlineFixture fx;
 	InlQueryRows qr(fx.conn, "SELECT * FROM (VALUES ('11111111'::BIT), ('101'::BIT)) t(b)", 2);
 	const duckdb_v2_bit_t *arr = qr.as<duckdb_v2_bit_t>();
 
-	for (idx_t row = 0; row < qr.size; row++) {
-		idx_t phys = SelAt(qr.view.sel, row);
-		const uint8_t *dec_data = nullptr;
-		idx_t dec_byte_len = 0;
-		uint8_t dec_padding = 0;
-		REQUIRE(duckdb_v2_bit_decode(&arr[phys], &dec_data, &dec_byte_len, &dec_padding, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+	const duckdb_v2_string *r0 = &arr[SelAt(qr.view.sel, 0)];
+	REQUIRE(BitPadding(r0) == 0);
+	REQUIRE(BitCount(r0) == 8);
+	REQUIRE(static_cast<uint8_t>(BitGetData(r0)[0]) == 0xFF);
 
-		REQUIRE(BitPadding(&arr[phys]) == dec_padding);
-		REQUIRE(BitCount(&arr[phys]) == dec_byte_len * 8 - dec_padding);
-		REQUIRE(BitGetData(&arr[phys]) == dec_data);
-	}
-
-	// Pin expected values for both rows.
-	{
-		REQUIRE(BitPadding(&arr[SelAt(qr.view.sel, 0)]) == 0);
-		REQUIRE(BitCount(&arr[SelAt(qr.view.sel, 0)]) == 8);
-		REQUIRE(BitPadding(&arr[SelAt(qr.view.sel, 1)]) == 5);
-		REQUIRE(BitCount(&arr[SelAt(qr.view.sel, 1)]) == 3);
-	}
+	const duckdb_v2_string *r1 = &arr[SelAt(qr.view.sel, 1)];
+	REQUIRE(BitPadding(r1) == 5);
+	REQUIRE(BitCount(r1) == 3);
 }
 
 // ===========================================================================

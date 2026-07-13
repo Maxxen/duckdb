@@ -356,3 +356,115 @@ TEST_CASE("V2 aggregate: bind data threads through to execution callbacks", "[ca
 	// The bind data was cleaned up via its destructor.
 	REQUIRE(g_bind_data_destroyed.load() >= 1);
 }
+
+// ---------------------------------------------------------------------------
+// Error-code round-trip: a code an update callback sets on its err slot
+// surfaces to the caller as that code, not collapsed to INVALID_INPUT.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+void FailingSizeCallback(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_handle *err) {
+	args->out_size = sizeof(int64_t);
+}
+
+void FailingInitCallback(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_handle *err) {
+	*static_cast<int64_t *>(args->state) = 0;
+}
+
+void FailingUpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_handle *err) {
+	// Name a specific, non-INVALID_INPUT error class from inside the callback.
+	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_OUT_OF_RANGE);
+	duckdb_v2_error_info_set_text(*err, V2Str("failing_agg: value out of range"));
+}
+
+void FailingCombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_handle *err) {
+}
+
+void FailingFinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
+}
+
+} // namespace
+
+TEST_CASE("V2 aggregate: a callback error code round-trips (not collapsed to INVALID_INPUT)", "[capi_v2][aggregate]") {
+	duckdb_v2_environment_handle env = nullptr;
+	duckdb_v2_create_environment(&env, nullptr);
+	duckdb_v2_database_handle db = nullptr;
+	duckdb_v2_open(env, duckdb_v2_str {nullptr, 0}, nullptr, 0, &db, nullptr);
+	duckdb_v2_connection_handle conn = nullptr;
+	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_connection_execute_with_context(
+	    conn,
+	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
+		    duckdb_v2_aggregate_function_builder_handle builder = nullptr;
+		    REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+
+		    duckdb_v2_logical_type_handle type = nullptr;
+		    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("failing_agg"), err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_add_parameter(builder, V2Str("x"), type, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_return_type(builder, type, err) == DUCKDB_V2_ERROR_NONE);
+
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, FailingSizeCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, FailingInitCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, FailingUpdateCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, FailingCombineCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, FailingFinalizeCallback, err) ==
+		            DUCKDB_V2_ERROR_NONE);
+
+		    REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
+		    REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
+
+		    duckdb_v2_logical_type_destroy(&type);
+	    },
+	    nullptr, nullptr);
+
+	duckdb_v2_result_handle result = nullptr;
+	REQUIRE(V2Query(conn, "SELECT failing_agg(i) FROM (VALUES (1), (2), (3)) AS t(i)", &result, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(result != nullptr);
+
+	// The aggregate executes lazily during stepping, so the callback's error
+	// surfaces on the step return code, not from statement_execute.
+	duckdb_v2_error_info_handle err = nullptr;
+	duckdb_v2_error_code_t step_rc = DUCKDB_V2_ERROR_NONE;
+	while (true) {
+		duckdb_v2_data_chunk_handle chunk = nullptr;
+		DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+		step_rc = duckdb_v2_result_step(result, &chunk, &status, &err);
+		if (step_rc != DUCKDB_V2_ERROR_NONE) {
+			break;
+		}
+		if (status == DUCKDB_V2_RESULT_STEP_STATUS_CHUNK) {
+			duckdb_v2_data_chunk_destroy(&chunk);
+			continue;
+		}
+		if (status == DUCKDB_V2_RESULT_STEP_STATUS_WAITING) {
+			step_rc = duckdb_v2_result_wait(result, &err);
+			if (step_rc != DUCKDB_V2_ERROR_NONE) {
+				break;
+			}
+			continue;
+		}
+		// FINISHED or CANCELLED with no error: the failure did not surface.
+		break;
+	}
+
+	// The callback's OUT_OF_RANGE surfaces as itself, not as INVALID_INPUT.
+	REQUIRE(step_rc == DUCKDB_V2_ERROR_OUT_OF_RANGE);
+
+	duckdb_v2_error_info_destroy(&err);
+	duckdb_v2_result_destroy(&result);
+	REQUIRE(duckdb_v2_disconnect(&conn) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_close(&db);
+	duckdb_v2_destroy_environment(&env);
+}
