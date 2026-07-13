@@ -15,6 +15,19 @@
 // Stable C++ API tests: statements, streaming results, prepared statements, column data.
 // ---------------------------------------------------------------------------
 
+namespace {
+
+// A rendered box always contains the light-vertical box-drawing glyph (U+2502).
+constexpr const char *kBoxVertical = "\342\224\202";
+// The truncation ellipsis the renderer emits when a column is capped (U+2026).
+constexpr const char *kEllipsis = "\342\200\246";
+
+bool Contains(const std::string &haystack, const std::string &needle) {
+	return haystack.find(needle) != std::string::npos;
+}
+
+} // namespace
+
 TEST_CASE("Stable C++API: Column Data Single Scan", "[cpp_api]") {
 	using namespace duckdb_api;
 
@@ -575,4 +588,194 @@ TEST_CASE("Stable C++API: named parameters", "[cpp_api]") {
 		params.push_back(NamedParam {"wrong", Value::FromI64(1)});
 		REQUIRE_THROWS_MATCHES(conn.Execute(stmt, params), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 	}
+}
+
+// ---------------------------------------------------------------------------
+// RenderBox: engine-side box rendering (BoxRenderer, the CLI renderer),
+// consuming the result by transfer.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Stable C++API: RenderBox renders glyphs, the type row, and NULL cells", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto text = conn.Execute("SELECT * FROM (VALUES (1, 'x'), (2, NULL)) t(a, b)").RenderBox();
+
+	// Box-drawing glyphs: this is the engine renderer, not a hand-rolled one.
+	REQUIRE(Contains(text, kBoxVertical));
+	// The type row shows the engine's short type names.
+	REQUIRE(Contains(text, "int32"));   // column a (INTEGER)
+	REQUIRE(Contains(text, "varchar")); // column b (VARCHAR)
+	// A value cell and a default-rendered NULL cell.
+	REQUIRE(Contains(text, "x"));
+	REQUIRE(Contains(text, "NULL"));
+}
+
+TEST_CASE("Stable C++API: RenderBox footer counts all rows even when max_rows bounds display", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// 100 rows, display bounded to 5: max_rows bounds DISPLAY, not the read.
+	auto text = conn.Execute("SELECT i AS n FROM range(100) t(i)").RenderBox(/*max_rows=*/5);
+	REQUIRE(Contains(text, "100 rows")); // exact total, matching the CLI
+	REQUIRE(Contains(text, "5 shown"));  // display bounded to max_rows
+	REQUIRE_FALSE(Contains(text, "100 shown"));
+}
+
+TEST_CASE("Stable C++API: RenderBox max_rows changes display and 0 selects the default", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto few = conn.Execute("SELECT i AS n FROM range(100) t(i)").RenderBox(/*max_rows=*/3);
+	REQUIRE(Contains(few, "3 shown"));
+
+	// 0 selects the renderer default (20).
+	auto def = conn.Execute("SELECT i AS n FROM range(100) t(i)").RenderBox(/*max_rows=*/0);
+	REQUIRE(Contains(def, "20 shown"));
+
+	REQUIRE(few != def);
+}
+
+TEST_CASE("Stable C++API: RenderBox max_width and max_col_width change the layout", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// Five wide columns; explicit widths keep the test off the terminal probe.
+	const char *sql = "SELECT repeat('a', 15) AS c1, repeat('b', 15) AS c2, repeat('c', 15) AS c3, "
+	                  "repeat('d', 15) AS c4, repeat('e', 15) AS c5";
+
+	// A tight max_width forces the renderer to hide columns: the hidden-column
+	// ellipsis and an "N columns" footer appear.
+	auto narrow = conn.Execute(sql).RenderBox(0, /*max_width=*/40);
+	REQUIRE(Contains(narrow, kEllipsis));
+	REQUIRE(Contains(narrow, "5 columns"));
+
+	// A generous max_width fits every column: nothing is hidden.
+	auto wide = conn.Execute(sql).RenderBox(0, /*max_width=*/200);
+	REQUIRE_FALSE(Contains(wide, "5 columns"));
+	REQUIRE(narrow != wide);
+
+	// At the tight width, raising max_col_width wraps cells instead of hiding
+	// columns: the layout changes and every column is shown again.
+	auto wrapped = conn.Execute(sql).RenderBox(0, /*max_width=*/40, /*max_col_width=*/6);
+	REQUIRE_FALSE(Contains(wrapped, "5 columns"));
+	REQUIRE(wrapped != narrow);
+}
+
+TEST_CASE("Stable C++API: RenderBox render_mode selects rows vs columns layout", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	const char *sql = "SELECT 1 AS a, 2 AS b, 3 AS c";
+	auto rows = conn.Execute(sql).RenderBox(0, 0, 0, "", /*render_mode=*/0);
+	auto cols = conn.Execute(sql).RenderBox(0, 0, 0, "", /*render_mode=*/1);
+	REQUIRE(rows != cols);
+}
+
+TEST_CASE("Stable C++API: RenderBox custom null_value overrides the default NULL text", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto def = conn.Execute("SELECT CAST(NULL AS INTEGER) AS b").RenderBox();
+	REQUIRE(Contains(def, "NULL"));
+
+	auto custom = conn.Execute("SELECT CAST(NULL AS INTEGER) AS b").RenderBox(0, 0, 0, "<nil>");
+	REQUIRE(Contains(custom, "<nil>"));
+	// The type row renders "int32", the value renders "<nil>": no "NULL" anywhere.
+	REQUIRE_FALSE(Contains(custom, "NULL"));
+}
+
+TEST_CASE("Stable C++API: RenderBox consumes the result and frees the connection", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto r = conn.Execute("SELECT i FROM range(5) t(i)");
+	auto text = r.RenderBox();
+	REQUIRE(Contains(text, kBoxVertical));
+
+	// The one-live-result slot was released: a new query runs on the same connection.
+	auto next = conn.Execute("SELECT 42 AS answer");
+	auto chunk = next.FetchChunk();
+	REQUIRE(chunk);
+	REQUIRE(chunk.GetRowCount() == 1);
+}
+
+TEST_CASE("Stable C++API: RenderBox on a partially consumed result renders the remainder", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// More than one chunk so a single fetch leaves a remainder.
+	auto r = conn.Execute("SELECT i FROM range(5000) t(i)");
+	auto first = r.FetchChunk();
+	REQUIRE(first);
+	auto consumed = first.GetRowCount();
+	REQUIRE(consumed > 0);
+	REQUIRE(consumed < 5000);
+
+	auto text = r.RenderBox(); // renders only what remains
+	auto remainder = idx_t(5000) - consumed;
+	REQUIRE(Contains(text, std::to_string(remainder) + " rows"));
+}
+
+TEST_CASE("Stable C++API: RenderBox handles zero-row and no-row-output results", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// Zero-row SELECT: the schema is known and the footer reports 0 rows.
+	auto empty = conn.Execute("SELECT i AS n FROM range(0) t(i)").RenderBox();
+	REQUIRE(Contains(empty, kBoxVertical));
+	REQUIRE(Contains(empty, "0 rows"));
+
+	// A DDL statement produces no row output; rendering must not crash and the
+	// side effect (the table) is applied by the drain inside RenderBox.
+	auto ddl = conn.Execute("CREATE TABLE rb_ddl(x INTEGER)").RenderBox();
+	REQUIRE_FALSE(ddl.empty());
+	// Proof the CREATE took effect (the result was drained, not abandoned).
+	REQUIRE(conn.Execute("INSERT INTO rb_ddl VALUES (1)").Drain() == 1);
+}
+
+TEST_CASE("Stable C++API: RenderBox limit yields an approximate '? rows' footer", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	// The .show() idiom: wrap the query with LIMIT n and pass n as limit, so the
+	// footer honestly reads "? rows" once the bound is filled rather than
+	// reporting the truncated count as the exact total.
+	auto bounded = conn.Execute("SELECT i FROM range(21) t(i)").RenderBox(0, 0, 0, "", 0, /*limit=*/21);
+	REQUIRE(Contains(bounded, "? rows"));
+	REQUIRE_FALSE(Contains(bounded, "21 rows"));
+
+	// With limit 0 the count is known and exact, so no "? rows" appears.
+	auto exact = conn.Execute("SELECT i FROM range(21) t(i)").RenderBox();
+	REQUIRE_FALSE(Contains(exact, "? rows"));
 }

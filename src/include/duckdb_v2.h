@@ -5825,6 +5825,44 @@ sticky error) returns immediately; it is a no-op, never an error.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_wait(duckdb_v2_result_handle result,
                                                         duckdb_v2_error_info_handle *err);
 /*!
+* Renders the result as the engine's box table, consuming it.
+* Drains the result into a column data collection and renders it with
+the engine's BoxRenderer (the same renderer as the DuckDB CLI), so
+every client shows results identically without reimplementing table
+formatting. Consumes the result by transfer (the slot is set to NULL,
+on success and on failure alike, mirroring result_to_arrow_stream);
+partial consumption is allowed and renders the remainder.
+
+The whole remaining result materializes in memory before rendering.
+max_rows bounds what is DISPLAYED, not what is read: with limit 0 the
+footer's row count is exact. Callers who cannot afford full
+materialization should bound the query itself (e.g. LIMIT n) and pass
+n as limit; the footer then renders "? rows" whenever the result fills
+that bound, since the true total is then unknown.
+
+Zero selects the renderer default for each sizing knob (max_rows 20,
+max_width the terminal width probe or 80 when unavailable,
+max_col_width 20). An empty null_value renders NULL cells as the
+default "NULL" text.
+
+* @param result The result to render; consumed and set to NULL. Left intact only when the call rejects null arguments.
+* @param max_rows Maximum rows displayed; 0 selects the renderer default (20).
+* @param max_width Maximum total width in characters; 0 selects the renderer default.
+* @param max_col_width Maximum width of one column; 0 selects the renderer default (20).
+* @param null_value Text rendered for NULL cells; empty selects "NULL".
+* @param render_mode 0 renders rows (records down the page); 1 renders columns; other values are rejected with
+INVALID_INPUT.
+* @param limit The row limit the caller applied to the query before rendering; 0 means none. When the materialized
+result holds exactly this many rows the true total is unknown, so the footer renders "? rows" instead of an exact count.
+* @param out_text Receives a malloc'd null-terminated string. Caller frees.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_result_render_box(duckdb_v2_result_handle *result, idx_t max_rows,
+                                                              idx_t max_width, idx_t max_col_width,
+                                                              duckdb_v2_str null_value, idx_t render_mode, idx_t limit,
+                                                              char **out_text, duckdb_v2_error_info_handle *err);
+/*!
 * Runs the result to completion and reports the changed-row count.
 * Convenience over result_step: blocks until the
 stream is fully consumed, so all side effects are applied. Rows of

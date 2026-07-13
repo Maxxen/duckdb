@@ -1733,6 +1733,15 @@ public:
 	// schema is fixed at this call.
 	auto ToArrowStream(idx_t batch_size = 0) -> ArrowStream;
 
+	// Renders the result as the engine's box table (the CLI renderer),
+	// consuming this result; the remainder materializes in memory first.
+	// Zero selects the renderer default per sizing knob; an empty null_value
+	// renders NULL cells as "NULL". render_mode: 0 rows, 1 columns. limit is
+	// the query-side LIMIT the caller applied (0 for none): when the result
+	// fills it the footer renders "? rows" rather than an exact count.
+	auto RenderBox(idx_t max_rows = 0, idx_t max_width = 0, idx_t max_col_width = 0, const std::string &null_value = "",
+	               idx_t render_mode = 0, idx_t limit = 0) -> std::string;
+
 private:
 	explicit QueryResult(void *impl);
 };

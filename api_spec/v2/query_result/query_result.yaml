@@ -369,6 +369,64 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
+  result_render_box:
+    summary: Renders the result as the engine's box table, consuming it.
+    description: |
+      Drains the result into a column data collection and renders it with
+      the engine's BoxRenderer (the same renderer as the DuckDB CLI), so
+      every client shows results identically without reimplementing table
+      formatting. Consumes the result by transfer (the slot is set to NULL,
+      on success and on failure alike, mirroring result_to_arrow_stream);
+      partial consumption is allowed and renders the remainder.
+
+      The whole remaining result materializes in memory before rendering.
+      max_rows bounds what is DISPLAYED, not what is read: with limit 0 the
+      footer's row count is exact. Callers who cannot afford full
+      materialization should bound the query itself (e.g. LIMIT n) and pass
+      n as limit; the footer then renders "? rows" whenever the result fills
+      that bound, since the true total is then unknown.
+
+      Zero selects the renderer default for each sizing knob (max_rows 20,
+      max_width the terminal width probe or 80 when unavailable,
+      max_col_width 20). An empty null_value renders NULL cells as the
+      default "NULL" text.
+    role: method
+    belongs_to: result
+    parameters:
+      result:
+        type: result
+        indirection: 1
+        kind: IN_TRANSFER
+        description: The result to render; consumed and set to NULL. Left intact only when the call rejects null arguments.
+      max_rows:
+        type: idx
+        description: Maximum rows displayed; 0 selects the renderer default (20).
+      max_width:
+        type: idx
+        description: Maximum total width in characters; 0 selects the renderer default.
+      max_col_width:
+        type: idx
+        description: Maximum width of one column; 0 selects the renderer default (20).
+      null_value:
+        type: str
+        description: Text rendered for NULL cells; empty selects "NULL".
+      render_mode:
+        type: idx
+        description: 0 renders rows (records down the page); 1 renders columns; other values are rejected with INVALID_INPUT.
+      limit:
+        type: idx
+        description: The row limit the caller applied to the query before rendering; 0 means none. When the materialized result holds exactly this many rows the true total is unknown, so the footer renders "? rows" instead of an exact count.
+      out_text:
+        type: char
+        indirection: 2
+        kind: OUT
+        description: Receives a malloc'd null-terminated string. Caller frees.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   result_drain:
     summary: Runs the result to completion and reports the changed-row count.
     description: |

@@ -1,5 +1,10 @@
 #include "capi_v2_internal.hpp"
 
+#include "duckdb/common/box_renderer.hpp"
+#include "duckdb/common/box_renderer_context.hpp"
+#include "duckdb/common/column_data_collection_render_interface.hpp"
+#include "duckdb/common/types/column/column_data_collection.hpp"
+
 #include "duckdb/common/enums/pending_execution_result.hpp"
 #include "duckdb/common/enums/stream_execution_result.hpp"
 #include "duckdb/main/query_parameters.hpp"
@@ -454,6 +459,84 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_drain(duckdb_v2_result_handle result, idx_
 			}
 		}
 		*out_rows_changed = rows_changed;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_result_render_box(duckdb_v2_result_handle *result, idx_t max_rows, idx_t max_width,
+                                                 idx_t max_col_width, duckdb_v2_str null_value, idx_t render_mode,
+                                                 idx_t limit, char **out_text, duckdb_v2_error_info_handle *err) {
+	if (out_text) {
+		*out_text = nullptr;
+	}
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!result || !*result || !out_text) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_render_box");
+		}
+		// Validate the by-value arguments before consuming the result, so an
+		// argument rejection leaves the caller's result intact (as the null-arg
+		// rejection above does).
+		if (!null_value.ptr && null_value.len > 0) {
+			throw duckdb::InvalidInputException("null_value: null pointer with nonzero length");
+		}
+		if (render_mode > 1) {
+			throw duckdb::InvalidInputException("render_mode must be 0 (rows) or 1 (columns)");
+		}
+		// Adopt by transfer; consumed on success and failure alike.
+		auto wrapper = duckdb::unique_ptr<duckdb::ResultWrapperV2>(duckdb::ToResult(*result));
+		*result = nullptr;
+		// Names and types must be available before building the collection;
+		// expanding statements may need stepping to the principal fragment.
+		while (!wrapper->metadata_available) {
+			duckdb::unique_ptr<duckdb::DataChunk> discard;
+			auto status = wrapper->Step(discard);
+			if (status == DUCKDB_V2_RESULT_STEP_STATUS_WAITING) {
+				wrapper->Wait();
+				continue;
+			}
+			if (status == DUCKDB_V2_RESULT_STEP_STATUS_CHUNK) {
+				throw duckdb::InternalException("render box: a row was produced before result metadata was available");
+			}
+			break; // FINISHED / CANCELLED: no row-producing fragment.
+		}
+		if (!wrapper->context) {
+			throw duckdb::InvalidInputException("result is not associated with an active context");
+		}
+		auto &ctx = *wrapper->context;
+
+		// Materialize the remainder; max_rows bounds display, not the read.
+		duckdb::ColumnDataCollection collection(duckdb::Allocator::DefaultAllocator(), wrapper->types);
+		while (auto chunk = wrapper->FetchChunkBlocking()) {
+			collection.Append(*chunk);
+		}
+
+		duckdb::BoxRendererConfig config;
+		if (max_rows != 0) {
+			config.max_rows = max_rows;
+		}
+		if (max_width != 0) {
+			config.max_width = max_width;
+		}
+		if (max_col_width != 0) {
+			config.max_col_width = max_col_width;
+		}
+		if (null_value.len) {
+			config.null_value = std::string(null_value.ptr, null_value.len);
+		}
+		config.render_mode = render_mode == 1 ? duckdb::RenderMode::COLUMNS : duckdb::RenderMode::ROWS;
+		// The caller's query-side LIMIT: when the materialized result fills it, the
+		// footer renders "? rows" since the true total is unknown.
+		config.limit = limit;
+
+		duckdb::ClientBoxRendererContext render_context(ctx);
+		duckdb::BoxRenderer renderer(config);
+		duckdb::ColumnDataCollectionWrapper data(collection);
+		auto text = renderer.ToString(render_context, wrapper->names, data);
+		auto *buffer = static_cast<char *>(malloc(text.size() + 1));
+		if (!buffer) {
+			throw std::bad_alloc();
+		}
+		memcpy(buffer, text.c_str(), text.size() + 1);
+		*out_text = buffer;
 	});
 }
 

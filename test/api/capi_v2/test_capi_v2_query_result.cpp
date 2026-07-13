@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -1638,4 +1639,200 @@ TEST_CASE("V2: result_get_schema null arguments", "[capi_v2][query_result]") {
 	REQUIRE(duckdb_v2_result_get_schema(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 
 	duckdb_v2_result_destroy(&r);
+}
+
+// ===========================================================================
+// result_render_box: engine-side box rendering, consuming the result by
+// transfer (the to_arrow_stream adopt-by-transfer pattern). These tests pin
+// the raw transfer semantics; higher-level rendering assertions live in the
+// [cpp_api] suite.
+// ===========================================================================
+
+TEST_CASE("V2: result_render_box renders, consumes the result, and frees the connection", "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT 1 AS one", &r) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(r != nullptr);
+
+	char *text = nullptr;
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, &text, &err) ==
+	        DUCKDB_V2_ERROR_NONE);
+	// Adopt-by-transfer: the slot is nulled on success.
+	REQUIRE(r == nullptr);
+	REQUIRE(text != nullptr);
+	std::string rendered(text);
+	free(text);
+	// A box-drawing glyph and the column name are present.
+	REQUIRE(rendered.find("\342\224\202") != std::string::npos);
+	REQUIRE(rendered.find("one") != std::string::npos);
+
+	// The one-live-result slot was released: a new query runs on the same connection.
+	duckdb_v2_result_handle r2 = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT 2 AS two", &r2) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2DrainRowCount(r2) == 1);
+	REQUIRE(duckdb_v2_result_destroy(&r2) == DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2: result_render_box on an execution error consumes the result and reports the error",
+          "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+	duckdb_v2_result_handle r = nullptr;
+	// Execution is lazy: error() (volatile, so never folded) throws only when the
+	// stream is stepped, i.e. inside render_box's materialize loop.
+	REQUIRE(V2Query(fx.conn, "SELECT error('boom render') FROM range(5) t(i)", &r) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(r != nullptr);
+
+	char *text = reinterpret_cast<char *>(0x1); // sentinel: the bridge must null it
+	duckdb_v2_error_info_handle err = nullptr;
+	auto rc = duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, &text, &err);
+	REQUIRE(rc != DUCKDB_V2_ERROR_NONE);
+	// Consumed by transfer on failure too; out_text left NULL (no buffer to free).
+	REQUIRE(r == nullptr);
+	REQUIRE(text == nullptr);
+	// The engine's error text propagated through the slot.
+	REQUIRE(err != nullptr);
+	duckdb_v2_str msg = {nullptr, 0};
+	REQUIRE(duckdb_v2_error_info_get_text(err, &msg) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(std::string(msg.ptr ? msg.ptr : "", msg.len).find("boom render") != std::string::npos);
+	duckdb_v2_error_info_destroy(&err);
+
+	// The busy slot was released despite the error: a new query runs.
+	duckdb_v2_result_handle r2 = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT 7", &r2) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2DrainRowCount(r2) == 1);
+	REQUIRE(duckdb_v2_result_destroy(&r2) == DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2: result_render_box rejects null arguments and leaves the result intact", "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT 1 AS one", &r) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(r != nullptr);
+
+	// out_text NULL: rejected before adoption, so the result is NOT consumed.
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, nullptr, &err) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(r != nullptr); // intact
+	duckdb_v2_error_info_destroy(&err);
+
+	// A NULL result-slot pointer is rejected without a crash.
+	char *text = nullptr;
+	REQUIRE(duckdb_v2_result_render_box(nullptr, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, &text, nullptr) ==
+	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(text == nullptr);
+
+	// The still-intact result renders normally now.
+	REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, &text, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(r == nullptr);
+	REQUIRE(text != nullptr);
+	free(text);
+}
+
+TEST_CASE("V2: result_render_box null_value override and exact footer at the C boundary", "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+
+	// Custom null text: appears instead of "NULL".
+	{
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(V2Query(fx.conn, "SELECT CAST(NULL AS INTEGER) AS b", &r) == DUCKDB_V2_ERROR_NONE);
+		char *text = nullptr;
+		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, V2Str("<nil>"), 0, 0, &text, nullptr) == DUCKDB_V2_ERROR_NONE);
+		std::string rendered(text);
+		free(text);
+		REQUIRE(rendered.find("<nil>") != std::string::npos);
+		REQUIRE(rendered.find("NULL") == std::string::npos);
+	}
+
+	// max_rows bounds display but the footer counts every materialized row.
+	{
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(V2Query(fx.conn, "SELECT i FROM range(100) t(i)", &r) == DUCKDB_V2_ERROR_NONE);
+		char *text = nullptr;
+		REQUIRE(duckdb_v2_result_render_box(&r, 4, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, &text, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+		std::string rendered(text);
+		free(text);
+		REQUIRE(rendered.find("100 rows") != std::string::npos); // exact total
+		REQUIRE(rendered.find("4 shown") != std::string::npos);  // display bounded to max_rows
+	}
+}
+
+TEST_CASE("V2: result_render_box validates by-value arguments before consuming the result", "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+
+	// Malformed null_value (null pointer, nonzero length): rejected before
+	// adopt-by-transfer, so the caller still owns the result.
+	{
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(V2Query(fx.conn, "SELECT CAST(NULL AS INTEGER) AS b", &r) == DUCKDB_V2_ERROR_NONE);
+		char *text = nullptr;
+		duckdb_v2_error_info_handle err = nullptr;
+		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 5}, 0, 0, &text, &err) ==
+		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(r != nullptr); // intact
+		REQUIRE(text == nullptr);
+		duckdb_v2_error_info_destroy(&err);
+		REQUIRE(duckdb_v2_result_destroy(&r) == DUCKDB_V2_ERROR_NONE);
+	}
+
+	// render_mode out of range: same rejection-before-adoption contract.
+	{
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(V2Query(fx.conn, "SELECT 1 AS one", &r) == DUCKDB_V2_ERROR_NONE);
+		char *text = nullptr;
+		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 2, 0, &text, nullptr) ==
+		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(r != nullptr); // intact
+		REQUIRE(text == nullptr);
+		REQUIRE(duckdb_v2_result_destroy(&r) == DUCKDB_V2_ERROR_NONE);
+	}
+
+	// The valid empty null_value forms both render the default "NULL":
+	// {NULL, 0} (canonical empty view) and {ptr, 0} (non-null pointer, zero length).
+	for (duckdb_v2_str empty_null : {duckdb_v2_str {nullptr, 0}, duckdb_v2_str {"", 0}}) {
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(V2Query(fx.conn, "SELECT CAST(NULL AS INTEGER) AS b", &r) == DUCKDB_V2_ERROR_NONE);
+		char *text = nullptr;
+		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, empty_null, 0, 0, &text, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(r == nullptr);
+		std::string rendered(text);
+		free(text);
+		REQUIRE(rendered.find("NULL") != std::string::npos);
+	}
+}
+
+TEST_CASE("V2: result_render_box limit renders an approximate footer when the result fills the bound",
+          "[capi_v2][query_result]") {
+	V2EnvFixture fx;
+
+	// The caller applied LIMIT 21 upstream and passes it as limit. The result
+	// fills the bound exactly, so the true total is unknown: the footer renders
+	// "? rows" instead of reporting the truncated count as exact.
+	{
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(V2Query(fx.conn, "SELECT i FROM range(21) t(i)", &r) == DUCKDB_V2_ERROR_NONE);
+		char *text = nullptr;
+		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 21, &text, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+		std::string rendered(text);
+		free(text);
+		REQUIRE(rendered.find("? rows") != std::string::npos);  // count is unknown
+		REQUIRE(rendered.find("21 rows") == std::string::npos); // never claims the bound as an exact total
+	}
+
+	// The same result rendered with limit 0: the count is known and exact, so no
+	// "? rows" approximation appears.
+	{
+		duckdb_v2_result_handle r = nullptr;
+		REQUIRE(V2Query(fx.conn, "SELECT i FROM range(21) t(i)", &r) == DUCKDB_V2_ERROR_NONE);
+		char *text = nullptr;
+		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, &text, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+		std::string rendered(text);
+		free(text);
+		REQUIRE(rendered.find("? rows") == std::string::npos);
+	}
 }

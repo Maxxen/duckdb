@@ -1936,6 +1936,18 @@ auto QueryResult::Drain() -> idx_t {
 	return rows_changed;
 }
 
+auto QueryResult::RenderBox(idx_t max_rows, idx_t max_width, idx_t max_col_width, const std::string &null_value,
+                            idx_t render_mode, idx_t limit) -> std::string {
+	auto raw = handle();
+	this->release();
+	char *text = nullptr;
+	CheckedAPICall(duckdb_v2_result_render_box, &raw, max_rows, max_width, max_col_width, ToStr(null_value),
+	               render_mode, limit, &text);
+	auto out = std::string(text);
+	free(text);
+	return out;
+}
+
 auto QueryResult::ToArrowStream(idx_t batch_size) -> ArrowStream {
 	// Allocate before detaching the result: if this throws, the result wrapper
 	// is still owned by *this and ~QueryResult frees it (no leak).
