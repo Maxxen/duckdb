@@ -34,6 +34,9 @@ concurrency:
 env:
   GEN: ninja
   CORE_EXTENSIONS: "json;parquet;icu;tpch;tpcds;autocomplete"
+  # Windows runners default python to a cp1252 stdout, which cannot encode the
+  # test runner's progress glyphs and dies with UnicodeEncodeError mid-report.
+  PYTHONUTF8: "1"
 
 jobs:
   # The configuration matrix. Mirrors upstream ExtendedTests' linux-configs-all

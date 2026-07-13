@@ -36,13 +36,15 @@ ANSI_TEAL = "\033[36m"
 ANSI_DARK_GRAY = "\033[90m"
 ANSI_RESET = "\033[0m"
 FAILURE_MARKER = "================================================================"
+SUSPECT_TESTS_PREFIX = "suspect tests: "
 
 
 def enable_line_buffering():
+    # utf-8 with replace: a cp1252 pipe (Windows CI) must never raise UnicodeEncodeError.
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(line_buffering=True, write_through=True)
+        sys.stdout.reconfigure(line_buffering=True, write_through=True, encoding="utf-8", errors="replace")
     if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(line_buffering=True, write_through=True)
+        sys.stderr.reconfigure(line_buffering=True, write_through=True, encoding="utf-8", errors="replace")
 
 
 def signal_stop_requested(signum, frame):
@@ -1023,14 +1025,25 @@ def parse_failure_info(message: str | None, stdout: str, stderr: str, batch, ret
     )
 
 
+def format_suspect_tests_line(reproduce_batch):
+    # Emitted when a failure cannot be attributed to one test: lists every test in
+    # the failed batch so log parsers (sqllogic_executor_diff.py) can treat all of
+    # them as failing instead of losing the failure.
+    return SUSPECT_TESTS_PREFIX + "\t".join(reproduce_batch)
+
+
 def render_failure_lines(failure: FailureInfo):
+    suspect_lines = [] if failure.test_name else [format_suspect_tests_line(failure.reproduce_batch)]
     if failure.kind == "timeout":
         test_name = failure.test_name or "test batch"
-        return [f"error: timeout ({format_duration_seconds(failure.timeout_seconds)}s) for {test_name}."]
+        return [
+            f"error: timeout ({format_duration_seconds(failure.timeout_seconds)}s) for {test_name}.",
+            *suspect_lines,
+        ]
 
     if failure.kind == "wrong_result":
         test_name = failure.test_name or "test batch"
-        lines = [*format_fail_header(test_name), ""]
+        lines = [*format_fail_header(test_name), *suspect_lines, ""]
         if failure.snippet_lines:
             lines.extend(["", *failure.snippet_lines])
         if failure.mismatch_context is not None:
@@ -1044,7 +1057,7 @@ def render_failure_lines(failure: FailureInfo):
     if failure.test_name:
         lines = format_fail_header(failure.test_name)
     else:
-        lines = ["error: test batch failed"]
+        lines = ["error: test batch failed", *suspect_lines]
     if failure.snippet_lines:
         lines.extend(["", *failure.snippet_lines])
     if failure.detail_lines:
@@ -1089,6 +1102,20 @@ def render_failure_lines_with_diagnostics(failure: FailureInfo, stdout: str, std
     return lines
 
 
+def mark_recovered_failure_lines(lines):
+    # A recovered attempt must not read as a failure to log parsers
+    # (sqllogic_executor_diff.py greps for "error: FAIL" / "suspect tests:").
+    marked = []
+    for line in lines:
+        if line.startswith("error: "):
+            marked.append("recovered: " + line[len("error: ") :])
+        elif line.startswith(SUSPECT_TESTS_PREFIX):
+            marked.append("recovered " + line)
+        else:
+            marked.append(line)
+    return marked
+
+
 def format_batch_failure(batch, config: TestRunnerConfig, attempt_summaries, recovered: bool, retry_count: int):
     reproduce_batch = batch
     rerun_parts = [shlex.quote(format_unittest_bin_for_display(config.unittest_bin))]
@@ -1096,7 +1123,7 @@ def format_batch_failure(batch, config: TestRunnerConfig, attempt_summaries, rec
     parts = []
     if recovered:
         first_attempt = attempt_summaries[0]
-        parts.extend(first_attempt.lines)
+        parts.extend(mark_recovered_failure_lines(first_attempt.lines))
         parts.extend(["", f"recovered: passed on retry {retry_count}/{config.retry}"])
         reproduce_batch = first_attempt.reproduce_batch
     else:

@@ -846,7 +846,9 @@ require windows: 2
 
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("retrying failed test test/sql/a.test (attempt 1/1, retry 1/4)", proc.stdout)
-        self.assertIn("error: FAIL test/sql/a.test", run_tests.strip_ansi(proc.stdout))
+        # A recovered attempt must not read as a failure to log parsers.
+        self.assertIn("recovered: FAIL test/sql/a.test", run_tests.strip_ansi(proc.stdout))
+        self.assertNotIn("error: FAIL test/sql/a.test", run_tests.strip_ansi(proc.stdout))
         self.assertIn("fake failure", proc.stdout)
         self.assertIn("recovered: passed on retry 1/1", proc.stdout)
         self.assertEqual(proc.stdout.count("fake failure"), 1)
@@ -895,7 +897,8 @@ require windows: 2
             test_list_path.unlink(missing_ok=True)
 
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn(f"error: timeout ({batch_timeout}s) for test/sql/a.test.", proc.stdout)
+        self.assertIn(f"recovered: timeout ({batch_timeout}s) for test/sql/a.test.", proc.stdout)
+        self.assertNotIn(f"error: timeout ({batch_timeout}s)", proc.stdout)
         self.assertIn("recovered: passed on retry 1/1", proc.stdout)
         self.assertIn("retrying failed test test/sql/a.test", proc.stdout)
         self.assertIn("ran tests: ", proc.stdout)
@@ -1450,6 +1453,68 @@ Mismatch on row 1, column 1
         lines, _ = run_tests.summarize_failure_output(None, "", stderr, batch)
         stripped_lines = strip_ansi_lines(lines)
         self.assertFalse(any(line.startswith("--- raw unittest") for line in stripped_lines))
+
+    def test_unattributed_batch_failure_lists_suspect_tests(self):
+        batch = ["/tmp/a.test", "/tmp/b.test"]
+        stdout = """
+[0/2] (0%): /tmp/a.test
+[1/2] (50%): /tmp/a.test took 0.1s
+[1/2] (50%): /tmp/b.test
+===============================================================================
+test cases:  2 |   1 passed | 1 failed
+assertions: 16 | 15 passed | 1 failed
+"""
+        lines, reproduce_batch = run_tests.summarize_failure_output(None, stdout, "", batch, returncode=1)
+        stripped_lines = strip_ansi_lines(lines)
+        self.assertIn("error: test batch failed", stripped_lines)
+        self.assertIn("suspect tests: /tmp/a.test\t/tmp/b.test", stripped_lines)
+        self.assertEqual(reproduce_batch, batch)
+
+    def test_attributed_failure_has_no_suspect_tests_line(self):
+        batch = ["/tmp/fail.test"]
+        stderr = """
+================================================================
+FAIL: /tmp/fail.test
+================================================================
+Wrong result in query! (/tmp/fail.test:25)!
+================================================================
+Mismatch on row 1, column 1
+[3, 1, 2] <> [1, 2, 3]
+"""
+        lines, _ = run_tests.summarize_failure_output(None, "", stderr, batch)
+        stripped_lines = strip_ansi_lines(lines)
+        self.assertFalse(any(line.startswith(run_tests.SUSPECT_TESTS_PREFIX) for line in stripped_lines))
+
+    def test_timeout_is_always_attributed_to_a_batch_test(self):
+        # Timeouts fall back to the last batch test when nothing better is known,
+        # so the timeout line always carries a re-checkable test name.
+        batch = ["/tmp/a.test", "/tmp/b.test"]
+        lines, reproduce_batch = run_tests.summarize_failure_output("batch timed out after 600 seconds", "", "", batch)
+        stripped_lines = strip_ansi_lines(lines)
+        self.assertIn("error: timeout (600s) for /tmp/b.test.", stripped_lines)
+        self.assertFalse(any(line.startswith(run_tests.SUSPECT_TESTS_PREFIX) for line in stripped_lines))
+        self.assertEqual(reproduce_batch, ["/tmp/b.test"])
+
+    def test_recovered_attempt_lines_are_not_failure_lines(self):
+        marked = run_tests.mark_recovered_failure_lines(
+            [
+                run_tests.FAILURE_MARKER,
+                "error: FAIL /tmp/a.test",
+                "error: test batch failed",
+                "suspect tests: /tmp/a.test\t/tmp/b.test",
+                "some detail line",
+            ]
+        )
+        self.assertEqual(
+            marked,
+            [
+                run_tests.FAILURE_MARKER,
+                "recovered: FAIL /tmp/a.test",
+                "recovered: test batch failed",
+                "recovered suspect tests: /tmp/a.test\t/tmp/b.test",
+                "some detail line",
+            ],
+        )
 
     def test_generic_failure_merges_query_diagnostics_with_assertion_failure(self):
         remote_optimizer_path = REPO_ROOT / "test" / "extension" / "test_remote_optimizer.cpp"
