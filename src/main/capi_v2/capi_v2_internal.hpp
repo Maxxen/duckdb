@@ -157,6 +157,16 @@ struct OptionWrapperV2 {
 	std::vector<std::string> aliases;
 };
 
+// V2-registered functions hold raw callback pointers, so their plans cannot
+// serialize. The throwing serialize callbacks built on this also keep the
+// debug verifier's deserialize step from re-running user binds on already
+// mutated arguments (function_serialization.hpp rebinds when a function has
+// no serialization callbacks).
+[[noreturn]] inline void ThrowFunctionNotSerializable(const Identifier &name) {
+	throw NotImplementedException("Function \"%s\" is registered through the C API and does not support serialization",
+	                              name.GetIdentifierName());
+}
+
 // duckdb_v2_str conversions. A duckdb_v2_str is a borrowed,
 // length-delimited view: not null-terminated, may contain interior null
 // bytes. {NULL, 0} is the canonical empty view.
@@ -509,6 +519,23 @@ inline StringHeap *ToStringHeap(duckdb_v2_string_heap_handle ptr) {
 // lifetime and are likewise unwrapped Expression pointers.
 inline Expression *ToExpression(duckdb_v2_expression_handle ptr) {
 	return reinterpret_cast<Expression *>(ptr);
+}
+
+// Backing struct for the opaque duckdb_v2_bind_arguments_handle: a borrowed view
+// of a function's bound argument list during a scalar / aggregate bind callback,
+// reached via the `arguments` field on the bind-args struct. `arguments` points
+// at the argument expressions the binder threads through (the children); the
+// optional `argument_types` points at the bound function's argument-type list.
+// Truncation shrinks both so they stay in sync, which keeps the scalar path
+// (children mutated directly) and the aggregate path (children resized to the
+// argument-type list) both valid. Lives on the trampoline's stack for the
+// duration of the callback; the handle is never owned or destroyed by the caller.
+struct BindArgumentsV2 {
+	vector<unique_ptr<Expression>> *arguments = nullptr;
+	vector<LogicalType> *argument_types = nullptr;
+};
+inline BindArgumentsV2 *ToBindArguments(duckdb_v2_bind_arguments_handle ptr) {
+	return reinterpret_cast<BindArgumentsV2 *>(ptr);
 }
 
 // Map core's VectorType to the V2 surface. FSST / SEQUENCE / SHREDDED

@@ -229,6 +229,9 @@ functions:
     return_type: API_CALL
   table_function_builder_add_parameter:
     summary: Adds a positional parameter to the function signature.
+    description: |
+      ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured
+      separately via table_function_builder_set_varargs.
     parameters:
       builder:
         type: table_function_builder
@@ -236,6 +239,28 @@ functions:
       type:
         type: logical_type
         description: The parameter's logical type.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_builder_set_varargs:
+    summary: Sets the varargs type of a table function.
+    description: |
+      Makes the function variadic: after its fixed positional parameters, it accepts any number of
+      extra trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail
+      whose arguments keep their own types. A NULL or INVALID type is rejected with
+      ERROR_INVALID_INPUT; ANY is accepted. Calling this again overwrites the previous varargs type.
+      The bind callback reads all positional arguments, fixed and extra alike, via
+      table_function_bind_get_parameter_count and table_function_bind_get_parameter. The library
+      copies the type and does not take ownership.
+    parameters:
+      builder:
+        type: table_function_builder
+        description: The builder to configure.
+      type:
+        type: logical_type
+        description: The type extra trailing arguments are cast to. ANY leaves them un-cast.
       err:
         type: error_info
         indirection: 1
@@ -415,6 +440,9 @@ functions:
   # --- Bind callback methods ---
   table_function_bind_add_result_column:
     summary: Declares an output column during bind.
+    description: |
+      The column type must be a fully defined concrete type: ANY is rejected with
+      ERROR_INVALID_INPUT (a result column carries data, so a wildcard has no meaning).
     parameters:
       info:
         type: table_function_bind_info
@@ -425,6 +453,26 @@ functions:
       type:
         type: logical_type
         description: The column's logical type.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_function_bind_get_parameter_count:
+    summary: Returns the number of positional parameters passed to the function.
+    description: |
+      Counts every positional argument the call supplied, fixed and (for a variadic function
+      configured via table_function_builder_set_varargs) extra alike. Read each one by index with
+      table_function_bind_get_parameter. Named parameters are not included.
+    parameters:
+      info:
+        type: table_function_bind_info
+        description: The bind info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the positional parameter count.
       err:
         type: error_info
         indirection: 1

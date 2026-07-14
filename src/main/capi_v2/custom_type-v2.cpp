@@ -1,6 +1,7 @@
 #include "capi_v2_internal.hpp"
 
 #include "duckdb/common/extra_type_info.hpp"
+#include "duckdb/common/type_visitor.hpp"
 #include "duckdb/common/types/string_type.hpp"
 #include "duckdb/common/types/vector.hpp"
 
@@ -82,6 +83,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_register(duckdb_v2_context_ha
 
 		if (b.base_type.id() == duckdb::LogicalTypeId::INVALID) {
 			throw duckdb::InvalidInputException("Custom type base type must be set.");
+		}
+		// ANY is a signature wildcard; a registered type carries data, so reject it
+		// (an ANY reached during execution throws InternalException).
+		if (duckdb::TypeVisitor::Contains(b.base_type, duckdb::LogicalTypeId::ANY)) {
+			throw duckdb::InvalidInputException("Custom type base type cannot be ANY.");
 		}
 
 		auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);

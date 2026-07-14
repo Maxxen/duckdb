@@ -12,6 +12,7 @@ structs:
       - {name: function_name, type: str, description: "The name of the function being bound. Borrowed; only valid for the duration of the callback."}
       - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
       - {name: out_bind_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to user data (the function's \"bind data\") plus optional destructor and equality callbacks. The bind data is accessible from later callbacks (e.g. \"init\" and \"exec\"), which is useful for sharing information between the planning and execution phases such as resolved argument types, prepared statements, or other metadata computed during binding. The destructor, if provided, is used to destroy the bind data when it's no longer needed (e.g. at the end of query execution). The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse); otherwise a default pointer equality check is used."}
+      - {name: arguments, type: bind_arguments, description: "Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only for the duration of the callback."}
   scalar_function_init_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
@@ -155,7 +156,7 @@ functions:
     return_type: API_CALL
   scalar_function_builder_register:
     summary: Registers a scalar function with a database, making the function available for use in queries.
-    description: "This function registers a fully configured scalar function builder with a database, making the function available for use in SQL queries executed on that database. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\n"
+    description: "This function registers a fully configured scalar function builder with a database, making the function available for use in SQL queries executed on that database. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
     parameters:
       context:
         type: context
@@ -192,10 +193,30 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: API_CALL
+  scalar_function_builder_set_varargs:
+    summary: Sets the varargs type of a scalar function.
+    description: |
+      Makes the function variadic: after its fixed parameters, it accepts any number of extra
+      trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail whose
+      arguments keep their own types (read them per column in the exec callback). A NULL or INVALID
+      type is rejected with ERROR_INVALID_INPUT; ANY is accepted. Calling this again overwrites the
+      previous varargs type. The library copies the type and does not take ownership.
+    parameters:
+      func:
+        type: scalar_function_builder
+        description: The scalar function to configure.
+      type:
+        type: logical_type
+        description: The type extra trailing arguments are cast to. ANY leaves them un-cast.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
   # TODO: Make this more involved.
   scalar_function_builder_add_parameter:
     summary: Adds a parameter to a scalar function.
-    description: "Adds a parameter to a scalar function with the specified name and type. \nThe library makes an internal copy of the provided name and type, and does not take ownership of either.\n"
+    description: "Adds a fixed parameter to a scalar function with the specified name and type. \nThe library makes an internal copy of the provided name and type, and does not take ownership of either. \nANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured separately via scalar_function_builder_set_varargs.\n"
     parameters:
       func:
         type: scalar_function_builder
@@ -215,7 +236,7 @@ functions:
     summary: Sets the return type of a scalar function.
     description: |
       Sets the return type of a scalar function. The library makes an internal copy of the provided type and does not take ownership of it.
-      Failing to set a return type before registration results in an error.
+      Failing to set a return type before registration results in an error. The return type must be a fully defined concrete type: registration rejects ANY (and any other incomplete type) with ERROR_INVALID_INPUT.
     parameters:
       func:
         type: scalar_function_builder

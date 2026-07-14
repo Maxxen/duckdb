@@ -300,6 +300,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_create_null(duckdb_v2_logical_type_handle t
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_null");
 		}
 		*out_value = nullptr;
+		// ANY is a signature wildcard; a value carries data, so reject it.
+		if (duckdb::ToLogicalType(type)->id() == duckdb::LogicalTypeId::ANY) {
+			throw duckdb::InvalidInputException("duckdb_v2_value_create_null: type cannot be ANY");
+		}
 		// Value(LogicalType) constructs a typed NULL — exactly what we want.
 		auto *v = new duckdb::Value(*duckdb::ToLogicalType(type));
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);
@@ -486,6 +490,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_create_type(duckdb_v2_logical_type_handle t
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_create_type");
 		}
 		*out_value = nullptr;
+		// ANY is a signature wildcard; keep it out of value (and, via this path,
+		// composite type) construction.
+		if (duckdb::ToLogicalType(type)->id() == duckdb::LogicalTypeId::ANY) {
+			throw duckdb::InvalidInputException("duckdb_v2_value_create_type: type cannot be ANY");
+		}
 		// Value::TYPE stores its own serialized copy of the borrowed type.
 		auto *v = new duckdb::Value(duckdb::Value::TYPE(*duckdb::ToLogicalType(type)));
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(v);

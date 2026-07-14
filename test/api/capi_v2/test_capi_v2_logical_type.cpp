@@ -101,12 +101,13 @@ TEST_CASE("V2: logical_type create_from_id rejects parameterised ids", "[capi_v2
 
 TEST_CASE("V2: logical_type create_from_id rejects sentinel and bind-time-only ids",
           "[capi_v2][logical_type][lifecycle]") {
-	// INVALID is the zero sentinel; SQLNULL / ANY / UNKNOWN exist for the
-	// planner and UDF binding paths and have no read-side use in PR1.
+	// INVALID is the zero sentinel; SQLNULL / UNKNOWN exist only for the planner
+	// and UDF binding paths. ANY is deliberately NOT in this list: it is the one
+	// bind-time id made constructible (a function-signature wildcard passed to
+	// parameter / varargs setters), gated instead at data-creating surfaces.
 	DUCKDB_V2_LOGICAL_TYPE_ID rejected[] = {
 	    DUCKDB_V2_LOGICAL_TYPE_ID_INVALID,
 	    DUCKDB_V2_LOGICAL_TYPE_ID_SQLNULL,
-	    DUCKDB_V2_LOGICAL_TYPE_ID_ANY,
 	    DUCKDB_V2_LOGICAL_TYPE_ID_UNKNOWN,
 	};
 	for (auto id : rejected) {

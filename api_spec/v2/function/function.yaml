@@ -113,3 +113,144 @@ enums:
       FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO:
         value: 0x030101
         description: "The aggregate's result is not affected by a DISTINCT modifier."
+# Bind-time argument list, shared by scalar and aggregate functions. Reached via the `arguments`
+# field on scalar_function_bind_args / aggregate_function_bind_args during the bind callback. A
+# bound argument list has one entry per argument the call supplied (fixed parameters plus any
+# varargs extras, already expanded). Arguments surface as types and folded values, never as
+# expressions: the interface generalizes to table functions, whose arguments are constant values
+# engine-side. Two mutations are offered: replace an argument with a constant
+# (bind_arguments_set_constant), and drop trailing arguments (bind_arguments_truncate). No adding,
+# no middle removal, no arbitrary expression assignment. The bridge keeps the argument list and the
+# bound function's argument-type list in sync (truncate shrinks both), so the two families land on a
+# valid post-bind state through their own path: the scalar binder mutates the argument expressions
+# directly, while the aggregate binder resizes the argument expressions to match the shrunk
+# argument-type list. Constants and truncation take effect after the bind callback returns.
+handles:
+  bind_arguments:
+    description: |
+      Borrowed handle to a function's bound argument list during the bind callback. Provides the
+      argument count, per-index access to argument types and folded values, and two mutations
+      (replace an argument with a constant, truncate the list from the tail). Valid only for the
+      duration of the bind callback; do not store it.
+functions:
+  bind_arguments_get_count:
+    summary: Returns the number of bound arguments.
+    description: |
+      One entry per argument the call supplied, including varargs extras (already expanded).
+    role: getter
+    belongs_to: bind_arguments
+    parameters:
+      args:
+        type: bind_arguments
+        description: The bind arguments handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the argument count.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  bind_arguments_get_type:
+    summary: Returns the resolved type of a bound argument.
+    description: |
+      An owned copy of argument `index`'s resolved type; the caller destroys it via
+      logical_type_destroy. Returns ERROR_INVALID_INPUT if index is out of range (>= the count
+      from bind_arguments_get_count).
+    role: getter
+    belongs_to: bind_arguments
+    parameters:
+      args:
+        type: bind_arguments
+        description: The bind arguments handle.
+      index:
+        type: idx
+        description: Zero-based argument index.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the owned argument type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  bind_arguments_fold:
+    summary: Folds a bound argument to a constant value.
+    description: |
+      Evaluates argument `index` to a single owned value the caller destroys via value_destroy.
+      Exists because bind runs before optimizer constant folding, so a constant-computable
+      argument (e.g. 0.25 + 0.25) is not yet a plain constant. Returns ERROR_INVALID_INPUT if the
+      argument is not constant-foldable (e.g. it references a column) or index is out of range; a
+      runtime error raised while evaluating surfaces as its own error code.
+    belongs_to: bind_arguments
+    parameters:
+      args:
+        type: bind_arguments
+        description: The bind arguments handle.
+      ctx:
+        type: context
+        description: The bind callback's context.
+      index:
+        type: idx
+        description: Zero-based argument index.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned folded value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  bind_arguments_set_constant:
+    summary: Replaces a bound argument with a constant value.
+    description: |
+      Replaces the argument at `index` with a bound constant carrying `value`. The engine casts the
+      constant to the function's declared type for that slot, exactly as it would any argument. Use
+      it to bake a folded configuration value back into the plan. The value is borrowed and copied
+      in. Returns ERROR_INVALID_INPUT if index is out of range.
+    belongs_to: bind_arguments
+    parameters:
+      args:
+        type: bind_arguments
+        description: The bind arguments handle.
+      index:
+        type: idx
+        description: Zero-based argument index to replace.
+      value:
+        type: value
+        description: The constant value. Borrowed; copied in.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  bind_arguments_truncate:
+    summary: Shrinks the bound argument list from the tail.
+    description: |
+      Drops trailing arguments so the list keeps exactly `count` arguments; the exec (scalar) or
+      update (aggregate) callback then sees `count` input columns. Only shrinking is allowed:
+      `count` must be <= the current count, otherwise ERROR_INVALID_INPUT.
+    belongs_to: bind_arguments
+    parameters:
+      args:
+        type: bind_arguments
+        description: The bind arguments handle.
+      count:
+        type: idx
+        description: The number of arguments to keep. Must be <= the current count.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL

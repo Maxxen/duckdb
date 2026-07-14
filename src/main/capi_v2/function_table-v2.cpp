@@ -1,4 +1,5 @@
 #include "capi_v2_internal.hpp"
+#include "duckdb/common/type_visitor.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
@@ -120,6 +121,8 @@ struct TableFunctionBuilderV2 {
 	TableFunctionRuntimeInfoV2 info;
 	vector<LogicalType> parameters;
 	identifier_map_t<LogicalType> named_parameters;
+	//! Varargs type (INVALID when the function is not variadic).
+	LogicalType varargs;
 	bool projection_pushdown = false;
 
 	static unique_ptr<FunctionData> BindCallback(ClientContext &context, TableFunctionBindInput &input,
@@ -412,6 +415,24 @@ duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_bu
 	});
 }
 
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_varargs(duckdb_v2_table_function_builder_handle builder,
+                                                                  duckdb_v2_logical_type_handle type,
+                                                                  duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!builder) {
+			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
+		}
+		if (!type) {
+			throw duckdb::InvalidInputException("Varargs type cannot be null.");
+		}
+		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
+		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("Varargs type cannot be invalid.");
+		}
+		reinterpret_cast<TableFunctionBuilderV2 *>(builder)->varargs = ltype;
+	});
+}
+
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_user_data(duckdb_v2_table_function_builder_handle builder,
                                                                     duckdb_v2_opaque data,
                                                                     duckdb_v2_error_info_handle *err) {
@@ -546,6 +567,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_register(duckdb_v2_context
 
 		func.projection_pushdown = b.projection_pushdown;
 
+		// Wire the varargs type (if any) so the engine expands trailing positional
+		// arguments to it during binding.
+		if (b.varargs.id() != duckdb::LogicalTypeId::INVALID) {
+			func.SetVarArgs(b.varargs);
+		}
+
 		// Always wire the cardinality hook: it serves both the cardinality
 		// callback and the static cardinality set via bind_set_cardinality
 		// (a bind-time decision not known at registration). It returns null
@@ -597,9 +624,15 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_add_result_column(duckdb_v2_t
 		if (!type) {
 			throw duckdb::InvalidInputException("Column type cannot be null.");
 		}
+		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
+		// A result column carries data; a wildcard has no meaning, and an ANY
+		// stored here throws InternalException when hit during execution.
+		if (duckdb::TypeVisitor::Contains(ltype, duckdb::LogicalTypeId::ANY)) {
+			throw duckdb::InvalidInputException("Result column type cannot be ANY.");
+		}
 		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
 		cb_info.return_names.emplace_back(duckdb::ToString(name));
-		cb_info.return_types.push_back(*reinterpret_cast<duckdb::LogicalType *>(type));
+		cb_info.return_types.push_back(ltype);
 	});
 }
 
@@ -642,6 +675,21 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_user_data(duckdb_v2_table
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
 		*out_data = cb_info.user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_parameter_count(duckdb_v2_table_function_bind_info_handle info,
+                                                                       idx_t *out_count,
+                                                                       duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Bind info pointer cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output count pointer cannot be null.");
+		}
+		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
+		*out_count = cb_info.parameters.size();
 	});
 }
 

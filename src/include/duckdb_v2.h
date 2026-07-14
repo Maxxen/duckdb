@@ -462,476 +462,6 @@ struct duckdb_v2_opaque {
 /* --- Struct definitions for errors --- */
 
 /* ============================================================================
- * MODULE: function
- * ============================================================================ */
-
-/* --- Enums for function --- */
-//! Identifies a configurable function property. Pass one of these to
-//! `*_function_builder_set_property` / `_get_property` together with a
-//! matching `FUNCTION_PROPERTY_VALUE`. The high byte is the function-type
-//! group: COMMON (`0x01xxxx`) keys apply to all function types, while
-//! group-specific keys (e.g. aggregate `0x03xxxx`) are only valid for that
-//! function type and are rejected with an error otherwise.
-typedef enum DUCKDB_V2_FUNCTION_PROPERTY_KEY {
-	/* How stable/deterministic the function's result is across rows and queries. Accepts the
-	   `FUNCTION_PROPERTY_STABILITY_*` values. Defaults to `CONSISTENT`. */
-	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY = 65536,
-	/* Whether the function handles NULL inputs itself. Accepts the `FUNCTION_PROPERTY_NULL_HANDLING_*` values. Defaults
-	   to `DEFAULT` (NULL in, NULL out). */
-	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING = 65792,
-	/* Whether the function can raise a runtime error. Accepts the `FUNCTION_PROPERTY_FALLIBILITY_*` values. Defaults to
-	   `INFALLIBLE`. */
-	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY = 66048,
-	/* How the function interacts with collations on its arguments. Accepts the `FUNCTION_PROPERTY_COLLATION_HANDLING_*`
-	   values. Defaults to `PROPAGATE`. */
-	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING = 66304,
-	/* Aggregate only. Whether the aggregate's result depends on the order in which rows are aggregated. Accepts the
-	   `FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_*` values. Defaults to `YES`. */
-	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT = 196608,
-	/* Aggregate only. Whether the aggregate's result is affected by a DISTINCT modifier. Accepts the
-	   `FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_*` values. Defaults to `YES`. */
-	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT = 196864,
-} DUCKDB_V2_FUNCTION_PROPERTY_KEY;
-
-//! A value for a `FUNCTION_PROPERTY_KEY`. Each key owns a 256-value block: a
-//! value `V` is valid for key `K` iff `(V & 0xFFFF00) == K`, and shares the
-//! key's function-type group (`V & 0xFF0000`) in its high byte. Passing a
-//! value that does not match the key is rejected with an error. Boolean-like
-//! properties are
-//! expressed as named values so that additional values can be added later
-//! without breaking the ABI.
-typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
-	/* The function always returns the same result given the same input. */
-	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT = 65536,
-	/* The result may differ per row (e.g. random()). */
-	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_VOLATILE = 65537,
-	/* The result is stable within a single query/transaction but may change across queries (e.g. now()). */
-	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT_WITHIN_QUERY = 65538,
-	/* Default NULL handling: if any argument is NULL the result is NULL and the function is not invoked for that row.
-	 */
-	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_DEFAULT = 65792,
-	/* The function handles NULL inputs itself and is invoked even when arguments are NULL. */
-	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL = 65793,
-	/* The function never raises a runtime error. */
-	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_INFALLIBLE = 66048,
-	/* The function may raise a runtime error for some inputs. */
-	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_FALLIBLE = 66049,
-	/* The function combines collations from its inputs and propagates them to its result (default). */
-	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PROPAGATE = 66304,
-	/* Combinable collations are executed on the input arguments before the function runs. */
-	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PUSH_COMBINABLE = 66305,
-	/* Collations are ignored by the function. */
-	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_IGNORE = 66306,
-	/* The aggregate's result depends on the order in which rows are aggregated (default). */
-	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_YES = 196608,
-	/* The aggregate's result does not depend on input order. */
-	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_NO = 196609,
-	/* The aggregate's result is affected by a DISTINCT modifier (default). */
-	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_YES = 196864,
-	/* The aggregate's result is not affected by a DISTINCT modifier. */
-	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO = 196865,
-} DUCKDB_V2_FUNCTION_PROPERTY_VALUE;
-
-/* --- Struct forward declarations for function --- */
-
-/* --- Types for function --- */
-
-/* --- Constants for function --- */
-
-/* --- Error Codes for function --- */
-
-/* --- Function pointer typedefs for function --- */
-
-/* --- Functions for function --- */
-
-/* --- Struct definitions for function --- */
-
-/* ============================================================================
- * MODULE: aggregate
- * ============================================================================ */
-
-/* --- Enums for aggregate --- */
-
-/* --- Struct forward declarations for aggregate --- */
-typedef struct duckdb_v2_aggregate_function_bind_args duckdb_v2_aggregate_function_bind_args;
-
-typedef struct duckdb_v2_aggregate_function_size_args duckdb_v2_aggregate_function_size_args;
-
-typedef struct duckdb_v2_aggregate_function_init_args duckdb_v2_aggregate_function_init_args;
-
-typedef struct duckdb_v2_aggregate_function_update_args duckdb_v2_aggregate_function_update_args;
-
-typedef struct duckdb_v2_aggregate_function_combine_args duckdb_v2_aggregate_function_combine_args;
-
-typedef struct duckdb_v2_aggregate_function_finalize_args duckdb_v2_aggregate_function_finalize_args;
-
-typedef struct duckdb_v2_aggregate_function_destroy_args duckdb_v2_aggregate_function_destroy_args;
-
-/* --- Types for aggregate --- */
-//! An opaque handle representing a builder for defining and registering a custom aggregate function in DuckDB. The
-//! builder allows you to specify the function's name, argument types, return type, and implementation callbacks. After
-//! configuring the builder, you can register the function with DuckDB to make it available for use in SQL queries.
-typedef struct _duckdb_v2_aggregate_function_builder {
-	void *internal_ptr;
-} * duckdb_v2_aggregate_function_builder_handle;
-
-/* --- Constants for aggregate --- */
-
-/* --- Error Codes for aggregate --- */
-
-/* --- Function pointer typedefs for aggregate --- */
-typedef void (*duckdb_v2_aggregate_function_bind_callback_fn)(duckdb_v2_aggregate_function_bind_args *args,
-                                                              duckdb_v2_context_handle context,
-                                                              duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_aggregate_function_size_callback_fn)(duckdb_v2_aggregate_function_size_args *args,
-                                                              duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_aggregate_function_init_callback_fn)(duckdb_v2_aggregate_function_init_args *args,
-                                                              duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_aggregate_function_update_callback_fn)(duckdb_v2_aggregate_function_update_args *args,
-                                                                duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_aggregate_function_combine_callback_fn)(duckdb_v2_aggregate_function_combine_args *args,
-                                                                 duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_aggregate_function_finalize_callback_fn)(duckdb_v2_aggregate_function_finalize_args *args,
-                                                                  duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_aggregate_function_destroy_callback_fn)(duckdb_v2_aggregate_function_destroy_args *args,
-                                                                 duckdb_v2_error_info_handle *err);
-
-/* --- Functions for aggregate --- */
-/*!
- * Creates a new aggregate function builder
- * Creates a new aggregate function builder that can be used to define and register a custom aggregate function in
- * DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation
- * callbacks.
- * @param context The DuckDB context in which to create the aggregate function builder.
- * @param out On success, receives the newly created aggregate function builder. The caller owns the builder and must
- * destroy it with `aggregate_function_builder_destroy`.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(
-    duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle *out,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Destroys an aggregate function builder
- * Destroys an aggregate function builder that was created with `aggregate_function_builder_create`. This should be
- * called to free resources associated with the builder when it is no longer needed.
- * @param builder The aggregate function builder to destroy. After this call, the builder handle is invalid and should
- * not be used.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builder_handle *builder);
-/*!
- * Sets the name of the aggregate function being built
- * Sets the name of the aggregate function being defined by the builder. This is the name that will be used to call the
- * function in SQL queries.
- * @param builder The aggregate function builder for which to set the name.
- * @param name The name to set for the function.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_str name, duckdb_v2_error_info_handle *err);
-/*!
-* Adds a parameter to a aggregate function.
-* Adds a parameter to a aggregate function with the specified name and type.
-The library makes an internal copy of the provided name and type, and does not take ownership of either.
-
-* @param func The aggregate function to configure.
-* @param name The name of the parameter to add.
-* @param type The type of the parameter to add.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_add_parameter(
-    duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_str name, duckdb_v2_logical_type_handle type,
-    duckdb_v2_error_info_handle *err);
-/*!
-* Sets the return type of a aggregate function.
-* Sets the return type of a aggregate function. The library makes an internal copy of the provided type and does not
-take ownership of it. Failing to set a return type before registration results in an error.
-
-* @param func The aggregate function to configure.
-* @param type The return type to set for the function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_return_type(
-    duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_logical_type_handle type,
-    duckdb_v2_error_info_handle *err);
-/*!
-* Sets a property on an aggregate function.
-* Configures a function property that influences planning and execution. In addition to the shared base properties
-(stability, NULL handling, fallibility, collation handling), aggregate functions also accept the aggregate-specific keys
-(order dependence, distinct dependence). The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches
-`key`; passing a value that does not correspond to `key`, or a key that is not valid for aggregate functions, results in
-an error.
-
-* @param func The aggregate function to configure.
-* @param key The property to set.
-* @param value The value to set for the property. Must be a value that matches `key`.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_property(
-    duckdb_v2_aggregate_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value, duckdb_v2_error_info_handle *err);
-/*!
-* Gets a property from an aggregate function.
-* Retrieves the current value of a function property previously set with `aggregate_function_builder_set_property`, or
-its default if it was never set. Passing a key that is not valid for aggregate functions results in an error.
-
-* @param func The aggregate function to query.
-* @param key The property to retrieve.
-* @param out_value On success, receives the current value of the property.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_get_property(
-    duckdb_v2_aggregate_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
-/*!
-* Sets the bind callback for the aggregate function being built
-* The "bind" callback is invoked once during query planning. It can set bind data via `out_bind_data`, which is then
-passed to the update, combine, finalize, and destroy callbacks. This is useful for sharing information computed during
-binding (e.g. resolved argument types or configuration) with execution. The bind callback is optional; if not set, no
-bind data is associated with the function. Note that bind data is not available to the size and init callbacks.
-
-* @param builder The aggregate function builder for which to set the bind callback.
-* @param callback The bind callback function to set for the aggregate function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_bind_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_bind_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Sets the size callback for the aggregate function being built
- * Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB
- * to determine how much memory to allocate for each aggregate state.
- * @param builder The aggregate function builder for which to set the size callback.
- * @param callback The size callback function to set for the aggregate function.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_size_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_size_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Sets the init callback for the aggregate function being built
- * Sets the init callback for the aggregate function being defined by the builder. The init callback is called by DuckDB
- * to initialize the aggregate state for a single state before any updates are applied.
- * @param builder The aggregate function builder for which to set the init callback.
- * @param callback The init callback function to set for the aggregate function.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_init_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_init_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Sets the update callback for the aggregate function being built
- * Sets the update callback for the aggregate function being defined by the builder. The update callback is called by
- * DuckDB to apply a batch of input rows to a batch of aggregate states.
- * @param builder The aggregate function builder for which to set the update callback.
- * @param callback The update callback function to set for the aggregate function.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_update_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_update_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Sets the combine callback for the aggregate function being built
- * Sets the combine callback for the aggregate function being defined by the builder. The combine callback is called by
- * DuckDB to combine batches of source aggregate states into batches of destination aggregate states, such as when
- * merging partial aggregates in a parallel execution.
- * @param builder The aggregate function builder for which to set the combine callback.
- * @param callback The combine callback function to set for the aggregate function.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_combine_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_combine_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Sets the finalize callback for the aggregate function being built
- * Sets the finalize callback for the aggregate function being defined by the builder. The finalize callback is called
- * by DuckDB to finalize a batch of aggregate states into a batch of result values, such as when producing the final
- * output of an aggregate function.
- * @param builder The aggregate function builder for which to set the finalize callback.
- * @param callback The finalize callback function to set for the aggregate function.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_finalize_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_finalize_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Sets the destroy callback for the aggregate function being built
- * Sets the destroy callback for the aggregate function being defined by the builder. The destroy callback is called by
- * DuckDB to destroy a batch of aggregate states and free their resources, such as when cleaning up after an aggregate
- * function has finished processing.
- * @param builder The aggregate function builder for which to set the destroy callback.
- * @param callback The destroy callback function to set for the aggregate function.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_destroy_callback(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_destroy_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
- * Sets user data for the aggregate function being built
- * Sets a user data pointer for the aggregate function being defined by the builder. This pointer is passed to all of
- * the function's callbacks and can be used to store context or state needed by the callbacks.
- * @param builder The aggregate function builder for which to set the user data.
- * @param data The user data pointer to set for the aggregate function. This pointer is passed to all of the function's
- * callbacks and can be used to store context or state needed by the callbacks.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_user_data(
-    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
-/*!
- * Registers the aggregate function being built
- * Registers the aggregate function defined by the builder with DuckDB, making it available for use in SQL queries.
- * @param context The DuckDB context in which to register the function.
- * @param builder The aggregate function builder to register.
- * @param err Optional. Error info handle to write details to if the call fails.
- * @return DUCKDB_V2_API_CALL_t
- */
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
-    duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle builder,
-    duckdb_v2_error_info_handle *err);
-
-/* --- Struct definitions for aggregate --- */
-struct duckdb_v2_aggregate_function_bind_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str function_name;
-	//! The user data pointer that was set for the function builder via `aggregate_function_builder_set_user_data`, if
-	//! any.
-	void *user_data;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to the aggregate's "bind data" plus
-	//! optional destructor and equality callbacks. The bind data is accessible from the update, combine, finalize, and
-	//! destroy callbacks, which is useful for sharing information computed during binding (e.g. resolved argument types
-	//! or configuration) with execution. The destructor, if provided, is used to destroy the bind data when it's no
-	//! longer needed. The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan
-	//! caching/reuse); otherwise a default pointer equality check is used.
-	duckdb_v2_opaque out_bind_data;
-};
-
-struct duckdb_v2_aggregate_function_size_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! The size of the aggregate state for a single row, in bytes. The callback should write the required size to this
-	//! field on success.
-	idx_t out_size;
-};
-
-struct duckdb_v2_aggregate_function_init_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the
-	//! size returned by the size callback, and is initialized to zero. The callback should initialize this state on
-	//! success.
-	void *state;
-};
-
-struct duckdb_v2_aggregate_function_update_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of rows in the current batch being processed. This is the size of the `input` data chunk and the
-	//! number of aggregate states pointed to by `state`.
-	idx_t count;
-	//! The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument
-	//! passed to the aggregate function, with one row per input row for the current batch.
-	duckdb_v2_data_chunk_handle input;
-	//! Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers,
-	//! where each pointer points to the aggregate state for a single row. The callback should apply updates to these
-	//! states based on the input data on success.
-	void **states;
-};
-
-struct duckdb_v2_aggregate_function_combine_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of source and target states to combine. This is the size of the `sources` and `targets` arrays.
-	idx_t count;
-	//! Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be combined into the destination state.
-	void **sources;
-	//! Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be updated with the combined results from the source states.
-	void **targets;
-};
-
-struct duckdb_v2_aggregate_function_finalize_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of rows in the current batch being finalized. This is the size of the `state` array and the number of
-	//! result vectors pointed to by `result`.
-	idx_t count;
-	//! Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers,
-	//! where each pointer points to the aggregate state for a single row.
-	void **states;
-	//! The vector in which the function should write its result values for the current batch of rows being finalized.
-	duckdb_v2_vector_handle result;
-	//! The offset in the result vector at which to start writing results for the current batch. This is used when
-	//! finalizing multiple batches of rows into a single result vector.
-	idx_t result_offset;
-};
-
-struct duckdb_v2_aggregate_function_destroy_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of aggregate states to destroy. This is the size of the `states` array.
-	idx_t count;
-	//! Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be destroyed and have its resources freed.
-	void **states;
-};
-
-/* ============================================================================
  * MODULE: cast
  * ============================================================================ */
 
@@ -2508,6 +2038,173 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_destroy(duckdb_v2_file_h
 /* --- Struct definitions for file_system --- */
 
 /* ============================================================================
+ * MODULE: function
+ * ============================================================================ */
+
+/* --- Enums for function --- */
+//! Identifies a configurable function property. Pass one of these to
+//! `*_function_builder_set_property` / `_get_property` together with a
+//! matching `FUNCTION_PROPERTY_VALUE`. The high byte is the function-type
+//! group: COMMON (`0x01xxxx`) keys apply to all function types, while
+//! group-specific keys (e.g. aggregate `0x03xxxx`) are only valid for that
+//! function type and are rejected with an error otherwise.
+typedef enum DUCKDB_V2_FUNCTION_PROPERTY_KEY {
+	/* How stable/deterministic the function's result is across rows and queries. Accepts the
+	   `FUNCTION_PROPERTY_STABILITY_*` values. Defaults to `CONSISTENT`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY = 65536,
+	/* Whether the function handles NULL inputs itself. Accepts the `FUNCTION_PROPERTY_NULL_HANDLING_*` values. Defaults
+	   to `DEFAULT` (NULL in, NULL out). */
+	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING = 65792,
+	/* Whether the function can raise a runtime error. Accepts the `FUNCTION_PROPERTY_FALLIBILITY_*` values. Defaults to
+	   `INFALLIBLE`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY = 66048,
+	/* How the function interacts with collations on its arguments. Accepts the `FUNCTION_PROPERTY_COLLATION_HANDLING_*`
+	   values. Defaults to `PROPAGATE`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING = 66304,
+	/* Aggregate only. Whether the aggregate's result depends on the order in which rows are aggregated. Accepts the
+	   `FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_*` values. Defaults to `YES`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT = 196608,
+	/* Aggregate only. Whether the aggregate's result is affected by a DISTINCT modifier. Accepts the
+	   `FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_*` values. Defaults to `YES`. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT = 196864,
+} DUCKDB_V2_FUNCTION_PROPERTY_KEY;
+
+//! A value for a `FUNCTION_PROPERTY_KEY`. Each key owns a 256-value block: a
+//! value `V` is valid for key `K` iff `(V & 0xFFFF00) == K`, and shares the
+//! key's function-type group (`V & 0xFF0000`) in its high byte. Passing a
+//! value that does not match the key is rejected with an error. Boolean-like
+//! properties are
+//! expressed as named values so that additional values can be added later
+//! without breaking the ABI.
+typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
+	/* The function always returns the same result given the same input. */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT = 65536,
+	/* The result may differ per row (e.g. random()). */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_VOLATILE = 65537,
+	/* The result is stable within a single query/transaction but may change across queries (e.g. now()). */
+	DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT_WITHIN_QUERY = 65538,
+	/* Default NULL handling: if any argument is NULL the result is NULL and the function is not invoked for that row.
+	 */
+	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_DEFAULT = 65792,
+	/* The function handles NULL inputs itself and is invoked even when arguments are NULL. */
+	DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL = 65793,
+	/* The function never raises a runtime error. */
+	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_INFALLIBLE = 66048,
+	/* The function may raise a runtime error for some inputs. */
+	DUCKDB_V2_FUNCTION_PROPERTY_FALLIBILITY_FALLIBLE = 66049,
+	/* The function combines collations from its inputs and propagates them to its result (default). */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PROPAGATE = 66304,
+	/* Combinable collations are executed on the input arguments before the function runs. */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_PUSH_COMBINABLE = 66305,
+	/* Collations are ignored by the function. */
+	DUCKDB_V2_FUNCTION_PROPERTY_COLLATION_HANDLING_IGNORE = 66306,
+	/* The aggregate's result depends on the order in which rows are aggregated (default). */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_YES = 196608,
+	/* The aggregate's result does not depend on input order. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_NO = 196609,
+	/* The aggregate's result is affected by a DISTINCT modifier (default). */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_YES = 196864,
+	/* The aggregate's result is not affected by a DISTINCT modifier. */
+	DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO = 196865,
+} DUCKDB_V2_FUNCTION_PROPERTY_VALUE;
+
+/* --- Struct forward declarations for function --- */
+
+/* --- Types for function --- */
+//! Borrowed handle to a function's bound argument list during the bind callback. Provides the
+//! argument count, per-index access to argument types and folded values, and two mutations
+//! (replace an argument with a constant, truncate the list from the tail). Valid only for the
+//! duration of the bind callback; do not store it.
+typedef struct _duckdb_v2_bind_arguments {
+	void *internal_ptr;
+} * duckdb_v2_bind_arguments_handle;
+
+/* --- Constants for function --- */
+
+/* --- Error Codes for function --- */
+
+/* --- Function pointer typedefs for function --- */
+
+/* --- Functions for function --- */
+/*!
+* Returns the number of bound arguments.
+* One entry per argument the call supplied, including varargs extras (already expanded).
+
+* @param args The bind arguments handle.
+* @param out_count Receives the argument count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_get_count(duckdb_v2_bind_arguments_handle args,
+                                                                     idx_t *out_count,
+                                                                     duckdb_v2_error_info_handle *err);
+/*!
+* Returns the resolved type of a bound argument.
+* An owned copy of argument `index`'s resolved type; the caller destroys it via
+logical_type_destroy. Returns ERROR_INVALID_INPUT if index is out of range (>= the count
+from bind_arguments_get_count).
+
+* @param args The bind arguments handle.
+* @param index Zero-based argument index.
+* @param out_type Receives the owned argument type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_get_type(duckdb_v2_bind_arguments_handle args, idx_t index,
+                                                                    duckdb_v2_logical_type_handle *out_type,
+                                                                    duckdb_v2_error_info_handle *err);
+/*!
+* Folds a bound argument to a constant value.
+* Evaluates argument `index` to a single owned value the caller destroys via value_destroy.
+Exists because bind runs before optimizer constant folding, so a constant-computable
+argument (e.g. 0.25 + 0.25) is not yet a plain constant. Returns ERROR_INVALID_INPUT if the
+argument is not constant-foldable (e.g. it references a column) or index is out of range; a
+runtime error raised while evaluating surfaces as its own error code.
+
+* @param args The bind arguments handle.
+* @param ctx The bind callback's context.
+* @param index Zero-based argument index.
+* @param out_value Receives the owned folded value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_fold(duckdb_v2_bind_arguments_handle args,
+                                                                duckdb_v2_context_handle ctx, idx_t index,
+                                                                duckdb_v2_value_handle *out_value,
+                                                                duckdb_v2_error_info_handle *err);
+/*!
+* Replaces a bound argument with a constant value.
+* Replaces the argument at `index` with a bound constant carrying `value`. The engine casts the
+constant to the function's declared type for that slot, exactly as it would any argument. Use
+it to bake a folded configuration value back into the plan. The value is borrowed and copied
+in. Returns ERROR_INVALID_INPUT if index is out of range.
+
+* @param args The bind arguments handle.
+* @param index Zero-based argument index to replace.
+* @param value The constant value. Borrowed; copied in.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_set_constant(duckdb_v2_bind_arguments_handle args,
+                                                                        idx_t index, duckdb_v2_value_handle value,
+                                                                        duckdb_v2_error_info_handle *err);
+/*!
+* Shrinks the bound argument list from the tail.
+* Drops trailing arguments so the list keeps exactly `count` arguments; the exec (scalar) or
+update (aggregate) callback then sees `count` input columns. Only shrinking is allowed:
+`count` must be <= the current count, otherwise ERROR_INVALID_INPUT.
+
+* @param args The bind arguments handle.
+* @param count The number of arguments to keep. Must be <= the current count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_truncate(duckdb_v2_bind_arguments_handle args, idx_t count,
+                                                                    duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for function --- */
+
+/* ============================================================================
  * MODULE: logging
  * ============================================================================ */
 
@@ -2726,15 +2423,22 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 /* --- Functions for logical_type --- */
 /*!
 * Creates a logical type from a primitive type id.
-* Only primitive type ids (no kind-specific parameters) are accepted:
+* Accepts primitive type ids (no kind-specific parameters):
 BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
 FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
-VARCHAR, BLOB, BIT, BIGNUM, UUID.
+VARCHAR, BLOB, BIT, BIGNUM, UUID. Also accepts ANY.
+
+ANY is a function-signature wildcard, constructible here so it can
+be passed to function parameter and varargs setters (a fixed-arity
+ANY parameter, or an ANY varargs type). Data-creating surfaces
+reject it: value and data_chunk creation, scalar and aggregate
+return types, table function result columns, cast source and
+target types, and custom type registration.
 
 Returns ERROR_INVALID_INPUT for parameterised type ids
 (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
-for bind-time-only ids (SQLNULL, ANY, UNKNOWN), for TYPE (construct
-it via logical_type_create_from_text), and for INVALID.
+for the remaining bind-time-only ids (SQLNULL, UNKNOWN), for TYPE
+(construct it via logical_type_create_from_text), and for INVALID.
 Composite construction is not part of this surface yet.
 
 * @param type_id The primitive type id to instantiate.
@@ -2897,7 +2601,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_name(duckdb_v2_logi
 * Mirrors duckdb::LogicalType::ToString(). An aliased type renders as
 its alias; logical_type_create_from_text resolves that spelling only
 when the name is registered in the connection's catalog. Round-trips
-through logical_type_create_from_text for every constructible kind.
+through logical_type_create_from_text for every constructible kind,
+with one exception: ANY renders as "ANY", but from_text cannot parse
+it back (ANY is a signature wildcard, not a parseable SQL type).
 
 * @param type The logical type.
 * @param out_text Receives a malloc'd null-terminated string. Caller frees.
@@ -3100,267 +2806,6 @@ duckdb_v2_replacement_scan_add_named_parameter(duckdb_v2_replacement_scan_info_h
                                                duckdb_v2_value_handle value, duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for replacement_scan --- */
-
-/* ============================================================================
- * MODULE: scalar
- * ============================================================================ */
-
-/* --- Enums for scalar --- */
-
-/* --- Struct forward declarations for scalar --- */
-typedef struct duckdb_v2_scalar_function_bind_args duckdb_v2_scalar_function_bind_args;
-
-typedef struct duckdb_v2_scalar_function_init_args duckdb_v2_scalar_function_init_args;
-
-typedef struct duckdb_v2_scalar_function_exec_args duckdb_v2_scalar_function_exec_args;
-
-/* --- Types for scalar --- */
-//! An opaque handle to a scalar function builder.
-//! Created with `scalar_function_builder_create`, configured with the various `scalar_function_set_*` functions, and
-//! registered with `scalar_function_register`. The builder is owned by the caller and must be destroyed with
-//! `scalar_function_builder_destroy` when no longer needed.
-typedef struct _duckdb_v2_scalar_function_builder {
-	void *internal_ptr;
-} * duckdb_v2_scalar_function_builder_handle;
-
-/* --- Constants for scalar --- */
-
-/* --- Error Codes for scalar --- */
-
-/* --- Function pointer typedefs for scalar --- */
-typedef void (*duckdb_v2_scalar_function_bind_callback_fn)(duckdb_v2_scalar_function_bind_args *args,
-                                                           duckdb_v2_context_handle context,
-                                                           duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_scalar_function_init_callback_fn)(duckdb_v2_scalar_function_init_args *args,
-                                                           duckdb_v2_context_handle context,
-                                                           duckdb_v2_error_info_handle *err);
-
-typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_function_exec_args *args,
-                                                           duckdb_v2_context_handle context,
-                                                           duckdb_v2_error_info_handle *err);
-
-/* --- Functions for scalar --- */
-/*!
-* Creates a new scalar function.
-* Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and
-registered with `scalar_function_register`. On success, returns a handle to the new builder. The builder is owned by the
-caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.
-
-* @param name The DuckDB context in which the function will be created.
-* @param out On success, receives the newly created scalar function builder. The caller owns the builder and must
-destroy it with `scalar_function_builder_destroy`.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(
-    duckdb_v2_context_handle name, duckdb_v2_scalar_function_builder_handle *out, duckdb_v2_error_info_handle *err);
-/*!
-* Sets the name of a scalar function.
-* The library makes an internal copy of the provided name and does not take ownership.
-Failing to set a name before registration results in an error.
-
-* @param func The scalar function to configure
-* @param name The name to set for the function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_str name, duckdb_v2_error_info_handle *err);
-/*!
-* Sets the bind callback for a scalar function.
-* The "Bind" callback is invoked during query planning and can be used to perform type resolution, argument validation,
-and other setup tasks. Additionally a "Bind" callback can set a "bind data" pointer which can be accessed by later
-callbacks (e.g. "Init" and "Exec") to share information between the planning and execution phases.
-
-* @param func The scalar function to configure.
-* @param callback The bind callback to set for the function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_bind_callback(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_bind_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
-* Sets the init callback for a scalar function.
-* The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the
-function. It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via
-`scalar_function_get_init_data` to keep worker-local mutable state across invocations of the function.
-
-* @param func The scalar function to configure.
-* @param callback The "init callback" to set for the function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_init_callback(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_init_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
-* Sets the "exec" callback for a scalar function.
-* The "Exec" callback is invoked during query execution to evaluate the function for each batch of input rows.
-This is the main callback that implements the logic of the function.
-Failing to set an "exec" callback before registration results in an error.
-
-* @param func The scalar function to configure.
-* @param callback The "exec" callback to set for the function. This is the callback that will be invoked to execute the
-function for each batch of input rows during query execution.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_exec_callback(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_exec_callback_fn callback,
-    duckdb_v2_error_info_handle *err);
-/*!
-* Registers a scalar function with a database, making the function available for use in queries.
-* This function registers a fully configured scalar function builder with a database, making the function available for
-use in SQL queries executed on that database. The function builder must have at least its name and exec callback set
-before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured
-function and its properties during registration, so the caller retains ownership of the builder and can safely destroy
-or modify it after registration without affecting the registered function.
-
-* @param context The DuckDB context in which to register the function.
-* @param func The scalar function to register.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(
-    duckdb_v2_context_handle context, duckdb_v2_scalar_function_builder_handle func, duckdb_v2_error_info_handle *err);
-/*!
-* Destroys a scalar function, releasing its resources.
-* This function destroys a scalar function builder that was created with `scalar_function_builder_create`, releasing any
-resources associated with it. If the builder has already been registered with a database, destroying it does not affect
-the registered function in the database, as DuckDB makes an internal copy of the function during registration. This
-function is null-safe: calling it with a null pointer is a no-op and returns ERROR_NONE. The handle is set to null on
-return to prevent double-destruction.
-
-* @param func The scalar function to destroy.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_handle *func);
-/*!
-* Sets arbitrary extra data on a scalar function.
-* This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function.
-This is useful for associating custom metadata or static context with the function that can be retrieved later from
-callbacks via `scalar_function_get_user_data`.
-
-* @param func The scalar function to configure.
-* @param data Opaque pointer to user data.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
-/*!
-* Adds a parameter to a scalar function.
-* Adds a parameter to a scalar function with the specified name and type.
-The library makes an internal copy of the provided name and type, and does not take ownership of either.
-
-* @param func The scalar function to configure.
-* @param name The name of the parameter to add.
-* @param type The type of the parameter to add.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_handle func, duckdb_v2_str name,
-                                                duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
-/*!
-* Sets the return type of a scalar function.
-* Sets the return type of a scalar function. The library makes an internal copy of the provided type and does not take
-ownership of it. Failing to set a return type before registration results in an error.
-
-* @param func The scalar function to configure.
-* @param type The return type to set for the function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t
-duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
-                                                  duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
-/*!
-* Sets a property on a scalar function.
-* Configures a function property that influences planning and execution, such as stability (volatility), NULL handling,
-fallibility, or collation handling. The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches `key`;
-passing a value that does not correspond to `key`, or a key that is not valid for scalar functions, results in an error.
-
-* @param func The scalar function to configure.
-* @param key The property to set.
-* @param value The value to set for the property. Must be a value that matches `key`.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_property(
-    duckdb_v2_scalar_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value, duckdb_v2_error_info_handle *err);
-/*!
-* Gets a property from a scalar function.
-* Retrieves the current value of a function property previously set with `scalar_function_builder_set_property`, or its
-default if it was never set. Passing a key that is not valid for scalar functions results in an error.
-
-* @param func The scalar function to query.
-* @param key The property to retrieve.
-* @param out_value On success, receives the current value of the property.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_API_CALL_t
-*/
-DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property(
-    duckdb_v2_scalar_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
-
-/* --- Struct definitions for scalar --- */
-struct duckdb_v2_scalar_function_bind_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to user data (the function's "bind
-	//! data") plus optional destructor and equality callbacks. The bind data is accessible from later callbacks (e.g.
-	//! "init" and "exec"), which is useful for sharing information between the planning and execution phases such as
-	//! resolved argument types, prepared statements, or other metadata computed during binding. The destructor, if
-	//! provided, is used to destroy the bind data when it's no longer needed (e.g. at the end of query execution). The
-	//! equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse);
-	//! otherwise a default pointer equality check is used.
-	duckdb_v2_opaque out_bind_data;
-};
-
-struct duckdb_v2_scalar_function_init_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being initialized. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! Opaque pointer to user data set by the function's "bind" callback, if any
-	void *bind_data;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to worker-local "init data" plus an
-	//! optional destructor callback. The init data is associated with the executing worker thread for the duration of
-	//! the query and accessible from the function's "exec" callback. Note that the "init data" is worker-local, not
-	//! _thread local_: there is no guarantee that the same thread will see the same "init data" across multiple
-	//! invocations of the function. The destructor, if provided, is used to destroy the init data when it's no longer
-	//! needed; the opaque handle's equality callback is unused for init data.
-	duckdb_v2_opaque out_init_data;
-};
-
-struct duckdb_v2_scalar_function_exec_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being executed. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! Opaque pointer to user data set by the function's "bind" callback, if any
-	void *bind_data;
-	//! Opaque pointer to user data set by the function's "init" callback for the executing worker thread, if any
-	void *init_data;
-	//! The input data chunk for the current invocation. This contains vectors for each argument passed to the function,
-	//! with one row per input row for the current batch.
-	duckdb_v2_data_chunk_handle input;
-	//! The vector in which the function should write its result values for the current invocation.
-	duckdb_v2_vector_handle result;
-};
 
 /* ============================================================================
  * MODULE: schema
@@ -4163,6 +3608,417 @@ struct duckdb_v2_interval_t {
 };
 
 /* ============================================================================
+ * MODULE: aggregate
+ * ============================================================================ */
+
+/* --- Enums for aggregate --- */
+
+/* --- Struct forward declarations for aggregate --- */
+typedef struct duckdb_v2_aggregate_function_bind_args duckdb_v2_aggregate_function_bind_args;
+
+typedef struct duckdb_v2_aggregate_function_size_args duckdb_v2_aggregate_function_size_args;
+
+typedef struct duckdb_v2_aggregate_function_init_args duckdb_v2_aggregate_function_init_args;
+
+typedef struct duckdb_v2_aggregate_function_update_args duckdb_v2_aggregate_function_update_args;
+
+typedef struct duckdb_v2_aggregate_function_combine_args duckdb_v2_aggregate_function_combine_args;
+
+typedef struct duckdb_v2_aggregate_function_finalize_args duckdb_v2_aggregate_function_finalize_args;
+
+typedef struct duckdb_v2_aggregate_function_destroy_args duckdb_v2_aggregate_function_destroy_args;
+
+/* --- Types for aggregate --- */
+//! An opaque handle representing a builder for defining and registering a custom aggregate function in DuckDB. The
+//! builder allows you to specify the function's name, argument types, return type, and implementation callbacks. After
+//! configuring the builder, you can register the function with DuckDB to make it available for use in SQL queries.
+typedef struct _duckdb_v2_aggregate_function_builder {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_builder_handle;
+
+/* --- Constants for aggregate --- */
+
+/* --- Error Codes for aggregate --- */
+
+/* --- Function pointer typedefs for aggregate --- */
+typedef void (*duckdb_v2_aggregate_function_bind_callback_fn)(duckdb_v2_aggregate_function_bind_args *args,
+                                                              duckdb_v2_context_handle context,
+                                                              duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_aggregate_function_size_callback_fn)(duckdb_v2_aggregate_function_size_args *args,
+                                                              duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_aggregate_function_init_callback_fn)(duckdb_v2_aggregate_function_init_args *args,
+                                                              duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_aggregate_function_update_callback_fn)(duckdb_v2_aggregate_function_update_args *args,
+                                                                duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_aggregate_function_combine_callback_fn)(duckdb_v2_aggregate_function_combine_args *args,
+                                                                 duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_aggregate_function_finalize_callback_fn)(duckdb_v2_aggregate_function_finalize_args *args,
+                                                                  duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_aggregate_function_destroy_callback_fn)(duckdb_v2_aggregate_function_destroy_args *args,
+                                                                 duckdb_v2_error_info_handle *err);
+
+/* --- Functions for aggregate --- */
+/*!
+ * Creates a new aggregate function builder
+ * Creates a new aggregate function builder that can be used to define and register a custom aggregate function in
+ * DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation
+ * callbacks.
+ * @param context The DuckDB context in which to create the aggregate function builder.
+ * @param out On success, receives the newly created aggregate function builder. The caller owns the builder and must
+ * destroy it with `aggregate_function_builder_destroy`.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(
+    duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle *out,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Destroys an aggregate function builder
+ * Destroys an aggregate function builder that was created with `aggregate_function_builder_create`. This should be
+ * called to free resources associated with the builder when it is no longer needed.
+ * @param builder The aggregate function builder to destroy. After this call, the builder handle is invalid and should
+ * not be used.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builder_handle *builder);
+/*!
+ * Sets the name of the aggregate function being built
+ * Sets the name of the aggregate function being defined by the builder. This is the name that will be used to call the
+ * function in SQL queries.
+ * @param builder The aggregate function builder for which to set the name.
+ * @param name The name to set for the function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_str name, duckdb_v2_error_info_handle *err);
+/*!
+* Adds a parameter to a aggregate function.
+* Adds a fixed parameter to a aggregate function with the specified name and type.
+The library makes an internal copy of the provided name and type, and does not take ownership of either.
+ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured separately via
+aggregate_function_builder_set_varargs.
+
+* @param func The aggregate function to configure.
+* @param name The name of the parameter to add.
+* @param type The type of the parameter to add.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_add_parameter(
+    duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_str name, duckdb_v2_logical_type_handle type,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets the varargs type of an aggregate function.
+* Makes the aggregate variadic: after its fixed parameters, it accepts any number of extra
+trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail whose
+arguments keep their own types. A NULL or INVALID type is rejected with ERROR_INVALID_INPUT;
+ANY is accepted. Calling this again overwrites the previous varargs type. The library copies
+the type and does not take ownership.
+
+* @param func The aggregate function to configure.
+* @param type The type extra trailing arguments are cast to. ANY leaves them un-cast.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_builder_set_varargs(duckdb_v2_aggregate_function_builder_handle func,
+                                                 duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the return type of a aggregate function.
+* Sets the return type of a aggregate function. The library makes an internal copy of the provided type and does not
+take ownership of it. Failing to set a return type before registration results in an error. The return type must not be
+ANY: registration rejects an ANY return type with ERROR_INVALID_INPUT.
+
+* @param func The aggregate function to configure.
+* @param type The return type to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_return_type(
+    duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_logical_type_handle type,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets a property on an aggregate function.
+* Configures a function property that influences planning and execution. In addition to the shared base properties
+(stability, NULL handling, fallibility, collation handling), aggregate functions also accept the aggregate-specific keys
+(order dependence, distinct dependence). The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches
+`key`; passing a value that does not correspond to `key`, or a key that is not valid for aggregate functions, results in
+an error.
+
+* @param func The aggregate function to configure.
+* @param key The property to set.
+* @param value The value to set for the property. Must be a value that matches `key`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_property(
+    duckdb_v2_aggregate_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value, duckdb_v2_error_info_handle *err);
+/*!
+* Gets a property from an aggregate function.
+* Retrieves the current value of a function property previously set with `aggregate_function_builder_set_property`, or
+its default if it was never set. Passing a key that is not valid for aggregate functions results in an error.
+
+* @param func The aggregate function to query.
+* @param key The property to retrieve.
+* @param out_value On success, receives the current value of the property.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_get_property(
+    duckdb_v2_aggregate_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the bind callback for the aggregate function being built
+* The "bind" callback is invoked once during query planning. It can set bind data via `out_bind_data`, which is then
+passed to the update, combine, finalize, and destroy callbacks. This is useful for sharing information computed during
+binding (e.g. resolved argument types or configuration) with execution. The bind callback is optional; if not set, no
+bind data is associated with the function. Note that bind data is not available to the size and init callbacks.
+
+* @param builder The aggregate function builder for which to set the bind callback.
+* @param callback The bind callback function to set for the aggregate function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_bind_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_bind_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the size callback for the aggregate function being built
+ * Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB
+ * to determine how much memory to allocate for each aggregate state.
+ * @param builder The aggregate function builder for which to set the size callback.
+ * @param callback The size callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_size_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_size_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the init callback for the aggregate function being built
+ * Sets the init callback for the aggregate function being defined by the builder. The init callback is called by DuckDB
+ * to initialize the aggregate state for a single state before any updates are applied.
+ * @param builder The aggregate function builder for which to set the init callback.
+ * @param callback The init callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_init_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_init_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the update callback for the aggregate function being built
+ * Sets the update callback for the aggregate function being defined by the builder. The update callback is called by
+ * DuckDB to apply a batch of input rows to a batch of aggregate states.
+ * @param builder The aggregate function builder for which to set the update callback.
+ * @param callback The update callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_update_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_update_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the combine callback for the aggregate function being built
+ * Sets the combine callback for the aggregate function being defined by the builder. The combine callback is called by
+ * DuckDB to combine batches of source aggregate states into batches of destination aggregate states, such as when
+ * merging partial aggregates in a parallel execution.
+ * @param builder The aggregate function builder for which to set the combine callback.
+ * @param callback The combine callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_combine_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_combine_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the finalize callback for the aggregate function being built
+ * Sets the finalize callback for the aggregate function being defined by the builder. The finalize callback is called
+ * by DuckDB to finalize a batch of aggregate states into a batch of result values, such as when producing the final
+ * output of an aggregate function.
+ * @param builder The aggregate function builder for which to set the finalize callback.
+ * @param callback The finalize callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_finalize_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_finalize_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the destroy callback for the aggregate function being built
+ * Sets the destroy callback for the aggregate function being defined by the builder. The destroy callback is called by
+ * DuckDB to destroy a batch of aggregate states and free their resources, such as when cleaning up after an aggregate
+ * function has finished processing.
+ * @param builder The aggregate function builder for which to set the destroy callback.
+ * @param callback The destroy callback function to set for the aggregate function.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_destroy_callback(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_aggregate_function_destroy_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+ * Sets user data for the aggregate function being built
+ * Sets a user data pointer for the aggregate function being defined by the builder. This pointer is passed to all of
+ * the function's callbacks and can be used to store context or state needed by the callbacks.
+ * @param builder The aggregate function builder for which to set the user data.
+ * @param data The user data pointer to set for the aggregate function. This pointer is passed to all of the function's
+ * callbacks and can be used to store context or state needed by the callbacks.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_user_data(
+    duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+* Registers the aggregate function being built
+* Registers the aggregate function defined by the builder with DuckDB, making it available for use in SQL queries.
+Registered functions do not support plan serialization; the bind callback runs once per binding of a call site.
+
+* @param context The DuckDB context in which to register the function.
+* @param builder The aggregate function builder to register.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
+    duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle builder,
+    duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for aggregate --- */
+struct duckdb_v2_aggregate_function_bind_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! The user data pointer that was set for the function builder via `aggregate_function_builder_set_user_data`, if
+	//! any.
+	void *user_data;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to the aggregate's "bind data" plus
+	//! optional destructor and equality callbacks. The bind data is accessible from the update, combine, finalize, and
+	//! destroy callbacks, which is useful for sharing information computed during binding (e.g. resolved argument types
+	//! or configuration) with execution. The destructor, if provided, is used to destroy the bind data when it's no
+	//! longer needed. The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan
+	//! caching/reuse); otherwise a default pointer equality check is used.
+	duckdb_v2_opaque out_bind_data;
+	//! Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the
+	//! bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a
+	//! constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only
+	//! for the duration of the callback.
+	duckdb_v2_bind_arguments_handle arguments;
+};
+
+struct duckdb_v2_aggregate_function_size_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! The size of the aggregate state for a single row, in bytes. The callback should write the required size to this
+	//! field on success.
+	idx_t out_size;
+};
+
+struct duckdb_v2_aggregate_function_init_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the
+	//! size returned by the size callback, and is initialized to zero. The callback should initialize this state on
+	//! success.
+	void *state;
+};
+
+struct duckdb_v2_aggregate_function_update_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
+	//! The number of rows in the current batch being processed. This is the size of the `input` data chunk and the
+	//! number of aggregate states pointed to by `state`.
+	idx_t count;
+	//! The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument
+	//! passed to the aggregate function, with one row per input row for the current batch.
+	duckdb_v2_data_chunk_handle input;
+	//! Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers,
+	//! where each pointer points to the aggregate state for a single row. The callback should apply updates to these
+	//! states based on the input data on success.
+	void **states;
+};
+
+struct duckdb_v2_aggregate_function_combine_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
+	//! The number of source and target states to combine. This is the size of the `sources` and `targets` arrays.
+	idx_t count;
+	//! Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be combined into the destination state.
+	void **sources;
+	//! Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be updated with the combined results from the source states.
+	void **targets;
+};
+
+struct duckdb_v2_aggregate_function_finalize_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
+	//! The number of rows in the current batch being finalized. This is the size of the `state` array and the number of
+	//! result vectors pointed to by `result`.
+	idx_t count;
+	//! Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers,
+	//! where each pointer points to the aggregate state for a single row.
+	void **states;
+	//! The vector in which the function should write its result values for the current batch of rows being finalized.
+	duckdb_v2_vector_handle result;
+	//! The offset in the result vector at which to start writing results for the current batch. This is used when
+	//! finalizing multiple batches of rows into a single result vector.
+	idx_t result_offset;
+};
+
+struct duckdb_v2_aggregate_function_destroy_args {
+	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
+	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
+	uint32_t struct_size;
+	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
+	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
+	void *user_data;
+	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
+	const void *bind_data;
+	//! The number of aggregate states to destroy. This is the size of the `states` array.
+	idx_t count;
+	//! Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an
+	//! aggregate state that should be destroyed and have its resources freed.
+	void **states;
+};
+
+/* ============================================================================
  * MODULE: arrow
  * ============================================================================ */
 
@@ -4786,6 +4642,292 @@ struct duckdb_v2_copy_function_finalize_args {
 };
 
 /* ============================================================================
+ * MODULE: scalar
+ * ============================================================================ */
+
+/* --- Enums for scalar --- */
+
+/* --- Struct forward declarations for scalar --- */
+typedef struct duckdb_v2_scalar_function_bind_args duckdb_v2_scalar_function_bind_args;
+
+typedef struct duckdb_v2_scalar_function_init_args duckdb_v2_scalar_function_init_args;
+
+typedef struct duckdb_v2_scalar_function_exec_args duckdb_v2_scalar_function_exec_args;
+
+/* --- Types for scalar --- */
+//! An opaque handle to a scalar function builder.
+//! Created with `scalar_function_builder_create`, configured with the various `scalar_function_set_*` functions, and
+//! registered with `scalar_function_register`. The builder is owned by the caller and must be destroyed with
+//! `scalar_function_builder_destroy` when no longer needed.
+typedef struct _duckdb_v2_scalar_function_builder {
+	void *internal_ptr;
+} * duckdb_v2_scalar_function_builder_handle;
+
+/* --- Constants for scalar --- */
+
+/* --- Error Codes for scalar --- */
+
+/* --- Function pointer typedefs for scalar --- */
+typedef void (*duckdb_v2_scalar_function_bind_callback_fn)(duckdb_v2_scalar_function_bind_args *args,
+                                                           duckdb_v2_context_handle context,
+                                                           duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_scalar_function_init_callback_fn)(duckdb_v2_scalar_function_init_args *args,
+                                                           duckdb_v2_context_handle context,
+                                                           duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_function_exec_args *args,
+                                                           duckdb_v2_context_handle context,
+                                                           duckdb_v2_error_info_handle *err);
+
+/* --- Functions for scalar --- */
+/*!
+* Creates a new scalar function.
+* Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and
+registered with `scalar_function_register`. On success, returns a handle to the new builder. The builder is owned by the
+caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.
+
+* @param name The DuckDB context in which the function will be created.
+* @param out On success, receives the newly created scalar function builder. The caller owns the builder and must
+destroy it with `scalar_function_builder_destroy`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(
+    duckdb_v2_context_handle name, duckdb_v2_scalar_function_builder_handle *out, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the name of a scalar function.
+* The library makes an internal copy of the provided name and does not take ownership.
+Failing to set a name before registration results in an error.
+
+* @param func The scalar function to configure
+* @param name The name to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_str name, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the bind callback for a scalar function.
+* The "Bind" callback is invoked during query planning and can be used to perform type resolution, argument validation,
+and other setup tasks. Additionally a "Bind" callback can set a "bind data" pointer which can be accessed by later
+callbacks (e.g. "Init" and "Exec") to share information between the planning and execution phases.
+
+* @param func The scalar function to configure.
+* @param callback The bind callback to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_bind_callback(
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_bind_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets the init callback for a scalar function.
+* The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the
+function. It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via
+`scalar_function_get_init_data` to keep worker-local mutable state across invocations of the function.
+
+* @param func The scalar function to configure.
+* @param callback The "init callback" to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_init_callback(
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_init_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets the "exec" callback for a scalar function.
+* The "Exec" callback is invoked during query execution to evaluate the function for each batch of input rows.
+This is the main callback that implements the logic of the function.
+Failing to set an "exec" callback before registration results in an error.
+
+* @param func The scalar function to configure.
+* @param callback The "exec" callback to set for the function. This is the callback that will be invoked to execute the
+function for each batch of input rows during query execution.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_exec_callback(
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_exec_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Registers a scalar function with a database, making the function available for use in queries.
+* This function registers a fully configured scalar function builder with a database, making the function available for
+use in SQL queries executed on that database. The function builder must have at least its name and exec callback set
+before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured
+function and its properties during registration, so the caller retains ownership of the builder and can safely destroy
+or modify it after registration without affecting the registered function. Registered functions do not support plan
+serialization; the bind callback runs once per binding of a call site.
+
+* @param context The DuckDB context in which to register the function.
+* @param func The scalar function to register.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(
+    duckdb_v2_context_handle context, duckdb_v2_scalar_function_builder_handle func, duckdb_v2_error_info_handle *err);
+/*!
+* Destroys a scalar function, releasing its resources.
+* This function destroys a scalar function builder that was created with `scalar_function_builder_create`, releasing any
+resources associated with it. If the builder has already been registered with a database, destroying it does not affect
+the registered function in the database, as DuckDB makes an internal copy of the function during registration. This
+function is null-safe: calling it with a null pointer is a no-op and returns ERROR_NONE. The handle is set to null on
+return to prevent double-destruction.
+
+* @param func The scalar function to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_handle *func);
+/*!
+* Sets arbitrary extra data on a scalar function.
+* This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function.
+This is useful for associating custom metadata or static context with the function that can be retrieved later from
+callbacks via `scalar_function_get_user_data`.
+
+* @param func The scalar function to configure.
+* @param data Opaque pointer to user data.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the varargs type of a scalar function.
+* Makes the function variadic: after its fixed parameters, it accepts any number of extra
+trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail whose
+arguments keep their own types (read them per column in the exec callback). A NULL or INVALID
+type is rejected with ERROR_INVALID_INPUT; ANY is accepted. Calling this again overwrites the
+previous varargs type. The library copies the type and does not take ownership.
+
+* @param func The scalar function to configure.
+* @param type The type extra trailing arguments are cast to. ANY leaves them un-cast.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_builder_set_varargs(duckdb_v2_scalar_function_builder_handle func,
+                                              duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Adds a parameter to a scalar function.
+* Adds a fixed parameter to a scalar function with the specified name and type.
+The library makes an internal copy of the provided name and type, and does not take ownership of either.
+ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured separately via
+scalar_function_builder_set_varargs.
+
+* @param func The scalar function to configure.
+* @param name The name of the parameter to add.
+* @param type The type of the parameter to add.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_handle func, duckdb_v2_str name,
+                                                duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the return type of a scalar function.
+* Sets the return type of a scalar function. The library makes an internal copy of the provided type and does not take
+ownership of it. Failing to set a return type before registration results in an error. The return type must be a fully
+defined concrete type: registration rejects ANY (and any other incomplete type) with ERROR_INVALID_INPUT.
+
+* @param func The scalar function to configure.
+* @param type The return type to set for the function.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
+                                                  duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Sets a property on a scalar function.
+* Configures a function property that influences planning and execution, such as stability (volatility), NULL handling,
+fallibility, or collation handling. The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches `key`;
+passing a value that does not correspond to `key`, or a key that is not valid for scalar functions, results in an error.
+
+* @param func The scalar function to configure.
+* @param key The property to set.
+* @param value The value to set for the property. Must be a value that matches `key`.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_property(
+    duckdb_v2_scalar_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value, duckdb_v2_error_info_handle *err);
+/*!
+* Gets a property from a scalar function.
+* Retrieves the current value of a function property previously set with `scalar_function_builder_set_property`, or its
+default if it was never set. Passing a key that is not valid for scalar functions results in an error.
+
+* @param func The scalar function to query.
+* @param key The property to retrieve.
+* @param out_value On success, receives the current value of the property.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property(
+    duckdb_v2_scalar_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for scalar --- */
+struct duckdb_v2_scalar_function_bind_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! Opaque pointer to user data set by the caller when registering the function, if any
+	void *user_data;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to user data (the function's "bind
+	//! data") plus optional destructor and equality callbacks. The bind data is accessible from later callbacks (e.g.
+	//! "init" and "exec"), which is useful for sharing information between the planning and execution phases such as
+	//! resolved argument types, prepared statements, or other metadata computed during binding. The destructor, if
+	//! provided, is used to destroy the bind data when it's no longer needed (e.g. at the end of query execution). The
+	//! equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse);
+	//! otherwise a default pointer equality check is used.
+	duckdb_v2_opaque out_bind_data;
+	//! Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the
+	//! bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a
+	//! constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only
+	//! for the duration of the callback.
+	duckdb_v2_bind_arguments_handle arguments;
+};
+
+struct duckdb_v2_scalar_function_init_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The name of the function being initialized. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! Opaque pointer to user data set by the caller when registering the function, if any
+	void *user_data;
+	//! Opaque pointer to user data set by the function's "bind" callback, if any
+	void *bind_data;
+	//! On success, the callback can set this to an opaque handle bundling a pointer to worker-local "init data" plus an
+	//! optional destructor callback. The init data is associated with the executing worker thread for the duration of
+	//! the query and accessible from the function's "exec" callback. Note that the "init data" is worker-local, not
+	//! _thread local_: there is no guarantee that the same thread will see the same "init data" across multiple
+	//! invocations of the function. The destructor, if provided, is used to destroy the init data when it's no longer
+	//! needed; the opaque handle's equality callback is unused for init data.
+	duckdb_v2_opaque out_init_data;
+};
+
+struct duckdb_v2_scalar_function_exec_args {
+	//! The size of this struct. This can be used for versioning and compatibility checks.
+	uint32_t struct_size;
+	//! The name of the function being executed. Borrowed; only valid for the duration of the callback.
+	duckdb_v2_str function_name;
+	//! Opaque pointer to user data set by the caller when registering the function, if any
+	void *user_data;
+	//! Opaque pointer to user data set by the function's "bind" callback, if any
+	void *bind_data;
+	//! Opaque pointer to user data set by the function's "init" callback for the executing worker thread, if any
+	void *init_data;
+	//! The input data chunk for the current invocation. This contains vectors for each argument passed to the function,
+	//! with one row per input row for the current batch.
+	duckdb_v2_data_chunk_handle input;
+	//! The vector in which the function should write its result values for the current invocation.
+	duckdb_v2_vector_handle result;
+};
+
+/* ============================================================================
  * MODULE: sql_statement
  * ============================================================================ */
 
@@ -5038,15 +5180,36 @@ duckdb_v2_table_function_builder_destroy(duckdb_v2_table_function_builder_handle
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_name(
     duckdb_v2_table_function_builder_handle builder, duckdb_v2_str name, duckdb_v2_error_info_handle *err);
 /*!
- * Adds a positional parameter to the function signature.
- * @param builder The builder to configure.
- * @param type The parameter's logical type.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
+* Adds a positional parameter to the function signature.
+* ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured
+separately via table_function_builder_set_varargs.
+
+* @param builder The builder to configure.
+* @param type The parameter's logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_table_function_builder_add_parameter(duckdb_v2_table_function_builder_handle builder,
                                                duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the varargs type of a table function.
+* Makes the function variadic: after its fixed positional parameters, it accepts any number of
+extra trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail
+whose arguments keep their own types. A NULL or INVALID type is rejected with
+ERROR_INVALID_INPUT; ANY is accepted. Calling this again overwrites the previous varargs type.
+The bind callback reads all positional arguments, fixed and extra alike, via
+table_function_bind_get_parameter_count and table_function_bind_get_parameter. The library
+copies the type and does not take ownership.
+
+* @param builder The builder to configure.
+* @param type The type extra trailing arguments are cast to. ANY leaves them un-cast.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_table_function_builder_set_varargs(duckdb_v2_table_function_builder_handle builder,
+                                             duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
 /*!
  * Adds a named (keyword) parameter to the function signature.
  * @param builder The builder to configure.
@@ -5170,16 +5333,32 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_register(
     duckdb_v2_context_handle context, duckdb_v2_table_function_builder_handle builder,
     duckdb_v2_error_info_handle *err);
 /*!
- * Declares an output column during bind.
- * @param info The bind info handle.
- * @param name Column name. The library copies it.
- * @param type The column's logical type.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
+* Declares an output column during bind.
+* The column type must be a fully defined concrete type: ANY is rejected with
+ERROR_INVALID_INPUT (a result column carries data, so a wildcard has no meaning).
+
+* @param info The bind info handle.
+* @param name Column name. The library copies it.
+* @param type The column's logical type.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_table_function_bind_add_result_column(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_str name,
                                                 duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
+/*!
+* Returns the number of positional parameters passed to the function.
+* Counts every positional argument the call supplied, fixed and (for a variadic function
+configured via table_function_builder_set_varargs) extra alike. Read each one by index with
+table_function_bind_get_parameter. Named parameters are not included.
+
+* @param info The bind info handle.
+* @param out_count Receives the positional parameter count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_parameter_count(
+    duckdb_v2_table_function_bind_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
 /*!
  * Retrieves a positional parameter value during bind.
  * @param info The bind info handle.

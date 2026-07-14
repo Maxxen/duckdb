@@ -17,15 +17,17 @@ namespace duckdb {
 namespace {
 
 // The set of LogicalTypeIds accepted by duckdb_v2_logical_type_create_from_id.
-// Excludes:
+// Includes ANY, the function-signature wildcard: it is constructible so it can
+// be passed to function parameter / varargs setters, while data-creating
+// surfaces reject it. Excludes:
 //  - INVALID (sentinel),
-//  - bind-time-only ids (SQLNULL, ANY, UNKNOWN) which only exist inside
-//    the planner / UDF binding paths and have no use in PR1's read-only
-//    surface,
+//  - the remaining bind-time-only ids (SQLNULL, UNKNOWN) which only exist
+//    inside the planner / UDF binding paths,
 //  - parameterised types (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM,
 //    VARIANT, GEOMETRY).
 bool IsPrimitiveCreatable(LogicalTypeId id) {
 	switch (id) {
+	case LogicalTypeId::ANY:
 	case LogicalTypeId::BOOLEAN:
 	case LogicalTypeId::TINYINT:
 	case LogicalTypeId::SMALLINT:

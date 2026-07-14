@@ -12,6 +12,7 @@ add_library_unity(
   error-v2.cpp
   expression-v2.cpp
   file_system-v2.cpp
+  function-v2.cpp
   function_aggregate-v2.cpp
   function_cast-v2.cpp
   function_copy-v2.cpp

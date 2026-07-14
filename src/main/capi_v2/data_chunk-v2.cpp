@@ -1,6 +1,7 @@
 #include "capi_v2_internal.hpp"
 
 #include "duckdb/common/allocator.hpp"
+#include "duckdb/common/type_visitor.hpp"
 
 // ---------------------------------------------------------------------------
 // DataChunk construction
@@ -23,7 +24,13 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_ha
 			if (!types[i]) {
 				throw duckdb::InvalidInputException("null logical type at index %llu", i);
 			}
-			logical_types.push_back(*duckdb::ToLogicalType(types[i]));
+			const auto &ltype = *duckdb::ToLogicalType(types[i]);
+			// ANY is a signature wildcard with no physical layout; a chunk allocates
+			// storage, so reject it (an ANY vector throws InternalException).
+			if (duckdb::TypeVisitor::Contains(ltype, duckdb::LogicalTypeId::ANY)) {
+				throw duckdb::InvalidInputException("logical type at index %llu cannot be ANY", i);
+			}
+			logical_types.push_back(ltype);
 		}
 		auto chunk = duckdb::make_uniq<duckdb::DataChunk>();
 		chunk->Initialize(duckdb::Allocator::DefaultAllocator(), logical_types);

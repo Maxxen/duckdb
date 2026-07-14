@@ -726,6 +726,10 @@ public:
 	static LogicalType VARCHAR();
 	static LogicalType INTEGER();
 	static LogicalType BIGINT();
+	// The function-signature wildcard. Constructible so it can be passed to a
+	// function's AddParameter (a fixed-arity wildcard) or SetVarArgs (a
+	// heterogeneous variadic tail); data-creating surfaces reject it.
+	static LogicalType ANY();
 
 	LogicalType WithAlias(std::string_view alias) const;
 
@@ -2035,6 +2039,10 @@ public:
 
 	auto SetName(const std::string &name) & -> ScalarFunction &;
 	auto AddParameter(const std::string &name, const LogicalType &type) & -> ScalarFunction &;
+	// Makes the function variadic: extra trailing arguments are each cast to
+	// type (pass LogicalType::ANY to leave them un-cast). Overwrites any prior
+	// varargs type.
+	auto SetVarArgs(const LogicalType &type) & -> ScalarFunction &;
 	auto SetReturnType(const LogicalType &type) & -> ScalarFunction &;
 
 	// Constructs user data of type T, carried by the registered function and
@@ -2096,15 +2104,39 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
+		// The bound argument list (fixed parameters plus any varargs extras,
+		// already expanded). Arguments surface as types and folded values, never
+		// as expressions; the interface generalizes to table functions.
+		auto GetArgumentCount() const -> idx_t;
+		// An owned copy of the argument's resolved type. Throws INVALID_INPUT
+		// when index is out of range.
+		auto GetArgumentType(idx_t index) const -> LogicalType;
+		// Folds the argument to an owned value. Exists because bind runs before
+		// optimizer constant folding. Throws INVALID_INPUT when the argument is
+		// not constant-foldable or index is out of range.
+		auto FoldArgument(idx_t index) const -> Value;
+		// Replaces the argument at index with a constant (cast to the declared
+		// parameter type).
+		auto SetArgumentConstant(idx_t index, const Value &value) -> void;
+		// Drops trailing arguments so exactly count remain; the exec callback
+		// then sees count input columns. count must be <= the current count.
+		auto TruncateArguments(idx_t count) -> void;
+
+		// The binding context (bind always runs under one). Borrowed, valid only
+		// for the callback duration.
+		auto GetContext() const -> Context;
+
 	private:
-		explicit BindInput(void *args) : args(args) {
+		BindInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 		void *GetBindDataInternal() const;
 		void *GetUserDataInternal() const;
+		void *GetArgumentsHandle() const;
 	};
 
 	class InitInput {
@@ -2252,6 +2284,10 @@ public:
 
 	auto SetName(const std::string &name) & -> AggregateFunction &;
 	auto AddParameter(const std::string &name, const LogicalType &type) & -> AggregateFunction &;
+	// Makes the aggregate variadic: extra trailing arguments are each cast to
+	// type (pass LogicalType::ANY to leave them un-cast). Overwrites any prior
+	// varargs type.
+	auto SetVarArgs(const LogicalType &type) & -> AggregateFunction &;
 	auto SetReturnType(const LogicalType &type) & -> AggregateFunction &;
 
 	// Constructs user data of type T, carried by the registered function and
@@ -2317,15 +2353,39 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
+		// The bound argument list (fixed parameters plus any varargs extras,
+		// already expanded). Arguments surface as types and folded values, never
+		// as expressions; the interface generalizes to table functions.
+		auto GetArgumentCount() const -> idx_t;
+		// An owned copy of the argument's resolved type. Throws INVALID_INPUT
+		// when index is out of range.
+		auto GetArgumentType(idx_t index) const -> LogicalType;
+		// Folds the argument to an owned value. Exists because bind runs before
+		// optimizer constant folding. Throws INVALID_INPUT when the argument is
+		// not constant-foldable or index is out of range.
+		auto FoldArgument(idx_t index) const -> Value;
+		// Replaces the argument at index with a constant (cast to the declared
+		// parameter type).
+		auto SetArgumentConstant(idx_t index, const Value &value) -> void;
+		// Drops trailing arguments so exactly count remain; the update callback
+		// then sees count input columns. count must be <= the current count.
+		auto TruncateArguments(idx_t count) -> void;
+
+		// The binding context (bind always runs under one). Borrowed, valid only
+		// for the callback duration.
+		auto GetContext() const -> Context;
+
 	private:
-		explicit BindInput(void *args) : args(args) {
+		BindInput(void *args, void *context) : args(args), context(context) {
 		}
 
 		void *args;
+		void *context;
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 		void *GetBindDataInternal() const;
 		void *GetUserDataInternal() const;
+		void *GetArgumentsHandle() const;
 	};
 
 	class SizeInput {
@@ -2590,6 +2650,11 @@ public:
 	auto SetName(const std::string &name) & -> TableFunction &;
 	auto AddParameter(const LogicalType &type) & -> TableFunction &;
 	auto AddNamedParameter(const std::string &name, const LogicalType &type) & -> TableFunction &;
+	// Makes the function variadic: extra trailing positional arguments are each
+	// cast to type (pass LogicalType::ANY to leave them un-cast). The bind
+	// callback reads all positional arguments via BindInput::GetParameterCount
+	// and GetParameter. Overwrites any prior varargs type.
+	auto SetVarArgs(const LogicalType &type) & -> TableFunction &;
 
 	// Constructs user data of type T, carried by the registered function and
 	// freed at engine teardown; read from any callback via the inputs'
@@ -2652,6 +2717,10 @@ public:
 		// Declares one result column per schema field, in order (e.g. from
 		// ArrowConversionPlan::GetSchema).
 		auto AddResultColumns(const Schema &schema) -> void;
+
+		// The number of positional arguments the call supplied (fixed plus, for a
+		// variadic function, varargs extras). Named parameters are not counted.
+		auto GetParameterCount() const -> idx_t;
 
 		auto GetParameter(idx_t index) const -> Value;
 		auto GetNamedParameter(const std::string &name) const -> Value;

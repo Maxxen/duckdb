@@ -37,6 +37,8 @@ struct ScalarFunctionV2 {
 	Identifier name;
 
 	vector<pair<Identifier, LogicalType>> parameters;
+	//! Varargs type (INVALID when the function is not variadic).
+	LogicalType varargs;
 	LogicalType return_type;
 	FunctionProperties properties;
 
@@ -49,6 +51,13 @@ struct ScalarFunctionV2 {
 		args.struct_size = sizeof(args);
 		args.function_name = ToStr(input.GetBoundFunction().GetName());
 		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+
+		// Scalar binds mutate the argument expressions directly; expose both the
+		// children and the bound argument-type list so truncation keeps them in sync.
+		BindArgumentsV2 bind_args;
+		bind_args.arguments = &input.GetArguments();
+		bind_args.argument_types = &input.GetBoundFunction().GetArguments();
+		args.arguments = reinterpret_cast<duckdb_v2_bind_arguments_handle>(&bind_args);
 
 		// Binding always runs under a client context.
 		auto context = reinterpret_cast<duckdb_v2_context_handle>(&input.GetClientContext());
@@ -128,6 +137,16 @@ struct ScalarFunctionV2 {
 		InvokeWithErrorSlot<InvalidInputException>(
 		    [&](duckdb_v2_error_info_handle *err_ptr) { info.exec_cb(&args, context, err_ptr); });
 	}
+
+	// See ThrowFunctionNotSerializable for why these throw.
+	static auto SerializeCallback(Serializer &, const optional_ptr<FunctionData>, const BoundScalarFunction &function)
+	    -> void {
+		ThrowFunctionNotSerializable(function.GetName());
+	}
+
+	static auto DeserializeCallback(Deserializer &, BoundScalarFunction &function) -> unique_ptr<FunctionData> {
+		ThrowFunctionNotSerializable(function.GetName());
+	}
 };
 
 } // namespace
@@ -191,6 +210,24 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_s
 
 		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
 		builder.parameters.emplace_back(duckdb::ToString(name), ltype);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_varargs(duckdb_v2_scalar_function_builder_handle func,
+                                                                   duckdb_v2_logical_type_handle type,
+                                                                   duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function pointer cannot be null.");
+		}
+		if (!type) {
+			throw duckdb::InvalidInputException("Varargs type pointer cannot be null.");
+		}
+		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
+		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("Varargs type cannot be invalid.");
+		}
+		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->varargs = ltype;
 	});
 }
 
@@ -299,6 +336,12 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 			function.GetSignature().AddParameter(param_name, param_type);
 		}
 
+		// Wire the varargs type (if any) before the signature is verified so the
+		// engine expands trailing arguments to it during binding.
+		if (builder.varargs.id() != duckdb::LogicalTypeId::INVALID) {
+			function.SetVarArgs(builder.varargs);
+		}
+
 		if (builder.info.bind_cb) {
 			function.SetBindCallback(duckdb::ScalarFunctionV2::BindCallback);
 		}
@@ -306,6 +349,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 		if (builder.info.init_cb) {
 			function.SetInitStateCallback(duckdb::ScalarFunctionV2::InitCallback);
 		}
+
+		function.SetSerializeCallback(duckdb::ScalarFunctionV2::SerializeCallback);
+		function.SetDeserializeCallback(duckdb::ScalarFunctionV2::DeserializeCallback);
 
 		function.SetExtraFunctionInfo<duckdb::ScalarFunctionV2::RuntimeInfo>(builder.info);
 

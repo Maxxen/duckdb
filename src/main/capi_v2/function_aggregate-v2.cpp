@@ -81,6 +81,14 @@ struct AggregateFunctionV2 {
 			args.function_name = ToStr(input.GetBoundFunction().GetName());
 			args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 
+			// The aggregate binder resizes the argument expressions to the
+			// argument-type list after this callback; truncation shrinks both so
+			// they stay in sync (see BindArgumentsV2).
+			BindArgumentsV2 bind_args;
+			bind_args.arguments = &input.GetArguments();
+			bind_args.argument_types = &input.GetBoundFunction().GetArguments();
+			args.arguments = reinterpret_cast<duckdb_v2_bind_arguments_handle>(&bind_args);
+
 			// Binding always runs under a client context.
 			auto context = reinterpret_cast<duckdb_v2_context_handle>(&input.GetClientContext());
 			InvokeWithErrorSlot<BinderException>(
@@ -239,11 +247,23 @@ struct AggregateFunctionV2 {
 			err.ThrowAsException();
 		}
 	}
+
+	// See ThrowFunctionNotSerializable for why these throw.
+	static auto SerializeCallback(Serializer &, const optional_ptr<FunctionData>,
+	                              const BoundAggregateFunction &function) -> void {
+		ThrowFunctionNotSerializable(function.GetName());
+	}
+
+	static auto DeserializeCallback(Deserializer &, BoundAggregateFunction &function) -> unique_ptr<FunctionData> {
+		ThrowFunctionNotSerializable(function.GetName());
+	}
 };
 
 struct AggregateFunctionBuilderV2 {
 	Identifier name;
 	vector<pair<Identifier, LogicalType>> parameters;
+	//! Varargs type (INVALID when the function is not variadic).
+	LogicalType varargs;
 	LogicalType return_type;
 
 	duckdb_v2_aggregate_function_bind_callback_fn bind_cb = nullptr;
@@ -331,6 +351,24 @@ duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_
 		}
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
 		agg_builder->parameters.emplace_back(duckdb::ToIdentifier(name), ltype);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_varargs(duckdb_v2_aggregate_function_builder_handle func,
+                                                                      duckdb_v2_logical_type_handle type,
+                                                                      duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!func) {
+			throw duckdb::InvalidInputException("Function builder cannot be null");
+		}
+		if (!type) {
+			throw duckdb::InvalidInputException("Varargs type pointer cannot be null");
+		}
+		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
+		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("Varargs type cannot be invalid.");
+		}
+		reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func)->varargs = ltype;
 	});
 }
 
@@ -478,6 +516,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 		if (!agg_builder->finalize_cb) {
 			throw duckdb::InvalidInputException("Finalize callback must be provided");
 		}
+		// ANY is a signature wildcard; a return type carries data, so keep ANY out
+		// of execution (an ANY stored here throws InternalException when hit).
+		if (agg_builder->return_type.id() == duckdb::LogicalTypeId::ANY) {
+			throw duckdb::InvalidInputException("Return type cannot be ANY.");
+		}
 
 		auto function_info = duckdb::make_shared_ptr<duckdb::AggregateFunctionExtraDataV2>();
 
@@ -502,6 +545,15 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 
 		if (agg_builder->destroy_cb) {
 			function.GetCallbacks().SetStateDestructorCallback(duckdb::AggregateFunctionV2::DestroyCallback);
+		}
+
+		function.GetCallbacks().SetSerializeCallback(duckdb::AggregateFunctionV2::SerializeCallback);
+		function.GetCallbacks().SetDeserializeCallback(duckdb::AggregateFunctionV2::DeserializeCallback);
+
+		// Wire the varargs type (if any) before the signature is verified so the
+		// engine expands trailing arguments to it during binding.
+		if (agg_builder->varargs.id() != duckdb::LogicalTypeId::INVALID) {
+			function.SetVarArgs(agg_builder->varargs);
 		}
 
 		function.SetExtraFunctionInfo(function_info);

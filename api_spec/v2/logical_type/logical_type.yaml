@@ -143,15 +143,22 @@ functions:
   logical_type_create_from_id:
     summary: Creates a logical type from a primitive type id.
     description: |
-      Only primitive type ids (no kind-specific parameters) are accepted:
+      Accepts primitive type ids (no kind-specific parameters):
       BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
       FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
-      VARCHAR, BLOB, BIT, BIGNUM, UUID.
+      VARCHAR, BLOB, BIT, BIGNUM, UUID. Also accepts ANY.
+
+      ANY is a function-signature wildcard, constructible here so it can
+      be passed to function parameter and varargs setters (a fixed-arity
+      ANY parameter, or an ANY varargs type). Data-creating surfaces
+      reject it: value and data_chunk creation, scalar and aggregate
+      return types, table function result columns, cast source and
+      target types, and custom type registration.
 
       Returns ERROR_INVALID_INPUT for parameterised type ids
       (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
-      for bind-time-only ids (SQLNULL, ANY, UNKNOWN), for TYPE (construct
-      it via logical_type_create_from_text), and for INVALID.
+      for the remaining bind-time-only ids (SQLNULL, UNKNOWN), for TYPE
+      (construct it via logical_type_create_from_text), and for INVALID.
       Composite construction is not part of this surface yet.
     role: constructor
     belongs_to: logical_type
@@ -394,7 +401,9 @@ functions:
       Mirrors duckdb::LogicalType::ToString(). An aliased type renders as
       its alias; logical_type_create_from_text resolves that spelling only
       when the name is registered in the connection's catalog. Round-trips
-      through logical_type_create_from_text for every constructible kind.
+      through logical_type_create_from_text for every constructible kind,
+      with one exception: ANY renders as "ANY", but from_text cannot parse
+      it back (ANY is a signature wildcard, not a parseable SQL type).
     role: getter
     belongs_to: logical_type
     parameters:
