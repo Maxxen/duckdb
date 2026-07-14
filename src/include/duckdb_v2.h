@@ -4013,11 +4013,41 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_sequence(duckdb_v2_vecto
                                                                  int64_t increment, idx_t count,
                                                                  duckdb_v2_error_info_handle *err);
 /*!
+* Sets one row of a FLAT vector to NULL, including nested children.
+* Clears the row's validity and recursively broadcasts the NULL to
+every descendant slot under the row (STRUCT fields; ARRAY
+elements, strided by the array size), maintaining the nested NULL
+invariant documented in the module header. LIST children are left
+untouched per that contract. Which kinds propagate is normative
+engine behavior that evolves with the type system, making this
+the total NULL write path: equivalent to vector_set_value with a
+NULL value, without the per-call value allocation.
+
+Requires a FLAT vector: constant, dictionary, and compressed
+representations are not row-addressable; call vector_flatten
+first. The row index is logical and bounds-checked against
+vector_get_size.
+
+* @param vector
+* @param row The logical row index, in [0, vector_get_size).
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_null(duckdb_v2_vector_handle vector, idx_t row,
+                                                            duckdb_v2_error_info_handle *err);
+/*!
 * Returns a mutable pointer to the validity mask of a FLAT vector.
 * Lazily allocates the validity mask if it has not been allocated yet.
 The returned pointer is always non-null. Each uint64_t word covers
 64 rows; bit N of word W represents row W*64+N. A set bit means
 valid (not NULL); a cleared bit means NULL.
+
+Raw mask writes mark only this vector's rows: clearing a STRUCT
+or ARRAY parent bit leaves descendant slots untouched, violating
+the nested NULL invariant (module header). Set nested rows NULL
+via vector_set_null instead; when writing nested masks raw,
+invalidate the child masks up front and mark slots valid as
+values are written.
 
 * @param vector
 * @param out_validity Receives a mutable pointer to the validity mask.

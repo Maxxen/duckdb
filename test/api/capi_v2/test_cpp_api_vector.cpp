@@ -577,3 +577,74 @@ TEST_CASE("Stable C++API: vector read surface rejects misuse", "[cpp_api]") {
 		REQUIRE_THROWS_MATCHES(seq.SetConstantValid(true), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
 	});
 }
+
+TEST_CASE("Stable C++API: Vector SetNull recurses into nested children", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(ctx.ParseType("STRUCT(name VARCHAR, score DOUBLE)"));
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		vec.SetSize(3);
+
+		auto name_vec = vec.GetChild(0);
+		auto score_vec = vec.GetChild(1);
+		auto *scores = score_vec.GetDataMutable<double>();
+		for (idx_t i = 0; i < 3; i++) {
+			name_vec.AssignString(i, "n");
+			scores[i] = static_cast<double>(i);
+		}
+
+		vec.SetNull(1);
+
+		// The NULL broadcasts into both field slots; other rows keep values.
+		REQUIRE_FALSE(vec.GetView().RowIsValid(1));
+		REQUIRE_FALSE(name_vec.GetView().RowIsValid(1));
+		REQUIRE_FALSE(score_vec.GetView().RowIsValid(1));
+		REQUIRE(vec.GetView().RowIsValid(0));
+		REQUIRE(name_vec.GetView().RowIsValid(2));
+		REQUIRE(score_vec.GetView().Data<double>()[2] == 2.0);
+
+		// FLAT-only and bounds-checked, matching the C contract.
+		REQUIRE_THROWS_MATCHES(vec.SetNull(3), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	});
+}
+
+TEST_CASE("Stable C++API: ValidityMask SetAllInvalid born-invalid pattern", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::VARCHAR());
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		// Cross a word boundary so more than one mask word is cleared.
+		vec.SetSize(70);
+
+		// Born-invalid: clear everything up front, then earn validity by
+		// writing. Rows never written stay NULL without further bookkeeping.
+		auto validity = vec.GetValidityMutable();
+		validity.SetAllInvalid(70);
+
+		vec.AssignString(3, "three");
+		validity.SetValid(3);
+		vec.AssignString(64, "sixty-four");
+		validity.SetValid(64);
+
+		auto view = vec.GetView();
+		for (idx_t i = 0; i < 70; i++) {
+			REQUIRE(view.RowIsValid(i) == (i == 3 || i == 64));
+		}
+	});
+}

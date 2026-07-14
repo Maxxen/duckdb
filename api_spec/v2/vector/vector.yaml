@@ -88,6 +88,16 @@ module: vector
 # The "how many fields / how many members" questions are answered by
 # logical_type_get_param_count, not by vector-side accessors.
 #
+# Writing NULLs into nested vectors is bound by the engine's nested
+# NULL invariant: when a STRUCT or ARRAY row is NULL, every descendant
+# slot under that row must also be NULL. LIST rows are exempt; their
+# consumers gate on the list's own validity. Engine consumers rely on
+# the invariant and read child slots whenever the child mask marks
+# them valid, so a violating vector causes undefined behavior once it
+# reaches the engine. vector_set_null is the write path that maintains
+# it; raw mask writes via vector_flat_get_validity_mutable mark only
+# the addressed vector's rows and leave descendants untouched.
+#
 # View constructor rejects FSST / SEQUENCE / SHREDDED vectors (kind
 # VECTOR_TYPE_OTHER). Call vector_flatten first.
 #
@@ -417,6 +427,36 @@ functions:
   # -----------------------------------------------------------------------
   # Validity (mutable)
   # -----------------------------------------------------------------------
+  vector_set_null:
+    summary: Sets one row of a FLAT vector to NULL, including nested children.
+    description: |
+      Clears the row's validity and recursively broadcasts the NULL to
+      every descendant slot under the row (STRUCT fields; ARRAY
+      elements, strided by the array size), maintaining the nested NULL
+      invariant documented in the module header. LIST children are left
+      untouched per that contract. Which kinds propagate is normative
+      engine behavior that evolves with the type system, making this
+      the total NULL write path: equivalent to vector_set_value with a
+      NULL value, without the per-call value allocation.
+
+      Requires a FLAT vector: constant, dictionary, and compressed
+      representations are not row-addressable; call vector_flatten
+      first. The row index is logical and bounds-checked against
+      vector_get_size.
+    role: setter
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+      row:
+        type: idx
+        description: The logical row index, in [0, vector_get_size).
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   vector_flat_get_validity_mutable:
     summary: Returns a mutable pointer to the validity mask of a FLAT vector.
     description: |
@@ -424,6 +464,13 @@ functions:
       The returned pointer is always non-null. Each uint64_t word covers
       64 rows; bit N of word W represents row W*64+N. A set bit means
       valid (not NULL); a cleared bit means NULL.
+
+      Raw mask writes mark only this vector's rows: clearing a STRUCT
+      or ARRAY parent bit leaves descendant slots untouched, violating
+      the nested NULL invariant (module header). Set nested rows NULL
+      via vector_set_null instead; when writing nested masks raw,
+      invalidate the child masks up front and mark slots valid as
+      values are written.
     role: getter
     belongs_to: vector
     parameters:

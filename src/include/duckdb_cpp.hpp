@@ -1390,6 +1390,11 @@ struct DecodedBit {
 
 // Writer over a FLAT vector's validity mask (from Vector::GetValidityMutable).
 // Word W bit N covers row W*64+N; a set bit means valid (not NULL).
+// Writes mark only this vector's rows. The engine requires every descendant
+// slot of a NULL STRUCT / ARRAY row to be NULL as well, and SetInvalid on a
+// parent row does not touch descendants: set nested rows NULL via
+// Vector::SetNull. When writing nested masks raw, SetAllInvalid the child
+// masks up front and SetValid slots as values are written.
 struct ValidityMask {
 	uint64_t *words; // public: the raw mask remains reachable
 
@@ -1401,6 +1406,13 @@ struct ValidityMask {
 	}
 	auto RowIsValid(idx_t row) const -> bool {
 		return (words[row >> 6] & (uint64_t(1) << (row & 63))) != 0;
+	}
+	// Marks rows [0, count) invalid. Clears whole words, so trailing bits of
+	// the last word beyond count read invalid too (matches the engine).
+	auto SetAllInvalid(idx_t count) -> void {
+		for (idx_t i = 0; i < (count + 63) / 64; i++) {
+			words[i] = 0;
+		}
 	}
 };
 
@@ -1442,6 +1454,13 @@ public:
 	// Mutable validity of a FLAT vector, lazily allocating the mask.
 	// Throws INVALID_INPUT on non-FLAT vectors.
 	auto GetValidityMutable() -> ValidityMask;
+
+	// Sets a row NULL, recursively nulling descendant slots of STRUCT and
+	// ARRAY rows (LIST children are exempt; consumers gate on the list's own
+	// validity). The write path that maintains the engine's nested NULL
+	// invariant; prefer it over raw mask writes for any nested type. Throws
+	// INVALID_INPUT on non-FLAT vectors and out-of-range rows.
+	auto SetNull(idx_t row) -> void;
 
 	// Sets a CONSTANT vector's single validity bit. Throws INVALID_INPUT on
 	// non-CONSTANT vectors. Setting valid true does not write a value; slot 0

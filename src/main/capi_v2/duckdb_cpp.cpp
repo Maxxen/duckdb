@@ -1830,6 +1830,10 @@ auto Vector::GetValidityMutable() -> ValidityMask {
 	return ValidityMask {words};
 }
 
+auto Vector::SetNull(idx_t row) -> void {
+	CheckedAPICall(duckdb_v2_vector_set_null, handle(), row);
+}
+
 auto Vector::SetConstantValid(bool valid) -> void {
 	CheckedAPICall(duckdb_v2_vector_constant_set_valid, handle(), valid);
 }

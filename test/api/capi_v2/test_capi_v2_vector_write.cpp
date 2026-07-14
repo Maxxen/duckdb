@@ -392,6 +392,244 @@ TEST_CASE("V2: vector_constant_set_valid rejects FLAT vector", "[capi_v2][vector
 }
 
 // ---------------------------------------------------------------------------
+// vector_set_null: the recursive NULL write path (nested NULL invariant)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("V2: vector_set_null on a primitive vector", "[capi_v2][vector_write]") {
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_v2_logical_type_destroy(&int_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	void *raw = nullptr;
+	REQUIRE(duckdb_v2_vector_get_data_mutable(vec, &raw, nullptr) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < 3; i++) {
+		static_cast<int32_t *>(raw)[i] = static_cast<int32_t>(i + 1);
+	}
+
+	REQUIRE(duckdb_v2_vector_set_null(vec, 1, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_view view {};
+	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(RowValid(view, 0));
+	REQUIRE_FALSE(RowValid(view, 1));
+	REQUIRE(RowValid(view, 2));
+	REQUIRE(static_cast<const int32_t *>(view.data)[0] == 1);
+	REQUIRE(static_cast<const int32_t *>(view.data)[2] == 3);
+
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2: vector_set_null recurses into STRUCT fields", "[capi_v2][vector_write]") {
+	V2EnvFixture fx;
+	auto struct_type =
+	    V2StructType(fx.conn, {"a", "b"}, {DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR});
+	duckdb_v2_logical_type_handle types[1] = {struct_type};
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_v2_logical_type_destroy(&struct_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle field_a = nullptr;
+	duckdb_v2_vector_handle field_b = nullptr;
+	REQUIRE(duckdb_v2_vector_get_child(vec, 0, &field_a, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_child(vec, 1, &field_b, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	void *a_raw = nullptr;
+	REQUIRE(duckdb_v2_vector_get_data_mutable(field_a, &a_raw, nullptr) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < 3; i++) {
+		static_cast<int32_t *>(a_raw)[i] = static_cast<int32_t>(i * 10);
+		REQUIRE(V2VectorAssignString(field_b, i, "val", 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+	}
+
+	REQUIRE(duckdb_v2_vector_set_null(vec, 1, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_view parent {};
+	REQUIRE(duckdb_v2_vector_get_view(vec, &parent, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(RowValid(parent, 0));
+	REQUIRE_FALSE(RowValid(parent, 1));
+	REQUIRE(RowValid(parent, 2));
+
+	// Both field slots under the NULL row are NULL; other rows keep their values.
+	duckdb_v2_vector_view view_a {};
+	duckdb_v2_vector_view view_b {};
+	REQUIRE(duckdb_v2_vector_get_view(field_a, &view_a, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_view(field_b, &view_b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE_FALSE(RowValid(view_a, 1));
+	REQUIRE_FALSE(RowValid(view_b, 1));
+	REQUIRE(RowValid(view_a, 0));
+	REQUIRE(RowValid(view_b, 2));
+	REQUIRE(static_cast<const int32_t *>(view_a.data)[0] == 0);
+	REQUIRE(static_cast<const int32_t *>(view_a.data)[2] == 20);
+	REQUIRE(V2StringView(static_cast<const duckdb_v2_varchar_t *>(view_b.data)[2]) == "val");
+
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2: vector_set_null strides ARRAY elements", "[capi_v2][vector_write]") {
+	V2EnvFixture fx;
+	auto array_type =
+	    V2CreateType(fx.conn, "array", nullptr, {V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), V2Int32Value(3)});
+	duckdb_v2_logical_type_handle types[1] = {array_type};
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_v2_logical_type_destroy(&array_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle elems = nullptr;
+	REQUIRE(duckdb_v2_vector_get_child(vec, 0, &elems, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(elems, 6, nullptr) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < 6; i++) {
+		REQUIRE(V2VectorAssignString(elems, i, "elem", 4, nullptr) == DUCKDB_V2_ERROR_NONE);
+	}
+
+	REQUIRE(duckdb_v2_vector_set_null(vec, 0, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_view parent {};
+	REQUIRE(duckdb_v2_vector_get_view(vec, &parent, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE_FALSE(RowValid(parent, 0));
+	REQUIRE(RowValid(parent, 1));
+
+	// Row 0 covers element slots [0, 3); row 1's slots [3, 6) stay valid.
+	duckdb_v2_vector_view child {};
+	REQUIRE(duckdb_v2_vector_get_view(elems, &child, nullptr) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < 3; i++) {
+		REQUIRE_FALSE(RowValid(child, i));
+	}
+	for (idx_t i = 3; i < 6; i++) {
+		REQUIRE(RowValid(child, i));
+		REQUIRE(V2StringView(static_cast<const duckdb_v2_varchar_t *>(child.data)[i]) == "elem");
+	}
+
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2: vector_set_null reaches grandchildren through nested STRUCT", "[capi_v2][vector_write]") {
+	V2EnvFixture fx;
+	auto inner_type = V2StructType(fx.conn, {"v"}, {DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR});
+	std::vector<const char *> outer_names = {"inner"};
+	auto outer_type = V2CreateType(fx.conn, "struct", &outer_names, {V2TypeValueOf(inner_type)});
+	duckdb_v2_logical_type_destroy(&inner_type);
+	duckdb_v2_logical_type_handle types[1] = {outer_type};
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_v2_logical_type_destroy(&outer_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle inner = nullptr;
+	duckdb_v2_vector_handle leaf = nullptr;
+	REQUIRE(duckdb_v2_vector_get_child(vec, 0, &inner, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_child(inner, 0, &leaf, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(leaf, 0, "zero", 4, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2VectorAssignString(leaf, 1, "one", 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	REQUIRE(duckdb_v2_vector_set_null(vec, 0, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_view inner_view {};
+	duckdb_v2_vector_view leaf_view {};
+	REQUIRE(duckdb_v2_vector_get_view(inner, &inner_view, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_view(leaf, &leaf_view, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE_FALSE(RowValid(inner_view, 0));
+	REQUIRE_FALSE(RowValid(leaf_view, 0));
+	REQUIRE(RowValid(inner_view, 1));
+	REQUIRE(RowValid(leaf_view, 1));
+
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2: vector_set_null leaves LIST children untouched", "[capi_v2][vector_write]") {
+	V2EnvFixture fx;
+	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {list_type};
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_v2_logical_type_destroy(&list_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle elems = nullptr;
+	REQUIRE(duckdb_v2_vector_get_child(vec, 0, &elems, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(elems, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
+	void *child_raw = nullptr;
+	REQUIRE(duckdb_v2_vector_get_data_mutable(elems, &child_raw, nullptr) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < 3; i++) {
+		static_cast<int32_t *>(child_raw)[i] = static_cast<int32_t>(i);
+	}
+	void *parent_raw = nullptr;
+	REQUIRE(duckdb_v2_vector_get_data_mutable(vec, &parent_raw, nullptr) == DUCKDB_V2_ERROR_NONE);
+	auto *entries = static_cast<duckdb_v2_list_entry *>(parent_raw);
+	entries[0] = {0, 2};
+	entries[1] = {2, 1};
+
+	REQUIRE(duckdb_v2_vector_set_null(vec, 0, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_view parent {};
+	REQUIRE(duckdb_v2_vector_get_view(vec, &parent, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE_FALSE(RowValid(parent, 0));
+	REQUIRE(RowValid(parent, 1));
+
+	// LIST is exempt from the invariant: element slots stay valid.
+	duckdb_v2_vector_view child {};
+	REQUIRE(duckdb_v2_vector_get_view(elems, &child, nullptr) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < 3; i++) {
+		REQUIRE(RowValid(child, i));
+	}
+
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2: vector_set_null argument validation", "[capi_v2][vector_write]") {
+	REQUIRE(duckdb_v2_vector_set_null(nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+
+	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_handle types[1] = {int_type};
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
+	duckdb_v2_logical_type_destroy(&int_type);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_vector_handle vec = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	// Row index is bounds-checked against the logical size.
+	REQUIRE(duckdb_v2_vector_set_null(vec, 2, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+
+	// Non-FLAT representations are rejected.
+	REQUIRE(duckdb_v2_vector_make_sequence(vec, 1, 1, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_set_null(vec, 0, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+
+	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
+}
+
+// ---------------------------------------------------------------------------
 // LIST child management via vector_set_size / vector_get_size on the child
 // ---------------------------------------------------------------------------
 

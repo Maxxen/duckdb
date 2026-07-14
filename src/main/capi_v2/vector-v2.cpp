@@ -185,6 +185,23 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_make_sequence(duckdb_v2_vector_handle vect
 // Validity (mutable)
 // ---------------------------------------------------------------------------
 
+DUCKDB_V2_API_CALL_t duckdb_v2_vector_set_null(duckdb_v2_vector_handle vector, idx_t row,
+                                               duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_set_null");
+		}
+		auto *vec = duckdb::ToVector(vector);
+		if (vec->GetVectorType() != duckdb::VectorType::FLAT_VECTOR) {
+			throw duckdb::InvalidInputException("duckdb_v2_vector_set_null: only supported for FLAT vectors");
+		}
+		if (row >= vec->size()) {
+			throw duckdb::InvalidInputException("row out of range in duckdb_v2_vector_set_null");
+		}
+		duckdb::FlatVector::SetNull(*vec, row, true);
+	});
+}
+
 DUCKDB_V2_API_CALL_t duckdb_v2_vector_flat_get_validity_mutable(duckdb_v2_vector_handle vector, uint64_t **out_validity,
                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
