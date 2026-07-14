@@ -204,8 +204,7 @@ class RunContext:
 
 
 def chunked(items, n):
-    # Keep input order, cap batches at n entries, and isolate slow tests so
-    # each batch contains at most one slow test.
+    # Keep input order, cap batches at n entries, and put at most one slow test per batch.
     batch = []
     slow_count = 0
     for item in items:
@@ -346,8 +345,7 @@ def generate_test_list(
     patterns: list[str],
     test_list_files: list[Path] | None = None,
 ):
-    # Catch can return a non-zero status code for list commands when tests
-    # are found, so we accept non-zero if stdout still contains test output.
+    # Catch list commands can exit non-zero even when tests are found, so trust stdout instead.
     list_file_args = []
     if test_list_files:
         list_file_args = [arg for test_list_file in test_list_files for arg in ("-f", str(test_list_file))]
@@ -896,6 +894,14 @@ def format_signal_summary(returncode: int | None):
     return f"{signal_name} - {description}"
 
 
+def attributed_test_name(test_name: str | None, batch):
+    # Attribution heuristics can misparse interleaved output (e.g. pick a source location).
+    # Only a batch member is a real test name; anything else renders as unattributed.
+    if test_name is not None and test_name not in batch:
+        return None
+    return test_name
+
+
 def parse_failure_info(message: str | None, stdout: str, stderr: str, batch, returncode: int | None = None):
     stderr_lines = strip_skipped_test_summary_lines(strip_ansi(stderr).splitlines())
     stdout_lines = strip_skipped_test_summary_lines(strip_ansi(stdout).splitlines())
@@ -906,8 +912,11 @@ def parse_failure_info(message: str | None, stdout: str, stderr: str, batch, ret
     stderr_info = parse_stderr_failure_info(stderr_lines, batch)
 
     if message is not None and message.startswith("batch timed out after "):
-        timeout_test_name = (
-            batch_test_name or stdout_info.last_unfinished_test or infer_timed_out_test_from_stdout(stdout_lines, batch)
+        timeout_test_name = attributed_test_name(
+            batch_test_name
+            or stdout_info.last_unfinished_test
+            or infer_timed_out_test_from_stdout(stdout_lines, batch),
+            batch,
         )
         reproduce_batch = [timeout_test_name] if timeout_test_name else list(batch)
         return FailureInfo(
@@ -943,6 +952,8 @@ def parse_failure_info(message: str | None, stdout: str, stderr: str, batch, ret
         expected = None
         if stderr_info.mismatch_line is not None:
             actual, expected = [part.strip() for part in stderr_info.mismatch_line.split("<>", 1)]
+        test_name = attributed_test_name(test_name, batch)
+        reproduce_batch = [test_name] if test_name else list(batch)
         return FailureInfo(
             kind="wrong_result",
             test_name=test_name,
@@ -1009,6 +1020,8 @@ def parse_failure_info(message: str | None, stdout: str, stderr: str, batch, ret
         first_line = next((line for line in stdout_non_empty_lines if line), None)
         if first_line is not None:
             detail_lines.append(first_line)
+    test_name = attributed_test_name(test_name, batch)
+    reproduce_batch = [test_name] if test_name else list(batch)
     return FailureInfo(
         kind="generic",
         test_name=test_name,
@@ -1026,9 +1039,8 @@ def parse_failure_info(message: str | None, stdout: str, stderr: str, batch, ret
 
 
 def format_suspect_tests_line(reproduce_batch):
-    # Emitted when a failure cannot be attributed to one test: lists every test in
-    # the failed batch so log parsers (sqllogic_executor_diff.py) can treat all of
-    # them as failing instead of losing the failure.
+    # For failures with no attributed test: list the whole batch so log parsers
+    # (sqllogic_executor_diff.py) count every member as failing.
     return SUSPECT_TESTS_PREFIX + "\t".join(reproduce_batch)
 
 
@@ -1069,8 +1081,7 @@ RAW_OUTPUT_TAIL_LINE_COUNT = 100
 
 
 def is_low_information_failure(failure: FailureInfo):
-    # a generic failure where we could not even identify the failing test (or any detail at all) does not help
-    # debugging - in that case we dump the raw unittest output so CI logs contain everything needed to diagnose it
+    # No test name and no detail: dump the raw output so CI logs still show what happened.
     if failure.kind != "generic":
         return False
     if failure.snippet_lines:
@@ -1103,8 +1114,7 @@ def render_failure_lines_with_diagnostics(failure: FailureInfo, stdout: str, std
 
 
 def mark_recovered_failure_lines(lines):
-    # A recovered attempt must not read as a failure to log parsers
-    # (sqllogic_executor_diff.py greps for "error: FAIL" / "suspect tests:").
+    # A recovered attempt must not read as a failure to log parsers.
     marked = []
     for line in lines:
         if line.startswith("error: "):
@@ -1265,8 +1275,7 @@ def run_batch(config: TestRunnerConfig, batch):
     # Omit printing "FAILURES SUMMARY" block at the end of each unittest process.
     child_env["SUMMARIZE_FAILURES"] = "0"
 
-    # On Windows the child process cannot reopen a NamedTemporaryFile while it
-    # is still open here, so keep it after close and unlink it ourselves.
+    # Windows: the child cannot reopen a NamedTemporaryFile we hold open, so close first and unlink ourselves.
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf8", delete=False) as batch_file:
         batch_file.write("\n".join(batch))
         batch_file.write("\n")

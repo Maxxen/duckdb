@@ -9,9 +9,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DIFF_SCRIPT = REPO_ROOT / "scripts" / "ci" / "sqllogic_executor_diff.py"
 
-# Stands in for run_tests.py: the full-suite phase (no --test-list) reports a mix
-# of failure shapes; the targeted re-runs read the --test-list file, record what
-# they were asked to run, and fail a phase-specific subset.
+# Stands in for run_tests.py: the full-suite phase (no --test-list) reports a mix of
+# failure shapes; re-runs record the requested test list and fail a per-phase subset.
 STUB_RUNNER = """
 import os
 import sys
@@ -72,10 +71,8 @@ class SqllogicExecutorDiffTest(unittest.TestCase):
         stub = write_stub(self.record_dir, STUB_RUNNER)
         proc = run_diff(stub, self.record_dir)
 
-        # The re-runs received the failing set through the --test-list file,
-        # including the Catch2 name with spaces and the suspect-tests batch;
-        # the recovered test and the unattributed timeout placeholder did not
-        # count as failures.
+        # Re-runs got the failing set via the --test-list file; the recovered test
+        # and the "test batch" placeholder are not in it.
         self.assertEqual(
             self.read_record("internal"),
             sorted(
@@ -94,6 +91,7 @@ class SqllogicExecutorDiffTest(unittest.TestCase):
         )
 
         self.assertEqual(proc.returncode, 1)
+        self.assertIn("--retry 3 --batch-size 1 --test-list", proc.stdout)
         self.assertIn("environment (fail under internal too): 1", proc.stdout)
         self.assertIn("= V2: a test with spaces", proc.stdout)
         self.assertIn("flaky (passed cpp_api on retry): 3", proc.stdout)
@@ -107,8 +105,7 @@ class SqllogicExecutorDiffTest(unittest.TestCase):
         self.assertIn("no divergences", proc.stdout)
 
     def test_infra_error_when_run_reports_no_failures(self):
-        # A nonzero exit with no parseable failing tests (e.g. the runner
-        # selected zero tests or crashed) must fail the job, not read as green.
+        # A nonzero exit with no parseable failing tests must fail the job, not read as green.
         stub = write_stub(self.record_dir, "print('error: no tests selected')\nraise SystemExit(1)\n")
         proc = run_diff(stub, self.record_dir)
         self.assertEqual(proc.returncode, 2)

@@ -1420,8 +1420,7 @@ assertions: 359 | 358 passed | 1 failed
         )
 
     def test_unparsable_batch_failure_dumps_raw_output(self):
-        # when we cannot extract a useful failure description, the raw unittest output should be dumped
-        # so that CI logs contain everything needed to diagnose the failure
+        # With no useful failure description, the raw unittest output is dumped for the CI logs.
         batch = ["/tmp/a.test", "/tmp/b.test"]
         stdout = """
 [0/2] (0%): /tmp/a.test
@@ -1494,6 +1493,25 @@ Mismatch on row 1, column 1
         self.assertIn("error: timeout (600s) for /tmp/b.test.", stripped_lines)
         self.assertFalse(any(line.startswith(run_tests.SUSPECT_TESTS_PREFIX) for line in stripped_lines))
         self.assertEqual(reproduce_batch, ["/tmp/b.test"])
+
+    def test_attribution_outside_batch_falls_back_to_suspect_tests(self):
+        # A misparsed name (e.g. a source location) must not invent a test identity:
+        # only batch members are valid attributions, anything else renders as suspects.
+        batch = ["/tmp/a.test", "/tmp/b.test"]
+        stderr = """
+================================================================
+FAIL: /tmp/other.test
+================================================================
+Wrong result in query! (/tmp/other.test:25)!
+================================================================
+Mismatch on row 1, column 1
+[3, 1, 2] <> [1, 2, 3]
+"""
+        lines, reproduce_batch = run_tests.summarize_failure_output(None, "", stderr, batch)
+        stripped_lines = strip_ansi_lines(lines)
+        self.assertFalse(any("FAIL /tmp/other.test" in line for line in stripped_lines))
+        self.assertIn("suspect tests: /tmp/a.test\t/tmp/b.test", stripped_lines)
+        self.assertEqual(reproduce_batch, batch)
 
     def test_recovered_attempt_lines_are_not_failure_lines(self):
         marked = run_tests.mark_recovered_failure_lines(

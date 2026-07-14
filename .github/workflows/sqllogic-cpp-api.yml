@@ -1,23 +1,15 @@
 name: Sqllogic (C API runner)
 
-# Runs the sqllogic suite through the stable-C++-API executor
-# (CppApiSQLLogicExecutor) and compares it against the internal
-# ClientContext::Query path, across the config matrix and platforms upstream/main
-# exercises. A nightly guard that the C-API/streaming path stays equivalent to the
-# internal one as the engine and bridge evolve.
+# Nightly guard that the C-API/streaming path stays equivalent to the internal one:
+# runs the sqllogic suite under the stable-C++-API executor (CppApiSQLLogicExecutor)
+# across the configs and platforms upstream exercises, and fails only on
+# cpp_api-specific divergences. How the diff works: scripts/ci/sqllogic_executor_diff.py.
 #
-# Each job runs the suite under BOTH executors and fails only on tests that fail
-# under cpp_api but pass under internal (scripts/ci/sqllogic_executor_diff.py).
-# Environment-driven failures (resource-heavy .test_slow that fail on small CI
-# runners regardless of executor) fire under both executors and cancel out, so a
-# job stays green unless there is a genuine C-API runner divergence.
+# The reldebug (~12GB) and relassert (~16GB) builds overflow a Linux runner's ~14GB
+# free disk, so linux jobs run ./.github/actions/cleanup_runner first.
 #
-# The reldebug (~12GB) and relassert (~16GB) builds overflow a GitHub Linux
-# runner's ~14GB free disk (the loadable extensions, esp. icu, dominate), so the
-# linux jobs run ./.github/actions/cleanup_runner first to reclaim ~20GB.
-#
-# Only meaningful once the C-API runner has merged to the branch this runs on:
-# scheduled runs use the workflow + code from the default branch.
+# Scheduled runs take workflow and code from the default branch, so this is only
+# meaningful post-merge.
 
 on:
   workflow_dispatch:
@@ -28,20 +20,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Both executors are always compiled in; sqllogic_executor_diff.py selects each
-# one per run via DUCKDB_SQLLOGIC_EXECUTOR, so the build is identical to upstream's
-# and stays ccache-shareable.
+# Both executors are always compiled in; the diff script picks one per run via
+# DUCKDB_SQLLOGIC_EXECUTOR, so the build matches upstream's and stays ccache-shareable.
 env:
   GEN: ninja
   CORE_EXTENSIONS: "json;parquet;icu;tpch;tpcds;autocomplete"
-  # Windows runners default python to a cp1252 stdout, which cannot encode the
-  # test runner's progress glyphs and dies with UnicodeEncodeError mid-report.
+  # Windows python defaults to cp1252 stdout, which crashes on the test runner's UTF-8 output.
   PYTHONUTF8: "1"
 
 jobs:
-  # The configuration matrix. Mirrors upstream ExtendedTests' linux-configs-all
-  # job (same configs, ubuntu-24.04, reldebug, test/run --test-config), run under
-  # both executors and diffed.
+  # The config matrix. Mirrors upstream ExtendedTests' linux-configs-all job
+  # (same configs, ubuntu-24.04, reldebug).
   linux-configs:
     name: "linux ${{ matrix.config }}"
     runs-on: ubuntu-24.04
@@ -65,8 +54,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # Free disk before setup-python: cleanup_runner clears the tool cache, so
-      # setup-python must re-install Python after it.
+      # cleanup_runner clears the tool cache, so it must run before setup-python.
       - uses: ./.github/actions/cleanup_runner
       - uses: actions/setup-python@v5
         with:
@@ -79,8 +67,8 @@ jobs:
       - name: "Run sqllogic (${{ matrix.config }}): cpp_api vs internal"
         run: python scripts/ci/sqllogic_executor_diff.py -- ./build/reldebug/test/run --test-config=test/configs/${{ matrix.config }}.json "*"
 
-  # The default suite (no special config), per platform. Upstream runs the full
-  # suite on each OS (Main.yml / OSX.yml); the config matrix above is Linux-only.
+  # The default suite per platform (upstream: Main.yml / OSX.yml); the config
+  # matrix above is Linux-only.
   default-suite:
     name: "${{ matrix.os }} default"
     runs-on: ${{ matrix.os == 'macos' && 'macos-latest' || 'ubuntu-24.04' }}
@@ -109,10 +97,9 @@ jobs:
       - name: "Run sqllogic (default config): cpp_api vs internal"
         run: python scripts/ci/sqllogic_executor_diff.py -- ./build/reldebug/test/run "*"
 
-  # Windows. windows_release is a Release (no debug info) in-source build, so it
-  # fits the runner disk without cleanup; the binary lands under ./test. The
-  # parallel runner (run_tests.py) isolates crashes per batch -- e.g. giant_query
-  # overflowing Windows' 1MB stack -- so the suite finishes instead of aborting.
+  # windows_release is a Release in-source build: fits the disk without cleanup,
+  # binary lands under ./test. run_tests.py isolates crashes per batch (giant_query
+  # overflows Windows' 1MB stack), so the suite finishes instead of aborting.
   windows-default:
     name: "windows default"
     runs-on: windows-2022
@@ -141,19 +128,11 @@ jobs:
           echo "Using $unittest"
           python scripts/ci/sqllogic_executor_diff.py -- python scripts/ci/run_tests.py "$unittest" "*"
 
-  # Sanitizer coverage. Mirrors upstream NightlyTests' relassert config runs.
-  # `make relassert` builds RelWithDebInfo + FORCE_ASSERT with ASan/UBSan (and LSan
-  # on Linux), exercising the C-API runner's chunk adoption + re-materialization
-  # under a sanitizer. The diff filters pre-existing / environment sanitizer hits
-  # (those fire under both executors), leaving only C-API-specific ones. This is
-  # the heaviest build (~16GB on disk + ASan memory), so it also adds swap.
-  #
-  # The full suite under a sanitizer overruns the 6h GitHub job limit (and fills
-  # the runner disk), so this run excludes the .test_slow tests (the Catch2 [.]
-  # hidden tag, via the "~[.]" pattern). The sanitizer here guards the C-API
-  # runner code path, which the fast suite exercises fully; exhaustive
-  # storage-config coverage of the slow tests is already provided by the
-  # non-sanitizer linux-configs jobs above.
+  # Sanitizer coverage, mirroring upstream NightlyTests' relassert configs: assertions
+  # + ASan/UBSan/LSan, guarding the C-API runner's chunk adoption and re-materialization.
+  # Heaviest build (~16GB plus ASan memory), hence the swap step. Runs "~[.]" (no
+  # .test_slow) to fit the 6h job limit; the slow tests' storage-config coverage comes
+  # from the non-sanitized linux-configs jobs above.
   linux-relassert-configs:
     name: "linux relassert ${{ matrix.config }}"
     runs-on: ubuntu-24.04
@@ -178,18 +157,13 @@ jobs:
         run: python3 scripts/ci/retry.py -- make toolsci
       - uses: ./.github/actions/ccache-action
       - name: Build (relassert -> assertions + sanitizers)
-        # Keep linking one job at a time as a precaution for ASan's larger link
-        # memory (relassert is RelWithDebInfo -> the debug_link_jobs pool, default 2).
+        # ASan links need more memory, so link one job at a time.
         run: EXTRA_CMAKE_VARIABLES="-DDUCKDB_DEBUG_LINK_JOBS=1" make relassert
       - name: "Run sqllogic (${{ matrix.config }}): cpp_api vs internal"
-        # "~[.]" excludes the .test_slow tests so the sanitized run fits the 6h
-        # limit (see the job comment above). Larger batch timeout: sanitized
-        # builds run the suite much slower.
+        # Larger batch timeout: sanitized builds run the suite much slower.
         run: python scripts/ci/sqllogic_executor_diff.py -- ./build/relassert/test/run --test-config=test/configs/${{ matrix.config }}.json --batch-timeout 600 "~[.]"
       - name: Free build tree for the cache save
-        # The ~16GB relassert build fills the disk, leaving the post-job ccache
-        # save to die with ENOSPC, so every nightly relassert build starts cold.
-        # Regular steps run before post-job actions; dropping the build tree
-        # here gives the save its headroom back.
+        # The ~16GB build tree leaves no disk for the post-job ccache save (ENOSPC,
+        # so every nightly starts cold). Regular steps run before post-job actions.
         if: always()
         run: rm -rf build

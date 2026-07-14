@@ -1,39 +1,25 @@
 #!/usr/bin/env python3
 """Run the sqllogic suite under cpp_api and flag only cpp_api-specific divergences.
 
-The C-API sqllogic runner (DUCKDB_SQLLOGIC_EXECUTOR=cpp_api) should produce the
-same pass/fail verdict as the internal executor (=internal) for every test. A
-plain single-executor CI job cannot tell a genuine cpp_api regression apart from
-an environment-driven failure (resource-heavy .test_slow that fail on small CI
-runners regardless of executor), so it goes red on noise.
-
-Running the full suite twice (once per executor) is correct but too slow -- one
-pass is ~30-50 min, so 2x is ~1-2h per job. Instead this does an ASYMMETRIC diff,
-which is ~1x plus a small tail:
+Some tests fail for reasons unrelated to the executor (resource-heavy tests on small
+CI runners), so a single-executor job goes red on noise. Running the whole suite
+under both executors would double the wall time. The asymmetric diff:
 
   1. Run the full suite under cpp_api -> failing set C.
-  2. If C is empty, done (green).
-  3. Re-run ONLY the tests in C under internal (with retries) -> those that also
-     fail are environment failures; the rest are divergence candidates.
-  4. Re-run the candidates under cpp_api (with retries) -> those that still fail
-     consistently are real divergences; the rest were flaky and are dropped.
+  2. If C is empty: green.
+  3. Re-run C under internal (with retries). Tests that also fail there are
+     environment failures; the rest are divergence candidates.
+  4. Re-run the candidates under cpp_api (with retries). Tests that still fail are
+     real divergences and fail the job; the rest were flaky.
 
-Fails iff step 4 leaves any confirmed divergence. The full suite is run once; the
-re-runs in 3 and 4 cover only the (usually few) failures, so retries there are
-cheap and stabilize flaky tests without retrying the whole corpus.
-
-The targeted re-runs pass the test names through a file (run_tests.py
---test-list), never as positional patterns: Catch2 v2 ANDs multiple positional
-test specs (a comma is the OR separator), so two or more names as patterns
-select zero tests. A run that exits nonzero without reporting a single failing
-test is an infrastructure failure and fails the job -- an empty parse must
-never read as "everything passed".
+A run that exits nonzero without reporting a single failing test fails the job:
+an empty parse must never read as green.
 
 Usage:
     sqllogic_executor_diff.py -- <command that runs the suite> [args...]
 
-The command's LAST argument must be the test pattern (e.g. "*"); it is replaced
-by the --test-list file for the targeted re-runs.
+The command's LAST argument must be the test pattern (e.g. "*"); re-runs replace it
+with a --test-list file.
 
 e.g. sqllogic_executor_diff.py -- ./build/reldebug/test/run --test-config=c.json "*"
 """
@@ -44,16 +30,13 @@ import sys
 import tempfile
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-# run_tests.py emits one of these per failing batch (see format_fail_header /
-# render_failure_lines). The test name is what we diff on. "test batch" is the
-# placeholder for a failure run_tests.py could not attribute to one test; the
-# suspect-tests line that follows it lists the whole batch (tab-separated), and
-# every test on it counts as failing -- the re-runs sort the innocent ones out.
+# Failure lines emitted by run_tests.py. "test batch" means no attributed test; the
+# "suspect tests:" line that follows lists the whole batch, and each one counts as failing.
 FAIL_RE = re.compile(r"^error:\s+FAIL\s+(.+?)\s*$")
 TIMEOUT_RE = re.compile(r"^error:\s+timeout\s+\([0-9.]+s\)\s+for\s+(.+?)\.?\s*$")
 SUSPECTS_RE = re.compile(r"^suspect tests: (.+?)\s*$")
 UNATTRIBUTED = "test batch"
-RETRY = ["--retry", "3"]
+RERUN_FLAGS = ["--retry", "3", "--batch-size", "1"]
 
 
 def run(command, executor, label):
@@ -89,12 +72,17 @@ def run(command, executor, label):
 
 
 def run_targeted(base, tests, executor, label):
-    """Re-run an explicit test list, passed via file (see module docstring)."""
+    """Re-run an explicit test list.
+
+    Names go through a --test-list file because Catch2 ANDs positional test specs:
+    two or more names as patterns select zero tests. One test per batch, so a
+    timeout or crash cannot hide or misattribute its batch mates.
+    """
     fd, path = tempfile.mkstemp(prefix="executor-diff-", suffix=".list")
     try:
         with os.fdopen(fd, "w", encoding="utf8") as test_list:
             test_list.write("\n".join(tests) + "\n")
-        return run(base + RETRY + ["--test-list", path], executor, label)
+        return run(base + RERUN_FLAGS + ["--test-list", path], executor, label)
     finally:
         os.unlink(path)
 
