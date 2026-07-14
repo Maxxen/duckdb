@@ -98,6 +98,12 @@ public:
 		return false;
 	}
 
+	//! Whether this command is a countable test assertion (statement/query) for per-test outcome
+	//! stats (--emit-test-events). Infrastructure commands (mode/loop/load/...) return false.
+	virtual bool IsCountableStatement() const {
+		return false;
+	}
+
 private:
 	void RestartDatabase(ExecuteContext &context, reference<Connection> &connection, const string &sql_query) const;
 };
@@ -113,6 +119,9 @@ public:
 	void ExecuteInternal(ExecuteContext &context) const override;
 
 	bool SupportsConcurrent() const override {
+		return true;
+	}
+	bool IsCountableStatement() const override {
 		return true;
 	}
 };
@@ -146,6 +155,9 @@ public:
 	void ExecuteInternal(ExecuteContext &context) const override;
 
 	bool SupportsConcurrent() const override {
+		return true;
+	}
+	bool IsCountableStatement() const override {
 		return true;
 	}
 };

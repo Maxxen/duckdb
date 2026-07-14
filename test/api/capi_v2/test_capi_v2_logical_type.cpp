@@ -85,9 +85,10 @@ TEST_CASE("V2: logical_type create_from_id primitives", "[capi_v2][logical_type]
 
 TEST_CASE("V2: logical_type create_from_id rejects parameterised ids", "[capi_v2][logical_type][lifecycle]") {
 	DUCKDB_V2_LOGICAL_TYPE_ID rejected[] = {
-	    DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL, DUCKDB_V2_LOGICAL_TYPE_ID_LIST,    DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT,
-	    DUCKDB_V2_LOGICAL_TYPE_ID_MAP,     DUCKDB_V2_LOGICAL_TYPE_ID_ARRAY,   DUCKDB_V2_LOGICAL_TYPE_ID_UNION,
-	    DUCKDB_V2_LOGICAL_TYPE_ID_ENUM,    DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT, DUCKDB_V2_LOGICAL_TYPE_ID_GEOMETRY,
+	    DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL,  DUCKDB_V2_LOGICAL_TYPE_ID_LIST, DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT,
+	    DUCKDB_V2_LOGICAL_TYPE_ID_TUPLE,    DUCKDB_V2_LOGICAL_TYPE_ID_MAP,  DUCKDB_V2_LOGICAL_TYPE_ID_ARRAY,
+	    DUCKDB_V2_LOGICAL_TYPE_ID_UNION,    DUCKDB_V2_LOGICAL_TYPE_ID_ENUM, DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT,
+	    DUCKDB_V2_LOGICAL_TYPE_ID_GEOMETRY,
 	};
 	for (auto id : rejected) {
 		duckdb_v2_logical_type_handle type = nullptr;
@@ -609,6 +610,18 @@ TEST_CASE("V2: logical_type create_from_text parses parameterized kinds", "[capi
 	REQUIRE(V2TypeIdOf(field_b) == DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	duckdb_v2_logical_type_destroy(&field_b);
 	duckdb_v2_logical_type_destroy(&s);
+
+	// TUPLE is the unnamed struct: the STRUCT param view with positional names.
+	auto tup = V2TypeFromText(f.conn, "TUPLE(INTEGER, VARCHAR)");
+	REQUIRE(V2TypeIdOf(tup) == DUCKDB_V2_LOGICAL_TYPE_ID_TUPLE);
+	REQUIRE(V2ParamCount(tup) == 2);
+	auto el0 = V2ParamType(tup, 0, nullptr);
+	REQUIRE(V2TypeIdOf(el0) == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_destroy(&el0);
+	auto el1 = V2ParamType(tup, 1, nullptr);
+	REQUIRE(V2TypeIdOf(el1) == DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
+	duckdb_v2_logical_type_destroy(&el1);
+	duckdb_v2_logical_type_destroy(&tup);
 
 	auto map = V2TypeFromText(f.conn, "MAP(VARCHAR, INTEGER)");
 	REQUIRE(V2TypeIdOf(map) == DUCKDB_V2_LOGICAL_TYPE_ID_MAP);
@@ -1151,17 +1164,21 @@ TEST_CASE("V2: logical_type_create builds the built-in parameterized kinds", "[c
 	REQUIRE(V2TypeText(s) == "STRUCT(a INTEGER, b VARCHAR)");
 	duckdb_v2_logical_type_destroy(&s);
 
-	// struct: all positional builds an unnamed struct whose params come back
-	// positional.
-	auto anon = V2CreateType(
-	    f.conn, "struct", nullptr,
+	// struct requires named fields; the anonymous form is the tuple type.
+	REQUIRE(V2CreateTypeErr(f.conn, "struct", nullptr,
+	                        {V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER),
+	                         V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)}) == DUCKDB_V2_ERROR_QUERY_BINDER);
+
+	// tuple: all positional; params come back positional.
+	auto tup = V2CreateType(
+	    f.conn, "tuple", nullptr,
 	    {V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
-	REQUIRE(V2TypeIdOf(anon) == DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT);
-	REQUIRE(V2ParamCount(anon) == 2);
-	auto anon_field = V2ParamType(anon, 0, nullptr);
-	REQUIRE(V2TypeIdOf(anon_field) == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	duckdb_v2_logical_type_destroy(&anon_field);
-	duckdb_v2_logical_type_destroy(&anon);
+	REQUIRE(V2TypeIdOf(tup) == DUCKDB_V2_LOGICAL_TYPE_ID_TUPLE);
+	REQUIRE(V2ParamCount(tup) == 2);
+	auto tup_field = V2ParamType(tup, 0, nullptr);
+	REQUIRE(V2TypeIdOf(tup_field) == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_logical_type_destroy(&tup_field);
+	duckdb_v2_logical_type_destroy(&tup);
 
 	// union: named members.
 	std::vector<const char *> member_names = {"i", "s"};

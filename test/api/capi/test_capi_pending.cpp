@@ -28,26 +28,11 @@ TEST_CASE("Test pending statements in C API", "[capi]") {
 	REQUIRE(result->Fetch<int64_t>(0, 0) == 499999500000LL);
 }
 
-// ---------------------------------------------------------------------------
-// CANARY for duckdb/duckdb#23379.
-//
-// Bug: duckdb_pending_execute_task (ClientContext::ExecuteTaskInternal) does not
-// observe a pending duckdb_interrupt when the calling thread runs no task that
-// reaches InterruptCheck(). Reproduced deterministically below: a tiny streaming
-// buffer parks the result collector at RESULT_READY, and from then on
-// duckdb_pending_execute_task keeps returning RESULT_READY -- the interrupt is
-// never surfaced as DUCKDB_PENDING_ERROR.
-//
-// This case is tagged [!shouldfail] on purpose: while the upstream bug is present
-// the final REQUIRE fails, so Catch2 records the case as a (expected) PASS and the
-// suite stays green. Once the fix lands via an upstream merge the case will PASS,
-// which [!shouldfail] turns into a build FAILURE -- the canary's "peep".
-//
-// WHEN THIS CASE STARTS FAILING THE BUILD: the fix has landed. Delete this canary
-// and remove the [!mayfail] tags from the V2 pending-phase interrupt cases in
-// test/api/capi_v2/test_capi_v2_query_result.cpp (they flake for the same reason).
-// ---------------------------------------------------------------------------
-TEST_CASE("CANARY duckdb#23379: pending_execute_task must observe interrupt", "[capi][!shouldfail]") {
+// Regression test for duckdb/duckdb#23379: duckdb_pending_execute_task must
+// observe a pending duckdb_interrupt even when the calling thread runs no task
+// that reaches InterruptCheck(). A tiny streaming buffer parks the result
+// collector at RESULT_READY; the interrupt must surface as DUCKDB_PENDING_ERROR.
+TEST_CASE("duckdb#23379: pending_execute_task must observe interrupt", "[capi]") {
 	CAPITester tester;
 	CAPIPrepared prepared;
 	CAPIPending pending;

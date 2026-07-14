@@ -546,6 +546,62 @@ TEST_CASE("V2: STRUCT(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]")
 }
 
 // ===========================================================================
+// TUPLE(INTEGER, VARCHAR): the unnamed struct follows the STRUCT descent
+// convention ([i] = field i). row(...) literals produce it.
+// ===========================================================================
+
+TEST_CASE("V2: TUPLE(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") {
+	V2EnvFixture fx;
+
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(fx.conn, "SELECT * FROM (VALUES ((1, 'first')), ((2, 'second'))) t(s)", &r, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	chunk = V2StepChunk(r);
+
+	duckdb_v2_vector_handle tvec = nullptr;
+	duckdb_v2_data_chunk_get_vector(chunk, 0, &tvec, nullptr);
+
+	duckdb_v2_logical_type_handle t = nullptr;
+	REQUIRE(duckdb_v2_vector_get_logical_type(tvec, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
+	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+	REQUIRE(duckdb_v2_logical_type_get_id(t, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_TUPLE);
+	duckdb_v2_logical_type_destroy(&t);
+
+	idx_t field_count = 0;
+	REQUIRE(duckdb_v2_vector_get_child_count(tvec, &field_count, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(field_count == 2);
+
+	// Field 0: INTEGER.
+	duckdb_v2_vector_handle f0 = nullptr;
+	REQUIRE(duckdb_v2_vector_get_child(tvec, 0, &f0, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_view v0 {};
+	duckdb_v2_vector_get_view(f0, &v0, nullptr);
+	const int32_t *ints = static_cast<const int32_t *>(v0.data);
+	REQUIRE(ints[SelAt(v0.sel, 0)] == 1);
+	REQUIRE(ints[SelAt(v0.sel, 1)] == 2);
+
+	// Field 1: VARCHAR.
+	duckdb_v2_vector_handle f1 = nullptr;
+	REQUIRE(duckdb_v2_vector_get_child(tvec, 1, &f1, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_view v1 {};
+	duckdb_v2_vector_get_view(f1, &v1, nullptr);
+	const duckdb_v2_varchar_t *strs = static_cast<const duckdb_v2_varchar_t *>(v1.data);
+	REQUIRE(V2StringView(strs[SelAt(v1.sel, 0)]) == "first");
+	REQUIRE(V2StringView(strs[SelAt(v1.sel, 1)]) == "second");
+
+	// Out-of-range field index rejected.
+	duckdb_v2_vector_handle oor = nullptr;
+	REQUIRE(duckdb_v2_vector_get_child(tvec, 99, &oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(oor == nullptr);
+
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
+}
+
+// ===========================================================================
 // ARRAY(INTEGER, 3): get_child returns the elements child (index 0);
 // child row count = parent_count * array_size; list_get_size rejects
 // on ARRAY (it's not LIST/MAP — child rows are derivable from logical

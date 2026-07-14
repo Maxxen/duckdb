@@ -50,6 +50,14 @@ TEST_CASE("Stable C++API: TypeId, ToText, and ParseType round trip", "[cpp_api][
 	REQUIRE(dec.ToText() == "DECIMAL(12,4)");
 	REQUIRE(dec == conn.ParseType(dec.ToText()));
 
+	// TUPLE (the unnamed struct) parses and reports its own id; children
+	// come back positionally through the generic GetParam path.
+	auto tup = conn.ParseType("TUPLE(INTEGER, VARCHAR)");
+	REQUIRE(tup.GetId() == TypeId::TUPLE);
+	REQUIRE(tup.GetParamCount() == 2);
+	REQUIRE(tup.GetParam(0).name.empty());
+	REQUIRE(tup.GetParam(0).value.AsType().GetId() == TypeId::INTEGER);
+
 	// Context primary form, usable inside a with-context scope.
 	conn.WithTransaction([](const Context &ctx) {
 		auto type_type = ctx.ParseType("TYPE");

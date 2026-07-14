@@ -262,6 +262,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child_count(duckdb_v2_vector_handle ve
 			*out_count = 2;
 			return;
 		case duckdb::LogicalTypeId::STRUCT:
+		case duckdb::LogicalTypeId::TUPLE:
 			*out_count = duckdb::StructType::GetChildCount(vec->GetType());
 			return;
 		case duckdb::LogicalTypeId::UNION:
@@ -314,10 +315,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_child(duckdb_v2_vector_handle vector, 
 			}
 			throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: MAP children are [0]=keys, [1]=values");
 		}
-		case duckdb::LogicalTypeId::STRUCT: {
+		case duckdb::LogicalTypeId::STRUCT:
+		case duckdb::LogicalTypeId::TUPLE: {
 			auto &entries = duckdb::StructVector::GetEntries(*vec);
 			if (index >= entries.size()) {
-				throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: STRUCT field index out of range");
+				throw duckdb::InvalidInputException("duckdb_v2_vector_get_child: field index out of range");
 			}
 			*out_child = reinterpret_cast<_duckdb_v2_vector *>(&entries[index]);
 			return;

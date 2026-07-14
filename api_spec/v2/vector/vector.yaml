@@ -78,7 +78,7 @@ module: vector
 #   MAP     → 2 children: [0] = keys, [1] = values
 #               (V2 hides MAP's internal LIST<STRUCT(K,V)>)
 #   ARRAY   → 1 child:  [0] = elements
-#   STRUCT  → N children: [i] = field i
+#   STRUCT / TUPLE → N children: [i] = field i
 #   UNION   → N+1 children: [0] = tag, [1..N] = members
 #             LOUD divergence: value_get_child on a UNION value returns
 #             [0] = tag, [1] = the ACTIVE member only (child_count 2); a
@@ -540,7 +540,7 @@ functions:
   #   LIST    → 1 child:  [0] = elements
   #   MAP     → 2 children: [0] = keys, [1] = values
   #   ARRAY   → 1 child:  [0] = elements
-  #   STRUCT  → N children: [i] = field i
+  #   STRUCT / TUPLE → N children: [i] = field i
   #   UNION   → N+1 children: [0] = tag, [1..N] = members
   #             (value_get_child diverges: [0] = tag, [1] = active member)
   #   others  → 0

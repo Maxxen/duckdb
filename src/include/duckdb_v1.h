@@ -416,7 +416,8 @@ typedef struct duckdb_blob duckdb_blob;
 //! A DuckDB BIT (uint8_t* + size). Free data with duckdb_free.
 typedef struct duckdb_bit duckdb_bit;
 
-//! A DuckDB BIGNUM (uint8_t* + size + is_negative). Free data with duckdb_free.
+//! A DuckDB BIGNUM (uint8_t* + size + is_negative). The absolute value is stored in data in big endian format. Free
+//! data with duckdb_free.
 typedef struct duckdb_bignum duckdb_bignum;
 
 //! A query result. Must be freed with duckdb_destroy_result.

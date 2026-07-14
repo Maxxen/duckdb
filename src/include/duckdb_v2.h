@@ -2408,6 +2408,8 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 	DUCKDB_V2_LOGICAL_TYPE_ID_UNION = 107,
 	DUCKDB_V2_LOGICAL_TYPE_ID_ARRAY = 108,
 	DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT = 109,
+	/* Unnamed struct; shares the physical representation of STRUCT. */
+	DUCKDB_V2_LOGICAL_TYPE_ID_TUPLE = 110,
 } DUCKDB_V2_LOGICAL_TYPE_ID;
 
 /* --- Struct forward declarations for logical_type --- */
@@ -2436,7 +2438,7 @@ return types, table function result columns, cast source and
 target types, and custom type registration.
 
 Returns ERROR_INVALID_INPUT for parameterised type ids
-(DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
+(DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
 for the remaining bind-time-only ids (SQLNULL, UNKNOWN), for TYPE
 (construct it via logical_type_create_from_text), and for INVALID.
 Composite construction is not part of this surface yet.
@@ -2617,7 +2619,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_to_text(duckdb_v2_logic
 * The inspection dual of logical_type_create: the parameters that
 reconstruct the type through it. Per kind: DECIMAL 2 (width,
 scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
-(key type, value type); STRUCT one per field; UNION one per
+(key type, value type); STRUCT and TUPLE one per field; UNION one per
 member; ENUM one per dictionary entry; VARCHAR 1 when a collation
 is set, else 0; GEOMETRY 1 when a coordinate system is set, else
 0; everything else 0. A bound type reports what it carries:
@@ -3103,7 +3105,8 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_type(duckdb_v2_value_handl
 * The generic composite constructor. Per type kind:
 LIST, children are the elements, any count including 0;
 ARRAY, count must equal the declared array size;
-STRUCT, positional per declared field order, count = field count;
+STRUCT and TUPLE, positional per declared field order, count =
+field count;
 MAP, alternating key, value, so count is even and 2 x the entry
 count. Every other type id returns ERROR_INVALID_INPUT: UNION and
 ENUM values are built via value_cast (a member value to the union
@@ -3115,9 +3118,9 @@ each child to the declared child or field type (non-strict default
 cast); cast failures surface. NULL children become typed NULLs.
 MAP keys must be non-NULL and unique; violations surface.
 LIST, ARRAY, and MAP rebuild the outer type from its components, so
-an alias on the outer type is not preserved; STRUCT keeps its
-declared type, alias included. value_cast is the alias-preserving
-construction path.
+an alias on the outer type is not preserved; STRUCT and TUPLE keep
+their declared type, alias included. value_cast is the
+alias-preserving construction path.
 
 * @param type The borrowed composite logical type to instantiate.
 * @param children An array of child_count child values. Borrowed (copied in). Pass NULL when child_count is 0.
@@ -3132,8 +3135,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_create(duckdb_v2_logical_type_
                                                          duckdb_v2_error_info_handle *err);
 /*!
 * Returns the number of child values of a value.
-* Per type kind: LIST and ARRAY, the element count; STRUCT, the field
-count; MAP, 2 x the entry count (children alternate key, value);
+* Per type kind: LIST and ARRAY, the element count; STRUCT and TUPLE,
+the field count; MAP, 2 x the entry count (children alternate key,
+value);
 UNION, 2 (tag plus active member). Everything else, including NULL
 values of any nested type, reports 0.
 
@@ -3146,9 +3150,9 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child_count(duckdb_v2_valu
                                                                   duckdb_v2_error_info_handle *err);
 /*!
 * Returns one child of a composite value as an owned copy.
-* LIST and ARRAY children are the elements; STRUCT children are the
-fields in declared order (field names come from the type, e.g.
-logical_type_get_param); MAP children alternate key, value,
+* LIST and ARRAY children are the elements; STRUCT and TUPLE children
+are the fields in declared order (STRUCT field names come from the
+type, e.g. logical_type_get_param); MAP children alternate key, value,
 symmetric with value_create. UNION children are [0] the tag as a
 UTINYINT value and [1] the active member: a union VALUE holds only
 its active member. LOUD divergence for generic-descent authors: the

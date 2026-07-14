@@ -10,8 +10,8 @@ module: value
 #   - varchar/blob/bit/bignum/geometry: StringValueInfo (a managed std::string).
 #   - type: StringValueInfo holding the serialized logical type
 #     (value_create_type / value_get_type wrap and unwrap it).
-#   - composites (list/struct/map/array/union): NestedValueInfo (a vector of
-#     child Values). Built via value_create (LIST/ARRAY/STRUCT/MAP) or
+#   - composites (list/struct/tuple/map/array/union): NestedValueInfo (a vector
+#     of child Values). Built via value_create (LIST/ARRAY/STRUCT/TUPLE/MAP) or
 #     value_cast (UNION from a member value, ENUM from VARCHAR); read via
 #     value_get_child_count / value_get_child.
 #
@@ -332,7 +332,8 @@ functions:
       The generic composite constructor. Per type kind:
       LIST, children are the elements, any count including 0;
       ARRAY, count must equal the declared array size;
-      STRUCT, positional per declared field order, count = field count;
+      STRUCT and TUPLE, positional per declared field order, count =
+      field count;
       MAP, alternating key, value, so count is even and 2 x the entry
       count. Every other type id returns ERROR_INVALID_INPUT: UNION and
       ENUM values are built via value_cast (a member value to the union
@@ -344,9 +345,9 @@ functions:
       cast); cast failures surface. NULL children become typed NULLs.
       MAP keys must be non-NULL and unique; violations surface.
       LIST, ARRAY, and MAP rebuild the outer type from its components, so
-      an alias on the outer type is not preserved; STRUCT keeps its
-      declared type, alias included. value_cast is the alias-preserving
-      construction path.
+      an alias on the outer type is not preserved; STRUCT and TUPLE keep
+      their declared type, alias included. value_cast is the
+      alias-preserving construction path.
     role: constructor
     belongs_to: value
     parameters:
@@ -375,8 +376,9 @@ functions:
   value_get_child_count:
     summary: Returns the number of child values of a value.
     description: |
-      Per type kind: LIST and ARRAY, the element count; STRUCT, the field
-      count; MAP, 2 x the entry count (children alternate key, value);
+      Per type kind: LIST and ARRAY, the element count; STRUCT and TUPLE,
+      the field count; MAP, 2 x the entry count (children alternate key,
+      value);
       UNION, 2 (tag plus active member). Everything else, including NULL
       values of any nested type, reports 0.
     role: getter
@@ -398,9 +400,9 @@ functions:
   value_get_child:
     summary: Returns one child of a composite value as an owned copy.
     description: |
-      LIST and ARRAY children are the elements; STRUCT children are the
-      fields in declared order (field names come from the type, e.g.
-      logical_type_get_param); MAP children alternate key, value,
+      LIST and ARRAY children are the elements; STRUCT and TUPLE children
+      are the fields in declared order (STRUCT field names come from the
+      type, e.g. logical_type_get_param); MAP children alternate key, value,
       symmetric with value_create. UNION children are [0] the tag as a
       UTINYINT value and [1] the active member: a union VALUE holds only
       its active member. LOUD divergence for generic-descent authors: the

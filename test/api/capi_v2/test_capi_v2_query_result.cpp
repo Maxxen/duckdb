@@ -554,14 +554,7 @@ TEST_CASE("V2: interrupt between steps surfaces as sticky CANCELLED status", "[c
 	duckdb_v2_result_destroy(&r);
 }
 
-// [!mayfail] (this and the three cases below): flaky until duckdb/duckdb#23379
-// lands. The interrupt is set while the result is still in the pending phase;
-// without that fix the bridge only observes it once a background task happens to
-// run InterruptCheck, which under load can outlast these bounded step loops. The
-// [!shouldfail] canary "CANARY duckdb#23379"
-// (test/api/capi/test_capi_pending.cpp) peeps when the fix lands; drop these
-// [!mayfail] tags then.
-TEST_CASE("V2: interrupt during the pending phase maps to CANCELLED", "[capi_v2][query_result][!mayfail]") {
+TEST_CASE("V2: interrupt during the pending phase maps to CANCELLED", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	// Interrupt lands before the first step, i.e. while the result is
@@ -1091,9 +1084,7 @@ TEST_CASE("V2: destroying an undrained result frees the connection", "[capi_v2][
 	duckdb_v2_result_destroy(&second);
 }
 
-// [!mayfail]: pending-phase interrupt flake, see duckdb/duckdb#23379 note above.
-TEST_CASE("V2: a cancelled result frees the connection once the step observes it",
-          "[capi_v2][query_result][!mayfail]") {
+TEST_CASE("V2: a cancelled result frees the connection once the step observes it", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	V2Result live;
@@ -1247,8 +1238,7 @@ TEST_CASE("V2: result_drain edge and error paths", "[capi_v2][query_result]") {
 // surface an engine INTERNAL error.
 // ===========================================================================
 
-// [!mayfail]: pending-phase interrupt flake, see duckdb/duckdb#23379 note above.
-TEST_CASE("V2: result_wait after interrupt is clean", "[capi_v2][query_result][!mayfail]") {
+TEST_CASE("V2: result_wait after interrupt is clean", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	V2Result r;
@@ -1513,8 +1503,7 @@ TEST_CASE("V2: an error inside an expanded group is sticky and rolls back", "[ca
 	duckdb_v2_result_destroy(&r);
 }
 
-// [!mayfail]: pending-phase interrupt flake, see duckdb/duckdb#23379 note above.
-TEST_CASE("V2: interrupt during an expanded group cancels and rolls back", "[capi_v2][query_result][!mayfail]") {
+TEST_CASE("V2: interrupt during an expanded group cancels and rolls back", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
 	V2ExecSQL(fx.conn, "CREATE TABLE t (i INTEGER)");

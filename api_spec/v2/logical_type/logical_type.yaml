@@ -136,6 +136,9 @@ enums:
         value: 108
       LOGICAL_TYPE_ID_VARIANT:
         value: 109
+      LOGICAL_TYPE_ID_TUPLE:
+        value: 110
+        description: Unnamed struct; shares the physical representation of STRUCT.
 functions:
   # -----------------------------------------------------------------------
   # Lifecycle
@@ -156,7 +159,7 @@ functions:
       target types, and custom type registration.
 
       Returns ERROR_INVALID_INPUT for parameterised type ids
-      (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
+      (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
       for the remaining bind-time-only ids (SQLNULL, UNKNOWN), for TYPE
       (construct it via logical_type_create_from_text), and for INVALID.
       Composite construction is not part of this surface yet.
@@ -430,7 +433,7 @@ functions:
       The inspection dual of logical_type_create: the parameters that
       reconstruct the type through it. Per kind: DECIMAL 2 (width,
       scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
-      (key type, value type); STRUCT one per field; UNION one per
+      (key type, value type); STRUCT and TUPLE one per field; UNION one per
       member; ENUM one per dictionary entry; VARCHAR 1 when a collation
       is set, else 0; GEOMETRY 1 when a coordinate system is set, else
       0; everything else 0. A bound type reports what it carries:

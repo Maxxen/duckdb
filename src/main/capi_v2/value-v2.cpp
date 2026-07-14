@@ -3,7 +3,7 @@
 #include "duckdb/common/hugeint.hpp"
 #include "duckdb/common/types/bignum.hpp"
 #include "duckdb/common/types/uuid.hpp"
-#include "duckdb/common/types/variant_value.hpp"
+#include "duckdb/common/types/value.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -47,6 +47,7 @@ idx_t CompositeChildCount(const Value &v) {
 	case LogicalTypeId::ARRAY:
 		return ArrayValue::GetChildren(v).size();
 	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
 		return StructValue::GetChildren(v).size();
 	case LogicalTypeId::MAP:
 		return MapValue::GetChildren(v).size() * 2;
@@ -551,6 +552,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_create(duckdb_v2_logical_type_handle type, 
 			v = duckdb::Value::ARRAY(duckdb::ArrayType::GetChildType(lt), std::move(vals));
 			break;
 		case duckdb::LogicalTypeId::STRUCT:
+		case duckdb::LogicalTypeId::TUPLE:
 			if (child_count != duckdb::StructType::GetChildCount(lt)) {
 				throw duckdb::InvalidInputException(
 				    "duckdb_v2_value_create: child count must equal the declared field count");
@@ -612,6 +614,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_value_get_child(duckdb_v2_value_handle value, idx
 			child = duckdb::ArrayValue::GetChildren(v)[index];
 			break;
 		case duckdb::LogicalTypeId::STRUCT:
+		case duckdb::LogicalTypeId::TUPLE:
 			child = duckdb::StructValue::GetChildren(v)[index];
 			break;
 		case duckdb::LogicalTypeId::MAP: {

@@ -7,7 +7,6 @@
 
 #include "duckdb/common/enums/pending_execution_result.hpp"
 #include "duckdb/common/enums/stream_execution_result.hpp"
-#include "duckdb/main/query_parameters.hpp"
 #include "duckdb/parser/statement/transaction_statement.hpp"
 
 namespace duckdb {

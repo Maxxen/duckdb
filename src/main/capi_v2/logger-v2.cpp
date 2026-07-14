@@ -1,6 +1,10 @@
 #include "duckdb_v2.h"
 #include "capi_v2_internal.hpp"
 
+#include "duckdb/logging/log_manager.hpp"
+#include "duckdb/logging/log_storage.hpp"
+#include "duckdb/logging/logger.hpp"
+
 //----------------------------------------------------------------------------------------------------------------------
 // Log Storage
 //----------------------------------------------------------------------------------------------------------------------

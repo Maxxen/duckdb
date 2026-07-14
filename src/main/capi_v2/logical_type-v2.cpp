@@ -23,8 +23,8 @@ namespace {
 //  - INVALID (sentinel),
 //  - the remaining bind-time-only ids (SQLNULL, UNKNOWN) which only exist
 //    inside the planner / UDF binding paths,
-//  - parameterised types (DECIMAL, LIST, STRUCT, MAP, ARRAY, UNION, ENUM,
-//    VARIANT, GEOMETRY).
+//  - parameterised types (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION,
+//    ENUM, VARIANT, GEOMETRY).
 bool IsPrimitiveCreatable(LogicalTypeId id) {
 	switch (id) {
 	case LogicalTypeId::ANY:
@@ -79,17 +79,20 @@ bool IsValidTypeEntry(optional_ptr<CatalogEntry> entry) {
 // query-location error context. If engine type binding changes, this
 // mirror must follow. Runs inside a transaction; the caller provides it.
 LogicalType BindTypeByNameV2(ClientContext &context, const string &name, const vector<TypeArgument> &args) {
-	EntryLookupInfo lookup(CatalogType::TYPE_ENTRY, Identifier(name));
+	EntryLookupInfo lookup(CatalogType::TYPE_ENTRY, QualifiedName(Identifier(name)));
 	CatalogEntryRetriever retriever(context);
 	optional_ptr<CatalogEntry> entry;
 	if (!DatabaseManager::Get(context).HasDefaultDatabase()) {
-		entry = retriever.GetEntry(Identifier::SystemCatalog(), Identifier::InvalidSchema(), lookup);
+		entry = retriever.GetEntry(
+		    EntryLookupInfo(lookup, QualifiedName(Identifier::SystemCatalog(), Identifier::InvalidSchema(),
+		                                          lookup.GetEntryIdentifier())));
 	} else {
-		entry = retriever.GetEntry(Identifier::InvalidCatalog(), Identifier::InvalidSchema(), lookup,
-		                           OnEntryNotFound::RETURN_NULL);
+		entry = retriever.GetEntry(lookup, OnEntryNotFound::RETURN_NULL);
 		if (!IsValidTypeEntry(entry)) {
-			entry = retriever.GetEntry(Identifier::SystemCatalog(), Identifier::DefaultSchema(), lookup,
-			                           OnEntryNotFound::THROW_EXCEPTION);
+			entry = retriever.GetEntry(
+			    EntryLookupInfo(lookup, QualifiedName(Identifier::SystemCatalog(), Identifier::DefaultSchema(),
+			                                          lookup.GetEntryIdentifier())),
+			    OnEntryNotFound::THROW_EXCEPTION);
 		}
 	}
 	auto &type_entry = entry->Cast<TypeCatalogEntry>();
@@ -114,6 +117,7 @@ idx_t TypeParamCount(const LogicalType &type) {
 	case LogicalTypeId::LIST:
 		return 1;
 	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
 		return StructType::GetChildCount(type);
 	case LogicalTypeId::UNION:
 		return UnionType::GetMemberCount(type);
@@ -144,6 +148,7 @@ Value TypeParamValue(const LogicalType &type, idx_t index, duckdb_v2_str &out_na
 	case LogicalTypeId::MAP:
 		return Value::TYPE(index == 0 ? MapType::KeyType(type) : MapType::ValueType(type));
 	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
 		if (!StructType::IsUnnamed(type)) {
 			out_name = ToStr(StructType::GetChildName(type, index));
 		}

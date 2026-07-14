@@ -919,6 +919,27 @@ TEST_CASE("V2: value_create STRUCT takes positional fields", "[capi_v2][value][c
 	duckdb_v2_logical_type_destroy(&struct_type);
 }
 
+TEST_CASE("V2: value_create TUPLE takes positional fields", "[capi_v2][value][composite]") {
+	V2EnvFixture fx;
+	duckdb_v2_logical_type_handle tuple_type = nullptr;
+	V2WithContext(fx.conn, [&](duckdb_v2_context_handle ctx) {
+		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("TUPLE(INTEGER, VARCHAR)"), &tuple_type, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+	});
+
+	auto t = V2Composite(tuple_type, {V2I32(42), V2Varchar("joe")});
+	REQUIRE(V2ChildCount(t) == 2);
+	auto first = V2Child(t, 0);
+	REQUIRE(V2LeafPayload<int32_t>(first) == 42);
+	duckdb_v2_value_destroy(&first);
+	REQUIRE(V2ChildText(t, 1) == "joe");
+	duckdb_v2_value_destroy(&t);
+
+	// Field count is enforced.
+	REQUIRE(V2CompositeErr(tuple_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	duckdb_v2_logical_type_destroy(&tuple_type);
+}
+
 TEST_CASE("V2: value_create MAP alternates keys and values", "[capi_v2][value][composite]") {
 	V2EnvFixture fx;
 	auto map_type = V2MapType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);

@@ -710,6 +710,8 @@ enum class TypeId : uint32_t {
 	UNION = 107,
 	ARRAY = 108,
 	VARIANT = 109,
+	// Unnamed struct; shares the physical representation of STRUCT.
+	TUPLE = 110,
 };
 
 class Value;
