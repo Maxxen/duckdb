@@ -114,18 +114,16 @@ TEST_CASE("V2: statements are independently owned", "[capi_v2][sql_statement]") 
 }
 
 // ===========================================================================
-// Parse errors carry the parser error type. With the current eager
-// backend they surface at parse_sql; the contract also permits them to
-// surface from the next() call that reaches the failing statement.
+// Parse errors carry the parser error type. Parsing is lazy, so the error
+// surfaces from the next() that reaches the failing statement, after the
+// statements before it have been yielded.
 // ===========================================================================
 
 TEST_CASE("V2: parse errors surface with QUERY_PARSER", "[capi_v2][sql_statement]") {
 	V2EnvFixture fx;
 
-	// Backend-agnostic loop, per the spec commentary: an eager parser
-	// reports the error from parse_sql and yields nothing; an incremental
-	// parser reports it from the next() call that reaches the failing
-	// statement, after yielding the statements before it.
+	// parse_sql parses nothing and succeeds; the loop yields "SELECT 1" then
+	// reaches the parse error for "SELEKT 2" on the next() that parses it.
 	duckdb_v2_statement_iterator_handle iter = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	auto rc = duckdb_v2_parse_sql(fx.conn, "SELECT 1; SELEKT 2", &iter, &err);
@@ -144,6 +142,68 @@ TEST_CASE("V2: parse errors surface with QUERY_PARSER", "[capi_v2][sql_statement
 	REQUIRE(msg.ptr != nullptr);
 	REQUIRE(msg.ptr[0] != '\0');
 	duckdb_v2_error_info_destroy(&err);
+	duckdb_v2_statement_iterator_destroy(&iter);
+}
+
+// ===========================================================================
+// The iterator is spent after exhaustion: next() past the last statement keeps
+// returning a NULL statement with ERROR_NONE, idempotently (0xdead sentinel
+// proves next() actively resets the out-param to NULL).
+// ===========================================================================
+
+TEST_CASE("V2: the iterator is spent after exhaustion", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+
+	duckdb_v2_statement_iterator_handle iter = nullptr;
+	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELECT 1; SELECT 2", &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	// Drain both statements.
+	for (int i = 0; i < 2; i++) {
+		duckdb_v2_sql_statement_handle stmt = nullptr;
+		REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(stmt != nullptr);
+		duckdb_v2_sql_statement_destroy(&stmt);
+	}
+
+	// Past the end, next() is idempotent: NULL statement, no error, every call.
+	for (int i = 0; i < 3; i++) {
+		auto stmt = reinterpret_cast<duckdb_v2_sql_statement_handle>(uintptr_t(0xdead));
+		REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(stmt == nullptr);
+	}
+
+	duckdb_v2_statement_iterator_destroy(&iter);
+}
+
+// ===========================================================================
+// A parse error terminates iteration: the erroring next() reports it, and every
+// next() after it reports clean exhaustion (NULL statement, ERROR_NONE) rather
+// than re-parsing and re-raising the error.
+// ===========================================================================
+
+TEST_CASE("V2: a parse error terminates iteration", "[capi_v2][sql_statement]") {
+	V2EnvFixture fx;
+
+	duckdb_v2_statement_iterator_handle iter = nullptr;
+	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELECT 1; SELEKT 2", &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
+
+	// The valid first statement is yielded.
+	duckdb_v2_sql_statement_handle stmt = nullptr;
+	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(stmt != nullptr);
+	duckdb_v2_sql_statement_destroy(&stmt);
+
+	// The next() that reaches "SELEKT 2" reports the parse error.
+	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_QUERY_PARSER);
+	REQUIRE(stmt == nullptr);
+
+	// Iteration is now spent: further calls report clean exhaustion, not the error.
+	for (int i = 0; i < 2; i++) {
+		stmt = reinterpret_cast<duckdb_v2_sql_statement_handle>(uintptr_t(0xdead));
+		REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(stmt == nullptr);
+	}
+
 	duckdb_v2_statement_iterator_destroy(&iter);
 }
 
@@ -467,12 +527,16 @@ TEST_CASE("V2: statement_execute treats empty name entries as positional", "[cap
 TEST_CASE("V2: mixing named and positional parameters fails at parse", "[capi_v2][sql_statement]") {
 	V2EnvFixture fx;
 	// The parser forbids mixing $1 and $name in one statement, so the failure is at
-	// parse_sql, never at execute. Pin the actual code the bridge surfaces.
+	// parse time, never at execute. Parsing is lazy, so it surfaces from the next()
+	// that parses the statement. Pin the actual code the bridge surfaces.
 	duckdb_v2_statement_iterator_handle iter = nullptr;
-	auto rc = duckdb_v2_parse_sql(fx.conn, "SELECT $1 + $a", &iter, nullptr);
+	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELECT $1 + $a", &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_sql_statement_handle stmt = nullptr;
+	auto rc = duckdb_v2_statement_iterator_next(iter, &stmt, nullptr);
 	CAPTURE(rc);
 	REQUIRE(rc == DUCKDB_V2_ERROR_QUERY_NOT_IMPLEMENTED);
-	REQUIRE(iter == nullptr);
+	REQUIRE(stmt == nullptr);
+	duckdb_v2_statement_iterator_destroy(&iter);
 }
 
 TEST_CASE("V2: statement_bind parameter names are the statement_execute keys", "[capi_v2][sql_statement]") {

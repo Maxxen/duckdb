@@ -224,9 +224,13 @@ TEST_CASE("Stable C++API: Exception carries the code and message body", "[cpp_ap
 		REQUIRE(std::string(ex.what()).find(ex.GetRawMessage()) != std::string::npos);
 	}
 
-	// Parse error via ParseSQL has the same shape: Parser code, unprefixed body.
+	// Parse error surfaces lazily: ParseSQL only sets up the iterator, the first
+	// Next() yields "SELECT 1", and the parse error for "SELEKT 2" surfaces from the
+	// Next() that reaches it. Same shape: Parser code, unprefixed body.
 	try {
-		conn.ParseSQL("SELECT 1; SELEKT 2");
+		auto iter = conn.ParseSQL("SELECT 1; SELEKT 2");
+		REQUIRE(iter.Next());
+		iter.Next();
 		FAIL("expected a Parser error");
 	} catch (const Exception &ex) {
 		REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_QUERY_PARSER);

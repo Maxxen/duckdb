@@ -20,6 +20,7 @@
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_context_state.hpp"
+#include "duckdb/main/parse_iterator.hpp"
 #include "duckdb/main/pending_query_result.hpp"
 #include "duckdb/main/stream_query_result.hpp"
 #include "duckdb/parser/sql_statement.hpp"
@@ -237,13 +238,27 @@ inline SQLStatement *ToSqlStatement(duckdb_v2_sql_statement_handle ptr) {
 	return reinterpret_cast<SQLStatement *>(ptr);
 }
 
-// Backing struct for the opaque duckdb_v2_statement_iterator_handle.
-// The current backend parses eagerly (ClientContext::ParseStatements)
-// and yields from the vector; the iterator-shaped contract permits a
-// lazy parse-on-next backend later without an API change.
+// Backing struct for the opaque duckdb_v2_statement_iterator_handle. Parses
+// lazily: statement_iterator_next parses one statement on demand through the
+// engine's ParseIterator, so statement N is parsed only after statement N-1 has
+// executed. This lets a statement register grammar (LOAD an extension) that a
+// following statement in the same string then uses. Co-owns the ClientContext so
+// the iterator stays valid across next() calls even if the connection is closed
+// first, and keeps the query string to render parse errors through ProcessError.
 struct StatementIteratorWrapperV2 {
-	vector<unique_ptr<SQLStatement>> statements;
-	idx_t cursor = 0;
+	StatementIteratorWrapperV2(shared_ptr<ClientContext> context_p, string query_p)
+	    : context(std::move(context_p)), query(std::move(query_p)) {
+	}
+	shared_ptr<ClientContext> context;
+	//! The original query string, kept to render a parse error through ProcessError.
+	string query;
+	//! Constructed on the first next(): the ParseIterator constructor runs UTF-8
+	//! validation and can throw, and that must route through the same parse-error
+	//! rendering as a per-statement syntax error.
+	unique_ptr<ParseIterator> iterator;
+	//! Set once iteration is spent, by clean exhaustion or by a parse error. A spent
+	//! iterator yields nothing further: next() returns a NULL statement idempotently.
+	bool finished = false;
 };
 inline StatementIteratorWrapperV2 *ToStatementIterator(duckdb_v2_statement_iterator_handle ptr) {
 	return reinterpret_cast<StatementIteratorWrapperV2 *>(ptr);

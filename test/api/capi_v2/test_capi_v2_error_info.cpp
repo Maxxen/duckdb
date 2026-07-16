@@ -9,9 +9,9 @@
 // (plus setters/destroy). No get_type, no get_position: the long tail (type name,
 // position, candidates) comes from errors_as_json. get_raw_message is the body
 // with the "<Type> Error: " prefix stripped, not derivable from get_text (no type
-// name to rebuild the prefix). parse_sql is not special: it runs the engine's
-// public ProcessError, so errors_as_json governs parse errors too (LINE/caret
-// off, JSON on).
+// name to rebuild the prefix). The parse boundary is not special: statement_iterator_next
+// renders a parse error through the engine's public ProcessError, so errors_as_json
+// governs parse errors too (LINE/caret off, JSON on).
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -121,15 +121,26 @@ TEST_CASE("V2 error: get_raw_message rejects null args", "[capi_v2][error]") {
 }
 
 // ===========================================================================
-// Default mode: parse_sql renders the LINE/caret annotation, like the eager path.
+// Default mode: the parse boundary renders the LINE/caret annotation. The parse
+// error surfaces from the next() that reaches the failing statement, not from
+// parse_sql, but its rendered shape matches the eager path.
 // ===========================================================================
 
-TEST_CASE("V2 error: parse_sql renders the location like the eager path", "[capi_v2][error]") {
+TEST_CASE("V2 error: statement_iterator_next renders the location like the eager path", "[capi_v2][error]") {
 	V2EnvFixture fx;
 
+	// parse_sql parses nothing, so it succeeds; the first next() yields "SELECT 1".
 	duckdb_v2_statement_iterator_handle iter = nullptr;
+	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELECT 1; SELEKT 2", &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_sql_statement_handle stmt = nullptr;
+	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(stmt != nullptr);
+	duckdb_v2_sql_statement_destroy(&stmt);
+
+	// The next() that reaches "SELEKT 2" raises the parse error.
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELECT 1; SELEKT 2", &iter, &err) == DUCKDB_V2_ERROR_QUERY_PARSER);
+	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, &err) == DUCKDB_V2_ERROR_QUERY_PARSER);
+	REQUIRE(stmt == nullptr);
 	REQUIRE(err != nullptr);
 
 	duckdb_v2_str text = {nullptr, 0};
@@ -146,17 +157,21 @@ TEST_CASE("V2 error: parse_sql renders the location like the eager path", "[capi
 }
 
 // ===========================================================================
-// errors_as_json on: parse_sql emits the JSON form (carries position, type).
+// errors_as_json on: the parse boundary emits the JSON form (carries position, type).
 // ===========================================================================
 
-TEST_CASE("V2 error: errors_as_json makes parse_sql emit JSON", "[capi_v2][error]") {
+TEST_CASE("V2 error: errors_as_json makes the parse boundary emit JSON", "[capi_v2][error]") {
 	V2EnvFixture fx;
 
 	V2ExecSQL(fx.conn, "SET errors_as_json=true");
 
+	// The single statement fails to parse; the error surfaces from the first next().
 	duckdb_v2_statement_iterator_handle iter = nullptr;
+	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELEKT 1", &iter, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_sql_statement_handle stmt = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_parse_sql(fx.conn, "SELEKT 1", &iter, &err) == DUCKDB_V2_ERROR_QUERY_PARSER);
+	REQUIRE(duckdb_v2_statement_iterator_next(iter, &stmt, &err) == DUCKDB_V2_ERROR_QUERY_PARSER);
+	REQUIRE(stmt == nullptr);
 	REQUIRE(err != nullptr);
 
 	// The body is the bare JSON object carrying the failure position.

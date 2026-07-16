@@ -1,7 +1,5 @@
 #include "capi_v2_internal.hpp"
 
-#include "duckdb/parser/parser.hpp"
-
 #include <algorithm>
 
 DUCKDB_V2_API_CALL_t duckdb_v2_parse_sql(duckdb_v2_connection_handle conn, const char *sql,
@@ -15,26 +13,16 @@ DUCKDB_V2_API_CALL_t duckdb_v2_parse_sql(duckdb_v2_connection_handle conn, const
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_parse_sql");
 		}
 		auto *connection = duckdb::ToConn(conn);
-		auto wrapper = duckdb::make_uniq<duckdb::StatementIteratorWrapperV2>();
-		// Raw parse only: the connection supplies the parser options and
-		// parser extensions, nothing else. No preprocessing, no binding, no
-		// catalog access, no transaction. Statement-level rewrites (pragma
+		// Set up a lazy iterator over the connection's parser options and
+		// extensions, but parse nothing here. Each statement is parsed on demand by
+		// statement_iterator_next, so a statement that registers grammar (LOAD an
+		// extension) is parsed and executed before a following statement uses it.
+		// Statements are raw parser output: statement-level rewrites (pragma
 		// reparsing, expansion unpacking, transaction wrapping) happen in
-		// statement_execute, so a statement group is never split across the
-		// API boundary.
-		//
-		// A parse error goes through the engine's public ProcessError, like the
-		// eager query path: honors errors_as_json (JSON, else LINE/caret), then
-		// re-thrown to route back through WithErrorHandler.
-		duckdb::Parser parser(connection->context->GetParserOptions());
-		try {
-			parser.ParseQuery(std::string(sql));
-		} catch (const duckdb::Exception &ex) {
-			duckdb::ErrorData error(ex);
-			connection->context->ProcessError(error, std::string(sql));
-			error.Throw();
-		}
-		wrapper->statements = std::move(parser.statements);
+		// statement_execute, so a statement group is never split across the API
+		// boundary. A parse error is not raised here; it surfaces from the next()
+		// that reaches the failing statement.
+		auto wrapper = duckdb::make_uniq<duckdb::StatementIteratorWrapperV2>(connection->context, std::string(sql));
 		*out_iterator = reinterpret_cast<_duckdb_v2_statement_iterator *>(wrapper.release());
 	});
 }
@@ -50,11 +38,36 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_iterator_next(duckdb_v2_statement_itera
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_statement_iterator_next");
 		}
 		auto *wrapper = duckdb::ToStatementIterator(iterator);
-		if (wrapper->cursor >= wrapper->statements.size()) {
-			// Exhausted, idempotently: *out_statement stays NULL.
+		if (wrapper->finished) {
+			// Spent by a prior exhaustion or parse error: *out_statement stays NULL.
 			return;
 		}
-		auto statement = std::move(wrapper->statements[wrapper->cursor++]);
+		duckdb::unique_ptr<duckdb::SQLStatement> statement;
+		try {
+			// Construct the ParseIterator on first use: its constructor runs UTF-8
+			// validation and can throw, routed through the same rendering below.
+			if (!wrapper->iterator) {
+				wrapper->iterator = duckdb::make_uniq<duckdb::ParseIterator>(*wrapper->context, wrapper->query);
+			}
+			// Parse the next statement on demand. Peek returns false at exhaustion;
+			// *out_statement then stays NULL, idempotently.
+			if (!wrapper->iterator->Peek()) {
+				wrapper->finished = true;
+				return;
+			}
+			statement = wrapper->iterator->GetStatement();
+		} catch (const std::exception &ex) {
+			// A parse error surfaces here, when iteration reaches the failing
+			// statement, not up front. It terminates iteration (a following next()
+			// reports clean exhaustion, not the error again). Route it through the
+			// engine's public ProcessError like the eager query path so the rendered
+			// shape honors errors_as_json (JSON, else LINE/caret), then re-throw to
+			// route back through WithErrorHandler.
+			wrapper->finished = true;
+			duckdb::ErrorData error(ex);
+			wrapper->context->ProcessError(error, wrapper->query);
+			error.Throw();
+		}
 		*out_statement = reinterpret_cast<_duckdb_v2_sql_statement *>(statement.release());
 	});
 }
