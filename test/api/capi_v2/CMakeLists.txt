@@ -24,6 +24,7 @@ add_library_unity(
   test_capi_v2_sql_statement.cpp
   test_capi_v2_statement_bind.cpp
   test_capi_v2_string_heap.cpp
+  test_capi_v2_table_description.cpp
   test_capi_v2_value.cpp
   test_capi_v2_file_system.cpp
   test_capi_v2_table_function.cpp
@@ -34,6 +35,7 @@ add_library_unity(
   test_cpp_api_table_function.cpp
   test_cpp_api_qname.cpp
   test_cpp_api_query.cpp
+  test_cpp_api_table_description.cpp
   test_cpp_api_varargs.cpp
   test_cpp_api_vector.cpp
   test_cpp_api_arrow.cpp

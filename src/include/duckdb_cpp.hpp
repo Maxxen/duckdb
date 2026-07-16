@@ -458,6 +458,8 @@ class PreparedStatement;
 struct Signature;
 class Schema;
 class Value;
+class QualifiedName;
+class TableDescription;
 
 class Connection final : public detail::Handle<Connection> {
 	friend detail::Factory;
@@ -530,6 +532,12 @@ public:
 	// When require_cacheable is set, throws INVALID_INPUT unless the plan will be
 	// reused across executions (see PreparedStatement::ReusesPlan).
 	PreparedStatement Prepare(const SqlStatement &statement, bool require_cacheable = false) const;
+
+	// Resolves a possibly partial table name through this connection's catalogs
+	// and search path, exactly as the name resolves in SQL, and snapshots the
+	// table's description. Throws the engine's missing-table or not-a-table
+	// error when the name resolves to nothing or to a view.
+	TableDescription DescribeTable(const QualifiedName &name) const;
 
 	// Connection-level sugar over Context::ParseType: runs the with-context
 	// dance internally via WithTransaction.
@@ -886,6 +894,40 @@ private:
 struct Signature {
 	Schema output;
 	Schema parameters;
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Table Description
+//----------------------------------------------------------------------------------------------------------------------
+
+// An owned snapshot of one base table taken at creation: where the name
+// resolved, the table's columns, and per-column catalog facts. Later DDL does
+// not update it. Returned by Connection::DescribeTable.
+class TableDescription final : public detail::Handle<TableDescription> {
+	friend detail::Factory;
+
+public:
+	TableDescription(TableDescription &&) noexcept = default;
+	TableDescription &operator=(TableDescription &&) noexcept = default;
+
+	~TableDescription() override;
+
+	// The fully resolved name: catalog, schema, and table the lookup landed
+	// on, with DDL time casing, never an echo of the requested name.
+	QualifiedName GetQualifiedName() const;
+	// An owned schema of every column in declared order, generated columns
+	// included; the per-column getters are index-aligned with it.
+	Schema GetSchema() const;
+	// Whether the column at index is generated (computed, not writable).
+	bool ColumnIsGenerated(idx_t index) const;
+	// Whether the column at index declares a default; generated columns report false.
+	bool ColumnHasDefault(idx_t index) const;
+	// Whether the resolved catalog was attached read-only. False clears the
+	// catalog-level check only; it does not by itself prove a write succeeds.
+	bool IsReadonly() const;
+
+private:
+	explicit TableDescription(void *impl);
 };
 
 //----------------------------------------------------------------------------------------------------------------------

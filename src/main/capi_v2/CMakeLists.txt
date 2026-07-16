@@ -3,6 +3,7 @@ add_library_unity(
   OBJECT
   arrow-v2.cpp
   capi_v2_stubs.cpp
+  catalog-v2.cpp
   column_data_collection-v2.cpp
   connection-v2.cpp
   custom_type-v2.cpp

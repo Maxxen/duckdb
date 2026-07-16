@@ -4401,6 +4401,140 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_destroy(duckdb
 /* --- Struct definitions for arrow --- */
 
 /* ============================================================================
+ * MODULE: catalog
+ * ============================================================================ */
+
+/* --- Enums for catalog --- */
+
+/* --- Struct forward declarations for catalog --- */
+
+/* --- Types for catalog --- */
+//! An owned snapshot of one base table taken at creation: where the name
+//! resolved, the table's columns, and per-column catalog facts. Later DDL
+//! does not update it. Read the resolved location via
+//! table_description_get_qname, the columns via table_description_get_schema,
+//! and the per-column flags via the index-aligned getters. Destroy via
+//! table_description_destroy.
+typedef struct _duckdb_v2_table_description {
+	void *internal_ptr;
+} * duckdb_v2_table_description_handle;
+
+/* --- Constants for catalog --- */
+
+/* --- Error Codes for catalog --- */
+
+/* --- Function pointer typedefs for catalog --- */
+
+/* --- Functions for catalog --- */
+/*!
+* Resolves a table name and snapshots its description.
+* Resolves name in the connection's catalogs and returns an owned
+description of the table it names. name may be partial: an unqualified
+or schema-qualified name resolves through the connection's search path,
+exactly as the same name resolves in SQL. A two-part name tries the
+first part as a schema and as an attached database, as SQL does, and is
+rejected when both readings exist. A name that resolves to nothing is
+rejected with the engine's missing-table error; a name that resolves to
+a view is rejected with the engine's not-a-table error, since a
+description snapshots a base table. name is borrowed and copied.
+
+* @param conn The connection whose catalogs and search path resolve the name.
+* @param name The possibly partial table name to resolve. Borrowed; not consumed.
+* @param out_desc Receives the owned description. Destroy via table_description_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_description_create(duckdb_v2_connection_handle conn,
+                                                                     duckdb_v2_qname_handle name,
+                                                                     duckdb_v2_table_description_handle *out_desc,
+                                                                     duckdb_v2_error_info_handle *err);
+/*!
+* Returns the resolved qualified name of the described table.
+* Returns an owned copy of the fully resolved name: the catalog, schema,
+and table the lookup landed on, with the casing the table was created
+with, never an echo of the requested name. Rendering it produces SQL
+that pins the described table regardless of search path.
+
+* @param desc The description.
+* @param out_qname Receives the owned resolved name. Destroy via qname_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_description_get_qname(duckdb_v2_table_description_handle desc,
+                                                                        duckdb_v2_qname_handle *out_qname,
+                                                                        duckdb_v2_error_info_handle *err);
+/*!
+* Returns the described table's columns as an owned schema.
+* Returns an owned schema holding every column of the table in declared
+order, generated columns included. The per-column flag getters are
+index-aligned with the schema's fields.
+
+* @param desc The description.
+* @param out_schema Receives the owned column schema. Destroy via schema_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_description_get_schema(duckdb_v2_table_description_handle desc,
+                                                                         duckdb_v2_schema_handle *out_schema,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Returns whether the column at index is generated.
+* True when the column at index is a generated column, computed by the
+engine and not writable. index is aligned with the schema returned by
+table_description_get_schema; an out-of-range index is rejected with
+INVALID_INPUT.
+
+* @param desc The description.
+* @param index Zero-based column index.
+* @param out_is_generated Receives whether the column is generated.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_description_column_is_generated(
+    duckdb_v2_table_description_handle desc, idx_t index, bool *out_is_generated, duckdb_v2_error_info_handle *err);
+/*!
+* Returns whether the column at index has a default value.
+* True when the column at index declares a default expression; the engine
+evaluates it for rows that omit the column. Generated columns report
+false. index is aligned with the schema returned by
+table_description_get_schema; an out-of-range index is rejected with
+INVALID_INPUT.
+
+* @param desc The description.
+* @param index Zero-based column index.
+* @param out_has_default Receives whether the column has a default value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_description_column_has_default(
+    duckdb_v2_table_description_handle desc, idx_t index, bool *out_has_default, duckdb_v2_error_info_handle *err);
+/*!
+* Returns whether the described table's catalog is read-only.
+* True when the catalog the name resolved into was attached read-only, in
+which case no write to the table can succeed. False does not by itself
+prove a write will succeed; it clears the catalog-level check only.
+
+* @param desc The description.
+* @param out_readonly Receives whether the catalog is read-only.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_description_is_readonly(duckdb_v2_table_description_handle desc,
+                                                                          bool *out_readonly,
+                                                                          duckdb_v2_error_info_handle *err);
+/*!
+* Destroys a table description handle.
+* Frees the handle. On success the slot is set to null. Safe to call on
+an already-null slot.
+
+* @param desc The description handle to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_table_description_destroy(duckdb_v2_table_description_handle *desc);
+
+/* --- Struct definitions for catalog --- */
+
+/* ============================================================================
  * MODULE: connection
  * ============================================================================ */
 

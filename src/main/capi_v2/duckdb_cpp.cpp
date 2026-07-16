@@ -66,6 +66,10 @@ struct HandleTraits<QualifiedName> {
 	using handle = duckdb_v2_qname_handle;
 };
 template <>
+struct HandleTraits<TableDescription> {
+	using handle = duckdb_v2_table_description_handle;
+};
+template <>
 struct HandleTraits<Database> {
 	using handle = duckdb_v2_database_handle;
 };
@@ -474,6 +478,42 @@ uint64_t QualifiedName::Hash() const {
 	uint64_t hash = 0;
 	CheckedAPICall(duckdb_v2_qname_hash, handle(), &hash);
 	return hash;
+}
+
+//---------------------------------------------------------------------------
+// Table Description
+//---------------------------------------------------------------------------
+
+TableDescription::TableDescription(void *impl) : detail::Handle<TableDescription>(impl) {
+}
+TableDescription::~TableDescription() {
+	auto _h = handle();
+	duckdb_v2_table_description_destroy(&_h);
+}
+QualifiedName TableDescription::GetQualifiedName() const {
+	duckdb_v2_qname_handle qname = nullptr;
+	CheckedAPICall(duckdb_v2_table_description_get_qname, handle(), &qname);
+	return detail::Factory::Make<QualifiedName>(qname);
+}
+Schema TableDescription::GetSchema() const {
+	duckdb_v2_schema_handle schema = nullptr;
+	CheckedAPICall(duckdb_v2_table_description_get_schema, handle(), &schema);
+	return detail::Factory::Make<Schema>(schema);
+}
+bool TableDescription::ColumnIsGenerated(idx_t index) const {
+	bool is_generated = false;
+	CheckedAPICall(duckdb_v2_table_description_column_is_generated, handle(), index, &is_generated);
+	return is_generated;
+}
+bool TableDescription::ColumnHasDefault(idx_t index) const {
+	bool has_default = false;
+	CheckedAPICall(duckdb_v2_table_description_column_has_default, handle(), index, &has_default);
+	return has_default;
+}
+bool TableDescription::IsReadonly() const {
+	bool readonly = false;
+	CheckedAPICall(duckdb_v2_table_description_is_readonly, handle(), &readonly);
+	return readonly;
 }
 
 //---------------------------------------------------------------------------
@@ -1260,6 +1300,13 @@ PreparedStatement Connection::Prepare(const SqlStatement &statement, bool requir
 	duckdb_v2_prepared_statement_handle prepared = nullptr;
 	CheckedAPICall(duckdb_v2_statement_prepare, handle(), statement.handle(), require_cacheable, &prepared);
 	return detail::Factory::Make<PreparedStatement>(prepared);
+}
+
+TableDescription Connection::DescribeTable(const QualifiedName &name) const {
+	// Borrowed, not consumed: pass the handle without releasing it.
+	duckdb_v2_table_description_handle desc = nullptr;
+	CheckedAPICall(duckdb_v2_table_description_create, handle(), name.handle(), &desc);
+	return detail::Factory::Make<TableDescription>(desc);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,187 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: catalog
+#
+# Resolve-and-read catalog primitives: look one named object up and read the
+# facts of its resolution. Enumeration (listing tables, schemas, columns)
+# stays in SQL, where the system table functions already provide it.
+handles:
+  table_description:
+    description: |
+      An owned snapshot of one base table taken at creation: where the name
+      resolved, the table's columns, and per-column catalog facts. Later DDL
+      does not update it. Read the resolved location via
+      table_description_get_qname, the columns via table_description_get_schema,
+      and the per-column flags via the index-aligned getters. Destroy via
+      table_description_destroy.
+    cleanup_with: table_description_destroy
+functions:
+  table_description_create:
+    summary: Resolves a table name and snapshots its description.
+    description: |
+      Resolves name in the connection's catalogs and returns an owned
+      description of the table it names. name may be partial: an unqualified
+      or schema-qualified name resolves through the connection's search path,
+      exactly as the same name resolves in SQL. A two-part name tries the
+      first part as a schema and as an attached database, as SQL does, and is
+      rejected when both readings exist. A name that resolves to nothing is
+      rejected with the engine's missing-table error; a name that resolves to
+      a view is rejected with the engine's not-a-table error, since a
+      description snapshots a base table. name is borrowed and copied.
+    role: constructor
+    belongs_to: table_description
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose catalogs and search path resolve the name.
+      name:
+        type: qname
+        description: The possibly partial table name to resolve. Borrowed; not consumed.
+      out_desc:
+        type: table_description
+        indirection: 1
+        kind: OUT
+        description: Receives the owned description. Destroy via table_description_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_description_get_qname:
+    summary: Returns the resolved qualified name of the described table.
+    description: |
+      Returns an owned copy of the fully resolved name: the catalog, schema,
+      and table the lookup landed on, with the casing the table was created
+      with, never an echo of the requested name. Rendering it produces SQL
+      that pins the described table regardless of search path.
+    role: getter
+    belongs_to: table_description
+    parameters:
+      desc:
+        type: table_description
+        description: The description.
+      out_qname:
+        type: qname
+        indirection: 1
+        kind: OUT
+        description: Receives the owned resolved name. Destroy via qname_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_description_get_schema:
+    summary: Returns the described table's columns as an owned schema.
+    description: |
+      Returns an owned schema holding every column of the table in declared
+      order, generated columns included. The per-column flag getters are
+      index-aligned with the schema's fields.
+    role: getter
+    belongs_to: table_description
+    parameters:
+      desc:
+        type: table_description
+        description: The description.
+      out_schema:
+        type: schema
+        indirection: 1
+        kind: OUT
+        description: Receives the owned column schema. Destroy via schema_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_description_column_is_generated:
+    summary: Returns whether the column at index is generated.
+    description: |
+      True when the column at index is a generated column, computed by the
+      engine and not writable. index is aligned with the schema returned by
+      table_description_get_schema; an out-of-range index is rejected with
+      INVALID_INPUT.
+    role: getter
+    belongs_to: table_description
+    parameters:
+      desc:
+        type: table_description
+        description: The description.
+      index:
+        type: idx
+        description: Zero-based column index.
+      out_is_generated:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives whether the column is generated.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_description_column_has_default:
+    summary: Returns whether the column at index has a default value.
+    description: |
+      True when the column at index declares a default expression; the engine
+      evaluates it for rows that omit the column. Generated columns report
+      false. index is aligned with the schema returned by
+      table_description_get_schema; an out-of-range index is rejected with
+      INVALID_INPUT.
+    role: getter
+    belongs_to: table_description
+    parameters:
+      desc:
+        type: table_description
+        description: The description.
+      index:
+        type: idx
+        description: Zero-based column index.
+      out_has_default:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives whether the column has a default value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_description_is_readonly:
+    summary: Returns whether the described table's catalog is read-only.
+    description: |
+      True when the catalog the name resolved into was attached read-only, in
+      which case no write to the table can succeed. False does not by itself
+      prove a write will succeed; it clears the catalog-level check only.
+    role: getter
+    belongs_to: table_description
+    parameters:
+      desc:
+        type: table_description
+        description: The description.
+      out_readonly:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives whether the catalog is read-only.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  table_description_destroy:
+    summary: Destroys a table description handle.
+    description: |
+      Frees the handle. On success the slot is set to null. Safe to call on
+      an already-null slot.
+    role: destructor
+    belongs_to: table_description
+    parameters:
+      desc:
+        type: table_description
+        indirection: 1
+        description: The description handle to destroy.
+    return_type: API_CALL
