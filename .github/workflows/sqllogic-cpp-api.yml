@@ -157,8 +157,19 @@ jobs:
         run: python3 scripts/ci/retry.py -- make toolsci
       - uses: ./.github/actions/ccache-action
       - name: Build (relassert -> assertions + sanitizers)
-        # ASan links need more memory, so link one job at a time.
-        run: EXTRA_CMAKE_VARIABLES="-DDUCKDB_DEBUG_LINK_JOBS=1" make relassert
+        # ASan links need more memory, so link one job at a time. -gz compresses
+        # debug sections (keeps symbolization) to shrink the tree.
+        run: EXTRA_CMAKE_VARIABLES="-DDUCKDB_DEBUG_LINK_JOBS=1 -DCMAKE_C_FLAGS=-gz -DCMAKE_CXX_FLAGS=-gz" make relassert
+      - name: Reclaim disk before tests
+        # After linking, the object files and the link-time swapfile are dead
+        # weight for the test run; reclaim both. ccache keeps its own copies, so
+        # the post-job save is unaffected. The df readings bracket the peak.
+        run: |
+          df -h /
+          find build/relassert -name '*.o' -delete
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
+          df -h /
       - name: "Run sqllogic (${{ matrix.config }}): cpp_api vs internal"
         # Larger batch timeout: sanitized builds run the suite much slower.
         run: python scripts/ci/sqllogic_executor_diff.py -- ./build/relassert/test/run --test-config=test/configs/${{ matrix.config }}.json --batch-timeout 600 "~[.]"
@@ -166,4 +177,6 @@ jobs:
         # The ~16GB build tree leaves no disk for the post-job ccache save (ENOSPC,
         # so every nightly starts cold). Regular steps run before post-job actions.
         if: always()
-        run: rm -rf build
+        run: |
+          df -h /
+          rm -rf build
