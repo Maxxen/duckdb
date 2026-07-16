@@ -14,7 +14,7 @@ functions:
         type: logical_type
         description: "The logical type to create an alias of. This is typically the base type provided in the custom type bind info."
       alias_name:
-        type: str
+        type: identifier
         description: "The name to give the resulting alias logical type. This should typically be the name of the custom type being constructed, which can be obtained from the custom type bind info."
       out_type:
         type: logical_type
@@ -81,7 +81,7 @@ functions:
         type: custom_type_builder
         description: "The custom type builder to set the name on."
       name:
-        type: str
+        type: identifier
         description: "The name of the custom type."
       err:
         type: error_info

@@ -49,7 +49,7 @@ functions:
         type: idx
         description: "Zero-based field index."
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: "Receives a borrowed view of the field name. Valid until the schema is destroyed."

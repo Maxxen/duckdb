@@ -369,7 +369,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_destroy(duckdb_v2_table_fu
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_set_name(duckdb_v2_table_function_builder_handle builder,
-                                                               duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
+                                                               duckdb_v2_identifier_t name,
+                                                               duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
@@ -398,7 +399,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_add_parameter(duckdb_v2_ta
 
 DUCKDB_V2_API_CALL_t
 duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_builder_handle builder,
-                                                     duckdb_v2_str name, duckdb_v2_logical_type_handle type,
+                                                     duckdb_v2_identifier_t name, duckdb_v2_logical_type_handle type,
                                                      duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
@@ -611,7 +612,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_builder_register(duckdb_v2_context
 // --- Bind callback methods ---------------------------------------------------
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_add_result_column(duckdb_v2_table_function_bind_info_handle info,
-                                                                     duckdb_v2_str name,
+                                                                     duckdb_v2_identifier_t name,
                                                                      duckdb_v2_logical_type_handle type,
                                                                      duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
@@ -713,7 +714,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_parameter(duckdb_v2_table
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_table_function_bind_get_named_parameter(duckdb_v2_table_function_bind_info_handle info,
-                                                                       duckdb_v2_str name,
+                                                                       duckdb_v2_identifier_t name,
                                                                        duckdb_v2_value_handle *out_value,
                                                                        duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {

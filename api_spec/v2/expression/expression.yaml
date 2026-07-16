@@ -445,7 +445,7 @@ functions:
         type: expression
         description: The expression to inspect.
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: Receives a borrowed view of the function name.

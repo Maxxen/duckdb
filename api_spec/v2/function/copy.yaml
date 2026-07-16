@@ -9,7 +9,7 @@ structs:
       - {name: struct_size, type: u32}
       - {name: user_data, type: void, pointer: 1, const: true}
       - {name: column_types, type: logical_type, pointer: 1}
-      - {name: column_names, type: str, pointer: 1, const: true, description: "Array of column_count borrowed name views; only valid for the duration of the callback."}
+      - {name: column_names, type: identifier, pointer: 1, const: true, description: "Array of column_count borrowed name views; only valid for the duration of the callback."}
       - {name: column_count, type: idx}
       - {name: out_bind_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to the copy function's bind data plus optional destructor and equality callbacks. The bind data is accessible from the init, batch, flush, and finalize callbacks."}
   copy_function_init_args:
@@ -134,7 +134,7 @@ functions:
         type: copy_function_builder
         description: "The copy function builder handle."
       name:
-        type: str
+        type: identifier
         description: "The name of the copy function."
       err:
         type: error_info

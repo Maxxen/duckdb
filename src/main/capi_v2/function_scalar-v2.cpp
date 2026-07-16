@@ -169,7 +169,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(duckdb_v2_context_
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar_function_builder_handle func,
-                                                                duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
+                                                                duckdb_v2_identifier_t name,
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -186,7 +187,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_handle func,
-                                                                     duckdb_v2_str name,
+                                                                     duckdb_v2_identifier_t name,
                                                                      duckdb_v2_logical_type_handle type,
                                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {

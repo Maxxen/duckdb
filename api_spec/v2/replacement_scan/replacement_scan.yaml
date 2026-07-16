@@ -102,7 +102,7 @@ functions:
         type: replacement_scan_info
         description: The replacement scan info handle.
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: Receives the borrowed catalog name view, or the empty view {NULL, 0} when the reference was unqualified.
@@ -125,7 +125,7 @@ functions:
         type: replacement_scan_info
         description: The replacement scan info handle.
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: Receives the borrowed schema name view, or the empty view {NULL, 0} when the reference was unqualified.
@@ -146,7 +146,7 @@ functions:
         type: replacement_scan_info
         description: The replacement scan info handle.
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: Receives the borrowed table name view.
@@ -187,7 +187,7 @@ functions:
         type: replacement_scan_info
         description: The replacement scan info handle.
       name:
-        type: str
+        type: identifier
         description: Table function name. The library copies it.
       err:
         type: error_info
@@ -227,7 +227,7 @@ functions:
         type: replacement_scan_info
         description: The replacement scan info handle.
       name:
-        type: str
+        type: identifier
         description: Parameter name. The library copies it.
       value:
         type: value

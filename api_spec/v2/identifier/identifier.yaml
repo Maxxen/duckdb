@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: identifier
+#
+# Operations on identifier-semantic names (the `identifier` alias declared in
+# common). The engine matches identifiers case-insensitively and quotes them
+# into SQL only when required. Both are engine knowledge, not client-composable,
+# so a name that will be embedded in SQL text is rendered through this module
+# rather than quoted by hand.
+functions:
+  identifier_render_quoted:
+    summary: Renders a name as a SQL identifier, quoting and escaping only when required.
+    description: |
+      Produces the SQL text for name as an identifier: returned verbatim when it
+      is already a legal bare identifier, or double-quoted with interior quotes
+      escaped when it is a keyword or contains characters that require quoting.
+      Mirrors the engine's own identifier rendering. The returned char* is
+      caller-owned and must be freed with free().
+    role: getter
+    parameters:
+      name:
+        type: identifier
+        description: The name to render. A borrowed view.
+      out_text:
+        type: char
+        indirection: 2
+        kind: OUT
+        description: Receives a malloc'd null-terminated string. Caller frees.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL

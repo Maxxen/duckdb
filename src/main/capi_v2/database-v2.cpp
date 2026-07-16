@@ -97,7 +97,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_handle db,
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db, duckdb_v2_str name,
+DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db, duckdb_v2_identifier_t name,
                                                    duckdb_v2_option_handle *out_option,
                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {

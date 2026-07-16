@@ -10,14 +10,15 @@ DUCKDB_V2_API_CALL_t duckdb_v2_schema_get_count(duckdb_v2_schema_handle schema, 
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_schema_get_field(duckdb_v2_schema_handle schema, idx_t index, duckdb_v2_str *out_name,
+DUCKDB_V2_API_CALL_t duckdb_v2_schema_get_field(duckdb_v2_schema_handle schema, idx_t index,
+                                                duckdb_v2_identifier_t *out_name,
                                                 duckdb_v2_logical_type_handle *out_type,
                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!schema || !out_name || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_schema_get_field");
 		}
-		*out_name = duckdb_v2_str {nullptr, 0};
+		*out_name = duckdb_v2_identifier_t {nullptr, 0};
 		*out_type = nullptr;
 		auto &wrapper = *duckdb::ToSchema(schema);
 		if (index >= wrapper.fields.size()) {

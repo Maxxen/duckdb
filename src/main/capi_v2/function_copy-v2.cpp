@@ -61,7 +61,7 @@ struct CopyFunctionBuilderV2 {
 		auto &info = input.function_info->Cast<CCopyFunctionInfoV2>();
 
 		// Setup arrays
-		vector<duckdb_v2_str> names_array;
+		vector<duckdb_v2_identifier_t> names_array;
 		names_array.reserve(names.size());
 		for (const auto &name : names) {
 			names_array.push_back(ToStr(name));
@@ -217,7 +217,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_create(duckdb_v2_context_ha
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_set_name(duckdb_v2_copy_function_builder_handle builder,
-                                                              duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
+                                                              duckdb_v2_identifier_t name,
+                                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");

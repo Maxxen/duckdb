@@ -9,7 +9,7 @@ structs:
   aggregate_function_bind_args:
     fields:
       - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: function_name, type: str, description: "The name of the function being bound. Borrowed; only valid for the duration of the callback."}
+      - {name: function_name, type: identifier, description: "The name of the function being bound. Borrowed; only valid for the duration of the callback."}
       - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder via `aggregate_function_builder_set_user_data`, if any."}
       - {name: out_bind_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to the aggregate's \"bind data\" plus optional destructor and equality callbacks. The bind data is accessible from the update, combine, finalize, and destroy callbacks, which is useful for sharing information computed during binding (e.g. resolved argument types or configuration) with execution. The destructor, if provided, is used to destroy the bind data when it's no longer needed. The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse); otherwise a default pointer equality check is used."}
       - {name: arguments, type: bind_arguments, description: "Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only for the duration of the callback."}
@@ -165,7 +165,7 @@ functions:
         type: aggregate_function_builder
         description: The aggregate function builder for which to set the name.
       name:
-        type: str
+        type: identifier
         description: The name to set for the function.
       err:
         type: error_info
@@ -180,7 +180,7 @@ functions:
         type: aggregate_function_builder
         description: The aggregate function to configure.
       name:
-        type: str
+        type: identifier
         description: The name of the parameter to add.
       type:
         type: logical_type

@@ -119,7 +119,7 @@ functions:
         type: prepared_statement
         description: The prepared statement to execute. Borrowed; not consumed.
       parameter_names:
-        type: str
+        type: identifier
         indirection: 1
         const: true
         description: Optional. An array of parameter_count parameter names; a non-empty entry binds its value to the named parameter ($name, case-insensitive), a {NULL, 0} entry keeps it positional ($1 = element 0). Pass NULL for all-positional binding. Named and positional parameters cannot be mixed within one statement.

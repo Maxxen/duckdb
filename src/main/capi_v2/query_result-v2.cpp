@@ -354,7 +354,7 @@ unique_ptr<DataChunk> ResultWrapperV2::FetchChunkBlocking() {
 
 DUCKDB_V2_API_CALL_t duckdb_v2_statement_execute(duckdb_v2_connection_handle conn,
                                                  duckdb_v2_sql_statement_handle statement,
-                                                 const duckdb_v2_str *parameter_names,
+                                                 const duckdb_v2_identifier_t *parameter_names,
                                                  const duckdb_v2_value_handle *parameter_values, idx_t parameter_count,
                                                  duckdb_v2_result_handle *out_result,
                                                  duckdb_v2_error_info_handle *err) {

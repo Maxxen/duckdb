@@ -70,7 +70,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_create(duckdb_v2_context_hand
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_log_storage_builder_set_name(duckdb_v2_log_storage_builder_handle builder,
-                                                            duckdb_v2_str name, duckdb_v2_error_info_handle *err) {
+                                                            duckdb_v2_identifier_t name,
+                                                            duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");

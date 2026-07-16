@@ -136,7 +136,7 @@ idx_t TypeParamCount(const LogicalType &type) {
 // borrowed name (off the type, or a static literal) goes into out_name,
 // which arrives pre-set to the positional {NULL, 0}. The caller has
 // bounds-checked index against TypeParamCount.
-Value TypeParamValue(const LogicalType &type, idx_t index, duckdb_v2_str &out_name) {
+Value TypeParamValue(const LogicalType &type, idx_t index, duckdb_v2_identifier_t &out_name) {
 	switch (type.id()) {
 	case LogicalTypeId::DECIMAL:
 		return index == 0 ? Value::UTINYINT(DecimalType::GetWidth(type)) : Value::UTINYINT(DecimalType::GetScale(type));
@@ -159,7 +159,7 @@ Value TypeParamValue(const LogicalType &type, idx_t index, duckdb_v2_str &out_na
 	case LogicalTypeId::ENUM:
 		return Value(EnumType::GetString(type, index).GetString());
 	case LogicalTypeId::VARCHAR:
-		out_name = duckdb_v2_str {"collation", 9};
+		out_name = duckdb_v2_identifier_t {"collation", 9};
 		return Value(StringType::GetCollation(type));
 	case LogicalTypeId::GEOMETRY:
 		return Value(GeoType::GetCRS(type).GetDefinition());
@@ -209,8 +209,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_text(duckdb_v2_context_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx, duckdb_v2_str name,
-                                                   const duckdb_v2_str *param_names,
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name,
+                                                   const duckdb_v2_identifier_t *param_names,
                                                    const duckdb_v2_value_handle *param_values, idx_t param_count,
                                                    duckdb_v2_logical_type_handle *out_type,
                                                    duckdb_v2_error_info_handle *err) {
@@ -291,7 +291,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_handle type, duckdb_v2_str *out_name,
+DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_handle type,
+                                                     duckdb_v2_identifier_t *out_name,
                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_name) {
@@ -343,19 +344,20 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param_count(duckdb_v2_logical_ty
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle type, idx_t index,
-                                                      duckdb_v2_str *out_name, duckdb_v2_value_handle *out_value,
+                                                      duckdb_v2_identifier_t *out_name,
+                                                      duckdb_v2_value_handle *out_value,
                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_name || !out_value) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_param");
 		}
-		*out_name = duckdb_v2_str {nullptr, 0};
+		*out_name = duckdb_v2_identifier_t {nullptr, 0};
 		*out_value = nullptr;
 		auto &lt = *duckdb::ToLogicalType(type);
 		if (index >= duckdb::TypeParamCount(lt)) {
 			throw duckdb::InvalidInputException("parameter index out of range in duckdb_v2_logical_type_get_param");
 		}
-		duckdb_v2_str name {nullptr, 0};
+		duckdb_v2_identifier_t name {nullptr, 0};
 		auto *value = new duckdb::Value(duckdb::TypeParamValue(lt, index, name));
 		*out_name = name;
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(value);

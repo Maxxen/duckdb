@@ -64,9 +64,9 @@ unique_ptr<TableRef> ReplacementScanTrampolineV2(ClientContext &context, Replace
 }
 
 // Absent catalog/schema maps to the canonical empty view {NULL, 0}, never {ptr, 0}.
-duckdb_v2_str BorrowReplacementScanNamePart(const string &part) {
+duckdb_v2_identifier_t BorrowReplacementScanNamePart(const string &part) {
 	if (part.empty()) {
-		return duckdb_v2_str {nullptr, 0};
+		return duckdb_v2_identifier_t {nullptr, 0};
 	}
 	return ToStr(part);
 }
@@ -93,11 +93,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_register(duckdb_v2_database_hand
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_catalog_name(duckdb_v2_replacement_scan_info_handle info,
-                                                                 duckdb_v2_str *out_name,
+                                                                 duckdb_v2_identifier_t *out_name,
                                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
-			*out_name = duckdb_v2_str {nullptr, 0};
+			*out_name = duckdb_v2_identifier_t {nullptr, 0};
 		}
 		if (!info || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_get_catalog_name");
@@ -107,11 +107,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_catalog_name(duckdb_v2_repla
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_schema_name(duckdb_v2_replacement_scan_info_handle info,
-                                                                duckdb_v2_str *out_name,
+                                                                duckdb_v2_identifier_t *out_name,
                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
-			*out_name = duckdb_v2_str {nullptr, 0};
+			*out_name = duckdb_v2_identifier_t {nullptr, 0};
 		}
 		if (!info || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_get_schema_name");
@@ -121,11 +121,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_schema_name(duckdb_v2_replac
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_table_name(duckdb_v2_replacement_scan_info_handle info,
-                                                               duckdb_v2_str *out_name,
+                                                               duckdb_v2_identifier_t *out_name,
                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
-			*out_name = duckdb_v2_str {nullptr, 0};
+			*out_name = duckdb_v2_identifier_t {nullptr, 0};
 		}
 		if (!info || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_get_table_name");
@@ -148,7 +148,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_user_data(duckdb_v2_replacem
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_set_function_name(duckdb_v2_replacement_scan_info_handle info,
-                                                                  duckdb_v2_str name,
+                                                                  duckdb_v2_identifier_t name,
                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info || (!name.ptr && name.len > 0)) {
@@ -170,7 +170,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_add_parameter(duckdb_v2_replacem
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_add_named_parameter(duckdb_v2_replacement_scan_info_handle info,
-                                                                    duckdb_v2_str name, duckdb_v2_value_handle value,
+                                                                    duckdb_v2_identifier_t name,
+                                                                    duckdb_v2_value_handle value,
                                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info || (!name.ptr && name.len > 0) || !value) {

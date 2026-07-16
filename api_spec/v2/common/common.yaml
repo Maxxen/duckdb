@@ -209,6 +209,15 @@ aliases:
   bignum:
     underlying: string
     description: BIGNUM storage. Decode via bignum_decode.
+  identifier:
+    underlying: str
+    description: |
+      A borrowed name view with the same layout as str, marking a string
+      the engine treats as a SQL identifier: matched case-insensitively.
+      Compare two identifiers case-insensitively rather than by bytes, and
+      render one into SQL through the identifier-quoting entry point rather
+      than embedding it raw. Casing is preserved by the catalog; some
+      registries (config settings) canonicalize to lowercase.
 constants:
   STRING_INLINE_LENGTH:
     value: 12

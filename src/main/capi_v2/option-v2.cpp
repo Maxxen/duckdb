@@ -1,6 +1,6 @@
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_option_create(duckdb_v2_str name, duckdb_v2_str setting,
+DUCKDB_V2_API_CALL_t duckdb_v2_option_create(duckdb_v2_identifier_t name, duckdb_v2_str setting,
                                              duckdb_v2_option_handle *out_option, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if ((!name.ptr && name.len > 0) || (!setting.ptr && setting.len > 0) || !out_option) {
@@ -26,7 +26,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_destroy(duckdb_v2_option_handle *option) {
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_option_get_name(duckdb_v2_option_handle option, duckdb_v2_str *out_name,
+DUCKDB_V2_API_CALL_t duckdb_v2_option_get_name(duckdb_v2_option_handle option, duckdb_v2_identifier_t *out_name,
                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!option || !out_name) {
@@ -88,8 +88,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias_count(duckdb_v2_option_handle op
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_handle option, idx_t index, duckdb_v2_str *out_alias,
-                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_API_CALL_t duckdb_v2_option_get_alias(duckdb_v2_option_handle option, idx_t index,
+                                                duckdb_v2_identifier_t *out_alias, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!option || !out_alias) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_option_get_alias");

@@ -46,6 +46,17 @@ TEST_CASE("Stable C++API: LibraryVersion reports the engine version", "[cpp_api]
 	REQUIRE(version == raw);
 	free(raw);
 }
+
+TEST_CASE("Stable C++API: RenderQuotedIdentifier quotes only when required", "[cpp_api]") {
+	using namespace duckdb_api;
+	// A legal bare identifier is returned verbatim; casing is preserved.
+	REQUIRE(RenderQuotedIdentifier("col") == "col");
+	REQUIRE(RenderQuotedIdentifier("MyCol") == "MyCol");
+	// Keywords and names needing quotes are double-quoted; interior quotes escape.
+	REQUIRE(RenderQuotedIdentifier("select") == "\"select\"");
+	REQUIRE(RenderQuotedIdentifier("my col") == "\"my col\"");
+	REQUIRE(RenderQuotedIdentifier("a\"b") == "\"a\"\"b\"");
+}
 TEST_CASE("Stable C++API: File System", "[cpp_api]") {
 	using namespace duckdb_api;
 

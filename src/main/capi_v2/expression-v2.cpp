@@ -264,10 +264,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child(duckdb_v2_expression_handle 
 }
 
 DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_function_name(duckdb_v2_expression_handle expression,
-                                                            duckdb_v2_str *out_name, duckdb_v2_error_info_handle *err) {
+                                                            duckdb_v2_identifier_t *out_name,
+                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
-			*out_name = duckdb_v2_str {nullptr, 0};
+			*out_name = duckdb_v2_identifier_t {nullptr, 0};
 		}
 		if (!expression || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_expression_get_function_name");

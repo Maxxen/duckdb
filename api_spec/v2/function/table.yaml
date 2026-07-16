@@ -220,7 +220,7 @@ functions:
         type: table_function_builder
         description: The builder to configure.
       name:
-        type: str
+        type: identifier
         description: Function name. The library copies it.
       err:
         type: error_info
@@ -273,7 +273,7 @@ functions:
         type: table_function_builder
         description: The builder to configure.
       name:
-        type: str
+        type: identifier
         description: Parameter name. The library copies it.
       type:
         type: logical_type
@@ -448,7 +448,7 @@ functions:
         type: table_function_bind_info
         description: The bind info handle.
       name:
-        type: str
+        type: identifier
         description: Column name. The library copies it.
       type:
         type: logical_type
@@ -504,7 +504,7 @@ functions:
         type: table_function_bind_info
         description: The bind info handle.
       name:
-        type: str
+        type: identifier
         description: Parameter name.
       out_value:
         type: value

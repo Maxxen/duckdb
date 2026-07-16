@@ -273,11 +273,11 @@ inline Value *ToValue(duckdb_v2_value_handle ptr) {
 // execute bridges so the keying rule lives in exactly one place and cannot drift.
 // The wrong key set (names for a positional statement, or the reverse) is not
 // policed here: it surfaces as a bind error from the engine's VerifyParameters.
-inline void BuildParameterMap(const duckdb_v2_str *parameter_names, const duckdb_v2_value_handle *parameter_values,
-                              idx_t parameter_count, const char *function_name,
-                              identifier_map_t<BoundParameterData> &out) {
+inline void BuildParameterMap(const duckdb_v2_identifier_t *parameter_names,
+                              const duckdb_v2_value_handle *parameter_values, idx_t parameter_count,
+                              const char *function_name, identifier_map_t<BoundParameterData> &out) {
 	for (idx_t i = 0; i < parameter_count; i++) {
-		auto name = parameter_names ? parameter_names[i] : duckdb_v2_str {nullptr, 0};
+		auto name = parameter_names ? parameter_names[i] : duckdb_v2_identifier_t {nullptr, 0};
 		// A {NULL, 0} view is a valid (empty) name; only a null pointer with a
 		// nonzero length is malformed.
 		if (!name.ptr && name.len > 0) {

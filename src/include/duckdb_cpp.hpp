@@ -658,6 +658,12 @@ public:
 // The version string of the linked DuckDB engine.
 auto LibraryVersion() -> std::string;
 
+// Render name as a SQL identifier, quoting and escaping it only when required
+// (a keyword, or a name with characters that need quoting). Mirrors the engine's
+// own identifier rendering; use it instead of hand-rolling quotes when building
+// SQL from a name.
+auto RenderQuotedIdentifier(std::string_view name) -> std::string;
+
 //----------------------------------------------------------------------------------------------------------------------
 // Logical Type
 //----------------------------------------------------------------------------------------------------------------------

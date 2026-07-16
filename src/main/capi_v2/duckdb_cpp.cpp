@@ -411,6 +411,14 @@ auto LibraryVersion() -> std::string {
 	return result;
 }
 
+auto RenderQuotedIdentifier(std::string_view name) -> std::string {
+	char *text = nullptr;
+	CheckedAPICall(duckdb_v2_identifier_render_quoted, duckdb_v2_identifier_t {name.data(), name.size()}, &text);
+	auto result = std::string(text);
+	free(text);
+	return result;
+}
+
 //---------------------------------------------------------------------------
 // Database Option
 //---------------------------------------------------------------------------
@@ -425,7 +433,7 @@ DatabaseOption::DatabaseOption(const std::string &name, const std::string &value
 }
 
 std::string_view DatabaseOption::GetName() const {
-	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_identifier_t name = {nullptr, 0};
 	CheckedAPICall(duckdb_v2_option_get_name, handle(), &name);
 	return FromStr(name);
 }
@@ -455,7 +463,7 @@ size_t DatabaseOption::GetAliasCount() const {
 }
 
 std::string_view DatabaseOption::GetAliasByIndex(size_t index) const {
-	duckdb_v2_str alias = {nullptr, 0};
+	duckdb_v2_identifier_t alias = {nullptr, 0};
 	CheckedAPICall(duckdb_v2_option_get_alias, handle(), static_cast<idx_t>(index), &alias);
 	return FromStr(alias);
 }
@@ -509,7 +517,7 @@ DatabaseOption Database::GetOptionByIndex(size_t index) const {
 
 DatabaseOption Database::GetOption(std::string_view name) const {
 	duckdb_v2_option_handle option = nullptr;
-	CheckedAPICall(duckdb_v2_database_option_get, handle(), duckdb_v2_str {name.data(), name.size()}, &option);
+	CheckedAPICall(duckdb_v2_database_option_get, handle(), duckdb_v2_identifier_t {name.data(), name.size()}, &option);
 	return detail::Factory::Make<DatabaseOption>(option);
 }
 
@@ -562,21 +570,21 @@ void Database::AddReplacementScan(ReplacementScanCallback callback) {
 }
 
 auto Database::ReplacementScanInput::GetCatalogName() const -> std::string_view {
-	duckdb_v2_str name {nullptr, 0};
+	duckdb_v2_identifier_t name {nullptr, 0};
 	CheckedAPICall(duckdb_v2_replacement_scan_get_catalog_name,
 	               static_cast<duckdb_v2_replacement_scan_info_handle>(info), &name);
 	return FromStr(name);
 }
 
 auto Database::ReplacementScanInput::GetSchemaName() const -> std::string_view {
-	duckdb_v2_str name {nullptr, 0};
+	duckdb_v2_identifier_t name {nullptr, 0};
 	CheckedAPICall(duckdb_v2_replacement_scan_get_schema_name,
 	               static_cast<duckdb_v2_replacement_scan_info_handle>(info), &name);
 	return FromStr(name);
 }
 
 auto Database::ReplacementScanInput::GetTableName() const -> std::string_view {
-	duckdb_v2_str name {nullptr, 0};
+	duckdb_v2_identifier_t name {nullptr, 0};
 	CheckedAPICall(duckdb_v2_replacement_scan_get_table_name, static_cast<duckdb_v2_replacement_scan_info_handle>(info),
 	               &name);
 	return FromStr(name);
@@ -629,7 +637,8 @@ DatabaseOption Connection::GetOptionByIndex(size_t index) const {
 
 DatabaseOption Connection::GetOption(std::string_view name) const {
 	duckdb_v2_option_handle option = nullptr;
-	CheckedAPICall(duckdb_v2_connection_option_get, handle(), duckdb_v2_str {name.data(), name.size()}, &option);
+	CheckedAPICall(duckdb_v2_connection_option_get, handle(), duckdb_v2_identifier_t {name.data(), name.size()},
+	               &option);
 	return detail::Factory::Make<DatabaseOption>(option);
 }
 
@@ -731,12 +740,12 @@ QueryResult Connection::Execute(const SqlStatement &statement, const Value *para
 QueryResult Connection::Execute(const SqlStatement &statement, const std::vector<NamedParam> &parameters) {
 	// Split into the C API's parallel arrays; an empty name crosses as the positional
 	// {NULL, 0} view (mirrors Context::CreateType).
-	std::vector<duckdb_v2_str> names;
+	std::vector<duckdb_v2_identifier_t> names;
 	std::vector<duckdb_v2_value_handle> values;
 	names.reserve(parameters.size());
 	values.reserve(parameters.size());
 	for (const auto &param : parameters) {
-		names.push_back(param.name.empty() ? duckdb_v2_str {nullptr, 0} : ToStr(param.name));
+		names.push_back(param.name.empty() ? duckdb_v2_identifier_t {nullptr, 0} : ToStr(param.name));
 		values.push_back(param.value.handle());
 	}
 	duckdb_v2_result_handle result = nullptr;
@@ -810,12 +819,12 @@ auto Context::ParseType(std::string_view text) const -> LogicalType {
 auto Context::CreateType(const std::string &name, const std::vector<TypeParam> &params) const -> LogicalType {
 	// Split into the C API's parallel arrays; an empty name crosses as the
 	// positional {NULL, 0} view.
-	std::vector<duckdb_v2_str> names;
+	std::vector<duckdb_v2_identifier_t> names;
 	std::vector<duckdb_v2_value_handle> values;
 	names.reserve(params.size());
 	values.reserve(params.size());
 	for (const auto &param : params) {
-		names.push_back(param.name.empty() ? duckdb_v2_str {nullptr, 0} : ToStr(param.name));
+		names.push_back(param.name.empty() ? duckdb_v2_identifier_t {nullptr, 0} : ToStr(param.name));
 		values.push_back(param.value.handle());
 	}
 	duckdb_v2_logical_type_handle type = nullptr;
@@ -912,7 +921,7 @@ bool LogicalType::operator==(const LogicalType &other) const {
 }
 
 std::string_view LogicalType::GetName() const {
-	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_identifier_t name = {nullptr, 0};
 	CheckedAPICall(duckdb_v2_logical_type_get_name, handle(), &name);
 	return FromStr(name);
 }
@@ -1023,7 +1032,7 @@ auto LogicalType::GetParamCount() const -> idx_t {
 }
 
 auto LogicalType::GetParam(idx_t index) const -> TypeParam {
-	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_identifier_t name = {nullptr, 0};
 	duckdb_v2_value_handle value = nullptr;
 	CheckedAPICall(duckdb_v2_logical_type_get_param, handle(), index, &name, &value);
 	return TypeParam {std::string(FromStr(name)), detail::Factory::Make<Value>(value)};
@@ -1155,13 +1164,13 @@ idx_t Schema::GetFieldCount() const {
 	return count;
 }
 std::string_view Schema::GetFieldName(idx_t index) const {
-	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_identifier_t name = {nullptr, 0};
 	duckdb_v2_logical_type_handle type = nullptr; // borrowed; unused here
 	CheckedAPICall(duckdb_v2_schema_get_field, handle(), index, &name, &type);
 	return FromStr(name);
 }
 LogicalType Schema::GetFieldType(idx_t index) const {
-	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_identifier_t name = {nullptr, 0};
 	duckdb_v2_logical_type_handle borrowed = nullptr;
 	CheckedAPICall(duckdb_v2_schema_get_field, handle(), index, &name, &borrowed);
 	// get_field borrows the type; copy it into an owned handle the wrapper manages.
@@ -1223,12 +1232,12 @@ QueryResult PreparedStatement::Execute(const Value *parameters, idx_t parameter_
 QueryResult PreparedStatement::Execute(const std::vector<NamedParam> &parameters) {
 	// Split into the C API's parallel arrays; an empty name crosses as the positional
 	// {NULL, 0} view (mirrors Context::CreateType).
-	std::vector<duckdb_v2_str> names;
+	std::vector<duckdb_v2_identifier_t> names;
 	std::vector<duckdb_v2_value_handle> values;
 	names.reserve(parameters.size());
 	values.reserve(parameters.size());
 	for (const auto &param : parameters) {
-		names.push_back(param.name.empty() ? duckdb_v2_str {nullptr, 0} : ToStr(param.name));
+		names.push_back(param.name.empty() ? duckdb_v2_identifier_t {nullptr, 0} : ToStr(param.name));
 		values.push_back(param.value.handle());
 	}
 	duckdb_v2_result_handle result = nullptr;
@@ -1699,7 +1708,7 @@ auto Expression::GetChild(idx_t index) const -> Expression {
 }
 
 auto Expression::GetFunctionName() const -> std::string_view {
-	duckdb_v2_str name = {nullptr, 0};
+	duckdb_v2_identifier_t name = {nullptr, 0};
 	CheckedAPICall(duckdb_v2_expression_get_function_name, handle(), &name);
 	return FromStr(name);
 }
@@ -3419,7 +3428,7 @@ auto TableFunction::BindInput::AddResultColumns(const Schema &schema) -> void {
 		const auto name = schema.GetFieldName(i);
 		const auto type = schema.GetFieldType(i);
 		CheckedAPICall(duckdb_v2_table_function_bind_add_result_column, inner.info,
-		               duckdb_v2_str {name.data(), name.size()}, type.handle());
+		               duckdb_v2_identifier_t {name.data(), name.size()}, type.handle());
 	}
 }
 

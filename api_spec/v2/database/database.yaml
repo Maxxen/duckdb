@@ -106,7 +106,7 @@ functions:
         type: database
         description: "The database."
       name:
-        type: str
+        type: identifier
         description: "Option name (canonical or alias)."
       out_option:
         type: option

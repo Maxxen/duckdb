@@ -67,7 +67,7 @@ functions:
     belongs_to: option
     parameters:
       name:
-        type: str
+        type: identifier
         description: "Option name."
       setting:
         type: str
@@ -109,7 +109,7 @@ functions:
         type: option
         description: "The option."
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: "Receives a borrowed view of the option name. Valid until the option is destroyed."
@@ -242,7 +242,7 @@ functions:
         type: idx
         description: "The alias index, in [0, alias_count)."
       out_alias:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: "Receives a borrowed view of the alias. Valid until the option is destroyed."

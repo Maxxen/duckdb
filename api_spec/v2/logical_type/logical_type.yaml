@@ -264,10 +264,10 @@ functions:
         type: context
         description: The context supplying the catalog and active transaction.
       name:
-        type: str
+        type: identifier
         description: View of the type name to resolve. Unqualified; case-insensitive.
       param_names:
-        type: str
+        type: identifier
         indirection: 1
         const: true
         description: Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for all-positional parameters.
@@ -388,7 +388,7 @@ functions:
         type: logical_type
         description: The logical type.
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: Receives a borrowed view of the name (alias when set, else the id's canonical name).
@@ -478,7 +478,7 @@ functions:
         type: idx
         description: The parameter index, in [0, param_count).
       out_name:
-        type: str
+        type: identifier
         indirection: 1
         kind: OUT_BORROW
         description: Receives a borrowed view of the parameter name, or the empty view {NULL, 0} for a positional parameter.

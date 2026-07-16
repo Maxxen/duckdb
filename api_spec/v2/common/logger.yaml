@@ -77,7 +77,7 @@ functions:
         type: log_storage_builder
         description: "The log storage builder handle to configure."
       name:
-        type: str
+        type: identifier
         description: "The name to assign to the log storage builder."
       err:
         type: error_info
