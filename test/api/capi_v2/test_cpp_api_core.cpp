@@ -357,10 +357,13 @@ TEST_CASE("Stable C++API: Connection::SetOption scope split is visible correctly
 	REQUIRE(conn_a.GetOption("max_execution_time").GetValue() == "5000");
 	REQUIRE(conn_b.GetOption("max_execution_time").GetValue() != "5000");
 
-	// A GLOBAL write on conn_a is visible identically on conn_b.
+	// A GLOBAL write on conn_a is visible identically on conn_b. The options
+	// must outlive the borrowed views their getters return.
 	conn_a.SetOption(DatabaseOption("memory_limit", "987MB"), SettingScope::Global);
-	auto seen_a = conn_a.GetOption("memory_limit").GetValue();
-	auto seen_b = conn_b.GetOption("memory_limit").GetValue();
+	auto option_a = conn_a.GetOption("memory_limit");
+	auto option_b = conn_b.GetOption("memory_limit");
+	auto seen_a = option_a.GetValue();
+	auto seen_b = option_b.GetValue();
 	REQUIRE_FALSE(seen_a.empty());
 	REQUIRE(std::string(seen_a) == std::string(seen_b));
 

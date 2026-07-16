@@ -1,0 +1,213 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/module.schema.json
+module: qname
+#
+# A qualified name: the ordered path of identifiers that names a database
+# object. The path is the whole representation: partial qualification is
+# expressed by path length (["t"], ["s","t"], ["c","s","t"]), never by empty
+# placeholder parts. Interpreting a two-part name (schema versus catalog)
+# belongs to resolution, not to the name.
+handles:
+  qname:
+    description: |
+      An owned qualified name: an ordered path of one to three non-empty
+      identifier parts whose last element is the object name. Construct via
+      qname_parse or qname_create, read with qname_get_part_count and
+      qname_get_part, render into SQL via qname_render, compare via
+      qname_equals. Destroy via qname_destroy. The handle wraps the engine
+      name representation directly; that identity is an implementation detail
+      and may change, so handles are compared with qname_equals, never by
+      pointer.
+    cleanup_with: qname_destroy
+functions:
+  qname_parse:
+    summary: Parses SQL text into a qualified name.
+    description: |
+      Parses text with the engine's qualified-name rules: dots separate
+      parts, and a double-quoted part may contain dots and doubled interior
+      quotes. More than three parts and an unterminated quote are rejected
+      with the engine's parser error; text without at least one non-empty
+      part is rejected with INVALID_INPUT. text is a borrowed view. When the
+      parts are already separate, construct through qname_create instead of
+      joining and re-parsing text.
+    role: constructor
+    belongs_to: qname
+    parameters:
+      text:
+        type: str
+        description: The name text to parse. A borrowed view.
+      out_qname:
+        type: qname
+        indirection: 1
+        kind: OUT
+        description: Receives the owned qualified name. Destroy via qname_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  qname_create:
+    summary: Creates a qualified name from identifier parts.
+    description: |
+      Builds a qualified name from part_count identifier views ordered
+      outermost first; the last part is the object name. Between one and
+      three parts are accepted, and every part must be non-empty: partial
+      qualification is expressed by passing fewer parts, never by empty
+      placeholders. Zero parts, more than three parts (the engine qualifies
+      at most catalog.schema.name today), and empty parts are rejected with
+      INVALID_INPUT. The parts are borrowed and copied.
+    role: constructor
+    belongs_to: qname
+    parameters:
+      parts:
+        type: identifier
+        indirection: 1
+        const: true
+        description: An array of part_count non-empty identifier views, outermost first.
+      part_count:
+        type: idx
+        description: The number of parts, between one and three.
+      out_qname:
+        type: qname
+        indirection: 1
+        kind: OUT
+        description: Receives the owned qualified name. Destroy via qname_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  qname_get_part_count:
+    summary: Returns the number of parts in a qualified name.
+    role: getter
+    belongs_to: qname
+    parameters:
+      qname:
+        type: qname
+        description: The qualified name.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the part count.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  qname_get_part:
+    summary: Borrows the part at index.
+    description: |
+      Borrows the identifier part at index; parts are ordered outermost
+      first, and the last part is the object name. out_part is valid only
+      until the qualified name is destroyed. An out-of-range index is
+      rejected with INVALID_INPUT.
+    role: getter
+    belongs_to: qname
+    parameters:
+      qname:
+        type: qname
+        description: The qualified name.
+      index:
+        type: idx
+        description: Zero-based part index.
+      out_part:
+        type: identifier
+        indirection: 1
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the part. Valid until the qualified name is destroyed.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  qname_render:
+    summary: Renders a qualified name as SQL text.
+    description: |
+      Produces the dot-separated SQL text for the name, quoting and escaping
+      each part only when required, exactly as identifier_render_quoted does
+      for a single part. The returned char* is caller-owned and must be freed
+      with free().
+    role: getter
+    belongs_to: qname
+    parameters:
+      qname:
+        type: qname
+        description: The qualified name to render.
+      out_text:
+        type: char
+        indirection: 2
+        kind: OUT
+        description: Receives a malloc'd null-terminated string. Caller frees.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  qname_equals:
+    summary: Compares two qualified names.
+    description: |
+      True when the two names have the same number of parts and each part
+      matches case-insensitively, the engine's identifier equality. Casing
+      differences never distinguish two names.
+    role: getter
+    belongs_to: qname
+    parameters:
+      left:
+        type: qname
+        description: The first qualified name.
+      right:
+        type: qname
+        description: The second qualified name.
+      result:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives the result of the comparison.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  qname_hash:
+    summary: Returns a hash of a qualified name.
+    description: |
+      A hash consistent with qname_equals: names that compare equal hash
+      equal, including casing differences. The value is not stable across
+      processes or library versions; use it for in-process tables only,
+      never persist it.
+    role: getter
+    belongs_to: qname
+    parameters:
+      qname:
+        type: qname
+        description: The qualified name to hash.
+      out_hash:
+        type: u64
+        indirection: 1
+        kind: OUT
+        description: Receives the hash value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
+  qname_destroy:
+    summary: Destroys a qualified name handle.
+    description: |
+      Frees the handle. On success the slot is set to null. Safe to call on
+      an already-null slot.
+    role: destructor
+    belongs_to: qname
+    parameters:
+      qname:
+        type: qname
+        indirection: 1
+        description: The qualified name handle to destroy.
+    return_type: API_CALL

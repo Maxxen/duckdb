@@ -59,7 +59,7 @@ jobs:
       # V1 C API still uses DBConfig::SetOption directly; its regression
       # also covers the legacy paths the helper relies on.
       - name: Test V1 and V2 CAPI
-        run: make unittest_relassert T="[capi_v2],[capi]"
+        run: make unittest_relassert T="[capi_v2],[cpp_api],[capi]"
       # The V2 *_option_set bridges delegate to PhysicalSet::ApplyVariable
       # (extracted from PhysicalSet::GetDataInternal so SQL `SET` and the
       # V2 C API share one path). These suites exercise that same path

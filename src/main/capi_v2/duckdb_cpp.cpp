@@ -62,6 +62,10 @@ struct HandleTraits<Schema> {
 	using handle = duckdb_v2_schema_handle;
 };
 template <>
+struct HandleTraits<QualifiedName> {
+	using handle = duckdb_v2_qname_handle;
+};
+template <>
 struct HandleTraits<Database> {
 	using handle = duckdb_v2_database_handle;
 };
@@ -417,6 +421,59 @@ auto RenderQuotedIdentifier(std::string_view name) -> std::string {
 	auto result = std::string(text);
 	free(text);
 	return result;
+}
+
+//---------------------------------------------------------------------------
+// Qualified Name
+//---------------------------------------------------------------------------
+
+QualifiedName::QualifiedName(void *impl) : detail::Handle<QualifiedName>(impl) {
+}
+QualifiedName::~QualifiedName() {
+	auto _h = handle();
+	duckdb_v2_qname_destroy(&_h);
+}
+QualifiedName QualifiedName::Parse(std::string_view text) {
+	duckdb_v2_qname_handle _h = nullptr;
+	CheckedAPICall(duckdb_v2_qname_parse, duckdb_v2_str {text.data(), text.size()}, &_h);
+	return detail::Factory::Make<QualifiedName>(_h);
+}
+QualifiedName QualifiedName::FromParts(const std::vector<std::string_view> &parts) {
+	std::vector<duckdb_v2_identifier_t> views;
+	views.reserve(parts.size());
+	for (auto &part : parts) {
+		views.push_back(duckdb_v2_identifier_t {part.data(), part.size()});
+	}
+	duckdb_v2_qname_handle _h = nullptr;
+	CheckedAPICall(duckdb_v2_qname_create, views.data(), static_cast<idx_t>(views.size()), &_h);
+	return detail::Factory::Make<QualifiedName>(_h);
+}
+idx_t QualifiedName::GetPartCount() const {
+	idx_t count = 0;
+	CheckedAPICall(duckdb_v2_qname_get_part_count, handle(), &count);
+	return count;
+}
+std::string_view QualifiedName::GetPart(idx_t index) const {
+	duckdb_v2_identifier_t part = {nullptr, 0};
+	CheckedAPICall(duckdb_v2_qname_get_part, handle(), index, &part);
+	return FromStr(part);
+}
+std::string QualifiedName::Render() const {
+	char *text = nullptr;
+	CheckedAPICall(duckdb_v2_qname_render, handle(), &text);
+	auto result = std::string(text);
+	free(text);
+	return result;
+}
+bool QualifiedName::operator==(const QualifiedName &other) const {
+	bool result = false;
+	CheckedAPICall(duckdb_v2_qname_equals, handle(), other.handle(), &result);
+	return result;
+}
+uint64_t QualifiedName::Hash() const {
+	uint64_t hash = 0;
+	CheckedAPICall(duckdb_v2_qname_hash, handle(), &hash);
+	return hash;
 }
 
 //---------------------------------------------------------------------------

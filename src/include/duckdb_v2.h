@@ -2705,6 +2705,149 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param(duckdb_v2_log
 /* --- Struct definitions for logical_type --- */
 
 /* ============================================================================
+ * MODULE: qname
+ * ============================================================================ */
+
+/* --- Enums for qname --- */
+
+/* --- Struct forward declarations for qname --- */
+
+/* --- Types for qname --- */
+//! An owned qualified name: an ordered path of one to three non-empty
+//! identifier parts whose last element is the object name. Construct via
+//! qname_parse or qname_create, read with qname_get_part_count and
+//! qname_get_part, render into SQL via qname_render, compare via
+//! qname_equals. Destroy via qname_destroy. The handle wraps the engine
+//! name representation directly; that identity is an implementation detail
+//! and may change, so handles are compared with qname_equals, never by
+//! pointer.
+typedef struct _duckdb_v2_qname {
+	void *internal_ptr;
+} * duckdb_v2_qname_handle;
+
+/* --- Constants for qname --- */
+
+/* --- Error Codes for qname --- */
+
+/* --- Function pointer typedefs for qname --- */
+
+/* --- Functions for qname --- */
+/*!
+* Parses SQL text into a qualified name.
+* Parses text with the engine's qualified-name rules: dots separate
+parts, and a double-quoted part may contain dots and doubled interior
+quotes. More than three parts and an unterminated quote are rejected
+with the engine's parser error; text without at least one non-empty
+part is rejected with INVALID_INPUT. text is a borrowed view. When the
+parts are already separate, construct through qname_create instead of
+joining and re-parsing text.
+
+* @param text The name text to parse. A borrowed view.
+* @param out_qname Receives the owned qualified name. Destroy via qname_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_parse(duckdb_v2_str text, duckdb_v2_qname_handle *out_qname,
+                                                        duckdb_v2_error_info_handle *err);
+/*!
+* Creates a qualified name from identifier parts.
+* Builds a qualified name from part_count identifier views ordered
+outermost first; the last part is the object name. Between one and
+three parts are accepted, and every part must be non-empty: partial
+qualification is expressed by passing fewer parts, never by empty
+placeholders. Zero parts, more than three parts (the engine qualifies
+at most catalog.schema.name today), and empty parts are rejected with
+INVALID_INPUT. The parts are borrowed and copied.
+
+* @param parts An array of part_count non-empty identifier views, outermost first.
+* @param part_count The number of parts, between one and three.
+* @param out_qname Receives the owned qualified name. Destroy via qname_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_create(const duckdb_v2_identifier_t *parts, idx_t part_count,
+                                                         duckdb_v2_qname_handle *out_qname,
+                                                         duckdb_v2_error_info_handle *err);
+/*!
+ * Returns the number of parts in a qualified name.
+ * @param qname The qualified name.
+ * @param out_count Receives the part count.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_get_part_count(duckdb_v2_qname_handle qname, idx_t *out_count,
+                                                                 duckdb_v2_error_info_handle *err);
+/*!
+* Borrows the part at index.
+* Borrows the identifier part at index; parts are ordered outermost
+first, and the last part is the object name. out_part is valid only
+until the qualified name is destroyed. An out-of-range index is
+rejected with INVALID_INPUT.
+
+* @param qname The qualified name.
+* @param index Zero-based part index.
+* @param out_part Receives a borrowed view of the part. Valid until the qualified name is destroyed.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_get_part(duckdb_v2_qname_handle qname, idx_t index,
+                                                           duckdb_v2_identifier_t *out_part,
+                                                           duckdb_v2_error_info_handle *err);
+/*!
+* Renders a qualified name as SQL text.
+* Produces the dot-separated SQL text for the name, quoting and escaping
+each part only when required, exactly as identifier_render_quoted does
+for a single part. The returned char* is caller-owned and must be freed
+with free().
+
+* @param qname The qualified name to render.
+* @param out_text Receives a malloc'd null-terminated string. Caller frees.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_render(duckdb_v2_qname_handle qname, char **out_text,
+                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Compares two qualified names.
+* True when the two names have the same number of parts and each part
+matches case-insensitively, the engine's identifier equality. Casing
+differences never distinguish two names.
+
+* @param left The first qualified name.
+* @param right The second qualified name.
+* @param result Receives the result of the comparison.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_equals(duckdb_v2_qname_handle left, duckdb_v2_qname_handle right,
+                                                         bool *result, duckdb_v2_error_info_handle *err);
+/*!
+* Returns a hash of a qualified name.
+* A hash consistent with qname_equals: names that compare equal hash
+equal, including casing differences. The value is not stable across
+processes or library versions; use it for in-process tables only,
+never persist it.
+
+* @param qname The qualified name to hash.
+* @param out_hash Receives the hash value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_hash(duckdb_v2_qname_handle qname, uint64_t *out_hash,
+                                                       duckdb_v2_error_info_handle *err);
+/*!
+* Destroys a qualified name handle.
+* Frees the handle. On success the slot is set to null. Safe to call on
+an already-null slot.
+
+* @param qname The qualified name handle to destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_qname_destroy(duckdb_v2_qname_handle *qname);
+
+/* --- Struct definitions for qname --- */
+
+/* ============================================================================
  * MODULE: replacement_scan
  * ============================================================================ */
 

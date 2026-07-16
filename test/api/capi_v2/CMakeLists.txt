@@ -17,6 +17,7 @@ add_library_unity(
   test_capi_v2_option.cpp
   test_capi_v2_scalar_function.cpp
   test_capi_v2_prepared_statement.cpp
+  test_capi_v2_qname.cpp
   test_capi_v2_query_execution.cpp
   test_capi_v2_query_result.cpp
   test_capi_v2_replacement_scan.cpp
@@ -31,6 +32,7 @@ add_library_unity(
   test_cpp_api_core.cpp
   test_cpp_api_function.cpp
   test_cpp_api_table_function.cpp
+  test_cpp_api_qname.cpp
   test_cpp_api_query.cpp
   test_cpp_api_varargs.cpp
   test_cpp_api_vector.cpp

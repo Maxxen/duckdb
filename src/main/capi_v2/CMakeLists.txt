@@ -24,6 +24,7 @@ add_library_unity(
   logger-v2.cpp
   option-v2.cpp
   prepared_statement-v2.cpp
+  qname-v2.cpp
   query_result-v2.cpp
   replacement_scan-v2.cpp
   schema-v2.cpp

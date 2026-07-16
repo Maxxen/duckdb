@@ -665,6 +665,51 @@ auto LibraryVersion() -> std::string;
 auto RenderQuotedIdentifier(std::string_view name) -> std::string;
 
 //----------------------------------------------------------------------------------------------------------------------
+// Qualified Name
+//----------------------------------------------------------------------------------------------------------------------
+
+// A qualified name: an ordered path of one to three non-empty identifier parts
+// whose last element is the object name. Partial qualification is expressed by
+// path length, never by empty placeholder parts; interpreting a two-part name
+// (schema versus catalog) belongs to resolution, not to the name.
+class QualifiedName final : public detail::Handle<QualifiedName> {
+	friend detail::Factory;
+
+public:
+	QualifiedName(QualifiedName &&) noexcept = default;
+	QualifiedName &operator=(QualifiedName &&) noexcept = default;
+
+	~QualifiedName() override;
+
+	// Parses name text with the engine's rules: dots separate parts, a
+	// double-quoted part may contain dots and doubled interior quotes. Prefer
+	// FromParts when the parts are already separate.
+	static QualifiedName Parse(std::string_view text);
+	// Builds a name from parts ordered outermost first; the last part is the
+	// object name. One to three parts, each non-empty.
+	static QualifiedName FromParts(const std::vector<std::string_view> &parts);
+
+	// Number of parts.
+	idx_t GetPartCount() const;
+	// Borrowed part at index, outermost first; valid for this QualifiedName's lifetime.
+	std::string_view GetPart(idx_t index) const;
+
+	// The dot-separated SQL text, each part quoted only when required.
+	std::string Render() const;
+
+	// Case-insensitive per part, the engine's identifier equality.
+	bool operator==(const QualifiedName &other) const;
+	bool operator!=(const QualifiedName &other) const {
+		return !(*this == other);
+	}
+	// Consistent with equality; in-process use only, never persist the value.
+	uint64_t Hash() const;
+
+private:
+	explicit QualifiedName(void *impl);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Logical Type
 //----------------------------------------------------------------------------------------------------------------------
 
