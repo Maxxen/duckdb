@@ -1351,6 +1351,31 @@ assertions: 102 | 101 passed | 1 failed
         )
         self.assertEqual(reproduce_batch, ["/tmp/concurrent.test_slow"])
 
+    def test_catch_wrapped_message_is_rejoined(self):
+        # Catch wraps a FAIL() message at the console width. Keeping only the first line drops the
+        # part naming the actual error, which is the whole reason the message is printed.
+        batch = ["/tmp/concurrent.test_slow"]
+        stdout = """
+[0/1] (0%): /tmp/concurrent.test_slow
+/duckdb/test/sqlite/sqllogic_command.cpp:857: FAILED:
+explicitly with message:
+  Failure at :-1: Startup queries provided via on_new_connection failed:
+  TransactionContext Error: cannot change database while a transaction is active
+
+===============================================================================
+assertions: 102 | 101 passed | 1 failed
+"""
+        lines, _ = run_tests.summarize_failure_output(None, stdout, "", batch)
+        self.assertEqual(
+            strip_ansi_lines(lines)[1:],
+            [
+                "error: FAIL /tmp/concurrent.test_slow",
+                "",
+                "Failure at :-1: Startup queries provided via on_new_connection failed: "
+                "TransactionContext Error: cannot change database while a transaction is active",
+            ],
+        )
+
     def test_stdout_failed_block_prefers_full_catch_assertion_block(self):
         progress_bar_path = REPO_ROOT / "test" / "api" / "test_progress_bar.cpp"
         batch = [

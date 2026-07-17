@@ -600,6 +600,23 @@ def infer_timed_out_test_from_stdout(stdout_lines: list[str], batch):
     return None
 
 
+def join_wrapped_message(lines: list[str]):
+    # Catch hard-wraps a FAIL() message to the console width, so the reason continues on the
+    # following lines. Rejoin them: keeping only the first line truncates mid-sentence, dropping
+    # the part that names the actual error.
+    message_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if message_lines:
+                break
+            continue
+        if CATCH_TALLY_PATTERN.match(stripped) or set(stripped) in ({"="}, {"-"}, {"~"}, {"."}):
+            break
+        message_lines.append(stripped)
+    return " ".join(message_lines) if message_lines else None
+
+
 def extract_failed_reason_line(stdout_lines: list[str]):
     for idx, line in enumerate(stdout_lines):
         if not FAILED_HEADER_PATTERN.match(line):
@@ -616,11 +633,7 @@ def extract_failed_reason_line(stdout_lines: list[str]):
                         return next_stripped
                 return None
             if EXPLICIT_MESSAGE_PATTERN.match(stdout_lines[lookahead_idx]):
-                for next_line in stdout_lines[lookahead_idx + 1 :]:
-                    next_stripped = next_line.strip()
-                    if next_stripped:
-                        return next_stripped
-                return None
+                return join_wrapped_message(stdout_lines[lookahead_idx + 1 :])
             if stripped.startswith("{") and stripped.endswith("}"):
                 continue
             return stripped
