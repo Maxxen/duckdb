@@ -2,17 +2,28 @@
 
 import argparse
 import importlib
+import inspect
 import sys
 from pathlib import Path
 
-from .loader import load_metadata, load_modules
+from . import SCHEMA_VERSION, __version__
+from .loader import SchemaVersionError, load_metadata, load_modules
 from .validate import validate_semantics
 
 _DEFAULT_SPEC_DIR = Path("api_spec/v2")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="DuckDB C API header generator")
+    parser = argparse.ArgumentParser(
+        description="Declarative C API generator from YAML specs"
+    )
+    parser.add_argument("--version", action="version", version=__version__)
+    parser.add_argument(
+        "--schema-version",
+        action="version",
+        version=SCHEMA_VERSION,
+        help="Print the supported spec schema version and exit",
+    )
     parser.add_argument("adapter", help="Language adapter name (e.g. 'c')")
     parser.add_argument("--output", "-o", required=True, help="Output file path")
     parser.add_argument(
@@ -30,7 +41,7 @@ def main() -> None:
         choices=["true", "false", "strict"],
         default=None,
         dest="emit_deprecated",
-        help="Override deprecated_encoding from metadata: true=guarded (default), false=omit entirely, strict=guarded + DUCKDB_DEPRECATED attribute",
+        help="Override deprecated_encoding from metadata: true=guarded (default), false=omit entirely, strict=guarded + the configured deprecated macro attribute",
     )
     args = parser.parse_args()
 
@@ -40,7 +51,11 @@ def main() -> None:
         sys.exit(1)
 
     # 1-2. Load and validate
-    metadata = load_metadata(spec_dir)
+    try:
+        metadata = load_metadata(spec_dir)
+    except SchemaVersionError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
     modules = load_modules(spec_dir)
 
     if args.emit_deprecated is not None:
@@ -72,6 +87,8 @@ def main() -> None:
     extra_kwargs: dict = {}
     if args.scan_dir is not None:
         extra_kwargs["scan_dir"] = Path(args.scan_dir)
+    if "invocation" in inspect.signature(adapter.generate).parameters:
+        extra_kwargs["invocation"] = "capigen " + " ".join(sys.argv[1:])
     adapter.generate(modules, metadata, output_path, **extra_kwargs)
 
 

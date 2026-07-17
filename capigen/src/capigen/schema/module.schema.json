@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:capigen:schema:0.4:module",
   "description": "Schema for a v2 IDL module YAML file. Each module groups related types and functions for one area of the C API.",
   "type": "object",
   "additionalProperties": false,
@@ -281,9 +282,8 @@
           }
         },
         "return_type": {
-          "description": "Return type name. Defaults to duckdb_error_code (the v2 convention).",
-          "type": "string",
-          "default": "duckdb_error_code"
+          "description": "Return type name; resolves to a declared type, alias, or primitive.",
+          "type": "string"
         },
         "return_pointer": {
           "description": "Pointer indirection level on the return type. 0 = value, 1 = pointer, etc.",

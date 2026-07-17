@@ -6,14 +6,41 @@ from pathlib import Path
 import yaml
 import jsonschema
 
+from . import __version__
 from .tools import sort_modules_by_deps
 
 # Schema files ship with capigen — they define what the tool understands.
 _SCHEMA_DIR = Path(__file__).parent / "schema"
 
 
+class SchemaVersionError(Exception):
+    """Raised when a spec's schema_version is not supported by this capigen."""
+
+
 def _load_schema(name: str) -> dict:
     return json.loads((_SCHEMA_DIR / name).read_text())
+
+
+def _parse_major_minor(value: str, label: str) -> tuple[int, int]:
+    """Parse 'X.Y' or 'X.Y.Z' into (major, minor); reject anything else."""
+    parts = value.split(".")
+    if len(parts) not in (2, 3) or not all(p.isdigit() for p in parts):
+        raise SchemaVersionError(
+            f"invalid {label} {value!r}: expected MAJOR.MINOR or MAJOR.MINOR.PATCH"
+        )
+    return int(parts[0]), int(parts[1])
+
+
+def check_schema_version(spec_version: str, tool_version: str) -> None:
+    """Accept when majors match and the spec minor is at most the tool minor."""
+    spec_major, spec_minor = _parse_major_minor(spec_version, "schema_version")
+    tool_major, tool_minor = _parse_major_minor(tool_version, "capigen version")
+    if spec_major != tool_major or spec_minor > tool_minor:
+        raise SchemaVersionError(
+            f"spec requires schema {spec_major}.{spec_minor}; "
+            f"capigen {tool_version} supports {tool_major}.{tool_minor}; "
+            f"install 'capigen~={spec_major}.{spec_minor}.0'"
+        )
 
 
 def apply_defaults(data: dict, schema: dict, defs: dict | None = None) -> dict:
@@ -77,6 +104,7 @@ def load_metadata(spec_dir: Path) -> dict:
     schema = _load_schema("metadata.schema.json")
     data = yaml.safe_load((spec_dir / "metadata.yaml").read_text())
     jsonschema.validate(data, schema)
+    check_schema_version(data["schema_version"], __version__)
     apply_defaults(data, schema)
     return data
 

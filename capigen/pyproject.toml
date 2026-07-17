@@ -1,6 +1,6 @@
 [project]
 name = "capigen"
-version = "0.1.0"
+version = "0.4.0"
 description = "DuckDB C API v2 header generator"
 requires-python = ">=3.12"
 dependencies = [

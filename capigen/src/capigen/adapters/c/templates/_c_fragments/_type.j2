@@ -1,6 +1,6 @@
 {% from "_c_fragments/_format.j2" import format_c_type %}
 
-{%- macro render_type(t) -%}
+{%- macro render_type(t, typedef_guard_prefix) -%}
   {%- if t.description %}//! {{ t.description | c_line_comment }}
 {% endif -%}
   {%- if t.tagged_struct -%}
@@ -10,8 +10,8 @@ typedef struct _{{ t.name }} {
   {%- elif t.is_pointer -%}
 typedef {{ format_c_type(t.base) }}* {{ t.canonical_name }};
   {%- elif t.is_qualified -%}
-#ifndef DUCKDB_TYPEDEF_{{ t.canonical_name | upper }}
-#define DUCKDB_TYPEDEF_{{ t.canonical_name | upper }}
+#ifndef {{ typedef_guard_prefix }}{{ t.canonical_name | upper }}
+#define {{ typedef_guard_prefix }}{{ t.canonical_name | upper }}
 typedef {{ format_c_type(t.base) }} {{ t.canonical_name }};
 #endif
   {%- else -%}

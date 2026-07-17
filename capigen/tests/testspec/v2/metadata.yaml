@@ -1,4 +1,4 @@
-schema_version: "0.2.0"
+schema_version: "0.4"
 versions:
   - "1.0.0"
 prefix: "duckdb_v2_"

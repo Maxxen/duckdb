@@ -203,6 +203,77 @@ class TestUnionStructRendering:
         assert "//! out-of-line form" in content
 
 
+class TestMacroOptions:
+    """The C adapter's macro names and banner come from options.c."""
+
+    def _metadata(self, **c_opts):
+        meta = {
+            "schema_version": "0.2.0",
+            "versions": ["1.0.0"],
+            "prefix": "duckdb_v2_",
+            "suffixes": {"handles": "_ptr", "callbacks": "_cb", "aliases": "_t"},
+            "primitives": [
+                {"name": "opaque", "c_type": "void"},
+                {"name": "i32", "c_type": "int32_t"},
+            ],
+        }
+        if c_opts:
+            meta["options"] = {"c": c_opts}
+        return meta
+
+    def _module(self):
+        return {
+            "module": "m",
+            "handles": {},
+            "callbacks": {},
+            "aliases": {},
+            "structs": {},
+            "enums": {},
+            "constants": {},
+            "error_groups": {},
+            "functions": {
+                "ping": {
+                    "summary": "Ping",
+                    "return_type": "i32",
+                    "return_pointer": 0,
+                    "return_const": False,
+                    "parameters": {},
+                },
+            },
+        }
+
+    def test_defaults_derived_from_prefix(self, tmp_path):
+        output = tmp_path / "out.h"
+        generate([self._module()], self._metadata(), output)
+        content = output.read_text()
+        assert "#ifndef DUCKDB_V2_C_API" in content
+        assert "#ifndef DUCKDB_V2_EXTENSION_API" in content
+        assert "#define DUCKDB_V2_DEPRECATED" in content
+
+    def test_explicit_macros_honored(self, tmp_path):
+        output = tmp_path / "out.h"
+        generate(
+            [self._module()],
+            self._metadata(
+                api_macro="MY_API",
+                deprecated_macro="MY_DEPRECATED",
+                banner="// custom banner",
+            ),
+            output,
+        )
+        content = output.read_text()
+        assert "MY_API" in content
+        assert "#define MY_DEPRECATED" in content
+        assert "// custom banner" in content
+        assert "DUCKDB_C_API" not in content
+
+    def test_zero_param_function_renders_void(self, tmp_path):
+        output = tmp_path / "out.h"
+        generate([self._module()], self._metadata(), output)
+        content = output.read_text()
+        assert "duckdb_v2_ping(void);" in content
+
+
 class TestSchemaVersion:
     def test_missing_schema_version(self, tmp_path):
         """metadata.yaml without schema_version is rejected by JSON Schema validation."""

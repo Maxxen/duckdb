@@ -24,7 +24,7 @@
 
 /* --- Types for {{ module.name }} --- */
 {% for type in module.types %}
-{{ render_type(type) }}
+{{ render_type(type, c_opts.typedef_guard_prefix) }}
 
 {% endfor %}
 
@@ -54,7 +54,7 @@
 {% for func_name, func in module.functions.items() %}
 {% if not func.static_inline and not (func.deprecated and dep_enc == 'none') %}
 {% if func.deprecated %}
-#ifndef DUCKDB_API_NO_DEPRECATED
+#ifndef {{ c_opts.no_deprecated_guard }}
 {% endif %}
   {%- if func.summary or func.description -%}
 /*!
@@ -68,11 +68,13 @@
 * @return {{ func.return_c }}
 */
   {% endif %}
-DUCKDB_C_API {% if func.deprecated and dep_enc == 'strict' -%}DUCKDB_DEPRECATED {% endif %}
+{{ c_opts.api_macro }} {% if func.deprecated and dep_enc == 'strict' -%}{{ c_opts.deprecated_macro }} {% endif %}
 {{ func.return_c }} {{ func_name }}(
+      {%- if func.parameters -%}
       {%- for name, param in func.parameters.items() -%}
       {{ c_function(name, param) }}{{ ", " if not loop.last }}
       {%- endfor -%}
+      {%- else -%}void{%- endif -%}
   );
 {% if func.deprecated %}
 #endif

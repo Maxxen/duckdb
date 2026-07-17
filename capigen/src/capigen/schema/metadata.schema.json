@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:capigen:schema:0.4:metadata",
   "description": "Schema for metadata.yaml — defines ABI naming conventions, primitive types, and API versions.",
   "type": "object",
   "additionalProperties": false,
@@ -11,9 +12,9 @@
   ],
   "properties": {
     "schema_version": {
-      "description": "IDL schema version that this metadata and its associated modules comply with (semver).",
+      "description": "IDL schema version that this metadata and its associated modules comply with. MAJOR.MINOR, or legacy MAJOR.MINOR.PATCH (patch ignored).",
       "type": "string",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+      "pattern": "^\\d+\\.\\d+(\\.\\d+)?$"
     },
     "versions": {
       "description": "Supported API versions in semver format.",

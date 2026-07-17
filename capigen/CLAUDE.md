@@ -304,13 +304,13 @@ Caveats:
 2. add shared handles in `api_spec/v2/common/common.yaml`.
 3. add module YAML under `api_spec/v2/<group>/<module>.yaml`.
 4. run generator:
-   - `just run` (or `uv run capigen c -o duckdb_v2.h`)
+   - `uv run capigen c --spec-dir api_spec/v2 -o duckdb_v2.h`
 5. handle errors:
    - JSON Schema validation errors → invalid field or value in YAML
    - `Type name 'X' is duplicated` → remove duplicate type declarations
    - `unknown type 'X'` → add to common or correct existing declarations.
 6. run tests:
-   - `just test`
+   - `uv run --group dev pytest capigen/tests`
 
 ## Helpful naming rubric
 
