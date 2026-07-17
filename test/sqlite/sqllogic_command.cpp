@@ -275,21 +275,7 @@ Connection &Command::CommandConnection(ExecuteContext &context) const {
 	if (connection_name.empty()) {
 		if (context.is_parallel) {
 			D_ASSERT(context.con);
-
-			auto &test_config = TestConfiguration::Get();
-			auto init_cmd = test_config.OnConnectionCommand();
-			if (!init_cmd.empty()) {
-				auto res = context.con->Query(runner.ReplaceKeywords(init_cmd));
-				if (res->HasError()) {
-					string error_msg = "Startup queries provided via on_new_connection failed: " + res->GetError();
-					if (context.is_parallel) {
-						throw std::runtime_error(error_msg);
-					} else {
-						FAIL(error_msg);
-					}
-				}
-			}
-
+			// on_new_connection runs once, when the worker's connection is constructed
 			return *context.con;
 		}
 		D_ASSERT(!context.con);
@@ -579,6 +565,13 @@ static void ParallelExecuteLoop(ParallelExecuteContext *execute_context) {
 
 		// construct a new connection to the database
 		Connection con(*runner.db);
+		auto init_cmd = TestConfiguration::Get().OnConnectionCommand();
+		if (!init_cmd.empty()) {
+			auto res = con.Query(runner.ReplaceKeywords(init_cmd));
+			if (res->HasError()) {
+				throw std::runtime_error("Startup queries provided via on_new_connection failed: " + res->GetError());
+			}
+		}
 		// create a new parallel execute context
 		auto &running_loops = execute_context->active_loops;
 		ExecuteContext context(con, std::move(running_loops));
