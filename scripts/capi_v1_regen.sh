@@ -9,4 +9,10 @@ uv run capigen c \
 	--spec-dir api_spec/v1 \
 	-o src/include/duckdb_v1.h
 
+uv run capigen extension_header \
+	--spec-dir api_spec/v1 \
+	--template api_spec/v1/extension/duckdb_extension.h.in \
+	--internal-out src/include/duckdb/main/capi/extension_api.hpp \
+	-o src/include/duckdb_extension.h
+
 uv run --group dev python scripts/format.py HEAD --fix --noconfirm --silent

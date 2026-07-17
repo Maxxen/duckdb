@@ -1,0 +1,37 @@
+#pragma once
+
+#include "{{ include }}"
+
+//===--------------------------------------------------------------------===//
+// Function pointer struct
+//===--------------------------------------------------------------------===//
+typedef struct {
+{% for region in regions %}
+	{{ region.comment }}
+{% if region.gap %}
+
+{% endif %}
+{% for sig in region.members %}
+	{{ sig }};
+{% endfor %}
+{% endfor %}
+{% for sig in appended %}
+	{{ sig }};
+{% endfor %}
+} {{ typename }};
+
+//===--------------------------------------------------------------------===//
+// Struct Create Method
+//===--------------------------------------------------------------------===//
+inline {{ typename }} {{ create_method }}(void) {
+	{{ typename }} result;
+{% for name in all_names %}
+	result.{{ name }} = {{ name }};
+{% endfor %}
+	return result;
+}
+
+#define {{ version_macro_prefix }}_MAJOR {{ major }}
+#define {{ version_macro_prefix }}_MINOR {{ minor }}
+#define {{ version_macro_prefix }}_PATCH {{ patch }}
+#define {{ version_macro_prefix }}_STRING "v{{ major }}.{{ minor }}.{{ patch }}"

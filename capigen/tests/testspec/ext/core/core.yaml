@@ -1,0 +1,91 @@
+module: core
+handles:
+  db:
+    description: A database handle
+enums:
+  KIND:
+    description: A kind enum
+    values:
+      KIND_A: {value: 0}
+      KIND_B: {value: 1}
+aliases:
+  kind:
+    underlying: KIND
+    description: Alias for the KIND enum
+functions:
+  open:
+    summary: Open a database.
+    return_type: i32
+    return_pointer: 0
+    return_const: false
+    parameters:
+      path:
+        type: char
+        indirection: 1
+        const: true
+      out_db:
+        type: db
+        indirection: 1
+        const: false
+  close:
+    summary: Close a database.
+    return_type: void
+    return_pointer: 0
+    return_const: false
+    parameters:
+      db:
+        type: db
+        indirection: 0
+        const: false
+  version:
+    summary: Library version.
+    return_type: char
+    return_pointer: 1
+    return_const: true
+    parameters: {}
+  flush:
+    summary: Flush a database.
+    return_type: i32
+    return_pointer: 0
+    return_const: false
+    parameters:
+      db:
+        type: db
+        indirection: 0
+        const: false
+  get_kind:
+    summary: Get the kind.
+    return_type: KIND
+    return_pointer: 0
+    return_const: false
+    parameters:
+      db:
+        type: db
+        indirection: 0
+        const: false
+  skipme:
+    summary: Excluded from the struct.
+    return_type: void
+    return_pointer: 0
+    return_const: false
+    parameters:
+      db:
+        type: db
+        indirection: 0
+        const: false
+  extra_one:
+    summary: Appended function one.
+    return_type: void
+    return_pointer: 0
+    return_const: false
+    parameters:
+      db:
+        type: db
+        indirection: 0
+        const: false
+  extra_two:
+    summary: Appended function two, zero parameters.
+    return_type: i32
+    return_pointer: 0
+    return_const: false
+    parameters: {}

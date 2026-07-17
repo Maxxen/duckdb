@@ -85,3 +85,16 @@ options:
     # Emit verbatim C definitions for IDL-inexpressible types. Currently: duckdb_string_t
     # (union layout) and duckdb_state (non-standard enum member naming).
     emit_v1_primitive_defs: true
+  extension:
+    # Preprocessor guard wrapping unstable struct members and appends.
+    unstable_guard: DUCKDB_EXTENSION_API_VERSION_UNSTABLE
+    # Function assigning every member in the derived engine-side header.
+    create_method: CreateAPIv1
+    # Version used for the engine-side version defines.
+    api_version: "v1.2.0"
+    # Prefix of the engine-side version define macros.
+    version_macro_prefix: DUCKDB_EXTENSION_API_VERSION
+    # Header the engine-side output includes.
+    internal_include: duckdb.h
+    # Spec functions kept out of the struct, by bare unprefixed name.
+    exclude: []

@@ -14,7 +14,7 @@ repos:
         name: capi v1 regen (header)
         language: system
         entry: scripts/capi_v1_regen.sh
-        files: ^api_spec/v1/.*\.ya?ml$
+        files: ^api_spec/v1/.*(\.ya?ml|\.h\.in)$
         pass_filenames: false
       - id: duckdb-format
         name: duckdb format (staged changes)

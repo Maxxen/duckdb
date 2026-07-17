@@ -37,6 +37,17 @@ def main() -> None:
         help="Directory to scan for already-implemented functions (bridge adapter only)",
     )
     parser.add_argument(
+        "--template",
+        default=None,
+        help="Frozen template header to verify and append (extension_header adapter only)",
+    )
+    parser.add_argument(
+        "--internal-out",
+        default=None,
+        dest="internal_out",
+        help="Path for the derived engine-side header (extension_header adapter only)",
+    )
+    parser.add_argument(
         "--emit-deprecated",
         choices=["true", "false", "strict"],
         default=None,
@@ -84,10 +95,15 @@ def main() -> None:
             sys.exit(1)
 
     output_path = Path(args.output)
+    params = inspect.signature(adapter.generate).parameters
     extra_kwargs: dict = {}
     if args.scan_dir is not None:
         extra_kwargs["scan_dir"] = Path(args.scan_dir)
-    if "invocation" in inspect.signature(adapter.generate).parameters:
+    if args.template is not None and "template" in params:
+        extra_kwargs["template"] = Path(args.template)
+    if args.internal_out is not None and "internal_out" in params:
+        extra_kwargs["internal_out"] = Path(args.internal_out)
+    if "invocation" in params:
         extra_kwargs["invocation"] = "capigen " + " ".join(sys.argv[1:])
     adapter.generate(modules, metadata, output_path, **extra_kwargs)
 
