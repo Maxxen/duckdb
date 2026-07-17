@@ -1326,6 +1326,31 @@ explicitly with message:
         )
         self.assertEqual(reproduce_batch, ["/tmp/fail.test"])
 
+    def test_catch_tally_does_not_shadow_explicit_message_reason(self):
+        # A concurrentloop worker reports its failure by throwing; the runner re-raises it after the
+        # join as FAIL(message), so the reason only ever reaches stdout as "explicitly with message".
+        batch = ["/tmp/concurrent.test_slow"]
+        stdout = """
+[0/1] (0%): /tmp/concurrent.test_slow
+/duckdb/test/sqlite/sqllogic_command.cpp:857: FAILED:
+explicitly with message:
+  Failure at /tmp/concurrent.test_slow:60: INTERNAL Error: index invariant violated
+
+===============================================================================
+test cases: 1 | 1 failed
+assertions: 102 | 101 passed | 1 failed
+"""
+        lines, reproduce_batch = run_tests.summarize_failure_output(None, stdout, "", batch)
+        self.assertEqual(
+            strip_ansi_lines(lines)[1:],
+            [
+                "error: FAIL /tmp/concurrent.test_slow",
+                "",
+                "Failure at /tmp/concurrent.test_slow:60: INTERNAL Error: index invariant violated",
+            ],
+        )
+        self.assertEqual(reproduce_batch, ["/tmp/concurrent.test_slow"])
+
     def test_stdout_failed_block_prefers_full_catch_assertion_block(self):
         progress_bar_path = REPO_ROOT / "test" / "api" / "test_progress_bar.cpp"
         batch = [

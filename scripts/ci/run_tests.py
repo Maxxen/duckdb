@@ -547,6 +547,9 @@ SANITIZER_OR_ASSERT_PATTERN = re.compile(
     r"(AddressSanitizer|LeakSanitizer|ThreadSanitizer|UndefinedBehaviorSanitizer|runtime error:|assert)",
     flags=re.IGNORECASE,
 )
+# Catch's end-of-run tallies ("assertions: 102 | 101 passed | 1 failed"). They carry no failure
+# detail, but contain "assert", so they must be held out of SANITIZER_OR_ASSERT_PATTERN's reach.
+CATCH_TALLY_PATTERN = re.compile(r"^(assertions|test cases):\s")
 
 
 def find_failing_test(stderr_lines: list[str], batch):
@@ -874,6 +877,8 @@ def parse_stderr_failure_info(stderr_lines: list[str], batch):
 
 def extract_interesting_failure_block(lines: list[str]):
     for idx, line in enumerate(lines):
+        if CATCH_TALLY_PATTERN.match(line.strip()):
+            continue
         if not SANITIZER_OR_ASSERT_PATTERN.search(line):
             continue
         block = []
@@ -883,6 +888,8 @@ def extract_interesting_failure_block(lines: list[str]):
                 if block:
                     break
                 continue
+            if CATCH_TALLY_PATTERN.match(stripped):
+                break
             block.append(stripped)
             if len(block) >= 3:
                 break
