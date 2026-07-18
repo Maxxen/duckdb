@@ -44,6 +44,81 @@ This project and everyone participating in it is governed by a [Code of Conduct]
 * Packages creation and long running tests will be performed during a nightly run
 * On your fork you can trigger long running tests (NightlyTests.yml) for any branch following information from https://docs.github.com/en/actions/using-workflows/manually-running-a-workflow#running-a-workflow
 
+## C API V2 development
+
+DuckDB carries a C API V2. The design reference is `api_spec/C_API_V2.md`; the standing invariants and a map of the V2 directories are in the "DuckDB C API V2" section of `AGENTS.md`. This section covers setup, regeneration, building, and testing. Directory-local `AGENTS.md` files carry the authoring conventions: `api_spec/AGENTS.md` (editing the spec), `src/main/capi_v2/AGENTS.md` (writing bridge implementations), `test/api/capi_v2/AGENTS.md` (writing tests).
+
+### Prerequisites and setup
+
+Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (the Python package manager used by the generator and the formatter):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Provision the root virtual environment, which installs `capigen` (from PyPI, pinned) and the formatter runtime (clang-format, black, ...) pinned to the versions CI uses. `cmake-format` is deliberately not in the root venv; it runs only inside its pre-commit hook's isolated environment.
+
+```bash
+uv sync --group dev
+```
+
+You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, and Ninja (optional but recommended).
+
+### Pre-commit hook
+
+`.pre-commit-config.yaml` owns the regeneration and formatting pipeline:
+
+- **`capi-v2-regen`** fires when any `api_spec/v2/**/*.yaml` is staged; runs `scripts/capi_v2_regen.sh` to regenerate the V2 header and stubs.
+- **`capi-v1-regen`** fires when any `api_spec/v1/**/*.yaml` or the extension seed (`api_spec/v1/extension/duckdb_extension.h.in`) is staged; runs `scripts/capi_v1_regen.sh` to regenerate the V1 and extension headers.
+- **`duckdb-format`** runs `scripts/format.py` on staged C/C++/Python/test changes and on files the regen hooks produce. The manual-stage `duckdb-format-check` runs the full-tree `--all --check` pass in CI.
+- **`cmake-format`** (from `cheshirekow/cmake-format-precommit`) formats `CMakeLists.txt` and `*.cmake` in its own isolated venv pinned to Python 3.12.
+- **`check-yaml` / `yamlfmt`** validate and format the `api_spec/` YAML.
+
+One-time setup per clone (alongside `uv sync --group dev`):
+
+```bash
+uv run pre-commit install
+```
+
+When a hook modifies a staged file, pre-commit aborts the commit and prints the changed files; re-`git add` them and commit again. To bypass for a single commit (not recommended), use `git commit --no-verify`.
+
+### Regenerating the header and stubs
+
+The V2 header (`src/include/duckdb_v2.h`) and the bridge stubs (`src/main/capi_v2/capi_v2_stubs.cpp`) are committed and generated from the spec. After editing the YAML:
+
+```bash
+./scripts/capi_v2_regen.sh
+```
+
+This runs both capigen adapters (`c` for the header, `bridge` for the stubs) and formats the output. The `capi-v2-regen` pre-commit hook runs it automatically when you stage a spec change, so committing without a manual run also works. If you add a new bridge implementation file to `src/main/capi_v2/`, add it to that directory's `CMakeLists.txt`.
+
+### Building and testing
+
+The V2 capi compiles into the standard DuckDB build:
+
+```bash
+make debug                                 # full build (or: make release)
+./build/debug/test/unittest "[capi_v2]"    # V2 C API bridge tests
+./build/debug/test/unittest "[cpp_api]"    # stable C++ API tests
+./build/debug/test/unittest "[capi]"       # V1 regression (must stay green)
+```
+
+Common gotchas:
+
+- **YAML edits require regeneration.** Forgetting to regenerate shows up as drift in `git status` and fails the CI `git diff --exit-code` check.
+- **Hand-written bridges are not overwritten by regeneration.** A renamed or deleted spec function leaves its orphaned implementation in the `.cpp` until you remove it manually.
+- **Error codes are 32-bit** (`(group_id << 16) | code`). Use the generated `DUCKDB_V2_ERROR_*` macro, never the numeric value.
+- **New primitives are declared in `api_spec/v2/metadata.yaml`** first, with their C ABI type under `c_type`.
+
+### CI
+
+`.github/workflows/v2-capi.yml` runs on every push to `main` and on PRs, as two jobs:
+
+- **`format`** provisions the root venv with `uv sync --group dev`, runs `pre-commit run --all-files` and the manual full-tree `scripts/format.py --all --check`, then `git diff --exit-code` to fail if the committed headers or stubs are out of sync with `api_spec/`.
+- **`build`** builds with `make relassert` (`FORCE_DEBUG=1 FORCE_ASSERT=1`, RelWithDebInfo plus ASan/UBSan/LSan and the slow verifiers), then runs `make unittest_relassert T="[capi_v2],[capi]"`, plus the SQL `SET` regression suites that exercise the same `PhysicalSet::ApplyVariable` path the V2 `*_option_set` bridges use.
+
+A second workflow, `.github/workflows/sqllogic-cpp-api.yml`, runs nightly (and on demand). It runs the full sqllogic suite through the stable C++ API executor and diffs it against the internal `ClientContext::Query` path across the configuration matrix and platforms, failing only on tests that regress under the C-API runner but pass under the internal one.
+
 ## Building
 
 * To build the project, run `make`.

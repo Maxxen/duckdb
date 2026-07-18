@@ -6,6 +6,30 @@ This file provides guidance to coding agents when working with code in this repo
 
 DuckDB is a high-performance analytical database system designed to be fast, reliable, portable, and easy to use. It is an analytical database management system with a rich SQL dialect, vectorized execution engine, and columnar storage format.
 
+## DuckDB C API V2
+
+DuckDB carries a **C API V2** alongside the original C API. Most of this file describes DuckDB the database; this section is the V2 orientation. The V1 C API (`duckdb.h`) is unaffected; V2 lives in `api_spec/v2/` (the declarative YAML spec), `src/main/capi_v2/` (the C++ bridge), `src/include/duckdb_v2.h` (the generated header), and `test/api/capi_v2/`. Alongside the C API, V2 carries an experimental stable C++ API (`duckdb_api`, in `src/include/duckdb_cpp.hpp`) built only on the V2 C ABI.
+
+**Design philosophy:** the C ABI is the canonical product. All language bindings FFI into it. Conveniences layer on top in the stable C++ API, never in the C surface.
+
+**Standing invariants (do not violate):**
+
+- **The C API carries primitives only.** A function earns a place in the C surface only when its capability is not composable client-side without engine knowledge; conveniences go in the stable C++ API.
+- **Everything is `duckdb_v2_` / `DUCKDB_V2_` prefixed.** The IDL itself is prefix-free; the prefix is applied at generation time.
+- **The spec is generated.** After editing `api_spec/v2/**/*.yaml`, the committed header and stubs must be regenerated (`./scripts/capi_v2_regen.sh`, or let the pre-commit hook do it). Un-regenerated edits show up as `git status` drift and fail CI.
+- **No exceptions cross the C ABI.** Bridge entry points wrap their bodies so a throw becomes a V2 error code on the `err` slot.
+- **Every fallible function returns an error code and takes a trailing `err` slot.** The return code is authoritative; never infer success or read out-params after a non-`NONE` return.
+- **Numeric enum ids round-trip with their internal counterparts.** A new internal enum variant needs a matching V2 id in the same change.
+- **V1 must stay functional.** Run `./build/debug/test/unittest "[capi]"` as a regression check after non-trivial changes to shared code.
+
+**Where to look:**
+
+- **Design reference** (the *why* behind every rule: error model, streaming result model, replacement scans, the C++ API and its data model, the full conventions list): `api_spec/C_API_V2.md`.
+- **Editing the spec:** `api_spec/AGENTS.md`.
+- **Writing bridge implementations:** `src/main/capi_v2/AGENTS.md`.
+- **Writing tests:** `test/api/capi_v2/AGENTS.md`.
+- **Build, setup, regeneration, testing, CI:** the "C API V2 development" section of `CONTRIBUTING.md`.
+
 ## Build Commands
 
 ### Basic Build

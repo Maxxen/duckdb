@@ -1,14 +1,19 @@
 # DuckDB C API V2
 
-This repository is a DuckDB fork where we are **prototyping a new C API (V2)** alongside the upstream codebase. The existing V1 C API (`duckdb.h`) remains fully functional and untouched; V2 work lives in parallel directories (`api_spec/v2/`, `src/main/capi_v2/`, `src/include/duckdb_v2.h`, `test/api/capi_v2/`). The upstream DuckDB `README.md` and `CLAUDE.md` describe DuckDB the database; this file is the V2-specific context.
+The **C API V2** (`duckdb_v2.h`) is a declaratively-defined C interface to DuckDB. Its public header and the bridge implementations that back it are generated from YAML specifications under `api_spec/v2/`. It coexists with the original (V1) C API (`duckdb.h`), which is unaffected: every V2 identifier is `duckdb_v2_` / `DUCKDB_V2_` prefixed, so the two never collide and either may be used.
+
+This document is the V2 design reference: the contracts and the reasoning behind them (the error model, the streaming result model, replacement scans, the stable C++ API and its data model, and the load-bearing conventions). Where a contract records an alternative that was considered and rejected, that reasoning is part of it: it explains why the surface is shaped the way it is.
 
 V2 is:
 
-- **Prefixed** — all identifiers use `duckdb_v2_` / `DUCKDB_V2_`, so there are no symbol collisions with V1.
-- **Declarative** — the API surface is defined in YAML under `api_spec/v2/`. The public C header (`src/include/duckdb_v2.h`) and the per-function stub skeleton (`src/main/capi_v2/capi_v2_stubs.cpp`) are generated from those specs by capigen, a pinned PyPI dependency (source at github.com/duckdb/capigen). Real implementations are hand-written next to the stubs; the generator drops a stub once it finds a matching hand-written definition.
-- **Validated** through Catch2 bridge tests under `test/api/capi_v2/` (the generator's own unit tests live in the capigen repository).
+- **Prefixed** — all identifiers use `duckdb_v2_` / `DUCKDB_V2_`, so there are no symbol collisions with the original C API.
+- **Declarative** — the API surface is defined in YAML under `api_spec/v2/`. The public C header (`src/include/duckdb_v2.h`) and the per-function stub skeleton (`src/main/capi_v2/capi_v2_stubs.cpp`) are generated from those specs by capigen. Real implementations are hand-written next to the stubs; the generator drops a stub once it finds a matching hand-written definition.
+- **Validated** through Catch2 bridge tests under `test/api/capi_v2/`.
 
-The V2 design is still being iterated — see "Companion docs" at the bottom of this file for current design discussions and parked questions.
+## Related documentation
+
+- **Building, setup, and regeneration** (provisioning the toolchain, the pre-commit pipeline, regenerating the header and stubs, running the tests, and CI): the "C API V2 development" section of `CONTRIBUTING.md`.
+- **capigen** (github.com/duckdb/capigen): the generator that produces the C header and bridge stubs from the specs. Its `schema_reference.md` is the IDL field reference and its `CLAUDE.md` documents the spec-language features.
 
 ## Design philosophy: C ABI as the canonical product
 
@@ -28,7 +33,8 @@ IDL is an abstraction layer over it.
 
 ```
 api_spec/                        API specs (YAML) -- the canonical API definitions
-  v2/                            The V2 API (the focus of this work)
+  C_API_V2.md                    This design reference
+  v2/                            The V2 API
     metadata.yaml                Primitives, suffixes, versions, prefix (duckdb_v2_)
     common/common.yaml           Shared handles and aliases
     common/error_codes.yaml      DUCKDB_V2_ERROR_* codes
@@ -177,102 +183,6 @@ this API, so byte access belongs here. `Value::GetData` / `FromData` wrap the C
 `value_get_data` / `value_create_from_data`; they add no ABI surface beyond what the vector
 path already commits.
 
-## Getting started
-
-```bash
-git clone git@github.com:duckdb/duckdb-capi-v2.git
-cd duckdb-capi-v2
-```
-
-## Prerequisites
-
-Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (the Python package manager used by the generator and the formatter):
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Then provision the root virtual environment, which installs `capigen` (from PyPI, pinned) and the formatter's runtime (clang-format, black, …) pinned to the versions CI uses. `cmake-format` is deliberately not in the root venv — it runs only inside its pre-commit hook's isolated environment (see below):
-
-```bash
-uv sync --group dev
-```
-
-You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, and Ninja (optional but recommended).
-
-## Pre-commit hook
-
-`.pre-commit-config.yaml` configures the hooks that own the regeneration and formatting pipeline:
-
-- **`capi-v2-regen`** — fires when any `api_spec/v2/**/*.yaml` is staged. Calls `scripts/capi_v2_regen.sh` to regenerate the V2 header and stubs.
-- **`capi-v1-regen`** — fires when any `api_spec/v1/**/*.yaml` or the extension seed (`api_spec/v1/extension/duckdb_extension.h.in`) is staged. Calls `scripts/capi_v1_regen.sh` to regenerate the V1 header (`src/include/duckdb_v1.h`) and the extension header (`src/include/duckdb_extension.h` and `extension_api.hpp`).
-- **`duckdb-format`** — runs `scripts/format.py` on staged C/C++/Python/test changes (and on the files the regen hooks just produced). A manual-stage variant, **`duckdb-format-check`**, runs the full-tree `--all --check` pass in CI.
-- **`cmake-format`** — from `cheshirekow/cmake-format-precommit`. Formats `CMakeLists.txt` and `*.cmake` files. pre-commit installs it into its own isolated venv pinned to Python 3.12, so it works even when your terminal runs Python 3.14 where the unmaintained `cmakelang` would otherwise crash.
-- **`check-yaml` / `yamlfmt`** — validate and format the `api_spec/` YAML.
-
-One-time setup per clone (alongside `uv sync --group dev`):
-
-```bash
-uv run pre-commit install
-```
-
-When a hook modifies a staged file, pre-commit aborts the commit and prints the list of changed files — re-`git add` them and commit again. To bypass the hook for a single commit (not recommended), use `git commit --no-verify`.
-
-## Making changes to the API spec
-
-The API is defined in YAML files under `api_spec/v2/`. Each file defines a module with handles, types, enums, and function declarations.
-
-Edit the relevant YAML file. Example from `configuration/configuration.yaml`:
-
-```yaml
-functions:
-  duckdb_v2_option_create:
-    summary: "Creates an option handle carrying a name and a setting."
-    role: constructor
-    belongs_to: duckdb_v2_option
-    parameters:
-      name:
-        type: char
-        indirection: 1
-        const: true
-        description: "Null-terminated option name."
-      setting:
-        type: char
-        indirection: 1
-        const: true
-        description: "Null-terminated setting (string-encoded value)."
-      out_option:
-        type: duckdb_v2_option
-        indirection: 1
-        kind: OUT
-        description: "Receives the new option handle."
-      err:
-        type: duckdb_v2_error_info
-        indirection: 1
-        kind: OUT
-        description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy."
-    return_type: DUCKDB_V2_API_CALL
-```
-
-All function names must start with `duckdb_v2_` and all type names must start with `duckdb_v2_` or `DUCKDB_V2_`. The generator validates this and will refuse to generate if the convention is violated.
-
-### Spec authoring conventions
-
-The IDL field reference and the spec-language features (prefix application, handle styles,
-qualified aliases, descriptions) are documented in the capigen repository
-(`schema_reference.md` and `CLAUDE.md`). The conventions specific to this fork's spec:
-
-- **Function roles.** Set `role` from behavior: `constructor` (create family), `destructor`
-  (destroy), `getter`, `setter`, or `method`. Destructors are infallible and take no `err`.
-- **Parameter order.** Primary subject, then inputs, then `out_*`, then the trailing `err`.
-  Every fallible function returns `DUCKDB_V2_API_CALL` and takes `err` last (`kind: OUT`,
-  `indirection: 1`). See Error handling below for the slot contract.
-- **Shared handles** are declared once in `common/common.yaml`, never redeclared per
-  module. Use `qualified: true` for names owned elsewhere, such as `idx_t` and `sel_t`.
-- **Lexical style.** `Connection` becomes `conn`, `Callback` becomes `cb`, `Statement`
-  becomes `stmt`, `Execution` becomes `exec`, `Destroy` becomes `destroy`, and `Begin` /
-  `End` become `begin_...` / `end_...`. String data is `type: char, indirection: 1`.
-
 ## Error handling
 
 Every fallible V2 function returns a `DUCKDB_V2_API_CALL_t` error code. On success the returned value is `DUCKDB_V2_ERROR_NONE`; on failure it is a non-zero code from `api_spec/v2/common/error_codes.yaml` (or the sentinel `DUCKDB_V2_API_ERROR` for an unspecified internal failure).
@@ -411,7 +321,7 @@ Query results are streaming-only; there is no materialized result surface and no
 
 - **A result is a cursor on the connection's single execution slot, not a box of data.** Creating the pending query opens a transaction (under autocommit); the engine commits/rolls back only when the stream is drained to completion — or, if an undrained result is destroyed, lazily when the connection next begins a query. Two consequences callers must understand:
   - An undrained result **holds a transaction open** (version cleanup and checkpointing are deferred behind it). Drain or destroy promptly.
-  - Side-effecting statements (`INSERT`, `CREATE`, `SET`, `CALL`, …) **take effect only when their result is drained**. Destroying an undrained result abandons execution *including the side effects* — silently. `result_drain(result, out_rows_changed, err)` is the sanctioned convenience for fire-and-forget statements: it runs the result to completion, discards rows, and reports the changed-row count. The result type (`result_get_result_type`) is prepare-time metadata, so callers decide between consuming rows and draining without inspecting the SQL. (A separate eager `connection_execute` entry point was considered and rejected in review: the caller cannot know up front whether e.g. `INSERT ... RETURNING` produces rows, so the result handle must carry that information.)
+  - Side-effecting statements (`INSERT`, `CREATE`, `SET`, `CALL`, …) **take effect only when their result is drained**. Destroying an undrained result abandons execution *including the side effects* — silently. `result_drain(result, out_rows_changed, err)` is the sanctioned convenience for fire-and-forget statements: it runs the result to completion, discards rows, and reports the changed-row count. The result type (`result_get_result_type`) is prepare-time metadata, so callers decide between consuming rows and draining without inspecting the SQL. (A separate eager `connection_execute` entry point is deliberately not exposed: the caller cannot know up front whether e.g. `INSERT ... RETURNING` produces rows, so the result handle must carry that information.)
 
 - **One live result per connection.** While a connection has a live, non-terminal result, starting a new query (`statement_execute` or `prepared_execute`) fails with `RESOURCE_IN_USE` (the same refuse-on-busy convention as `duckdb_v2_destroy_environment`); `statement_prepare` refuses the same way, because its `Prepare` runs the engine's `InitialCleanup`, which would cancel the live stream. *Motivation:* the engine's native behavior is to silently cancel the previous stream when a new query starts — action at a distance that every major C database API (libpq, MySQL's `mysql_use_result`, ODBC without MARS) rejects loudly instead. The busy check is **bridge-level bookkeeping on handle liveness** (a shared slot set at query time, released on terminal state or destroy), *not* an engine-state inspection: `ClientContext::active_query` is private and cleared lazily at the next query's `InitialCleanup` (so checking it would deadlock the query → destroy → query pattern), and "open transaction" is the wrong predicate under explicit `BEGIN`. With the handle-liveness rule enforced, the engine's lazy cleanup becomes unobservable again — exactly the implementation detail it was meant to be. Callers who want concurrency open a second connection (cheap; same `DatabaseInstance`); `connection_interrupt` is the escape hatch for abandoning a stream from another thread.
 
@@ -425,7 +335,7 @@ Query results are streaming-only; there is no materialized result surface and no
 
 `duckdb_v2_replacement_scan_register(db, callback, user_data, err)` registers a callback the binder consults when a table name cannot be resolved (what makes `SELECT * FROM 'file.csv'` work). The callback claims the name by naming a target table function (`set_function_name` plus positional / named parameters), declines by returning without claiming, or fails by setting code/text on the err slot. It mirrors the table-function callback family (`(info, context, err)`) and uses the same `opaque` user-data channel (`{ptr, destroy, equals}`) as the function builders, not a bespoke destroy parameter. Three points to know:
 
-- **Registration is not synchronized with running queries — register before issuing queries.** Registration appends to `DBConfig::replacement_scans`, which the binder iterates without a lock. V2 inherits this and documents the restriction rather than solving it. The underlying engine race is broader than the C API (extensions append at LOAD / autoload time while other connections bind, and `ReadCSVReplacement` can autoload parquet *mid-iteration* — `src/function/table/read_csv.cpp` → `extension/parquet/parquet_extension.cpp` — invalidating the very vector being walked). Engine-level synchronization (or a bridge-level dispatcher) is something to look into at some point.
+- **Registration is not synchronized with running queries — register before issuing queries.** Registration appends to `DBConfig::replacement_scans`, which the binder iterates without a lock. V2 inherits this and documents the restriction rather than solving it. The underlying engine race is broader than the C API (extensions append at LOAD / autoload time while other connections bind, and `ReadCSVReplacement` can autoload parquet *mid-iteration* — `src/function/table/read_csv.cpp` → `extension/parquet/parquet_extension.cpp` — invalidating the very vector being walked). Engine-level synchronization (or a bridge-level dispatcher) is a possible future improvement.
 
 - **Unqualified name parts read as the empty view, not `""`.** The engine reports an absent catalog / schema as an empty string; the `get_catalog_name` / `get_schema_name` getters translate that to the canonical `duckdb_v2_str` empty view `{NULL, 0}` per the borrowed-string convention. The table name is always a non-empty view.
 
@@ -433,15 +343,15 @@ Query results are streaming-only; there is no materialized result surface and no
 
 ## V2 conventions
 
-These rules apply when writing V2 spec YAML, bridge implementations, and tests. Most have been hard-won from PR1 review. A short reminder list:
+These rules apply when writing V2 spec YAML, bridge implementations, and tests.
 
 - **The C API carries primitives only.** A function earns a place in the C API only when its capability is not composable client-side without engine knowledge; conveniences layer on top in the stable C++ API. Exceptions need a stated reason, with `vector_get_value` / `vector_set_value` as the template: they stay for totality (the only cell path over every vector representation and over kinds without a committed view layout).
 
-- **Handle layout is load-bearing.** A V2 handle is a raw pointer to the underlying C++ object — *not* a wrapper struct — unless the wrapper is documented as load-bearing (`EnvironmentWrapperV2`, `OptionWrapperV2`, etc.). Handles are emitted as `tagged_struct` typedefs (`struct _duckdb_v2_x { void *internal_ptr; } * duckdb_v2_x_handle`), but that struct is a compile-time type tag only: the bridge `reinterpret_cast`s the C++ object pointer straight to it, so the runtime identity is still the bare object pointer. `duckdb_v2_logical_type_handle` specifically is a `duckdb::LogicalType *`; V1 and V2 share the same `new LogicalType(...)` allocation, so V2 destroy can free a V1-built handle. Direction matters: V1 → V2 destroy is OK; V2 → V1 destroy is not asserted and must not be relied on. **Do not wrap `duckdb_v2_logical_type` in a struct** — the identity is relied on by the deliberate V1-interop pins: the V1-oracle and the two cross-version round-trip tests in `test_capi_v2_logical_type.cpp`, the V1 `string_t` cross-validation in `test_capi_v2_string_layout.cpp`, the `[v1_v2_bridge]` value test, and the V1-only zero-entry-enum pins (SQL forbids the type; V2 inspection degrades gracefully). Same rule for `duckdb_v2_data_chunk_handle` (a `duckdb::DataChunk *`) and `duckdb_v2_vector_handle` (a `duckdb::Vector *`): no wrappers. PR4 verified neither needs to carry per-handle state — cardinality flows through the API explicitly, and the single untyped view-getter is thin enough to extract `(data, validity, sel)` directly from the core helpers without caching a `UnifiedVectorFormat`.
+- **Handle layout is load-bearing.** A V2 handle is a raw pointer to the underlying C++ object — *not* a wrapper struct — unless the wrapper is documented as load-bearing (`EnvironmentWrapperV2`, `OptionWrapperV2`, etc.). Handles are emitted as `tagged_struct` typedefs (`struct _duckdb_v2_x { void *internal_ptr; } * duckdb_v2_x_handle`), but that struct is a compile-time type tag only: the bridge `reinterpret_cast`s the C++ object pointer straight to it, so the runtime identity is still the bare object pointer. `duckdb_v2_logical_type_handle` specifically is a `duckdb::LogicalType *`; V1 and V2 share the same `new LogicalType(...)` allocation, so V2 destroy can free a V1-built handle. Direction matters: V1 → V2 destroy is OK; V2 → V1 destroy is not asserted and must not be relied on. **Do not wrap `duckdb_v2_logical_type` in a struct** — the identity is relied on by the deliberate V1-interop pins: the V1-oracle and the two cross-version round-trip tests in `test_capi_v2_logical_type.cpp`, the V1 `string_t` cross-validation in `test_capi_v2_string_layout.cpp`, the `[v1_v2_bridge]` value test, and the V1-only zero-entry-enum pins (SQL forbids the type; V2 inspection degrades gracefully). Same rule for `duckdb_v2_data_chunk_handle` (a `duckdb::DataChunk *`) and `duckdb_v2_vector_handle` (a `duckdb::Vector *`): no wrappers. Neither needs to carry per-handle state — cardinality flows through the API explicitly, and the single untyped view-getter is thin enough to extract `(data, validity, sel)` directly from the core helpers without caching a `UnifiedVectorFormat`.
 
 - **Cast helpers** (`ToEnv`, `ToDb`, `ToLogicalType`, …) live in `capi_v2_internal.hpp` next to the matching wrapper struct — not in per-module `.cpp` files.
 
-- **Opaque user data crosses as one struct — `duckdb_v2_opaque` (#95).** Any caller-owned pointer the engine must hold (user data, bind data, init / global / local state) crosses the ABI as the single by-value `duckdb_v2_opaque {void *ptr; …destroy; …equals;}`, never a bespoke `(void *user_data, user_data_destroy)` pair — that pattern and the `user_data_copy` callback were removed in #95. In the bridge, hold it in the `OpaqueDataHandle` RAII wrapper (`capi_v2_internal.hpp`): `shared_ptr<OpaqueDataHandle>` when the data is threaded / copied across phases (bind data, builder user data), a plain `OpaqueDataHandle` by value for single-owner state. The stable C++ API builds one via `detail::MakeUserData<T>` (raw fn pointer + this channel). New user-data-taking surface must use this, not reinvent it.
+- **Opaque user data crosses as one struct — `duckdb_v2_opaque`.** Any caller-owned pointer the engine must hold (user data, bind data, init / global / local state) crosses the ABI as the single by-value `duckdb_v2_opaque {void *ptr; …destroy; …equals;}`, never a bespoke `(void *user_data, user_data_destroy)` pair, and there is no `user_data_copy` callback. In the bridge, hold it in the `OpaqueDataHandle` RAII wrapper (`capi_v2_internal.hpp`): `shared_ptr<OpaqueDataHandle>` when the data is threaded / copied across phases (bind data, builder user data), a plain `OpaqueDataHandle` by value for single-owner state. The stable C++ API builds one via `detail::MakeUserData<T>` (raw fn pointer + this channel). New user-data-taking surface must use this, not reinvent it.
 
 - **File-private helpers** in `src/main/capi_v2/*.cpp` go in an anonymous namespace (`namespace { … }`) inside `namespace duckdb { … }`. It is the modern C++ idiom for TU-local symbols (block-scoped, applies to types as well as functions, preferred by Core Guidelines and clang-tidy). Note: under a unity build it does *not* isolate names between concatenated files — all `namespace { … }` blocks in one TU share the same unnamed namespace, so two helpers with the same name in two `*-v2.cpp` files still collide. Name uniqueness is the actual defense.
 
@@ -463,11 +373,11 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
   return V1ToV2(v1);
   ```
 
-- **V1/V2 hybrid prototyping.** Public V2 headers stay V1-free (`duckdb_v2.h` does not include `duckdb.h`). V2 `.cpp` implementations are free to wrap V1 or internal C++ machinery — the V2 contract is what we ship, not the implementation. **Tests are the only place V1 and V2 C headers may co-exist**, and only as deliberate interop validation pins. Fixture convenience is not a sanctioned reason: test fixtures use the V2 construction paths.
+- **V1/V2 header separation.** Public V2 headers stay V1-free (`duckdb_v2.h` does not include `duckdb.h`). V2 `.cpp` implementations are free to wrap V1 or internal C++ machinery — the V2 contract is the shipped surface, not the implementation. **Tests are the only place V1 and V2 C headers may co-exist**, and only as deliberate interop validation pins. Fixture convenience is not a sanctioned reason: test fixtures use the V2 construction paths.
 
-- **Spec / YAML style.** One description per function, lead with the contract. Annotate enum values only where the name alone is insufficient. No forward references to in-flight PRs ("(PR4)" ages badly). No first-person editorialising ("at this moment", "for now") — state the contract; deferral rationale lives in the spec's top-of-file commentary. For VARCHAR / string types use "null-terminated byte string", not "UTF-8" — DuckDB doesn't enforce encoding.
+- **Spec / YAML style.** One description per function, lead with the contract. Annotate enum values only where the name alone is insufficient. No forward references to in-flight work (it ages badly). No first-person editorialising ("at this moment", "for now") — state the contract; deferral rationale lives in the spec's top-of-file commentary. For VARCHAR / string types use "null-terminated byte string", not "UTF-8" — DuckDB doesn't enforce encoding.
 
-- **Vector reads are a single untyped view.** PR4 ships one `duckdb_v2_vector_view` struct (`{const void *data; const uint64_t *validity; const duckdb_v2_sel_t *sel, idx_t count; }`) and one `duckdb_v2_vector_get_view(vec, &view, err)` getter for every kind. Callers dispatch on `LogicalTypeId` and cast `view.data` to the matching typed pointer or layout typedef (`duckdb_v2_hugeint_t`, `duckdb_v2_interval_t`, `duckdb_v2_list_entry`, `duckdb_v2_varchar_t`/`blob_t`/`bit_t`/`bignum_t`, all aliases for `duckdb_v2_string`).
+- **Vector reads are a single untyped view.** V2 exposes one `duckdb_v2_vector_view` struct (`{const void *data; const uint64_t *validity; const duckdb_v2_sel_t *sel, idx_t count; }`) and one `duckdb_v2_vector_get_view(vec, &view, err)` getter for every kind. Callers dispatch on `LogicalTypeId` and cast `view.data` to the matching typed pointer or layout typedef (`duckdb_v2_hugeint_t`, `duckdb_v2_interval_t`, `duckdb_v2_list_entry`, `duckdb_v2_varchar_t`/`blob_t`/`bit_t`/`bignum_t`, all aliases for `duckdb_v2_string`).
 
 - **Structural descent uses two generic accessors.** `duckdb_v2_vector_get_child_count(vec, &n, err)` returns the number of children for a nested vector; `duckdb_v2_vector_get_child(vec, idx, &child, err)` borrows one. Per-kind index convention: LIST → `[0]` = elements; MAP → `[0]` = keys, `[1]` = values (V2 hides MAP's internal `LIST<STRUCT(K,V)>`); ARRAY → `[0]` = elements; STRUCT → `[i]` = field `i`; UNION → `[0]` = tag, `[1..N]` = members. "How many fields" / "how many members" are answered by `logical_type_get_param_count`, not by separate vector-side accessors. Every vector carries its own logical size, read with `duckdb_v2_vector_get_size(vec, &n, err)` and set with `duckdb_v2_vector_set_size(vec, n, err)` (which auto-reserves when growing past capacity). There is no list-specific size accessor and no chunk-level size setter: a LIST/MAP's element count is the size of its borrowed child handle (`vector_get_size(child)`, equivalent to `ListVector::GetListSize`), and `data_chunk_get_size` survives only for the read path, where the engine sets the chunk's cardinality.
 
@@ -489,104 +399,3 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
   - `tagged_struct` handle style is the **default** (`options.c.handles.default_style` in `metadata.yaml`), so handles are typed `struct _duckdb_v2_x *` rather than a bare `void *`; the per-handle `override_style` map opts an individual handle back to `void *` when needed. Handle typedefs carry the `_handle` suffix (the old `_ptr` suffix was renamed).
   - `qualified` flag on aliases — lets an alias reference an external type name unchanged (no prefix, no `_t` suffix).
   - See the capigen repository's `schema_reference.md` and `CLAUDE.md` (spec-language features) for YAML syntax, generated-C output, and caveats per feature.
-
-## Generating the header and stubs
-
-After changing the YAML specs, regenerate the header (`src/include/duckdb_v2.h`) and the bridge stubs (`src/main/capi_v2/capi_v2_stubs.cpp`):
-
-```bash
-./scripts/capi_v2_regen.sh
-```
-
-This runs both `capigen` adapters (`c` for the header, `bridge` for the stubs) and then formats the output via `scripts/format.py`. The same script is invoked automatically by the `capi-v2-regen` pre-commit hook whenever you stage an `api_spec/v2/**/*.yaml` change, so committing without a manual run is also fine — the hook regenerates, the format hook re-formats, and pre-commit asks you to re-stage.
-
-The generator's own tests live in the capigen repository.
-
-If you add new bridge implementation files to `src/main/capi_v2/`, add them to `src/main/capi_v2/CMakeLists.txt`.
-
-## Building
-
-The V2 capi is compiled into the standard DuckDB build:
-
-```bash
-make debug    # or: make release
-```
-
-## Implementing stubs and running C API V2 tests
-
-The generated `capi_v2_stubs.cpp` contains stub implementations for any declared function not yet implemented elsewhere. Each stub returns `DUCKDB_V2_API_ERROR`. To implement a function:
-
-1. Create a new `.cpp` file in `src/main/capi_v2/` (e.g., `option-v2.cpp`).
-2. Include `capi_v2_internal.hpp` and write the implementation.
-3. Add the file to `src/main/capi_v2/CMakeLists.txt`.
-4. Re-run `./scripts/capi_v2_regen.sh` — the bridge generator will drop the stub for any function it finds implemented in your new file.
-5. Rebuild and test.
-
-Example implementation (excerpt from `src/main/capi_v2/option-v2.cpp`):
-
-```cpp
-#include "capi_v2_internal.hpp"
-
-DUCKDB_V2_API_CALL_t duckdb_v2_option_create(duckdb_v2_str name, duckdb_v2_str setting,
-                                             duckdb_v2_option_handle *out_option,
-                                             duckdb_v2_error_info_handle *err) {
-    return duckdb::WithErrorHandler(err, [&]() {
-        // A {NULL, 0} view is a valid empty string; only a null pointer with a
-        // nonzero length is malformed.
-        if ((!name.ptr && name.len > 0) || (!setting.ptr && setting.len > 0) || !out_option) {
-            throw duckdb::InvalidInputException("null argument to duckdb_v2_option_create");
-        }
-        *out_option = nullptr;
-        auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
-        wrapper->name = duckdb::ToString(name);
-        wrapper->setting = duckdb::ToString(setting);
-        *out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
-    });
-}
-```
-
-Run the V2 C API tests:
-
-```bash
-./build/debug/test/unittest "[capi_v2]"
-```
-
-The test file is at `test/api/capi_v2/test_capi_v2.cpp`. Add new test cases there as you implement functions; for a new module, add `test/api/capi_v2/test_capi_v2_<module>.cpp` and wire it into `test/api/capi_v2/CMakeLists.txt`.
-
-## Gotchas
-
-A handful of things that recur:
-
-- **V1 must remain functional.** Run the `[capi]` tests as a regression check after any non-trivial change to shared DuckDB code: `./build/debug/test/unittest "[capi]"`.
-- **YAML edits require regeneration.** The header and stubs are committed; forgetting to run `./scripts/capi_v2_regen.sh` (or letting the pre-commit hook do it) shows up as drift in `git status`.
-- **Hand-written bridges are not overwritten by stub regeneration.** The bridge adapter scans `src/main/capi_v2/` for existing implementations and skips the matching stub. If you delete or rename a function in the spec while an implementation still exists, the orphan lingers in the `.cpp` until you remove it manually.
-- **Bridge stub detection is regex-based — write each implementation out as a literal function definition.** The adapter matches `\bduckdb_v2_\w+\s*\(` in the `.cpp` files. Macro-generated function bodies (`SOME_MACRO(duckdb_v2_value_get_int8, …)`) are *not* detected, and the stub for that name will silently remain in `capi_v2_stubs.cpp` — producing a link-time multiple-definition error or, worse, a stubbed-out function shadowing the real one. Unroll macros into explicit `DUCKDB_V2_API_CALL_t duckdb_v2_value_get_int8(...) { ... }` definitions.
-- **Out-param zeroing on failure is partial and not guaranteed.** Pointer-typed out-params (`out_value`, `out_type`, `out_data`, `out_string`) are *usually* set to `nullptr` on `INVALID_INPUT` paths, but not on every path; scalar out-params (`out_micros`, `out_lower`, `out_width`, …) are left *unspecified* on failure. The return code is authoritative: never read any out-param after a non-`NONE` return.
-- **Error codes are 32-bit: `(group_id << 16) | code`.** Don't hard-code the numeric value — use the generated macro name (`DUCKDB_V2_ERROR_*`).
-- **Every declared function must return an error code** (`DUCKDB_V2_API_CALL_t` or an alias). Don't use `void` or pointer-returning signatures; results come back through out-params.
-- **Primitives are declared in `api_spec/v2/metadata.yaml`.** If you need a new one, add it there first with its C ABI type under `c_type`.
-
-## Running everything
-
-```bash
-# Full build
-make debug
-
-# V2 bridge tests
-./build/debug/test/unittest "[capi_v2]"
-
-# Verify V1 is unaffected
-./build/debug/test/unittest "[capi]"
-```
-
-## CI
-
-The `.github/workflows/v2-capi.yml` workflow runs on every push to `main` and on PRs, as two jobs:
-- `format` — provisions the root venv with `uv sync --group dev`, then runs `pre-commit run --all-files` (default stages: regen, check-yaml, yamlfmt) followed by `pre-commit run --all-files --hook-stage manual` (full-tree `scripts/format.py --all --check`). Finally `git diff --exit-code` fails the job if the committed headers or stubs are out of sync with `api_spec/`.
-- `build` — builds with `make relassert` (`FORCE_DEBUG=1 FORCE_ASSERT=1`, i.e. RelWithDebInfo + ASan/UBSan/LSan plus the `-DDEBUG` slow verifiers; clang-20, ninja + ccache via the `./.github/actions/ccache-action` composite action), then runs `make unittest_relassert T="[capi_v2],[capi]"` — both the V2 bridge tests and the V1 `[capi]` regression. Two further steps run the SQL `SET` regression suites (`duckdb_settings*`, `[settings]`, `[reset]`), which exercise the same `PhysicalSet::ApplyVariable` path the V2 `*_option_set` bridges delegate to.
-
-A second workflow, `.github/workflows/sqllogic-cpp-api.yml`, runs nightly (and on demand). It runs the full sqllogic suite through the stable C++ API executor (`CppApiSQLLogicExecutor`) and diffs it against the internal `ClientContext::Query` path across the upstream configuration matrix and platforms (Linux configs, Linux/macOS/Windows default, sanitizer configs), failing only on tests that regress under the C-API runner but pass under the internal one.
-
-## Companion docs
-
-- **capigen** (github.com/duckdb/capigen): the code generator, published to PyPI and pinned in the root `pyproject.toml`. Its `README.md` covers generator usage, `schema_reference.md` is the IDL field reference, and `CLAUDE.md` documents the spec-language features. The spec conventions specific to this fork are under "Making changes to the API spec" above.
