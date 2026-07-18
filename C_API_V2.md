@@ -40,26 +40,30 @@ api_spec/                        API specs (YAML) -- the canonical API definitio
     value/, logical_type/, data_chunk/, vector/   Data + type surface
     expression/, replacement_scan/, filesystem/   Bound expressions, replacement scans, VFS
     function/                    scalar / aggregate / table / cast / copy builders
-  v1/                            Declarative reconstruction of the V1 surface; regenerates
-                                 src/include/duckdb_v1.h (the legacy duckdb.h stays untouched)
+  v1/                            Declarative reconstruction of the V1 surface. Regenerates
+                                 src/include/duckdb_v1.h, and from extension/duckdb_extension.h.in
+                                 the extension header (src/include/duckdb_extension.h) and its
+                                 engine-side struct (src/include/duckdb/main/capi/extension_api.hpp)
 
 capigen/                         Code generator (vendored in-tree; NOT a git subtree or submodule)
   pyproject.toml                 capigen's own project metadata; installed editably into the root venv
-  src/capigen/                   Generator: c adapter (header), bridge adapter (stubs)
+  src/capigen/                   Generator: c adapter (header), bridge adapter (stubs), extension_header adapter
   tests/                         Generator pytest suite
 
 pyproject.toml                   Root dev-environment shell; pulls in capigen as a path source and pins the formatter toolchain
 scripts/capi_v2_regen.sh         Regenerates the V2 header + stubs and formats the output
-scripts/capi_v1_regen.sh         Regenerates the V1 header (src/include/duckdb_v1.h) and formats it
+scripts/capi_v1_regen.sh         Regenerates the V1 header and the extension headers, and formats them
 src/include/duckdb_v2.h          Generated V2 C header (committed)
 src/include/duckdb_v1.h          Generated V1 C header reconstruction (committed)
+src/include/duckdb_extension.h   Generated V1 extension header (committed)
 src/include/duckdb_cpp.hpp       Stable C++ API (experimental) public header (see below)
 src/main/capi_v2/                V2 bridge implementations (C++ -> C)
   capi_v2_internal.hpp           Internal header with wrapper structs
   capi_v2_stubs.cpp              Auto-generated stubs for unimplemented functions
   duckdb_cpp.cpp                 Stable C++ API (experimental) implementation
 test/api/capi_v2/                V2 Catch2 tests
-  test_cpp_api.cpp               Stable C++ API test suite, tag [cpp_api]
+  test_capi_v2_*.cpp             C API bridge tests, tag [capi_v2]
+  test_cpp_api_*.cpp             Stable C++ API test suite, tag [cpp_api]
 
 python_client/                   Python client (scaffolded)
 ```
@@ -68,8 +72,8 @@ python_client/                   Python client (scaffolded)
 
 Alongside the C API, V2 carries a new C++ API: namespace `duckdb_api`, with its public
 header at `src/include/duckdb_cpp.hpp` and its implementation at
-`src/main/capi_v2/duckdb_cpp.cpp`; the Catch2 suite lives at
-`test/api/capi_v2/test_cpp_api.cpp` (tag `[cpp_api]`). When V2 documents or discussions say
+`src/main/capi_v2/duckdb_cpp.cpp`; the Catch2 suite lives in
+`test/api/capi_v2/test_cpp_api_*.cpp` (tag `[cpp_api]`). When V2 documents or discussions say
 "the stable C++ API", this is what they mean, NOT DuckDB's existing internal C++ API
 (`duckdb.hpp`), which makes no stability promises.
 
@@ -207,7 +211,7 @@ You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, a
 `.pre-commit-config.yaml` configures the hooks that own the regeneration and formatting pipeline:
 
 - **`capi-v2-regen`** — fires when any `api_spec/v2/**/*.yaml` is staged. Calls `scripts/capi_v2_regen.sh` to regenerate the V2 header and stubs.
-- **`capi-v1-regen`** — fires when any `api_spec/v1/**/*.yaml` is staged. Calls `scripts/capi_v1_regen.sh` to regenerate the V1 header reconstruction (`src/include/duckdb_v1.h`).
+- **`capi-v1-regen`** — fires when any `api_spec/v1/**/*.yaml` or the extension seed (`api_spec/v1/extension/duckdb_extension.h.in`) is staged. Calls `scripts/capi_v1_regen.sh` to regenerate the V1 header (`src/include/duckdb_v1.h`) and the extension header (`src/include/duckdb_extension.h` and `extension_api.hpp`).
 - **`duckdb-format`** — runs `scripts/format.py` on staged C/C++/Python/test changes (and on the files the regen hooks just produced). A manual-stage variant, **`duckdb-format-check`**, runs the full-tree `--all --check` pass in CI.
 - **`ty`** — type-checks the `capigen` Python package.
 - **`ruff` / `ruff-format`** — lint and format the fork-only Python under `python_client/` and `capigen/` (which live outside `scripts/format.py`'s reach).
