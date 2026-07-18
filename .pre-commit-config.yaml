@@ -29,14 +29,6 @@ repos:
           - typos
         pass_filenames: false
         always_run: true
-      - id: ty
-        name: ty (type check)
-        # Scope to the capigen package we own; the rest of the repo's Python
-        # is upstream duckdb code that has never been type-checked.
-        entry: uvx ty check capigen/src/capigen
-        language: system
-        pass_filenames: false
-        types: [python]
 
       # CI-only full-repo format check. Invoked explicitly via
       # `pre-commit run --all-files --hook-stage manual`.
@@ -53,17 +45,6 @@ repos:
           - typos
         pass_filenames: false
         always_run: true
-
-  # Fork-only Python (capigen subtree + scaffolded python_client) lives outside
-  # scripts/format.py's reach and uses ruff for both linting and formatting.
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.11
-    hooks:
-      - id: ruff
-        args: [--fix]
-        files: ^(python_client|capigen)/
-      - id: ruff-format
-        files: ^(python_client|capigen)/
 
   # cmakelang (cmake-format) is unmaintained and crashes on Python 3.14's
   # stricter `re.Scanner`. Pin the hook's isolated venv to python3.12 so it
@@ -92,4 +73,4 @@ repos:
     rev: v0.21.0
     hooks:
       - id: yamlfmt
-        files: ^(api_spec|capigen|python_client)/
+        files: ^api_spec/

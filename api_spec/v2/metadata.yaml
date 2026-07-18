@@ -1,5 +1,5 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/duckdblabs/capiv2/main/src/capigen/schema/metadata.schema.json
-schema_version: "0.3.0"
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/metadata.schema.json
+schema_version: "0.4"
 versions:
   - "1.2.0"
   - "1.3.0"

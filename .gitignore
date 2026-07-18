@@ -356,6 +356,7 @@ extension_external
 
 # uv python tooling
 **/uv.lock
+!/uv.lock
 
 test/sql/pragma/output.json
 tools/pythonpkg/duckdb_build/

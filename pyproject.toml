@@ -4,11 +4,8 @@ version = "0.1.0"
 description = "Development environment for the DuckDB C API v2 fork"
 requires-python = ">=3.12"
 dependencies = [
-    "capigen",
+    "capigen~=0.4.0",
 ]
-
-[tool.uv.sources]
-capigen = { path = "capigen", editable = true }
 
 [dependency-groups]
 dev = [

@@ -5,8 +5,8 @@ This repository is a DuckDB fork where we are **prototyping a new C API (V2)** a
 V2 is:
 
 - **Prefixed** — all identifiers use `duckdb_v2_` / `DUCKDB_V2_`, so there are no symbol collisions with V1.
-- **Declarative** — the API surface is defined in YAML under `api_spec/v2/`. The public C header (`src/include/duckdb_v2.h`) and the per-function stub skeleton (`src/main/capi_v2/capi_v2_stubs.cpp`) are generated from those specs. Real implementations are hand-written next to the stubs; the generator drops a stub once it finds a matching hand-written definition.
-- **Validated** through (a) generator unit tests under `capigen/tests/` and (b) Catch2 bridge tests under `test/api/capi_v2/`. A Python client (`python_client/`, scaffolded) is planned as an end-to-end validation surface.
+- **Declarative** — the API surface is defined in YAML under `api_spec/v2/`. The public C header (`src/include/duckdb_v2.h`) and the per-function stub skeleton (`src/main/capi_v2/capi_v2_stubs.cpp`) are generated from those specs by capigen, a pinned PyPI dependency (source at github.com/duckdb/capigen). Real implementations are hand-written next to the stubs; the generator drops a stub once it finds a matching hand-written definition.
+- **Validated** through Catch2 bridge tests under `test/api/capi_v2/` (the generator's own unit tests live in the capigen repository).
 
 The V2 design is still being iterated — see "Companion docs" at the bottom of this file for current design discussions and parked questions.
 
@@ -45,12 +45,8 @@ api_spec/                        API specs (YAML) -- the canonical API definitio
                                  the extension header (src/include/duckdb_extension.h) and its
                                  engine-side struct (src/include/duckdb/main/capi/extension_api.hpp)
 
-capigen/                         Code generator (vendored in-tree; NOT a git subtree or submodule)
-  pyproject.toml                 capigen's own project metadata; installed editably into the root venv
-  src/capigen/                   Generator: c adapter (header), bridge adapter (stubs), extension_header adapter
-  tests/                         Generator pytest suite
-
-pyproject.toml                   Root dev-environment shell; pulls in capigen as a path source and pins the formatter toolchain
+pyproject.toml                   Root dev-environment shell; depends on capigen (PyPI, pinned ~=0.4.0) and pins the formatter toolchain
+uv.lock                          Locks the exact capigen version so regenerated output is reproducible
 scripts/capi_v2_regen.sh         Regenerates the V2 header + stubs and formats the output
 scripts/capi_v1_regen.sh         Regenerates the V1 header and the extension headers, and formats them
 src/include/duckdb_v2.h          Generated V2 C header (committed)
@@ -64,8 +60,6 @@ src/main/capi_v2/                V2 bridge implementations (C++ -> C)
 test/api/capi_v2/                V2 Catch2 tests
   test_capi_v2_*.cpp             C API bridge tests, tag [capi_v2]
   test_cpp_api_*.cpp             Stable C++ API test suite, tag [cpp_api]
-
-python_client/                   Python client (scaffolded)
 ```
 
 ## Stable C++ API (experimental)
@@ -198,7 +192,7 @@ Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (th
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then provision the root virtual environment, which installs `capigen` (editable) and the formatter's runtime (clang-format, black, …) pinned to the versions CI uses. `cmake-format` is deliberately not in the root venv — it runs only inside its pre-commit hook's isolated environment (see below):
+Then provision the root virtual environment, which installs `capigen` (from PyPI, pinned) and the formatter's runtime (clang-format, black, …) pinned to the versions CI uses. `cmake-format` is deliberately not in the root venv — it runs only inside its pre-commit hook's isolated environment (see below):
 
 ```bash
 uv sync --group dev
@@ -213,10 +207,8 @@ You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, a
 - **`capi-v2-regen`** — fires when any `api_spec/v2/**/*.yaml` is staged. Calls `scripts/capi_v2_regen.sh` to regenerate the V2 header and stubs.
 - **`capi-v1-regen`** — fires when any `api_spec/v1/**/*.yaml` or the extension seed (`api_spec/v1/extension/duckdb_extension.h.in`) is staged. Calls `scripts/capi_v1_regen.sh` to regenerate the V1 header (`src/include/duckdb_v1.h`) and the extension header (`src/include/duckdb_extension.h` and `extension_api.hpp`).
 - **`duckdb-format`** — runs `scripts/format.py` on staged C/C++/Python/test changes (and on the files the regen hooks just produced). A manual-stage variant, **`duckdb-format-check`**, runs the full-tree `--all --check` pass in CI.
-- **`ty`** — type-checks the `capigen` Python package.
-- **`ruff` / `ruff-format`** — lint and format the fork-only Python under `python_client/` and `capigen/` (which live outside `scripts/format.py`'s reach).
 - **`cmake-format`** — from `cheshirekow/cmake-format-precommit`. Formats `CMakeLists.txt` and `*.cmake` files. pre-commit installs it into its own isolated venv pinned to Python 3.12, so it works even when your terminal runs Python 3.14 where the unmaintained `cmakelang` would otherwise crash.
-- **`check-yaml` / `yamlfmt`** — validate and format the `api_spec/` (and `capigen/`, `python_client/`) YAML.
+- **`check-yaml` / `yamlfmt`** — validate and format the `api_spec/` YAML.
 
 One-time setup per clone (alongside `uv sync --group dev`):
 
@@ -264,7 +256,22 @@ functions:
 
 All function names must start with `duckdb_v2_` and all type names must start with `duckdb_v2_` or `DUCKDB_V2_`. The generator validates this and will refuse to generate if the convention is violated.
 
-See `capigen/CLAUDE.md` for the full spec conventions.
+### Spec authoring conventions
+
+The IDL field reference and the spec-language features (prefix application, handle styles,
+qualified aliases, descriptions) are documented in the capigen repository
+(`schema_reference.md` and `CLAUDE.md`). The conventions specific to this fork's spec:
+
+- **Function roles.** Set `role` from behavior: `constructor` (create family), `destructor`
+  (destroy), `getter`, `setter`, or `method`. Destructors are infallible and take no `err`.
+- **Parameter order.** Primary subject, then inputs, then `out_*`, then the trailing `err`.
+  Every fallible function returns `DUCKDB_V2_API_CALL` and takes `err` last (`kind: OUT`,
+  `indirection: 1`). See Error handling below for the slot contract.
+- **Shared handles** are declared once in `common/common.yaml`, never redeclared per
+  module. Use `qualified: true` for names owned elsewhere, such as `idx_t` and `sel_t`.
+- **Lexical style.** `Connection` becomes `conn`, `Callback` becomes `cb`, `Statement`
+  becomes `stmt`, `Execution` becomes `exec`, `Destroy` becomes `destroy`, and `Begin` /
+  `End` become `begin_...` / `end_...`. String data is `type: char, indirection: 1`.
 
 ## Error handling
 
@@ -481,7 +488,7 @@ These rules apply when writing V2 spec YAML, bridge implementations, and tests. 
   - `prefix:` in `metadata.yaml` — the IDL is prefix-free; `duckdb_v2_` is applied at generation time. New module YAML must not bake the prefix into type/function names.
   - `tagged_struct` handle style is the **default** (`options.c.handles.default_style` in `metadata.yaml`), so handles are typed `struct _duckdb_v2_x *` rather than a bare `void *`; the per-handle `override_style` map opts an individual handle back to `void *` when needed. Handle typedefs carry the `_handle` suffix (the old `_ptr` suffix was renamed).
   - `qualified` flag on aliases — lets an alias reference an external type name unchanged (no prefix, no `_t` suffix).
-  - See `capigen/CLAUDE.md` (Spec-language reference section) for YAML syntax, generated-C output, and caveats per feature.
+  - See the capigen repository's `schema_reference.md` and `CLAUDE.md` (spec-language features) for YAML syntax, generated-C output, and caveats per feature.
 
 ## Generating the header and stubs
 
@@ -493,11 +500,7 @@ After changing the YAML specs, regenerate the header (`src/include/duckdb_v2.h`)
 
 This runs both `capigen` adapters (`c` for the header, `bridge` for the stubs) and then formats the output via `scripts/format.py`. The same script is invoked automatically by the `capi-v2-regen` pre-commit hook whenever you stage an `api_spec/v2/**/*.yaml` change, so committing without a manual run is also fine — the hook regenerates, the format hook re-formats, and pre-commit asks you to re-stage.
 
-To run the capigen generator's own tests:
-
-```bash
-uv run --group dev pytest capigen/tests
-```
+The generator's own tests live in the capigen repository.
 
 If you add new bridge implementation files to `src/main/capi_v2/`, add them to `src/main/capi_v2/CMakeLists.txt`.
 
@@ -579,13 +582,11 @@ make debug
 ## CI
 
 The `.github/workflows/v2-capi.yml` workflow runs on every push to `main` and on PRs, as two jobs:
-- `format` — provisions the root venv with `uv sync --group dev`, then runs `pre-commit run --all-files` (default stages: regen, ty, ruff, check-yaml, yamlfmt) followed by `pre-commit run --all-files --hook-stage manual` (full-tree `scripts/format.py --all --check`). Finally `git diff --exit-code` fails the job if the committed headers or stubs are out of sync with `api_spec/`.
+- `format` — provisions the root venv with `uv sync --group dev`, then runs `pre-commit run --all-files` (default stages: regen, check-yaml, yamlfmt) followed by `pre-commit run --all-files --hook-stage manual` (full-tree `scripts/format.py --all --check`). Finally `git diff --exit-code` fails the job if the committed headers or stubs are out of sync with `api_spec/`.
 - `build` — builds with `make relassert` (`FORCE_DEBUG=1 FORCE_ASSERT=1`, i.e. RelWithDebInfo + ASan/UBSan/LSan plus the `-DDEBUG` slow verifiers; clang-20, ninja + ccache via the `./.github/actions/ccache-action` composite action), then runs `make unittest_relassert T="[capi_v2],[capi]"` — both the V2 bridge tests and the V1 `[capi]` regression. Two further steps run the SQL `SET` regression suites (`duckdb_settings*`, `[settings]`, `[reset]`), which exercise the same `PhysicalSet::ApplyVariable` path the V2 `*_option_set` bridges delegate to.
 
 A second workflow, `.github/workflows/sqllogic-cpp-api.yml`, runs nightly (and on demand). It runs the full sqllogic suite through the stable C++ API executor (`CppApiSQLLogicExecutor`) and diffs it against the internal `ClientContext::Query` path across the upstream configuration matrix and platforms (Linux configs, Linux/macOS/Windows default, sanitizer configs), failing only on tests that regress under the C-API runner but pass under the internal one.
 
 ## Companion docs
 
-- **`capigen/README.md`** — generator usage from the generator's perspective (if you're hacking on capigen itself). capigen is vendored in-tree; it is not a git subtree or submodule.
-- **`capigen/CLAUDE.md`** — authoritative conventions for the YAML spec (function naming, handle conventions, role semantics).
-- **`schema_reference.md`** — top-level reference for the module-level JSON Schema (`capigen/src/capigen/schema/module.schema.json`).
+- **capigen** (github.com/duckdb/capigen): the code generator, published to PyPI and pinned in the root `pyproject.toml`. Its `README.md` covers generator usage, `schema_reference.md` is the IDL field reference, and `CLAUDE.md` documents the spec-language features. The spec conventions specific to this fork are under "Making changes to the API spec" above.
