@@ -36,5 +36,4 @@ add_library_unity(
 
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_main_capi_v2>
-    ${CMAKE_CURRENT_SOURCE_DIR}/duckdb_cpp.cpp
     PARENT_SCOPE)

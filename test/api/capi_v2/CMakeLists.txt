@@ -1,4 +1,5 @@
 include_directories(${CMAKE_SOURCE_DIR}/src/main/capi_v2)
+include_directories(${CMAKE_SOURCE_DIR}/cpp_api)
 
 add_library_unity(
   test_sql_capi_v2

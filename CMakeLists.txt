@@ -973,11 +973,13 @@ if(PREBUILT_BINARY)
   file(RENAME ${CMAKE_CURRENT_BINARY_DIR}/${PREBUILT_BASENAME} ${CMAKE_CURRENT_BINARY_DIR}/libduckdb_static.a)
   set_property(TARGET duckdb_static PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libduckdb_static.a)
 
+  add_subdirectory(cpp_api)
   add_subdirectory(tools)
   add_subdirectory(extension)
 elseif (BUILD_MAIN_DUCKDB_LIBRARY)
   add_subdirectory(src)
 
+  add_subdirectory(cpp_api)
   add_subdirectory(tools)
   add_subdirectory(extension)
 endif()

@@ -1,5 +1,7 @@
 add_extension_definitions()
 
+include_directories(${CMAKE_SOURCE_DIR}/cpp_api)
+
 add_definitions(-DDUCKDB_ROOT_DIRECTORY="${PROJECT_SOURCE_DIR}"
                 -DDUCKDB_BUILD_DIRECTORY="${PROJECT_BINARY_DIR}")
 

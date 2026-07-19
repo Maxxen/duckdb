@@ -8,7 +8,7 @@ DuckDB is a high-performance analytical database system designed to be fast, rel
 
 ## DuckDB C API V2
 
-DuckDB carries a **C API V2** alongside the original C API. Most of this file describes DuckDB the database; this section is the V2 orientation. The V1 C API (`duckdb.h`) is unaffected; V2 lives in `api_spec/v2/` (the declarative YAML spec), `src/main/capi_v2/` (the C++ bridge), `src/include/duckdb_v2.h` (the generated header), and `test/api/capi_v2/`. Alongside the C API, V2 carries an experimental stable C++ API (`duckdb_api`, in `src/include/duckdb_cpp.hpp`) built only on the V2 C ABI.
+DuckDB carries a **C API V2** alongside the original C API. Most of this file describes DuckDB the database; this section is the V2 orientation. The V1 C API (`duckdb.h`) is unaffected; V2 lives in `api_spec/v2/` (the declarative YAML spec), `src/main/capi_v2/` (the C++ bridge), `src/include/duckdb_v2.h` (the generated header), and `test/api/capi_v2/`. Alongside the C API, V2 carries an experimental stable C++ API (`duckdb_api`, in `cpp_api/`) built only on the V2 C ABI.
 
 **Design philosophy:** the C ABI is the canonical product. All language bindings FFI into it. Conveniences layer on top in the stable C++ API, never in the C surface.
 

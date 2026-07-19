@@ -59,7 +59,7 @@ repos:
         # the same vendored subdirs upstream's `ignored_directories` lists.
         # Keeps third_party/, .github/, root CMakeLists.txt, and similar
         # untouched (upstream never formatted them).
-        files: ^(src|benchmark|test|tools|examples|extension|scripts)/.*CMakeLists\.txt$
+        files: ^(src|benchmark|test|tools|examples|extension|scripts|cpp_api)/.*CMakeLists\.txt$
         exclude: ^(extension/external/|extension/tpcds/dsdgen/|extension/jemalloc/jemalloc/|extension/icu/third_party/|tools/rpkg/src/duckdb/|tools/rpkg/inst/include/cpp11/|tools/nodejs/src/duckdb/|.+/dbgen/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
