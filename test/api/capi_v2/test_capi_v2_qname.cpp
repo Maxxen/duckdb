@@ -88,8 +88,9 @@ TEST_CASE("V2 qname: parse rejects malformed text", "[capi_v2][qname]") {
 	// Empty text carries no name.
 	REQUIRE(duckdb_v2_qname_parse(V2Str(""), &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(qname == nullptr);
-	// Quoted-empty text parses to no parts.
-	REQUIRE(duckdb_v2_qname_parse(V2Str("\"\""), &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	// A zero-length delimited identifier ("") is rejected by the engine parser.
+	REQUIRE(duckdb_v2_qname_parse(V2Str("\"\""), &qname, nullptr) == DUCKDB_V2_ERROR_QUERY_PARSER);
+	REQUIRE(qname == nullptr);
 	// The malformed null-pointer-with-nonzero-length view.
 	REQUIRE(duckdb_v2_qname_parse(duckdb_v2_str {nullptr, 5}, &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	// A null out pointer.
