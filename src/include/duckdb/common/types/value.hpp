@@ -20,6 +20,8 @@
 #include "duckdb/common/shared_ptr.hpp"
 #include "duckdb/common/insertion_order_preserving_map.hpp"
 
+#include <cmath>
+
 namespace duckdb {
 
 class String;
@@ -228,9 +230,9 @@ public:
 	// type of the value. Only use this if you know what you are doing.
 	template <class T>
 	T GetValueUnsafe() const;
-	//! Returns a reference to the internally stored value. Can only be used for primitive types.
-	template <class T>
-	const T &GetReferenceUnsafe() const;
+	//! Pointer to the inline-stored payload bytes. Only valid for constant-size physical types; the
+	//! pointer borrows the Value's storage and is valid until the Value is destroyed.
+	DUCKDB_API const_data_ptr_t GetPointerToData() const;
 
 	//! Return a copy of this value
 	Value Copy() const {
@@ -665,38 +667,13 @@ template <>
 DUCKDB_API interval_t Value::GetValueUnsafe() const;
 
 template <>
-DUCKDB_API const bool &Value::GetReferenceUnsafe() const;
+inline bool Value::IsNan(float input) {
+	return std::isnan(input);
+}
 template <>
-DUCKDB_API const int8_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const int16_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const int32_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const int64_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const hugeint_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const uhugeint_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const uint8_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const uint16_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const uint32_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const uint64_t &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const float &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const double &Value::GetReferenceUnsafe() const;
-template <>
-DUCKDB_API const interval_t &Value::GetReferenceUnsafe() const;
-
-template <>
-DUCKDB_API bool Value::IsNan(float input);
-template <>
-DUCKDB_API bool Value::IsNan(double input);
+inline bool Value::IsNan(double input) {
+	return std::isnan(input);
+}
 
 template <>
 DUCKDB_API bool Value::IsFinite(float input);
