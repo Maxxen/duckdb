@@ -225,54 +225,10 @@ std::pair<const void *, idx_t> LeafPayload(const Value &v) {
 		return {str.data(), str.size()};
 	}
 	auto physical = v.type().InternalType();
-	const void *ptr = nullptr;
-	switch (physical) {
-	case PhysicalType::BOOL:
-		ptr = &v.GetReferenceUnsafe<bool>();
-		break;
-	case PhysicalType::INT8:
-		ptr = &v.GetReferenceUnsafe<int8_t>();
-		break;
-	case PhysicalType::INT16:
-		ptr = &v.GetReferenceUnsafe<int16_t>();
-		break;
-	case PhysicalType::INT32:
-		ptr = &v.GetReferenceUnsafe<int32_t>();
-		break;
-	case PhysicalType::INT64:
-		ptr = &v.GetReferenceUnsafe<int64_t>();
-		break;
-	case PhysicalType::UINT8:
-		ptr = &v.GetReferenceUnsafe<uint8_t>();
-		break;
-	case PhysicalType::UINT16:
-		ptr = &v.GetReferenceUnsafe<uint16_t>();
-		break;
-	case PhysicalType::UINT32:
-		ptr = &v.GetReferenceUnsafe<uint32_t>();
-		break;
-	case PhysicalType::UINT64:
-		ptr = &v.GetReferenceUnsafe<uint64_t>();
-		break;
-	case PhysicalType::INT128:
-		ptr = &v.GetReferenceUnsafe<hugeint_t>();
-		break;
-	case PhysicalType::UINT128:
-		ptr = &v.GetReferenceUnsafe<uhugeint_t>();
-		break;
-	case PhysicalType::FLOAT:
-		ptr = &v.GetReferenceUnsafe<float>();
-		break;
-	case PhysicalType::DOUBLE:
-		ptr = &v.GetReferenceUnsafe<double>();
-		break;
-	case PhysicalType::INTERVAL:
-		ptr = &v.GetReferenceUnsafe<interval_t>();
-		break;
-	default:
+	if (!TypeIsConstantSize(physical)) {
 		throw InternalException("LeafPayload called for a kind without a committed leaf layout");
 	}
-	return {ptr, GetTypeIdSize(physical)};
+	return {v.GetPointerToData(), GetTypeIdSize(physical)};
 }
 
 } // anonymous namespace

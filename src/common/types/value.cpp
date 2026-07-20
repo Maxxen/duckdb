@@ -556,16 +556,6 @@ bool Value::DoubleIsFinite(double value) {
 }
 
 template <>
-bool Value::IsNan(float input) {
-	return std::isnan(input);
-}
-
-template <>
-bool Value::IsNan(double input) {
-	return std::isnan(input);
-}
-
-template <>
 bool Value::IsFinite(float input) {
 	return Value::FloatIsFinite(input);
 }
@@ -1685,90 +1675,11 @@ interval_t Value::GetValueUnsafe() const {
 }
 
 //===--------------------------------------------------------------------===//
-// GetReferenceUnsafe
+// GetPointerToData
 //===--------------------------------------------------------------------===//
-template <>
-const bool &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::BOOL);
-	return value_.boolean;
-}
-
-template <>
-const int8_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::INT8);
-	return value_.tinyint;
-}
-
-template <>
-const int16_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::INT16);
-	return value_.smallint;
-}
-
-template <>
-const int32_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::INT32);
-	return value_.integer;
-}
-
-template <>
-const int64_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::INT64);
-	return value_.bigint;
-}
-
-template <>
-const hugeint_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::INT128);
-	return value_.hugeint;
-}
-
-template <>
-const uhugeint_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::UINT128);
-	return value_.uhugeint;
-}
-
-template <>
-const uint8_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::UINT8);
-	return value_.utinyint;
-}
-
-template <>
-const uint16_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::UINT16);
-	return value_.usmallint;
-}
-
-template <>
-const uint32_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::UINT32);
-	return value_.uinteger;
-}
-
-template <>
-const uint64_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::UINT64);
-	return value_.ubigint;
-}
-
-template <>
-const float &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::FLOAT);
-	return value_.float_;
-}
-
-template <>
-const double &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::DOUBLE);
-	return value_.double_;
-}
-
-template <>
-const interval_t &Value::GetReferenceUnsafe() const {
-	D_ASSERT(type_.InternalType() == PhysicalType::INTERVAL);
-	return value_.interval;
+const_data_ptr_t Value::GetPointerToData() const {
+	D_ASSERT(TypeIsConstantSize(type_.InternalType()));
+	return const_data_ptr_cast(&value_);
 }
 
 //===--------------------------------------------------------------------===//
