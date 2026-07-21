@@ -1,5 +1,11 @@
 #include "capi_v2_internal.hpp"
 
+#include "duckdb/common/types/column/column_data_collection.hpp"
+#include "duckdb/parser/common_table_expression_info.hpp"
+#include "duckdb/parser/query_node.hpp"
+#include "duckdb/parser/sql_statement.hpp"
+#include "duckdb/parser/tableref/column_data_ref.hpp"
+
 #include <algorithm>
 
 DUCKDB_V2_API_CALL_t duckdb_v2_parse_sql(duckdb_v2_connection_handle conn, const char *sql,
@@ -151,5 +157,58 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_bind(duckdb_v2_connection_handle conn,
 		if (out_parameters) {
 			*out_parameters = reinterpret_cast<_duckdb_v2_schema *>(params.release());
 		}
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_statement_add_collection(duckdb_v2_sql_statement_handle statement,
+                                                        duckdb_v2_identifier_t name,
+                                                        duckdb_v2_column_data_collection_handle collection,
+                                                        const duckdb_v2_identifier_t *column_names, idx_t column_count,
+                                                        duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!statement) {
+			throw duckdb::InvalidInputException("null statement argument to duckdb_v2_statement_add_collection");
+		}
+		if (!collection) {
+			throw duckdb::InvalidInputException("null collection argument to duckdb_v2_statement_add_collection");
+		}
+		// name is a borrowed view and must be non-empty: the empty view {NULL, 0}
+		// is rejected here (a deviation from the general str-input rule), as is
+		// the malformed null-pointer-with-nonzero-length form.
+		if (!name.ptr || name.len == 0) {
+			throw duckdb::InvalidInputException(
+			    "name must be a non-empty string view in duckdb_v2_statement_add_collection");
+		}
+		if (column_count > 0 && !column_names) {
+			throw duckdb::InvalidInputException(
+			    "column_names is null but column_count is nonzero in duckdb_v2_statement_add_collection");
+		}
+		auto &stmt = *duckdb::ToSqlStatement(statement);
+		auto &cdc = *reinterpret_cast<duckdb::ColumnDataCollection *>(collection);
+		auto alias = duckdb::ToIdentifier(name);
+
+		// Explicit names, when given, must cover every column of the collection.
+		if (column_count > 0 && column_count != cdc.ColumnCount()) {
+			throw duckdb::InvalidInputException("column_count (" + std::to_string(column_count) +
+			                                    ") does not match the collection's column count (" +
+			                                    std::to_string(cdc.ColumnCount()) + ")");
+		}
+		duckdb::vector<duckdb::Identifier> expected_names;
+		for (idx_t i = 0; i < column_count; i++) {
+			expected_names.push_back(duckdb::ToIdentifier(column_names[i]));
+		}
+
+		// Locate the CTE map (throws on an unsupported statement type) and refuse a
+		// name already present, whether from the SQL text or a prior call.
+		auto &cte_map = duckdb::CommonTableExpressionMap::GetForStatement(stmt);
+		if (cte_map.map.contains(alias)) {
+			throw duckdb::InvalidInputException("a CTE named \"%s\" already exists on the statement",
+			                                    alias.GetIdentifierName());
+		}
+
+		// Borrow the collection into a ColumnDataRef and bind it as the engine's
+		// non-materialized collection CTE. Empty expected_names keeps col1..colN.
+		auto table_ref = duckdb::ColumnDataRef::Create(cdc, alias, expected_names);
+		cte_map.map.insert(alias, duckdb::CommonTableExpressionInfo::WrapNonMaterialized(std::move(table_ref)));
 	});
 }

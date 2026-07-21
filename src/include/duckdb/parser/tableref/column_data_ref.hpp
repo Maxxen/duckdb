@@ -23,6 +23,11 @@ public:
 	explicit ColumnDataRef(optionally_owned_ptr<ColumnDataCollection> collection_p,
 	                       vector<Identifier> expected_names = vector<Identifier>());
 
+	//! Builds a ColumnDataRef that borrows `collection`, aliased `table_name`,
+	//! exposing `expected_names` as its columns.
+	static unique_ptr<TableRef> Create(ColumnDataCollection &collection, const Identifier &table_name,
+	                                   vector<Identifier> expected_names = vector<Identifier>());
+
 public:
 	//! The set of expected names
 	vector<Identifier> expected_names;

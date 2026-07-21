@@ -74,6 +74,25 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
+  column_data_collection_reset:
+    summary: Drops all buffered rows, keeping the column types.
+    description: |
+      Drops all buffered rows and releases their memory. The column types are
+      unchanged and the collection is immediately appendable again. Outstanding
+      append and scan states are invalidated; create new ones. Must not be
+      called while a live result executes over the collection, because that
+      result's scan borrows the collection's buffers.
+    belongs_to: column_data_collection
+    parameters:
+      collection:
+        type: column_data_collection
+        description: The collection to reset.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   # -----------------------------------------------------------------------
   # Accessors
   # -----------------------------------------------------------------------
@@ -137,7 +156,11 @@ functions:
     return_type: API_CALL
   column_data_collection_append:
     summary: Appends a data chunk to the collection.
-    description: Appends a copy of the given chunk to the end of the collection. The chunk's vectors must conform to the types defined for the collection.
+    description: |
+      Appends a copy of the given chunk to the end of the collection. The
+      chunk's column count and types must equal the collection's exactly; a
+      mismatch is rejected with INVALID_INPUT before anything is copied.
+      Complex-typed vectors may be flattened in place by the copy.
     belongs_to: column_data_collection
     parameters:
       collection:

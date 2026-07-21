@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <sstream>
 
 // ---------------------------------------------------------------------------
@@ -778,4 +779,194 @@ TEST_CASE("Stable C++API: RenderBox limit yields an approximate '? rows' footer"
 	// With limit 0 the count is known and exact, so no "? rows" appears.
 	auto exact = conn.Execute("SELECT i FROM range(21) t(i)").RenderBox();
 	REQUIRE_FALSE(Contains(exact, "? rows"));
+}
+
+// ---------------------------------------------------------------------------
+// Collection binding: SqlStatement::AddCollection + ColumnDataCollection::Reset.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// One (INTEGER, VARCHAR) row for the collection fixtures below.
+struct CbRow {
+	int32_t id;
+	std::string name;
+};
+
+// Appends one chunk of (INTEGER, VARCHAR) rows through a fresh append state.
+// The chunk needs a context; appending itself is not transactional.
+void CbFillRows(duckdb_api::Connection &conn, duckdb_api::ColumnDataCollection &collection,
+                const std::vector<CbRow> &rows) {
+	using namespace duckdb_api;
+	conn.WithTransaction([&](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::INTEGER());
+		types.push_back(LogicalType::VARCHAR());
+		DataChunk chunk(ctx, types);
+		auto ivec = chunk.GetVector(0);
+		auto svec = chunk.GetVector(1);
+		ivec.SetSize(rows.size());
+		svec.SetSize(rows.size());
+		auto *ids = ivec.GetDataMutable<int32_t>();
+		for (idx_t r = 0; r < rows.size(); r++) {
+			ids[r] = rows[r].id;
+			svec.AssignString(r, rows[r].name);
+		}
+		auto state = collection.GetAppendState();
+		collection.Append(state, chunk);
+	});
+}
+
+// Builds an (INTEGER, VARCHAR) collection filled with `rows`.
+duckdb_api::ColumnDataCollection CbMakeCollection(duckdb_api::Connection &conn, const std::vector<CbRow> &rows) {
+	using namespace duckdb_api;
+	std::unique_ptr<ColumnDataCollection> out;
+	conn.WithTransaction([&](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::INTEGER());
+		types.push_back(LogicalType::VARCHAR());
+		out = std::make_unique<ColumnDataCollection>(ctx, types);
+	});
+	if (!rows.empty()) {
+		CbFillRows(conn, *out, rows);
+	}
+	return std::move(*out);
+}
+
+// Parses a single-statement SQL string into an owned statement.
+duckdb_api::SqlStatement CbParseOne(duckdb_api::Connection &conn, const std::string &sql) {
+	auto statements = conn.ParseSQL(sql);
+	auto statement = statements.Next();
+	REQUIRE(statement);
+	return statement;
+}
+
+// Reads a single-row, non-null VARCHAR scalar (a string_agg fingerprint).
+std::string CbScalarVarchar(duckdb_api::Connection &conn, const std::string &sql) {
+	auto result = conn.Execute(sql);
+	auto chunk = result.FetchChunk();
+	REQUIRE(chunk);
+	auto view = chunk.GetVector(0).GetView();
+	REQUIRE(view.IsValid(0));
+	auto slot = view.Data<duckdb_api::StringLayout>()[view.SelAt(0)];
+	std::string out(slot.AsStringView());
+	while (result.FetchChunk()) {
+	}
+	return out;
+}
+
+} // namespace
+
+TEST_CASE("Stable C++API: AddCollection INSERT flush", "[cpp_api][collection_binding]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE t(id INTEGER, name VARCHAR)").Drain();
+
+	// A value beyond the 12-byte inline cutoff exercises the string heap.
+	const std::string long_name = "a string well beyond twelve bytes";
+	auto buf = CbMakeCollection(conn, {{1, "alpha"}, {2, long_name}});
+
+	auto stmt = CbParseOne(conn, "INSERT INTO t FROM buf");
+	stmt.AddCollection("buf", buf);
+	REQUIRE(conn.Execute(stmt).Drain() == 2);
+
+	REQUIRE(CbScalarVarchar(conn, "SELECT string_agg(id || ':' || name, '|' ORDER BY id) FROM t") ==
+	        "1:alpha|2:" + long_name);
+}
+
+TEST_CASE("Stable C++API: AddCollection reset and re-execute", "[cpp_api][collection_binding]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE t(id INTEGER, name VARCHAR)").Drain();
+
+	auto buf = CbMakeCollection(conn, {{1, "one"}});
+	auto stmt = CbParseOne(conn, "INSERT INTO t FROM buf");
+	stmt.AddCollection("buf", buf);
+	REQUIRE(conn.Execute(stmt).Drain() == 1);
+
+	// Reset drops the buffered row; the refill is what the next execution
+	// scans, through a fresh append state (the old ones are invalidated).
+	buf.Reset();
+	REQUIRE(buf.GetRowCount() == 0);
+	CbFillRows(conn, buf, {{2, "two"}, {3, "three"}});
+	REQUIRE(buf.GetRowCount() == 2);
+	REQUIRE(conn.Execute(stmt).Drain() == 2);
+
+	REQUIRE(CbScalarVarchar(conn, "SELECT string_agg(name, '|' ORDER BY id) FROM t") == "one|two|three");
+}
+
+TEST_CASE("Stable C++API: AddCollection two-buffer join", "[cpp_api][collection_binding]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	auto names = CbMakeCollection(conn, {{1, "x"}, {2, "y"}, {3, "z"}});
+	auto keys = CbMakeCollection(conn, {{2, "unused"}, {3, "unused"}});
+
+	auto stmt = CbParseOne(conn, "SELECT string_agg(a.name, ',' ORDER BY a.k) "
+	                             "FROM buf1 AS a(k, name) JOIN buf2 AS b(k, ignored) ON a.k = b.k");
+	stmt.AddCollection("buf1", names);
+	stmt.AddCollection("buf2", keys);
+
+	auto result = conn.Execute(stmt);
+	auto chunk = result.FetchChunk();
+	REQUIRE(chunk);
+	auto view = chunk.GetVector(0).GetView();
+	REQUIRE(view.IsValid(0));
+	auto slot = view.Data<StringLayout>()[view.SelAt(0)];
+	REQUIRE(slot.AsStringView() == "y,z");
+}
+
+TEST_CASE("Stable C++API: AddCollection MERGE INTO upsert", "[cpp_api][collection_binding]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE t(k INTEGER PRIMARY KEY, v VARCHAR)").Drain();
+	conn.Execute("INSERT INTO t VALUES (1, 'old-one'), (2, 'old-two')").Drain();
+
+	// One matched key (updated) and one new key (inserted).
+	auto buf = CbMakeCollection(conn, {{1, "new-one"}, {3, "new-three"}});
+
+	auto stmt = CbParseOne(conn, "MERGE INTO t USING buf AS b(k, v) ON t.k = b.k "
+	                             "WHEN MATCHED THEN UPDATE SET v = b.v "
+	                             "WHEN NOT MATCHED THEN INSERT VALUES (b.k, b.v)");
+	stmt.AddCollection("buf", buf);
+	REQUIRE(conn.Execute(stmt).Drain() == 2);
+
+	REQUIRE(CbScalarVarchar(conn, "SELECT string_agg(k || ':' || v, '|' ORDER BY k) FROM t") ==
+	        "1:new-one|2:old-two|3:new-three");
+}
+
+TEST_CASE("Stable C++API: AddCollection refusals throw", "[cpp_api][collection_binding]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+	conn.Execute("CREATE TABLE t(id INTEGER, name VARCHAR)").Drain();
+
+	auto buf = CbMakeCollection(conn, {{1, "one"}});
+
+	// Duplicate name from a prior call.
+	{
+		auto stmt = CbParseOne(conn, "INSERT INTO t FROM buf");
+		stmt.AddCollection("buf", buf);
+		REQUIRE_THROWS_MATCHES(stmt.AddCollection("buf", buf), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	}
+
+	// Unsupported statement type.
+	{
+		auto stmt = CbParseOne(conn, "SET memory_limit = '1GB'");
+		REQUIRE_THROWS_MATCHES(stmt.AddCollection("buf", buf), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	}
 }

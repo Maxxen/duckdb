@@ -143,6 +143,60 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: API_CALL
+  statement_add_collection:
+    summary: Binds a filled column data collection to the statement under a name.
+    description: |
+      Makes the collection visible to the statement as a table named name, by
+      injecting a common table expression into the parsed statement. The
+      statement can then be bound, prepared, or executed through the existing
+      surface; each execution scans the collection's contents at that moment.
+      Supported statement types are SELECT, INSERT, UPDATE, DELETE, and MERGE
+      INTO; any other type is rejected with ERROR_INVALID_INPUT.
+
+      name is a borrowed string view and must be non-empty. A name already
+      present in the statement's CTE map (from the SQL text or a prior call) is
+      rejected with ERROR_INVALID_INPUT. The binding shadows any catalog table
+      named name, following standard CTE semantics.
+
+      By default the collection's columns bind as col1..colN. Pass column_names
+      to bind them under caller-chosen names instead, so the statement can
+      reference them directly (FROM buf) without an alias. When supplied,
+      column_count must equal the collection's column count; a mismatch is
+      rejected with ERROR_INVALID_INPUT. Pass (NULL, 0) for the col1..colN
+      default.
+
+      The collection is borrowed: the caller keeps ownership and must keep it
+      alive while the statement, any prepared statement created from it, and any
+      result executed from it are live, and must not reset or destroy it while
+      such a result is live, because result scans reference the collection's
+      buffers. An empty collection is a valid binding. Multiple collections
+      attach under distinct names.
+    role: method
+    belongs_to: sql_statement
+    parameters:
+      statement:
+        type: sql_statement
+        description: The statement to bind the collection into. Borrowed; mutated in place.
+      name:
+        type: identifier
+        description: The non-empty identifier the statement references. The empty view {NULL, 0} is rejected.
+      collection:
+        type: column_data_collection
+        description: The filled collection to make visible. Borrowed; the caller keeps ownership.
+      column_names:
+        type: identifier
+        indirection: 1
+        const: true
+        description: Optional. An array of column_count names for the collection's columns, in order. Pass NULL to bind them as col1..colN.
+      column_count:
+        type: idx
+        description: The number of names in column_names. Pass 0 to bind the columns as col1..colN; otherwise it must equal the collection's column count.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: API_CALL
   sql_statement_destroy:
     summary: Destroys a statement handle.
     description: |

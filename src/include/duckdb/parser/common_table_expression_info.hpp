@@ -17,6 +17,7 @@ class QueryNode;
 class SelectStatement;
 class Serializer;
 class Deserializer;
+class TableRef;
 
 struct CommonTableExpressionInfo {
 	CommonTableExpressionInfo() = default;
@@ -24,6 +25,10 @@ struct CommonTableExpressionInfo {
 
 	//! Used by deserialization: prefers query_node; if null, uses query->node.
 	CommonTableExpressionInfo(unique_ptr<SelectStatement> query, unique_ptr<QueryNode> query_node);
+
+	//! Wraps `table_ref` in a non-materialized SELECT * CTE, exposing a bound
+	//! table reference (such as a collection) to a statement.
+	static unique_ptr<CommonTableExpressionInfo> WrapNonMaterialized(unique_ptr<TableRef> table_ref);
 
 	vector<Identifier> aliases;
 	vector<unique_ptr<ParsedExpression>> key_targets;

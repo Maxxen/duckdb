@@ -8,6 +8,7 @@ add_library_unity(
   test_capi_v2_aggregate_function.cpp
   test_capi_v2_arrow.cpp
   test_capi_v2_cast_function.cpp
+  test_capi_v2_collection_binding.cpp
   test_capi_v2_data_chunk.cpp
   test_capi_v2_error_info.cpp
   test_capi_v2_expression.cpp
@@ -31,6 +32,7 @@ add_library_unity(
   test_capi_v2_table_function.cpp
   test_capi_v2_varargs.cpp
   test_capi_v2_vector_write.cpp
+  test_cpp_api_appender.cpp
   test_cpp_api_core.cpp
   test_cpp_api_function.cpp
   test_cpp_api_table_function.cpp

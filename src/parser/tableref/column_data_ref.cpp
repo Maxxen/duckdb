@@ -8,6 +8,13 @@ ColumnDataRef::ColumnDataRef(optionally_owned_ptr<ColumnDataCollection> collecti
       collection(std::move(collection_p)) {
 }
 
+unique_ptr<TableRef> ColumnDataRef::Create(ColumnDataCollection &collection, const Identifier &table_name,
+                                           vector<Identifier> expected_names) {
+	auto result = make_uniq<ColumnDataRef>(collection, std::move(expected_names));
+	result->alias = table_name;
+	return std::move(result);
+}
+
 string ColumnDataRef::ToString() const {
 	auto result = collection->ToString();
 	return BaseToString(result, expected_names);

@@ -1493,7 +1493,7 @@ void ClientContext::Append(TableDescription &description, ColumnDataCollection &
 	Identifier table_name("__duckdb_internal_appended_data");
 	vector<Identifier> expected_names;
 	auto query = Appender::ConstructQuery(description, table_name, expected_names);
-	auto table_ref = BaseAppender::GetColumnDataTableRef(collection, table_name, expected_names);
+	auto table_ref = ColumnDataRef::Create(collection, table_name, expected_names);
 	auto stmt = BaseAppender::ParseStatement(std::move(table_ref), query, table_name.GetIdentifierName());
 	Append(std::move(stmt));
 }

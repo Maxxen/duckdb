@@ -4,10 +4,38 @@
 #include "duckdb/parser/query_node/set_operation_node.hpp"
 #include "duckdb/parser/query_node/recursive_cte_node.hpp"
 #include "duckdb/parser/query_node/cte_node.hpp"
+#include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/parser/statement/insert_statement.hpp"
+#include "duckdb/parser/query_node/insert_query_node.hpp"
+#include "duckdb/parser/statement/delete_statement.hpp"
+#include "duckdb/parser/query_node/delete_query_node.hpp"
+#include "duckdb/parser/statement/update_statement.hpp"
+#include "duckdb/parser/query_node/update_query_node.hpp"
+#include "duckdb/parser/statement/merge_into_statement.hpp"
+#include "duckdb/parser/query_node/merge_query_node.hpp"
 #include "duckdb/common/limits.hpp"
 namespace duckdb {
 
 CommonTableExpressionMap::CommonTableExpressionMap() {
+}
+
+CommonTableExpressionMap &CommonTableExpressionMap::GetForStatement(SQLStatement &statement) {
+	switch (statement.type) {
+	case StatementType::SELECT_STATEMENT:
+		return statement.Cast<SelectStatement>().node->cte_map;
+	case StatementType::INSERT_STATEMENT:
+		return statement.Cast<InsertStatement>().node->cte_map;
+	case StatementType::DELETE_STATEMENT:
+		return statement.Cast<DeleteStatement>().node->cte_map;
+	case StatementType::UPDATE_STATEMENT:
+		return statement.Cast<UpdateStatement>().node->cte_map;
+	case StatementType::MERGE_INTO_STATEMENT:
+		return statement.Cast<MergeIntoStatement>().node->cte_map;
+	default:
+		throw InvalidInputException(
+		    "Unsupported statement type: a collection can only be bound to SELECT, INSERT, UPDATE, DELETE or MERGE "
+		    "INTO");
+	}
 }
 
 CommonTableExpressionMap CommonTableExpressionMap::Copy() const {

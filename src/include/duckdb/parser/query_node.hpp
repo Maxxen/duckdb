@@ -18,6 +18,7 @@ namespace duckdb {
 
 class Deserializer;
 class Serializer;
+class SQLStatement;
 
 enum class QueryNodeType : uint8_t {
 	SELECT_NODE = 1,
@@ -46,6 +47,10 @@ public:
 
 	void Serialize(Serializer &serializer) const;
 	static CommonTableExpressionMap Deserialize(Deserializer &deserializer);
+
+	//! Returns the CTE map carried by `statement`. Only SELECT, INSERT, UPDATE,
+	//! DELETE, and MERGE INTO carry one; any other statement type throws.
+	static CommonTableExpressionMap &GetForStatement(SQLStatement &statement);
 };
 
 class QueryNode {

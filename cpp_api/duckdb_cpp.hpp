@@ -377,6 +377,8 @@ private:
 // SQL statements
 //----------------------------------------------------------------------------------------------------------------------
 
+class ColumnDataCollection;
+
 // An owned, parsed SQL statement, yielded by StatementIterator::Next and
 // consumed by Connection::Query.
 class SqlStatement final : public detail::Handle<SqlStatement> {
@@ -387,6 +389,24 @@ public:
 	SqlStatement &operator=(SqlStatement &&) noexcept = default;
 
 	~SqlStatement() override;
+
+	// Binds `collection` into this statement as a table named `name`, injected
+	// as a CTE, so the statement can read it once bound, prepared, or executed;
+	// each run scans whatever the collection holds at that moment. Works for
+	// SELECT, INSERT, UPDATE, DELETE, and MERGE INTO. `name` must be non-empty
+	// and not already used by a CTE on the statement.
+	//
+	// The collection's columns bind as col1..colN by default. Pass `column_names`
+	// to name them instead, so the statement can reference them directly
+	// (FROM buf) rather than by the positional convention; when given, it must
+	// name every column.
+	//
+	// The collection is borrowed. Keep it alive while this statement, any
+	// prepared statement made from it, and any result executed from it are live,
+	// and do not Reset or destroy it while such a result is live: the scan reads
+	// its buffers directly.
+	void AddCollection(std::string_view name, const ColumnDataCollection &collection,
+	                   const std::vector<std::string> &column_names = {});
 
 private:
 	explicit SqlStatement(void *impl);
@@ -1513,6 +1533,15 @@ struct ValidityMask {
 			words[i] = 0;
 		}
 	}
+	// Marks rows [0, count) valid: the reset half of SetAllInvalid. After a fill
+	// that wrote some nulls, restore all-valid to refill without the born-invalid
+	// per-write SetValid. Sets whole words, so trailing bits beyond count read
+	// valid too; harmless since reads stop at count.
+	auto SetAllValid(idx_t count) -> void {
+		for (idx_t i = 0; i < (count + 63) / 64; i++) {
+			words[i] = ~uint64_t(0);
+		}
+	}
 };
 
 class Vector final : public detail::Handle<Vector> {
@@ -1742,6 +1771,13 @@ public:
 	// Merge the other collection into this one, destroying it in the process.
 	auto Combine(ColumnDataCollection other) -> void;
 
+	// Drops all buffered rows and frees their memory, keeping the column types so
+	// the collection can be filled again from scratch. Any append or scan state
+	// you are already holding refers to the freed memory and must be recreated
+	// before reuse. Do not call this while a result is executing over the
+	// collection.
+	auto Reset() -> void;
+
 	// Perform a single-threaded scan
 	class ScanState;
 	auto GetSingleScanState() -> ScanState;
@@ -1815,6 +1851,86 @@ public:
 	private:
 		explicit WorkerScanState(void *impl);
 	};
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Appender
+//----------------------------------------------------------------------------------------------------------------------
+
+// A batch appender: it buffers data chunks in a fixed set of column types and
+// pushes them to their destination when you Flush, by running one statement that
+// reads the buffer as a table (via SqlStatement::AddCollection). It is not a
+// handle, just a convenience built from the wrappers above. It holds no
+// connection between calls: it borrows one only while constructing (to set the
+// buffer up) and while flushing (you pass one to Flush, and it can be a
+// different connection to the same database). Destroying the appender frees the
+// buffer but does not flush, so Flush before you drop it to keep the rows.
+//
+// Data goes in a chunk at a time: build a DataChunk over ColumnTypes(), fill its
+// vectors, and AppendChunk it. Producing a chunk from rows is the caller's job;
+// this surface has no row-at-a-time protocol.
+//
+// There are two ways to make one. The query constructor is the general form:
+// you bring the statement and the buffer's column types. The table-name
+// constructor is the common case: it looks the table up, skips generated
+// columns, and writes the INSERT for you, then hands off to the same code.
+class Appender {
+public:
+	// The general form: buffer rows in `column_types`, then Flush by running
+	// `query`, which reads the buffer as a table named `data_name` ("appended_data"
+	// by default). `query` is one SELECT, INSERT, UPDATE, DELETE, or MERGE INTO.
+	// The buffer's columns are col1..colN unless you name them with
+	// `column_names`. `column_types` is moved in. No catalog is consulted here:
+	// casts, constraints, and defaults are left to the statement at flush time.
+	Appender(Connection &con, std::string_view query, std::vector<LogicalType> column_types,
+	         std::string_view data_name = "appended_data", const std::vector<std::string> &column_names = {});
+
+	// The common case: look `name` up the way SQL would (search path included for
+	// a partial name) and buffer the table's non-generated columns; the engine
+	// fills generated columns at flush. The INSERT is written against the
+	// resolved name, so it keeps targeting that table even if the search path
+	// changes later. A read-only catalog is refused here, a view by the lookup.
+	Appender(Connection &con, const QualifiedName &name);
+
+	Appender(const Appender &) = delete;
+	Appender &operator=(const Appender &) = delete;
+	Appender(Appender &&other) noexcept : state(other.state) {
+		other.state = nullptr;
+	}
+	// Move assignment swaps the two buffers; the one being overwritten goes to
+	// `other` and is discarded (not flushed) when `other` is destroyed.
+	Appender &operator=(Appender &&other) noexcept {
+		std::swap(state, other.state);
+		return *this;
+	}
+
+	// Frees the buffer. Does not flush: any rows not yet flushed are dropped.
+	~Appender();
+
+	// The buffer's column types, in order. Build a chunk over these to fill and
+	// AppendChunk, e.g. DataChunk chunk(ctx, appender.ColumnTypes()). Valid for
+	// the appender's lifetime.
+	const std::vector<LogicalType> &ColumnTypes() const;
+
+	// Buffers a whole chunk. Its column types must equal ColumnTypes() exactly;
+	// a mismatch is refused before anything is copied. Complex-typed vectors may
+	// be flattened in place by the buffering.
+	void AppendChunk(DataChunk &chunk);
+
+	// Runs the statement over the buffered chunks on `con`, drains it, and empties
+	// the buffer so it can be filled again. `con` need not be the connection the
+	// appender was built with, but it must reach the same database. Does nothing
+	// if the buffer is empty. If `con` is busy with another live result, or the
+	// run is interrupted, the rows are kept so you can retry; any other failure
+	// drops them.
+	void Flush(Connection &con);
+	// Empties the buffer without running anything. Also clears the broken state
+	// left by a failed buffer operation.
+	void Clear();
+
+private:
+	// All state lives behind this pointer in the implementation file.
+	void *state = nullptr;
 };
 
 //----------------------------------------------------------------------------------------------------------------------

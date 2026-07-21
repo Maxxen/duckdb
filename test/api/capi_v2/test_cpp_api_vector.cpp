@@ -648,3 +648,45 @@ TEST_CASE("Stable C++API: ValidityMask SetAllInvalid born-invalid pattern", "[cp
 		}
 	});
 }
+
+TEST_CASE("Stable C++API: ValidityMask SetAllValid born-valid and reset", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	Environment env;
+	auto db = env.Open(":memory:");
+	auto conn = db.Connect();
+
+	conn.WithTransaction([](const Context &ctx) {
+		std::vector<LogicalType> types;
+		types.push_back(LogicalType::INTEGER());
+
+		DataChunk chunk(ctx, types);
+		auto vec = chunk.GetVector(0);
+		// Cross a word boundary so more than one mask word is touched.
+		vec.SetSize(70);
+		auto *data = vec.GetDataMutable<int32_t>();
+		auto validity = vec.GetValidityMutable();
+
+		// Born-valid: mark everything valid, then only clear the nulls. Fewer
+		// writes than born-invalid when most rows carry a value.
+		validity.SetAllValid(70);
+		for (idx_t i = 0; i < 70; i++) {
+			data[i] = static_cast<int32_t>(i);
+		}
+		validity.SetInvalid(5);
+		validity.SetInvalid(64);
+
+		auto view = vec.GetView();
+		for (idx_t i = 0; i < 70; i++) {
+			REQUIRE(view.RowIsValid(i) == (i != 5 && i != 64));
+		}
+
+		// Reuse: SetAllValid restores every row, clearing the two nulls from the
+		// previous fill without touching them one by one.
+		validity.SetAllValid(70);
+		auto reset_view = vec.GetView();
+		for (idx_t i = 0; i < 70; i++) {
+			REQUIRE(reset_view.RowIsValid(i));
+		}
+	});
+}

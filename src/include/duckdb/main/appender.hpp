@@ -20,6 +20,7 @@ class Connection;
 class DuckDB;
 class SQLStatement;
 class TableCatalogEntry;
+class TableRef;
 
 enum class AppenderType : uint8_t {
 	LOGICAL, // Cast input -> LogicalType
@@ -33,9 +34,6 @@ public:
 	static constexpr const idx_t DEFAULT_FLUSH_COUNT = STANDARD_VECTOR_SIZE * 100ULL;
 
 public:
-	//! Returns a table reference to the appended data.
-	static unique_ptr<TableRef> GetColumnDataTableRef(ColumnDataCollection &collection, const Identifier &table_name,
-	                                                  const vector<Identifier> &expected_names);
 	//! Parses the statement to append data.
 	static unique_ptr<SQLStatement> ParseStatement(unique_ptr<TableRef> table_ref, const string &query,
 	                                               const string &table_name);

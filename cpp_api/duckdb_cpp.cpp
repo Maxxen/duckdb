@@ -799,6 +799,17 @@ SqlStatement::~SqlStatement() {
 	duckdb_v2_sql_statement_destroy(&_h);
 }
 
+void SqlStatement::AddCollection(std::string_view name, const ColumnDataCollection &collection,
+                                 const std::vector<std::string> &column_names) {
+	std::vector<duckdb_v2_identifier_t> names;
+	names.reserve(column_names.size());
+	for (const auto &column_name : column_names) {
+		names.push_back(ToStr(column_name));
+	}
+	CheckedAPICall(duckdb_v2_statement_add_collection, handle(), duckdb_v2_str {name.data(), name.size()},
+	               collection.handle(), names.empty() ? nullptr : names.data(), static_cast<idx_t>(names.size()));
+}
+
 StatementIterator::StatementIterator(void *impl) : detail::Handle<StatementIterator>(impl) {
 }
 
@@ -2329,6 +2340,10 @@ auto ColumnDataCollection::Combine(ColumnDataCollection other) -> void {
 	other.impl = nullptr;
 }
 
+auto ColumnDataCollection::Reset() -> void {
+	CheckedAPICall(duckdb_v2_column_data_collection_reset, handle());
+}
+
 ColumnDataCollection::ScanState::ScanState(void *impl) : detail::Handle<ScanState>(impl) {
 }
 ColumnDataCollection::ScanState::~ScanState() {
@@ -2397,6 +2412,192 @@ auto ColumnDataCollection::GetAppendState() -> AppendState {
 
 auto ColumnDataCollection::Append(AppendState &state, const DataChunk &chunk) -> void {
 	CheckedAPICall(duckdb_v2_column_data_collection_append, handle(), state.handle(), chunk.handle());
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Appender
+//----------------------------------------------------------------------------------------------------------------------
+
+namespace {
+
+// All appender state, behind the header's void pointer. Holds no connection:
+// one is passed in at construction (for setup) and again at each Flush.
+struct AppenderState {
+	// The buffer's column types, fixed at construction (exposed via ColumnTypes).
+	std::vector<LogicalType> types;
+	// The buffer, the statement parsed once with the buffer attached once, and
+	// the append state (recreated after every buffer reset).
+	std::unique_ptr<ColumnDataCollection> buffer;
+	std::unique_ptr<SqlStatement> statement;
+	std::unique_ptr<ColumnDataCollection::AppendState> append_state;
+	// Set when a buffer operation failed mid-flight, leaving the buffered rows
+	// indeterminate: appends and flushes refuse, Clear recovers.
+	bool broken = false;
+};
+
+AppenderState &GetAppenderState(void *state) {
+	if (!state) {
+		throw InvalidInputException("appender has been moved from");
+	}
+	return *static_cast<AppenderState *>(state);
+}
+
+void RecreateAppendState(AppenderState &s) {
+	s.append_state = std::make_unique<ColumnDataCollection::AppendState>(s.buffer->GetAppendState());
+}
+
+// The buffer reset protocol: drop the append state first (it references the
+// segments Reset frees), reset, then recreate. A recreate failure leaves the
+// appender broken until Clear recovers it.
+void ResetAppenderBuffer(AppenderState &s) {
+	s.append_state.reset();
+	s.buffer->Reset();
+	try {
+		RecreateAppendState(s);
+	} catch (...) {
+		s.broken = true;
+		throw;
+	}
+}
+
+void CheckAppenderOpen(AppenderState &s) {
+	if (s.broken) {
+		throw InvalidInputException("appender is broken after a failed buffer operation; Clear or destroy it");
+	}
+}
+
+// The shared appender core, behind both constructors. Creates the buffer in
+// `types`, parses `query` (a single statement) and binds the buffer to it under
+// `data_name`, then primes the append state. `con` is used only here, not stored.
+std::unique_ptr<AppenderState> BuildAppenderState(Connection &con, std::vector<LogicalType> types,
+                                                  const std::string &query, const std::string &data_name,
+                                                  const std::vector<std::string> &column_names) {
+	if (types.empty()) {
+		throw InvalidInputException("appender requires at least one column type");
+	}
+	auto s = std::make_unique<AppenderState>();
+	s->types = std::move(types);
+	con.WithTransaction([&](const Context &ctx) { s->buffer = std::make_unique<ColumnDataCollection>(ctx, s->types); });
+
+	// Parse once, attach the buffer once, re-execute per flush. Exactly one
+	// statement: a multi-statement query would silently bind only the first.
+	auto statements = con.ParseSQL(query.c_str());
+	auto first = statements.Next();
+	if (!first) {
+		throw InvalidInputException("appender query contains no statement");
+	}
+	if (statements.Next()) {
+		throw InvalidInputException("appender query must contain exactly one statement");
+	}
+	s->statement = std::make_unique<SqlStatement>(std::move(first));
+	s->statement->AddCollection(data_name, *s->buffer, column_names);
+
+	RecreateAppendState(*s);
+	return s;
+}
+
+} // namespace
+
+Appender::Appender(Connection &con, std::string_view query, std::vector<LogicalType> column_types,
+                   std::string_view data_name, const std::vector<std::string> &column_names) {
+	state = BuildAppenderState(con, std::move(column_types), std::string(query), std::string(data_name), column_names)
+	            .release();
+}
+
+Appender::Appender(Connection &con, const QualifiedName &name) {
+	// Resolve the table once. The description pins the resolved location, the
+	// columns with their types as handles, and the per-column flags; a view or
+	// a missing table is refused by the resolution itself.
+	auto description = con.DescribeTable(name);
+	auto resolved = description.GetQualifiedName().Render();
+	if (description.IsReadonly()) {
+		throw InvalidInputException("cannot append to " + resolved + ": its database is attached read-only");
+	}
+	auto table_schema = description.GetSchema();
+	std::vector<std::string> column_names;
+	std::vector<LogicalType> types;
+	for (idx_t i = 0; i < table_schema.GetFieldCount(); i++) {
+		if (description.ColumnIsGenerated(i)) {
+			continue; // the engine computes generated columns at flush
+		}
+		column_names.emplace_back(table_schema.GetFieldName(i));
+		types.push_back(table_schema.GetFieldType(i));
+	}
+	if (column_names.empty()) {
+		throw InvalidInputException("table " + resolved + " has no appendable columns");
+	}
+
+	// Render the flush INSERT from the resolved name, then hand off to the query
+	// core: this constructor's only extra work is introspection and SQL text.
+	std::string insert = "INSERT INTO " + resolved + " (";
+	for (idx_t i = 0; i < column_names.size(); i++) {
+		if (i > 0) {
+			insert += ", ";
+		}
+		insert += RenderQuotedIdentifier(column_names[i]);
+	}
+	insert += ") FROM __duckdb_v2_appender_data";
+	state = BuildAppenderState(con, std::move(types), insert, "__duckdb_v2_appender_data", {}).release();
+}
+
+Appender::~Appender() {
+	// Frees the buffer; does not flush. Any rows not yet flushed are dropped.
+	delete static_cast<AppenderState *>(state);
+	state = nullptr;
+}
+
+const std::vector<LogicalType> &Appender::ColumnTypes() const {
+	return GetAppenderState(state).types;
+}
+
+void Appender::AppendChunk(DataChunk &chunk) {
+	auto &s = GetAppenderState(state);
+	CheckAppenderOpen(s);
+	try {
+		// The append validates the chunk's column count and types against the
+		// buffer and refuses a mismatch before copying anything.
+		s.buffer->Append(*s.append_state, chunk);
+	} catch (const Exception &ex) {
+		// A validation refusal leaves the buffer untouched; any other failure
+		// may have copied part of the chunk.
+		if (ex.GetCode() != DUCKDB_V2_ERROR_INVALID_INPUT) {
+			s.broken = true;
+		}
+		throw;
+	} catch (...) {
+		s.broken = true;
+		throw;
+	}
+}
+
+void Appender::Flush(Connection &con) {
+	auto &s = GetAppenderState(state);
+	CheckAppenderOpen(s);
+	if (s.buffer->GetRowCount() == 0) {
+		return;
+	}
+	try {
+		auto result = con.Execute(*s.statement);
+		result.Drain();
+	} catch (const Exception &ex) {
+		// A busy connection or an interrupted run keeps the buffered rows so the
+		// flush can be retried; any other failure drops them, so a retry does not
+		// re-attempt the same failing statement.
+		if (ex.GetCode() != DUCKDB_V2_ERROR_RESOURCE_IN_USE && ex.GetCode() != DUCKDB_V2_ERROR_RUNTIME_INTERRUPT) {
+			ResetAppenderBuffer(s);
+		}
+		throw;
+	} catch (...) {
+		ResetAppenderBuffer(s);
+		throw;
+	}
+	ResetAppenderBuffer(s);
+}
+
+void Appender::Clear() {
+	auto &s = GetAppenderState(state);
+	ResetAppenderBuffer(s);
+	s.broken = false;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

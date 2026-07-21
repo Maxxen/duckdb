@@ -2,10 +2,24 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/parser/query_node/select_node.hpp"
+#include "duckdb/parser/expression/star_expression.hpp"
 
 namespace duckdb {
 
 CommonTableExpressionInfo::~CommonTableExpressionInfo() {
+}
+
+unique_ptr<CommonTableExpressionInfo> CommonTableExpressionInfo::WrapNonMaterialized(unique_ptr<TableRef> table_ref) {
+	// Wrap the reference in SELECT * and store it as a non-materialized CTE.
+	auto select = make_uniq<SelectNode>();
+	select->select_list.push_back(make_uniq<StarExpression>());
+	select->from_table = std::move(table_ref);
+
+	auto cte_info = make_uniq<CommonTableExpressionInfo>();
+	cte_info->query_node = std::move(select);
+	cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_NEVER;
+	return cte_info;
 }
 
 CommonTableExpressionInfo::CommonTableExpressionInfo(unique_ptr<SelectStatement> query,

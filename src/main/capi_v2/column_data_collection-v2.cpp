@@ -63,6 +63,18 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_combine(duckdb_v2_column_d
 	});
 }
 
+DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_reset(duckdb_v2_column_data_collection_handle collection,
+                                                            duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!collection) {
+			throw duckdb::InvalidInputException("Collection pointer cannot be null.");
+		}
+		// Drop all buffered rows and their memory; the column types stay.
+		auto &cdc = *reinterpret_cast<duckdb::ColumnDataCollection *>(collection);
+		cdc.Reset();
+	});
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // Accessors
 //----------------------------------------------------------------------------------------------------------------------
@@ -129,8 +141,24 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append(duckdb_v2_column_da
 		}
 		auto &cdc = *reinterpret_cast<duckdb::ColumnDataCollection *>(collection);
 		auto &append_state = *reinterpret_cast<duckdb::ColumnDataAppendState *>(state);
+		auto &input = *duckdb::ToDataChunk(chunk);
 
-		cdc.Append(append_state, *duckdb::ToDataChunk(chunk));
+		// The engine append copies without checking the chunk against the
+		// collection's types in release builds; validate here so a mismatch is
+		// refused before anything is copied.
+		auto &types = cdc.Types();
+		if (input.ColumnCount() != types.size()) {
+			throw duckdb::InvalidInputException(
+			    "chunk column count %llu does not match the collection's column count %llu", input.ColumnCount(),
+			    types.size());
+		}
+		for (duckdb::idx_t i = 0; i < types.size(); i++) {
+			if (input.data[i].GetType() != types[i]) {
+				throw duckdb::InvalidInputException("chunk type mismatch at column %llu: expected %s, got %s", i,
+				                                    types[i].ToString(), input.data[i].GetType().ToString());
+			}
+		}
+		cdc.Append(append_state, input);
 	});
 }
 

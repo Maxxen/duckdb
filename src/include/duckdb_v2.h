@@ -727,6 +727,20 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_combine(
     duckdb_v2_column_data_collection_handle target, duckdb_v2_column_data_collection_handle *source,
     duckdb_v2_error_info_handle *err);
 /*!
+* Drops all buffered rows, keeping the column types.
+* Drops all buffered rows and releases their memory. The column types are
+unchanged and the collection is immediately appendable again. Outstanding
+append and scan states are invalidated; create new ones. Must not be
+called while a live result executes over the collection, because that
+result's scan borrows the collection's buffers.
+
+* @param collection The collection to reset.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_reset(
+    duckdb_v2_column_data_collection_handle collection, duckdb_v2_error_info_handle *err);
+/*!
 * Returns the total number of rows across all chunks in the collection.
 * Sums the row counts of all chunks in the collection. This is the total
 number of rows represented by the collection, which may be more than
@@ -763,15 +777,18 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append_state_
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_column_data_collection_append_state_destroy(duckdb_v2_column_data_collection_append_state_handle *state);
 /*!
- * Appends a data chunk to the collection.
- * Appends a copy of the given chunk to the end of the collection. The chunk's vectors must conform to the types defined
- * for the collection.
- * @param collection The collection to append to.
- * @param state The append state to use this append operation.
- * @param chunk The chunk to append.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_API_CALL_t
- */
+* Appends a data chunk to the collection.
+* Appends a copy of the given chunk to the end of the collection. The
+chunk's column count and types must equal the collection's exactly; a
+mismatch is rejected with INVALID_INPUT before anything is copied.
+Complex-typed vectors may be flattened in place by the copy.
+
+* @param collection The collection to append to.
+* @param state The append state to use this append operation.
+* @param chunk The chunk to append.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append(
     duckdb_v2_column_data_collection_handle collection, duckdb_v2_column_data_collection_append_state_handle state,
     duckdb_v2_data_chunk_handle chunk, duckdb_v2_error_info_handle *err);
@@ -5353,6 +5370,50 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_statement_bind(duckdb_v2_connection_
                                                            duckdb_v2_schema_handle *out_schema,
                                                            duckdb_v2_schema_handle *out_parameters,
                                                            duckdb_v2_error_info_handle *err);
+/*!
+* Binds a filled column data collection to the statement under a name.
+* Makes the collection visible to the statement as a table named name, by
+injecting a common table expression into the parsed statement. The
+statement can then be bound, prepared, or executed through the existing
+surface; each execution scans the collection's contents at that moment.
+Supported statement types are SELECT, INSERT, UPDATE, DELETE, and MERGE
+INTO; any other type is rejected with ERROR_INVALID_INPUT.
+
+name is a borrowed string view and must be non-empty. A name already
+present in the statement's CTE map (from the SQL text or a prior call) is
+rejected with ERROR_INVALID_INPUT. The binding shadows any catalog table
+named name, following standard CTE semantics.
+
+By default the collection's columns bind as col1..colN. Pass column_names
+to bind them under caller-chosen names instead, so the statement can
+reference them directly (FROM buf) without an alias. When supplied,
+column_count must equal the collection's column count; a mismatch is
+rejected with ERROR_INVALID_INPUT. Pass (NULL, 0) for the col1..colN
+default.
+
+The collection is borrowed: the caller keeps ownership and must keep it
+alive while the statement, any prepared statement created from it, and any
+result executed from it are live, and must not reset or destroy it while
+such a result is live, because result scans reference the collection's
+buffers. An empty collection is a valid binding. Multiple collections
+attach under distinct names.
+
+* @param statement The statement to bind the collection into. Borrowed; mutated in place.
+* @param name The non-empty identifier the statement references. The empty view {NULL, 0} is rejected.
+* @param collection The filled collection to make visible. Borrowed; the caller keeps ownership.
+* @param column_names Optional. An array of column_count names for the collection's columns, in order. Pass NULL to bind
+them as col1..colN.
+* @param column_count The number of names in column_names. Pass 0 to bind the columns as col1..colN; otherwise it must
+equal the collection's column count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_statement_add_collection(duckdb_v2_sql_statement_handle statement,
+                                                                     duckdb_v2_identifier_t name,
+                                                                     duckdb_v2_column_data_collection_handle collection,
+                                                                     const duckdb_v2_identifier_t *column_names,
+                                                                     idx_t column_count,
+                                                                     duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a statement handle.
 * Null-safe: passing nullptr or a slot already set to nullptr is a
