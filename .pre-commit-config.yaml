@@ -16,15 +16,6 @@ repos:
         entry: scripts/capi_v1_regen.sh
         files: ^api_spec/v1/.*(\.ya?ml|\.h\.in)$
         pass_filenames: false
-      # Regenerate the Julia bindings whenever a v1 spec YAML or the adapter
-      # changes. Drift-only: no JuliaFormatter (CI has no Julia), so the raw
-      # adapter output is the canonical api.jl.
-      - id: capi-v1-julia-regen
-        name: capi v1 julia regen (api.jl)
-        language: system
-        entry: scripts/capi_v1_julia_regen.sh
-        files: ^(api_spec/v1/.*\.ya?ml|tools/juliapkg/scripts/julia_adapter\.py)$
-        pass_filenames: false
       - id: duckdb-format
         name: duckdb format (staged changes)
         language: python
