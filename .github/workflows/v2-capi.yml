@@ -13,6 +13,8 @@ jobs:
         uses: astral-sh/setup-uv@v3
       - name: Provision dev environment
         run: uv sync --group dev
+      - name: Test the Julia adapter
+        run: uv run --group dev pytest tools/juliapkg/scripts -q
       - name: Run pre-commit (default stages)
         run: uv run pre-commit run --all-files
       - name: Run pre-commit (manual stage)

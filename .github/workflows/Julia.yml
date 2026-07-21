@@ -1,0 +1,62 @@
+name: Julia
+
+# Transitional. The Julia package (tools/juliapkg) is slated to move out of tree
+# to a standalone DuckDB.jl repo. This workflow is self-contained so it moves
+# with the package or is deleted cleanly, it is intentionally NOT folded into
+# v2-capi.yml.
+#
+# It runs only Julia tooling (setup-julia). It imposes nothing on local
+# contributors: pre-commit stays Python/uv only, and editing api_spec/v1 then
+# regenerating produces formatter-clean Julia without a Julia toolchain. Only
+# hand-editing the .jl sources needs local Julia (tools/juliapkg/format.sh);
+# for everyone else this workflow is the formatting backstop.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/juliapkg/**'
+      - '.github/workflows/Julia.yml'
+  pull_request:
+    paths:
+      - 'tools/juliapkg/**'
+      - '.github/workflows/Julia.yml'
+
+concurrency:
+  group: julia-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  julia:
+    runs-on: ${{ github.repository_owner == 'duckdb' && 'namespace-profile-linux-x64' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+      # Cache the Julia depot (registries, packages, artifacts, precompiled
+      # cache) so JuliaFormatter and the DuckDB_jll test deps are not resolved
+      # and precompiled from cold on every run.
+      - uses: julia-actions/cache@v2
+
+      # Format first: a fresh checkout is clean, which format_check.sh requires.
+      # Mirrors upstream Main.yml (JuliaFormatter over tools/juliapkg/{src,test},
+      # then git diff). Pkg.add without --project writes to the global depot, not
+      # tools/juliapkg/Project.toml, so the tree stays clean for the diff check.
+      - name: Format check
+        working-directory: tools/juliapkg
+        run: |
+          julia -e 'import Pkg; Pkg.add("JuliaFormatter")'
+          ./format_check.sh
+
+      # Runs the package suite against the released DuckDB_jll (currently v1.5.4)
+      # via the DuckDB_jll fallback in src/api.jl (JULIA_DUCKDB_LIBRARY unset), so
+      # no libduckdb build is needed. api_spec/v1 tracks the same release, so this
+      # is representative today. A failure caused by a function this fork changed
+      # ahead of the latest DuckDB_jll release is a version-drift artifact, not
+      # necessarily a regression, treat such a failure accordingly.
+      - name: Test (DuckDB_jll)
+        working-directory: tools/juliapkg
+        env:
+          JULIA_NUM_THREADS: '2'
+        run: julia --project -e 'import Pkg; Pkg.test()'
