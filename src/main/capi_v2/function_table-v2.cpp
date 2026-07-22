@@ -241,6 +241,9 @@ struct TableFunctionBuilderV2 {
 		// first vector and write the others via direct buffer / assign_string
 		// writes, so the remaining vectors still need their size set.
 		output.SetChildCardinality(output.data[0].size());
+
+		// After cardinality propagation so the verifier sees final sizes.
+		VerifyUserChunk(output, "table function exec callback");
 	}
 
 	// Exact cardinality also pins the max; otherwise only the estimate is known.

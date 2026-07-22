@@ -32,6 +32,7 @@ add_library_unity(
   test_capi_v2_table_function.cpp
   test_capi_v2_varargs.cpp
   test_capi_v2_vector_write.cpp
+  test_capi_v2_verify_boundary.cpp
   test_cpp_api_appender.cpp
   test_cpp_api_core.cpp
   test_cpp_api_function.cpp

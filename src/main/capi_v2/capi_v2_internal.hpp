@@ -957,6 +957,18 @@ inline void InvokeWithErrorSlot(FN &&invoke) {
 	throw EX(err.message);
 }
 
+// Runs the engine chunk verifier on a user-written chunk; a no-op unless
+// debug_verification_mode='verify_vectors'. The verifier throws
+// InternalException, which would invalidate the database. User-written data
+// is input, so rethrow as InvalidInputException naming the boundary.
+inline void VerifyUserChunk(DataChunk &chunk, const char *boundary) {
+	try {
+		chunk.Verify();
+	} catch (InternalException &ex) {
+		throw InvalidInputException("%s: chunk failed vector verification: %s", boundary, ErrorData(ex).RawMessage());
+	}
+}
+
 // Shared BIGNUM magnitude/sign decoder. Used by both
 // duckdb_v2_value_get_bignum (PR2 value-side) and duckdb_v2_bignum_decode
 // (PR4 vector-side) so the magnitude reconstruction + sign extraction

@@ -158,6 +158,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append(duckdb_v2_column_da
 				                                    types[i].ToString(), input.data[i].GetType().ToString());
 			}
 		}
+		duckdb::VerifyUserChunk(input, "duckdb_v2_column_data_collection_append");
 		cdc.Append(append_state, input);
 	});
 }
