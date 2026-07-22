@@ -46,6 +46,47 @@ public:
 	OpaqueDataHandle batch_data;
 };
 
+// --- Callback info structs (passed to user callbacks as opaque handles) ------
+
+struct CopyFunctionBindInfoV2 {
+	void *user_data = nullptr;
+	// Borrowed arrays of column_count entries, valid only for the bind callback.
+	const duckdb_v2_logical_type_handle *column_types = nullptr;
+	const duckdb_v2_identifier_t *column_names = nullptr;
+	idx_t column_count = 0;
+	duckdb_v2_opaque out_bind_data = {};
+};
+
+struct CopyFunctionInitInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	duckdb_v2_str file_path = {};
+	duckdb_v2_opaque out_init_data = {};
+};
+
+struct CopyFunctionBatchInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	void *init_data = nullptr;
+	// The input collection, released from its unique_ptr; ownership passes to the callback.
+	ColumnDataCollection *in_batch = nullptr;
+	duckdb_v2_opaque out_batch = {};
+};
+
+struct CopyFunctionFlushInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	void *init_data = nullptr;
+	// The prepared batch data set by the batch callback.
+	void *batch_data = nullptr;
+};
+
+struct CopyFunctionFinalizeInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	void *init_data = nullptr;
+};
+
 struct CopyFunctionBuilderV2 {
 	Identifier name;
 	duckdb_v2_copy_function_bind_callback_fn bind_cb = nullptr;
@@ -77,26 +118,26 @@ struct CopyFunctionBuilderV2 {
 			types_array.push_back(reinterpret_cast<duckdb_v2_logical_type_handle>(&type));
 		}
 
-		duckdb_v2_copy_function_bind_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.column_count = names.size();
-		args.column_names = names_array.data();
-		args.column_types = types_array.data();
+		CopyFunctionBindInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.column_count = names.size();
+		cb_info.column_names = names_array.data();
+		cb_info.column_types = types_array.data();
 
 		// The bind callback is optional: a copy function may not need any bind-time setup.
 		if (info.bind_cb) {
-			duckdb::InvokeWithErrorSlot<BinderException>([&](duckdb_v2_error_info_handle *err) {
-				info.bind_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
-			});
+			auto info_handle = reinterpret_cast<duckdb_v2_copy_function_bind_info_handle>(&cb_info);
+			auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
+			duckdb::InvokeWithErrorSlot<BinderException>(
+			    [&](duckdb_v2_error_info_handle *err) { info.bind_cb(info_handle, ctx_ptr, err); });
 		}
 
 		auto result = make_uniq<CCopyFunctionBindDataV2>(info);
 
 		// If the user set the bind data, move it out here
-		if (args.out_bind_data.ptr) {
-			result->bind_data = make_shared_ptr<OpaqueDataHandle>(args.out_bind_data.ptr, args.out_bind_data.destroy,
-			                                                      args.out_bind_data.equals);
+		if (cb_info.out_bind_data.ptr) {
+			result->bind_data = make_shared_ptr<OpaqueDataHandle>(
+			    cb_info.out_bind_data.ptr, cb_info.out_bind_data.destroy, cb_info.out_bind_data.equals);
 		}
 
 		return std::move(result);
@@ -107,23 +148,23 @@ struct CopyFunctionBuilderV2 {
 		auto &data = bind_data.Cast<CCopyFunctionBindDataV2>();
 		auto &info = data.info;
 
-		duckdb_v2_copy_function_init_args args = {};
-		args.struct_size = sizeof(args);
-		args.file_path = ToStr(file_path);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
+		CopyFunctionInitInfoV2 cb_info;
+		cb_info.file_path = ToStr(file_path);
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
 
 		// The init callback is optional: when absent, the global state simply carries no init data.
 		if (info.init_cb) {
-			duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
-				info.init_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
-			});
+			auto info_handle = reinterpret_cast<duckdb_v2_copy_function_init_info_handle>(&cb_info);
+			auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
+			duckdb::InvokeWithErrorSlot<InvalidInputException>(
+			    [&](duckdb_v2_error_info_handle *err) { info.init_cb(info_handle, ctx_ptr, err); });
 		}
 
 		auto result = make_uniq<CCopyFunctionStateV2>();
 
-		if (args.out_init_data.ptr) {
-			result->init_data = OpaqueDataHandle(args.out_init_data.ptr, args.out_init_data.destroy);
+		if (cb_info.out_init_data.ptr) {
+			result->init_data = OpaqueDataHandle(cb_info.out_init_data.ptr, cb_info.out_init_data.destroy);
 		}
 
 		return std::move(result);
@@ -135,24 +176,24 @@ struct CopyFunctionBuilderV2 {
 		auto &state = gstate.Cast<CCopyFunctionStateV2>();
 		auto &info = data.info;
 
-		duckdb_v2_copy_function_batch_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
-		args.init_data = state.init_data.GetData();
+		CopyFunctionBatchInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
+		cb_info.init_data = state.init_data.GetData();
 		// Ownership of the collection is transferred to the callback: the callback (or the C++ wrapper around
 		// it) is responsible for destroying it via duckdb_v2_column_data_collection_destroy. We release it from
 		// the unique_ptr so it outlives this scope.
-		args.in_batch = reinterpret_cast<duckdb_v2_column_data_collection_handle>(collection.release());
+		cb_info.in_batch = collection.release();
 
-		duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
-			info.batch_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
-		});
+		auto info_handle = reinterpret_cast<duckdb_v2_copy_function_batch_info_handle>(&cb_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
+		duckdb::InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.batch_cb(info_handle, ctx_ptr, err); });
 
 		auto result = make_uniq<CCopyFunctionBatchV2>();
 
-		if (args.out_batch.ptr) {
-			result->batch_data = OpaqueDataHandle(args.out_batch.ptr, args.out_batch.destroy);
+		if (cb_info.out_batch.ptr) {
+			result->batch_data = OpaqueDataHandle(cb_info.out_batch.ptr, cb_info.out_batch.destroy);
 		}
 
 		return std::move(result);
@@ -164,16 +205,16 @@ struct CopyFunctionBuilderV2 {
 		const auto &info = data.info;
 		const auto &state = gstate.Cast<CCopyFunctionStateV2>();
 
-		duckdb_v2_copy_function_flush_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
-		args.init_data = state.init_data.GetData();
-		args.in_batch = batch.Cast<CCopyFunctionBatchV2>().batch_data.GetData();
+		CopyFunctionFlushInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
+		cb_info.init_data = state.init_data.GetData();
+		cb_info.batch_data = batch.Cast<CCopyFunctionBatchV2>().batch_data.GetData();
 
-		duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
-			info.flush_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
-		});
+		auto info_handle = reinterpret_cast<duckdb_v2_copy_function_flush_info_handle>(&cb_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
+		duckdb::InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.flush_cb(info_handle, ctx_ptr, err); });
 	}
 
 	static auto CopyToFinalize(ClientContext &context, FunctionData &bind_data, GlobalFunctionData &gstate) -> void {
@@ -187,15 +228,15 @@ struct CopyFunctionBuilderV2 {
 			return;
 		}
 
-		duckdb_v2_copy_function_finalize_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
-		args.init_data = state.init_data.GetData();
+		CopyFunctionFinalizeInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = data.bind_data ? data.bind_data->GetData() : nullptr;
+		cb_info.init_data = state.init_data.GetData();
 
-		duckdb::InvokeWithErrorSlot<InvalidInputException>([&](duckdb_v2_error_info_handle *err) {
-			info.finalize_cb(&args, reinterpret_cast<duckdb_v2_context_handle>(&context), err);
-		});
+		auto info_handle = reinterpret_cast<duckdb_v2_copy_function_finalize_info_handle>(&cb_info);
+		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
+		duckdb::InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.finalize_cb(info_handle, ctx_ptr, err); });
 	}
 };
 
@@ -395,5 +436,297 @@ DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_destroy(duckdb_v2_copy_func
 		}
 		delete reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(*builder);
 		*builder = nullptr;
+	});
+}
+
+// --- Bind callback accessors -------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_get_user_data(duckdb_v2_copy_function_bind_info_handle info,
+                                                                void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionBindInfoV2 *>(info)->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_get_column_count(duckdb_v2_copy_function_bind_info_handle info,
+                                                                   idx_t *out_count, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_count = reinterpret_cast<duckdb::CopyFunctionBindInfoV2 *>(info)->column_count;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_get_column_type(duckdb_v2_copy_function_bind_info_handle info,
+                                                                  idx_t index, duckdb_v2_logical_type_handle *out_type,
+                                                                  duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_type) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto &cb_info = *reinterpret_cast<duckdb::CopyFunctionBindInfoV2 *>(info);
+		if (index >= cb_info.column_count) {
+			throw duckdb::InvalidInputException("Column index %llu out of range (have %llu).", index,
+			                                    cb_info.column_count);
+		}
+		*out_type = cb_info.column_types[index];
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_get_column_name(duckdb_v2_copy_function_bind_info_handle info,
+                                                                  idx_t index, duckdb_v2_identifier_t *out_name,
+                                                                  duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_name) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto &cb_info = *reinterpret_cast<duckdb::CopyFunctionBindInfoV2 *>(info);
+		if (index >= cb_info.column_count) {
+			throw duckdb::InvalidInputException("Column index %llu out of range (have %llu).", index,
+			                                    cb_info.column_count);
+		}
+		*out_name = cb_info.column_names[index];
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_set_bind_data(duckdb_v2_copy_function_bind_info_handle info,
+                                                                duckdb_v2_opaque data,
+                                                                duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		reinterpret_cast<duckdb::CopyFunctionBindInfoV2 *>(info)->out_bind_data = data;
+	});
+}
+
+// --- Init callback accessors -------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_get_user_data(duckdb_v2_copy_function_init_info_handle info,
+                                                                void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionInitInfoV2 *>(info)->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_get_bind_data(duckdb_v2_copy_function_init_info_handle info,
+                                                                void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionInitInfoV2 *>(info)->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_get_file_path(duckdb_v2_copy_function_init_info_handle info,
+                                                                duckdb_v2_str *out_path,
+                                                                duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_path) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_path = reinterpret_cast<duckdb::CopyFunctionInitInfoV2 *>(info)->file_path;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_set_init_data(duckdb_v2_copy_function_init_info_handle info,
+                                                                duckdb_v2_opaque data,
+                                                                duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		reinterpret_cast<duckdb::CopyFunctionInitInfoV2 *>(info)->out_init_data = data;
+	});
+}
+
+// --- Batch callback accessors ------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_user_data(duckdb_v2_copy_function_batch_info_handle info,
+                                                                 void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionBatchInfoV2 *>(info)->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_bind_data(duckdb_v2_copy_function_batch_info_handle info,
+                                                                 void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionBatchInfoV2 *>(info)->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_init_data(duckdb_v2_copy_function_batch_info_handle info,
+                                                                 void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionBatchInfoV2 *>(info)->init_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_input(duckdb_v2_copy_function_batch_info_handle info,
+                                                             duckdb_v2_column_data_collection_handle *out_input,
+                                                             duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_input) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto &cb_info = *reinterpret_cast<duckdb::CopyFunctionBatchInfoV2 *>(info);
+		*out_input = reinterpret_cast<duckdb_v2_column_data_collection_handle>(cb_info.in_batch);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_set_batch_data(duckdb_v2_copy_function_batch_info_handle info,
+                                                                  duckdb_v2_opaque data,
+                                                                  duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		reinterpret_cast<duckdb::CopyFunctionBatchInfoV2 *>(info)->out_batch = data;
+	});
+}
+
+// --- Flush callback accessors ------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_user_data(duckdb_v2_copy_function_flush_info_handle info,
+                                                                 void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionFlushInfoV2 *>(info)->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_bind_data(duckdb_v2_copy_function_flush_info_handle info,
+                                                                 void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionFlushInfoV2 *>(info)->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_init_data(duckdb_v2_copy_function_flush_info_handle info,
+                                                                 void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionFlushInfoV2 *>(info)->init_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_batch_data(duckdb_v2_copy_function_flush_info_handle info,
+                                                                  void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionFlushInfoV2 *>(info)->batch_data;
+	});
+}
+
+// --- Finalize callback accessors ---------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_finalize_get_user_data(duckdb_v2_copy_function_finalize_info_handle info,
+                                                                    void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionFinalizeInfoV2 *>(info)->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_finalize_get_bind_data(duckdb_v2_copy_function_finalize_info_handle info,
+                                                                    void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionFinalizeInfoV2 *>(info)->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_finalize_get_init_data(duckdb_v2_copy_function_finalize_info_handle info,
+                                                                    void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CopyFunctionFinalizeInfoV2 *>(info)->init_data;
 	});
 }

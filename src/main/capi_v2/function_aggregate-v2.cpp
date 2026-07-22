@@ -61,11 +61,55 @@ private:
 	shared_ptr<AggregateFunctionInfo> agg_info;
 };
 
-struct AggregateFunctionCallbackInfoV2 {
-	void *user_data = nullptr;
+// --- Callback info structs (passed to user callbacks as opaque handles) ------
 
-	explicit AggregateFunctionCallbackInfoV2(void *user_data_p) : user_data(user_data_p) {
-	}
+struct AggregateFunctionBindInfoV2 {
+	duckdb_v2_identifier_t function_name = {};
+	void *user_data = nullptr;
+	BindArgumentsV2 *arguments = nullptr;
+	duckdb_v2_opaque out_bind_data = {};
+};
+
+struct AggregateFunctionSizeInfoV2 {
+	void *user_data = nullptr;
+	idx_t out_size = 0;
+};
+
+struct AggregateFunctionInitInfoV2 {
+	void *user_data = nullptr;
+	void *state = nullptr;
+};
+
+struct AggregateFunctionUpdateInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	idx_t count = 0;
+	DataChunk *input = nullptr;
+	void **states = nullptr;
+};
+
+struct AggregateFunctionCombineInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	idx_t count = 0;
+	void **sources = nullptr;
+	void **targets = nullptr;
+};
+
+struct AggregateFunctionFinalizeInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	idx_t count = 0;
+	void **states = nullptr;
+	Vector *result = nullptr;
+	idx_t result_offset = 0;
+};
+
+struct AggregateFunctionDestroyInfoV2 {
+	void *user_data = nullptr;
+	void *bind_data = nullptr;
+	idx_t count = 0;
+	void **states = nullptr;
 };
 
 struct AggregateFunctionV2 {
@@ -76,27 +120,27 @@ struct AggregateFunctionV2 {
 
 		// Run the optional user bind callback and capture any bind data it sets.
 		if (info.bind_cb) {
-			duckdb_v2_aggregate_function_bind_args args = {};
-			args.struct_size = sizeof(args);
-			args.function_name = ToStr(input.GetBoundFunction().GetName());
-			args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-
 			// The aggregate binder resizes the argument expressions to the
 			// argument-type list after this callback; truncation shrinks both so
 			// they stay in sync (see BindArgumentsV2).
 			BindArgumentsV2 bind_args;
 			bind_args.arguments = &input.GetArguments();
 			bind_args.argument_types = &input.GetBoundFunction().GetArguments();
-			args.arguments = reinterpret_cast<duckdb_v2_bind_arguments_handle>(&bind_args);
 
+			AggregateFunctionBindInfoV2 cb_info;
+			cb_info.function_name = ToStr(input.GetBoundFunction().GetName());
+			cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+			cb_info.arguments = &bind_args;
+
+			auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_bind_info_handle>(&cb_info);
 			// Binding always runs under a client context.
 			auto context = reinterpret_cast<duckdb_v2_context_handle>(&input.GetClientContext());
 			InvokeWithErrorSlot<BinderException>(
-			    [&](duckdb_v2_error_info_handle *err) { info.bind_cb(&args, context, err); });
+			    [&](duckdb_v2_error_info_handle *err) { info.bind_cb(info_handle, context, err); });
 
-			if (args.out_bind_data.ptr) {
+			if (cb_info.out_bind_data.ptr) {
 				result->user_bind_data = make_shared_ptr<OpaqueDataHandle>(
-				    args.out_bind_data.ptr, args.out_bind_data.destroy, args.out_bind_data.equals);
+				    cb_info.out_bind_data.ptr, cb_info.out_bind_data.destroy, cb_info.out_bind_data.equals);
 			}
 		}
 
@@ -108,20 +152,14 @@ struct AggregateFunctionV2 {
 
 		D_ASSERT(info.size_cb);
 
-		ErrorInfoV2 err;
-		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
+		AggregateFunctionSizeInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 
-		duckdb_v2_aggregate_function_size_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_size_info_handle>(&cb_info);
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.size_cb(info_handle, err); });
 
-		info.size_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
-
-		return args.out_size;
+		return cb_info.out_size;
 	}
 
 	static auto InitCallback(const BoundAggregateFunction &function, data_ptr_t state) -> void {
@@ -129,19 +167,13 @@ struct AggregateFunctionV2 {
 
 		D_ASSERT(info.init_cb);
 
-		ErrorInfoV2 err;
-		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
+		AggregateFunctionInitInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.state = state;
 
-		duckdb_v2_aggregate_function_init_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.state = state;
-
-		info.init_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_init_info_handle>(&cb_info);
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.init_cb(info_handle, err); });
 	}
 
 	static auto UpdateCallback(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count, Vector &state,
@@ -158,22 +190,16 @@ struct AggregateFunctionV2 {
 
 		chunk.Flatten(); // TODO: Dont flatten here
 
-		ErrorInfoV2 err;
-		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
+		AggregateFunctionUpdateInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
+		cb_info.input = &chunk;
+		cb_info.states = FlatVector::GetDataMutableUnsafe<void *>(state);
+		cb_info.count = count;
 
-		duckdb_v2_aggregate_function_update_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
-		args.input = reinterpret_cast<_duckdb_v2_data_chunk *>(&chunk);
-		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
-		args.count = count;
-
-		info.update_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_update_info_handle>(&cb_info);
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.update_cb(info_handle, err); });
 	}
 
 	static auto CombineCallback(Vector &state, Vector &combined, AggregateInputData &aggr_input_data, idx_t count)
@@ -183,22 +209,16 @@ struct AggregateFunctionV2 {
 
 		state.Flatten(); // TODO: Dont flatten here
 
-		ErrorInfoV2 err;
-		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
+		AggregateFunctionCombineInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
+		cb_info.count = count;
+		cb_info.sources = FlatVector::GetDataMutableUnsafe<void *>(state);
+		cb_info.targets = FlatVector::GetDataMutableUnsafe<void *>(combined);
 
-		duckdb_v2_aggregate_function_combine_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
-		args.count = count;
-		args.sources = FlatVector::GetDataMutableUnsafe<void *>(state);
-		args.targets = FlatVector::GetDataMutableUnsafe<void *>(combined);
-
-		info.combine_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_combine_info_handle>(&cb_info);
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.combine_cb(info_handle, err); });
 	}
 
 	static auto FinalizeCallback(Vector &state, AggregateFinalizeInputData &aggr_input_data, Vector &result,
@@ -208,44 +228,32 @@ struct AggregateFunctionV2 {
 
 		state.Flatten(); // TODO: Dont flatten here
 
-		ErrorInfoV2 err;
-		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
+		AggregateFunctionFinalizeInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
+		cb_info.count = count;
+		cb_info.states = FlatVector::GetDataMutableUnsafe<void *>(state);
+		cb_info.result = &result;
+		cb_info.result_offset = offset;
 
-		duckdb_v2_aggregate_function_finalize_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
-		args.count = count;
-		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
-		args.result = reinterpret_cast<_duckdb_v2_vector *>(&result);
-		args.result_offset = offset;
-
-		info.finalize_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_finalize_info_handle>(&cb_info);
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.finalize_cb(info_handle, err); });
 	}
 
 	static auto DestroyCallback(Vector &state, AggregateInputData &aggr_input_data, idx_t count) -> void {
 		auto &bind = aggr_input_data.bind_data->Cast<AggregateFunctionBindDataV2>();
 		auto &info = bind.GetInfo();
 
-		ErrorInfoV2 err;
-		auto err_ptr = reinterpret_cast<_duckdb_v2_error_info *>(&err);
+		AggregateFunctionDestroyInfoV2 cb_info;
+		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+		cb_info.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
+		cb_info.count = count;
+		cb_info.states = FlatVector::GetDataMutableUnsafe<void *>(state);
 
-		duckdb_v2_aggregate_function_destroy_args args = {};
-		args.struct_size = sizeof(args);
-		args.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		args.bind_data = bind.user_bind_data ? bind.user_bind_data->GetData() : nullptr;
-		args.count = count;
-		args.states = FlatVector::GetDataMutableUnsafe<void *>(state);
-
-		info.destroy_cb(&args, &err_ptr);
-
-		if (err.HasError()) {
-			err.ThrowAsException();
-		}
+		auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_destroy_info_handle>(&cb_info);
+		InvokeWithErrorSlot<InvalidInputException>(
+		    [&](duckdb_v2_error_info_handle *err) { info.destroy_cb(info_handle, err); });
 	}
 
 	// See ThrowFunctionNotSerializable for why these throw.
@@ -611,5 +619,432 @@ duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_
 
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
 		agg_builder->user_data = duckdb::make_shared_ptr<duckdb::OpaqueDataHandle>(data.ptr, data.destroy, data.equals);
+	});
+}
+
+// --- Bind callback accessors ----------------------------------
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_bind_get_function_name(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                    duckdb_v2_identifier_t *out_name,
+                                                    duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_name) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionBindInfoV2 *>(info);
+		*out_name = c->function_name;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_user_data(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                                     void **out_data,
+                                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionBindInfoV2 *>(info);
+		*out_data = c->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_arguments(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                                     duckdb_v2_bind_arguments_handle *out_arguments,
+                                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_arguments) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionBindInfoV2 *>(info);
+		*out_arguments = reinterpret_cast<duckdb_v2_bind_arguments_handle>(c->arguments);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_set_bind_data(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                                     duckdb_v2_opaque data,
+                                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionBindInfoV2 *>(info);
+		c->out_bind_data = data;
+	});
+}
+
+// --- Size callback accessors ----------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_get_user_data(duckdb_v2_aggregate_function_size_info_handle info,
+                                                                     void **out_data,
+                                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionSizeInfoV2 *>(info);
+		*out_data = c->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_set_size(duckdb_v2_aggregate_function_size_info_handle info,
+                                                                idx_t size, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionSizeInfoV2 *>(info);
+		c->out_size = size;
+	});
+}
+
+// --- Init callback accessors ----------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_user_data(duckdb_v2_aggregate_function_init_info_handle info,
+                                                                     void **out_data,
+                                                                     duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionInitInfoV2 *>(info);
+		*out_data = c->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_state(duckdb_v2_aggregate_function_init_info_handle info,
+                                                                 void **out_state, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_state) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionInitInfoV2 *>(info);
+		*out_state = c->state;
+	});
+}
+
+// --- Update callback accessors --------------------------------
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_update_get_user_data(duckdb_v2_aggregate_function_update_info_handle info, void **out_data,
+                                                  duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionUpdateInfoV2 *>(info);
+		*out_data = c->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_update_get_bind_data(duckdb_v2_aggregate_function_update_info_handle info, void **out_data,
+                                                  duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionUpdateInfoV2 *>(info);
+		*out_data = c->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_count(duckdb_v2_aggregate_function_update_info_handle info,
+                                                                   idx_t *out_count, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionUpdateInfoV2 *>(info);
+		*out_count = c->count;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_input(duckdb_v2_aggregate_function_update_info_handle info,
+                                                                   duckdb_v2_data_chunk_handle *out_input,
+                                                                   duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_input) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionUpdateInfoV2 *>(info);
+		*out_input = reinterpret_cast<duckdb_v2_data_chunk_handle>(c->input);
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_update_get_states(duckdb_v2_aggregate_function_update_info_handle info, void ***out_states,
+                                               duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_states) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionUpdateInfoV2 *>(info);
+		*out_states = c->states;
+	});
+}
+
+// --- Combine callback accessors -------------------------------
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_combine_get_user_data(duckdb_v2_aggregate_function_combine_info_handle info,
+                                                   void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionCombineInfoV2 *>(info);
+		*out_data = c->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_combine_get_bind_data(duckdb_v2_aggregate_function_combine_info_handle info,
+                                                   void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionCombineInfoV2 *>(info);
+		*out_data = c->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_combine_get_count(duckdb_v2_aggregate_function_combine_info_handle info, idx_t *out_count,
+                                               duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionCombineInfoV2 *>(info);
+		*out_count = c->count;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_combine_get_sources(duckdb_v2_aggregate_function_combine_info_handle info,
+                                                 void ***out_sources, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_sources) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionCombineInfoV2 *>(info);
+		*out_sources = c->sources;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_combine_get_targets(duckdb_v2_aggregate_function_combine_info_handle info,
+                                                 void ***out_targets, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_targets) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionCombineInfoV2 *>(info);
+		*out_targets = c->targets;
+	});
+}
+
+// --- Finalize callback accessors ------------------------------
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_finalize_get_user_data(duckdb_v2_aggregate_function_finalize_info_handle info,
+                                                    void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionFinalizeInfoV2 *>(info);
+		*out_data = c->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_finalize_get_bind_data(duckdb_v2_aggregate_function_finalize_info_handle info,
+                                                    void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionFinalizeInfoV2 *>(info);
+		*out_data = c->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_finalize_get_count(duckdb_v2_aggregate_function_finalize_info_handle info,
+                                                idx_t *out_count, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionFinalizeInfoV2 *>(info);
+		*out_count = c->count;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_finalize_get_states(duckdb_v2_aggregate_function_finalize_info_handle info,
+                                                 void ***out_states, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_states) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionFinalizeInfoV2 *>(info);
+		*out_states = c->states;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_finalize_get_result(duckdb_v2_aggregate_function_finalize_info_handle info,
+                                                 duckdb_v2_vector_handle *out_result,
+                                                 duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_result) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionFinalizeInfoV2 *>(info);
+		*out_result = reinterpret_cast<duckdb_v2_vector_handle>(c->result);
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_finalize_get_result_offset(duckdb_v2_aggregate_function_finalize_info_handle info,
+                                                        idx_t *out_offset, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_offset) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionFinalizeInfoV2 *>(info);
+		*out_offset = c->result_offset;
+	});
+}
+
+// --- Destroy callback accessors -------------------------------
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_destroy_get_user_data(duckdb_v2_aggregate_function_destroy_info_handle info,
+                                                   void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionDestroyInfoV2 *>(info);
+		*out_data = c->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_destroy_get_bind_data(duckdb_v2_aggregate_function_destroy_info_handle info,
+                                                   void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionDestroyInfoV2 *>(info);
+		*out_data = c->bind_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_destroy_get_count(duckdb_v2_aggregate_function_destroy_info_handle info, idx_t *out_count,
+                                               duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionDestroyInfoV2 *>(info);
+		*out_count = c->count;
+	});
+}
+
+DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_destroy_get_states(duckdb_v2_aggregate_function_destroy_info_handle info,
+                                                void ***out_states, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_states) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto c = reinterpret_cast<duckdb::AggregateFunctionDestroyInfoV2 *>(info);
+		*out_states = c->states;
 	});
 }

@@ -23,23 +23,25 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 	REQUIRE(conn != nullptr);
 
 	// Function callbacks
-	static auto bind_callback = [](duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_handle context,
+	static auto bind_callback = [](duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_context_handle context,
 	                               duckdb_v2_error_info_handle *err) {
 		/* TODO */
 	};
 
-	static auto init_callback = [](duckdb_v2_scalar_function_init_args *args, duckdb_v2_context_handle context,
+	static auto init_callback = [](duckdb_v2_scalar_function_init_info_handle info, duckdb_v2_context_handle context,
 	                               duckdb_v2_error_info_handle *err) {
 		/* TODO */
 	};
 
-	static auto exec_callback = [](duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle context,
+	static auto exec_callback = [](duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle context,
 	                               duckdb_v2_error_info_handle *err) {
-		duckdb_v2_data_chunk_handle chunk = args->input;
+		duckdb_v2_data_chunk_handle chunk = nullptr;
+		REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) == DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_vector_handle lhs_vec = nullptr;
 		duckdb_v2_vector_handle rhs_vec = nullptr;
-		duckdb_v2_vector_handle out_vec = args->result;
+		duckdb_v2_vector_handle out_vec = nullptr;
+		REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &out_vec, err) == DUCKDB_V2_ERROR_NONE);
 
 		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &lhs_vec, err) == DUCKDB_V2_ERROR_NONE);
 		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 1, &rhs_vec, err) == DUCKDB_V2_ERROR_NONE);

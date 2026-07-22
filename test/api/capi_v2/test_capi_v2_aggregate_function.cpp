@@ -22,18 +22,25 @@ bool RowIsValid(const uint64_t *validity, idx_t idx) {
 	return validity == nullptr || (validity[idx >> 6] & (1ULL << (idx & 63)));
 }
 
-void SizeCallback(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_handle *err) {
-	args->out_size = sizeof(MedianState);
+void SizeCallback(duckdb_v2_aggregate_function_size_info_handle info, duckdb_v2_error_info_handle *err) {
+	REQUIRE(duckdb_v2_aggregate_function_size_set_size(info, sizeof(MedianState), err) == DUCKDB_V2_ERROR_NONE);
 }
 
-void InitCallback(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_handle *err) {
+void InitCallback(duckdb_v2_aggregate_function_init_info_handle info, duckdb_v2_error_info_handle *err) {
 	// DuckDB hands us zero-initialized memory; construct the state object in place.
-	new (args->state) MedianState();
+	void *state = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_init_get_state(info, &state, err) == DUCKDB_V2_ERROR_NONE);
+	new (state) MedianState();
 }
 
-void UpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_handle *err) {
+void UpdateCallback(duckdb_v2_aggregate_function_update_info_handle info, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle input = nullptr;
+	if (duckdb_v2_aggregate_function_update_get_input(info, &input, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+
 	duckdb_v2_vector_handle input_vec = nullptr;
-	if (duckdb_v2_data_chunk_get_vector(args->input, 0, &input_vec, err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_data_chunk_get_vector(input, 0, &input_vec, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 
@@ -43,9 +50,18 @@ void UpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_er
 	}
 
 	const auto data = static_cast<const int32_t *>(view.data);
-	const auto states = reinterpret_cast<MedianState **>(args->states);
+	void **states_raw = nullptr;
+	if (duckdb_v2_aggregate_function_update_get_states(info, &states_raw, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	const auto states = reinterpret_cast<MedianState **>(states_raw);
 
-	for (idx_t i = 0; i < args->count; i++) {
+	idx_t count = 0;
+	if (duckdb_v2_aggregate_function_update_get_count(info, &count, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+
+	for (idx_t i = 0; i < count; i++) {
 		const auto idx = view.sel ? view.sel[i] : i;
 		if (!RowIsValid(view.validity, idx)) {
 			continue; // Skip NULLs
@@ -54,26 +70,53 @@ void UpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_er
 	}
 }
 
-void CombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_handle *err) {
-	const auto sources = reinterpret_cast<MedianState **>(args->sources);
-	const auto targets = reinterpret_cast<MedianState **>(args->targets);
+void CombineCallback(duckdb_v2_aggregate_function_combine_info_handle info, duckdb_v2_error_info_handle *err) {
+	void **sources_raw = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_combine_get_sources(info, &sources_raw, err) == DUCKDB_V2_ERROR_NONE);
+	const auto sources = reinterpret_cast<MedianState **>(sources_raw);
 
-	for (idx_t i = 0; i < args->count; i++) {
+	void **targets_raw = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_combine_get_targets(info, &targets_raw, err) == DUCKDB_V2_ERROR_NONE);
+	const auto targets = reinterpret_cast<MedianState **>(targets_raw);
+
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_aggregate_function_combine_get_count(info, &count, err) == DUCKDB_V2_ERROR_NONE);
+
+	for (idx_t i = 0; i < count; i++) {
 		auto &source = *sources[i];
 		auto &target = *targets[i];
 		target.insert(target.end(), source.begin(), source.end());
 	}
 }
 
-void FinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
-	const auto states = reinterpret_cast<MedianState **>(args->states);
+void FinalizeCallback(duckdb_v2_aggregate_function_finalize_info_handle info, duckdb_v2_error_info_handle *err) {
+	void **states_raw = nullptr;
+	if (duckdb_v2_aggregate_function_finalize_get_states(info, &states_raw, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	const auto states = reinterpret_cast<MedianState **>(states_raw);
 
-	int32_t *result = nullptr;
-	if (duckdb_v2_vector_get_data_mutable(args->result, (void **)&result, err) != DUCKDB_V2_ERROR_NONE) {
+	duckdb_v2_vector_handle result_vec = nullptr;
+	if (duckdb_v2_aggregate_function_finalize_get_result(info, &result_vec, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 
-	for (idx_t i = 0; i < args->count; i++) {
+	int32_t *result = nullptr;
+	if (duckdb_v2_vector_get_data_mutable(result_vec, (void **)&result, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+
+	idx_t count = 0;
+	if (duckdb_v2_aggregate_function_finalize_get_count(info, &count, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+
+	idx_t result_offset = 0;
+	if (duckdb_v2_aggregate_function_finalize_get_result_offset(info, &result_offset, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+
+	for (idx_t i = 0; i < count; i++) {
 		auto &values = *states[i];
 
 		std::sort(values.begin(), values.end());
@@ -82,14 +125,19 @@ void FinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v
 		// lower of the two middle elements to keep the result an integer.
 		const auto median = values.empty() ? 0 : values[(values.size() - 1) / 2];
 
-		result[args->result_offset + i] = median;
+		result[result_offset + i] = median;
 	}
 }
 
-void DestroyCallback(duckdb_v2_aggregate_function_destroy_args *args, duckdb_v2_error_info_handle *err) {
-	const auto states = reinterpret_cast<MedianState **>(args->states);
+void DestroyCallback(duckdb_v2_aggregate_function_destroy_info_handle info, duckdb_v2_error_info_handle *err) {
+	void **states_raw = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_destroy_get_states(info, &states_raw, err) == DUCKDB_V2_ERROR_NONE);
+	const auto states = reinterpret_cast<MedianState **>(states_raw);
 
-	for (idx_t i = 0; i < args->count; i++) {
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_aggregate_function_destroy_get_count(info, &count, err) == DUCKDB_V2_ERROR_NONE);
+
+	for (idx_t i = 0; i < count; i++) {
 		states[i]->~MedianState();
 	}
 }
@@ -214,31 +262,43 @@ namespace {
 std::atomic<bool> g_bind_data_seen_in_update {false};
 std::atomic<int> g_bind_data_destroyed {0};
 
-void BindDataBindCallback(duckdb_v2_aggregate_function_bind_args *args, duckdb_v2_context_handle,
+void BindDataBindCallback(duckdb_v2_aggregate_function_bind_info_handle info, duckdb_v2_context_handle,
                           duckdb_v2_error_info_handle *err) {
 	// Compute a "multiplier" at bind time and hand it to execution as bind data.
-	args->out_bind_data.ptr = new int32_t(10);
-	args->out_bind_data.destroy = [](void *p) {
-		g_bind_data_destroyed++;
-		delete static_cast<int32_t *>(p);
-	};
+	duckdb_v2_opaque bind_data {new int32_t(10),
+	                            [](void *p) {
+		                            g_bind_data_destroyed++;
+		                            delete static_cast<int32_t *>(p);
+	                            },
+	                            nullptr};
+	REQUIRE(duckdb_v2_aggregate_function_bind_set_bind_data(info, bind_data, err) == DUCKDB_V2_ERROR_NONE);
 }
 
-void BindDataSizeCallback(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_handle *err) {
-	args->out_size = sizeof(int64_t);
+void BindDataSizeCallback(duckdb_v2_aggregate_function_size_info_handle info, duckdb_v2_error_info_handle *err) {
+	REQUIRE(duckdb_v2_aggregate_function_size_set_size(info, sizeof(int64_t), err) == DUCKDB_V2_ERROR_NONE);
 }
 
-void BindDataInitCallback(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_handle *err) {
-	*static_cast<int64_t *>(args->state) = 0;
+void BindDataInitCallback(duckdb_v2_aggregate_function_init_info_handle info, duckdb_v2_error_info_handle *err) {
+	void *state = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_init_get_state(info, &state, err) == DUCKDB_V2_ERROR_NONE);
+	*static_cast<int64_t *>(state) = 0;
 }
 
-void BindDataUpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_handle *err) {
-	if (args->bind_data) {
+void BindDataUpdateCallback(duckdb_v2_aggregate_function_update_info_handle info, duckdb_v2_error_info_handle *err) {
+	void *bind_data = nullptr;
+	if (duckdb_v2_aggregate_function_update_get_bind_data(info, &bind_data, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	if (bind_data) {
 		g_bind_data_seen_in_update = true;
 	}
 
+	duckdb_v2_data_chunk_handle input = nullptr;
+	if (duckdb_v2_aggregate_function_update_get_input(info, &input, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
 	duckdb_v2_vector_handle input_vec = nullptr;
-	if (duckdb_v2_data_chunk_get_vector(args->input, 0, &input_vec, err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_data_chunk_get_vector(input, 0, &input_vec, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 	duckdb_v2_vector_view view;
@@ -246,8 +306,16 @@ void BindDataUpdateCallback(duckdb_v2_aggregate_function_update_args *args, duck
 		return;
 	}
 	const auto data = static_cast<const int32_t *>(view.data);
-	const auto states = reinterpret_cast<int64_t **>(args->states);
-	for (idx_t i = 0; i < args->count; i++) {
+	void **states_raw = nullptr;
+	if (duckdb_v2_aggregate_function_update_get_states(info, &states_raw, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	const auto states = reinterpret_cast<int64_t **>(states_raw);
+	idx_t count = 0;
+	if (duckdb_v2_aggregate_function_update_get_count(info, &count, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	for (idx_t i = 0; i < count; i++) {
 		const auto idx = view.sel ? view.sel[i] : i;
 		if (!RowIsValid(view.validity, idx)) {
 			continue;
@@ -256,25 +324,52 @@ void BindDataUpdateCallback(duckdb_v2_aggregate_function_update_args *args, duck
 	}
 }
 
-void BindDataCombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_handle *err) {
-	const auto sources = reinterpret_cast<int64_t **>(args->sources);
-	const auto targets = reinterpret_cast<int64_t **>(args->targets);
-	for (idx_t i = 0; i < args->count; i++) {
+void BindDataCombineCallback(duckdb_v2_aggregate_function_combine_info_handle info, duckdb_v2_error_info_handle *err) {
+	void **sources_raw = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_combine_get_sources(info, &sources_raw, err) == DUCKDB_V2_ERROR_NONE);
+	const auto sources = reinterpret_cast<int64_t **>(sources_raw);
+	void **targets_raw = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_combine_get_targets(info, &targets_raw, err) == DUCKDB_V2_ERROR_NONE);
+	const auto targets = reinterpret_cast<int64_t **>(targets_raw);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_aggregate_function_combine_get_count(info, &count, err) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < count; i++) {
 		*targets[i] += *sources[i];
 	}
 }
 
-void BindDataFinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
+void BindDataFinalizeCallback(duckdb_v2_aggregate_function_finalize_info_handle info,
+                              duckdb_v2_error_info_handle *err) {
 	// Use the bind-time multiplier handed to us via bind data.
-	const auto multiplier = args->bind_data ? *static_cast<const int32_t *>(args->bind_data) : 1;
-	const auto states = reinterpret_cast<int64_t **>(args->states);
-
-	int32_t *result = nullptr;
-	if (duckdb_v2_vector_get_data_mutable(args->result, (void **)&result, err) != DUCKDB_V2_ERROR_NONE) {
+	void *bind_data = nullptr;
+	if (duckdb_v2_aggregate_function_finalize_get_bind_data(info, &bind_data, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
-	for (idx_t i = 0; i < args->count; i++) {
-		result[args->result_offset + i] = static_cast<int32_t>(*states[i] * multiplier);
+	const auto multiplier = bind_data ? *static_cast<const int32_t *>(bind_data) : 1;
+	void **states_raw = nullptr;
+	if (duckdb_v2_aggregate_function_finalize_get_states(info, &states_raw, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	const auto states = reinterpret_cast<int64_t **>(states_raw);
+
+	duckdb_v2_vector_handle result_vec = nullptr;
+	if (duckdb_v2_aggregate_function_finalize_get_result(info, &result_vec, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	int32_t *result = nullptr;
+	if (duckdb_v2_vector_get_data_mutable(result_vec, (void **)&result, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	idx_t count = 0;
+	if (duckdb_v2_aggregate_function_finalize_get_count(info, &count, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	idx_t result_offset = 0;
+	if (duckdb_v2_aggregate_function_finalize_get_result_offset(info, &result_offset, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	for (idx_t i = 0; i < count; i++) {
+		result[result_offset + i] = static_cast<int32_t>(*states[i] * multiplier);
 	}
 }
 
@@ -364,24 +459,26 @@ TEST_CASE("V2 aggregate: bind data threads through to execution callbacks", "[ca
 
 namespace {
 
-void FailingSizeCallback(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_handle *err) {
-	args->out_size = sizeof(int64_t);
+void FailingSizeCallback(duckdb_v2_aggregate_function_size_info_handle info, duckdb_v2_error_info_handle *err) {
+	REQUIRE(duckdb_v2_aggregate_function_size_set_size(info, sizeof(int64_t), err) == DUCKDB_V2_ERROR_NONE);
 }
 
-void FailingInitCallback(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_handle *err) {
-	*static_cast<int64_t *>(args->state) = 0;
+void FailingInitCallback(duckdb_v2_aggregate_function_init_info_handle info, duckdb_v2_error_info_handle *err) {
+	void *state = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_init_get_state(info, &state, err) == DUCKDB_V2_ERROR_NONE);
+	*static_cast<int64_t *>(state) = 0;
 }
 
-void FailingUpdateCallback(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_handle *err) {
+void FailingUpdateCallback(duckdb_v2_aggregate_function_update_info_handle info, duckdb_v2_error_info_handle *err) {
 	// Name a specific, non-INVALID_INPUT error class from inside the callback.
 	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_OUT_OF_RANGE);
 	duckdb_v2_error_info_set_text(*err, V2Str("failing_agg: value out of range"));
 }
 
-void FailingCombineCallback(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_handle *err) {
+void FailingCombineCallback(duckdb_v2_aggregate_function_combine_info_handle info, duckdb_v2_error_info_handle *err) {
 }
 
-void FailingFinalizeCallback(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
+void FailingFinalizeCallback(duckdb_v2_aggregate_function_finalize_info_handle info, duckdb_v2_error_info_handle *err) {
 }
 
 } // namespace

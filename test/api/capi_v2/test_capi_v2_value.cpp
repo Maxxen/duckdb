@@ -1217,18 +1217,30 @@ TEST_CASE("V2: value_cast null-arg refusals", "[capi_v2][value][cast]") {
 namespace {
 // VARCHAR -> FAHRENHEIT: parses "<digits>F". Distinct from the default
 // VARCHAR -> INTEGER cast, so success proves the registered cast ran.
-void VarcharToFahrenheit(duckdb_v2_cast_function_exec_args *args, duckdb_v2_error_info_handle *err) {
+void VarcharToFahrenheit(duckdb_v2_cast_function_exec_info_handle info, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_vector_handle input = nullptr;
+	if (duckdb_v2_cast_function_exec_get_input(info, &input, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	duckdb_v2_vector_handle output = nullptr;
+	if (duckdb_v2_cast_function_exec_get_output(info, &output, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	idx_t count = 0;
+	if (duckdb_v2_cast_function_exec_get_count(info, &count, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
 	duckdb_v2_vector_view view {};
-	if (duckdb_v2_vector_get_view(args->input, &view, err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_vector_get_view(input, &view, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 	auto *in = static_cast<const duckdb_v2_varchar_t *>(view.data);
 	void *out_ptr = nullptr;
-	if (duckdb_v2_vector_get_data_mutable(args->output, &out_ptr, err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_vector_get_data_mutable(output, &out_ptr, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 	auto *out = static_cast<int32_t *>(out_ptr);
-	for (idx_t i = 0; i < args->count; i++) {
+	for (idx_t i = 0; i < count; i++) {
 		idx_t idx = SelAt(view.sel, i);
 		duckdb_v2_str bytes = V2StringView(in[idx]);
 		int32_t parsed = 0;

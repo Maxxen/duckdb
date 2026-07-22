@@ -388,10 +388,7 @@ TEST_CASE("Stable C++API: Aggregate Function bind data", "[cpp_api]") {
 		aggregate.SetName("agg_bind")
 		    .AddParameter("a", LogicalType::INTEGER())
 		    .SetReturnType(LogicalType::INTEGER())
-		    .SetBindCallback([](AggregateFunction::BindInput &input) {
-			    input.SetBindData<int32_t>(10);
-			    REQUIRE(input.GetBindData<int32_t>() == 10);
-		    })
+		    .SetBindCallback([](AggregateFunction::BindInput &input) { input.SetBindData<int32_t>(10); })
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) { input.Reserve<int32_t>(); })
 		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
 		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {

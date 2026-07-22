@@ -3,51 +3,37 @@ handles:
   copy_function_builder:
     description: "An opaque handle to a copy function builder. This is used to build a copy function, which can be used to copy data from one source to another."
     cleanup_with: copy_function_builder_cleanup
-structs:
-  copy_function_bind_args:
-    fields:
-      - {name: struct_size, type: u32}
-      - {name: user_data, type: void, pointer: 1, const: true}
-      - {name: column_types, type: logical_type, pointer: 1}
-      - {name: column_names, type: identifier, pointer: 1, const: true, description: "Array of column_count borrowed name views; only valid for the duration of the callback."}
-      - {name: column_count, type: idx}
-      - {name: out_bind_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to the copy function's bind data plus optional destructor and equality callbacks. The bind data is accessible from the init, batch, flush, and finalize callbacks."}
-  copy_function_init_args:
-    fields:
-      - {name: struct_size, type: u32}
-      - {name: user_data, type: void, pointer: 1, const: true}
-      - {name: bind_data, type: void, pointer: 1, const: true}
-      - {name: file_path, type: str, description: "The target file path. Borrowed; only valid for the duration of the callback."}
-      - {name: out_init_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to the copy function's global init data plus an optional destructor callback. The init data is accessible from the batch, flush, and finalize callbacks. The opaque handle's equality callback is unused for init data."}
-  copy_function_batch_args:
-    fields:
-      - {name: struct_size, type: u32}
-      - {name: user_data, type: void, pointer: 1, const: true}
-      - {name: bind_data, type: void, pointer: 1, const: true}
-      - {name: init_data, type: void, pointer: 1}
-      - {name: in_batch, type: column_data_collection}
-      - {name: out_batch, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to the prepared batch data plus an optional destructor callback, to be handed to the flush callback. The opaque handle's equality callback is unused for batch data."}
-  copy_function_flush_args:
-    fields:
-      - {name: struct_size, type: u32}
-      - {name: user_data, type: void, pointer: 1, const: true}
-      - {name: bind_data, type: void, pointer: 1, const: true}
-      - {name: init_data, type: void, pointer: 1}
-      - {name: in_batch, type: void, pointer: 1}
-  copy_function_finalize_args:
-    fields:
-      - {name: struct_size, type: u32}
-      - {name: user_data, type: void, pointer: 1, const: true}
-      - {name: bind_data, type: void, pointer: 1, const: true}
-      - {name: init_data, type: void, pointer: 1}
+  copy_function_bind_info:
+    description: |
+      Borrowed handle passed to the bind callback. Provides access to the user data set at registration and the list
+      of columns being copied (their count, types, and names), and is used to set the function's bind data. Valid only
+      for the duration of the callback; must not be stored or used after the callback returns.
+  copy_function_init_info:
+    description: |
+      Borrowed handle passed to the init callback. Provides access to the user data set at registration, the bind data
+      set during bind, and the target file path, and is used to set the function's global init data. Valid only for the
+      duration of the callback; must not be stored or used after the callback returns.
+  copy_function_batch_info:
+    description: |
+      Borrowed handle passed to the batch callback. Provides access to the user data, bind data, and global init data,
+      and the input column data collection to prepare, and is used to set the prepared batch data handed to the flush
+      callback. Valid only for the duration of the callback; must not be stored or used after the callback returns.
+  copy_function_flush_info:
+    description: |
+      Borrowed handle passed to the flush callback. Provides access to the user data, bind data, global init data, and
+      the prepared batch data produced by the batch callback. Valid only for the duration of the callback; must not be
+      stored or used after the callback returns.
+  copy_function_finalize_info:
+    description: |
+      Borrowed handle passed to the finalize callback. Provides access to the user data, bind data, and global init
+      data. Valid only for the duration of the callback; must not be stored or used after the callback returns.
 callbacks:
   copy_function_bind_callback:
     return_type: void
     parameters:
-      args:
-        type: copy_function_bind_args
-        indirection: 1
-        description: "Pointer to a struct containing the arguments for the callback."
+      info:
+        type: copy_function_bind_info
+        description: "Borrowed handle providing access to the columns being copied and user data, and used to set bind data via `copy_function_bind_set_bind_data`. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
@@ -58,10 +44,9 @@ callbacks:
   copy_function_init_callback:
     return_type: void
     parameters:
-      args:
-        type: copy_function_init_args
-        indirection: 1
-        description: "Pointer to a struct containing the arguments for the callback."
+      info:
+        type: copy_function_init_info
+        description: "Borrowed handle providing access to the target file path, bind data, and user data, and used to set global init data via `copy_function_init_set_init_data`. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
@@ -72,10 +57,9 @@ callbacks:
   copy_function_batch_callback:
     return_type: void
     parameters:
-      args:
-        type: copy_function_batch_args
-        indirection: 1
-        description: "Pointer to a struct containing the arguments for the callback."
+      info:
+        type: copy_function_batch_info
+        description: "Borrowed handle providing access to the input column data collection to prepare, plus bind data, init data, and user data, and used to set the prepared batch data via `copy_function_batch_set_batch_data`. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
@@ -86,10 +70,9 @@ callbacks:
   copy_function_flush_callback:
     return_type: void
     parameters:
-      args:
-        type: copy_function_flush_args
-        indirection: 1
-        description: "Pointer to a struct containing the arguments for the callback."
+      info:
+        type: copy_function_flush_info
+        description: "Borrowed handle providing access to the prepared batch data produced by the batch callback, plus bind data, init data, and user data. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
@@ -100,10 +83,9 @@ callbacks:
   copy_function_finalize_callback:
     return_type: void
     parameters:
-      args:
-        type: copy_function_finalize_args
-        indirection: 1
-        description: "Pointer to a struct containing the arguments for the callback."
+      info:
+        type: copy_function_finalize_info
+        description: "Borrowed handle providing access to the bind data, init data, and user data. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The DuckDB context in which the copy operation runs. Borrowed; only valid for the duration of the callback."
@@ -246,4 +228,362 @@ functions:
         type: copy_function_builder
         indirection: 1
         description: "The copy function builder handle to destroy."
+    return_type: API_CALL
+  # --- Bind callback accessors ---
+  copy_function_bind_get_user_data:
+    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    parameters:
+      info:
+        type: copy_function_bind_info
+        description: The bind info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_bind_get_column_count:
+    summary: Retrieves the number of columns being copied.
+    parameters:
+      info:
+        type: copy_function_bind_info
+        description: The bind info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of columns being copied.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_bind_get_column_type:
+    summary: Retrieves the type of the column at the given index.
+    parameters:
+      info:
+        type: copy_function_bind_info
+        description: The bind info handle.
+      index:
+        type: idx
+        description: Zero-based column index.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the column's type. Borrowed; only valid for the duration of the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_bind_get_column_name:
+    summary: Retrieves the name of the column at the given index.
+    parameters:
+      info:
+        type: copy_function_bind_info
+        description: The bind info handle.
+      index:
+        type: idx
+        description: Zero-based column index.
+      out_name:
+        type: identifier
+        indirection: 1
+        kind: OUT
+        description: Receives the column's name. Borrowed; only valid for the duration of the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_bind_set_bind_data:
+    summary: Sets the function's bind data from the bind callback.
+    description: |
+      Sets an opaque handle bundling a pointer to user data (the function's "bind data") plus optional
+      destructor and equality callbacks. The bind data is accessible from later callbacks (init, batch, flush,
+      and finalize). The destructor, if provided, destroys the bind data when it is no longer needed. The
+      equality callback, if provided, compares two bind data pointers (e.g. for plan caching); otherwise a
+      default pointer equality check is used.
+    parameters:
+      info:
+        type: copy_function_bind_info
+        description: The bind info handle.
+      data:
+        type: opaque
+        description: Opaque handle bundling the bind data pointer plus optional destructor and equality callbacks.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Init callback accessors ---
+  copy_function_init_get_user_data:
+    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    parameters:
+      info:
+        type: copy_function_init_info
+        description: The init info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_init_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: copy_function_init_info
+        description: The init info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_init_get_file_path:
+    summary: Retrieves the target file path for the copy operation.
+    parameters:
+      info:
+        type: copy_function_init_info
+        description: The init info handle.
+      out_path:
+        type: str
+        indirection: 1
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the target file path. Owned by the library; only valid for the duration of the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_init_set_init_data:
+    summary: Sets the function's global init data from the init callback.
+    description: |
+      Sets an opaque handle bundling a pointer to "init data" plus an optional destructor callback. The init
+      data is accessible from the batch, flush, and finalize callbacks. The destructor, if provided, destroys
+      the init data when it is no longer needed; the opaque handle's equality callback is unused for init data.
+    parameters:
+      info:
+        type: copy_function_init_info
+        description: The init info handle.
+      data:
+        type: opaque
+        description: Opaque handle bundling the init data pointer plus an optional destructor callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Batch callback accessors ---
+  copy_function_batch_get_user_data:
+    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    parameters:
+      info:
+        type: copy_function_batch_info
+        description: The batch info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_batch_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: copy_function_batch_info
+        description: The batch info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_batch_get_init_data:
+    summary: Retrieves the global init data set by the function's init callback.
+    parameters:
+      info:
+        type: copy_function_batch_info
+        description: The batch info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the init data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_batch_get_input:
+    summary: Retrieves the input column data collection to prepare for this batch.
+    description: |
+      Ownership of the collection is transferred to the callback: the callback (or the C++ wrapper around it)
+      is responsible for destroying it via column_data_collection_destroy once it is done with it.
+    parameters:
+      info:
+        type: copy_function_batch_info
+        description: The batch info handle.
+      out_input:
+        type: column_data_collection
+        indirection: 1
+        kind: OUT
+        description: Receives the input column data collection. Owned by the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_batch_set_batch_data:
+    summary: Sets the prepared batch data from the batch callback.
+    description: |
+      Sets an opaque handle bundling a pointer to the prepared batch data plus an optional destructor callback,
+      to be handed to the flush callback. The destructor, if provided, destroys the batch data when it is no
+      longer needed; the opaque handle's equality callback is unused for batch data.
+    parameters:
+      info:
+        type: copy_function_batch_info
+        description: The batch info handle.
+      data:
+        type: opaque
+        description: Opaque handle bundling the prepared batch data pointer plus an optional destructor callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Flush callback accessors ---
+  copy_function_flush_get_user_data:
+    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    parameters:
+      info:
+        type: copy_function_flush_info
+        description: The flush info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_flush_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: copy_function_flush_info
+        description: The flush info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_flush_get_init_data:
+    summary: Retrieves the global init data set by the function's init callback.
+    parameters:
+      info:
+        type: copy_function_flush_info
+        description: The flush info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the init data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_flush_get_batch_data:
+    summary: Retrieves the prepared batch data set by the function's batch callback.
+    parameters:
+      info:
+        type: copy_function_flush_info
+        description: The flush info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the prepared batch data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Finalize callback accessors ---
+  copy_function_finalize_get_user_data:
+    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    parameters:
+      info:
+        type: copy_function_finalize_info
+        description: The finalize info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_finalize_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: copy_function_finalize_info
+        description: The finalize info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  copy_function_finalize_get_init_data:
+    summary: Retrieves the global init data set by the function's init callback.
+    parameters:
+      info:
+        type: copy_function_finalize_info
+        description: The finalize info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the init data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
     return_type: API_CALL

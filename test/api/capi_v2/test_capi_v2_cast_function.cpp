@@ -39,49 +39,64 @@ bool ParseTemperature(const char *data, idx_t len, int32_t &out) {
 }
 
 // TEMPERATURE -> VARCHAR. Infallible; just formats every (valid) row.
-void TemperatureToVarchar(duckdb_v2_cast_function_exec_args *args, duckdb_v2_error_info_handle *err) {
+void TemperatureToVarchar(duckdb_v2_cast_function_exec_info_handle info, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_vector_handle input = nullptr;
+	REQUIRE(duckdb_v2_cast_function_exec_get_input(info, &input, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle output = nullptr;
+	REQUIRE(duckdb_v2_cast_function_exec_get_output(info, &output, err) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_cast_function_exec_get_count(info, &count, err) == DUCKDB_V2_ERROR_NONE);
+
 	duckdb_v2_vector_view view;
-	REQUIRE(duckdb_v2_vector_get_view(args->input, &view, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_view(input, &view, err) == DUCKDB_V2_ERROR_NONE);
 	auto *in = static_cast<const int32_t *>(view.data);
 
-	for (idx_t i = 0; i < args->count; i++) {
+	for (idx_t i = 0; i < count; i++) {
 		idx_t idx = SelAt(view.sel, i);
 		if (!RowValid(view, idx)) {
 			uint64_t *validity = nullptr;
-			REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(args->output, &validity, err) == DUCKDB_V2_ERROR_NONE);
+			REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(output, &validity, err) == DUCKDB_V2_ERROR_NONE);
 			validity[i / 64] &= ~(UINT64_C(1) << (i % 64));
 			continue;
 		}
 		std::string formatted = std::to_string(in[idx]) + "C";
-		REQUIRE(V2VectorAssignString(args->output, i, formatted.c_str(), formatted.size(), err) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(V2VectorAssignString(output, i, formatted.c_str(), formatted.size(), err) == DUCKDB_V2_ERROR_NONE);
 	}
 }
 
 // VARCHAR -> TEMPERATURE. Fails on malformed input: in a TRY cast the failing rows are set to NULL,
 // in a strict cast the reported error aborts the query. Also exercises user_data retrieval.
-void VarcharToTemperature(duckdb_v2_cast_function_exec_args *args, duckdb_v2_error_info_handle *err) {
+void VarcharToTemperature(duckdb_v2_cast_function_exec_info_handle info, duckdb_v2_error_info_handle *err) {
 	// Verify the user data made it through.
-	auto *secret = static_cast<std::string *>(args->user_data);
+	void *user_data = nullptr;
+	REQUIRE(duckdb_v2_cast_function_exec_get_user_data(info, &user_data, err) == DUCKDB_V2_ERROR_NONE);
+	auto *secret = static_cast<std::string *>(user_data);
 	if (!secret || *secret != "secret") {
 		duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_INVALID_INPUT);
 		duckdb_v2_error_info_set_text(*err, V2Str("user data was not threaded through to the cast callback"));
 		return;
 	}
 
+	duckdb_v2_vector_handle input = nullptr;
+	REQUIRE(duckdb_v2_cast_function_exec_get_input(info, &input, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle output = nullptr;
+	REQUIRE(duckdb_v2_cast_function_exec_get_output(info, &output, err) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_cast_function_exec_get_count(info, &count, err) == DUCKDB_V2_ERROR_NONE);
+
 	duckdb_v2_vector_view view;
-	REQUIRE(duckdb_v2_vector_get_view(args->input, &view, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_view(input, &view, err) == DUCKDB_V2_ERROR_NONE);
 	auto *in = static_cast<const duckdb_v2_varchar_t *>(view.data);
 
 	void *out_ptr = nullptr;
-	REQUIRE(duckdb_v2_vector_get_data_mutable(args->output, &out_ptr, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_data_mutable(output, &out_ptr, err) == DUCKDB_V2_ERROR_NONE);
 	auto *out = static_cast<int32_t *>(out_ptr);
 
-	for (idx_t i = 0; i < args->count; i++) {
+	for (idx_t i = 0; i < count; i++) {
 		idx_t idx = SelAt(view.sel, i);
 		if (!RowValid(view, idx)) {
 			uint64_t *validity = nullptr;
-			REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(args->output, &validity, err) == DUCKDB_V2_ERROR_NONE);
+			REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(output, &validity, err) == DUCKDB_V2_ERROR_NONE);
 			validity[i / 64] &= ~(UINT64_C(1) << (i % 64));
 			continue;
 		}
@@ -92,7 +107,7 @@ void VarcharToTemperature(duckdb_v2_cast_function_exec_args *args, duckdb_v2_err
 		if (!ParseTemperature(bytes.ptr, bytes.len, parsed)) {
 			// Mark the row NULL (used by TRY_CAST) and report the error (used by a strict CAST).
 			uint64_t *validity = nullptr;
-			REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(args->output, &validity, err) == DUCKDB_V2_ERROR_NONE);
+			REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(output, &validity, err) == DUCKDB_V2_ERROR_NONE);
 			validity[i / 64] &= ~(UINT64_C(1) << (i % 64));
 
 			std::string message = "Could not convert '" + V2StrTo(bytes) + "' to TEMPERATURE";

@@ -474,9 +474,9 @@ struct duckdb_v2_opaque {
 //! either succeed for every row or report an error (which aborts the
 //! query). A "try" cast (e.g. SQL TRY_CAST) tolerates per-row failures
 //! by writing NULL for the rows that could not be converted instead of
-//! aborting. The exec callback can read the mode from the exec args to
-//! decide whether a conversion failure is reported as an error or
-//! silently turned into a NULL.
+//! aborting. The exec callback can read the mode via
+//! `cast_function_exec_get_mode` to decide whether a conversion failure
+//! is reported as an error or silently turned into a NULL.
 typedef enum DUCKDB_V2_CAST_MODE {
 	/* A regular cast. Any conversion failure is reported as an error via the error info handle. */
 	DUCKDB_V2_CAST_MODE_NORMAL = 0,
@@ -486,7 +486,6 @@ typedef enum DUCKDB_V2_CAST_MODE {
 } DUCKDB_V2_CAST_MODE;
 
 /* --- Struct forward declarations for cast --- */
-typedef struct duckdb_v2_cast_function_exec_args duckdb_v2_cast_function_exec_args;
 
 /* --- Types for cast --- */
 //! An opaque handle to a cast function builder.
@@ -497,12 +496,19 @@ typedef struct _duckdb_v2_cast_function_builder {
 	void *internal_ptr;
 } * duckdb_v2_cast_function_builder_handle;
 
+//! Borrowed handle passed to the exec callback. Provides access to the input vector, the output vector to
+//! fill, the number of rows to cast, the cast mode, and the user data set at registration. Valid only for
+//! the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_cast_function_exec_info {
+	void *internal_ptr;
+} * duckdb_v2_cast_function_exec_info_handle;
+
 /* --- Constants for cast --- */
 
 /* --- Error Codes for cast --- */
 
 /* --- Function pointer typedefs for cast --- */
-typedef void (*duckdb_v2_cast_function_exec_callback_fn)(duckdb_v2_cast_function_exec_args *args,
+typedef void (*duckdb_v2_cast_function_exec_callback_fn)(duckdb_v2_cast_function_exec_info_handle info,
                                                          duckdb_v2_error_info_handle *err);
 
 /* --- Functions for cast --- */
@@ -583,7 +589,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_exec_callb
 * Sets arbitrary extra data on a cast function.
 * This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function.
 This is useful for associating custom metadata or static context with the function that can be retrieved later from the
-exec callback via the args' `user_data` field. During execution, this data is read-only.
+exec callback via `cast_function_exec_get_user_data`. During execution, this data is read-only.
 
 * @param func The cast function to configure.
 * @param data Opaque pointer to user data.
@@ -621,23 +627,63 @@ prevent double-destruction.
 * @return DUCKDB_V2_API_CALL_t
 */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_destroy(duckdb_v2_cast_function_builder_handle *func);
+/*!
+ * Retrieves the user data set on the builder via cast_function_builder_set_user_data.
+ * @param info The exec info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_user_data(
+    duckdb_v2_cast_function_exec_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the input vector containing the source values to cast.
+ * The vector contains `count` logical rows. Borrowed; valid only for the duration of the callback.
+ * @param info The exec info handle.
+ * @param out_input Receives the borrowed input vector.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_input(duckdb_v2_cast_function_exec_info_handle info,
+                                                                         duckdb_v2_vector_handle *out_input,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the output vector the callback must write the cast result values into.
+ * The vector has space for `count` logical rows. Borrowed; valid only for the duration of the callback.
+ * @param info The exec info handle.
+ * @param out_output Receives the borrowed output vector to write into.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_output(duckdb_v2_cast_function_exec_info_handle info,
+                                                                          duckdb_v2_vector_handle *out_output,
+                                                                          duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the number of rows to cast.
+ * The number of logical rows in both the input and output vectors.
+ * @param info The exec info handle.
+ * @param out_count Receives the row count.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_count(duckdb_v2_cast_function_exec_info_handle info,
+                                                                         idx_t *out_count,
+                                                                         duckdb_v2_error_info_handle *err);
+/*!
+* Retrieves the mode the cast is being executed in.
+* See `CAST_MODE`. In `CAST_MODE_TRY`, conversion failures should be written as NULL values into the
+output vector instead of being reported as errors.
+
+* @param info The exec info handle.
+* @param out_mode Receives the cast mode.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_mode(duckdb_v2_cast_function_exec_info_handle info,
+                                                                        DUCKDB_V2_CAST_MODE *out_mode,
+                                                                        duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for cast --- */
-struct duckdb_v2_cast_function_exec_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! Opaque pointer to user data set by the caller when registering the function, if any.
-	void *user_data;
-	//! The input vector containing the source values to cast. It contains `count` logical rows.
-	duckdb_v2_vector_handle input;
-	//! The output vector the callback must write the cast result values into. It has space for `count` logical rows.
-	duckdb_v2_vector_handle output;
-	//! The number of rows to cast, i.e. the number of logical rows in both the input and output vectors.
-	idx_t count;
-	//! The mode the cast is being executed in. See `CAST_MODE` for details. In `CAST_MODE_TRY`, conversion failures
-	//! should be written as NULL values into the output vector instead of being reported as errors.
-	DUCKDB_V2_CAST_MODE mode;
-};
 
 /* ============================================================================
  * MODULE: column_data_collection
@@ -3821,19 +3867,6 @@ struct duckdb_v2_interval_t {
 /* --- Enums for aggregate --- */
 
 /* --- Struct forward declarations for aggregate --- */
-typedef struct duckdb_v2_aggregate_function_bind_args duckdb_v2_aggregate_function_bind_args;
-
-typedef struct duckdb_v2_aggregate_function_size_args duckdb_v2_aggregate_function_size_args;
-
-typedef struct duckdb_v2_aggregate_function_init_args duckdb_v2_aggregate_function_init_args;
-
-typedef struct duckdb_v2_aggregate_function_update_args duckdb_v2_aggregate_function_update_args;
-
-typedef struct duckdb_v2_aggregate_function_combine_args duckdb_v2_aggregate_function_combine_args;
-
-typedef struct duckdb_v2_aggregate_function_finalize_args duckdb_v2_aggregate_function_finalize_args;
-
-typedef struct duckdb_v2_aggregate_function_destroy_args duckdb_v2_aggregate_function_destroy_args;
 
 /* --- Types for aggregate --- */
 //! An opaque handle representing a builder for defining and registering a custom aggregate function in DuckDB. The
@@ -3843,31 +3876,80 @@ typedef struct _duckdb_v2_aggregate_function_builder {
 	void *internal_ptr;
 } * duckdb_v2_aggregate_function_builder_handle;
 
+//! Borrowed handle passed to the bind callback. Provides access to the function name, user data set at
+//! registration, and the bound argument list, and is used to set the function's bind data. Valid only for
+//! the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_aggregate_function_bind_info {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_bind_info_handle;
+
+//! Borrowed handle passed to the size callback. Provides access to the user data set at registration, and is
+//! used to set the aggregate state size for a single row. Valid only for the duration of the callback; must
+//! not be stored or used after the callback returns.
+typedef struct _duckdb_v2_aggregate_function_size_info {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_size_info_handle;
+
+//! Borrowed handle passed to the init callback. Provides access to the user data set at registration and the
+//! aggregate state to initialize for a single row. Valid only for the duration of the callback; must not be
+//! stored or used after the callback returns.
+typedef struct _duckdb_v2_aggregate_function_init_info {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_init_info_handle;
+
+//! Borrowed handle passed to the update callback. Provides access to the user data, the bind data, the input
+//! data chunk, the row count, and the array of aggregate states to update. Valid only for the duration of the
+//! callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_aggregate_function_update_info {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_update_info_handle;
+
+//! Borrowed handle passed to the combine callback. Provides access to the user data, the bind data, the state
+//! count, and the source and target aggregate state arrays to combine. Valid only for the duration of the
+//! callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_aggregate_function_combine_info {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_combine_info_handle;
+
+//! Borrowed handle passed to the finalize callback. Provides access to the user data, the bind data, the row
+//! count, the array of aggregate states, and the result vector and offset to write into. Valid only for the
+//! duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_aggregate_function_finalize_info {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_finalize_info_handle;
+
+//! Borrowed handle passed to the destroy callback. Provides access to the user data, the bind data, the state
+//! count, and the array of aggregate states to destroy. Valid only for the duration of the callback; must not
+//! be stored or used after the callback returns.
+typedef struct _duckdb_v2_aggregate_function_destroy_info {
+	void *internal_ptr;
+} * duckdb_v2_aggregate_function_destroy_info_handle;
+
 /* --- Constants for aggregate --- */
 
 /* --- Error Codes for aggregate --- */
 
 /* --- Function pointer typedefs for aggregate --- */
-typedef void (*duckdb_v2_aggregate_function_bind_callback_fn)(duckdb_v2_aggregate_function_bind_args *args,
+typedef void (*duckdb_v2_aggregate_function_bind_callback_fn)(duckdb_v2_aggregate_function_bind_info_handle info,
                                                               duckdb_v2_context_handle context,
                                                               duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_size_callback_fn)(duckdb_v2_aggregate_function_size_args *args,
+typedef void (*duckdb_v2_aggregate_function_size_callback_fn)(duckdb_v2_aggregate_function_size_info_handle info,
                                                               duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_init_callback_fn)(duckdb_v2_aggregate_function_init_args *args,
+typedef void (*duckdb_v2_aggregate_function_init_callback_fn)(duckdb_v2_aggregate_function_init_info_handle info,
                                                               duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_update_callback_fn)(duckdb_v2_aggregate_function_update_args *args,
+typedef void (*duckdb_v2_aggregate_function_update_callback_fn)(duckdb_v2_aggregate_function_update_info_handle info,
                                                                 duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_combine_callback_fn)(duckdb_v2_aggregate_function_combine_args *args,
+typedef void (*duckdb_v2_aggregate_function_combine_callback_fn)(duckdb_v2_aggregate_function_combine_info_handle info,
                                                                  duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_finalize_callback_fn)(duckdb_v2_aggregate_function_finalize_args *args,
-                                                                  duckdb_v2_error_info_handle *err);
+typedef void (*duckdb_v2_aggregate_function_finalize_callback_fn)(
+    duckdb_v2_aggregate_function_finalize_info_handle info, duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_aggregate_function_destroy_callback_fn)(duckdb_v2_aggregate_function_destroy_args *args,
+typedef void (*duckdb_v2_aggregate_function_destroy_callback_fn)(duckdb_v2_aggregate_function_destroy_info_handle info,
                                                                  duckdb_v2_error_info_handle *err);
 
 /* --- Functions for aggregate --- */
@@ -4098,132 +4180,295 @@ Registered functions do not support plan serialization; the bind callback runs o
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(
     duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle builder,
     duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the name of the function being bound.
+ * @param info The bind info handle.
+ * @param out_name Receives the function name. Borrowed; only valid for the duration of the callback.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_bind_get_function_name(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                    duckdb_v2_identifier_t *out_name, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+ * @param info The bind info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_user_data(
+    duckdb_v2_aggregate_function_bind_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+* Retrieves the bound argument list for inspection and mutation during bind.
+* Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
+argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list
+from the tail. Borrowed; valid only for the duration of the callback.
+
+* @param info The bind info handle.
+* @param out_arguments Receives the borrowed bound argument list handle.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_arguments(
+    duckdb_v2_aggregate_function_bind_info_handle info, duckdb_v2_bind_arguments_handle *out_arguments,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets the function's bind data from the bind callback.
+* Sets an opaque handle bundling a pointer to the aggregate's "bind data" plus optional destructor and
+equality callbacks. The bind data is accessible from the update, combine, finalize, and destroy callbacks.
+The destructor, if provided, destroys the bind data when it is no longer needed. The equality callback, if
+provided, compares two bind data pointers (e.g. for plan caching); otherwise a default pointer equality
+check is used.
+
+* @param info The bind info handle.
+* @param data Opaque handle bundling the bind data pointer plus optional destructor and equality callbacks.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_set_bind_data(
+    duckdb_v2_aggregate_function_bind_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+ * @param info The size info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_get_user_data(
+    duckdb_v2_aggregate_function_size_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Sets the size of the aggregate state for a single row, in bytes.
+ * The callback must set the required per-row aggregate state size, which DuckDB uses to allocate state memory.
+ * @param info The size info handle.
+ * @param size The size of the aggregate state for a single row, in bytes.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_set_size(
+    duckdb_v2_aggregate_function_size_info_handle info, idx_t size, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+ * @param info The init info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_user_data(
+    duckdb_v2_aggregate_function_init_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the aggregate state to initialize for a single row.
+ * The memory for this state is allocated by DuckDB based on the size returned by the size callback and is
+ * zero-initialized. The callback should initialize it in place.
+ * @param info The init info handle.
+ * @param out_state Receives the pointer to the aggregate state to initialize.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_state(
+    duckdb_v2_aggregate_function_init_info_handle info, void **out_state, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+ * @param info The update info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_user_data(
+    duckdb_v2_aggregate_function_update_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The update info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_bind_data(
+    duckdb_v2_aggregate_function_update_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the number of rows in the current batch being processed.
+ * This is the size of the input data chunk and the number of aggregate states.
+ * @param info The update info handle.
+ * @param out_count Receives the number of rows in the current batch.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_count(
+    duckdb_v2_aggregate_function_update_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the input data chunk for the current batch of rows.
+ * The chunk contains one vector per argument passed to the aggregate function, with one row per input row for the
+ * current batch. Borrowed; valid only for the duration of the callback.
+ * @param info The update info handle.
+ * @param out_input Receives the borrowed input data chunk.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_update_get_input(duckdb_v2_aggregate_function_update_info_handle info,
+                                              duckdb_v2_data_chunk_handle *out_input, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the array of aggregate states to update for the current batch.
+ * An array of pointers, one per row, each pointing to the aggregate state for that row. The callback applies updates to
+ * these states based on the input data.
+ * @param info The update info handle.
+ * @param out_states Receives the array of aggregate state pointers.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_states(
+    duckdb_v2_aggregate_function_update_info_handle info, void ***out_states, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+ * @param info The combine info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_combine_get_user_data(
+    duckdb_v2_aggregate_function_combine_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The combine info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_combine_get_bind_data(
+    duckdb_v2_aggregate_function_combine_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the number of source and target states to combine.
+ * This is the size of the sources and targets arrays.
+ * @param info The combine info handle.
+ * @param out_count Receives the number of states to combine.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_combine_get_count(
+    duckdb_v2_aggregate_function_combine_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the array of source aggregate states to combine.
+ * An array of pointers, one per state, each pointing to a source aggregate state that should be combined into the
+ * corresponding target state.
+ * @param info The combine info handle.
+ * @param out_sources Receives the array of source aggregate state pointers.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_combine_get_sources(
+    duckdb_v2_aggregate_function_combine_info_handle info, void ***out_sources, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the array of destination aggregate states.
+ * An array of pointers, one per state, each pointing to a destination aggregate state that should be updated with the
+ * combined results from the source states.
+ * @param info The combine info handle.
+ * @param out_targets Receives the array of destination aggregate state pointers.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_combine_get_targets(
+    duckdb_v2_aggregate_function_combine_info_handle info, void ***out_targets, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+ * @param info The finalize info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_finalize_get_user_data(
+    duckdb_v2_aggregate_function_finalize_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The finalize info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_finalize_get_bind_data(
+    duckdb_v2_aggregate_function_finalize_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the number of rows in the current batch being finalized.
+ * This is the size of the states array and the number of rows written to the result vector.
+ * @param info The finalize info handle.
+ * @param out_count Receives the number of rows in the current batch.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_finalize_get_count(
+    duckdb_v2_aggregate_function_finalize_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the array of aggregate states for the current batch being finalized.
+ * An array of pointers, one per row, each pointing to the aggregate state for that row.
+ * @param info The finalize info handle.
+ * @param out_states Receives the array of aggregate state pointers.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_finalize_get_states(
+    duckdb_v2_aggregate_function_finalize_info_handle info, void ***out_states, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the result vector the callback must write into.
+ * The callback writes its finalized result values into this vector, starting at the result offset. Borrowed; valid only
+ * for the duration of the callback.
+ * @param info The finalize info handle.
+ * @param out_result Receives the borrowed result vector to write into.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_aggregate_function_finalize_get_result(duckdb_v2_aggregate_function_finalize_info_handle info,
+                                                 duckdb_v2_vector_handle *out_result, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the offset in the result vector at which to start writing results.
+ * Used when finalizing multiple batches of rows into a single result vector.
+ * @param info The finalize info handle.
+ * @param out_offset Receives the offset in the result vector at which to start writing.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_finalize_get_result_offset(
+    duckdb_v2_aggregate_function_finalize_info_handle info, idx_t *out_offset, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+ * @param info The destroy info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_destroy_get_user_data(
+    duckdb_v2_aggregate_function_destroy_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The destroy info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_destroy_get_bind_data(
+    duckdb_v2_aggregate_function_destroy_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the number of aggregate states to destroy.
+ * This is the size of the states array.
+ * @param info The destroy info handle.
+ * @param out_count Receives the number of aggregate states to destroy.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_destroy_get_count(
+    duckdb_v2_aggregate_function_destroy_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the array of aggregate states to destroy.
+ * An array of pointers, one per state, each pointing to an aggregate state that should be destroyed and have its
+ * resources freed.
+ * @param info The destroy info handle.
+ * @param out_states Receives the array of aggregate state pointers.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_destroy_get_states(
+    duckdb_v2_aggregate_function_destroy_info_handle info, void ***out_states, duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for aggregate --- */
-struct duckdb_v2_aggregate_function_bind_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_identifier_t function_name;
-	//! The user data pointer that was set for the function builder via `aggregate_function_builder_set_user_data`, if
-	//! any.
-	void *user_data;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to the aggregate's "bind data" plus
-	//! optional destructor and equality callbacks. The bind data is accessible from the update, combine, finalize, and
-	//! destroy callbacks, which is useful for sharing information computed during binding (e.g. resolved argument types
-	//! or configuration) with execution. The destructor, if provided, is used to destroy the bind data when it's no
-	//! longer needed. The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan
-	//! caching/reuse); otherwise a default pointer equality check is used.
-	duckdb_v2_opaque out_bind_data;
-	//! Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the
-	//! bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a
-	//! constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only
-	//! for the duration of the callback.
-	duckdb_v2_bind_arguments_handle arguments;
-};
-
-struct duckdb_v2_aggregate_function_size_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! The size of the aggregate state for a single row, in bytes. The callback should write the required size to this
-	//! field on success.
-	idx_t out_size;
-};
-
-struct duckdb_v2_aggregate_function_init_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the
-	//! size returned by the size callback, and is initialized to zero. The callback should initialize this state on
-	//! success.
-	void *state;
-};
-
-struct duckdb_v2_aggregate_function_update_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of rows in the current batch being processed. This is the size of the `input` data chunk and the
-	//! number of aggregate states pointed to by `state`.
-	idx_t count;
-	//! The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument
-	//! passed to the aggregate function, with one row per input row for the current batch.
-	duckdb_v2_data_chunk_handle input;
-	//! Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers,
-	//! where each pointer points to the aggregate state for a single row. The callback should apply updates to these
-	//! states based on the input data on success.
-	void **states;
-};
-
-struct duckdb_v2_aggregate_function_combine_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of source and target states to combine. This is the size of the `sources` and `targets` arrays.
-	idx_t count;
-	//! Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be combined into the destination state.
-	void **sources;
-	//! Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be updated with the combined results from the source states.
-	void **targets;
-};
-
-struct duckdb_v2_aggregate_function_finalize_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of rows in the current batch being finalized. This is the size of the `state` array and the number of
-	//! result vectors pointed to by `result`.
-	idx_t count;
-	//! Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers,
-	//! where each pointer points to the aggregate state for a single row.
-	void **states;
-	//! The vector in which the function should write its result values for the current batch of rows being finalized.
-	duckdb_v2_vector_handle result;
-	//! The offset in the result vector at which to start writing results for the current batch. This is used when
-	//! finalizing multiple batches of rows into a single result vector.
-	idx_t result_offset;
-};
-
-struct duckdb_v2_aggregate_function_destroy_args {
-	//! The size of the aggregate function info struct. This can be used by the callback to determine which version of
-	//! the struct is being passed in, and to maintain compatibility if new fields are added in the future.
-	uint32_t struct_size;
-	//! The user data pointer that was set for the function builder. This is the same pointer that was passed to
-	//! `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback.
-	void *user_data;
-	//! Opaque pointer to the bind data set by the function's "bind" callback, if any.
-	const void *bind_data;
-	//! The number of aggregate states to destroy. This is the size of the `states` array.
-	idx_t count;
-	//! Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an
-	//! aggregate state that should be destroyed and have its resources freed.
-	void **states;
-};
 
 /* ============================================================================
  * MODULE: arrow
@@ -4783,15 +5028,6 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duck
 /* --- Enums for copy --- */
 
 /* --- Struct forward declarations for copy --- */
-typedef struct duckdb_v2_copy_function_bind_args duckdb_v2_copy_function_bind_args;
-
-typedef struct duckdb_v2_copy_function_init_args duckdb_v2_copy_function_init_args;
-
-typedef struct duckdb_v2_copy_function_batch_args duckdb_v2_copy_function_batch_args;
-
-typedef struct duckdb_v2_copy_function_flush_args duckdb_v2_copy_function_flush_args;
-
-typedef struct duckdb_v2_copy_function_finalize_args duckdb_v2_copy_function_finalize_args;
 
 /* --- Types for copy --- */
 //! An opaque handle to a copy function builder. This is used to build a copy function, which can be used to copy data
@@ -4800,28 +5036,62 @@ typedef struct _duckdb_v2_copy_function_builder {
 	void *internal_ptr;
 } * duckdb_v2_copy_function_builder_handle;
 
+//! Borrowed handle passed to the bind callback. Provides access to the user data set at registration and the list
+//! of columns being copied (their count, types, and names), and is used to set the function's bind data. Valid only
+//! for the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_copy_function_bind_info {
+	void *internal_ptr;
+} * duckdb_v2_copy_function_bind_info_handle;
+
+//! Borrowed handle passed to the init callback. Provides access to the user data set at registration, the bind data
+//! set during bind, and the target file path, and is used to set the function's global init data. Valid only for the
+//! duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_copy_function_init_info {
+	void *internal_ptr;
+} * duckdb_v2_copy_function_init_info_handle;
+
+//! Borrowed handle passed to the batch callback. Provides access to the user data, bind data, and global init data,
+//! and the input column data collection to prepare, and is used to set the prepared batch data handed to the flush
+//! callback. Valid only for the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_copy_function_batch_info {
+	void *internal_ptr;
+} * duckdb_v2_copy_function_batch_info_handle;
+
+//! Borrowed handle passed to the flush callback. Provides access to the user data, bind data, global init data, and
+//! the prepared batch data produced by the batch callback. Valid only for the duration of the callback; must not be
+//! stored or used after the callback returns.
+typedef struct _duckdb_v2_copy_function_flush_info {
+	void *internal_ptr;
+} * duckdb_v2_copy_function_flush_info_handle;
+
+//! Borrowed handle passed to the finalize callback. Provides access to the user data, bind data, and global init
+//! data. Valid only for the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_copy_function_finalize_info {
+	void *internal_ptr;
+} * duckdb_v2_copy_function_finalize_info_handle;
+
 /* --- Constants for copy --- */
 
 /* --- Error Codes for copy --- */
 
 /* --- Function pointer typedefs for copy --- */
-typedef void (*duckdb_v2_copy_function_bind_callback_fn)(duckdb_v2_copy_function_bind_args *args,
+typedef void (*duckdb_v2_copy_function_bind_callback_fn)(duckdb_v2_copy_function_bind_info_handle info,
                                                          duckdb_v2_context_handle context,
                                                          duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_copy_function_init_callback_fn)(duckdb_v2_copy_function_init_args *args,
+typedef void (*duckdb_v2_copy_function_init_callback_fn)(duckdb_v2_copy_function_init_info_handle info,
                                                          duckdb_v2_context_handle context,
                                                          duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_copy_function_batch_callback_fn)(duckdb_v2_copy_function_batch_args *args,
+typedef void (*duckdb_v2_copy_function_batch_callback_fn)(duckdb_v2_copy_function_batch_info_handle info,
                                                           duckdb_v2_context_handle context,
                                                           duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_copy_function_flush_callback_fn)(duckdb_v2_copy_function_flush_args *args,
+typedef void (*duckdb_v2_copy_function_flush_callback_fn)(duckdb_v2_copy_function_flush_info_handle info,
                                                           duckdb_v2_context_handle context,
                                                           duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_copy_function_finalize_callback_fn)(duckdb_v2_copy_function_finalize_args *args,
+typedef void (*duckdb_v2_copy_function_finalize_callback_fn)(duckdb_v2_copy_function_finalize_info_handle info,
                                                              duckdb_v2_context_handle context,
                                                              duckdb_v2_error_info_handle *err);
 
@@ -4929,59 +5199,220 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_builder_register(
  */
 DUCKDB_C_API DUCKDB_V2_API_CALL_t
 duckdb_v2_copy_function_builder_destroy(duckdb_v2_copy_function_builder_handle *builder);
+/*!
+ * Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+ * @param info The bind info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_get_user_data(
+    duckdb_v2_copy_function_bind_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the number of columns being copied.
+ * @param info The bind info handle.
+ * @param out_count Receives the number of columns being copied.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_get_column_count(
+    duckdb_v2_copy_function_bind_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the type of the column at the given index.
+ * @param info The bind info handle.
+ * @param index Zero-based column index.
+ * @param out_type Receives the column's type. Borrowed; only valid for the duration of the callback.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_copy_function_bind_get_column_type(duckdb_v2_copy_function_bind_info_handle info, idx_t index,
+                                             duckdb_v2_logical_type_handle *out_type, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the name of the column at the given index.
+ * @param info The bind info handle.
+ * @param index Zero-based column index.
+ * @param out_name Receives the column's name. Borrowed; only valid for the duration of the callback.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_copy_function_bind_get_column_name(duckdb_v2_copy_function_bind_info_handle info, idx_t index,
+                                             duckdb_v2_identifier_t *out_name, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the function's bind data from the bind callback.
+* Sets an opaque handle bundling a pointer to user data (the function's "bind data") plus optional
+destructor and equality callbacks. The bind data is accessible from later callbacks (init, batch, flush,
+and finalize). The destructor, if provided, destroys the bind data when it is no longer needed. The
+equality callback, if provided, compares two bind data pointers (e.g. for plan caching); otherwise a
+default pointer equality check is used.
+
+* @param info The bind info handle.
+* @param data Opaque handle bundling the bind data pointer plus optional destructor and equality callbacks.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_bind_set_bind_data(
+    duckdb_v2_copy_function_bind_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+ * @param info The init info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_get_user_data(
+    duckdb_v2_copy_function_init_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The init info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_get_bind_data(
+    duckdb_v2_copy_function_init_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the target file path for the copy operation.
+ * @param info The init info handle.
+ * @param out_path Receives a borrowed view of the target file path. Owned by the library; only valid for the duration
+ * of the callback.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_get_file_path(
+    duckdb_v2_copy_function_init_info_handle info, duckdb_v2_str *out_path, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the function's global init data from the init callback.
+* Sets an opaque handle bundling a pointer to "init data" plus an optional destructor callback. The init
+data is accessible from the batch, flush, and finalize callbacks. The destructor, if provided, destroys
+the init data when it is no longer needed; the opaque handle's equality callback is unused for init data.
+
+* @param info The init info handle.
+* @param data Opaque handle bundling the init data pointer plus an optional destructor callback.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_init_set_init_data(
+    duckdb_v2_copy_function_init_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+ * @param info The batch info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_user_data(
+    duckdb_v2_copy_function_batch_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The batch info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_bind_data(
+    duckdb_v2_copy_function_batch_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the global init data set by the function's init callback.
+ * @param info The batch info handle.
+ * @param out_data Receives the init data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_init_data(
+    duckdb_v2_copy_function_batch_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+* Retrieves the input column data collection to prepare for this batch.
+* Ownership of the collection is transferred to the callback: the callback (or the C++ wrapper around it)
+is responsible for destroying it via column_data_collection_destroy once it is done with it.
+
+* @param info The batch info handle.
+* @param out_input Receives the input column data collection. Owned by the callback.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_get_input(
+    duckdb_v2_copy_function_batch_info_handle info, duckdb_v2_column_data_collection_handle *out_input,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets the prepared batch data from the batch callback.
+* Sets an opaque handle bundling a pointer to the prepared batch data plus an optional destructor callback,
+to be handed to the flush callback. The destructor, if provided, destroys the batch data when it is no
+longer needed; the opaque handle's equality callback is unused for batch data.
+
+* @param info The batch info handle.
+* @param data Opaque handle bundling the prepared batch data pointer plus an optional destructor callback.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_batch_set_batch_data(
+    duckdb_v2_copy_function_batch_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+ * @param info The flush info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_user_data(
+    duckdb_v2_copy_function_flush_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The flush info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_bind_data(
+    duckdb_v2_copy_function_flush_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the global init data set by the function's init callback.
+ * @param info The flush info handle.
+ * @param out_data Receives the init data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_init_data(
+    duckdb_v2_copy_function_flush_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the prepared batch data set by the function's batch callback.
+ * @param info The flush info handle.
+ * @param out_data Receives the prepared batch data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_flush_get_batch_data(
+    duckdb_v2_copy_function_flush_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+ * @param info The finalize info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_finalize_get_user_data(
+    duckdb_v2_copy_function_finalize_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The finalize info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_finalize_get_bind_data(
+    duckdb_v2_copy_function_finalize_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the global init data set by the function's init callback.
+ * @param info The finalize info handle.
+ * @param out_data Receives the init data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_copy_function_finalize_get_init_data(
+    duckdb_v2_copy_function_finalize_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for copy --- */
-struct duckdb_v2_copy_function_bind_args {
-	uint32_t struct_size;
-	const void *user_data;
-	duckdb_v2_logical_type_handle *column_types;
-	//! Array of column_count borrowed name views; only valid for the duration of the callback.
-	const duckdb_v2_identifier_t *column_names;
-	idx_t column_count;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to the copy function's bind data
-	//! plus optional destructor and equality callbacks. The bind data is accessible from the init, batch, flush, and
-	//! finalize callbacks.
-	duckdb_v2_opaque out_bind_data;
-};
-
-struct duckdb_v2_copy_function_init_args {
-	uint32_t struct_size;
-	const void *user_data;
-	const void *bind_data;
-	//! The target file path. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_str file_path;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to the copy function's global init
-	//! data plus an optional destructor callback. The init data is accessible from the batch, flush, and finalize
-	//! callbacks. The opaque handle's equality callback is unused for init data.
-	duckdb_v2_opaque out_init_data;
-};
-
-struct duckdb_v2_copy_function_batch_args {
-	uint32_t struct_size;
-	const void *user_data;
-	const void *bind_data;
-	void *init_data;
-	duckdb_v2_column_data_collection_handle in_batch;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to the prepared batch data plus an
-	//! optional destructor callback, to be handed to the flush callback. The opaque handle's equality callback is
-	//! unused for batch data.
-	duckdb_v2_opaque out_batch;
-};
-
-struct duckdb_v2_copy_function_flush_args {
-	uint32_t struct_size;
-	const void *user_data;
-	const void *bind_data;
-	void *init_data;
-	void *in_batch;
-};
-
-struct duckdb_v2_copy_function_finalize_args {
-	uint32_t struct_size;
-	const void *user_data;
-	const void *bind_data;
-	void *init_data;
-};
 
 /* ============================================================================
  * MODULE: scalar
@@ -4990,11 +5421,6 @@ struct duckdb_v2_copy_function_finalize_args {
 /* --- Enums for scalar --- */
 
 /* --- Struct forward declarations for scalar --- */
-typedef struct duckdb_v2_scalar_function_bind_args duckdb_v2_scalar_function_bind_args;
-
-typedef struct duckdb_v2_scalar_function_init_args duckdb_v2_scalar_function_init_args;
-
-typedef struct duckdb_v2_scalar_function_exec_args duckdb_v2_scalar_function_exec_args;
 
 /* --- Types for scalar --- */
 //! An opaque handle to a scalar function builder.
@@ -5005,20 +5431,41 @@ typedef struct _duckdb_v2_scalar_function_builder {
 	void *internal_ptr;
 } * duckdb_v2_scalar_function_builder_handle;
 
+//! Borrowed handle passed to the bind callback. Provides access to the function name, user data set at
+//! registration, and the bound argument list, and is used to set the function's bind data. Valid only for
+//! the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_scalar_function_bind_info {
+	void *internal_ptr;
+} * duckdb_v2_scalar_function_bind_info_handle;
+
+//! Borrowed handle passed to the init callback. Provides access to the function name, user data set at
+//! registration, and the bind data set during bind, and is used to set worker-local init data. Valid only
+//! for the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_scalar_function_init_info {
+	void *internal_ptr;
+} * duckdb_v2_scalar_function_init_info_handle;
+
+//! Borrowed handle passed to the exec callback. Provides access to the function name, user data set at
+//! registration, the bind data, the worker-local init data, the input data chunk, and the result vector to
+//! fill. Valid only for the duration of the callback; must not be stored or used after the callback returns.
+typedef struct _duckdb_v2_scalar_function_exec_info {
+	void *internal_ptr;
+} * duckdb_v2_scalar_function_exec_info_handle;
+
 /* --- Constants for scalar --- */
 
 /* --- Error Codes for scalar --- */
 
 /* --- Function pointer typedefs for scalar --- */
-typedef void (*duckdb_v2_scalar_function_bind_callback_fn)(duckdb_v2_scalar_function_bind_args *args,
+typedef void (*duckdb_v2_scalar_function_bind_callback_fn)(duckdb_v2_scalar_function_bind_info_handle info,
                                                            duckdb_v2_context_handle context,
                                                            duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_scalar_function_init_callback_fn)(duckdb_v2_scalar_function_init_args *args,
+typedef void (*duckdb_v2_scalar_function_init_callback_fn)(duckdb_v2_scalar_function_init_info_handle info,
                                                            duckdb_v2_context_handle context,
                                                            duckdb_v2_error_info_handle *err);
 
-typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_function_exec_args *args,
+typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_function_exec_info_handle info,
                                                            duckdb_v2_context_handle context,
                                                            duckdb_v2_error_info_handle *err);
 
@@ -5067,7 +5514,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_bind_cal
 * Sets the init callback for a scalar function.
 * The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the
 function. It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via
-`scalar_function_get_init_data` to keep worker-local mutable state across invocations of the function.
+`scalar_function_exec_get_init_data` to keep worker-local mutable state across invocations of the function.
 
 * @param func The scalar function to configure.
 * @param callback The "init callback" to set for the function.
@@ -5125,7 +5572,7 @@ duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_hand
 * Sets arbitrary extra data on a scalar function.
 * This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function.
 This is useful for associating custom metadata or static context with the function that can be retrieved later from
-callbacks via `scalar_function_get_user_data`.
+callbacks via the `scalar_function_*_get_user_data` accessors.
 
 * @param func The scalar function to configure.
 * @param data Opaque pointer to user data.
@@ -5209,65 +5656,158 @@ default if it was never set. Passing a key that is not valid for scalar function
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property(
     duckdb_v2_scalar_function_builder_handle func, DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
     DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the name of the function being bound.
+ * @param info The bind info handle.
+ * @param out_name Receives the function name. Borrowed; only valid for the duration of the callback.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_bind_get_function_name(duckdb_v2_scalar_function_bind_info_handle info,
+                                                 duckdb_v2_identifier_t *out_name, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+ * @param info The bind info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_user_data(
+    duckdb_v2_scalar_function_bind_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+* Retrieves the bound argument list for inspection and mutation during bind.
+* Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
+argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list
+from the tail. Borrowed; valid only for the duration of the callback.
+
+* @param info The bind info handle.
+* @param out_arguments Receives the borrowed bound argument list handle.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_arguments(
+    duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_bind_arguments_handle *out_arguments,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Sets the function's bind data from the bind callback.
+* Sets an opaque handle bundling a pointer to user data (the function's "bind data") plus optional
+destructor and equality callbacks. The bind data is accessible from later callbacks (init and exec).
+The destructor, if provided, destroys the bind data when it is no longer needed. The equality callback,
+if provided, compares two bind data pointers (e.g. for plan caching); otherwise a default pointer
+equality check is used.
+
+* @param info The bind info handle.
+* @param data Opaque handle bundling the bind data pointer plus optional destructor and equality callbacks.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_set_bind_data(
+    duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the name of the function being initialized.
+ * @param info The init info handle.
+ * @param out_name Receives the function name. Borrowed; only valid for the duration of the callback.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_init_get_function_name(duckdb_v2_scalar_function_init_info_handle info,
+                                                 duckdb_v2_identifier_t *out_name, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+ * @param info The init info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_user_data(
+    duckdb_v2_scalar_function_init_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The init info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_bind_data(
+    duckdb_v2_scalar_function_init_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the function's worker-local init data from the init callback.
+* Sets an opaque handle bundling a pointer to worker-local "init data" plus an optional destructor
+callback. The init data is associated with the executing worker thread for the duration of the query
+and accessible from the exec callback. The destructor, if provided, destroys the init data when it is no
+longer needed; the opaque handle's equality callback is unused for init data.
+
+* @param info The init info handle.
+* @param data Opaque handle bundling the init data pointer plus an optional destructor callback.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_API_CALL_t
+*/
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_set_init_data(
+    duckdb_v2_scalar_function_init_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the name of the function being executed.
+ * @param info The exec info handle.
+ * @param out_name Receives the function name. Borrowed; only valid for the duration of the callback.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_exec_get_function_name(duckdb_v2_scalar_function_exec_info_handle info,
+                                                 duckdb_v2_identifier_t *out_name, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+ * @param info The exec info handle.
+ * @param out_data Receives the user data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_user_data(
+    duckdb_v2_scalar_function_exec_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the bind data set by the function's bind callback.
+ * @param info The exec info handle.
+ * @param out_data Receives the bind data pointer, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_bind_data(
+    duckdb_v2_scalar_function_exec_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the worker-local init data set by the function's init callback.
+ * @param info The exec info handle.
+ * @param out_data Receives the init data pointer for the executing worker thread, or null if none was set.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_init_data(
+    duckdb_v2_scalar_function_exec_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the input data chunk for the current invocation.
+ * The chunk contains one vector per argument passed to the function, with one row per input row for the current batch.
+ * Borrowed; valid only for the duration of the callback.
+ * @param info The exec info handle.
+ * @param out_input Receives the borrowed input data chunk.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_exec_get_input(duckdb_v2_scalar_function_exec_info_handle info,
+                                         duckdb_v2_data_chunk_handle *out_input, duckdb_v2_error_info_handle *err);
+/*!
+ * Retrieves the result vector the callback must write into.
+ * The vector has space for the current batch's rows. Borrowed; valid only for the duration of the callback.
+ * @param info The exec info handle.
+ * @param out_result Receives the borrowed result vector to write into.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_API_CALL_t
+ */
+DUCKDB_C_API DUCKDB_V2_API_CALL_t
+duckdb_v2_scalar_function_exec_get_result(duckdb_v2_scalar_function_exec_info_handle info,
+                                          duckdb_v2_vector_handle *out_result, duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for scalar --- */
-struct duckdb_v2_scalar_function_bind_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being bound. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_identifier_t function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to user data (the function's "bind
-	//! data") plus optional destructor and equality callbacks. The bind data is accessible from later callbacks (e.g.
-	//! "init" and "exec"), which is useful for sharing information between the planning and execution phases such as
-	//! resolved argument types, prepared statements, or other metadata computed during binding. The destructor, if
-	//! provided, is used to destroy the bind data when it's no longer needed (e.g. at the end of query execution). The
-	//! equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse);
-	//! otherwise a default pointer equality check is used.
-	duckdb_v2_opaque out_bind_data;
-	//! Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the
-	//! bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a
-	//! constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only
-	//! for the duration of the callback.
-	duckdb_v2_bind_arguments_handle arguments;
-};
-
-struct duckdb_v2_scalar_function_init_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being initialized. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_identifier_t function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! Opaque pointer to user data set by the function's "bind" callback, if any
-	void *bind_data;
-	//! On success, the callback can set this to an opaque handle bundling a pointer to worker-local "init data" plus an
-	//! optional destructor callback. The init data is associated with the executing worker thread for the duration of
-	//! the query and accessible from the function's "exec" callback. Note that the "init data" is worker-local, not
-	//! _thread local_: there is no guarantee that the same thread will see the same "init data" across multiple
-	//! invocations of the function. The destructor, if provided, is used to destroy the init data when it's no longer
-	//! needed; the opaque handle's equality callback is unused for init data.
-	duckdb_v2_opaque out_init_data;
-};
-
-struct duckdb_v2_scalar_function_exec_args {
-	//! The size of this struct. This can be used for versioning and compatibility checks.
-	uint32_t struct_size;
-	//! The name of the function being executed. Borrowed; only valid for the duration of the callback.
-	duckdb_v2_identifier_t function_name;
-	//! Opaque pointer to user data set by the caller when registering the function, if any
-	void *user_data;
-	//! Opaque pointer to user data set by the function's "bind" callback, if any
-	void *bind_data;
-	//! Opaque pointer to user data set by the function's "init" callback for the executing worker thread, if any
-	void *init_data;
-	//! The input data chunk for the current invocation. This contains vectors for each argument passed to the function,
-	//! with one row per input row for the current batch.
-	duckdb_v2_data_chunk_handle input;
-	//! The vector in which the function should write its result values for the current invocation.
-	duckdb_v2_vector_handle result;
-};
 
 /* ============================================================================
  * MODULE: sql_statement

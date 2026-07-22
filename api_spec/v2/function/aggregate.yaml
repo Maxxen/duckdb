@@ -4,64 +4,48 @@ handles:
   aggregate_function_builder:
     description: "An opaque handle representing a builder for defining and registering a custom aggregate function in DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation callbacks. After configuring the builder, you can register the function with DuckDB to make it available for use in SQL queries."
     cleanup_with: aggregate_function_builder_destroy
-# Callback Structs
-structs:
-  aggregate_function_bind_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: function_name, type: identifier, description: "The name of the function being bound. Borrowed; only valid for the duration of the callback."}
-      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder via `aggregate_function_builder_set_user_data`, if any."}
-      - {name: out_bind_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to the aggregate's \"bind data\" plus optional destructor and equality callbacks. The bind data is accessible from the update, combine, finalize, and destroy callbacks, which is useful for sharing information computed during binding (e.g. resolved argument types or configuration) with execution. The destructor, if provided, is used to destroy the bind data when it's no longer needed. The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse); otherwise a default pointer equality check is used."}
-      - {name: arguments, type: bind_arguments, description: "Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only for the duration of the callback."}
-  aggregate_function_size_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
-      - {name: out_size, type: idx, description: "The size of the aggregate state for a single row, in bytes. The callback should write the required size to this field on success."}
-  aggregate_function_init_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
-      - {name: state, type: void, pointer: 1, description: "Pointer to the aggregate state for a single row. The memory for this state is allocated by DuckDB based on the size returned by the size callback, and is initialized to zero. The callback should initialize this state on success."}
-  aggregate_function_update_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
-      - {name: bind_data, type: void, pointer: 1, const: true, description: "Opaque pointer to the bind data set by the function's \"bind\" callback, if any."}
-      - {name: count, type: idx, description: "The number of rows in the current batch being processed. This is the size of the `input` data chunk and the number of aggregate states pointed to by `state`."}
-      - {name: input, type: data_chunk, description: "The input data chunk for the current batch of rows being processed. The chunk contains vectors for each argument passed to the aggregate function, with one row per input row for the current batch."}
-      - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states for the current batch of rows being processed. This is an array of pointers, where each pointer points to the aggregate state for a single row. The callback should apply updates to these states based on the input data on success."}
-  aggregate_function_combine_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
-      - {name: bind_data, type: void, pointer: 1, const: true, description: "Opaque pointer to the bind data set by the function's \"bind\" callback, if any."}
-      - {name: count, type: idx, description: "The number of source and target states to combine. This is the size of the `sources` and `targets` arrays."}
-      - {name: sources, type: void, pointer: 2, description: "Pointer to the source aggregate states to combine. This is an array of pointers, where each pointer points to an aggregate state that should be combined into the destination state."}
-      - {name: targets, type: void, pointer: 2, description: "Pointer to the destination aggregate states. This is an array of pointers, where each pointer points to an aggregate state that should be updated with the combined results from the source states."}
-  aggregate_function_finalize_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
-      - {name: bind_data, type: void, pointer: 1, const: true, description: "Opaque pointer to the bind data set by the function's \"bind\" callback, if any."}
-      - {name: count, type: idx, description: "The number of rows in the current batch being finalized. This is the size of the `state` array and the number of result vectors pointed to by `result`."}
-      - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states for the current batch of rows being finalized. This is an array of pointers, where each pointer points to the aggregate state for a single row."}
-      - {name: result, type: vector, description: "The vector in which the function should write its result values for the current batch of rows being finalized."}
-      - {name: result_offset, type: idx, description: "The offset in the result vector at which to start writing results for the current batch. This is used when finalizing multiple batches of rows into a single result vector."}
-  aggregate_function_destroy_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of the aggregate function info struct. This can be used by the callback to determine which version of the struct is being passed in, and to maintain compatibility if new fields are added in the future."}
-      - {name: user_data, type: void, pointer: 1, description: "The user data pointer that was set for the function builder. This is the same pointer that was passed to `aggregate_function_builder_set_user_data` and can be used to access context or state needed by the callback."}
-      - {name: bind_data, type: void, pointer: 1, const: true, description: "Opaque pointer to the bind data set by the function's \"bind\" callback, if any."}
-      - {name: count, type: idx, description: "The number of aggregate states to destroy. This is the size of the `states` array."}
-      - {name: states, type: void, pointer: 2, description: "Pointer to the aggregate states to destroy. This is an array of pointers, where each pointer points to an aggregate state that should be destroyed and have its resources freed."}
+  aggregate_function_bind_info:
+    description: |
+      Borrowed handle passed to the bind callback. Provides access to the function name, user data set at
+      registration, and the bound argument list, and is used to set the function's bind data. Valid only for
+      the duration of the callback; must not be stored or used after the callback returns.
+  aggregate_function_size_info:
+    description: |
+      Borrowed handle passed to the size callback. Provides access to the user data set at registration, and is
+      used to set the aggregate state size for a single row. Valid only for the duration of the callback; must
+      not be stored or used after the callback returns.
+  aggregate_function_init_info:
+    description: |
+      Borrowed handle passed to the init callback. Provides access to the user data set at registration and the
+      aggregate state to initialize for a single row. Valid only for the duration of the callback; must not be
+      stored or used after the callback returns.
+  aggregate_function_update_info:
+    description: |
+      Borrowed handle passed to the update callback. Provides access to the user data, the bind data, the input
+      data chunk, the row count, and the array of aggregate states to update. Valid only for the duration of the
+      callback; must not be stored or used after the callback returns.
+  aggregate_function_combine_info:
+    description: |
+      Borrowed handle passed to the combine callback. Provides access to the user data, the bind data, the state
+      count, and the source and target aggregate state arrays to combine. Valid only for the duration of the
+      callback; must not be stored or used after the callback returns.
+  aggregate_function_finalize_info:
+    description: |
+      Borrowed handle passed to the finalize callback. Provides access to the user data, the bind data, the row
+      count, the array of aggregate states, and the result vector and offset to write into. Valid only for the
+      duration of the callback; must not be stored or used after the callback returns.
+  aggregate_function_destroy_info:
+    description: |
+      Borrowed handle passed to the destroy callback. Provides access to the user data, the bind data, the state
+      count, and the array of aggregate states to destroy. Valid only for the duration of the callback; must not
+      be stored or used after the callback returns.
 callbacks:
   aggregate_function_bind_callback:
     return_type: void
     parameters:
-      args:
-        type: aggregate_function_bind_args
-        indirection: 1
+      info:
+        type: aggregate_function_bind_info
+        description: "Borrowed handle providing access to the function being bound and user data, and used to set bind data via `aggregate_function_bind_set_bind_data`. The library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns."
       context:
         type: context
         description: "The DuckDB context in which the function is being bound. Borrowed; only valid for the duration of the callback."
@@ -72,9 +56,9 @@ callbacks:
   aggregate_function_size_callback:
     return_type: void
     parameters:
-      args:
-        type: aggregate_function_size_args
-        indirection: 1
+      info:
+        type: aggregate_function_size_info
+        description: "Borrowed handle providing access to user data, and used to set the aggregate state size via `aggregate_function_size_set_size`. The library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns."
       err:
         type: error_info
         indirection: 1
@@ -82,9 +66,9 @@ callbacks:
   aggregate_function_init_callback:
     return_type: void
     parameters:
-      args:
-        type: aggregate_function_init_args
-        indirection: 1
+      info:
+        type: aggregate_function_init_info
+        description: "Borrowed handle providing access to user data and the aggregate state to initialize. The library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns."
       err:
         type: error_info
         indirection: 1
@@ -92,9 +76,9 @@ callbacks:
   aggregate_function_update_callback:
     return_type: void
     parameters:
-      args:
-        type: aggregate_function_update_args
-        indirection: 1
+      info:
+        type: aggregate_function_update_info
+        description: "Borrowed handle providing access to user data, bind data, the input data chunk, the row count, and the aggregate states to update. The library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns."
       err:
         type: error_info
         indirection: 1
@@ -102,9 +86,9 @@ callbacks:
   aggregate_function_combine_callback:
     return_type: void
     parameters:
-      args:
-        type: aggregate_function_combine_args
-        indirection: 1
+      info:
+        type: aggregate_function_combine_info
+        description: "Borrowed handle providing access to user data, bind data, the state count, and the source and target aggregate state arrays to combine. The library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns."
       err:
         type: error_info
         indirection: 1
@@ -112,9 +96,9 @@ callbacks:
   aggregate_function_finalize_callback:
     return_type: void
     parameters:
-      args:
-        type: aggregate_function_finalize_args
-        indirection: 1
+      info:
+        type: aggregate_function_finalize_info
+        description: "Borrowed handle providing access to user data, bind data, the row count, the aggregate states, and the result vector and offset to write into. The library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns."
       err:
         type: error_info
         indirection: 1
@@ -122,9 +106,9 @@ callbacks:
   aggregate_function_destroy_callback:
     return_type: void
     parameters:
-      args:
-        type: aggregate_function_destroy_args
-        indirection: 1
+      info:
+        type: aggregate_function_destroy_info
+        description: "Borrowed handle providing access to user data, bind data, the state count, and the aggregate states to destroy. The library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns."
       err:
         type: error_info
         indirection: 1
@@ -400,6 +384,481 @@ functions:
       builder:
         type: aggregate_function_builder
         description: The aggregate function builder to register.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Bind callback accessors ---
+  aggregate_function_bind_get_function_name:
+    summary: Retrieves the name of the function being bound.
+    parameters:
+      info:
+        type: aggregate_function_bind_info
+        description: The bind info handle.
+      out_name:
+        type: identifier
+        indirection: 1
+        kind: OUT
+        description: Receives the function name. Borrowed; only valid for the duration of the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_bind_get_user_data:
+    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    parameters:
+      info:
+        type: aggregate_function_bind_info
+        description: The bind info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_bind_get_arguments:
+    summary: Retrieves the bound argument list for inspection and mutation during bind.
+    description: |
+      Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
+      argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list
+      from the tail. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: aggregate_function_bind_info
+        description: The bind info handle.
+      out_arguments:
+        type: bind_arguments
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed bound argument list handle.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_bind_set_bind_data:
+    summary: Sets the function's bind data from the bind callback.
+    description: |
+      Sets an opaque handle bundling a pointer to the aggregate's "bind data" plus optional destructor and
+      equality callbacks. The bind data is accessible from the update, combine, finalize, and destroy callbacks.
+      The destructor, if provided, destroys the bind data when it is no longer needed. The equality callback, if
+      provided, compares two bind data pointers (e.g. for plan caching); otherwise a default pointer equality
+      check is used.
+    parameters:
+      info:
+        type: aggregate_function_bind_info
+        description: The bind info handle.
+      data:
+        type: opaque
+        description: Opaque handle bundling the bind data pointer plus optional destructor and equality callbacks.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Size callback accessors ---
+  aggregate_function_size_get_user_data:
+    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    parameters:
+      info:
+        type: aggregate_function_size_info
+        description: The size info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_size_set_size:
+    summary: Sets the size of the aggregate state for a single row, in bytes.
+    description: The callback must set the required per-row aggregate state size, which DuckDB uses to allocate state memory.
+    parameters:
+      info:
+        type: aggregate_function_size_info
+        description: The size info handle.
+      size:
+        type: idx
+        description: The size of the aggregate state for a single row, in bytes.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Init callback accessors ---
+  aggregate_function_init_get_user_data:
+    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    parameters:
+      info:
+        type: aggregate_function_init_info
+        description: The init info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_init_get_state:
+    summary: Retrieves the aggregate state to initialize for a single row.
+    description: The memory for this state is allocated by DuckDB based on the size returned by the size callback and is zero-initialized. The callback should initialize it in place.
+    parameters:
+      info:
+        type: aggregate_function_init_info
+        description: The init info handle.
+      out_state:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the pointer to the aggregate state to initialize.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Update callback accessors ---
+  aggregate_function_update_get_user_data:
+    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    parameters:
+      info:
+        type: aggregate_function_update_info
+        description: The update info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_update_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: aggregate_function_update_info
+        description: The update info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_update_get_count:
+    summary: Retrieves the number of rows in the current batch being processed.
+    description: This is the size of the input data chunk and the number of aggregate states.
+    parameters:
+      info:
+        type: aggregate_function_update_info
+        description: The update info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of rows in the current batch.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_update_get_input:
+    summary: Retrieves the input data chunk for the current batch of rows.
+    description: The chunk contains one vector per argument passed to the aggregate function, with one row per input row for the current batch. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: aggregate_function_update_info
+        description: The update info handle.
+      out_input:
+        type: data_chunk
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed input data chunk.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_update_get_states:
+    summary: Retrieves the array of aggregate states to update for the current batch.
+    description: An array of pointers, one per row, each pointing to the aggregate state for that row. The callback applies updates to these states based on the input data.
+    parameters:
+      info:
+        type: aggregate_function_update_info
+        description: The update info handle.
+      out_states:
+        type: void
+        indirection: 3
+        kind: OUT
+        description: Receives the array of aggregate state pointers.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Combine callback accessors ---
+  aggregate_function_combine_get_user_data:
+    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    parameters:
+      info:
+        type: aggregate_function_combine_info
+        description: The combine info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_combine_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: aggregate_function_combine_info
+        description: The combine info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_combine_get_count:
+    summary: Retrieves the number of source and target states to combine.
+    description: This is the size of the sources and targets arrays.
+    parameters:
+      info:
+        type: aggregate_function_combine_info
+        description: The combine info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of states to combine.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_combine_get_sources:
+    summary: Retrieves the array of source aggregate states to combine.
+    description: An array of pointers, one per state, each pointing to a source aggregate state that should be combined into the corresponding target state.
+    parameters:
+      info:
+        type: aggregate_function_combine_info
+        description: The combine info handle.
+      out_sources:
+        type: void
+        indirection: 3
+        kind: OUT
+        description: Receives the array of source aggregate state pointers.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_combine_get_targets:
+    summary: Retrieves the array of destination aggregate states.
+    description: An array of pointers, one per state, each pointing to a destination aggregate state that should be updated with the combined results from the source states.
+    parameters:
+      info:
+        type: aggregate_function_combine_info
+        description: The combine info handle.
+      out_targets:
+        type: void
+        indirection: 3
+        kind: OUT
+        description: Receives the array of destination aggregate state pointers.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Finalize callback accessors ---
+  aggregate_function_finalize_get_user_data:
+    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    parameters:
+      info:
+        type: aggregate_function_finalize_info
+        description: The finalize info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_finalize_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: aggregate_function_finalize_info
+        description: The finalize info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_finalize_get_count:
+    summary: Retrieves the number of rows in the current batch being finalized.
+    description: This is the size of the states array and the number of rows written to the result vector.
+    parameters:
+      info:
+        type: aggregate_function_finalize_info
+        description: The finalize info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of rows in the current batch.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_finalize_get_states:
+    summary: Retrieves the array of aggregate states for the current batch being finalized.
+    description: An array of pointers, one per row, each pointing to the aggregate state for that row.
+    parameters:
+      info:
+        type: aggregate_function_finalize_info
+        description: The finalize info handle.
+      out_states:
+        type: void
+        indirection: 3
+        kind: OUT
+        description: Receives the array of aggregate state pointers.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_finalize_get_result:
+    summary: Retrieves the result vector the callback must write into.
+    description: The callback writes its finalized result values into this vector, starting at the result offset. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: aggregate_function_finalize_info
+        description: The finalize info handle.
+      out_result:
+        type: vector
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed result vector to write into.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_finalize_get_result_offset:
+    summary: Retrieves the offset in the result vector at which to start writing results.
+    description: Used when finalizing multiple batches of rows into a single result vector.
+    parameters:
+      info:
+        type: aggregate_function_finalize_info
+        description: The finalize info handle.
+      out_offset:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the offset in the result vector at which to start writing.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Destroy callback accessors ---
+  aggregate_function_destroy_get_user_data:
+    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    parameters:
+      info:
+        type: aggregate_function_destroy_info
+        description: The destroy info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_destroy_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: aggregate_function_destroy_info
+        description: The destroy info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_destroy_get_count:
+    summary: Retrieves the number of aggregate states to destroy.
+    description: This is the size of the states array.
+    parameters:
+      info:
+        type: aggregate_function_destroy_info
+        description: The destroy info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of aggregate states to destroy.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  aggregate_function_destroy_get_states:
+    summary: Retrieves the array of aggregate states to destroy.
+    description: An array of pointers, one per state, each pointing to an aggregate state that should be destroyed and have its resources freed.
+    parameters:
+      info:
+        type: aggregate_function_destroy_info
+        description: The destroy info handle.
+      out_states:
+        type: void
+        indirection: 3
+        kind: OUT
+        description: Receives the array of aggregate state pointers.
       err:
         type: error_info
         indirection: 1

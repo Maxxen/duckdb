@@ -2301,12 +2301,6 @@ public:
 			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
 		}
 
-		template <class T>
-		auto GetBindData() -> T & {
-			auto ptr = GetBindDataInternal();
-			return *static_cast<T *>(ptr);
-		}
-
 		// The user data set via ScalarFunction::SetUserData; throws
 		// INVALID_INPUT when none was set.
 		template <class T>
@@ -2345,7 +2339,6 @@ public:
 		void *context;
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
-		void *GetBindDataInternal() const;
 		void *GetUserDataInternal() const;
 		void *GetArgumentsHandle() const;
 	};
@@ -2364,12 +2357,6 @@ public:
 		auto GetBindData() const -> const T & {
 			auto ptr = GetBindDataInternal();
 			return *static_cast<const T *>(ptr);
-		}
-
-		template <class T>
-		auto GetWorkerState() -> T & {
-			auto ptr = GetWorkerStateInternal();
-			return *static_cast<T *>(ptr);
 		}
 
 		// The user data set via ScalarFunction::SetUserData; throws
@@ -2396,7 +2383,6 @@ public:
 		void *context;
 
 		void SetWorkerStateInternal(void *data, void (*destructor)(void *));
-		void *GetWorkerStateInternal() const;
 		void *GetBindDataInternal() const;
 		void *GetUserDataInternal() const;
 	};
@@ -2550,12 +2536,6 @@ public:
 			SetBindDataInternal(ptr, detail::TypedEquals<T>, detail::TypedDelete<T>);
 		}
 
-		template <class T>
-		auto GetBindData() -> T & {
-			auto ptr = GetBindDataInternal();
-			return *static_cast<T *>(ptr);
-		}
-
 		// The user data set via AggregateFunction::SetUserData; throws
 		// INVALID_INPUT when none was set.
 		template <class T>
@@ -2594,7 +2574,6 @@ public:
 		void *context;
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
-		void *GetBindDataInternal() const;
 		void *GetUserDataInternal() const;
 		void *GetArgumentsHandle() const;
 	};

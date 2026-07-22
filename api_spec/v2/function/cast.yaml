@@ -4,10 +4,22 @@ handles:
   cast_function_builder:
     description: "An opaque handle to a cast function builder. \nCreated with `cast_function_builder_create`, configured with the various `cast_function_builder_set_*` functions, and registered with `cast_function_builder_register`. \nThe builder is owned by the caller and must be destroyed with `cast_function_builder_destroy` when no longer needed.\n"
     cleanup_with: cast_function_builder_destroy
+  cast_function_exec_info:
+    description: |
+      Borrowed handle passed to the exec callback. Provides access to the input vector, the output vector to
+      fill, the number of rows to cast, the cast mode, and the user data set at registration. Valid only for
+      the duration of the callback; must not be stored or used after the callback returns.
 # Enums
 enums:
   CAST_MODE:
-    description: "The mode in which a cast is being executed. A \"normal\" cast must\neither succeed for every row or report an error (which aborts the\nquery). A \"try\" cast (e.g. SQL TRY_CAST) tolerates per-row failures\nby writing NULL for the rows that could not be converted instead of\naborting. The exec callback can read the mode from the exec args to\ndecide whether a conversion failure is reported as an error or \nsilently turned into a NULL.\n"
+    description: |
+      The mode in which a cast is being executed. A "normal" cast must
+      either succeed for every row or report an error (which aborts the
+      query). A "try" cast (e.g. SQL TRY_CAST) tolerates per-row failures
+      by writing NULL for the rows that could not be converted instead of
+      aborting. The exec callback can read the mode via
+      `cast_function_exec_get_mode` to decide whether a conversion failure
+      is reported as an error or silently turned into a NULL.
     values:
       CAST_MODE_NORMAL:
         value: 0
@@ -15,25 +27,14 @@ enums:
       CAST_MODE_TRY:
         value: 1
         description: A "try" cast. Conversion failures are turned into NULL values in the output vector rather than reported as errors.
-# Callback Structs
-structs:
-  cast_function_exec_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any."}
-      - {name: input, type: vector, description: "The input vector containing the source values to cast. It contains `count` logical rows."}
-      - {name: output, type: vector, description: "The output vector the callback must write the cast result values into. It has space for `count` logical rows."}
-      - {name: count, type: idx, description: "The number of rows to cast, i.e. the number of logical rows in both the input and output vectors."}
-      - {name: mode, type: CAST_MODE, description: "The mode the cast is being executed in. See `CAST_MODE` for details. In `CAST_MODE_TRY`, conversion failures should be written as NULL values into the output vector instead of being reported as errors."}
 # Callbacks
 callbacks:
   cast_function_exec_callback:
     return_type: void
     parameters:
-      args:
-        type: cast_function_exec_args
-        indirection: 1
-        description: "The exec callback's arguments struct, providing access to the input and output vectors, the number of rows to cast, the cast mode, and any user data set at registration time. \nThe library owns this struct and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
+      info:
+        type: cast_function_exec_info
+        description: "Borrowed handle providing access to the input vector, the output vector to fill, the number of rows to cast, the cast mode, and any user data set at registration time. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       err:
         type: error_info
         indirection: 1
@@ -119,7 +120,7 @@ functions:
     return_type: API_CALL
   cast_function_builder_set_user_data:
     summary: Sets arbitrary extra data on a cast function.
-    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from the exec callback via the args' `user_data` field. During execution, this data is read-only.\n"
+    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from the exec callback via `cast_function_exec_get_user_data`. During execution, this data is read-only.\n"
     parameters:
       func:
         type: cast_function_builder
@@ -155,4 +156,91 @@ functions:
         type: cast_function_builder
         indirection: 1
         description: The cast function to destroy.
+    return_type: API_CALL
+  # --- Exec callback accessors ---
+  cast_function_exec_get_user_data:
+    summary: Retrieves the user data set on the builder via cast_function_builder_set_user_data.
+    parameters:
+      info:
+        type: cast_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  cast_function_exec_get_input:
+    summary: Retrieves the input vector containing the source values to cast.
+    description: The vector contains `count` logical rows. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: cast_function_exec_info
+        description: The exec info handle.
+      out_input:
+        type: vector
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed input vector.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  cast_function_exec_get_output:
+    summary: Retrieves the output vector the callback must write the cast result values into.
+    description: The vector has space for `count` logical rows. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: cast_function_exec_info
+        description: The exec info handle.
+      out_output:
+        type: vector
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed output vector to write into.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  cast_function_exec_get_count:
+    summary: Retrieves the number of rows to cast.
+    description: The number of logical rows in both the input and output vectors.
+    parameters:
+      info:
+        type: cast_function_exec_info
+        description: The exec info handle.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the row count.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  cast_function_exec_get_mode:
+    summary: Retrieves the mode the cast is being executed in.
+    description: |
+      See `CAST_MODE`. In `CAST_MODE_TRY`, conversion failures should be written as NULL values into the
+      output vector instead of being reported as errors.
+    parameters:
+      info:
+        type: cast_function_exec_info
+        description: The exec info handle.
+      out_mode:
+        type: CAST_MODE
+        indirection: 1
+        kind: OUT
+        description: Receives the cast mode.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
     return_type: API_CALL

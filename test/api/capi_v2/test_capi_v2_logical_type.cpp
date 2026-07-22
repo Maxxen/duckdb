@@ -844,7 +844,7 @@ namespace {
 // on the context it receives (catalog lookup included).
 bool type_probe_bind_ok = false;
 
-void TypeProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_handle context,
+void TypeProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_context_handle context,
                    duckdb_v2_error_info_handle *err) {
 	type_probe_bind_ok = false;
 	duckdb_v2_logical_type_handle mood = nullptr;
@@ -870,13 +870,22 @@ void TypeProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_
 	type_probe_bind_ok = (id == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
 }
 
-void TypeProbeInit(duckdb_v2_scalar_function_init_args *, duckdb_v2_context_handle, duckdb_v2_error_info_handle *) {
+void TypeProbeInit(duckdb_v2_scalar_function_init_info_handle, duckdb_v2_context_handle,
+                   duckdb_v2_error_info_handle *) {
 }
 
-void TypeProbeExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle,
+void TypeProbeExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
                    duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	if (duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	duckdb_v2_vector_handle result = nullptr;
+	if (duckdb_v2_scalar_function_exec_get_result(info, &result, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
 	duckdb_v2_vector_handle in_vec = nullptr;
-	if (duckdb_v2_data_chunk_get_vector(args->input, 0, &in_vec, err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_data_chunk_get_vector(chunk, 0, &in_vec, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 	duckdb_v2_vector_view view {};
@@ -884,7 +893,7 @@ void TypeProbeExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_
 		return;
 	}
 	int32_t *out = nullptr;
-	if (duckdb_v2_vector_get_data_mutable(args->result, reinterpret_cast<void **>(&out), err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_vector_get_data_mutable(result, reinterpret_cast<void **>(&out), err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 	auto *in = static_cast<const int32_t *>(view.data);

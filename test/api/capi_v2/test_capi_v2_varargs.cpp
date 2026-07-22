@@ -27,18 +27,22 @@ idx_t ChunkCols(duckdb_v2_data_chunk_handle chunk) {
 
 // Sums every INTEGER input column into the result. Used for both a pure-varargs
 // function and a fixed-param-plus-varargs function.
-void IntSumExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle, duckdb_v2_error_info_handle *err) {
-	const idx_t rows = ChunkRows(args->input);
-	const idx_t cols = ChunkCols(args->input);
+void IntSumExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
+                duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle result = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result, err) == DUCKDB_V2_ERROR_NONE);
+	const idx_t rows = ChunkRows(chunk);
+	const idx_t cols = ChunkCols(chunk);
 	int32_t *out = nullptr;
-	REQUIRE(duckdb_v2_vector_get_data_mutable(args->result, reinterpret_cast<void **>(&out), err) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_data_mutable(result, reinterpret_cast<void **>(&out), err) == DUCKDB_V2_ERROR_NONE);
 	for (idx_t r = 0; r < rows; r++) {
 		out[r] = 0;
 	}
 	for (idx_t c = 0; c < cols; c++) {
 		duckdb_v2_vector_handle vec = nullptr;
-		REQUIRE(duckdb_v2_data_chunk_get_vector(args->input, c, &vec, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, c, &vec, err) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_vector_view view;
 		REQUIRE(duckdb_v2_vector_get_view(vec, &view, err) == DUCKDB_V2_ERROR_NONE);
 		const auto data = static_cast<const int32_t *>(view.data);
@@ -49,14 +53,18 @@ void IntSumExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_han
 }
 
 // ANY varargs: reads each column's own logical type and counts the INTEGER ones.
-void CountIntsExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle,
+void CountIntsExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
                    duckdb_v2_error_info_handle *err) {
-	const idx_t rows = ChunkRows(args->input);
-	const idx_t cols = ChunkCols(args->input);
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle result = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result, err) == DUCKDB_V2_ERROR_NONE);
+	const idx_t rows = ChunkRows(chunk);
+	const idx_t cols = ChunkCols(chunk);
 	int32_t n = 0;
 	for (idx_t c = 0; c < cols; c++) {
 		duckdb_v2_vector_handle vec = nullptr;
-		REQUIRE(duckdb_v2_data_chunk_get_vector(args->input, c, &vec, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, c, &vec, err) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_logical_type_handle lt = nullptr;
 		REQUIRE(duckdb_v2_vector_get_logical_type(vec, &lt, err) == DUCKDB_V2_ERROR_NONE);
 		DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
@@ -67,27 +75,29 @@ void CountIntsExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_
 		}
 	}
 	int32_t *out = nullptr;
-	REQUIRE(duckdb_v2_vector_get_data_mutable(args->result, reinterpret_cast<void **>(&out), err) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_data_mutable(result, reinterpret_cast<void **>(&out), err) == DUCKDB_V2_ERROR_NONE);
 	for (idx_t r = 0; r < rows; r++) {
 		out[r] = n;
 	}
 }
 
 // ANY varargs + SPECIAL null handling: counts the non-NULL argument cells per row.
-void CountNonNullExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle,
+void CountNonNullExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
                       duckdb_v2_error_info_handle *err) {
-	const idx_t rows = ChunkRows(args->input);
-	const idx_t cols = ChunkCols(args->input);
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle result = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result, err) == DUCKDB_V2_ERROR_NONE);
+	const idx_t rows = ChunkRows(chunk);
+	const idx_t cols = ChunkCols(chunk);
 	int32_t *out = nullptr;
-	REQUIRE(duckdb_v2_vector_get_data_mutable(args->result, reinterpret_cast<void **>(&out), err) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_data_mutable(result, reinterpret_cast<void **>(&out), err) == DUCKDB_V2_ERROR_NONE);
 	for (idx_t r = 0; r < rows; r++) {
 		out[r] = 0;
 	}
 	for (idx_t c = 0; c < cols; c++) {
 		duckdb_v2_vector_handle vec = nullptr;
-		REQUIRE(duckdb_v2_data_chunk_get_vector(args->input, c, &vec, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, c, &vec, err) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_vector_view view;
 		REQUIRE(duckdb_v2_vector_get_view(vec, &view, err) == DUCKDB_V2_ERROR_NONE);
 		for (idx_t r = 0; r < rows; r++) {
@@ -100,11 +110,15 @@ void CountNonNullExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_conte
 }
 
 // Fixed-arity ANY parameters: two ANY params, ignores them, returns 42.
-void TwoAnyExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle, duckdb_v2_error_info_handle *err) {
-	const idx_t rows = ChunkRows(args->input);
+void TwoAnyExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
+                duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle result = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result, err) == DUCKDB_V2_ERROR_NONE);
+	const idx_t rows = ChunkRows(chunk);
 	int32_t *out = nullptr;
-	REQUIRE(duckdb_v2_vector_get_data_mutable(args->result, reinterpret_cast<void **>(&out), err) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_data_mutable(result, reinterpret_cast<void **>(&out), err) == DUCKDB_V2_ERROR_NONE);
 	for (idx_t r = 0; r < rows; r++) {
 		out[r] = 42;
 	}
@@ -112,15 +126,17 @@ void TwoAnyExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_han
 
 // scaled(x, q): bind folds the (constant) q argument, stashes it, and truncates
 // the argument list so exec sees only x. exec returns x * q as a DOUBLE.
-void ScaledBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_handle ctx,
+void ScaledBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_context_handle ctx,
                 duckdb_v2_error_info_handle *err) {
+	duckdb_v2_bind_arguments_handle arguments = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_bind_get_arguments(info, &arguments, err) == DUCKDB_V2_ERROR_NONE);
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_bind_arguments_get_count(args->arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_get_count(arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(count == 2);
 
 	// The q argument (index 1) is constant-foldable; fold it to a DOUBLE.
 	duckdb_v2_value_handle q_val = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_fold(args->arguments, ctx, 1, &q_val, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 1, &q_val, err) == DUCKDB_V2_ERROR_NONE);
 	const void *data = nullptr;
 	idx_t len = 0;
 	REQUIRE(duckdb_v2_value_get_data(q_val, &data, &len, err) == DUCKDB_V2_ERROR_NONE);
@@ -130,23 +146,30 @@ void ScaledBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_han
 	duckdb_v2_value_destroy(&q_val);
 
 	// Stash it in bind data and drop the q argument so exec sees only x.
-	args->out_bind_data = duckdb_v2_opaque {q, [](void *p) { delete static_cast<double *>(p); }, nullptr};
-	REQUIRE(duckdb_v2_bind_arguments_truncate(args->arguments, 1, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_opaque bind_data {q, [](void *p) { delete static_cast<double *>(p); }, nullptr};
+	REQUIRE(duckdb_v2_scalar_function_bind_set_bind_data(info, bind_data, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 1, err) == DUCKDB_V2_ERROR_NONE);
 }
 
-void ScaledExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle, duckdb_v2_error_info_handle *err) {
+void ScaledExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
+                duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle result = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result, err) == DUCKDB_V2_ERROR_NONE);
+	void *bind_data = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_bind_data(info, &bind_data, err) == DUCKDB_V2_ERROR_NONE);
 	// Truncation dropped q, so exactly one input column remains.
-	REQUIRE(ChunkCols(args->input) == 1);
-	const double q = *static_cast<const double *>(args->bind_data);
-	const idx_t rows = ChunkRows(args->input);
+	REQUIRE(ChunkCols(chunk) == 1);
+	const double q = *static_cast<const double *>(bind_data);
+	const idx_t rows = ChunkRows(chunk);
 	duckdb_v2_vector_handle x_vec = nullptr;
-	REQUIRE(duckdb_v2_data_chunk_get_vector(args->input, 0, &x_vec, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &x_vec, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_vector_view view;
 	REQUIRE(duckdb_v2_vector_get_view(x_vec, &view, err) == DUCKDB_V2_ERROR_NONE);
 	const auto x = static_cast<const int32_t *>(view.data);
 	double *out = nullptr;
-	REQUIRE(duckdb_v2_vector_get_data_mutable(args->result, reinterpret_cast<void **>(&out), err) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_data_mutable(result, reinterpret_cast<void **>(&out), err) == DUCKDB_V2_ERROR_NONE);
 	for (idx_t r = 0; r < rows; r++) {
 		out[r] = x[view.sel ? view.sel[r] : r] * q;
 	}
@@ -158,19 +181,24 @@ struct ProbeResult {
 	bool ran = false;
 };
 
-void ProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_handle ctx,
+void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_context_handle ctx,
                duckdb_v2_error_info_handle *err) {
-	auto *probe = static_cast<ProbeResult *>(args->user_data);
+	void *user_data = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_bind_get_user_data(info, &user_data, err) == DUCKDB_V2_ERROR_NONE);
+	auto *probe = static_cast<ProbeResult *>(user_data);
 	probe->ran = true;
 
+	duckdb_v2_bind_arguments_handle arguments = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_bind_get_arguments(info, &arguments, err) == DUCKDB_V2_ERROR_NONE);
+
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_bind_arguments_get_count(args->arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_get_count(arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(count == 2);
 
 	// Per-argument resolved types: both slots are INTEGER.
 	for (idx_t i = 0; i < count; i++) {
 		duckdb_v2_logical_type_handle arg_type = nullptr;
-		REQUIRE(duckdb_v2_bind_arguments_get_type(args->arguments, i, &arg_type, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_bind_arguments_get_type(arguments, i, &arg_type, err) == DUCKDB_V2_ERROR_NONE);
 		DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
 		duckdb_v2_logical_type_get_id(arg_type, &id, err);
 		duckdb_v2_logical_type_destroy(&arg_type);
@@ -179,35 +207,35 @@ void ProbeBind(duckdb_v2_scalar_function_bind_args *args, duckdb_v2_context_hand
 
 	// arg 0 is a column reference: folding it fails.
 	duckdb_v2_value_handle bad = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_fold(args->arguments, ctx, 0, &bad, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 0, &bad, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(bad == nullptr);
 
 	// arg 1 is the constant literal 7; fold it and replace it with a constant 9.
 	duckdb_v2_value_handle folded = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_fold(args->arguments, ctx, 1, &folded, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 1, &folded, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2LeafPayloadConsume<int32_t>(folded) == 7);
 
 	duckdb_v2_value_handle nine = V2Int32Value(9);
-	REQUIRE(duckdb_v2_bind_arguments_set_constant(args->arguments, 1, nine, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_set_constant(arguments, 1, nine, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&nine);
 
 	// Out-of-range index and null handles are rejected.
 	duckdb_v2_logical_type_handle oob_type = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_get_type(args->arguments, 5, &oob_type, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_get_type(arguments, 5, &oob_type, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(oob_type == nullptr);
 	duckdb_v2_value_handle oob_val = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_fold(args->arguments, ctx, 5, &oob_val, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_bind_arguments_truncate(args->arguments, 9, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 5, &oob_val, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 9, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_bind_arguments_get_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_bind_arguments_get_type(nullptr, 0, &oob_type, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 	REQUIRE(duckdb_v2_bind_arguments_fold(nullptr, ctx, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_bind_arguments_fold(args->arguments, nullptr, 0, &oob_val, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, nullptr, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 }
 
 // probe_bind exec: returns arg0 + arg1, so set_constant(1, 9) is observable.
-void ProbeExec(duckdb_v2_scalar_function_exec_args *args, duckdb_v2_context_handle, duckdb_v2_error_info_handle *err) {
-	IntSumExec(args, nullptr, err);
+void ProbeExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
+               duckdb_v2_error_info_handle *err) {
+	IntSumExec(info, nullptr, err);
 }
 
 // --- registration helpers ---------------------------------------------------
@@ -326,16 +354,19 @@ TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][vararg
 		duckdb_v2_aggregate_function_builder_set_return_type(af, any, nullptr);
 		// dummy callbacks so we reach the return-type gate
 		duckdb_v2_aggregate_function_builder_set_size_callback(
-		    af, [](duckdb_v2_aggregate_function_size_args *a, duckdb_v2_error_info_handle *) { a->out_size = 8; },
+		    af,
+		    [](duckdb_v2_aggregate_function_size_info_handle info, duckdb_v2_error_info_handle *err) {
+			    duckdb_v2_aggregate_function_size_set_size(info, 8, err);
+		    },
 		    nullptr);
 		duckdb_v2_aggregate_function_builder_set_init_callback(
-		    af, [](duckdb_v2_aggregate_function_init_args *, duckdb_v2_error_info_handle *) {}, nullptr);
+		    af, [](duckdb_v2_aggregate_function_init_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
 		duckdb_v2_aggregate_function_builder_set_update_callback(
-		    af, [](duckdb_v2_aggregate_function_update_args *, duckdb_v2_error_info_handle *) {}, nullptr);
+		    af, [](duckdb_v2_aggregate_function_update_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
 		duckdb_v2_aggregate_function_builder_set_combine_callback(
-		    af, [](duckdb_v2_aggregate_function_combine_args *, duckdb_v2_error_info_handle *) {}, nullptr);
+		    af, [](duckdb_v2_aggregate_function_combine_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
 		duckdb_v2_aggregate_function_builder_set_finalize_callback(
-		    af, [](duckdb_v2_aggregate_function_finalize_args *, duckdb_v2_error_info_handle *) {}, nullptr);
+		    af, [](duckdb_v2_aggregate_function_finalize_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
 		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, af, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		duckdb_v2_aggregate_function_builder_destroy(&af);
 
@@ -345,7 +376,7 @@ TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][vararg
 		duckdb_v2_cast_function_builder_set_source_type(cf, any, nullptr);
 		duckdb_v2_cast_function_builder_set_target_type(cf, integer, nullptr);
 		duckdb_v2_cast_function_builder_set_exec_callback(
-		    cf, [](duckdb_v2_cast_function_exec_args *, duckdb_v2_error_info_handle *) -> void {}, nullptr);
+		    cf, [](duckdb_v2_cast_function_exec_info_handle, duckdb_v2_error_info_handle *) -> void {}, nullptr);
 		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, cf, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
 		duckdb_v2_cast_function_builder_destroy(&cf);
 
@@ -574,23 +605,31 @@ TEST_CASE("V2 varargs: bind argument accessors and set_constant", "[capi_v2][var
 // ---------------------------------------------------------------------------
 namespace {
 
-void AggSize(duckdb_v2_aggregate_function_size_args *args, duckdb_v2_error_info_handle *) {
-	args->out_size = sizeof(int64_t);
+void AggSize(duckdb_v2_aggregate_function_size_info_handle info, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_aggregate_function_size_set_size(info, sizeof(int64_t), err);
 }
-void AggInit(duckdb_v2_aggregate_function_init_args *args, duckdb_v2_error_info_handle *) {
-	*static_cast<int64_t *>(args->state) = 0;
+void AggInit(duckdb_v2_aggregate_function_init_info_handle info, duckdb_v2_error_info_handle *err) {
+	void *state = nullptr;
+	duckdb_v2_aggregate_function_init_get_state(info, &state, err);
+	*static_cast<int64_t *>(state) = 0;
 }
-void AggUpdateSumAll(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_error_info_handle *err) {
+void AggUpdateSumAll(duckdb_v2_aggregate_function_update_info_handle info, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle input = nullptr;
+	duckdb_v2_aggregate_function_update_get_input(info, &input, err);
 	idx_t cols = 0;
-	duckdb_v2_data_chunk_get_vector_count(args->input, &cols, err);
-	auto states = reinterpret_cast<int64_t **>(args->states);
+	duckdb_v2_data_chunk_get_vector_count(input, &cols, err);
+	void **states_raw = nullptr;
+	duckdb_v2_aggregate_function_update_get_states(info, &states_raw, err);
+	auto states = reinterpret_cast<int64_t **>(states_raw);
+	idx_t count = 0;
+	duckdb_v2_aggregate_function_update_get_count(info, &count, err);
 	for (idx_t c = 0; c < cols; c++) {
 		duckdb_v2_vector_handle vec = nullptr;
-		duckdb_v2_data_chunk_get_vector(args->input, c, &vec, err);
+		duckdb_v2_data_chunk_get_vector(input, c, &vec, err);
 		duckdb_v2_vector_view view;
 		duckdb_v2_vector_get_view(vec, &view, err);
 		const auto data = static_cast<const int32_t *>(view.data);
-		for (idx_t i = 0; i < args->count; i++) {
+		for (idx_t i = 0; i < count; i++) {
 			const idx_t idx = view.sel ? view.sel[i] : i;
 			if (RowValid(view, idx)) {
 				*states[i] += data[idx];
@@ -598,30 +637,46 @@ void AggUpdateSumAll(duckdb_v2_aggregate_function_update_args *args, duckdb_v2_e
 		}
 	}
 }
-void AggCombine(duckdb_v2_aggregate_function_combine_args *args, duckdb_v2_error_info_handle *) {
-	auto sources = reinterpret_cast<int64_t **>(args->sources);
-	auto targets = reinterpret_cast<int64_t **>(args->targets);
-	for (idx_t i = 0; i < args->count; i++) {
+void AggCombine(duckdb_v2_aggregate_function_combine_info_handle info, duckdb_v2_error_info_handle *err) {
+	void **sources_raw = nullptr;
+	duckdb_v2_aggregate_function_combine_get_sources(info, &sources_raw, err);
+	auto sources = reinterpret_cast<int64_t **>(sources_raw);
+	void **targets_raw = nullptr;
+	duckdb_v2_aggregate_function_combine_get_targets(info, &targets_raw, err);
+	auto targets = reinterpret_cast<int64_t **>(targets_raw);
+	idx_t count = 0;
+	duckdb_v2_aggregate_function_combine_get_count(info, &count, err);
+	for (idx_t i = 0; i < count; i++) {
 		*targets[i] += *sources[i];
 	}
 }
-void AggFinalize(duckdb_v2_aggregate_function_finalize_args *args, duckdb_v2_error_info_handle *err) {
-	auto states = reinterpret_cast<int64_t **>(args->states);
+void AggFinalize(duckdb_v2_aggregate_function_finalize_info_handle info, duckdb_v2_error_info_handle *err) {
+	void **states_raw = nullptr;
+	duckdb_v2_aggregate_function_finalize_get_states(info, &states_raw, err);
+	auto states = reinterpret_cast<int64_t **>(states_raw);
+	duckdb_v2_vector_handle result_vec = nullptr;
+	duckdb_v2_aggregate_function_finalize_get_result(info, &result_vec, err);
 	int64_t *out = nullptr;
-	duckdb_v2_vector_get_data_mutable(args->result, reinterpret_cast<void **>(&out), err);
-	for (idx_t i = 0; i < args->count; i++) {
-		out[args->result_offset + i] = *states[i];
+	duckdb_v2_vector_get_data_mutable(result_vec, reinterpret_cast<void **>(&out), err);
+	idx_t count = 0;
+	duckdb_v2_aggregate_function_finalize_get_count(info, &count, err);
+	idx_t result_offset = 0;
+	duckdb_v2_aggregate_function_finalize_get_result_offset(info, &result_offset, err);
+	for (idx_t i = 0; i < count; i++) {
+		out[result_offset + i] = *states[i];
 	}
 }
 
 // Bind callback that truncates the argument list to a single argument, so update
 // sees only the first varargs column.
-void AggDropTailBind(duckdb_v2_aggregate_function_bind_args *args, duckdb_v2_context_handle,
+void AggDropTailBind(duckdb_v2_aggregate_function_bind_info_handle info, duckdb_v2_context_handle,
                      duckdb_v2_error_info_handle *err) {
+	duckdb_v2_bind_arguments_handle arguments = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_bind_get_arguments(info, &arguments, err) == DUCKDB_V2_ERROR_NONE);
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_bind_arguments_get_count(args->arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_get_count(arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(count == 2);
-	REQUIRE(duckdb_v2_bind_arguments_truncate(args->arguments, 1, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 1, err) == DUCKDB_V2_ERROR_NONE);
 }
 
 void RegisterAgg(duckdb_v2_context_handle ctx, const char *name,

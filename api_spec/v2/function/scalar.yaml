@@ -4,40 +4,29 @@ handles:
   scalar_function_builder:
     description: "An opaque handle to a scalar function builder. \nCreated with `scalar_function_builder_create`, configured with the various `scalar_function_set_*` functions, and registered with `scalar_function_register`. \nThe builder is owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.\n"
     cleanup_with: scalar_function_builder_destroy
-# Callback Structs
-structs:
-  scalar_function_bind_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: function_name, type: identifier, description: "The name of the function being bound. Borrowed; only valid for the duration of the callback."}
-      - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
-      - {name: out_bind_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to user data (the function's \"bind data\") plus optional destructor and equality callbacks. The bind data is accessible from later callbacks (e.g. \"init\" and \"exec\"), which is useful for sharing information between the planning and execution phases such as resolved argument types, prepared statements, or other metadata computed during binding. The destructor, if provided, is used to destroy the bind data when it's no longer needed (e.g. at the end of query execution). The equality callback, if provided, is used to compare two bind data pointers (e.g. for plan caching/reuse); otherwise a default pointer equality check is used."}
-      - {name: arguments, type: bind_arguments, description: "Borrowed handle to the function's bound argument list, for inspection and mutation during bind. Read it with the bind_arguments accessors: count, get an argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list from the tail. Present when struct_size covers this field. Borrowed; valid only for the duration of the callback."}
-  scalar_function_init_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: function_name, type: identifier, description: "The name of the function being initialized. Borrowed; only valid for the duration of the callback."}
-      - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
-      - {name: bind_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the function's \"bind\" callback, if any"}
-      - {name: out_init_data, type: opaque, description: "On success, the callback can set this to an opaque handle bundling a pointer to worker-local \"init data\" plus an optional destructor callback. The init data is associated with the executing worker thread for the duration of the query and accessible from the function's \"exec\" callback. Note that the \"init data\" is worker-local, not _thread local_: there is no guarantee that the same thread will see the same \"init data\" across multiple invocations of the function. The destructor, if provided, is used to destroy the init data when it's no longer needed; the opaque handle's equality callback is unused for init data."}
-  scalar_function_exec_args:
-    fields:
-      - {name: struct_size, type: u32, description: "The size of this struct. This can be used for versioning and compatibility checks."}
-      - {name: function_name, type: identifier, description: "The name of the function being executed. Borrowed; only valid for the duration of the callback."}
-      - {name: user_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the caller when registering the function, if any"}
-      - {name: bind_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the function's \"bind\" callback, if any"}
-      - {name: init_data, type: void, pointer: 1, description: "Opaque pointer to user data set by the function's \"init\" callback for the executing worker thread, if any"}
-      - {name: input, type: data_chunk, description: "The input data chunk for the current invocation. This contains vectors for each argument passed to the function, with one row per input row for the current batch."}
-      - {name: result, type: vector, description: "The vector in which the function should write its result values for the current invocation."}
+  scalar_function_bind_info:
+    description: |
+      Borrowed handle passed to the bind callback. Provides access to the function name, user data set at
+      registration, and the bound argument list, and is used to set the function's bind data. Valid only for
+      the duration of the callback; must not be stored or used after the callback returns.
+  scalar_function_init_info:
+    description: |
+      Borrowed handle passed to the init callback. Provides access to the function name, user data set at
+      registration, and the bind data set during bind, and is used to set worker-local init data. Valid only
+      for the duration of the callback; must not be stored or used after the callback returns.
+  scalar_function_exec_info:
+    description: |
+      Borrowed handle passed to the exec callback. Provides access to the function name, user data set at
+      registration, the bind data, the worker-local init data, the input data chunk, and the result vector to
+      fill. Valid only for the duration of the callback; must not be stored or used after the callback returns.
 # Callbacks
 callbacks:
   scalar_function_bind_callback:
     return_type: void
     parameters:
-      args:
-        type: scalar_function_bind_args
-        indirection: 1
-        description: "The bind callback's arguments struct, providing access to information about the function being bound as well as user data set at registration time. \nThe library owns this struct and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
+      info:
+        type: scalar_function_bind_info
+        description: "Borrowed handle providing access to the function being bound and user data, and used to set bind data via `scalar_function_bind_set_bind_data`. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The DuckDB context in which the function is being bound. Borrowed; only valid for the duration of the callback."
@@ -48,10 +37,9 @@ callbacks:
   scalar_function_init_callback:
     return_type: void
     parameters:
-      args:
-        type: scalar_function_init_args
-        indirection: 1
-        description: "The init callback's arguments struct, providing access to information about the function being initialized as well as user data set at registration time and by the function's bind callback. \nThe library owns this struct and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
+      info:
+        type: scalar_function_init_info
+        description: "Borrowed handle providing access to the function being initialized, user data, and bind data, and used to set init data via `scalar_function_init_set_init_data`. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The DuckDB context in which the function is being initialized, or null for invocations that initialize the function without a client context (some internal expression evaluations, e.g. index expressions, run this way). Borrowed; only valid for the duration of the callback."
@@ -62,10 +50,9 @@ callbacks:
   scalar_function_exec_callback:
     return_type: void
     parameters:
-      args:
-        type: scalar_function_exec_args
-        indirection: 1
-        description: "The exec callback's arguments struct, providing access to information about the function being executed as well as user data set at registration time and by the function's bind and init callbacks. \nThe library owns this struct and guarantees its validity only for the duration of the callback invocation; Callees must not attempt to store or use it after the callback returns.\n"
+      info:
+        type: scalar_function_exec_info
+        description: "Borrowed handle providing access to the input data chunk and the result vector to fill, plus bind data, init data, and user data. \nThe library owns this handle and guarantees its validity only for the duration of the callback invocation; callees must not store or use it after the callback returns.\n"
       context:
         type: context
         description: "The execution context, or null for invocations that evaluate the function without a client context (some internal expression evaluations, e.g. index expressions, run this way). Borrowed; only valid for the duration of the callback. Enables context-dependent work in exec such as Arrow conversions and value casts."
@@ -126,7 +113,7 @@ functions:
     summary: Sets the init callback for a scalar function.
     description: |
       The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the function.
-      It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via `scalar_function_get_init_data` to keep worker-local mutable state across invocations of the function.
+      It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via `scalar_function_exec_get_init_data` to keep worker-local mutable state across invocations of the function.
     parameters:
       func:
         type: scalar_function_builder
@@ -180,7 +167,7 @@ functions:
     return_type: API_CALL
   scalar_function_builder_set_user_data:
     summary: Sets arbitrary extra data on a scalar function.
-    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from callbacks via `scalar_function_get_user_data`.\n"
+    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from callbacks via the `scalar_function_*_get_user_data` accessors.\n"
     parameters:
       func:
         type: scalar_function_builder
@@ -286,6 +273,246 @@ functions:
         indirection: 1
         kind: OUT
         description: On success, receives the current value of the property.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Bind callback accessors ---
+  scalar_function_bind_get_function_name:
+    summary: Retrieves the name of the function being bound.
+    parameters:
+      info:
+        type: scalar_function_bind_info
+        description: The bind info handle.
+      out_name:
+        type: identifier
+        indirection: 1
+        kind: OUT
+        description: Receives the function name. Borrowed; only valid for the duration of the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_bind_get_user_data:
+    summary: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+    parameters:
+      info:
+        type: scalar_function_bind_info
+        description: The bind info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_bind_get_arguments:
+    summary: Retrieves the bound argument list for inspection and mutation during bind.
+    description: |
+      Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
+      argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list
+      from the tail. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: scalar_function_bind_info
+        description: The bind info handle.
+      out_arguments:
+        type: bind_arguments
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed bound argument list handle.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_bind_set_bind_data:
+    summary: Sets the function's bind data from the bind callback.
+    description: |
+      Sets an opaque handle bundling a pointer to user data (the function's "bind data") plus optional
+      destructor and equality callbacks. The bind data is accessible from later callbacks (init and exec).
+      The destructor, if provided, destroys the bind data when it is no longer needed. The equality callback,
+      if provided, compares two bind data pointers (e.g. for plan caching); otherwise a default pointer
+      equality check is used.
+    parameters:
+      info:
+        type: scalar_function_bind_info
+        description: The bind info handle.
+      data:
+        type: opaque
+        description: Opaque handle bundling the bind data pointer plus optional destructor and equality callbacks.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Init callback accessors ---
+  scalar_function_init_get_function_name:
+    summary: Retrieves the name of the function being initialized.
+    parameters:
+      info:
+        type: scalar_function_init_info
+        description: The init info handle.
+      out_name:
+        type: identifier
+        indirection: 1
+        kind: OUT
+        description: Receives the function name. Borrowed; only valid for the duration of the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_init_get_user_data:
+    summary: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+    parameters:
+      info:
+        type: scalar_function_init_info
+        description: The init info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_init_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: scalar_function_init_info
+        description: The init info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_init_set_init_data:
+    summary: Sets the function's worker-local init data from the init callback.
+    description: |
+      Sets an opaque handle bundling a pointer to worker-local "init data" plus an optional destructor
+      callback. The init data is associated with the executing worker thread for the duration of the query
+      and accessible from the exec callback. The destructor, if provided, destroys the init data when it is no
+      longer needed; the opaque handle's equality callback is unused for init data.
+    parameters:
+      info:
+        type: scalar_function_init_info
+        description: The init info handle.
+      data:
+        type: opaque
+        description: Opaque handle bundling the init data pointer plus an optional destructor callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  # --- Exec callback accessors ---
+  scalar_function_exec_get_function_name:
+    summary: Retrieves the name of the function being executed.
+    parameters:
+      info:
+        type: scalar_function_exec_info
+        description: The exec info handle.
+      out_name:
+        type: identifier
+        indirection: 1
+        kind: OUT
+        description: Receives the function name. Borrowed; only valid for the duration of the callback.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_exec_get_user_data:
+    summary: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+    parameters:
+      info:
+        type: scalar_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_exec_get_bind_data:
+    summary: Retrieves the bind data set by the function's bind callback.
+    parameters:
+      info:
+        type: scalar_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the bind data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_exec_get_init_data:
+    summary: Retrieves the worker-local init data set by the function's init callback.
+    parameters:
+      info:
+        type: scalar_function_exec_info
+        description: The exec info handle.
+      out_data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the init data pointer for the executing worker thread, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_exec_get_input:
+    summary: Retrieves the input data chunk for the current invocation.
+    description: The chunk contains one vector per argument passed to the function, with one row per input row for the current batch. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: scalar_function_exec_info
+        description: The exec info handle.
+      out_input:
+        type: data_chunk
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed input data chunk.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: API_CALL
+  scalar_function_exec_get_result:
+    summary: Retrieves the result vector the callback must write into.
+    description: The vector has space for the current batch's rows. Borrowed; valid only for the duration of the callback.
+    parameters:
+      info:
+        type: scalar_function_exec_info
+        description: The exec info handle.
+      out_result:
+        type: vector
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed result vector to write into.
       err:
         type: error_info
         indirection: 1

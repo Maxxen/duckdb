@@ -30,20 +30,31 @@ struct CastFunctionBoundDataV2 final : public BoundCastData {
 	shared_ptr<OpaqueDataHandle> user_data;
 };
 
+// --- Callback info struct (passed to the user callback as an opaque handle) --
+
+struct CastFunctionExecInfoV2 {
+	void *user_data = nullptr;
+	Vector *input = nullptr;
+	Vector *output = nullptr;
+	idx_t count = 0;
+	DUCKDB_V2_CAST_MODE mode = DUCKDB_V2_CAST_MODE_NORMAL;
+};
+
 bool CastFunctionExec(Vector &input, Vector &output, idx_t count, CastParameters &parameters) {
 	auto &bound_data = parameters.cast_data->Cast<CastFunctionBoundDataV2>();
 
-	duckdb_v2_cast_function_exec_args args = {};
-	args.struct_size = sizeof(args);
-	args.user_data = bound_data.user_data ? bound_data.user_data->GetData() : nullptr;
-	args.input = reinterpret_cast<duckdb_v2_vector_handle>(&input);
-	args.output = reinterpret_cast<duckdb_v2_vector_handle>(&output);
-	args.count = count;
-	args.mode = parameters.error_message == nullptr ? DUCKDB_V2_CAST_MODE_NORMAL : DUCKDB_V2_CAST_MODE_TRY;
+	CastFunctionExecInfoV2 cb_info;
+	cb_info.user_data = bound_data.user_data ? bound_data.user_data->GetData() : nullptr;
+	cb_info.input = &input;
+	cb_info.output = &output;
+	cb_info.count = count;
+	cb_info.mode = parameters.error_message == nullptr ? DUCKDB_V2_CAST_MODE_NORMAL : DUCKDB_V2_CAST_MODE_TRY;
+
+	auto info_handle = reinterpret_cast<duckdb_v2_cast_function_exec_info_handle>(&cb_info);
 
 	ErrorInfoV2 err {};
 	auto err_ptr = reinterpret_cast<duckdb_v2_error_info_handle>(&err);
-	bound_data.exec_cb(&args, &err_ptr);
+	bound_data.exec_cb(info_handle, &err_ptr);
 
 	const auto success = err.code == DUCKDB_V2_ERROR_NONE;
 	if (!success) {
@@ -197,5 +208,77 @@ DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_destroy(duckdb_v2_cast_func
 		}
 		delete reinterpret_cast<duckdb::CastFunctionV2 *>(*func);
 		*func = nullptr;
+	});
+}
+
+// --- Exec callback accessors -------------------------------------------------
+
+DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_user_data(duckdb_v2_cast_function_exec_info_handle info,
+                                                                void **out_data, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_data) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_data = reinterpret_cast<duckdb::CastFunctionExecInfoV2 *>(info)->user_data;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_input(duckdb_v2_cast_function_exec_info_handle info,
+                                                            duckdb_v2_vector_handle *out_input,
+                                                            duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_input) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto &cb_info = *reinterpret_cast<duckdb::CastFunctionExecInfoV2 *>(info);
+		*out_input = reinterpret_cast<duckdb_v2_vector_handle>(cb_info.input);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_output(duckdb_v2_cast_function_exec_info_handle info,
+                                                             duckdb_v2_vector_handle *out_output,
+                                                             duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_output) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		auto &cb_info = *reinterpret_cast<duckdb::CastFunctionExecInfoV2 *>(info);
+		*out_output = reinterpret_cast<duckdb_v2_vector_handle>(cb_info.output);
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_count(duckdb_v2_cast_function_exec_info_handle info,
+                                                            idx_t *out_count, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_count) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_count = reinterpret_cast<duckdb::CastFunctionExecInfoV2 *>(info)->count;
+	});
+}
+
+DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_exec_get_mode(duckdb_v2_cast_function_exec_info_handle info,
+                                                           DUCKDB_V2_CAST_MODE *out_mode,
+                                                           duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info) {
+			throw duckdb::InvalidInputException("Info handle cannot be null.");
+		}
+		if (!out_mode) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
+		}
+		*out_mode = reinterpret_cast<duckdb::CastFunctionExecInfoV2 *>(info)->mode;
 	});
 }
