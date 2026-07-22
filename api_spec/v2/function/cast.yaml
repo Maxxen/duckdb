@@ -7,21 +7,14 @@ handles:
 # Enums
 enums:
   CAST_MODE:
-    description: |
-      The mode in which a cast is being executed. A "normal" cast must
-      either succeed for every row or report an error (which aborts the
-      query). A "try" cast (e.g. SQL TRY_CAST) tolerates per-row failures
-      by writing NULL for the rows that could not be converted instead of
-      aborting. The exec callback can read the mode from the exec args to
-      decide whether a conversion failure should be reported as an error
-      or silently turned into a NULL.
+    description: "The mode in which a cast is being executed. A \"normal\" cast must\neither succeed for every row or report an error (which aborts the\nquery). A \"try\" cast (e.g. SQL TRY_CAST) tolerates per-row failures\nby writing NULL for the rows that could not be converted instead of\naborting. The exec callback can read the mode from the exec args to\ndecide whether a conversion failure is reported as an error or \nsilently turned into a NULL.\n"
     values:
       CAST_MODE_NORMAL:
         value: 0
-        description: A regular cast. Any conversion failure should be reported as an error via the error info handle.
+        description: A regular cast. Any conversion failure is reported as an error via the error info handle.
       CAST_MODE_TRY:
         value: 1
-        description: A "try" cast. Conversion failures should be turned into NULL values in the output vector rather than reported as errors.
+        description: A "try" cast. Conversion failures are turned into NULL values in the output vector rather than reported as errors.
 # Callback Structs
 structs:
   cast_function_exec_args:
@@ -66,9 +59,7 @@ functions:
     return_type: API_CALL
   cast_function_builder_set_source_type:
     summary: Sets the source type of a cast function.
-    description: |
-      Sets the logical type the cast converts from. The library makes an internal copy of the provided type and does not take ownership of it.
-      Failing to set a source type before registration results in an error. The source type must be a fully defined concrete type and must not contain ANY or INVALID types.
+    description: "Sets the logical type the cast converts from. The library makes an internal copy of \nthe provided type and does not take ownership of it. Failing to set a source type \nbefore registration results in an error. The source type must be a fully defined \nconcrete type.\n"
     parameters:
       func:
         type: cast_function_builder
@@ -83,9 +74,7 @@ functions:
     return_type: API_CALL
   cast_function_builder_set_target_type:
     summary: Sets the target type of a cast function.
-    description: |
-      Sets the logical type the cast converts to. The library makes an internal copy of the provided type and does not take ownership of it.
-      Failing to set a target type before registration results in an error. The target type must be a fully defined concrete type and must not contain ANY or INVALID types.
+    description: "Sets the logical type the cast converts to. The library makes an internal copy of\nthe provided type and does not take ownership of it. Failing to set a target type \nbefore registration results in an error. The target type must be a fully defined \nconcrete type.\n"
     parameters:
       func:
         type: cast_function_builder
@@ -100,10 +89,7 @@ functions:
     return_type: API_CALL
   cast_function_builder_set_implicit_cast_cost:
     summary: Sets the implicit cast cost of a cast function.
-    description: |
-      Sets the "cost" of applying this cast implicitly. The binder uses this cost when it has to choose between multiple candidate
-      implicit casts: a lower (non-negative) cost makes the cast more likely to be chosen. A negative cost (the default) means the
-      cast is never applied implicitly and can only be requested explicitly via CAST / TRY_CAST. This setting is optional.
+    description: "Sets the \"cost\" of applying this cast implicitly. The binder uses this cost when it has to choose between \nmultiple candidate implicit casts: a lower (non-negative) cost ([0, ~20]) makes the cast more likely to \nbe chosen, a higher cost ([100, ...]) makes the cast less likely to be chosen. A negative cost (the default) \nmeans the cast is never applied implicitly and can only be  requested explicitly via CAST / TRY_CAST. This \nsetting is optional.\n"
     parameters:
       func:
         type: cast_function_builder
@@ -133,7 +119,7 @@ functions:
     return_type: API_CALL
   cast_function_builder_set_user_data:
     summary: Sets arbitrary extra data on a cast function.
-    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from the exec callback via the args' `user_data` field.\n"
+    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from the exec callback via the args' `user_data` field. During execution, this data is read-only.\n"
     parameters:
       func:
         type: cast_function_builder
@@ -147,7 +133,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: API_CALL
   cast_function_builder_register:
-    summary: Registers a cast function with a database, making the cast available in queries.
+    summary: Registers a cast function on a database via the current context, making the cast available in all subsequent queries to that database.
     description: "This function registers a fully configured cast function builder with a database, making the cast available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). \nThe function builder must have its source type, target type, and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered cast.\n"
     parameters:
       context:

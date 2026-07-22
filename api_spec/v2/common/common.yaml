@@ -46,40 +46,22 @@ handles:
       An opaque, owned handle to a logical type. Carries a type id plus any
       kind-specific metadata (decimal width/scale, enum dictionary, list /
       array / struct / map / union child types, alias). Read-only from the C
-      side today: instances arrive either from a query result schema or from
-      logical_type_create_from_id for primitives. Composite construction
-      (CREATE_LIST/STRUCT/etc) is not yet exposed. Always destroy via
+      side: instances arrive either from a query result schema or from
+      logical_type_create_from_id for primitives. Always destroy via
       logical_type_destroy. Borrowed strings returned by getters
       are valid until destroy.
     cleanup_with: logical_type_destroy
   value:
     description: |
       An opaque, owned handle to a single SQL value. Carries a logical type
-      plus a typed payload. Created via the primitive value_create_*
-      constructors. Composite construction (LIST/STRUCT/MAP/ARRAY/UNION/ENUM)
-      is not yet exposed. Always destroy via value_destroy. The
+      plus a typed payload. Always destroy via value_destroy. The
       pointers returned by *_get_varchar / *_get_blob / *_get_bit are
       borrowed and valid until the value is destroyed; *_get_bignum returns
       an owned magnitude buffer the caller must free() (BIGNUM is bit-encoded
       in storage, so the magnitude bytes are produced fresh on each call).
     cleanup_with: value_destroy
   result:
-    description: |
-      An opaque, owned handle to the streaming result of a query. Carries
-      the schema (column names and logical types), the statement type,
-      and the result type from prepare time; row data is produced
-      incrementally by stepping (result_step) or draining
-      (result_fetch_chunk). Single consumer: step from one thread at a
-      time.
-
-      A result is a cursor on the connection's execution, not a box of
-      data. While it is live (not finished, cancelled, errored, or
-      destroyed) the connection refuses new queries with
-      ERROR_RESOURCE_IN_USE, and the query's transaction stays open,
-      deferring version cleanup and checkpointing. Drain or destroy
-      promptly. Side-effecting statements take effect only when the
-      result is drained. Always destroy via result_destroy, which is
-      safe even on a partially consumed stream.
+    description: "An opaque, owned handle to the streaming result of a query. Carries\nthe schema (column names and logical types), the statement type,\nand the result type from prepare time; row data is produced\nincrementally by stepping (result_step) or draining\n(result_fetch_chunk). Single consumer: step from one thread at a\ntime.\n\nA result is a cursor on the connection's execution, not a box of\ndata. While it is live (not finished, cancelled, errored, or\ndestroyed) the connection refuses new queries with\nERROR_RESOURCE_IN_USE, and the query's transaction stays open,\ndeferring version cleanup and checkpointing. Drain or destroy\npromptly. Side-effecting statements (PRAGMA, ALTER, ...) take \neffect only when the result is drained. Always destroy via \nresult_destroy, which is safe even on a partially consumed stream.\n"
     cleanup_with: result_destroy
   data_chunk:
     description: |
@@ -97,11 +79,11 @@ handles:
   vector:
     description: |
       A borrowed handle to a vector within a data chunk. Carries one
-      logical column's worth of values for the chunk. Lifetime is bound to
+      column's worth of values for the chunk. Lifetime is bound to
       the owning chunk; do not destroy. Use vector_get_view to read in a
       unified-format shape (data + validity + selection) per kind; the
       row count comes from the caller's context (the chunk for top-level
-      vectors; parent geometry for nested children).
+      vectors; parents for nested child vectors).
   string_heap:
     description: |
       Borrowed handle to a vector's string heap: the arena owning the
@@ -110,7 +92,7 @@ handles:
       owning vector is flattened, reallocated, or destroyed. Bytes added to it
       are owned by the vector.
   context:
-    description: The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
+    description: "The DuckDB \"context\", essentially a \"connection\", but from the \"inside\" \nof DuckDB. TODO - elaborate more, maybe mention UDFs, callbacks, etc.\n"
 structs:
   str:
     description: |
@@ -122,21 +104,12 @@ structs:
       until the owning handle is destroyed"). `{NULL, 0}` is the canonical
       empty view; `ptr` must not be dereferenced when `len` is 0. Not to be
       confused with `string`, the transparent 16-byte VARCHAR *storage*
-      format — `str` is the decoded *view* shape that byte reads across the
-      API boundary use.
+      format.
     fields:
       - {name: ptr, type: char, pointer: 1, const: true}
       - {name: len, type: idx}
   string:
-    description: |
-      16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT /
-      BIGNUM), mirroring duckdb::string_t. Inlined when length <=
-      STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise
-      value.pointer.ptr holds the bytes and value.pointer.prefix the
-      first 4. Read the fields directly; BIT / BIGNUM additionally carry
-      a wire encoding. BIT is a trivial client-side split (byte 0 is the
-      padding-bit count, bytes 1.. the data); BIGNUM is decoded via
-      bignum_decode.
+    description: "16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT /\nBIGNUM), mirroring duckdb::string_t. Inlined when length <=\nSTRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise\nvalue.pointer.ptr holds the bytes and value.pointer.prefix the\nfirst 4. Read the fields directly; BIT / BIGNUM additionally carry\nan encoding. For BIT, byte 0 is the padding-bit count, bytes 1.. \nare the data; BIGNUM is decoded via bignum_decode.\n"
     fields:
       - name: value
         union:
@@ -188,10 +161,10 @@ callbacks:
 aliases:
   error_kind:
     underlying: u32
-    description: The category part of an error code (the upper 16 bits)
+    description: The category part of an error code (the upper 16 bits).
   error_code:
     underlying: u32
-    description: 'Full 32-bit error code: (group_id << 16) | code'
+    description: 'Full 32-bit error code: (group_id << 16) | code.'
   API_CALL:
     underlying: error_code
   sel:

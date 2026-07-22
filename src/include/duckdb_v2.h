@@ -137,8 +137,7 @@ typedef uint64_t idx_t;
 //! until the owning handle is destroyed"). `{NULL, 0}` is the canonical
 //! empty view; `ptr` must not be dereferenced when `len` is 0. Not to be
 //! confused with `string`, the transparent 16-byte VARCHAR *storage*
-//! format — `str` is the decoded *view* shape that byte reads across the
-//! API boundary use.
+//! format.
 typedef struct duckdb_v2_str duckdb_v2_str;
 
 //! 16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT /
@@ -146,9 +145,8 @@ typedef struct duckdb_v2_str duckdb_v2_str;
 //! STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise
 //! value.pointer.ptr holds the bytes and value.pointer.prefix the
 //! first 4. Read the fields directly; BIT / BIGNUM additionally carry
-//! a wire encoding. BIT is a trivial client-side split (byte 0 is the
-//! padding-bit count, bytes 1.. the data); BIGNUM is decoded via
-//! bignum_decode.
+//! an encoding. For BIT, byte 0 is the padding-bit count, bytes 1..
+//! are the data; BIGNUM is decoded via bignum_decode.
 typedef struct duckdb_v2_string duckdb_v2_string;
 
 //! An opaque, owned handle to a user-defined resource. Bundles the pointer
@@ -196,9 +194,8 @@ typedef struct _duckdb_v2_error_info {
 //! An opaque, owned handle to a logical type. Carries a type id plus any
 //! kind-specific metadata (decimal width/scale, enum dictionary, list /
 //! array / struct / map / union child types, alias). Read-only from the C
-//! side today: instances arrive either from a query result schema or from
-//! logical_type_create_from_id for primitives. Composite construction
-//! (CREATE_LIST/STRUCT/etc) is not yet exposed. Always destroy via
+//! side: instances arrive either from a query result schema or from
+//! logical_type_create_from_id for primitives. Always destroy via
 //! logical_type_destroy. Borrowed strings returned by getters
 //! are valid until destroy.
 typedef struct _duckdb_v2_logical_type {
@@ -206,9 +203,7 @@ typedef struct _duckdb_v2_logical_type {
 } * duckdb_v2_logical_type_handle;
 
 //! An opaque, owned handle to a single SQL value. Carries a logical type
-//! plus a typed payload. Created via the primitive value_create_*
-//! constructors. Composite construction (LIST/STRUCT/MAP/ARRAY/UNION/ENUM)
-//! is not yet exposed. Always destroy via value_destroy. The
+//! plus a typed payload. Always destroy via value_destroy. The
 //! pointers returned by *_get_varchar / *_get_blob / *_get_bit are
 //! borrowed and valid until the value is destroyed; *_get_bignum returns
 //! an owned magnitude buffer the caller must free() (BIGNUM is bit-encoded
@@ -228,9 +223,9 @@ typedef struct _duckdb_v2_value {
 //! destroyed) the connection refuses new queries with
 //! ERROR_RESOURCE_IN_USE, and the query's transaction stays open,
 //! deferring version cleanup and checkpointing. Drain or destroy
-//! promptly. Side-effecting statements take effect only when the
-//! result is drained. Always destroy via result_destroy, which is
-//! safe even on a partially consumed stream.
+//! promptly. Side-effecting statements (PRAGMA, ALTER, ...) take
+//! effect only when the result is drained. Always destroy via
+//! result_destroy, which is safe even on a partially consumed stream.
 typedef struct _duckdb_v2_result {
 	void *internal_ptr;
 } * duckdb_v2_result_handle;
@@ -249,11 +244,11 @@ typedef struct _duckdb_v2_data_chunk {
 } * duckdb_v2_data_chunk_handle;
 
 //! A borrowed handle to a vector within a data chunk. Carries one
-//! logical column's worth of values for the chunk. Lifetime is bound to
+//! column's worth of values for the chunk. Lifetime is bound to
 //! the owning chunk; do not destroy. Use vector_get_view to read in a
 //! unified-format shape (data + validity + selection) per kind; the
 //! row count comes from the caller's context (the chunk for top-level
-//! vectors; parent geometry for nested children).
+//! vectors; parents for nested child vectors).
 typedef struct _duckdb_v2_vector {
 	void *internal_ptr;
 } * duckdb_v2_vector_handle;
@@ -267,15 +262,16 @@ typedef struct _duckdb_v2_string_heap {
 	void *internal_ptr;
 } * duckdb_v2_string_heap_handle;
 
-//! The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB.
+//! The DuckDB "context", essentially a "connection", but from the "inside"
+//! of DuckDB. TODO - elaborate more, maybe mention UDFs, callbacks, etc.
 typedef struct _duckdb_v2_context {
 	void *internal_ptr;
 } * duckdb_v2_context_handle;
 
-//! The category part of an error code (the upper 16 bits)
+//! The category part of an error code (the upper 16 bits).
 typedef uint32_t duckdb_v2_error_kind_t;
 
-//! Full 32-bit error code: (group_id << 16) | code
+//! Full 32-bit error code: (group_id << 16) | code.
 typedef uint32_t duckdb_v2_error_code_t;
 
 typedef duckdb_v2_error_code_t DUCKDB_V2_API_CALL_t;
@@ -353,114 +349,114 @@ struct duckdb_v2_opaque {
 /* --- Types for errors --- */
 
 /* --- Constants for errors --- */
-//! Sentinel for an unspecified internal API error
+//! Sentinel for an unspecified internal API error.
 #define DUCKDB_V2_API_ERROR 0xFFFFFFFF
 
 /* --- Error Codes for errors --- */
-//! Success
+//! Success.
 #define DUCKDB_V2_ERROR_NONE ((0 << 16) | 0)
-//! Input/Output and File System errors
-//! The specified file could not be found
+//! Input/Output and File System errors.
+//! The specified file could not be found.
 #define DUCKDB_V2_ERROR_IO_FILE_NOT_FOUND ((1 << 16) | 1)
-//! Failed to read from the storage device
+//! Failed to read from the storage device.
 #define DUCKDB_V2_ERROR_IO_READ_FAILURE ((1 << 16) | 2)
-//! Unexpected end of file reached
+//! Unexpected end of file reached.
 #define DUCKDB_V2_ERROR_EOF ((1 << 16) | 3)
-//! A generic I/O error occurred while reading or writing data
+//! A generic I/O error occurred while reading or writing data.
 #define DUCKDB_V2_ERROR_IO_GENERAL ((1 << 16) | 4)
-//! A network-level failure occurred during an I/O operation
+//! A network-level failure occurred during an I/O operation.
 #define DUCKDB_V2_ERROR_IO_NETWORK ((1 << 16) | 5)
-//! An HTTP request issued by the database failed
+//! An HTTP request issued by the database failed.
 #define DUCKDB_V2_ERROR_IO_HTTP ((1 << 16) | 6)
-//! Errors related to user-provided data or parameters
-//! General invalid input error
+//! Errors related to user-provided data or parameters.
+//! General invalid input error.
 #define DUCKDB_V2_ERROR_INVALID_INPUT ((2 << 16) | 2)
-//! A specific function parameter is malformed
+//! A specific function parameter is malformed.
 #define DUCKDB_V2_ERROR_INVALID_PARAMETER ((2 << 16) | 3)
-//! A provided value is outside the acceptable range
+//! A provided value is outside the acceptable range.
 #define DUCKDB_V2_ERROR_OUT_OF_RANGE ((2 << 16) | 4)
-//! An object exceeded its maximum permitted size
+//! An object exceeded its maximum permitted size.
 #define DUCKDB_V2_ERROR_OBJECT_SIZE ((2 << 16) | 5)
-//! Errors related to resource availability and lifecycle
+//! Errors related to resource availability and lifecycle.
 //! The requested resource is already in use (e.g. the database file is already open under this environment, or the
-//! environment still has open databases)
+//! environment still has open databases).
 #define DUCKDB_V2_ERROR_RESOURCE_IN_USE ((3 << 16) | 1)
-//! An allocation failed because the system ran out of memory
+//! An allocation failed because the system ran out of memory.
 #define DUCKDB_V2_ERROR_RESOURCE_OUT_OF_MEMORY ((3 << 16) | 2)
-//! A connection-level failure occurred (e.g. the connection has been closed or invalidated)
+//! A connection-level failure occurred (e.g. the connection has been closed or invalidated).
 #define DUCKDB_V2_ERROR_RESOURCE_CONNECTION ((3 << 16) | 3)
-//! An operation failed because of an unresolved dependency between catalog objects
+//! An operation failed because of an unresolved dependency between catalog objects.
 #define DUCKDB_V2_ERROR_RESOURCE_DEPENDENCY ((3 << 16) | 4)
-//! An extension required by the operation is not loaded
+//! An extension required by the operation is not loaded.
 #define DUCKDB_V2_ERROR_RESOURCE_MISSING_EXTENSION ((3 << 16) | 5)
-//! Autoloading an extension failed
+//! Autoloading an extension failed.
 #define DUCKDB_V2_ERROR_RESOURCE_AUTOLOAD ((3 << 16) | 6)
-//! Errors related to value types, conversions, and arithmetic
-//! A value could not be converted to the requested type
+//! Errors related to value types, conversions, and arithmetic.
+//! A value could not be converted to the requested type.
 #define DUCKDB_V2_ERROR_TYPE_CONVERSION ((4 << 16) | 1)
-//! An unknown or unsupported type was encountered
+//! An unknown or unsupported type was encountered.
 #define DUCKDB_V2_ERROR_TYPE_UNKNOWN ((4 << 16) | 2)
-//! A type was used in a context where it is not valid
+//! A type was used in a context where it is not valid.
 #define DUCKDB_V2_ERROR_TYPE_INVALID ((4 << 16) | 3)
-//! Two values or expressions have incompatible types
+//! Two values or expressions have incompatible types.
 #define DUCKDB_V2_ERROR_TYPE_MISMATCH ((4 << 16) | 4)
-//! A decimal value is out of range or otherwise invalid
+//! A decimal value is out of range or otherwise invalid.
 #define DUCKDB_V2_ERROR_TYPE_DECIMAL ((4 << 16) | 5)
-//! Division by zero was attempted
+//! Division by zero was attempted.
 #define DUCKDB_V2_ERROR_TYPE_DIVIDE_BY_ZERO ((4 << 16) | 6)
-//! Errors raised during query parsing, planning, and execution
-//! The query could not be parsed
+//! Errors raised during query parsing, planning, and execution.
+//! The query could not be parsed.
 #define DUCKDB_V2_ERROR_QUERY_PARSER ((5 << 16) | 1)
-//! The query contains a syntax error
+//! The query contains a syntax error.
 #define DUCKDB_V2_ERROR_QUERY_SYNTAX ((5 << 16) | 2)
-//! Binding the query against the catalog failed (e.g. unknown column or table)
+//! Binding the query against the catalog failed (e.g. unknown column or table).
 #define DUCKDB_V2_ERROR_QUERY_BINDER ((5 << 16) | 3)
-//! The query could not be translated into a logical plan
+//! The query could not be translated into a logical plan.
 #define DUCKDB_V2_ERROR_QUERY_PLANNER ((5 << 16) | 4)
-//! An error occurred during query optimization
+//! An error occurred during query optimization.
 #define DUCKDB_V2_ERROR_QUERY_OPTIMIZER ((5 << 16) | 5)
-//! An expression in the query is invalid or could not be evaluated
+//! An expression in the query is invalid or could not be evaluated.
 #define DUCKDB_V2_ERROR_QUERY_EXPRESSION ((5 << 16) | 6)
-//! An error occurred while executing the physical plan
+//! An error occurred while executing the physical plan.
 #define DUCKDB_V2_ERROR_QUERY_EXECUTOR ((5 << 16) | 7)
-//! The task scheduler reported an error while running the query
+//! The task scheduler reported an error while running the query.
 #define DUCKDB_V2_ERROR_QUERY_SCHEDULER ((5 << 16) | 8)
-//! The requested feature or operation is not implemented
+//! The requested feature or operation is not implemented.
 #define DUCKDB_V2_ERROR_QUERY_NOT_IMPLEMENTED ((5 << 16) | 9)
-//! A prepared-statement parameter has not been bound to a value
+//! A prepared-statement parameter has not been bound to a value.
 #define DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_RESOLVED ((5 << 16) | 10)
-//! A prepared-statement parameter was used in a position where it is not allowed
+//! A prepared-statement parameter was used in a position where it is not allowed.
 #define DUCKDB_V2_ERROR_QUERY_PARAMETER_NOT_ALLOWED ((5 << 16) | 11)
-//! Errors related to catalog, transactions, and persistent state
-//! A catalog operation failed (e.g. object not found or already exists)
+//! Errors related to catalog, transactions, and persistent state.
+//! A catalog operation failed (e.g. object not found or already exists).
 #define DUCKDB_V2_ERROR_DATABASE_CATALOG ((6 << 16) | 1)
-//! A transaction-level error occurred (e.g. conflict or aborted transaction)
+//! A transaction-level error occurred (e.g. conflict or aborted transaction).
 #define DUCKDB_V2_ERROR_DATABASE_TRANSACTION ((6 << 16) | 2)
-//! A constraint (primary key, unique, foreign key, NOT NULL, check) was violated
+//! A constraint (primary key, unique, foreign key, NOT NULL, check) was violated.
 #define DUCKDB_V2_ERROR_DATABASE_CONSTRAINT ((6 << 16) | 3)
-//! An index operation failed
+//! An index operation failed.
 #define DUCKDB_V2_ERROR_DATABASE_INDEX ((6 << 16) | 4)
-//! A sequence operation failed (e.g. overflow or invalid usage)
+//! A sequence operation failed (e.g. overflow or invalid usage).
 #define DUCKDB_V2_ERROR_DATABASE_SEQUENCE ((6 << 16) | 5)
-//! An error related to catalog statistics occurred
+//! An error related to catalog statistics occurred.
 #define DUCKDB_V2_ERROR_DATABASE_STATISTICS ((6 << 16) | 6)
-//! Serializing or deserializing a database object failed
+//! Serializing or deserializing a database object failed.
 #define DUCKDB_V2_ERROR_DATABASE_SERIALIZATION ((6 << 16) | 7)
-//! Errors related to settings, configuration, and permissions
-//! A settings-related error occurred (e.g. setting an unknown option)
+//! Errors related to settings, configuration, and permissions.
+//! A settings-related error occurred (e.g. setting an unknown option).
 #define DUCKDB_V2_ERROR_CONFIGURATION_SETTINGS ((7 << 16) | 1)
-//! The database configuration is invalid
+//! The database configuration is invalid.
 #define DUCKDB_V2_ERROR_CONFIGURATION_INVALID ((7 << 16) | 2)
-//! The operation is not permitted under the current configuration
+//! The operation is not permitted under the current configuration.
 #define DUCKDB_V2_ERROR_CONFIGURATION_PERMISSION ((7 << 16) | 3)
-//! Internal, fatal, and interrupt-level runtime errors
-//! An internal invariant was violated; this indicates a bug in DuckDB
+//! Internal, fatal, and interrupt-level runtime errors.
+//! An internal invariant was violated; this indicates a bug in DuckDB.
 #define DUCKDB_V2_ERROR_RUNTIME_INTERNAL ((8 << 16) | 1)
-//! A fatal error occurred; the database is no longer usable
+//! A fatal error occurred; the database is no longer usable.
 #define DUCKDB_V2_ERROR_RUNTIME_FATAL ((8 << 16) | 2)
-//! The operation was interrupted (e.g. by a cancel request)
+//! The operation was interrupted (e.g. by a cancel request).
 #define DUCKDB_V2_ERROR_RUNTIME_INTERRUPT ((8 << 16) | 3)
-//! A required pointer was unexpectedly null
+//! A required pointer was unexpectedly null.
 #define DUCKDB_V2_ERROR_RUNTIME_NULL_POINTER ((8 << 16) | 4)
 
 /* --- Function pointer typedefs for errors --- */
@@ -479,12 +475,12 @@ struct duckdb_v2_opaque {
 //! query). A "try" cast (e.g. SQL TRY_CAST) tolerates per-row failures
 //! by writing NULL for the rows that could not be converted instead of
 //! aborting. The exec callback can read the mode from the exec args to
-//! decide whether a conversion failure should be reported as an error
-//! or silently turned into a NULL.
+//! decide whether a conversion failure is reported as an error or
+//! silently turned into a NULL.
 typedef enum DUCKDB_V2_CAST_MODE {
-	/* A regular cast. Any conversion failure should be reported as an error via the error info handle. */
+	/* A regular cast. Any conversion failure is reported as an error via the error info handle. */
 	DUCKDB_V2_CAST_MODE_NORMAL = 0,
-	/* A "try" cast. Conversion failures should be turned into NULL values in the output vector rather than reported as
+	/* A "try" cast. Conversion failures are turned into NULL values in the output vector rather than reported as
 	   errors. */
 	DUCKDB_V2_CAST_MODE_TRY = 1,
 } DUCKDB_V2_CAST_MODE;
@@ -527,9 +523,10 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_create(duckdb_
                                                                          duckdb_v2_error_info_handle *err);
 /*!
 * Sets the source type of a cast function.
-* Sets the logical type the cast converts from. The library makes an internal copy of the provided type and does not
-take ownership of it. Failing to set a source type before registration results in an error. The source type must be a
-fully defined concrete type and must not contain ANY or INVALID types.
+* Sets the logical type the cast converts from. The library makes an internal copy of
+the provided type and does not take ownership of it. Failing to set a source type
+before registration results in an error. The source type must be a fully defined
+concrete type.
 
 * @param func The cast function to configure.
 * @param type The source type to cast from.
@@ -540,9 +537,10 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_source_typ
     duckdb_v2_cast_function_builder_handle func, duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
 /*!
 * Sets the target type of a cast function.
-* Sets the logical type the cast converts to. The library makes an internal copy of the provided type and does not take
-ownership of it. Failing to set a target type before registration results in an error. The target type must be a fully
-defined concrete type and must not contain ANY or INVALID types.
+* Sets the logical type the cast converts to. The library makes an internal copy of
+the provided type and does not take ownership of it. Failing to set a target type
+before registration results in an error. The target type must be a fully defined
+concrete type.
 
 * @param func The cast function to configure.
 * @param type The target type to cast to.
@@ -553,9 +551,10 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_target_typ
     duckdb_v2_cast_function_builder_handle func, duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
 /*!
 * Sets the implicit cast cost of a cast function.
-* Sets the "cost" of applying this cast implicitly. The binder uses this cost when it has to choose between multiple
-candidate implicit casts: a lower (non-negative) cost makes the cast more likely to be chosen. A negative cost (the
-default) means the cast is never applied implicitly and can only be requested explicitly via CAST / TRY_CAST. This
+* Sets the "cost" of applying this cast implicitly. The binder uses this cost when it has to choose between
+multiple candidate implicit casts: a lower (non-negative) cost ([0, ~20]) makes the cast more likely to
+be chosen, a higher cost ([100, ...]) makes the cast less likely to be chosen. A negative cost (the default)
+means the cast is never applied implicitly and can only be  requested explicitly via CAST / TRY_CAST. This
 setting is optional.
 
 * @param func The cast function to configure.
@@ -584,7 +583,7 @@ DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_exec_callb
 * Sets arbitrary extra data on a cast function.
 * This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function.
 This is useful for associating custom metadata or static context with the function that can be retrieved later from the
-exec callback via the args' `user_data` field.
+exec callback via the args' `user_data` field. During execution, this data is read-only.
 
 * @param func The cast function to configure.
 * @param data Opaque pointer to user data.
@@ -594,7 +593,8 @@ exec callback via the args' `user_data` field.
 DUCKDB_C_API DUCKDB_V2_API_CALL_t duckdb_v2_cast_function_builder_set_user_data(
     duckdb_v2_cast_function_builder_handle func, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
-* Registers a cast function with a database, making the cast available in queries.
+* Registers a cast function on a database via the current context, making the cast available in all subsequent queries
+to that database.
 * This function registers a fully configured cast function builder with a database, making the cast available for use in
 SQL queries (and for implicit casting, depending on the implicit cast cost). The function builder must have its source
 type, target type, and exec callback set before registration; otherwise, registration will fail with an error. DuckDB
