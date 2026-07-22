@@ -1298,8 +1298,8 @@ void fud_pushdown(void *bind_data, duckdb_v2_table_function_filter_info_handle i
 	// Null-arg misuse; pass no err slot so the deliberate failure does not
 	// mark the callback as failed.
 	void *dummy = nullptr;
-	REQUIRE(duckdb_v2_table_function_filter_get_user_data(nullptr, &dummy, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_table_function_filter_get_user_data(info, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_table_function_filter_get_user_data(nullptr, &dummy, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_table_function_filter_get_user_data(info, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 } // namespace
@@ -1383,7 +1383,7 @@ TEST_CASE("V2 table function: callback error code round-trips to the query", "[c
 	duckdb_v2_result_handle result = nullptr;
 	duckdb_v2_error_info_handle qerr = nullptr;
 	REQUIRE(V2Query(fix.conn, "SELECT v FROM errcode_fn()", &result, &qerr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	while (true) {
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;

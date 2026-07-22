@@ -141,9 +141,9 @@ TEST_CASE("V2 table description: missing tables and views are rejected", "[capi_
 
 	// Null arguments are rejected.
 	qname = MakeQname({"v"});
-	REQUIRE(duckdb_v2_table_description_create(nullptr, qname, &desc, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_table_description_create(fx.conn, nullptr, &desc, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_table_description_create(fx.conn, qname, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_table_description_create(nullptr, qname, &desc, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_table_description_create(fx.conn, nullptr, &desc, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_table_description_create(fx.conn, qname, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_qname_destroy(&qname);
 }
 
@@ -192,9 +192,9 @@ TEST_CASE("V2 table description: schema and per-column flags", "[capi_v2][catalo
 
 	// An out-of-range index is rejected.
 	REQUIRE(duckdb_v2_table_description_column_is_generated(desc, 3, &is_generated, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_table_description_column_has_default(desc, 3, &has_default, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_table_description_destroy(&desc);
 }
@@ -245,7 +245,7 @@ TEST_CASE("V2 table description: a description is a snapshot", "[capi_v2][catalo
 
 	// Null getter subjects are rejected.
 	duckdb_v2_qname_handle qname = nullptr;
-	REQUIRE(duckdb_v2_table_description_get_qname(nullptr, &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_table_description_get_qname(nullptr, &qname, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	bool flag = false;
-	REQUIRE(duckdb_v2_table_description_is_readonly(nullptr, &flag, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_table_description_is_readonly(nullptr, &flag, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }

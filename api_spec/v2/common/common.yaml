@@ -159,14 +159,6 @@ callbacks:
           pointer to the destructor when it's time to clean up the resource.
           The destructor is responsible for freeing it.
 aliases:
-  error_kind:
-    underlying: u32
-    description: The category part of an error code (the upper 16 bits).
-  error_code:
-    underlying: u32
-    description: 'Full 32-bit error code: (group_id << 16) | code.'
-  API_CALL:
-    underlying: error_code
   sel:
     underlying: u32
     description: Selection-vector entry. Mirrors duckdb::sel_t.

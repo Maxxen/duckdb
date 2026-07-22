@@ -70,7 +70,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   statement_iterator_next:
     summary: Yields the next statement, or NULL when exhausted.
     description: |
@@ -96,7 +96,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   statement_bind:
     summary: Binds a parsed statement without executing, yielding its schema signature.
     description: |
@@ -115,7 +115,7 @@ functions:
       preprocessing) surface here. A statement that preprocessing expands into a
       group (a dynamic PIVOT, or statement-expanding DDL such as ALTER ADD COLUMN
       with a non-constant DEFAULT) is not bindable and is rejected with
-      ERROR_INVALID_INPUT; execute it instead.
+      ERROR_INPUT_INVALID; execute it instead.
 
       *out_schema and *out_parameters are set to NULL on failure.
     role: method
@@ -142,7 +142,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   statement_add_collection:
     summary: Binds a filled column data collection to the statement under a name.
     description: |
@@ -151,18 +151,18 @@ functions:
       statement can then be bound, prepared, or executed through the existing
       surface; each execution scans the collection's contents at that moment.
       Supported statement types are SELECT, INSERT, UPDATE, DELETE, and MERGE
-      INTO; any other type is rejected with ERROR_INVALID_INPUT.
+      INTO; any other type is rejected with ERROR_INPUT_INVALID.
 
       name is a borrowed string view and must be non-empty. A name already
       present in the statement's CTE map (from the SQL text or a prior call) is
-      rejected with ERROR_INVALID_INPUT. The binding shadows any catalog table
+      rejected with ERROR_INPUT_INVALID. The binding shadows any catalog table
       named name, following standard CTE semantics.
 
       By default the collection's columns bind as col1..colN. Pass column_names
       to bind them under caller-chosen names instead, so the statement can
       reference them directly (FROM buf) without an alias. When supplied,
       column_count must equal the collection's column count; a mismatch is
-      rejected with ERROR_INVALID_INPUT. Pass (NULL, 0) for the col1..colN
+      rejected with ERROR_INPUT_INVALID. Pass (NULL, 0) for the col1..colN
       default.
 
       The collection is borrowed: the caller keeps ownership and must keep it
@@ -196,7 +196,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   sql_statement_destroy:
     summary: Destroys a statement handle.
     description: |
@@ -210,7 +210,7 @@ functions:
         type: sql_statement
         indirection: 1
         description: The statement to destroy.
-    return_type: API_CALL
+    return_type: ERROR
   statement_iterator_destroy:
     summary: Destroys a statement iterator handle.
     description: |
@@ -224,4 +224,4 @@ functions:
         type: statement_iterator
         indirection: 1
         description: The iterator to destroy.
-    return_type: API_CALL
+    return_type: ERROR

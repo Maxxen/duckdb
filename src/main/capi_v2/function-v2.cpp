@@ -16,8 +16,8 @@
 // so a thrown DuckDB exception becomes a V2 error code.
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_get_count(duckdb_v2_bind_arguments_handle args, idx_t *out_count,
-                                                        duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_bind_arguments_get_count(duckdb_v2_bind_arguments_handle args, idx_t *out_count,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!args || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_bind_arguments_get_count");
@@ -26,9 +26,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_get_count(duckdb_v2_bind_arguments
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_get_type(duckdb_v2_bind_arguments_handle args, idx_t index,
-                                                       duckdb_v2_logical_type_handle *out_type,
-                                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_bind_arguments_get_type(duckdb_v2_bind_arguments_handle args, idx_t index,
+                                                  duckdb_v2_logical_type_handle *out_type,
+                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_type) {
 			*out_type = nullptr;
@@ -45,9 +45,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_get_type(duckdb_v2_bind_arguments_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_fold(duckdb_v2_bind_arguments_handle args, duckdb_v2_context_handle ctx,
-                                                   idx_t index, duckdb_v2_value_handle *out_value,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_bind_arguments_fold(duckdb_v2_bind_arguments_handle args, duckdb_v2_context_handle ctx,
+                                              idx_t index, duckdb_v2_value_handle *out_value,
+                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_value) {
 			*out_value = nullptr;
@@ -70,9 +70,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_fold(duckdb_v2_bind_arguments_hand
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_set_constant(duckdb_v2_bind_arguments_handle args, idx_t index,
-                                                           duckdb_v2_value_handle value,
-                                                           duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_bind_arguments_set_constant(duckdb_v2_bind_arguments_handle args, idx_t index,
+                                                      duckdb_v2_value_handle value, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!args || !value) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_bind_arguments_set_constant");
@@ -85,8 +84,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_set_constant(duckdb_v2_bind_argume
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_bind_arguments_truncate(duckdb_v2_bind_arguments_handle args, idx_t count,
-                                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_bind_arguments_truncate(duckdb_v2_bind_arguments_handle args, idx_t count,
+                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!args) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_bind_arguments_truncate");

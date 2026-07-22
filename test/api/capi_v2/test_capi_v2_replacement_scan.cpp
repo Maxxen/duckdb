@@ -20,7 +20,7 @@
 namespace {
 
 struct ReplScanQueryFailure {
-	duckdb_v2_error_code_t code = 0;
+	DUCKDB_V2_ERROR code = DUCKDB_V2_ERROR_NONE;
 	std::string message;
 };
 
@@ -393,7 +393,7 @@ static void ReplScanFailMapped(duckdb_v2_replacement_scan_info_handle info, duck
 
 static void ReplScanFailSentinel(duckdb_v2_replacement_scan_info_handle info, duckdb_v2_context_handle ctx,
                                  duckdb_v2_error_info_handle *err) {
-	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_API_ERROR);
+	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_API);
 	duckdb_v2_error_info_set_text(*err, V2Str("unmapped replacement scan failure"));
 }
 
@@ -516,12 +516,12 @@ TEST_CASE("V2 replacement scan: not invoked for resolvable names", "[capi_v2][re
 // ---------------------------------------------------------------------------
 
 struct ReplScanNullArgProbe {
-	duckdb_v2_error_code_t null_out_name = 0;
-	duckdb_v2_error_code_t null_out_data = 0;
-	duckdb_v2_error_code_t bad_fn_name = 0;
-	duckdb_v2_error_code_t null_param_value = 0;
-	duckdb_v2_error_code_t bad_named_name = 0;
-	duckdb_v2_error_code_t null_named_value = 0;
+	DUCKDB_V2_ERROR null_out_name = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR null_out_data = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR bad_fn_name = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR null_param_value = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR bad_named_name = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR null_named_value = DUCKDB_V2_ERROR_NONE;
 };
 
 static void ReplScanProbeNullArgs(duckdb_v2_replacement_scan_info_handle info, duckdb_v2_context_handle ctx,
@@ -549,35 +549,35 @@ TEST_CASE("V2 replacement scan: null argument rejection", "[capi_v2][replacement
 
 	SECTION("register rejects null db and null callback") {
 		REQUIRE(duckdb_v2_replacement_scan_register(nullptr, ReplScanClaimRange, {nullptr, nullptr, nullptr},
-		                                            nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		                                            nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(duckdb_v2_replacement_scan_register(fix.db, nullptr, {nullptr, nullptr, nullptr}, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 
 	SECTION("info accessors reject a null info and null the pointer out-params") {
 		duckdb_v2_str name {reinterpret_cast<const char *>(0x1), 7};
-		REQUIRE(duckdb_v2_replacement_scan_get_catalog_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_replacement_scan_get_catalog_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(name.ptr == nullptr);
 
 		name = duckdb_v2_str {reinterpret_cast<const char *>(0x1), 7};
-		REQUIRE(duckdb_v2_replacement_scan_get_schema_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_replacement_scan_get_schema_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(name.ptr == nullptr);
 
 		name = duckdb_v2_str {reinterpret_cast<const char *>(0x1), 7};
-		REQUIRE(duckdb_v2_replacement_scan_get_table_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_replacement_scan_get_table_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(name.ptr == nullptr);
 
 		void *data = reinterpret_cast<void *>(0x1);
-		REQUIRE(duckdb_v2_replacement_scan_get_user_data(nullptr, &data, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_replacement_scan_get_user_data(nullptr, &data, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(data == nullptr);
 
 		REQUIRE(duckdb_v2_replacement_scan_set_function_name(nullptr, V2Str("range"), nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		duckdb_v2_value_handle value = V2Int64Value(1);
-		REQUIRE(duckdb_v2_replacement_scan_add_parameter(nullptr, value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_replacement_scan_add_parameter(nullptr, value, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(duckdb_v2_replacement_scan_add_named_parameter(nullptr, V2Str("start"), value, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_value_destroy(&value);
 	}
 
@@ -586,11 +586,11 @@ TEST_CASE("V2 replacement scan: null argument rejection", "[capi_v2][replacement
 		REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanProbeNullArgs, {&probe, nullptr, nullptr},
 		                                            nullptr) == DUCKDB_V2_ERROR_NONE);
 		ReplScanExpectQueryFailure(fix.conn, "SELECT * FROM repl_scan_nosuch");
-		REQUIRE(probe.null_out_name == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(probe.null_out_data == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(probe.bad_fn_name == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(probe.null_param_value == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(probe.bad_named_name == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(probe.null_named_value == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(probe.null_out_name == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(probe.null_out_data == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(probe.bad_fn_name == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(probe.null_param_value == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(probe.bad_named_name == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(probe.null_named_value == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 }

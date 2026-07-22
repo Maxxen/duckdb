@@ -130,9 +130,9 @@ TEST_CASE("Stable C++API: Scalar Function user data", "[cpp_api]") {
 		    .SetReturnType(LogicalType::INTEGER())
 		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    REQUIRE_THROWS_MATCHES(input.GetBindData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    auto out = input.GetResultVector().GetDataMutable<int32_t>();
 			    const auto count = input.GetInputChunk().GetRowCount();
 			    for (idx_t i = 0; i < count; i++) {
@@ -171,7 +171,7 @@ TEST_CASE("Stable C++API: Scalar SetUserData is consumed by Register", "[cpp_api
 		function.SetName("scalar_ud_consume2")
 		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    auto out = input.GetResultVector().GetDataMutable<int32_t>();
 			    const auto count = input.GetInputChunk().GetRowCount();
 			    for (idx_t i = 0; i < count; i++) {
@@ -321,13 +321,13 @@ TEST_CASE("Stable C++API: Aggregate Function user data", "[cpp_api]") {
 		    .SetReturnType(LogicalType::INTEGER())
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    input.Reserve<int32_t>();
 		    })
 		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
 		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    AggSumUpdate(input);
 		    })
 		    .SetCombineCallback(AggSumCombine)
@@ -366,7 +366,7 @@ TEST_CASE("Stable C++API: Aggregate SetUserData is consumed by Register", "[cpp_
 		aggregate.SetName("agg_ud_consume2")
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    input.Reserve<int32_t>();
 		    })
 		    .Register(ctx);
@@ -415,7 +415,7 @@ TEST_CASE("Stable C++API: Aggregate Function bind data", "[cpp_api]") {
 		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
 		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetBindData<int32_t>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    AggSumUpdate(input);
 		    })
 		    .SetCombineCallback(AggSumCombine)
@@ -537,17 +537,17 @@ TEST_CASE("Stable C++API: Copy Function user data", "[cpp_api]") {
 		none.SetName("my_copy_ud_none")
 		    .SetBindCallback([](CopyFunction::BindInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 		    })
 		    .SetInitCallback([](CopyFunction::InitInput &input) {
 			    // Bind data never set: a clear error, not a null deref.
 			    REQUIRE_THROWS_MATCHES(input.GetBindData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 		    })
 		    .SetBatchCallback([](CopyFunction::BatchInput &) {})
 		    .SetFlushCallback([](CopyFunction::FlushInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 		    })
 		    .SetFinalizeCallback([](CopyFunction::FinalizeInput &) {})
 		    .Register(ctx);
@@ -583,7 +583,7 @@ TEST_CASE("Stable C++API: Copy SetUserData is consumed by Register", "[cpp_api]"
 		copy_function.SetName("my_copy_ud_consume2")
 		    .SetBindCallback([](CopyFunction::BindInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 		    })
 		    .Register(ctx);
 	});
@@ -780,7 +780,7 @@ TEST_CASE("Stable C++API: Scalar exec sees the execution context", "[cpp_api]") 
 		} else {
 			// A context-free invocation reports no context and GetContext()
 			// throws rather than handing back a dangling/garbage pointer.
-			REQUIRE_THROWS_MATCHES(input.GetContext(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			REQUIRE_THROWS_MATCHES(input.GetContext(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			p.without_context += (count == 0 ? 1 : count);
 		}
 		for (idx_t i = 0; i < count; i++) {
@@ -883,7 +883,7 @@ TEST_CASE("Stable C++API: Scalar init sees a nullable execution context", "[cpp_
 		} else {
 			// A context-free invocation reports no context and GetContext()
 			// throws rather than handing back a dangling/garbage pointer.
-			REQUIRE_THROWS_MATCHES(input.GetContext(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			REQUIRE_THROWS_MATCHES(input.GetContext(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			p.init_without_context += 1;
 		}
 	};

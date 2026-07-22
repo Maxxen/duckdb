@@ -13,7 +13,7 @@ namespace duckdb_api {
 //----------------------------------------------------------------------------------------------------------------------
 
 InvalidInputException::InvalidInputException(std::string message)
-    : Exception(DUCKDB_V2_ERROR_INVALID_INPUT, std::move(message)) {
+    : Exception(DUCKDB_V2_ERROR_INPUT_INVALID, std::move(message)) {
 }
 
 InterruptException::InterruptException(std::string message)
@@ -197,21 +197,21 @@ std::string_view FromStr(duckdb_v2_str s) {
 
 // Catch any exceptions and propagate them via the error info out-parameter, returning an appropriate error code.
 template <class T>
-DUCKDB_V2_API_CALL_t WithExceptionGuard(duckdb_v2_error_info_handle *err, T callback) {
-	auto code = static_cast<DUCKDB_V2_API_CALL_t>(DUCKDB_V2_ERROR_NONE);
+DUCKDB_V2_ERROR WithExceptionGuard(duckdb_v2_error_info_handle *err, T callback) {
+	auto code = static_cast<DUCKDB_V2_ERROR>(DUCKDB_V2_ERROR_NONE);
 	auto text = std::string();
 
 	try {
 		// Invoke the callback
 		callback();
 	} catch (const Exception &ex) {
-		code = ex.GetCode();
+		code = static_cast<DUCKDB_V2_ERROR>(ex.GetCode());
 		text = ex.what();
 	} catch (const std::exception &ex) {
-		code = DUCKDB_V2_API_ERROR;
+		code = DUCKDB_V2_ERROR_API;
 		text = ex.what();
 	} catch (...) {
-		code = DUCKDB_V2_API_ERROR;
+		code = DUCKDB_V2_ERROR_API;
 		text = "An unknown error occurred.";
 	}
 
@@ -230,7 +230,7 @@ DUCKDB_V2_API_CALL_t WithExceptionGuard(duckdb_v2_error_info_handle *err, T call
 // from the corresponding DUCKDB_V2_FUNCTION_PROPERTY_VALUE.
 
 [[noreturn]] void ThrowUnexpectedPropertyValue(DUCKDB_V2_FUNCTION_PROPERTY_VALUE value) {
-	throw InvalidInputException("Unexpected function property value " + std::to_string(static_cast<uint32_t>(value)));
+	throw InvalidInputException("Unexpected function property value " + std::to_string(value));
 }
 
 DUCKDB_V2_FUNCTION_PROPERTY_VALUE ToCValue(FunctionStability value) {
@@ -1071,7 +1071,7 @@ LogicalType::~LogicalType() {
 
 // TypeId mirrors LOGICAL_TYPE_ID numerically; every member is pinned.
 #define DUCKDB_CPP_ASSERT_TYPE_ID(member)                                                                              \
-	static_assert(static_cast<uint32_t>(TypeId::member) == DUCKDB_V2_LOGICAL_TYPE_ID_##member,                         \
+	static_assert(static_cast<DUCKDB_V2_LOGICAL_TYPE_ID>(TypeId::member) == DUCKDB_V2_LOGICAL_TYPE_ID_##member,        \
 	              "TypeId::" #member " must mirror DUCKDB_V2_LOGICAL_TYPE_ID_" #member)
 DUCKDB_CPP_ASSERT_TYPE_ID(INVALID);
 DUCKDB_CPP_ASSERT_TYPE_ID(SQLNULL);
@@ -1744,46 +1744,44 @@ auto Value::GetChild(idx_t index) const -> Value {
 // ExpressionClass and ExpressionType mirror the C enums numerically. The
 // sentinels below pin the start and end of every numbering run, so a renumber
 // on either side trips here.
-static_assert(
-    static_cast<uint32_t>(ExpressionClass::Invalid) == DUCKDB_V2_EXPRESSION_CLASS_INVALID &&
-        static_cast<uint32_t>(ExpressionClass::Aggregate) == DUCKDB_V2_EXPRESSION_CLASS_AGGREGATE &&
-        static_cast<uint32_t>(ExpressionClass::Star) == DUCKDB_V2_EXPRESSION_CLASS_STAR &&
-        static_cast<uint32_t>(ExpressionClass::Subquery) == DUCKDB_V2_EXPRESSION_CLASS_SUBQUERY &&
-        static_cast<uint32_t>(ExpressionClass::Type) == DUCKDB_V2_EXPRESSION_CLASS_TYPE &&
-        static_cast<uint32_t>(ExpressionClass::BoundAggregate) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_AGGREGATE &&
-        static_cast<uint32_t>(ExpressionClass::BoundLambdaRef) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_LAMBDA_REF &&
-        static_cast<uint32_t>(ExpressionClass::BoundExpression) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_EXPRESSION &&
-        static_cast<uint32_t>(ExpressionClass::BoundExpanded) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_EXPANDED,
-    "ExpressionClass must mirror DUCKDB_V2_EXPRESSION_CLASS");
-static_assert(static_cast<uint32_t>(ExpressionType::Invalid) == DUCKDB_V2_EXPRESSION_TYPE_INVALID &&
-                  static_cast<uint32_t>(ExpressionType::OperatorCast) == DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_CAST &&
-                  static_cast<uint32_t>(ExpressionType::OperatorUnpack) == DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_UNPACK &&
-                  static_cast<uint32_t>(ExpressionType::CompareEqual) == DUCKDB_V2_EXPRESSION_TYPE_COMPARE_EQUAL &&
-                  static_cast<uint32_t>(ExpressionType::CompareNotDistinctFrom) ==
+static_assert(static_cast<int>(ExpressionClass::Invalid) == DUCKDB_V2_EXPRESSION_CLASS_INVALID &&
+                  static_cast<int>(ExpressionClass::Aggregate) == DUCKDB_V2_EXPRESSION_CLASS_AGGREGATE &&
+                  static_cast<int>(ExpressionClass::Star) == DUCKDB_V2_EXPRESSION_CLASS_STAR &&
+                  static_cast<int>(ExpressionClass::Subquery) == DUCKDB_V2_EXPRESSION_CLASS_SUBQUERY &&
+                  static_cast<int>(ExpressionClass::Type) == DUCKDB_V2_EXPRESSION_CLASS_TYPE &&
+                  static_cast<int>(ExpressionClass::BoundAggregate) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_AGGREGATE &&
+                  static_cast<int>(ExpressionClass::BoundLambdaRef) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_LAMBDA_REF &&
+                  static_cast<int>(ExpressionClass::BoundExpression) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_EXPRESSION &&
+                  static_cast<int>(ExpressionClass::BoundExpanded) == DUCKDB_V2_EXPRESSION_CLASS_BOUND_EXPANDED,
+              "ExpressionClass must mirror DUCKDB_V2_EXPRESSION_CLASS");
+static_assert(static_cast<int>(ExpressionType::Invalid) == DUCKDB_V2_EXPRESSION_TYPE_INVALID &&
+                  static_cast<int>(ExpressionType::OperatorCast) == DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_CAST &&
+                  static_cast<int>(ExpressionType::OperatorUnpack) == DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_UNPACK &&
+                  static_cast<int>(ExpressionType::CompareEqual) == DUCKDB_V2_EXPRESSION_TYPE_COMPARE_EQUAL &&
+                  static_cast<int>(ExpressionType::CompareNotDistinctFrom) ==
                       DUCKDB_V2_EXPRESSION_TYPE_COMPARE_NOT_DISTINCT_FROM &&
-                  static_cast<uint32_t>(ExpressionType::ConjunctionAnd) == DUCKDB_V2_EXPRESSION_TYPE_CONJUNCTION_AND &&
-                  static_cast<uint32_t>(ExpressionType::ConjunctionOr) == DUCKDB_V2_EXPRESSION_TYPE_CONJUNCTION_OR &&
-                  static_cast<uint32_t>(ExpressionType::ValueConstant) == DUCKDB_V2_EXPRESSION_TYPE_VALUE_CONSTANT &&
-                  static_cast<uint32_t>(ExpressionType::ValueDefault) == DUCKDB_V2_EXPRESSION_TYPE_VALUE_DEFAULT,
+                  static_cast<int>(ExpressionType::ConjunctionAnd) == DUCKDB_V2_EXPRESSION_TYPE_CONJUNCTION_AND &&
+                  static_cast<int>(ExpressionType::ConjunctionOr) == DUCKDB_V2_EXPRESSION_TYPE_CONJUNCTION_OR &&
+                  static_cast<int>(ExpressionType::ValueConstant) == DUCKDB_V2_EXPRESSION_TYPE_VALUE_CONSTANT &&
+                  static_cast<int>(ExpressionType::ValueDefault) == DUCKDB_V2_EXPRESSION_TYPE_VALUE_DEFAULT,
               "ExpressionType must mirror DUCKDB_V2_EXPRESSION_TYPE");
-static_assert(
-    static_cast<uint32_t>(ExpressionType::Aggregate) == DUCKDB_V2_EXPRESSION_TYPE_AGGREGATE &&
-        static_cast<uint32_t>(ExpressionType::GroupingFunction) == DUCKDB_V2_EXPRESSION_TYPE_GROUPING_FUNCTION &&
-        static_cast<uint32_t>(ExpressionType::WindowAggregate) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_AGGREGATE &&
-        static_cast<uint32_t>(ExpressionType::WindowRank) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_RANK &&
-        static_cast<uint32_t>(ExpressionType::WindowRowNumber) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_ROW_NUMBER &&
-        static_cast<uint32_t>(ExpressionType::WindowFirstValue) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_FIRST_VALUE &&
-        static_cast<uint32_t>(ExpressionType::WindowFill) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_FILL &&
-        static_cast<uint32_t>(ExpressionType::Function) == DUCKDB_V2_EXPRESSION_TYPE_FUNCTION &&
-        static_cast<uint32_t>(ExpressionType::CaseExpr) == DUCKDB_V2_EXPRESSION_TYPE_CASE_EXPR &&
-        static_cast<uint32_t>(ExpressionType::OperatorTry) == DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_TRY &&
-        static_cast<uint32_t>(ExpressionType::Subquery) == DUCKDB_V2_EXPRESSION_TYPE_SUBQUERY &&
-        static_cast<uint32_t>(ExpressionType::Star) == DUCKDB_V2_EXPRESSION_TYPE_STAR &&
-        static_cast<uint32_t>(ExpressionType::Type) == DUCKDB_V2_EXPRESSION_TYPE_TYPE &&
-        static_cast<uint32_t>(ExpressionType::Cast) == DUCKDB_V2_EXPRESSION_TYPE_CAST &&
-        static_cast<uint32_t>(ExpressionType::BoundRef) == DUCKDB_V2_EXPRESSION_TYPE_BOUND_REF &&
-        static_cast<uint32_t>(ExpressionType::BoundExpanded) == DUCKDB_V2_EXPRESSION_TYPE_BOUND_EXPANDED,
-    "ExpressionType must mirror DUCKDB_V2_EXPRESSION_TYPE");
+static_assert(static_cast<int>(ExpressionType::Aggregate) == DUCKDB_V2_EXPRESSION_TYPE_AGGREGATE &&
+                  static_cast<int>(ExpressionType::GroupingFunction) == DUCKDB_V2_EXPRESSION_TYPE_GROUPING_FUNCTION &&
+                  static_cast<int>(ExpressionType::WindowAggregate) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_AGGREGATE &&
+                  static_cast<int>(ExpressionType::WindowRank) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_RANK &&
+                  static_cast<int>(ExpressionType::WindowRowNumber) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_ROW_NUMBER &&
+                  static_cast<int>(ExpressionType::WindowFirstValue) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_FIRST_VALUE &&
+                  static_cast<int>(ExpressionType::WindowFill) == DUCKDB_V2_EXPRESSION_TYPE_WINDOW_FILL &&
+                  static_cast<int>(ExpressionType::Function) == DUCKDB_V2_EXPRESSION_TYPE_FUNCTION &&
+                  static_cast<int>(ExpressionType::CaseExpr) == DUCKDB_V2_EXPRESSION_TYPE_CASE_EXPR &&
+                  static_cast<int>(ExpressionType::OperatorTry) == DUCKDB_V2_EXPRESSION_TYPE_OPERATOR_TRY &&
+                  static_cast<int>(ExpressionType::Subquery) == DUCKDB_V2_EXPRESSION_TYPE_SUBQUERY &&
+                  static_cast<int>(ExpressionType::Star) == DUCKDB_V2_EXPRESSION_TYPE_STAR &&
+                  static_cast<int>(ExpressionType::Type) == DUCKDB_V2_EXPRESSION_TYPE_TYPE &&
+                  static_cast<int>(ExpressionType::Cast) == DUCKDB_V2_EXPRESSION_TYPE_CAST &&
+                  static_cast<int>(ExpressionType::BoundRef) == DUCKDB_V2_EXPRESSION_TYPE_BOUND_REF &&
+                  static_cast<int>(ExpressionType::BoundExpanded) == DUCKDB_V2_EXPRESSION_TYPE_BOUND_EXPANDED,
+              "ExpressionType must mirror DUCKDB_V2_EXPRESSION_TYPE");
 
 Expression::Expression(void *impl) : detail::Handle<Expression>(impl) {
 }
@@ -1875,8 +1873,8 @@ auto StringHeap::Allocate(idx_t byte_len) -> uint8_t * {
 }
 
 void StringHeap::ThrowStringTooLong(idx_t size) {
-	throw Exception(DUCKDB_V2_ERROR_OUT_OF_RANGE, "Out of Range Error: string length " + std::to_string(size) +
-	                                                  " exceeds the maximum a duckdb_v2_string can hold");
+	throw Exception(DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE, "Out of Range Error: string length " + std::to_string(size) +
+	                                                        " exceeds the maximum a duckdb_v2_string can hold");
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2560,7 +2558,7 @@ void Appender::AppendChunk(DataChunk &chunk) {
 	} catch (const Exception &ex) {
 		// A validation refusal leaves the buffer untouched; any other failure
 		// may have copied part of the chunk.
-		if (ex.GetCode() != DUCKDB_V2_ERROR_INVALID_INPUT) {
+		if (ex.GetCode() != DUCKDB_V2_ERROR_INPUT_INVALID) {
 			s.broken = true;
 		}
 		throw;
@@ -2885,7 +2883,7 @@ auto ScalarFunction::BindInput::TruncateArguments(idx_t count) -> void {
 
 auto ScalarFunction::BindInput::GetContext() const -> Context {
 	if (!context) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "Invalid Input Error: this bind runs without a client context");
+		throw Exception(DUCKDB_V2_ERROR_INPUT_INVALID, "Invalid Input Error: this bind runs without a client context");
 	}
 	return detail::Factory::Make<Context>(static_cast<duckdb_v2_context_handle>(context));
 }
@@ -2917,7 +2915,7 @@ auto ScalarFunction::InitInput::HasContext() const -> bool {
 
 auto ScalarFunction::InitInput::GetContext() const -> Context {
 	if (!context) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
+		throw Exception(DUCKDB_V2_ERROR_INPUT_INVALID,
 		                "Invalid Input Error: this invocation runs without a client context");
 	}
 	return detail::Factory::Make<Context>(static_cast<duckdb_v2_context_handle>(context));
@@ -2965,7 +2963,7 @@ auto ScalarFunction::ExecInput::HasContext() const -> bool {
 
 auto ScalarFunction::ExecInput::GetContext() const -> Context {
 	if (!context) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT,
+		throw Exception(DUCKDB_V2_ERROR_INPUT_INVALID,
 		                "Invalid Input Error: this invocation runs without an execution context");
 	}
 	return detail::Factory::Make<Context>(static_cast<duckdb_v2_context_handle>(context));
@@ -3284,7 +3282,7 @@ auto AggregateFunction::BindInput::TruncateArguments(idx_t count) -> void {
 
 auto AggregateFunction::BindInput::GetContext() const -> Context {
 	if (!context) {
-		throw Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "Invalid Input Error: this bind runs without a client context");
+		throw Exception(DUCKDB_V2_ERROR_INPUT_INVALID, "Invalid Input Error: this bind runs without a client context");
 	}
 	return detail::Factory::Make<Context>(static_cast<duckdb_v2_context_handle>(context));
 }

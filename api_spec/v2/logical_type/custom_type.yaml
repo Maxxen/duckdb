@@ -26,7 +26,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   #------------------------------------------------------------------------------------------------
   # Custom Type Builder Functions
   #------------------------------------------------------------------------------------------------
@@ -47,7 +47,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   custom_type_builder_destroy:
     summary: Destroys a custom type builder, releasing its resources.
     description: "This function destroys a custom type builder that was created with `custom_type_builder_create`, releasing any resources associated with it. \nIf the builder has already been registered with a database, destroying it does not affect the registered type, as DuckDB makes an internal copy of the type during registration. \nThis function is null-safe: calling it with a null pointer is a no-op. \nThe handle is set to null on return to prevent double-destruction.\n"
@@ -72,7 +72,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   custom_type_builder_set_name:
     summary: Sets the name of a custom type.
     description: "The library makes an internal copy of the provided name and does not take ownership. \nThe name is used to reference the custom type in SQL and must be set before registration; otherwise registration will fail with an error.\n"
@@ -88,7 +88,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   custom_type_builder_set_base_type:
     summary: Sets the base type of a custom type.
     description: "Sets the logical type the custom type is based on. The custom type shares the base type's internal (physical) representation but is logically distinct, so it can carry its own cast functions. \nThe library makes an internal copy of the provided type and does not take ownership of it. \nThe base type must be set before registration; otherwise registration will fail with an error.\n"
@@ -104,4 +104,4 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR

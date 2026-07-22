@@ -7,12 +7,12 @@ use std::ptr;
 //-------------------------------------------------------------------------------------------------
 
 /// Success status returned by every `duckdb_v2_*` call (`DUCKDB_V2_ERROR_NONE`).
-const OK: ffi::DUCKDB_V2_API_CALL_t = 0;
+const OK: ffi::DUCKDB_V2_ERROR = 0;
 
 /// An error returned by the DuckDB C API.
 #[derive(Debug, Clone)]
 pub struct Error {
-    /// The raw `duckdb_v2_error_code_t`.
+    /// The raw `DUCKDB_V2_ERROR`.
     pub code: u32,
     /// Human-readable message, empty if the API provided none.
     pub message: String,
@@ -35,7 +35,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Turn a C-API status + optional error handle into a `Result`, consuming (destroying)
 /// the error handle. `err` may be null (success, or an API that reported no detail).
 unsafe fn check(
-    code: ffi::DUCKDB_V2_API_CALL_t,
+    code: ffi::DUCKDB_V2_ERROR,
     mut err: ffi::duckdb_v2_error_info_handle,
 ) -> Result<()> {
     if code == OK {

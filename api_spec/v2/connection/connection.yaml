@@ -46,7 +46,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   disconnect:
     summary: "Closes the connection."
     description: |
@@ -61,7 +61,7 @@ functions:
         type: connection
         indirection: 1
         description: "The connection to close."
-    return_type: API_CALL
+    return_type: ERROR
   connection_option_set:
     summary: "Sets a config option through the connection."
     description: |
@@ -73,7 +73,7 @@ functions:
           connections (matches `SET GLOBAL`).
         - LOCAL: writes to this connection's session only (matches
           `SET LOCAL` / `SET SESSION`).
-      Disallowed combinations return ERROR_INVALID_INPUT
+      Disallowed combinations return ERROR_INPUT_INVALID
       (GLOBAL × LOCAL_ONLY, LOCAL × GLOBAL_ONLY, and the legacy
       analogues — DUCKDB_GLOBAL × LOCAL, DUCKDB_LOCAL × GLOBAL).
       Unknown option names are rejected; for setting an option whose
@@ -96,7 +96,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   connection_option_get:
     summary: "Reads a config option through the connection."
     description: |
@@ -104,7 +104,7 @@ functions:
       LOCAL override (if set on this connection) → GLOBAL value → static
       default. Other fields populated identically to the database get.
       Aliases resolve transparently. Unknown names return
-      ERROR_INVALID_INPUT. Caller destroys the returned option.
+      ERROR_INPUT_INVALID. Caller destroys the returned option.
     role: getter
     belongs_to: connection
     parameters:
@@ -124,7 +124,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   connection_option_get_count:
     summary: "Returns the count of config options visible to this connection."
     description: |
@@ -146,14 +146,14 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   connection_option_get_by_index:
     summary: "Reads the config option at the given index visible to this connection."
     description: |
       Index space: [0, core_count) addresses core options;
       [core_count, total) addresses extension options visible from this
       connection's database. Out-of-range index returns
-      ERROR_INVALID_INPUT. Caller destroys.
+      ERROR_INPUT_INVALID. Caller destroys.
     role: getter
     belongs_to: connection
     parameters:
@@ -173,7 +173,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   connection_interrupt:
     summary: "Interrupts the query currently executing on the connection."
     description: |
@@ -195,7 +195,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   connection_query_progress:
     summary: "Captures a snapshot of the active query's execution progress."
     description: |
@@ -225,7 +225,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   query_progress_get_percentage:
     summary: "Returns the snapshot's percentage complete."
     description: |
@@ -247,7 +247,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   query_progress_get_rows_processed:
     summary: "Returns the snapshot's processed row count."
     role: getter
@@ -266,7 +266,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   query_progress_get_total_rows_to_process:
     summary: "Returns the snapshot's total row count."
     role: getter
@@ -285,7 +285,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   query_progress_destroy:
     summary: "Destroys a progress snapshot handle."
     description: |
@@ -298,7 +298,7 @@ functions:
         type: query_progress
         indirection: 1
         description: "The progress snapshot to destroy."
-    return_type: API_CALL
+    return_type: ERROR
   connection_execute_with_context:
     summary: "Runs a callback in a transaction with the connection's context as the active context."
     description: |
@@ -323,4 +323,4 @@ functions:
         type: error_info
         indirection: 1
         description: "Optional. Error info handle to write details to if the callback fails."
-    return_type: API_CALL
+    return_type: ERROR

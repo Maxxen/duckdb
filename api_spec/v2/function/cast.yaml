@@ -57,7 +57,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_builder_set_source_type:
     summary: Sets the source type of a cast function.
     description: "Sets the logical type the cast converts from. The library makes an internal copy of \nthe provided type and does not take ownership of it. Failing to set a source type \nbefore registration results in an error. The source type must be a fully defined \nconcrete type.\n"
@@ -72,7 +72,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_builder_set_target_type:
     summary: Sets the target type of a cast function.
     description: "Sets the logical type the cast converts to. The library makes an internal copy of\nthe provided type and does not take ownership of it. Failing to set a target type \nbefore registration results in an error. The target type must be a fully defined \nconcrete type.\n"
@@ -87,7 +87,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_builder_set_implicit_cast_cost:
     summary: Sets the implicit cast cost of a cast function.
     description: "Sets the \"cost\" of applying this cast implicitly. The binder uses this cost when it has to choose between \nmultiple candidate implicit casts: a lower (non-negative) cost ([0, ~20]) makes the cast more likely to \nbe chosen, a higher cost ([100, ...]) makes the cast less likely to be chosen. A negative cost (the default) \nmeans the cast is never applied implicitly and can only be  requested explicitly via CAST / TRY_CAST. This \nsetting is optional.\n"
@@ -102,7 +102,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_builder_set_exec_callback:
     summary: Sets the exec callback for a cast function.
     description: "The \"exec\" callback is invoked during query execution to convert each batch of input values into the target type. \nThis is the main callback that implements the logic of the cast. \nFailing to set an \"exec\" callback before registration results in an error.\n"
@@ -117,7 +117,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_builder_set_user_data:
     summary: Sets arbitrary extra data on a cast function.
     description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a cast function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from the exec callback via `cast_function_exec_get_user_data`. During execution, this data is read-only.\n"
@@ -132,7 +132,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_builder_register:
     summary: Registers a cast function on a database via the current context, making the cast available in all subsequent queries to that database.
     description: "This function registers a fully configured cast function builder with a database, making the cast available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). \nThe function builder must have its source type, target type, and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered cast.\n"
@@ -147,7 +147,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_builder_destroy:
     summary: Destroys a cast function builder, releasing its resources.
     description: "This function destroys a cast function builder that was created with `cast_function_builder_create`, releasing any resources associated with it. \nIf the builder has already been registered with a database, destroying it does not affect the registered cast in the database, as DuckDB makes an internal copy of the function during registration. \nThis function is null-safe: calling it with a null pointer is a no-op and returns ERROR_NONE.\nThe handle is set to null on return to prevent double-destruction.\n"
@@ -156,7 +156,7 @@ functions:
         type: cast_function_builder
         indirection: 1
         description: The cast function to destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Exec callback accessors ---
   cast_function_exec_get_user_data:
     summary: Retrieves the user data set on the builder via cast_function_builder_set_user_data.
@@ -173,7 +173,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_exec_get_input:
     summary: Retrieves the input vector containing the source values to cast.
     description: The vector contains `count` logical rows. Borrowed; valid only for the duration of the callback.
@@ -190,7 +190,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_exec_get_output:
     summary: Retrieves the output vector the callback must write the cast result values into.
     description: The vector has space for `count` logical rows. Borrowed; valid only for the duration of the callback.
@@ -207,7 +207,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_exec_get_count:
     summary: Retrieves the number of rows to cast.
     description: The number of logical rows in both the input and output vectors.
@@ -224,7 +224,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   cast_function_exec_get_mode:
     summary: Retrieves the mode the cast is being executed in.
     description: |
@@ -243,4 +243,4 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR

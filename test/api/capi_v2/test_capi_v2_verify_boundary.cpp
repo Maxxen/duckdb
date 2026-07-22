@@ -114,9 +114,9 @@ void RegisterStructFn(duckdb_v2_context_handle ctx, const char *name, duckdb_v2_
 
 // Steps a result until it errors; FAILs if it finishes cleanly. Returns the
 // error code and fills `message` from the err info.
-duckdb_v2_error_code_t StepUntilError(duckdb_v2_result_handle result, std::string &message) {
+DUCKDB_V2_ERROR StepUntilError(duckdb_v2_result_handle result, std::string &message) {
 	duckdb_v2_error_info_handle err = nullptr;
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	while (true) {
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
@@ -185,7 +185,7 @@ TEST_CASE("V2 verify boundary: table function output", "[capi_v2][verify_boundar
 		REQUIRE(V2Query(fix.conn, "SELECT * FROM bad_struct()", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 		std::string message;
-		REQUIRE(StepUntilError(result, message) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(StepUntilError(result, message) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(message.find("table function exec callback") != std::string::npos);
 		REQUIRE(message.find("chunk failed vector verification") != std::string::npos);
 		REQUIRE(message.find("Struct NULL mismatch") != std::string::npos);
@@ -242,7 +242,7 @@ TEST_CASE("V2 verify boundary: column_data_collection_append", "[capi_v2][verify
 
 		duckdb_v2_error_info_handle err = nullptr;
 		REQUIRE(duckdb_v2_column_data_collection_append(cdc, append_state, chunk, &err) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_str msg = {nullptr, 0};
 		duckdb_v2_error_info_get_text(err, &msg);
 		auto message = V2StrTo(msg);

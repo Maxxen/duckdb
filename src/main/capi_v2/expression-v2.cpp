@@ -193,9 +193,9 @@ Expression &ExpressionChild(Expression &expr, idx_t index) {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_class(duckdb_v2_expression_handle expression,
-                                                    DUCKDB_V2_EXPRESSION_CLASS *out_class,
-                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_class(duckdb_v2_expression_handle expression,
+                                               DUCKDB_V2_EXPRESSION_CLASS *out_class,
+                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!expression || !out_class) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_expression_get_class");
@@ -205,9 +205,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_class(duckdb_v2_expression_handle 
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_type(duckdb_v2_expression_handle expression,
-                                                   DUCKDB_V2_EXPRESSION_TYPE *out_type,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_type(duckdb_v2_expression_handle expression,
+                                              DUCKDB_V2_EXPRESSION_TYPE *out_type, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!expression || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_expression_get_type");
@@ -217,9 +216,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_type(duckdb_v2_expression_handle e
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_return_type(duckdb_v2_expression_handle expression,
-                                                          duckdb_v2_logical_type_handle *out_type,
-                                                          duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_return_type(duckdb_v2_expression_handle expression,
+                                                     duckdb_v2_logical_type_handle *out_type,
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_type) {
 			*out_type = nullptr;
@@ -232,8 +231,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_return_type(duckdb_v2_expression_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child_count(duckdb_v2_expression_handle expression, idx_t *out_count,
-                                                          duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_child_count(duckdb_v2_expression_handle expression, idx_t *out_count,
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!expression || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_expression_get_child_count");
@@ -243,9 +242,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child_count(duckdb_v2_expression_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child(duckdb_v2_expression_handle expression, idx_t index,
-                                                    duckdb_v2_expression_handle *out_child,
-                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_child(duckdb_v2_expression_handle expression, idx_t index,
+                                               duckdb_v2_expression_handle *out_child,
+                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_child) {
 			*out_child = nullptr;
@@ -263,9 +262,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_child(duckdb_v2_expression_handle 
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_function_name(duckdb_v2_expression_handle expression,
-                                                            duckdb_v2_identifier_t *out_name,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_function_name(duckdb_v2_expression_handle expression,
+                                                       duckdb_v2_identifier_t *out_name,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
 			*out_name = duckdb_v2_identifier_t {nullptr, 0};
@@ -284,9 +283,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_function_name(duckdb_v2_expression
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_constant_value(duckdb_v2_expression_handle expression,
-                                                             duckdb_v2_value_handle *out_value,
-                                                             duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_constant_value(duckdb_v2_expression_handle expression,
+                                                        duckdb_v2_value_handle *out_value,
+                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_value) {
 			*out_value = nullptr;
@@ -304,8 +303,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_constant_value(duckdb_v2_expressio
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_reference_index(duckdb_v2_expression_handle expression, idx_t *out_index,
-                                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_reference_index(duckdb_v2_expression_handle expression, idx_t *out_index,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!expression || !out_index) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_expression_get_reference_index");
@@ -319,9 +318,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_reference_index(duckdb_v2_expressi
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_expression_get_column_binding(duckdb_v2_expression_handle expression,
-                                                             idx_t *out_table_index, idx_t *out_column_index,
-                                                             duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_expression_get_column_binding(duckdb_v2_expression_handle expression, idx_t *out_table_index,
+                                                        idx_t *out_column_index, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!expression) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_expression_get_column_binding");

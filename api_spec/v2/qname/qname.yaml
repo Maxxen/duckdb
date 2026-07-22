@@ -45,7 +45,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   qname_create:
     summary: Creates a qualified name from identifier parts.
     description: |
@@ -77,7 +77,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   qname_get_part_count:
     summary: Returns the number of parts in a qualified name.
     role: getter
@@ -96,7 +96,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   qname_get_part:
     summary: Borrows the part at index.
     description: |
@@ -123,7 +123,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   qname_render:
     summary: Renders a qualified name as SQL text.
     description: |
@@ -147,7 +147,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   qname_equals:
     summary: Compares two qualified names.
     description: |
@@ -173,7 +173,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   qname_hash:
     summary: Returns a hash of a qualified name.
     description: |
@@ -197,7 +197,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   qname_destroy:
     summary: Destroys a qualified name handle.
     description: |
@@ -210,4 +210,4 @@ functions:
         type: qname
         indirection: 1
         description: The qualified name handle to destroy.
-    return_type: API_CALL
+    return_type: ERROR

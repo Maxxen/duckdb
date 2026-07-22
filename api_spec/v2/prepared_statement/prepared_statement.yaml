@@ -52,7 +52,7 @@ functions:
 
       By default succeeds for any preparable statement whether or not its plan will
       be reused (query prepared_reuses_plan). When require_cacheable is set, fails
-      with ERROR_INVALID_INPUT if the plan would NOT be reused, so a caller needing
+      with ERROR_INPUT_INVALID if the plan would NOT be reused, so a caller needing
       the fast path learns up front rather than silently getting slow executions.
 
       One live result per connection: Prepare runs the engine's cleanup, which
@@ -72,7 +72,7 @@ functions:
         description: The statement to prepare. Borrowed and copied; not consumed. Destroy it with sql_statement_destroy.
       require_cacheable:
         type: bool
-        description: When true, fail with ERROR_INVALID_INPUT unless the prepared plan will be reused across executions (as prepared_reuses_plan would report).
+        description: When true, fail with ERROR_INPUT_INVALID unless the prepared plan will be reused across executions (as prepared_reuses_plan would report).
       out_prepared:
         type: prepared_statement
         indirection: 1
@@ -83,7 +83,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   prepared_execute:
     summary: Executes a prepared statement with named or positional parameters, streaming its result. Non-consuming.
     description: |
@@ -99,7 +99,7 @@ functions:
       a {NULL, 0} entry keeping it positional. Pass NULL for both arrays (or count 0)
       for an unparameterized statement. Borrowed (copied in); the caller still owns
       and destroys them. A key set that does not match the statement's parameters is
-      rejected with ERROR_INVALID_INPUT.
+      rejected with ERROR_INPUT_INVALID.
 
       Not consumed: execute it again, same or different value set, as often as you
       like. Goes through the engine's execute-prepared path, so a catalog change
@@ -141,7 +141,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   prepared_reuses_plan:
     summary: Reports whether the prepared statement reuses its compiled plan across executions.
     description: |
@@ -171,7 +171,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   prepared_statement_destroy:
     summary: Destroys a prepared-statement handle.
     description: |
@@ -186,4 +186,4 @@ functions:
         type: prepared_statement
         indirection: 1
         description: The prepared statement to destroy.
-    return_type: API_CALL
+    return_type: ERROR

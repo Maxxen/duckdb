@@ -16,11 +16,11 @@ functions:
         type: error_info
         description: "The error info handle to query."
       out_code:
-        type: error_code
+        type: ERROR
         indirection: 1
         kind: OUT
         description: "The error code associated with the info, if the call succeeds."
-    return_type: API_CALL
+    return_type: ERROR
   error_info_get_text:
     summary: "Retrieves the error message associated with an error info handle."
     description: |
@@ -39,7 +39,7 @@ functions:
         indirection: 1
         kind: OUT_BORROW
         description: "Receives a borrowed view of the message. Owned by the library; valid until the info handle is destroyed."
-    return_type: API_CALL
+    return_type: ERROR
   error_info_get_raw_message:
     summary: "Retrieves the error message body without the leading category prefix."
     description: |
@@ -61,7 +61,7 @@ functions:
         indirection: 1
         kind: OUT_BORROW
         description: "Receives a borrowed view of the raw message. Owned by the library; valid until the info handle is destroyed."
-    return_type: API_CALL
+    return_type: ERROR
   error_info_set_code:
     summary: "Sets the error code for an error info handle."
     description: |
@@ -75,9 +75,9 @@ functions:
         type: error_info
         description: "The error info handle to set. On success, updated with the provided code."
       code:
-        type: error_code
+        type: ERROR
         description: "The error code to set in the info."
-    return_type: API_CALL
+    return_type: ERROR
   error_info_set_text:
     summary: "Sets the error code and message for an error info handle."
     description: "On success, sets the errors message to the provided value.\nThe library allocates its own copy of the message string. \nOn failure, nothing is changed. Can accept a `nullptr` info handle: in that case,\nthe call is a no-op and returns ERROR_NONE.\n"
@@ -90,7 +90,7 @@ functions:
       text:
         type: str
         description: "The error message to set in the info."
-    return_type: API_CALL
+    return_type: ERROR
   error_info_destroy:
     summary: "Destroys an error info handle and frees its resources."
     description: |
@@ -104,4 +104,4 @@ functions:
         type: error_info
         indirection: 1
         description: "The error info handle to destroy. Set to nullptr on return."
-    return_type: API_CALL
+    return_type: ERROR

@@ -34,7 +34,7 @@ TEST_CASE("Stable C++API: Database GetOption by name and option target scope", "
 	// An alias resolves to its canonical option.
 	REQUIRE(db.GetOption("memory_limit").GetName() == "max_memory");
 
-	REQUIRE_THROWS_MATCHES(db.GetOption("no_such_option"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(db.GetOption("no_such_option"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: LibraryVersion reports the engine version", "[cpp_api]") {
 	const auto version = duckdb_api::LibraryVersion();
@@ -373,7 +373,7 @@ TEST_CASE("Stable C++API: Connection::SetOption scope split is visible correctly
 
 	// A GLOBAL_ONLY option rejects a LOCAL scope.
 	REQUIRE_THROWS_MATCHES(conn_a.SetOption(DatabaseOption("allow_community_extensions", "false"), SettingScope::Local),
-	                       Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: Connection::GetOption by name and the scopeless SetOption default", "[cpp_api]") {
 	using namespace duckdb_api;
@@ -390,7 +390,7 @@ TEST_CASE("Stable C++API: Connection::GetOption by name and the scopeless SetOpt
 	REQUIRE(conn.GetOption("max_execution_time").GetValue() == "4242");
 
 	REQUIRE_THROWS_MATCHES(conn.GetOption("no_such_option_xyz"), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: Environment::Open with pre-open options enforces read-only", "[cpp_api]") {
 	using namespace duckdb_api;
@@ -438,14 +438,14 @@ TEST_CASE("Stable C++API: typed exceptions carry their error code", "[cpp_api]")
 
 	// Each typed exception fixes its code in the implementation; throwing one
 	// is how a callback names its error class without any code vocabulary.
-	REQUIRE(InvalidInputException("boom").GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE(InvalidInputException("boom").GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_INPUT_INVALID));
 	REQUIRE(InterruptException("stop").GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT));
 
 	// They are catchable through the Exception base, preserving the code.
 	try {
 		throw InvalidInputException("bad arg");
 	} catch (const Exception &caught) {
-		REQUIRE(caught.GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE(caught.GetCode() == static_cast<uint32_t>(DUCKDB_V2_ERROR_INPUT_INVALID));
 	}
 
 	// The base Exception with a raw code still works.

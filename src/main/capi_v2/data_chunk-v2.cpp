@@ -7,9 +7,8 @@
 // DataChunk construction
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_handle *types, idx_t column_count,
-                                                 duckdb_v2_data_chunk_handle *out_chunk,
-                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_handle *types, idx_t column_count,
+                                            duckdb_v2_data_chunk_handle *out_chunk, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_chunk) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_create");
@@ -38,7 +37,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_create(const duckdb_v2_logical_type_ha
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_handle *chunk) {
+DUCKDB_V2_ERROR duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_handle *chunk) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!chunk) {
 			return;
@@ -50,8 +49,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_destroy(duckdb_v2_data_chunk_handle *c
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_handle chunk, idx_t *out_size,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_handle chunk, idx_t *out_size,
+                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!chunk || !out_size) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_get_size");
@@ -60,8 +59,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_size(duckdb_v2_data_chunk_handle c
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector_count(duckdb_v2_data_chunk_handle chunk, idx_t *out_count,
-                                                           duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_data_chunk_get_vector_count(duckdb_v2_data_chunk_handle chunk, idx_t *out_count,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!chunk || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_get_vector_count");
@@ -70,9 +69,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector_count(duckdb_v2_data_chunk_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_get_vector(duckdb_v2_data_chunk_handle chunk, idx_t index,
-                                                     duckdb_v2_vector_handle *out_vector,
-                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_data_chunk_get_vector(duckdb_v2_data_chunk_handle chunk, idx_t index,
+                                                duckdb_v2_vector_handle *out_vector, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!chunk || !out_vector) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_get_vector");

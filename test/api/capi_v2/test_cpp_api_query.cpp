@@ -292,8 +292,8 @@ TEST_CASE("Stable C++API: ParseSQL iterates statements into Execute", "[cpp_api]
 	REQUIRE(!statements.Next());
 
 	// The string-taking Execute is single-statement sugar.
-	REQUIRE_THROWS_MATCHES(conn.Execute("SELECT 1; SELECT 2"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(conn.Execute(""), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(conn.Execute("SELECT 1; SELECT 2"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(conn.Execute(""), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: Bind", "[cpp_api][statement_bind]") {
 	using namespace duckdb_api;
@@ -326,7 +326,7 @@ TEST_CASE("Stable C++API: Bind", "[cpp_api][statement_bind]") {
 	conn.Execute("CREATE TABLE sales(product VARCHAR, quarter VARCHAR, amount INTEGER)").Drain();
 	auto piter = conn.ParseSQL("PIVOT sales ON quarter USING sum(amount)");
 	auto pstmt = piter.Next();
-	REQUIRE_THROWS_MATCHES(conn.Bind(pstmt), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(conn.Bind(pstmt), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: QueryResult GetSchema", "[cpp_api][query_result]") {
 	using namespace duckdb_api;
@@ -520,7 +520,7 @@ TEST_CASE("Stable C++API: PreparedStatement handle", "[cpp_api][prepared_stateme
 			Prepare("SELECT * FROM t WHERE x = $1", true);
 		} catch (const Exception &ex) {
 			threw = true;
-			REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_INVALID_INPUT);
+			REQUIRE(ex.GetCode() == DUCKDB_V2_ERROR_INPUT_INVALID);
 		}
 		REQUIRE(threw);
 	}
@@ -587,7 +587,7 @@ TEST_CASE("Stable C++API: named parameters", "[cpp_api]") {
 		auto stmt = iter.Next();
 		std::vector<NamedParam> params;
 		params.push_back(NamedParam {"wrong", Value::Bigint(1)});
-		REQUIRE_THROWS_MATCHES(conn.Execute(stmt, params), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(conn.Execute(stmt, params), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	}
 }
 
@@ -961,12 +961,12 @@ TEST_CASE("Stable C++API: AddCollection refusals throw", "[cpp_api][collection_b
 	{
 		auto stmt = CbParseOne(conn, "INSERT INTO t FROM buf");
 		stmt.AddCollection("buf", buf);
-		REQUIRE_THROWS_MATCHES(stmt.AddCollection("buf", buf), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(stmt.AddCollection("buf", buf), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	}
 
 	// Unsupported statement type.
 	{
 		auto stmt = CbParseOne(conn, "SET memory_limit = '1GB'");
-		REQUIRE_THROWS_MATCHES(stmt.AddCollection("buf", buf), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(stmt.AddCollection("buf", buf), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	}
 }

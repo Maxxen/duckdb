@@ -124,7 +124,7 @@ TEST_CASE("V2: statement_bind rejects a dynamic PIVOT", "[capi_v2][statement_bin
 	duckdb_v2_schema_handle params = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	// Dynamic PIVOT expands into a group; its schema is data-dependent.
-	REQUIRE(duckdb_v2_statement_bind(fx.conn, stmt, &out, &params, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_bind(fx.conn, stmt, &out, &params, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	REQUIRE(params == nullptr);
 	REQUIRE(err != nullptr);
@@ -189,9 +189,9 @@ TEST_CASE("V2: statement_bind surfaces bind errors and rejects null args", "[cap
 	// Null arguments.
 	duckdb_v2_schema_handle schema = nullptr;
 	auto valid = SbParseOne(fx.conn, "SELECT 1");
-	REQUIRE(duckdb_v2_statement_bind(nullptr, valid, &schema, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_statement_bind(fx.conn, nullptr, &schema, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_statement_bind(fx.conn, valid, nullptr, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_bind(nullptr, valid, &schema, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_statement_bind(fx.conn, nullptr, &schema, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_statement_bind(fx.conn, valid, nullptr, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_sql_statement_destroy(&valid);
 }
 

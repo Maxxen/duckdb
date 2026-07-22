@@ -14,7 +14,7 @@ Full design rationale for everything below: `api_spec/C_API_V2.md` (error model,
 ```cpp
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_option_create(duckdb_v2_str name, duckdb_v2_str setting,
+DUCKDB_V2_ERROR duckdb_v2_option_create(duckdb_v2_str name, duckdb_v2_str setting,
                                              duckdb_v2_option_handle *out_option,
                                              duckdb_v2_error_info_handle *err) {
     return duckdb::WithErrorHandler(err, [&]() {
@@ -47,4 +47,4 @@ DUCKDB_V2_API_CALL_t duckdb_v2_option_create(duckdb_v2_str name, duckdb_v2_str s
 
 ## Stub-detection gotcha
 
-The bridge adapter finds implementations by matching `\bduckdb_v2_\w+\s*\(` in the `.cpp` files. **Write each implementation as a literal function definition.** A macro-generated body (`SOME_MACRO(duckdb_v2_value_get_int8, ...)`) is not detected, so its stub silently survives in `capi_v2_stubs.cpp`, producing a multiple-definition link error or a stub shadowing the real function. Unroll macros into explicit `DUCKDB_V2_API_CALL_t duckdb_v2_...(...) { ... }` definitions. Hand-written bridges are never overwritten by regeneration; a renamed/removed spec function leaves its orphaned implementation until you delete it manually.
+The bridge adapter finds implementations by matching `\bduckdb_v2_\w+\s*\(` in the `.cpp` files. **Write each implementation as a literal function definition.** A macro-generated body (`SOME_MACRO(duckdb_v2_value_get_int8, ...)`) is not detected, so its stub silently survives in `capi_v2_stubs.cpp`, producing a multiple-definition link error or a stub shadowing the real function. Unroll macros into explicit `DUCKDB_V2_ERROR duckdb_v2_...(...) { ... }` definitions. Hand-written bridges are never overwritten by regeneration; a renamed/removed spec function leaves its orphaned implementation until you delete it manually.

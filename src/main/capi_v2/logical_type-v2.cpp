@@ -175,9 +175,9 @@ Value TypeParamValue(const LogicalType &type, idx_t index, duckdb_v2_identifier_
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID type_id,
-                                                           duckdb_v2_logical_type_handle *out_type,
-                                                           duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID type_id,
+                                                      duckdb_v2_logical_type_handle *out_type,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_type) {
 			throw duckdb::InvalidInputException("null out_type in duckdb_v2_logical_type_create_from_id");
@@ -193,9 +193,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYP
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
-                                                             duckdb_v2_logical_type_handle *out_type,
-                                                             duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
+                                                        duckdb_v2_logical_type_handle *out_type,
+                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!ctx || !out_type || (!text.ptr && text.len > 0)) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create_from_text");
@@ -209,11 +209,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_from_text(duckdb_v2_context_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name,
-                                                   const duckdb_v2_identifier_t *param_names,
-                                                   const duckdb_v2_value_handle *param_values, idx_t param_count,
-                                                   duckdb_v2_logical_type_handle *out_type,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name,
+                                              const duckdb_v2_identifier_t *param_names,
+                                              const duckdb_v2_value_handle *param_values, idx_t param_count,
+                                              duckdb_v2_logical_type_handle *out_type,
+                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!ctx || !out_type || (!name.ptr && name.len > 0) || (param_count > 0 && !param_values)) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create");
@@ -236,9 +236,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx,
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_copy(duckdb_v2_logical_type_handle type,
-                                                 duckdb_v2_logical_type_handle *out_type,
-                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_copy(duckdb_v2_logical_type_handle type, duckdb_v2_logical_type_handle *out_type,
+                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_copy");
@@ -249,7 +248,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_copy(duckdb_v2_logical_type_handle t
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_handle *type) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_handle *type) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!type) {
 			return;
@@ -265,9 +264,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_destroy(duckdb_v2_logical_type_handl
 // Common introspection
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_is_equal(duckdb_v2_logical_type_handle left,
-                                                     duckdb_v2_logical_type_handle right, bool *result,
-                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_is_equal(duckdb_v2_logical_type_handle left, duckdb_v2_logical_type_handle right,
+                                                bool *result, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!left || !right || !result) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_is_equal");
@@ -280,9 +278,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_is_equal(duckdb_v2_logical_type_hand
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_handle type,
-                                                   DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_handle type, DUCKDB_V2_LOGICAL_TYPE_ID *out_id,
+                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_id) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_id");
@@ -291,9 +288,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_id(duckdb_v2_logical_type_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_handle type,
-                                                     duckdb_v2_identifier_t *out_name,
-                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_handle type, duckdb_v2_identifier_t *out_name,
+                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_name) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_name");
@@ -311,8 +307,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_hand
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_to_text(duckdb_v2_logical_type_handle type, char **out_text,
-                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_to_text(duckdb_v2_logical_type_handle type, char **out_text,
+                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_text) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_to_text");
@@ -333,8 +329,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_to_text(duckdb_v2_logical_type_handl
 // Generic parameter inspection
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param_count(duckdb_v2_logical_type_handle type, idx_t *out_count,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_get_param_count(duckdb_v2_logical_type_handle type, idx_t *out_count,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_param_count");
@@ -343,10 +339,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param_count(duckdb_v2_logical_ty
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle type, idx_t index,
-                                                      duckdb_v2_identifier_t *out_name,
-                                                      duckdb_v2_value_handle *out_value,
-                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle type, idx_t index,
+                                                 duckdb_v2_identifier_t *out_name, duckdb_v2_value_handle *out_value,
+                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!type || !out_name || !out_value) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_get_param");

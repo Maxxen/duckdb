@@ -215,7 +215,7 @@ TEST_CASE("Stable C++API: Appender AppendChunk refuses a mismatched chunk", "[cp
 	});
 	wrong->GetVector(0).SetSize(1);
 	wrong->GetVector(1).SetSize(1);
-	REQUIRE_THROWS_MATCHES(appender.AppendChunk(*wrong), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(appender.AppendChunk(*wrong), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// The appender stays usable after the refusal.
 	AppendIntStr(appender, conn, {{99, "tail"}});
@@ -342,7 +342,7 @@ TEST_CASE("Stable C++API: Appender refuses a table in a read-only database", "[c
 	conn.Execute("ATTACH '" + path + "' AS ro (READ_ONLY)").Drain();
 
 	REQUIRE_THROWS_MATCHES(Appender(conn, QualifiedName::Parse("ro.rt")), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	conn.Execute("DETACH ro").Drain();
 	duckdb::DeleteDatabase(path);
@@ -522,16 +522,16 @@ TEST_CASE("Stable C++API: Appender query constructor refusals", "[cpp_api][appen
 
 	// No column types.
 	REQUIRE_THROWS_MATCHES(Appender(conn, "INSERT INTO t FROM appended_data", std::vector<LogicalType>()), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	// No statement in the query.
 	REQUIRE_THROWS_MATCHES(Appender(conn, "", IntVarcharTypes()), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	// More than one statement.
 	REQUIRE_THROWS_MATCHES(Appender(conn, "INSERT INTO t FROM appended_data; SELECT 1", IntVarcharTypes()), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	// An unsupported statement type is refused by the collection binding.
 	REQUIRE_THROWS_MATCHES(Appender(conn, "CREATE TABLE x AS FROM appended_data", IntVarcharTypes()), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 
 TEST_CASE("Stable C++API: Appender query constructor names the buffer columns", "[cpp_api][appender]") {

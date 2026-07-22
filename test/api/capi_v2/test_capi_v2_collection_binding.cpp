@@ -28,7 +28,7 @@ struct V2Cdc {
 duckdb_v2_column_data_collection_handle MakeCdc(duckdb_v2_connection_handle conn,
                                                 const std::vector<DUCKDB_V2_LOGICAL_TYPE_ID> &ids) {
 	duckdb_v2_column_data_collection_handle cdc = nullptr;
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
 		std::vector<duckdb_v2_logical_type_handle> types;
 		for (auto id : ids) {
@@ -180,8 +180,8 @@ int64_t AttachExecuteChanged(duckdb_v2_connection_handle conn, duckdb_v2_sql_sta
 }
 
 // Asserts the call was refused with INVALID_INPUT and left a message on the slot.
-void RequireRefused(DUCKDB_V2_API_CALL_t rc, duckdb_v2_error_info_handle &err) {
-	REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
+void RequireRefused(DUCKDB_V2_ERROR rc, duckdb_v2_error_info_handle &err) {
+	REQUIRE(rc == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 	duckdb_v2_str msg = {nullptr, 0};
 	REQUIRE(duckdb_v2_error_info_get_text(err, &msg) == DUCKDB_V2_ERROR_NONE);
@@ -1148,7 +1148,7 @@ TEST_CASE("V2: collection append refuses a mismatched chunk", "[capi_v2][collect
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		REQUIRE(duckdb_v2_data_chunk_create(&t, 1, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_logical_type_destroy(&t);
-		REQUIRE(duckdb_v2_column_data_collection_append(cdc, st, chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_column_data_collection_append(cdc, st, chunk, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_data_chunk_destroy(&chunk);
 	}
 
@@ -1160,7 +1160,7 @@ TEST_CASE("V2: collection append refuses a mismatched chunk", "[capi_v2][collect
 		REQUIRE(duckdb_v2_data_chunk_create(types, 2, &chunk, nullptr) == DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_logical_type_destroy(&types[0]);
 		duckdb_v2_logical_type_destroy(&types[1]);
-		REQUIRE(duckdb_v2_column_data_collection_append(cdc, st, chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_column_data_collection_append(cdc, st, chunk, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_data_chunk_destroy(&chunk);
 	}
 	duckdb_v2_column_data_collection_append_state_destroy(&st);

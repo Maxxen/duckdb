@@ -1,7 +1,7 @@
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_handle db, duckdb_v2_connection_handle *out_conn,
-                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connect(duckdb_v2_database_handle db, duckdb_v2_connection_handle *out_conn,
+                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !out_conn) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connect");
@@ -15,7 +15,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connect(duckdb_v2_database_handle db, duckdb_v2_c
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_handle *conn) {
+DUCKDB_V2_ERROR duckdb_v2_disconnect(duckdb_v2_connection_handle *conn) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!conn) {
 			return;
@@ -27,8 +27,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_disconnect(duckdb_v2_connection_handle *conn) {
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_handle conn, duckdb_v2_option_handle option,
-                                                     DUCKDB_V2_SETTING_SCOPE scope, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_option_set(duckdb_v2_connection_handle conn, duckdb_v2_option_handle option,
+                                                DUCKDB_V2_SETTING_SCOPE scope, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_set");
@@ -40,9 +40,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_set(duckdb_v2_connection_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name,
-                                                     duckdb_v2_option_handle *out_option,
-                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_option_get(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name,
+                                                duckdb_v2_option_handle *out_option, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || (!name.ptr && name.len > 0) || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get");
@@ -56,8 +55,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get(duckdb_v2_connection_handle
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_handle conn, idx_t *out_count,
-                                                           duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_option_get_count(duckdb_v2_connection_handle conn, idx_t *out_count,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get_count");
@@ -68,9 +67,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_count(duckdb_v2_connection_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_handle conn, idx_t index,
-                                                              duckdb_v2_option_handle *out_option,
-                                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_handle conn, idx_t index,
+                                                         duckdb_v2_option_handle *out_option,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_option_get_by_index");
@@ -84,9 +83,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_option_get_by_index(duckdb_v2_connecti
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connection_handle conn,
-                                                               duckdb_v2_connection_callback_fn callback,
-                                                               void *user_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_execute_with_context(duckdb_v2_connection_handle conn,
+                                                          duckdb_v2_connection_callback_fn callback, void *user_data,
+                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn) {
 			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
@@ -112,8 +111,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_execute_with_context(duckdb_v2_connect
 // Query process management
 // ---------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_interrupt(duckdb_v2_connection_handle conn,
-                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_interrupt(duckdb_v2_connection_handle conn, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_interrupt");
@@ -128,9 +126,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_interrupt(duckdb_v2_connection_handle 
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_connection_query_progress(duckdb_v2_connection_handle conn,
-                                                         duckdb_v2_query_progress_handle *out_progress,
-                                                         duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_query_progress(duckdb_v2_connection_handle conn,
+                                                    duckdb_v2_query_progress_handle *out_progress,
+                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!conn || !out_progress) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_query_progress");
@@ -145,8 +143,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_connection_query_progress(duckdb_v2_connection_ha
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_query_progress_get_percentage(duckdb_v2_query_progress_handle progress,
-                                                             double *out_percentage, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_query_progress_get_percentage(duckdb_v2_query_progress_handle progress,
+                                                        double *out_percentage, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!progress || !out_percentage) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_query_progress_get_percentage");
@@ -155,9 +153,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_query_progress_get_percentage(duckdb_v2_query_pro
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_query_progress_get_rows_processed(duckdb_v2_query_progress_handle progress,
-                                                                 uint64_t *out_rows_processed,
-                                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_query_progress_get_rows_processed(duckdb_v2_query_progress_handle progress,
+                                                            uint64_t *out_rows_processed,
+                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!progress || !out_rows_processed) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_query_progress_get_rows_processed");
@@ -166,9 +164,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_query_progress_get_rows_processed(duckdb_v2_query
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_query_progress_get_total_rows_to_process(duckdb_v2_query_progress_handle progress,
-                                                                        uint64_t *out_total_rows_to_process,
-                                                                        duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_query_progress_get_total_rows_to_process(duckdb_v2_query_progress_handle progress,
+                                                                   uint64_t *out_total_rows_to_process,
+                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!progress || !out_total_rows_to_process) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_query_progress_get_total_rows_to_process");
@@ -177,7 +175,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_query_progress_get_total_rows_to_process(duckdb_v
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_query_progress_destroy(duckdb_v2_query_progress_handle *progress) {
+DUCKDB_V2_ERROR duckdb_v2_query_progress_destroy(duckdb_v2_query_progress_handle *progress) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!progress) {
 			return;

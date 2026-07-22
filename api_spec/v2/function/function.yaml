@@ -153,12 +153,12 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   bind_arguments_get_type:
     summary: Returns the resolved type of a bound argument.
     description: |
       An owned copy of argument `index`'s resolved type; the caller destroys it via
-      logical_type_destroy. Returns ERROR_INVALID_INPUT if index is out of range (>= the count
+      logical_type_destroy. Returns ERROR_INPUT_INVALID if index is out of range (>= the count
       from bind_arguments_get_count).
     role: getter
     belongs_to: bind_arguments
@@ -179,13 +179,13 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   bind_arguments_fold:
     summary: Folds a bound argument to a constant value.
     description: |
       Evaluates argument `index` to a single owned value the caller destroys via value_destroy.
       Exists because bind runs before optimizer constant folding, so a constant-computable
-      argument (e.g. 0.25 + 0.25) is not yet a plain constant. Returns ERROR_INVALID_INPUT if the
+      argument (e.g. 0.25 + 0.25) is not yet a plain constant. Returns ERROR_INPUT_INVALID if the
       argument is not constant-foldable (e.g. it references a column) or index is out of range; a
       runtime error raised while evaluating surfaces as its own error code.
     belongs_to: bind_arguments
@@ -209,14 +209,14 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   bind_arguments_set_constant:
     summary: Replaces a bound argument with a constant value.
     description: |
       Replaces the argument at `index` with a bound constant carrying `value`. The engine casts the
       constant to the function's declared type for that slot, exactly as it would any argument. Use
       it to bake a folded configuration value back into the plan. The value is borrowed and copied
-      in. Returns ERROR_INVALID_INPUT if index is out of range.
+      in. Returns ERROR_INPUT_INVALID if index is out of range.
     belongs_to: bind_arguments
     parameters:
       args:
@@ -233,13 +233,13 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   bind_arguments_truncate:
     summary: Shrinks the bound argument list from the tail.
     description: |
       Drops trailing arguments so the list keeps exactly `count` arguments; the exec (scalar) or
       update (aggregate) callback then sees `count` input columns. Only shrinking is allowed:
-      `count` must be <= the current count, otherwise ERROR_INVALID_INPUT.
+      `count` must be <= the current count, otherwise ERROR_INPUT_INVALID.
     belongs_to: bind_arguments
     parameters:
       args:
@@ -253,4 +253,4 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

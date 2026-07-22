@@ -108,7 +108,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_set_name:
     summary: "Sets the name of the copy function. This is the name that will be used to invoke the function in SQL."
     parameters:
@@ -122,7 +122,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_set_bind_callback:
     summary: "Sets the bind callback for the copy function. The bind callback is responsible for binding the function to a specific set of arguments and return type. It is called during query planning when the function is invoked in SQL."
     parameters:
@@ -136,7 +136,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_set_init_callback:
     summary: "Sets the init callback for the copy function. The init callback is responsible for initializing any state or resources needed to execute the function. It is called during query execution when the function is invoked in SQL, before any batches are processed."
     parameters:
@@ -150,7 +150,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_set_batch_callback:
     summary: "Sets the batch callback for the copy function. The batch callback is responsible for processing a batch of data. It is called during query execution when the function is invoked in SQL."
     parameters:
@@ -164,7 +164,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_set_flush_callback:
     summary: "Sets the flush callback for the copy function. The flush callback is responsible for flushing a processed batch of data to the output."
     parameters:
@@ -178,7 +178,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_set_finalize_callback:
     summary: "Sets the finalize callback for the copy function. The finalize callback is responsible for finalizing the output (for example flushing and closing the underlying file) after all batches have been flushed. It is called once per output file at the end of query execution."
     parameters:
@@ -192,7 +192,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_set_user_data:
     summary: "Sets the user data for the copy function. The user data is a pointer that will be passed to the callbacks when they are invoked. This can be used to store any state or context that the callbacks need to operate."
     parameters:
@@ -206,7 +206,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_register:
     summary: "Registers the copy function with a database, making the function available for use in SQL queries."
     parameters:
@@ -220,7 +220,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_builder_destroy:
     summary: "Destroys a copy function builder handle, freeing any associated resources. After this call, the handle is no longer valid and should not be used."
     parameters:
@@ -228,7 +228,7 @@ functions:
         type: copy_function_builder
         indirection: 1
         description: "The copy function builder handle to destroy."
-    return_type: API_CALL
+    return_type: ERROR
   # --- Bind callback accessors ---
   copy_function_bind_get_user_data:
     summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
@@ -245,7 +245,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_bind_get_column_count:
     summary: Retrieves the number of columns being copied.
     parameters:
@@ -261,7 +261,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_bind_get_column_type:
     summary: Retrieves the type of the column at the given index.
     parameters:
@@ -280,7 +280,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_bind_get_column_name:
     summary: Retrieves the name of the column at the given index.
     parameters:
@@ -299,7 +299,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_bind_set_bind_data:
     summary: Sets the function's bind data from the bind callback.
     description: |
@@ -319,7 +319,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Init callback accessors ---
   copy_function_init_get_user_data:
     summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
@@ -336,7 +336,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_init_get_bind_data:
     summary: Retrieves the bind data set by the function's bind callback.
     parameters:
@@ -352,7 +352,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_init_get_file_path:
     summary: Retrieves the target file path for the copy operation.
     parameters:
@@ -368,7 +368,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_init_set_init_data:
     summary: Sets the function's global init data from the init callback.
     description: |
@@ -386,7 +386,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Batch callback accessors ---
   copy_function_batch_get_user_data:
     summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
@@ -403,7 +403,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_batch_get_bind_data:
     summary: Retrieves the bind data set by the function's bind callback.
     parameters:
@@ -419,7 +419,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_batch_get_init_data:
     summary: Retrieves the global init data set by the function's init callback.
     parameters:
@@ -435,7 +435,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_batch_get_input:
     summary: Retrieves the input column data collection to prepare for this batch.
     description: |
@@ -454,7 +454,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_batch_set_batch_data:
     summary: Sets the prepared batch data from the batch callback.
     description: |
@@ -472,7 +472,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Flush callback accessors ---
   copy_function_flush_get_user_data:
     summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
@@ -489,7 +489,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_flush_get_bind_data:
     summary: Retrieves the bind data set by the function's bind callback.
     parameters:
@@ -505,7 +505,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_flush_get_init_data:
     summary: Retrieves the global init data set by the function's init callback.
     parameters:
@@ -521,7 +521,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_flush_get_batch_data:
     summary: Retrieves the prepared batch data set by the function's batch callback.
     parameters:
@@ -537,7 +537,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Finalize callback accessors ---
   copy_function_finalize_get_user_data:
     summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
@@ -554,7 +554,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_finalize_get_bind_data:
     summary: Retrieves the bind data set by the function's bind callback.
     parameters:
@@ -570,7 +570,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   copy_function_finalize_get_init_data:
     summary: Retrieves the global init data set by the function's init callback.
     parameters:
@@ -586,4 +586,4 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR

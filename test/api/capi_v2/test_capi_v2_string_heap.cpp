@@ -64,17 +64,17 @@ TEST_CASE("V2: vector_get_string_heap on string-backed kinds", "[capi_v2][string
 TEST_CASE("V2: vector_get_string_heap rejects non-string vector", "[capi_v2][string_heap]") {
 	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_string_heap_handle heap = reinterpret_cast<duckdb_v2_string_heap_handle>(0x1);
-	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	// out_heap is nulled on the INVALID_INPUT path.
 	REQUIRE(heap == nullptr);
 }
 
 TEST_CASE("V2: vector_get_string_heap null args", "[capi_v2][string_heap]") {
 	duckdb_v2_string_heap_handle heap = nullptr;
-	REQUIRE(duckdb_v2_vector_get_string_heap(nullptr, &heap, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_string_heap(nullptr, &heap, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
-	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,10 +125,10 @@ TEST_CASE("V2: string_heap_allocate null args", "[capi_v2][string_heap]") {
 
 	// Null heap: out_ptr is nulled on the INVALID_INPUT path.
 	uint8_t *bytes = reinterpret_cast<uint8_t *>(0x1);
-	REQUIRE(duckdb_v2_string_heap_allocate(nullptr, 4, &bytes, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_string_heap_allocate(nullptr, 4, &bytes, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(bytes == nullptr);
 	// Null out_ptr.
-	REQUIRE(duckdb_v2_string_heap_allocate(heap, 4, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_string_heap_allocate(heap, 4, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ TEST_CASE("V2: inline vs non-inline placement", "[capi_v2][string_heap]") {
 	REQUIRE(duckdb_v2_vector_get_data_mutable(fixture.vec, &raw, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *slots = static_cast<duckdb_v2_string *>(raw);
 
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	// Inlined (<= 12 bytes): self-contained, no allocation.
 	slots[0] = V2MakeString(heap, "hi", 2, rc, nullptr);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
@@ -170,7 +170,7 @@ TEST_CASE("V2: empty string is inlined", "[capi_v2][string_heap]") {
 	duckdb_v2_string_heap_handle heap = nullptr;
 	REQUIRE(duckdb_v2_vector_get_string_heap(fixture.vec, &heap, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	// {NULL, 0} and {"", 0} both yield an inlined empty string.
 	duckdb_v2_string a = V2MakeString(heap, nullptr, 0, rc, nullptr);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
@@ -194,7 +194,7 @@ TEST_CASE("V2: BLOB with embedded nulls (inline + heap)", "[capi_v2][string_heap
 	REQUIRE(duckdb_v2_vector_get_data_mutable(fixture.vec, &raw, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto *slots = static_cast<duckdb_v2_string *>(raw);
 
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	// 5-byte blob: inlined, embedded null preserved.
 	const char small[] = "\xDE\xAD\x00\xBE\xEF";
 	slots[0] = V2MakeString(heap, small, 5, rc, nullptr);
@@ -250,7 +250,7 @@ TEST_CASE("V2: string heap write on constant vector", "[capi_v2][string_heap]") 
 
 	// A heap-backed value (> 12 bytes) so the constant path exercises allocate.
 	const std::string constant = "a constant value longer than twelve bytes";
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	slots[0] = V2MakeString(heap, constant.data(), constant.size(), rc, nullptr);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE_FALSE(IsInlined(slots[0]));

@@ -2,11 +2,11 @@
 
 #include "duckdb/common/types/column/column_data_collection.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_create(duckdb_v2_context_handle context,
-                                                             const duckdb_v2_logical_type_handle *types_array,
-                                                             idx_t types_count,
-                                                             duckdb_v2_column_data_collection_handle *out_collection,
-                                                             duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_create(duckdb_v2_context_handle context,
+                                                        const duckdb_v2_logical_type_handle *types_array,
+                                                        idx_t types_count,
+                                                        duckdb_v2_column_data_collection_handle *out_collection,
+                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
@@ -33,7 +33,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_create(duckdb_v2_context_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_destroy(duckdb_v2_column_data_collection_handle *collection) {
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_destroy(duckdb_v2_column_data_collection_handle *collection) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (collection && *collection) {
 			delete reinterpret_cast<duckdb::ColumnDataCollection *>(*collection);
@@ -42,9 +42,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_destroy(duckdb_v2_column_d
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_combine(duckdb_v2_column_data_collection_handle target,
-                                                              duckdb_v2_column_data_collection_handle *source,
-                                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_combine(duckdb_v2_column_data_collection_handle target,
+                                                         duckdb_v2_column_data_collection_handle *source,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!target) {
 			throw duckdb::InvalidInputException("Target collection pointer cannot be null.");
@@ -63,8 +63,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_combine(duckdb_v2_column_d
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_reset(duckdb_v2_column_data_collection_handle collection,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_reset(duckdb_v2_column_data_collection_handle collection,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!collection) {
 			throw duckdb::InvalidInputException("Collection pointer cannot be null.");
@@ -78,9 +78,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_reset(duckdb_v2_column_dat
 //----------------------------------------------------------------------------------------------------------------------
 // Accessors
 //----------------------------------------------------------------------------------------------------------------------
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_row_count(duckdb_v2_column_data_collection_handle collection,
-                                                                idx_t *out_row_count,
-                                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_row_count(duckdb_v2_column_data_collection_handle collection,
+                                                           idx_t *out_row_count, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!collection) {
 			throw duckdb::InvalidInputException("Collection pointer cannot be null.");
@@ -96,7 +95,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_row_count(duckdb_v2_column
 //----------------------------------------------------------------------------------------------------------------------
 // Appending
 //----------------------------------------------------------------------------------------------------------------------
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_column_data_collection_append_state_create(duckdb_v2_column_data_collection_handle collection,
                                                      duckdb_v2_column_data_collection_append_state_handle *out_state,
                                                      duckdb_v2_error_info_handle *err) {
@@ -115,7 +114,7 @@ duckdb_v2_column_data_collection_append_state_create(duckdb_v2_column_data_colle
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_column_data_collection_append_state_destroy(duckdb_v2_column_data_collection_append_state_handle *state) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (state && *state) {
@@ -125,10 +124,10 @@ duckdb_v2_column_data_collection_append_state_destroy(duckdb_v2_column_data_coll
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append(duckdb_v2_column_data_collection_handle collection,
-                                                             duckdb_v2_column_data_collection_append_state_handle state,
-                                                             duckdb_v2_data_chunk_handle chunk,
-                                                             duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_append(duckdb_v2_column_data_collection_handle collection,
+                                                        duckdb_v2_column_data_collection_append_state_handle state,
+                                                        duckdb_v2_data_chunk_handle chunk,
+                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!collection) {
 			throw duckdb::InvalidInputException("Collection pointer cannot be null.");
@@ -167,7 +166,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_append(duckdb_v2_column_da
 // Scanning
 //----------------------------------------------------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_column_data_collection_scan_state_create(duckdb_v2_column_data_collection_handle collection,
                                                    duckdb_v2_column_data_collection_scan_state_handle *out_state,
                                                    duckdb_v2_error_info_handle *err) {
@@ -186,7 +185,7 @@ duckdb_v2_column_data_collection_scan_state_create(duckdb_v2_column_data_collect
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_column_data_collection_scan_state_destroy(duckdb_v2_column_data_collection_scan_state_handle *state) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (state && *state) {
@@ -196,10 +195,10 @@ duckdb_v2_column_data_collection_scan_state_destroy(duckdb_v2_column_data_collec
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_scan(duckdb_v2_column_data_collection_handle collection,
-                                                           duckdb_v2_column_data_collection_scan_state_handle state,
-                                                           duckdb_v2_data_chunk_handle out_chunk,
-                                                           bool *did_produce_chunk, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_scan(duckdb_v2_column_data_collection_handle collection,
+                                                      duckdb_v2_column_data_collection_scan_state_handle state,
+                                                      duckdb_v2_data_chunk_handle out_chunk, bool *did_produce_chunk,
+                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!collection) {
 			throw duckdb::InvalidInputException("Collection pointer cannot be null.");
@@ -225,7 +224,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_scan(duckdb_v2_column_data
 // Parallel Scanning
 //----------------------------------------------------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_create(
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_shared_scan_state_create(
     duckdb_v2_column_data_collection_handle collection,
     duckdb_v2_column_data_collection_shared_scan_state_handle *out_state, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -243,7 +242,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_create(
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_destroy(
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_shared_scan_state_destroy(
     duckdb_v2_column_data_collection_shared_scan_state_handle *state) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (state && *state) {
@@ -253,7 +252,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_shared_scan_state_destroy(
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_create(
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_worker_scan_state_create(
     duckdb_v2_column_data_collection_handle collection,
     duckdb_v2_column_data_collection_worker_scan_state_handle *out_state, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -270,7 +269,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_create(
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_destroy(
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_worker_scan_state_destroy(
     duckdb_v2_column_data_collection_worker_scan_state_handle *state) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (state && *state) {
@@ -280,7 +279,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_column_data_collection_worker_scan_state_destroy(
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_column_data_collection_parallel_scan(duckdb_v2_column_data_collection_handle collection,
                                                duckdb_v2_column_data_collection_shared_scan_state_handle shared_state,
                                                duckdb_v2_column_data_collection_worker_scan_state_handle worker_state,

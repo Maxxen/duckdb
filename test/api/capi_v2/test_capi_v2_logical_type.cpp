@@ -93,7 +93,7 @@ TEST_CASE("V2: logical_type create_from_id rejects parameterised ids", "[capi_v2
 	for (auto id : rejected) {
 		duckdb_v2_logical_type_handle type = nullptr;
 		duckdb_v2_error_info_handle err = nullptr;
-		REQUIRE(duckdb_v2_logical_type_create_from_id(id, &type, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_logical_type_create_from_id(id, &type, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(type == nullptr);
 		REQUIRE(err != nullptr);
 		duckdb_v2_error_info_destroy(&err);
@@ -114,7 +114,7 @@ TEST_CASE("V2: logical_type create_from_id rejects sentinel and bind-time-only i
 	for (auto id : rejected) {
 		duckdb_v2_logical_type_handle type = nullptr;
 		duckdb_v2_error_info_handle err = nullptr;
-		REQUIRE(duckdb_v2_logical_type_create_from_id(id, &type, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_logical_type_create_from_id(id, &type, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(type == nullptr);
 		REQUIRE(err != nullptr);
 		duckdb_v2_error_info_destroy(&err);
@@ -123,7 +123,7 @@ TEST_CASE("V2: logical_type create_from_id rejects sentinel and bind-time-only i
 
 TEST_CASE("V2: logical_type create_from_id null out param", "[capi_v2][logical_type][lifecycle]") {
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: logical_type create_from_id leaves pre-existing err untouched on success",
@@ -133,15 +133,15 @@ TEST_CASE("V2: logical_type create_from_id leaves pre-existing err untouched on 
 	// survives; the return code is authoritative.
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL, nullptr, &err) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 
 	duckdb_v2_logical_type_handle t = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, &err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR code = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_get_code(err, &code);
-	REQUIRE(code == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(code == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_logical_type_destroy(&t);
 }
@@ -161,11 +161,11 @@ TEST_CASE("V2: logical_type destroy is null-safe", "[capi_v2][logical_type][life
 
 TEST_CASE("V2: logical_type get_id null handle / null out", "[capi_v2][logical_type][id]") {
 	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN;
-	REQUIRE(duckdb_v2_logical_type_get_id(nullptr, &id, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_id(nullptr, &id, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_logical_type_handle t = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, nullptr);
-	REQUIRE(duckdb_v2_logical_type_get_id(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_id(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&t);
 }
 
@@ -237,11 +237,11 @@ TEST_CASE("V2: logical_type get_name reads an alias set on a STRUCT", "[capi_v2]
 
 TEST_CASE("V2: logical_type get_name null handle / null out", "[capi_v2][logical_type][name]") {
 	duckdb_v2_str alias = {nullptr, 0};
-	REQUIRE(duckdb_v2_logical_type_get_name(nullptr, &alias, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_name(nullptr, &alias, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_logical_type_handle t = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, nullptr);
-	REQUIRE(duckdb_v2_logical_type_get_name(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_name(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&t);
 }
 
@@ -396,16 +396,15 @@ std::string V2ParamVarchar(duckdb_v2_logical_type_handle t, idx_t index, const c
 
 // Same, expecting failure: checks out nulling + err population, destroys the
 // borrowed values, and returns the code.
-duckdb_v2_error_code_t V2CreateTypeErr(duckdb_v2_connection_handle conn, const char *name,
-                                       const std::vector<const char *> *names,
-                                       std::vector<duckdb_v2_value_handle> values) {
+DUCKDB_V2_ERROR V2CreateTypeErr(duckdb_v2_connection_handle conn, const char *name,
+                                const std::vector<const char *> *names, std::vector<duckdb_v2_value_handle> values) {
 	std::vector<duckdb_v2_str> name_views;
 	if (names) {
 		for (auto *n : *names) {
 			name_views.push_back(V2Str(n));
 		}
 	}
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	bool out_nulled = false;
 	bool err_set = false;
 	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
@@ -464,7 +463,7 @@ void RequireParamRoundTrip(duckdb_v2_connection_handle conn, duckdb_v2_logical_t
 	}
 	auto kind_name = V2KindName(t);
 	duckdb_v2_logical_type_handle rebuilt = nullptr;
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
 		rc = duckdb_v2_logical_type_create(ctx, V2Str(kind_name), any_named ? names.data() : nullptr,
 		                                   values.empty() ? nullptr : values.data(), values.size(), &rebuilt, nullptr);
@@ -554,11 +553,11 @@ TEST_CASE("V2: logical_type to_text renders an aliased type as its alias", "[cap
 
 TEST_CASE("V2: logical_type to_text null handle / null out", "[capi_v2][logical_type][to_text]") {
 	char *text = nullptr;
-	REQUIRE(duckdb_v2_logical_type_to_text(nullptr, &text, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_to_text(nullptr, &text, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_logical_type_handle t = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &t, nullptr);
-	REQUIRE(duckdb_v2_logical_type_to_text(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_to_text(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&t);
 }
 
@@ -783,14 +782,14 @@ TEST_CASE("V2: logical_type create_from_text error paths", "[capi_v2][logical_ty
 
 		// Unparseable type expression.
 		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("INTEGER[["), &t, &err) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(t == nullptr);
 		REQUIRE(err != nullptr);
 		duckdb_v2_error_info_destroy(&err);
 
 		// Empty text ({NULL, 0} is a valid empty view; parsing it fails).
 		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, duckdb_v2_str {nullptr, 0}, &t, &err) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(t == nullptr);
 		duckdb_v2_error_info_destroy(&err);
 	});
@@ -802,15 +801,15 @@ TEST_CASE("V2: logical_type create_from_text null-arg refusals", "[capi_v2][logi
 
 	// A null context is refused without any scope.
 	REQUIRE(duckdb_v2_logical_type_create_from_text(nullptr, V2Str("INTEGER"), &t, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
 		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("INTEGER"), nullptr, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		// Malformed view: null pointer with nonzero length.
 		duckdb_v2_logical_type_handle out = nullptr;
 		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, duckdb_v2_str {nullptr, 3}, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(out == nullptr);
 	});
 }
@@ -1106,7 +1105,7 @@ TEST_CASE("V2: ENUM params are the dictionary entries as VARCHAR", "[capi_v2][lo
 	REQUIRE(V2ParamCount(empty) == 0);
 	duckdb_v2_str name = {nullptr, 0};
 	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_logical_type_get_param(empty, 0, &name, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_param(empty, 0, &name, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 	duckdb_v2_logical_type_destroy(&empty);
 }
@@ -1118,17 +1117,17 @@ TEST_CASE("V2: get_param out-of-range and null-arg refusals", "[capi_v2][logical
 	duckdb_v2_str name = {nullptr, 0};
 	auto v = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_logical_type_get_param(t, 2, &name, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_param(t, 2, &name, &v, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_logical_type_get_param_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_param_count(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_param(nullptr, 0, &name, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_param(t, 0, nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_logical_type_get_param(t, 0, &name, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_logical_type_get_param_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_logical_type_get_param_count(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_logical_type_get_param(nullptr, 0, &name, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_logical_type_get_param(t, 0, nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_logical_type_get_param(t, 0, &name, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_logical_type_destroy(&t);
 }
@@ -1334,7 +1333,7 @@ TEST_CASE("V2: logical_type_create null-arg refusals", "[capi_v2][logical_type][
 
 	// A null context is refused without any scope.
 	REQUIRE(duckdb_v2_logical_type_create(nullptr, V2Str("integer"), nullptr, nullptr, 0, &t, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
 		duckdb_v2_value_handle value = V2Int32Value(1);
@@ -1342,24 +1341,24 @@ TEST_CASE("V2: logical_type_create null-arg refusals", "[capi_v2][logical_type][
 		duckdb_v2_logical_type_handle out = nullptr;
 		// Null out_type.
 		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("integer"), nullptr, nullptr, 0, nullptr, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		// Malformed name view.
 		REQUIRE(duckdb_v2_logical_type_create(ctx, duckdb_v2_str {nullptr, 3}, nullptr, nullptr, 0, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(out == nullptr);
 		// param_count > 0 with a null values array.
 		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("list"), nullptr, nullptr, 1, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(out == nullptr);
 		// A null value handle inside the array.
 		const duckdb_v2_value_handle holed[1] = {nullptr};
 		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("list"), nullptr, holed, 1, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(out == nullptr);
 		// A malformed name view inside the names array.
 		const duckdb_v2_str bad_names[1] = {{nullptr, 3}};
 		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("list"), bad_names, values, 1, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(out == nullptr);
 		duckdb_v2_value_destroy(&value);
 	});

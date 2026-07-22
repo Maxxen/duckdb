@@ -30,7 +30,7 @@ module: value
 # value handle is destroyed); the contract is documented per function.
 #
 # NULL handling: the payload readers (value_get_data, value_get_bignum,
-# value_get_type, value_get_variant) return ERROR_INVALID_INPUT when the value is NULL: a
+# value_get_type, value_get_variant) return ERROR_INPUT_INVALID when the value is NULL: a
 # NULL has no typed payload to hand back. Use value_is_null first (or
 # value_get_logical_type / value_to_string, which both accept NULL
 # values).
@@ -51,7 +51,7 @@ functions:
         type: value
         indirection: 1
         description: The value to destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_create_null:
     summary: Creates a NULL value of the given logical type.
     description: |
@@ -73,7 +73,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Leaf payload codec
   # -----------------------------------------------------------------------
@@ -87,7 +87,7 @@ functions:
       form, INTERVAL, HUGEINT and UHUGEINT, UUID in its internal hugeint
       form, DECIMAL as the scaled integer of its width tier, ENUM as a
       dictionary index of its size tier) require len equal to the layout
-      size; any other len returns ERROR_INVALID_INPUT. Variable-length
+      size; any other len returns ERROR_INPUT_INVALID. Variable-length
       kinds take their wire bytes: VARCHAR (byte string; the engine
       rejects invalid UTF-8 at construction), BLOB (any bytes), BIT (the
       mandatory padding header byte plus data bytes, so len >= 1).
@@ -99,7 +99,7 @@ functions:
       storage), and VARCHAR rejects invalid UTF-8 (the engine enforces it
       at construction).
 
-      Every other type id returns ERROR_INVALID_INPUT: TYPE values are
+      Every other type id returns ERROR_INPUT_INVALID: TYPE values are
       built via value_create_type, BIGNUM via value_create_bignum (its
       engine-owned codec un-inverts negatives), composites via value_create;
       GEOMETRY has no committed layout. The type is borrowed; the payload
@@ -128,14 +128,14 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_get_data:
     summary: Borrows a leaf value's payload in its committed physical layout.
     description: |
       The inverse of value_create_from_data: a borrowed view of the
       payload in the same committed layout, valid until the value is
       destroyed. Fixed-size kinds report the layout size; VARCHAR, BLOB,
-      and BIT report their wire bytes. Returns ERROR_INVALID_INPUT for
+      and BIT report their wire bytes. Returns ERROR_INPUT_INVALID for
       NULL values (a NULL has no payload to hand back; use value_is_null
       first) and for the kinds value_create_from_data rejects.
     role: getter
@@ -159,7 +159,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # BIGNUM codec (engine-owned decode + allocation; see module commentary)
   # -----------------------------------------------------------------------
@@ -174,7 +174,7 @@ functions:
       data must not be NULL and length must be >= 1. BIGNUM has no empty
       encoding: the value zero is expressed as a single 0x00 magnitude byte
       with is_negative = false, in the same shape as any other value. A
-      NULL data pointer or length = 0 returns ERROR_INVALID_INPUT.
+      NULL data pointer or length = 0 returns ERROR_INPUT_INVALID.
     role: constructor
     belongs_to: value
     parameters:
@@ -196,7 +196,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_get_bignum:
     summary: Returns the magnitude bytes and sign flag of a BIGNUM value.
     description: |
@@ -233,7 +233,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # VARIANT codec (wire encoding not committed; unwrap is the read path)
   # -----------------------------------------------------------------------
@@ -244,7 +244,7 @@ functions:
       value with its real logical type, so per-row inner-type discovery
       needs no prior knowledge: inspect the result via
       value_get_logical_type and descend or read it like any other value.
-      Returns ERROR_INVALID_INPUT unless the input is a non-NULL VARIANT
+      Returns ERROR_INPUT_INVALID unless the input is a non-NULL VARIANT
       value. The returned value is caller-owned; destroy via
       value_destroy.
 
@@ -273,7 +273,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # TYPE values (a logical type carried as a value)
   # -----------------------------------------------------------------------
@@ -300,11 +300,11 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_get_type:
     summary: Unwraps the logical type carried by a TYPE value.
     description: |
-      Returns ERROR_INVALID_INPUT unless the value is a non-NULL TYPE
+      Returns ERROR_INPUT_INVALID unless the value is a non-NULL TYPE
       value. The returned logical type is caller-owned and must be
       destroyed via logical_type_destroy.
     role: getter
@@ -322,7 +322,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Composite construction + descent + cast
   # -----------------------------------------------------------------------
@@ -335,7 +335,7 @@ functions:
       STRUCT and TUPLE, positional per declared field order, count =
       field count;
       MAP, alternating key, value, so count is even and 2 x the entry
-      count. Every other type id returns ERROR_INVALID_INPUT: UNION and
+      count. Every other type id returns ERROR_INPUT_INVALID: UNION and
       ENUM values are built via value_cast (a member value to the union
       type, a VARCHAR to the enum type), primitives via their typed
       constructors.
@@ -372,7 +372,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_get_child_count:
     summary: Returns the number of child values of a value.
     description: |
@@ -396,7 +396,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_get_child:
     summary: Returns one child of a composite value as an owned copy.
     description: |
@@ -410,7 +410,7 @@ functions:
       members (structural descent); see that module's index convention
       before writing code generic over both. Out-of-range index (including
       any index on a non-composite or NULL value) returns
-      ERROR_INVALID_INPUT. The returned value is caller-owned; destroy
+      ERROR_INPUT_INVALID. The returned value is caller-owned; destroy
       via value_destroy.
     role: getter
     belongs_to: value
@@ -430,7 +430,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_cast:
     summary: Casts a value to a target type through the engine's cast machinery.
     description: |
@@ -470,7 +470,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Common introspection
   # -----------------------------------------------------------------------
@@ -490,7 +490,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_get_logical_type:
     summary: Returns the logical type of the value.
     description: |
@@ -511,7 +511,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   value_to_string:
     summary: Renders the value as a human-readable string. Diagnostic only.
     description: |
@@ -532,4 +532,4 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

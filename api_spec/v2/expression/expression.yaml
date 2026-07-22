@@ -25,7 +25,7 @@ module: expression
 #     ExpressionIterator, so they are total over every bound class (including
 #     the children of nodes this module otherwise doesn't model — case,
 #     aggregate, window, etc.). Child order follows the iterator.
-# The class-specific accessors return ERROR_INVALID_INPUT when called on a
+# The class-specific accessors return ERROR_INPUT_INVALID when called on a
 # class they do not apply to:
 #   - get_function_name  : BOUND_FUNCTION only (the registered function name;
 #                          an internal symbol like "__comparison" for
@@ -330,7 +330,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   expression_get_type:
     summary: Returns the semantic operation type of a bound expression.
     description: |
@@ -353,7 +353,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   expression_get_return_type:
     summary: Returns the logical type of the expression's result.
     description: |
@@ -374,7 +374,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   expression_get_child_count:
     summary: Returns the number of child expressions.
     description: |
@@ -397,12 +397,12 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   expression_get_child:
     summary: Borrows a child expression by index.
     description: |
       Child order follows the engine's ExpressionIterator. Returns
-      ERROR_INVALID_INPUT if index is out of range (>= the count from
+      ERROR_INPUT_INVALID if index is out of range (>= the count from
       expression_get_child_count), which includes every index on a leaf
       expression. The returned handle is borrowed and shares the parent's
       lifetime; do not destroy it.
@@ -425,7 +425,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # BOUND_FUNCTION.
   # -----------------------------------------------------------------------
@@ -435,7 +435,7 @@ functions:
       Returns the bound scalar function's registered name. For comparison
       operators this is an internal symbol such as "__comparison" — dispatch on
       expression_get_type for the semantic operator (e.g. COMPARE_EQUAL).
-      Returns ERROR_INVALID_INPUT if the expression class is not BOUND_FUNCTION.
+      Returns ERROR_INPUT_INVALID if the expression class is not BOUND_FUNCTION.
       On success, writes a borrowed null-terminated byte string into *out_name,
       valid for the expression handle's lifetime.
     role: getter
@@ -454,7 +454,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # BOUND_CONSTANT.
   # -----------------------------------------------------------------------
@@ -462,7 +462,7 @@ functions:
     summary: Returns the value of a BOUND_CONSTANT expression.
     description: |
       The returned value is caller-owned and must be destroyed via
-      value_destroy. Returns ERROR_INVALID_INPUT if the expression class is
+      value_destroy. Returns ERROR_INPUT_INVALID if the expression class is
       not BOUND_CONSTANT.
     role: getter
     belongs_to: expression
@@ -480,7 +480,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # BOUND_COLUMN_REF.
   # -----------------------------------------------------------------------
@@ -493,7 +493,7 @@ functions:
       slots after physical planning). The binding is {table_index,
       column_index}; column_index is relative to the producing operator's
       output (e.g. a scan's projected columns). Each out-param is optional:
-      pass NULL to skip a field. Returns ERROR_INVALID_INPUT if the expression
+      pass NULL to skip a field. Returns ERROR_INPUT_INVALID if the expression
       class is not BOUND_COLUMN_REF.
     role: getter
     belongs_to: expression
@@ -516,7 +516,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # BOUND_REF.
   # -----------------------------------------------------------------------
@@ -527,7 +527,7 @@ functions:
       BOUND_REF is the execution-stage column representation assigned after
       physical planning; binding/optimization-stage trees (e.g. filter
       pushdown) carry BOUND_COLUMN_REF instead — see
-      expression_get_column_binding. Returns ERROR_INVALID_INPUT if the
+      expression_get_column_binding. Returns ERROR_INPUT_INVALID if the
       expression class is not BOUND_REF.
     role: getter
     belongs_to: expression
@@ -545,4 +545,4 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

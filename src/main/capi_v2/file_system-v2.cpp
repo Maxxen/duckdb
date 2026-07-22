@@ -1,8 +1,8 @@
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_connection(duckdb_v2_connection_handle connection,
-                                                               duckdb_v2_file_system_handle *out_file_system,
-                                                               duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_system_get_from_connection(duckdb_v2_connection_handle connection,
+                                                          duckdb_v2_file_system_handle *out_file_system,
+                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_file_system) {
 			throw duckdb::InvalidInputException("Output file system pointer cannot be null.");
@@ -19,9 +19,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_connection(duckdb_v2_connect
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_context(duckdb_v2_context_handle context,
-                                                            duckdb_v2_file_system_handle *out_file_system,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_system_get_from_context(duckdb_v2_context_handle context,
+                                                       duckdb_v2_file_system_handle *out_file_system,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_file_system) {
 			throw duckdb::InvalidInputException("Output file system pointer cannot be null.");
@@ -38,9 +38,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_system_get_from_context(duckdb_v2_context_ha
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_system_open(duckdb_v2_file_system_handle file_system, duckdb_v2_str file_path,
-                                                uint64_t file_flags, duckdb_v2_file_handle_handle *out_file_handle,
-                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_system_open(duckdb_v2_file_system_handle file_system, duckdb_v2_str file_path,
+                                           uint64_t file_flags, duckdb_v2_file_handle_handle *out_file_handle,
+                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_file_handle) {
 			throw duckdb::InvalidInputException("Output file handle pointer cannot be null.");
@@ -87,9 +87,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_system_open(duckdb_v2_file_system_handle fil
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_read(duckdb_v2_file_handle_handle file_handle, void *buffer,
-                                                int64_t buffer_size, int64_t *bytes_read,
-                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_read(duckdb_v2_file_handle_handle file_handle, void *buffer, int64_t buffer_size,
+                                           int64_t *bytes_read, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!file_handle) {
 			throw duckdb::InvalidInputException("File handle pointer cannot be null.");
@@ -108,9 +107,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_read(duckdb_v2_file_handle_handle fil
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_handle file_handle, const void *buffer,
-                                                 int64_t buffer_size, int64_t *bytes_written,
-                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_write(duckdb_v2_file_handle_handle file_handle, const void *buffer,
+                                            int64_t buffer_size, int64_t *bytes_written,
+                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!file_handle) {
 			throw duckdb::InvalidInputException("File handle pointer cannot be null.");
@@ -130,8 +129,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_write(duckdb_v2_file_handle_handle fi
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_tell(duckdb_v2_file_handle_handle file_handle, int64_t *position,
-                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_tell(duckdb_v2_file_handle_handle file_handle, int64_t *position,
+                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!file_handle) {
 			throw duckdb::InvalidInputException("File handle pointer cannot be null.");
@@ -147,8 +146,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_tell(duckdb_v2_file_handle_handle fil
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_size(duckdb_v2_file_handle_handle file_handle, int64_t *size,
-                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_size(duckdb_v2_file_handle_handle file_handle, int64_t *size,
+                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!file_handle) {
 			throw duckdb::InvalidInputException("File handle pointer cannot be null.");
@@ -161,8 +160,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_size(duckdb_v2_file_handle_handle fil
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_seek(duckdb_v2_file_handle_handle file_handle, int64_t position,
-                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_seek(duckdb_v2_file_handle_handle file_handle, int64_t position,
+                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!file_handle) {
 			throw duckdb::InvalidInputException("File handle pointer cannot be null.");
@@ -175,8 +174,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_seek(duckdb_v2_file_handle_handle fil
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_sync(duckdb_v2_file_handle_handle file_handle,
-                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_sync(duckdb_v2_file_handle_handle file_handle, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!file_handle) {
 			throw duckdb::InvalidInputException("File handle pointer cannot be null.");
@@ -186,8 +184,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_sync(duckdb_v2_file_handle_handle fil
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_close(duckdb_v2_file_handle_handle file_handle,
-                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_close(duckdb_v2_file_handle_handle file_handle,
+                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!file_handle) {
 			throw duckdb::InvalidInputException("File handle pointer cannot be null.");
@@ -197,7 +195,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_close(duckdb_v2_file_handle_handle fi
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_file_handle_destroy(duckdb_v2_file_handle_handle *file_handle) {
+DUCKDB_V2_ERROR duckdb_v2_file_handle_destroy(duckdb_v2_file_handle_handle *file_handle) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (file_handle && *file_handle) {
 			delete reinterpret_cast<duckdb::FileHandle *>(*file_handle);

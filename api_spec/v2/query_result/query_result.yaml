@@ -41,7 +41,7 @@ module: query_result
 # rule: the caller sees the first row-producing statement of the group,
 # or the last statement when none produces rows; other statements'
 # output is discarded, as the engine discards it. For expanding
-# statements the metadata getters fail with ERROR_INVALID_INPUT until
+# statements the metadata getters fail with ERROR_INPUT_INVALID until
 # stepping has prepared the result-producing statement; for every
 # non-expanding statement metadata is available from statement_execute
 # on, as described above.
@@ -195,10 +195,10 @@ functions:
       Pass NULL for both arrays (or count 0) for an unparameterized statement.
       Borrowed (copied in); the caller still owns and destroys them. A key set that
       does not match the statement's parameters (names for a positional statement,
-      or the reverse) is rejected with ERROR_INVALID_INPUT. Named and positional
+      or the reverse) is rejected with ERROR_INPUT_INVALID. Named and positional
       parameters cannot be mixed within one statement. Parameters and statement
       expansion are mutually exclusive: passing values for a statement that
-      preprocesses into a group is rejected with ERROR_INVALID_INPUT.
+      preprocesses into a group is rejected with ERROR_INPUT_INVALID.
 
       Preprocessing can expand one statement into a group of engine
       statements (see the module commentary); the group executes as one
@@ -250,7 +250,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_destroy:
     summary: Destroys a result handle.
     description: |
@@ -268,7 +268,7 @@ functions:
         type: result
         indirection: 1
         description: The result to destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_step:
     summary: Runs one bounded unit of query execution and returns without blocking.
     description: |
@@ -315,7 +315,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_fetch_chunk:
     summary: Blocks until the next chunk is available and returns it.
     description: |
@@ -348,7 +348,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_wait:
     summary: Blocks until result_step can make progress.
     description: |
@@ -368,7 +368,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_render_box:
     summary: Renders the result as the engine's box table, consuming it.
     description: |
@@ -426,7 +426,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_drain:
     summary: Runs the result to completion and reports the changed-row count.
     description: |
@@ -458,7 +458,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_get_result_type:
     summary: Returns the shape of the result (query / changed_rows / nothing).
     description: |
@@ -481,7 +481,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_get_statement_type:
     summary: Returns the SQL statement type that produced the result.
     description: |
@@ -502,7 +502,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   result_get_schema:
     summary: Returns the result's output schema as a single schema handle.
     description: |
@@ -531,4 +531,4 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

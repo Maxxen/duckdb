@@ -19,7 +19,7 @@ namespace {
 // Runs a query expected to fail at prepare time; returns the err handle (caller
 // destroys). A real result slot is passed (a NULL out_result is itself rejected).
 duckdb_v2_error_info_handle FailingQuery(duckdb_v2_connection_handle conn, const char *sql,
-                                         duckdb_v2_error_code_t expected_code) {
+                                         DUCKDB_V2_ERROR expected_code) {
 	duckdb_v2_error_info_handle err = nullptr;
 	duckdb_v2_result_handle r = nullptr;
 	auto rc = V2Query(conn, sql, &r, &err);
@@ -63,7 +63,7 @@ TEST_CASE("V2 error: get_raw_message on a binder error", "[capi_v2][error]") {
 
 TEST_CASE("V2 error: directly-set messages have no raw body", "[capi_v2][error]") {
 	duckdb_v2_error_info_handle err = nullptr;
-	duckdb::SetErrorInfo(&err, DUCKDB_V2_API_ERROR, "boom");
+	duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_API, "boom");
 	REQUIRE(err != nullptr);
 
 	duckdb_v2_str raw = {nullptr, 0};
@@ -111,11 +111,11 @@ TEST_CASE("V2 error: raw body does not leak across slot reuse", "[capi_v2][error
 
 TEST_CASE("V2 error: get_raw_message rejects null args", "[capi_v2][error]") {
 	duckdb_v2_error_info_handle err = nullptr;
-	duckdb::SetErrorInfo(&err, DUCKDB_V2_API_ERROR, "x");
+	duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_API, "x");
 
 	duckdb_v2_str out = {nullptr, 0};
-	REQUIRE(duckdb_v2_error_info_get_raw_message(nullptr, &out) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_error_info_get_raw_message(err, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_error_info_get_raw_message(nullptr, &out) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_error_info_get_raw_message(err, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_error_info_destroy(&err);
 }
@@ -196,8 +196,8 @@ TEST_CASE("V2 error: errors_as_json makes the parse boundary emit JSON", "[capi_
 TEST_CASE("V2 error: SetErrorInfo helper", "[capi_v2][error]") {
 	SECTION("SetErrorInfo allocates an info and returns the code") {
 		duckdb_v2_error_info_handle err = nullptr;
-		auto rc = duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INVALID_INPUT, "bad input");
-		REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
+		auto rc = duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INPUT_INVALID, "bad input");
+		REQUIRE(rc == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(err != nullptr);
 
 		duckdb_v2_str msg = {nullptr, 0};
@@ -211,8 +211,8 @@ TEST_CASE("V2 error: SetErrorInfo helper", "[capi_v2][error]") {
 
 	SECTION("SetErrorInfo with null message produces an empty message") {
 		duckdb_v2_error_info_handle err = nullptr;
-		auto rc = duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INVALID_INPUT, nullptr);
-		REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
+		auto rc = duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INPUT_INVALID, nullptr);
+		REQUIRE(rc == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(err != nullptr);
 
 		duckdb_v2_str msg = {nullptr, 0};
@@ -226,7 +226,7 @@ TEST_CASE("V2 error: SetErrorInfo helper", "[capi_v2][error]") {
 	SECTION("SetErrorInfo preserves arbitrarily long messages") {
 		duckdb_v2_error_info_handle err = nullptr;
 		std::string long_msg(4096, 'x');
-		duckdb::SetErrorInfo(&err, DUCKDB_V2_API_ERROR, long_msg.c_str());
+		duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_API, long_msg.c_str());
 
 		duckdb_v2_str msg = {nullptr, 0};
 		duckdb_v2_error_info_get_text(err, &msg);
@@ -236,14 +236,14 @@ TEST_CASE("V2 error: SetErrorInfo helper", "[capi_v2][error]") {
 	}
 
 	SECTION("SetErrorInfo with nullptr err returns the code and allocates nothing") {
-		auto rc = duckdb::SetErrorInfo(nullptr, DUCKDB_V2_ERROR_INVALID_INPUT, "ignored");
-		REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
+		auto rc = duckdb::SetErrorInfo(nullptr, DUCKDB_V2_ERROR_INPUT_INVALID, "ignored");
+		REQUIRE(rc == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 
 	SECTION("SetErrorInfo replaces a pre-existing info's message") {
 		duckdb_v2_error_info_handle err = nullptr;
-		duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INVALID_INPUT, "first");
-		duckdb::SetErrorInfo(&err, DUCKDB_V2_API_ERROR, "second");
+		duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_INPUT_INVALID, "first");
+		duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_API, "second");
 		REQUIRE(err != nullptr);
 
 		duckdb_v2_str msg = {nullptr, 0};
@@ -266,7 +266,7 @@ TEST_CASE("V2 error: error_info_destroy is null-safe", "[capi_v2][error]") {
 
 	SECTION("detach + destroy preserves info independently of the original slot") {
 		duckdb_v2_error_info_handle err = nullptr;
-		duckdb::SetErrorInfo(&err, DUCKDB_V2_API_ERROR, "boom");
+		duckdb::SetErrorInfo(&err, DUCKDB_V2_ERROR_API, "boom");
 
 		// Transfer ownership out of `err` — the original slot is now detached.
 		duckdb_v2_error_info_handle saved = err;
@@ -298,14 +298,14 @@ TEST_CASE("V2 error: WithErrorHandler success leaves the err slot untouched", "[
 	// Seed the slot with a failure, then make a successful call reusing the
 	// same slot. The stale info is NOT cleared — success leaves it as-is, and
 	// it is the caller's responsibility to clear before relying on it again.
-	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 
 	REQUIRE(duckdb_v2_file_system_get_from_connection(conn, &fs, &err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(err != nullptr); // untouched: the failure's info still sits in the slot
-	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR code = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_get_code(err, &code);
-	REQUIRE(code == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(code == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_error_info_destroy(&err);
 	REQUIRE(err == nullptr);
@@ -320,7 +320,7 @@ TEST_CASE("V2 error: WithErrorHandler failure overwrites the prior message in th
 	// First failing call: null out_file_system yields
 	// "Output file system pointer cannot be null."
 	duckdb_v2_file_system_handle *no_out = nullptr;
-	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, no_out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, no_out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 	{
 		duckdb_v2_str msg = {nullptr, 0};
@@ -332,7 +332,7 @@ TEST_CASE("V2 error: WithErrorHandler failure overwrites the prior message in th
 	// yielding "Connection pointer cannot be null." The slot is reused; the
 	// message is overwritten in place. No reallocation, no destroy.
 	duckdb_v2_file_system_handle fs = nullptr;
-	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 	{
 		duckdb_v2_str msg = {nullptr, 0};

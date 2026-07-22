@@ -32,7 +32,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   schema_get_field:
     summary: "Borrows the name and type of the field at index."
     description: |
@@ -63,7 +63,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   schema_destroy:
     summary: "Destroys a schema handle."
     description: |
@@ -76,4 +76,4 @@ functions:
         type: schema
         indirection: 1
         description: "The schema handle to destroy."
-    return_type: API_CALL
+    return_type: ERROR

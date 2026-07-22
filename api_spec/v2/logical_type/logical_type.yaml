@@ -158,7 +158,7 @@ functions:
       return types, table function result columns, cast source and
       target types, and custom type registration.
 
-      Returns ERROR_INVALID_INPUT for parameterised type ids
+      Returns ERROR_INPUT_INVALID for parameterised type ids
       (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
       for the remaining bind-time-only ids (SQLNULL, UNKNOWN), for TYPE
       (construct it via logical_type_create_from_text), and for INVALID.
@@ -179,7 +179,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_create_from_text:
     summary: Creates a logical type by parsing SQL text.
     description: |
@@ -224,7 +224,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_create:
     summary: Creates a logical type from a type name plus value parameters.
     description: |
@@ -289,7 +289,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_copy:
     summary: Creates a copy of a logical type
     description: On success, writes the new handle into *out_type.
@@ -309,7 +309,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_destroy:
     summary: Destroys a logical type handle.
     description: |
@@ -322,7 +322,7 @@ functions:
         type: logical_type
         indirection: 1
         description: The logical type to destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Common introspection
   # -----------------------------------------------------------------------
@@ -352,7 +352,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_get_id:
     summary: Returns the logical type id.
     role: getter
@@ -371,7 +371,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_get_name:
     summary: Borrows the logical type's name.
     description: |
@@ -397,7 +397,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_to_text:
     summary: Renders a logical type as SQL text.
     description: |
@@ -423,7 +423,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Generic parameter inspection
   # -----------------------------------------------------------------------
@@ -455,7 +455,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_type_get_param:
     summary: Returns one value parameter of a logical type.
     description: |
@@ -467,7 +467,7 @@ functions:
       as TYPE values (unwrap via value_get_type), DECIMAL width and
       scale as UTINYINT, ARRAY size as BIGINT, ENUM dictionary entries
       and collations as VARCHAR. Out-of-range index returns
-      ERROR_INVALID_INPUT. One owned value allocation per call.
+      ERROR_INPUT_INVALID. One owned value allocation per call.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -492,4 +492,4 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

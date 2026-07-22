@@ -82,7 +82,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_destroy:
     summary: "Destroys an option handle."
     description: |
@@ -95,7 +95,7 @@ functions:
         type: option
         indirection: 1
         description: "The option handle to destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_get_name:
     summary: "Borrows the option's canonical name."
     description: |
@@ -118,7 +118,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_get_setting:
     summary: "Borrows the option's current setting (string-encoded value)."
     description: |
@@ -142,7 +142,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_get_default_setting:
     summary: "Borrows the option's static default setting."
     description: |
@@ -164,7 +164,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_get_description:
     summary: "Borrows the option's human-readable description."
     description: "Empty string for options created via option_create until the option has been resolved through a database/connection get."
@@ -184,7 +184,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_get_target_scope:
     summary: "Returns the option's target scope."
     description: |
@@ -208,7 +208,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_get_alias_count:
     summary: "Returns the number of aliases registered for this option."
     description: "Zero for options created via option_create until the option has been resolved through a database/connection get."
@@ -228,10 +228,10 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   option_get_alias:
     summary: "Borrows the alias name at the given index."
-    description: "Out-of-range index returns ERROR_INVALID_INPUT."
+    description: "Out-of-range index returns ERROR_INPUT_INVALID."
     role: getter
     belongs_to: option
     parameters:
@@ -251,4 +251,4 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR

@@ -1,9 +1,8 @@
 #include "capi_v2_internal.hpp"
 
-DUCKDB_V2_API_CALL_t duckdb_v2_statement_prepare(duckdb_v2_connection_handle conn,
-                                                 duckdb_v2_sql_statement_handle statement, bool require_cacheable,
-                                                 duckdb_v2_prepared_statement_handle *out_prepared,
-                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_statement_prepare(duckdb_v2_connection_handle conn, duckdb_v2_sql_statement_handle statement,
+                                            bool require_cacheable, duckdb_v2_prepared_statement_handle *out_prepared,
+                                            duckdb_v2_error_info_handle *err) {
 	if (out_prepared) {
 		*out_prepared = nullptr;
 	}
@@ -43,10 +42,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_prepare(duckdb_v2_connection_handle con
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_prepared_execute(duckdb_v2_prepared_statement_handle prepared,
-                                                const duckdb_v2_identifier_t *parameter_names,
-                                                const duckdb_v2_value_handle *parameter_values, idx_t parameter_count,
-                                                duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_prepared_execute(duckdb_v2_prepared_statement_handle prepared,
+                                           const duckdb_v2_identifier_t *parameter_names,
+                                           const duckdb_v2_value_handle *parameter_values, idx_t parameter_count,
+                                           duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err) {
 	if (out_result) {
 		*out_result = nullptr;
 	}
@@ -91,8 +90,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_prepared_execute(duckdb_v2_prepared_statement_han
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_prepared_reuses_plan(duckdb_v2_prepared_statement_handle prepared, bool *out_reuses,
-                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_prepared_reuses_plan(duckdb_v2_prepared_statement_handle prepared, bool *out_reuses,
+                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!prepared || !out_reuses) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_prepared_reuses_plan");
@@ -102,7 +101,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_prepared_reuses_plan(duckdb_v2_prepared_statement
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_prepared_statement_destroy(duckdb_v2_prepared_statement_handle *prepared) {
+DUCKDB_V2_ERROR duckdb_v2_prepared_statement_destroy(duckdb_v2_prepared_statement_handle *prepared) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!prepared) {
 			return;

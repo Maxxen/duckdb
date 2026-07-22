@@ -207,7 +207,7 @@ void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_contex
 
 	// arg 0 is a column reference: folding it fails.
 	duckdb_v2_value_handle bad = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 0, &bad, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 0, &bad, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(bad == nullptr);
 
 	// arg 1 is the constant literal 7; fold it and replace it with a constant 9.
@@ -221,15 +221,15 @@ void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_contex
 
 	// Out-of-range index and null handles are rejected.
 	duckdb_v2_logical_type_handle oob_type = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_get_type(arguments, 5, &oob_type, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_get_type(arguments, 5, &oob_type, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(oob_type == nullptr);
 	duckdb_v2_value_handle oob_val = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 5, &oob_val, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 9, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_bind_arguments_get_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_bind_arguments_get_type(nullptr, 0, &oob_type, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_bind_arguments_fold(nullptr, ctx, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, nullptr, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 5, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 9, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_bind_arguments_get_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_bind_arguments_get_type(nullptr, 0, &oob_type, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_bind_arguments_fold(nullptr, ctx, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, nullptr, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // probe_bind exec: returns arg0 + arg1, so set_constant(1, 9) is observable.
@@ -273,19 +273,19 @@ TEST_CASE("V2 varargs: ANY is constructible via from_id", "[capi_v2][varargs]") 
 	// The remaining bind-time-only ids and TYPE / INVALID stay rejected.
 	duckdb_v2_logical_type_handle rejected = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_SQLNULL, &rejected, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_UNKNOWN, &rejected, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_TYPE, &rejected, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INVALID, &rejected, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(rejected == nullptr);
 }
 
 TEST_CASE("V2 varargs: from_text cannot parse ANY back", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_logical_type_handle t = nullptr;
 	V2WithContext(fix.conn, [&](duckdb_v2_context_handle ctx) {
 		rc = duckdb_v2_logical_type_create_from_text(ctx, V2Str("ANY"), &t, nullptr);
@@ -304,22 +304,22 @@ TEST_CASE("V2 varargs: ANY rejected by value / data_chunk creation", "[capi_v2][
 	// data_chunk_create
 	duckdb_v2_logical_type_handle types[] = {any};
 	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(chunk == nullptr);
 
 	// value_create_null
 	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_null(any, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_null(any, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
 	// value_create_from_data (ANY has no committed leaf layout)
 	int32_t payload = 0;
 	REQUIRE(duckdb_v2_value_create_from_data(any, &payload, sizeof(payload), &v, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
 	// value_create_type (no ANY type token either)
-	REQUIRE(duckdb_v2_value_create_type(any, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_type(any, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
 	duckdb_v2_logical_type_destroy(&any);
@@ -342,7 +342,7 @@ TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][vararg
 		duckdb_v2_scalar_function_builder_set_name(sf, V2Str("bad_scalar"), nullptr);
 		duckdb_v2_scalar_function_builder_set_return_type(sf, any, nullptr);
 		duckdb_v2_scalar_function_builder_set_exec_callback(sf, TwoAnyExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, sf, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, sf, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_scalar_function_builder_destroy(&sf);
 
 		// aggregate return type ANY rejected at register.
@@ -367,7 +367,7 @@ TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][vararg
 		    af, [](duckdb_v2_aggregate_function_combine_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
 		duckdb_v2_aggregate_function_builder_set_finalize_callback(
 		    af, [](duckdb_v2_aggregate_function_finalize_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, af, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, af, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_aggregate_function_builder_destroy(&af);
 
 		// cast source / target ANY rejected at register.
@@ -377,7 +377,7 @@ TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][vararg
 		duckdb_v2_cast_function_builder_set_target_type(cf, integer, nullptr);
 		duckdb_v2_cast_function_builder_set_exec_callback(
 		    cf, [](duckdb_v2_cast_function_exec_info_handle, duckdb_v2_error_info_handle *) -> void {}, nullptr);
-		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, cf, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, cf, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_cast_function_builder_destroy(&cf);
 
 		// custom type base ANY rejected at register.
@@ -385,7 +385,7 @@ TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][vararg
 		duckdb_v2_custom_type_builder_create(ctx, &tb, nullptr);
 		duckdb_v2_custom_type_builder_set_name(tb, V2Str("bad_type"), nullptr);
 		duckdb_v2_custom_type_builder_set_base_type(tb, any, nullptr);
-		REQUIRE(duckdb_v2_custom_type_builder_register(ctx, tb, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_custom_type_builder_register(ctx, tb, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_custom_type_builder_destroy(&tb);
 
 		duckdb_v2_logical_type_destroy(&any);
@@ -429,7 +429,7 @@ TEST_CASE("V2 varargs: scalar concrete and ANY varargs", "[capi_v2][varargs]") {
 
 		// NULL / INVALID varargs type rejected.
 		auto bad = NewScalar(ctx, "bad_varargs", nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_set_varargs(bad, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_scalar_function_builder_set_varargs(bad, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_scalar_function_builder_destroy(&bad);
 
 		duckdb_v2_logical_type_destroy(&integer);

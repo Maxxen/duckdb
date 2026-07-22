@@ -538,7 +538,7 @@ TEST_CASE("V2: STRUCT(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]")
 
 	// Out-of-range field index rejected.
 	duckdb_v2_vector_handle oor = nullptr;
-	REQUIRE(duckdb_v2_vector_get_child(svec, 99, &oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_child(svec, 99, &oor, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(oor == nullptr);
 
 	duckdb_v2_data_chunk_destroy(&chunk);
@@ -594,7 +594,7 @@ TEST_CASE("V2: TUPLE(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") 
 
 	// Out-of-range field index rejected.
 	duckdb_v2_vector_handle oor = nullptr;
-	REQUIRE(duckdb_v2_vector_get_child(tvec, 99, &oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_child(tvec, 99, &oor, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(oor == nullptr);
 
 	duckdb_v2_data_chunk_destroy(&chunk);
@@ -739,7 +739,7 @@ TEST_CASE("V2: MAP(VARCHAR, INTEGER) via get_child", "[capi_v2][data_chunk]") {
 
 	// Out-of-range MAP child index rejected (only [0] and [1] are valid).
 	duckdb_v2_vector_handle oor = nullptr;
-	REQUIRE(duckdb_v2_vector_get_child(mvec, 2, &oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_child(mvec, 2, &oor, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(oor == nullptr);
 
 	duckdb_v2_data_chunk_destroy(&chunk);
@@ -807,7 +807,7 @@ TEST_CASE("V2: UNION(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") 
 
 	// Out-of-range member index (3 is past the last member at child-index 2).
 	duckdb_v2_vector_handle oor = nullptr;
-	REQUIRE(duckdb_v2_vector_get_child(uvec, 3, &oor, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_child(uvec, 3, &oor, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(oor == nullptr);
 
 	// view.data on a UNION is unspecified per the contract (typically
@@ -909,7 +909,7 @@ TEST_CASE("V2: generic accessors handle non-nested vectors", "[capi_v2][data_chu
 	// get_child(idx=0) rejects on a non-nested vector.
 	duckdb_v2_vector_handle child = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_vector_get_child(vec, 0, &child, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_child(vec, 0, &child, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(child == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -1094,7 +1094,7 @@ TEST_CASE("V2: vector_get_view rejects OTHER + zeroes view", "[capi_v2][data_chu
 	view.validity = reinterpret_cast<const uint64_t *>(0x2);
 	view.sel = reinterpret_cast<const duckdb_v2_sel_t *>(0x3);
 
-	REQUIRE(duckdb_v2_vector_get_view(handle, &view, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_view(handle, &view, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(view.data == nullptr);
 	REQUIRE(view.validity == nullptr);
 	REQUIRE(view.sel == nullptr);
@@ -1123,7 +1123,7 @@ TEST_CASE("V2: chunk null-arg + out-of-range rejection", "[capi_v2][data_chunk]"
 
 	duckdb_v2_data_chunk_handle chunk = V2StepChunk(r);
 	duckdb_v2_vector_handle vec = nullptr;
-	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 99, &vec, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 99, &vec, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(vec == nullptr);
 
 	duckdb_v2_data_chunk_destroy(&chunk);
@@ -1146,7 +1146,7 @@ TEST_CASE("V2: success leaves a pre-existing err untouched", "[capi_v2][data_chu
 	V2Query(fx.conn, "SELECT 1", &r1, nullptr);
 	duckdb_v2_data_chunk_handle chunk = V2StepChunk(r1);
 	duckdb_v2_vector_handle oor_vec = nullptr;
-	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 99, &oor_vec, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 99, &oor_vec, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr); // populated on failure
 	duckdb_v2_data_chunk_destroy(&chunk);
 	duckdb_v2_result_destroy(&r1);
@@ -1158,9 +1158,9 @@ TEST_CASE("V2: success leaves a pre-existing err untouched", "[capi_v2][data_chu
 	REQUIRE(V2Query(fx.conn, "SELECT 1", &r2, &err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(err != nullptr);
 	{
-		duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_NONE;
+		DUCKDB_V2_ERROR code = DUCKDB_V2_ERROR_NONE;
 		duckdb_v2_error_info_get_code(err, &code);
-		REQUIRE(code == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(code == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	duckdb_v2_error_info_destroy(&err);
 
@@ -1236,7 +1236,7 @@ TEST_CASE("V2: vector_get_view zeroes view on failure", "[capi_v2][data_chunk]")
 	view.validity = reinterpret_cast<const uint64_t *>(0x2);
 	view.sel = reinterpret_cast<const duckdb_v2_sel_t *>(0x3);
 
-	REQUIRE(duckdb_v2_vector_get_view(nullptr, &view, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_view(nullptr, &view, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(view.data == nullptr);
 	REQUIRE(view.validity == nullptr);
 	REQUIRE(view.sel == nullptr);
@@ -1262,5 +1262,5 @@ TEST_CASE("V2: string decoders reject null arguments", "[capi_v2][data_chunk]") 
 	idx_t len = 0;
 	bool is_neg = false;
 
-	REQUIRE(duckdb_v2_bignum_decode(nullptr, &odata, &len, &is_neg, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_bignum_decode(nullptr, &odata, &len, &is_neg, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }

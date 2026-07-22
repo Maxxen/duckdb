@@ -160,11 +160,11 @@ private:
 class Exception : public std::runtime_error {
 public:
 	// TODO: add more exception types!
-	Exception(uint32_t code, std::string message, std::string raw_message = {})
+	Exception(int code, std::string message, std::string raw_message = {})
 	    : std::runtime_error(std::move(message)), code(code), raw_message(std::move(raw_message)) {
 	}
 
-	uint32_t GetCode() const {
+	int GetCode() const {
 		return code;
 	}
 
@@ -176,7 +176,7 @@ public:
 	}
 
 private:
-	uint32_t code;
+	int code;
 	std::string raw_message;
 };
 
@@ -792,8 +792,6 @@ enum class TypeId : uint32_t {
 	// Unnamed struct; shares the physical representation of STRUCT.
 	TUPLE = 110,
 };
-
-class Value;
 
 class LogicalType final : public detail::Handle<LogicalType> {
 	friend detail::Factory;

@@ -96,7 +96,7 @@ functions:
 
       The result is consumed even on failure paths that have already taken
       ownership; *out_stream is left untouched on failure. Null arguments
-      return ERROR_INVALID_INPUT and leave the result intact.
+      return ERROR_INPUT_INVALID and leave the result intact.
     role: method
     belongs_to: result
     parameters:
@@ -118,7 +118,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   logical_types_to_arrow_schema:
     summary: Converts a list of DuckDB logical types and column names into an Arrow schema.
     description: |
@@ -160,7 +160,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   data_chunk_to_arrow_array:
     summary: Converts a DuckDB data chunk into an Arrow array.
     description: |
@@ -187,7 +187,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   arrow_conversion_plan_create:
     summary: Builds a reusable conversion plan from an Arrow schema.
     description: |
@@ -217,7 +217,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   arrow_array_to_data_chunk:
     summary: Converts an Arrow array into a DuckDB data chunk using a conversion plan.
     description: |
@@ -257,7 +257,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   arrow_conversion_plan_get_schema:
     summary: Returns the conversion plan's fields as an owned schema handle.
     description: |
@@ -285,7 +285,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   arrow_conversion_plan_destroy:
     summary: Destroys a conversion plan handle.
     description: |
@@ -298,4 +298,4 @@ functions:
         type: arrow_conversion_plan
         indirection: 1
         description: The conversion plan to destroy.
-    return_type: API_CALL
+    return_type: ERROR

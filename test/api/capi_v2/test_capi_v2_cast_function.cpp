@@ -72,7 +72,7 @@ void VarcharToTemperature(duckdb_v2_cast_function_exec_info_handle info, duckdb_
 	REQUIRE(duckdb_v2_cast_function_exec_get_user_data(info, &user_data, err) == DUCKDB_V2_ERROR_NONE);
 	auto *secret = static_cast<std::string *>(user_data);
 	if (!secret || *secret != "secret") {
-		duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_INVALID_INPUT);
+		duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_error_info_set_text(*err, V2Str("user data was not threaded through to the cast callback"));
 		return;
 	}
@@ -265,7 +265,7 @@ TEST_CASE("V2 cast: custom type round-trip casts", "[capi_v2][cast]") {
 		// Lazy streaming: the query prepares fine; the strict-cast error only
 		// surfaces once the stream is stepped.
 		REQUIRE(V2Query(conn, "SELECT CAST('not-a-temp' AS TEMPERATURE)", &result, &err) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+		DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 		while (true) {
 			duckdb_v2_data_chunk_handle chunk = nullptr;
 			DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
@@ -294,7 +294,7 @@ TEST_CASE("V2 cast: builder validation errors", "[capi_v2][cast]") {
 
 	auto check = [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
 		// create requires a non-null context and out pointer
-		REQUIRE(duckdb_v2_cast_function_builder_create(nullptr, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_cast_function_builder_create(nullptr, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		duckdb_v2_logical_type_handle int_type = nullptr;
 		REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, err) ==

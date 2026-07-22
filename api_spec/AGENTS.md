@@ -36,14 +36,14 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy."
-    return_type: DUCKDB_V2_API_CALL
+    return_type: status
 ```
 
 ## Authoring conventions
 
 - **Names.** Everything is `duckdb_v2_` / `DUCKDB_V2_` prefixed, but the IDL is prefix-free: `prefix:` in `metadata.yaml` applies it at generation time. Do not bake the prefix into type or function names. The generator refuses to generate if the convention is violated.
 - **Function roles.** Set `role` from behavior: `constructor`, `destructor`, `getter`, `setter`, or `method`. Destructors are infallible and take no `err`.
-- **Parameter order.** Primary subject, then inputs, then `out_*`, then the trailing `err`. Every fallible function returns `DUCKDB_V2_API_CALL` and takes `err` last (`kind: OUT`, `indirection: 1`). See the error-slot contract in the reference doc.
+- **Parameter order.** Primary subject, then inputs, then `out_*`, then the trailing `err`. Every fallible function returns the `DUCKDB_V2_ERROR` enum and takes `err` last (`kind: OUT`, `indirection: 1`). See the error-slot contract in the reference doc.
 - **Shared handles** are declared once in `common/common.yaml`, never redeclared per module. Use `qualified: true` for names owned elsewhere (`idx_t`, `sel_t`).
 - **Lexical style.** `Connection` -> `conn`, `Callback` -> `cb`, `Statement` -> `stmt`, `Execution` -> `exec`, `Destroy` -> `destroy`, `Begin` / `End` -> `begin_...` / `end_...`. String data is `type: char, indirection: 1`.
 - **Descriptions.** One description per function, leading with the contract. Annotate enum values only where the name alone is insufficient. No forward references to in-flight work (it ages badly). No first-person editorialising ("at this moment", "for now"): state the contract, and put deferral rationale in the file's top-of-file commentary. For string types write "null-terminated byte string", not "UTF-8" (DuckDB does not enforce encoding).

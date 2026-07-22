@@ -76,12 +76,12 @@ TEST_CASE("V2: value_create_null carries the borrowed type", "[capi_v2][value][n
 
 TEST_CASE("V2: value_create_null rejects null type / null out", "[capi_v2][value][null]") {
 	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_null(nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_null(nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
 	duckdb_v2_logical_type_handle int_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
-	REQUIRE(duckdb_v2_value_create_null(int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_null(int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&int_type);
 }
 
@@ -96,16 +96,16 @@ TEST_CASE("V2: value_is_null distinguishes NULL from non-NULL", "[capi_v2][value
 
 TEST_CASE("V2: value_is_null / value_get_logical_type / value_destroy null guards", "[capi_v2][value][null]") {
 	bool b = false;
-	REQUIRE(duckdb_v2_value_is_null(nullptr, &b, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_is_null(nullptr, &b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_logical_type_handle lt = nullptr;
-	REQUIRE(duckdb_v2_value_get_logical_type(nullptr, &lt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_logical_type(nullptr, &lt, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(lt == nullptr);
 
 	duckdb_v2_value_handle v = nullptr;
 	v = V2Int32Value(1);
-	REQUIRE(duckdb_v2_value_is_null(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_get_logical_type(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_is_null(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_get_logical_type(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&v);
 }
 
@@ -274,7 +274,7 @@ TEST_CASE("V2: DECIMAL payloads are the scaled integer of the width tier", "[cap
 	duckdb_v2_value_handle bad = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_value_create_from_data(narrow, &wrong, sizeof(wrong), &bad, &err) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(bad == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -311,7 +311,7 @@ TEST_CASE("V2: ENUM payloads are bounds-checked dictionary indices", "[capi_v2][
 	uint8_t oob = 3;
 	duckdb_v2_value_handle bad = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_create_from_data(t, &oob, 1, &bad, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(t, &oob, 1, &bad, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(bad == nullptr);
 	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_logical_type_destroy(&t);
@@ -359,7 +359,7 @@ TEST_CASE("V2: wire-bytes kinds round-trip verbatim", "[capi_v2][value][leaf][bo
 	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_BIT, bit_bytes, 3);
 	duckdb_v2_logical_type_handle bit_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIT, &bit_type, nullptr);
-	REQUIRE(duckdb_v2_value_create_from_data(bit_type, nullptr, 0, &bad, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(bit_type, nullptr, 0, &bad, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(bad == nullptr);
 	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_logical_type_destroy(&bit_type);
@@ -390,12 +390,12 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 	int32_t dummy = 0;
 	duckdb_v2_value_handle out = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_create_from_data(type_type, &dummy, 4, &out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(type_type, &dummy, 4, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	duckdb_v2_error_info_destroy(&err);
 	const void *data = nullptr;
 	idx_t len = 0;
-	REQUIRE(duckdb_v2_value_get_data(type_value, &data, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_data(type_value, &data, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(data == nullptr);
 	duckdb_v2_logical_type_destroy(&type_type);
 	duckdb_v2_value_destroy(&type_value);
@@ -403,37 +403,37 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 	// BIGNUM: wire encoding not committed; use the bignum codec pair.
 	duckdb_v2_logical_type_handle bignum_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM, &bignum_type, nullptr);
-	REQUIRE(duckdb_v2_value_create_from_data(bignum_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(bignum_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	const uint8_t magnitude[1] = {42};
 	duckdb_v2_value_handle bignum = nullptr;
 	REQUIRE(duckdb_v2_value_create_bignum(magnitude, 1, false, &bignum, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_value_get_data(bignum, &data, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_data(bignum, &data, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&bignum);
 	duckdb_v2_logical_type_destroy(&bignum_type);
 
 	// Composites: use value_create / value_get_child.
 	auto list_type = V2CreateType(fx.conn, "list", nullptr, {V2TypeValueOf(int_type)});
-	REQUIRE(duckdb_v2_value_create_from_data(list_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(list_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&list_type);
 
 	// NULL values have no payload.
 	duckdb_v2_value_handle null_value = nullptr;
 	REQUIRE(duckdb_v2_value_create_null(int_type, &null_value, nullptr) == DUCKDB_V2_ERROR_NONE);
 	data = reinterpret_cast<const void *>(0x1);
-	REQUIRE(duckdb_v2_value_get_data(null_value, &data, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_data(null_value, &data, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(data == nullptr);
 	duckdb_v2_value_destroy(&null_value);
 
 	// Length and null-arg gates.
 	int64_t wide = 0;
-	REQUIRE(duckdb_v2_value_create_from_data(int_type, &wide, 8, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_create_from_data(int_type, nullptr, 4, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_create_from_data(nullptr, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_create_from_data(int_type, &dummy, 4, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(int_type, &wide, 8, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_create_from_data(int_type, nullptr, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_create_from_data(nullptr, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_create_from_data(int_type, &dummy, 4, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	auto probe = V2Int32Value(1);
-	REQUIRE(duckdb_v2_value_get_data(nullptr, &data, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_get_data(probe, nullptr, &len, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_get_data(probe, &data, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_data(nullptr, &data, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_get_data(probe, nullptr, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_get_data(probe, &data, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&probe);
 	duckdb_v2_logical_type_destroy(&int_type);
 
@@ -446,16 +446,16 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("VARIANT"), &variant_type, nullptr) ==
 		        DUCKDB_V2_ERROR_NONE);
 	});
-	REQUIRE(duckdb_v2_value_create_from_data(variant_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(variant_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	duckdb_v2_logical_type_destroy(&variant_type);
 }
 
 TEST_CASE("V2: value_to_string null handle / null out", "[capi_v2][value][to_string]") {
 	char *text = nullptr;
-	REQUIRE(duckdb_v2_value_to_string(nullptr, &text, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_to_string(nullptr, &text, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	auto v = V2Int32Value(7);
-	REQUIRE(duckdb_v2_value_to_string(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_to_string(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&v);
 }
 
@@ -545,13 +545,13 @@ TEST_CASE("V2: bignum constructor rejects null data and zero length", "[capi_v2]
 	const uint8_t one[] = {0x01};
 	duckdb_v2_value_handle v = nullptr;
 
-	REQUIRE(duckdb_v2_value_create_bignum(nullptr, 4, false, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_bignum(nullptr, 4, false, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
-	REQUIRE(duckdb_v2_value_create_bignum(nullptr, 0, false, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_bignum(nullptr, 0, false, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
-	REQUIRE(duckdb_v2_value_create_bignum(one, 0, false, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_bignum(one, 0, false, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 }
 
@@ -561,7 +561,7 @@ TEST_CASE("V2: bignum getter rejects non-BIGNUM and NULL BIGNUM", "[capi_v2][val
 	uint8_t *out_data = nullptr;
 	idx_t len = 0;
 	bool neg = false;
-	REQUIRE(duckdb_v2_value_get_bignum(i, &out_data, &len, &neg, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_bignum(i, &out_data, &len, &neg, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out_data == nullptr);
 	duckdb_v2_value_destroy(&i);
 
@@ -569,7 +569,7 @@ TEST_CASE("V2: bignum getter rejects non-BIGNUM and NULL BIGNUM", "[capi_v2][val
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM, &bn_lt, nullptr);
 	duckdb_v2_value_handle nv = nullptr;
 	duckdb_v2_value_create_null(bn_lt, &nv, nullptr);
-	REQUIRE(duckdb_v2_value_get_bignum(nv, &out_data, &len, &neg, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_bignum(nv, &out_data, &len, &neg, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out_data == nullptr);
 	duckdb_v2_value_destroy(&nv);
 	duckdb_v2_logical_type_destroy(&bn_lt);
@@ -584,7 +584,7 @@ TEST_CASE("V2: failure path populates error info", "[capi_v2][value][error]") {
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, nullptr);
 	duckdb_v2_value_handle v = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_create_from_data(varchar_type, nullptr, 4, &v, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_from_data(varchar_type, nullptr, 4, &v, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 	duckdb_v2_str msg = {nullptr, 0};
 	REQUIRE(duckdb_v2_error_info_get_text(err, &msg) == DUCKDB_V2_ERROR_NONE);
@@ -684,7 +684,7 @@ TEST_CASE("V2: value_get_type rejects non-TYPE and NULL TYPE values", "[capi_v2]
 	duckdb_v2_value_handle int_value = V2Int32Value(42);
 	duckdb_v2_logical_type_handle out = reinterpret_cast<duckdb_v2_logical_type_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_get_type(int_value, &out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_type(int_value, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -708,7 +708,7 @@ TEST_CASE("V2: value_get_type rejects non-TYPE and NULL TYPE values", "[capi_v2]
 	REQUIRE(duckdb_v2_value_is_null(null_type_value, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(is_null);
 	out = reinterpret_cast<duckdb_v2_logical_type_handle>(0x1);
-	REQUIRE(duckdb_v2_value_get_type(null_type_value, &out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_type(null_type_value, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -717,18 +717,18 @@ TEST_CASE("V2: value_get_type rejects non-TYPE and NULL TYPE values", "[capi_v2]
 
 TEST_CASE("V2: value_create_type / value_get_type null-arg refusals", "[capi_v2][value][type_value]") {
 	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_type(nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_type(nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
 	duckdb_v2_logical_type_handle int_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
-	REQUIRE(duckdb_v2_value_create_type(int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create_type(int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_logical_type_handle out = nullptr;
-	REQUIRE(duckdb_v2_value_get_type(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_type(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	REQUIRE(duckdb_v2_value_create_type(int_type, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_value_get_type(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_type(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&v);
 	duckdb_v2_logical_type_destroy(&int_type);
 }
@@ -770,8 +770,7 @@ duckdb_v2_value_handle V2Composite(duckdb_v2_logical_type_handle type, std::vect
 }
 
 // Same, expecting failure: returns the code, checks out nulling + err.
-duckdb_v2_error_code_t V2CompositeErr(duckdb_v2_logical_type_handle type,
-                                      std::vector<duckdb_v2_value_handle> children) {
+DUCKDB_V2_ERROR V2CompositeErr(duckdb_v2_logical_type_handle type, std::vector<duckdb_v2_value_handle> children) {
 	auto v = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
 	auto rc = duckdb_v2_value_create(type, children.empty() ? nullptr : children.data(), children.size(), &v, &err);
@@ -834,7 +833,7 @@ TEST_CASE("V2: value_create LIST round-trips elements, NULLs, and empty", "[capi
 	auto empty = V2Composite(list_type, {});
 	REQUIRE(V2ChildCount(empty) == 0);
 	duckdb_v2_value_handle child = nullptr;
-	REQUIRE(duckdb_v2_value_get_child(empty, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_child(empty, 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(child == nullptr);
 	duckdb_v2_value_destroy(&empty);
 	duckdb_v2_logical_type_destroy(&list_type);
@@ -861,7 +860,7 @@ TEST_CASE("V2: value_create casts children to the declared child type", "[capi_v
 	// An uncastable child surfaces the conversion error.
 	auto int_list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	// The engine's value-cast failure path throws InvalidInputException.
-	REQUIRE(V2CompositeErr(int_list_type, {V2Varchar("abc")}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2CompositeErr(int_list_type, {V2Varchar("abc")}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&int_list_type);
 }
 
@@ -881,7 +880,7 @@ TEST_CASE("V2: value_create ARRAY enforces the declared size", "[capi_v2][value]
 	duckdb_v2_logical_type_destroy(&arr_type);
 	duckdb_v2_value_destroy(&arr);
 
-	REQUIRE(V2CompositeErr(array_type, {V2I32(1), V2I32(2)}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2CompositeErr(array_type, {V2I32(1), V2I32(2)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&array_type);
 }
 
@@ -915,7 +914,7 @@ TEST_CASE("V2: value_create STRUCT takes positional fields", "[capi_v2][value][c
 	duckdb_v2_value_destroy(&with_null);
 
 	// Field count is enforced.
-	REQUIRE(V2CompositeErr(struct_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2CompositeErr(struct_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&struct_type);
 }
 
@@ -936,7 +935,7 @@ TEST_CASE("V2: value_create TUPLE takes positional fields", "[capi_v2][value][co
 	duckdb_v2_value_destroy(&t);
 
 	// Field count is enforced.
-	REQUIRE(V2CompositeErr(tuple_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2CompositeErr(tuple_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&tuple_type);
 }
 
@@ -975,7 +974,7 @@ TEST_CASE("V2: value_create MAP alternates keys and values", "[capi_v2][value][c
 	duckdb_v2_value_destroy(&cast_map);
 
 	// Odd child counts, duplicate keys, and NULL keys are rejected.
-	REQUIRE(V2CompositeErr(map_type, {V2Varchar("a")}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2CompositeErr(map_type, {V2Varchar("a")}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(V2CompositeErr(map_type, {V2Varchar("a"), V2I32(1), V2Varchar("a"), V2I32(2)}) != DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2CompositeErr(map_type, {V2NullOf(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), V2I32(1)}) != DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&map_type);
@@ -985,7 +984,7 @@ TEST_CASE("V2: value_create rejects non-composite and UNION types", "[capi_v2][v
 	V2EnvFixture fx;
 	duckdb_v2_logical_type_handle int_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
-	REQUIRE(V2CompositeErr(int_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2CompositeErr(int_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&int_type);
 
 	std::vector<const char *> names = {"i", "s"};
@@ -993,7 +992,7 @@ TEST_CASE("V2: value_create rejects non-composite and UNION types", "[capi_v2][v
 	    fx.conn, "union", &names,
 	    {V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
 	// UNION values are built via value_cast, not value_create.
-	REQUIRE(V2CompositeErr(union_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2CompositeErr(union_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&union_type);
 }
 
@@ -1002,14 +1001,14 @@ TEST_CASE("V2: value_create null-arg refusals", "[capi_v2][value][composite]") {
 	auto list_type = V2ListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
 	duckdb_v2_value_handle out = nullptr;
-	REQUIRE(duckdb_v2_value_create(nullptr, nullptr, 0, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_create(list_type, nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create(nullptr, nullptr, 0, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_create(list_type, nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	// child_count > 0 with a null children array.
-	REQUIRE(duckdb_v2_value_create(list_type, nullptr, 1, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create(list_type, nullptr, 1, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	// A null child handle inside the array.
 	const duckdb_v2_value_handle holed[1] = {nullptr};
-	REQUIRE(duckdb_v2_value_create(list_type, holed, 1, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_create(list_type, holed, 1, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	duckdb_v2_logical_type_destroy(&list_type);
 }
@@ -1019,7 +1018,7 @@ TEST_CASE("V2: value_get_child_count is 0 for primitives and NULL composites", "
 	auto primitive = V2I32(42);
 	REQUIRE(V2ChildCount(primitive) == 0);
 	duckdb_v2_value_handle child = nullptr;
-	REQUIRE(duckdb_v2_value_get_child(primitive, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_child(primitive, 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(child == nullptr);
 	duckdb_v2_value_destroy(&primitive);
 
@@ -1028,16 +1027,16 @@ TEST_CASE("V2: value_get_child_count is 0 for primitives and NULL composites", "
 	REQUIRE(duckdb_v2_value_create_null(list_type, &null_list, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&list_type);
 	REQUIRE(V2ChildCount(null_list) == 0);
-	REQUIRE(duckdb_v2_value_get_child(null_list, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_child(null_list, 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&null_list);
 
 	// Null-arg refusals.
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_value_get_child_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_child_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	auto v = V2I32(1);
-	REQUIRE(duckdb_v2_value_get_child_count(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_get_child(nullptr, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_get_child(v, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_child_count(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_get_child(nullptr, 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_get_child(v, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&v);
 }
 
@@ -1104,7 +1103,7 @@ TEST_CASE("V2: value_cast converts across types and from text", "[capi_v2][value
 		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
 		auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 		duckdb_v2_error_info_handle err = nullptr;
-		REQUIRE(duckdb_v2_value_cast(ctx, bad, int_type, &out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_value_cast(ctx, bad, int_type, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(out == nullptr);
 		REQUIRE(err != nullptr);
 		duckdb_v2_error_info_destroy(&err);
@@ -1134,7 +1133,7 @@ TEST_CASE("V2: UNION values build via value_cast and descend as tag + member", "
 	auto member = V2Child(u, 1);
 	REQUIRE(V2LeafPayload<int32_t>(member) == 42);
 	duckdb_v2_value_destroy(&member);
-	REQUIRE(duckdb_v2_value_get_child(u, 2, &member, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_child(u, 2, &member, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&u);
 
 	// The other member selects tag 1.
@@ -1199,12 +1198,12 @@ TEST_CASE("V2: value_cast null-arg refusals", "[capi_v2][value][cast]") {
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
 
 	// A null context is refused without any scope.
-	REQUIRE(duckdb_v2_value_cast(nullptr, v, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_cast(nullptr, v, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_value_cast(ctx, nullptr, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(duckdb_v2_value_cast(ctx, v, nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-		REQUIRE(duckdb_v2_value_cast(ctx, v, int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_value_cast(ctx, nullptr, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(duckdb_v2_value_cast(ctx, v, nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(duckdb_v2_value_cast(ctx, v, int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	});
 	duckdb_v2_logical_type_destroy(&int_type);
 	duckdb_v2_value_destroy(&v);
@@ -1394,17 +1393,17 @@ TEST_CASE("V2: value_get_variant unwraps the boxed cell and gates its edges", "[
 	REQUIRE(is_null);
 	auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_get_variant(null_box, &out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_variant(null_box, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 
 	// Non-VARIANT values and null args are refused.
 	auto plain = V2Int32Value(1);
-	REQUIRE(duckdb_v2_value_get_variant(plain, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_variant(plain, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
-	REQUIRE(duckdb_v2_value_get_variant(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_value_get_variant(box, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_value_get_variant(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_get_variant(box, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&plain);
 	duckdb_v2_value_destroy(&null_box);
 	duckdb_v2_value_destroy(&box);

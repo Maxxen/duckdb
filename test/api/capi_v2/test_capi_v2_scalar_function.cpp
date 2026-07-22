@@ -106,17 +106,17 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 
 			    // Empty name not supported
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, V2Str(""), nullptr) ==
-			            DUCKDB_V2_ERROR_INVALID_INPUT);
+			            DUCKDB_V2_ERROR_INPUT_INVALID);
 
 			    // Does not work with NULL
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(nullptr, V2Str("my_func"), nullptr) ==
-			            DUCKDB_V2_ERROR_INVALID_INPUT);
+			            DUCKDB_V2_ERROR_INPUT_INVALID);
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_bind_callback(nullptr, bind_callback, nullptr) ==
-			            DUCKDB_V2_ERROR_INVALID_INPUT);
+			            DUCKDB_V2_ERROR_INPUT_INVALID);
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_init_callback(nullptr, init_callback, nullptr) ==
-			            DUCKDB_V2_ERROR_INVALID_INPUT);
+			            DUCKDB_V2_ERROR_INPUT_INVALID);
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_exec_callback(nullptr, exec_callback, nullptr) ==
-			            DUCKDB_V2_ERROR_INVALID_INPUT);
+			            DUCKDB_V2_ERROR_INPUT_INVALID);
 
 			    // Register
 			    REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);

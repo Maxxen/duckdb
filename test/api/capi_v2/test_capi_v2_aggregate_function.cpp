@@ -471,7 +471,7 @@ void FailingInitCallback(duckdb_v2_aggregate_function_init_info_handle info, duc
 
 void FailingUpdateCallback(duckdb_v2_aggregate_function_update_info_handle info, duckdb_v2_error_info_handle *err) {
 	// Name a specific, non-INVALID_INPUT error class from inside the callback.
-	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_OUT_OF_RANGE);
+	duckdb_v2_error_info_set_code(*err, DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE);
 	duckdb_v2_error_info_set_text(*err, V2Str("failing_agg: value out of range"));
 }
 
@@ -533,7 +533,7 @@ TEST_CASE("V2 aggregate: a callback error code round-trips (not collapsed to INV
 	// The aggregate executes lazily during stepping, so the callback's error
 	// surfaces on the step return code, not from statement_execute.
 	duckdb_v2_error_info_handle err = nullptr;
-	duckdb_v2_error_code_t step_rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR step_rc = DUCKDB_V2_ERROR_NONE;
 	while (true) {
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
@@ -557,7 +557,7 @@ TEST_CASE("V2 aggregate: a callback error code round-trips (not collapsed to INV
 	}
 
 	// The callback's OUT_OF_RANGE surfaces as itself, not as INVALID_INPUT.
-	REQUIRE(step_rc == DUCKDB_V2_ERROR_OUT_OF_RANGE);
+	REQUIRE(step_rc == DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE);
 
 	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_result_destroy(&result);

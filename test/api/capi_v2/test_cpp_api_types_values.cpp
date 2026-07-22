@@ -146,8 +146,8 @@ TEST_CASE("Stable C++API: per-kind type getters are sugar over GetParam", "[cpp_
 
 	// The sugar gates on the type kind.
 	REQUIRE_THROWS_MATCHES(LogicalType::INTEGER().GetDecimalWidth(), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(list.GetEnumSize(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(list.GetEnumSize(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: TYPE values and composite Value::Create", "[cpp_api][types_values]") {
 	using namespace duckdb_api;
@@ -159,7 +159,7 @@ TEST_CASE("Stable C++API: TYPE values and composite Value::Create", "[cpp_api][t
 	auto wrapped = Value::Type(LogicalType::INTEGER());
 	REQUIRE(wrapped.GetLogicalType().GetId() == TypeId::TYPE);
 	REQUIRE(wrapped.AsType() == LogicalType::INTEGER());
-	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsType(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsType(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// LIST: children cast to the declared child type.
 	auto list_type = conn.ParseType("BIGINT[]");
@@ -181,7 +181,7 @@ TEST_CASE("Stable C++API: TYPE values and composite Value::Create", "[cpp_api][t
 
 	// UNION values are built via Cast, not Create.
 	auto union_type = conn.ParseType("UNION(i INTEGER, s VARCHAR)");
-	REQUIRE_THROWS_MATCHES(Value::Create(union_type, elements), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Create(union_type, elements), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: Value::Cast through Context and Connection", "[cpp_api][types_values]") {
 	using namespace duckdb_api;
@@ -217,7 +217,7 @@ TEST_CASE("Stable C++API: Value::Cast through Context and Connection", "[cpp_api
 
 	// Cast failures carry the engine's code.
 	REQUIRE_THROWS_MATCHES(Value::Varchar("abc").Cast(conn, LogicalType::INTEGER()), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: Vector GetValue / SetValue", "[cpp_api][types_values]") {
 	using namespace duckdb_api;
@@ -231,7 +231,7 @@ TEST_CASE("Stable C++API: Vector GetValue / SetValue", "[cpp_api][types_values]"
 	auto vec = chunk.GetVector(0);
 	REQUIRE(vec.GetValue(0).AsBigint() == 0);
 	REQUIRE(vec.GetValue(4).AsBigint() == 4);
-	REQUIRE_THROWS_MATCHES(vec.GetValue(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(vec.GetValue(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// Write path: a manually built chunk, cast-on-write included.
 	conn.WithTransaction([](const Context &ctx) {
@@ -245,7 +245,7 @@ TEST_CASE("Stable C++API: Vector GetValue / SetValue", "[cpp_api][types_values]"
 		REQUIRE(vec.GetValue(0).AsBigint() == 7);
 		REQUIRE(vec.GetValue(1).AsBigint() == 8);
 		REQUIRE_THROWS_MATCHES(vec.SetValue(2, Value::Bigint(9)), Exception,
-		                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	});
 }
 namespace {
@@ -263,12 +263,12 @@ void VarcharToCelsius(duckdb_api::CastFunction::ExecInput &input) {
 		auto len = token.Length();
 		const auto *data = token.Data();
 		if (len < 2 || data[len - 1] != 'C') {
-			throw duckdb_api::Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "expected '<digits>C'");
+			throw duckdb_api::Exception(DUCKDB_V2_ERROR_INPUT_INVALID, "expected '<digits>C'");
 		}
 		int32_t parsed = 0;
 		for (uint32_t b = 0; b + 1 < len; b++) {
 			if (data[b] < '0' || data[b] > '9') {
-				throw duckdb_api::Exception(DUCKDB_V2_ERROR_INVALID_INPUT, "expected '<digits>C'");
+				throw duckdb_api::Exception(DUCKDB_V2_ERROR_INPUT_INVALID, "expected '<digits>C'");
 			}
 			parsed = parsed * 10 + (data[b] - '0');
 		}
@@ -365,9 +365,9 @@ TEST_CASE("Stable C++API: storage-tier conveniences follow the committed tables"
 
 	// Gated on the type kind like the other sugars.
 	REQUIRE_THROWS_MATCHES(LogicalType::INTEGER().GetDecimalInternalTypeId(), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	REQUIRE_THROWS_MATCHES(LogicalType::INTEGER().GetEnumInternalTypeId(), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: VARIANT column consumed per row through the boxed value path",
           "[cpp_api][types_values][variant]") {
@@ -562,7 +562,7 @@ TEST_CASE("Stable C++API: writing a VARIANT vector through the boxed value path"
 		DataChunk constant_chunk(ctx, constant_types);
 		auto cvec = constant_chunk.GetVector(0);
 		REQUIRE_THROWS_MATCHES(cvec.MakeConstant(Value::Bigint(7), 3), Exception,
-		                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 		auto boxed = Value::Bigint(7).Cast(ctx, variant_type);
 		cvec.MakeConstant(boxed, 3);
 		REQUIRE(cvec.GetValue(2).GetLogicalType().GetId() == TypeId::VARIANT);
@@ -648,8 +648,8 @@ TEST_CASE("Stable C++API: typed Value leaf ctors/getters round trip", "[cpp_api]
 
 	// A getter throws INVALID_INPUT on a type mismatch, keyed on the logical
 	// type id, not the payload width.
-	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsDate(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(Value::Boolean(true).AsInterval(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsDate(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(Value::Boolean(true).AsInterval(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: typed Value getters reject a mismatched logical type", "[cpp_api][types_values]") {
 	using namespace duckdb_api;
@@ -662,25 +662,25 @@ TEST_CASE("Stable C++API: typed Value getters reject a mismatched logical type",
 	// int64 group: BIGINT (8 bytes) is not TIME or TIMESTAMP.
 	auto bigint_value = Value::Bigint(1234567890123LL);
 	REQUIRE(bigint_value.GetLogicalType().GetId() == TypeId::BIGINT);
-	REQUIRE_THROWS_MATCHES(bigint_value.AsTime(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(bigint_value.AsTimestampRaw(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(bigint_value.AsBlob(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(bigint_value.AsTime(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(bigint_value.AsTimestampRaw(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(bigint_value.AsBlob(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// DOUBLE (8 bytes) is not TIME.
-	REQUIRE_THROWS_MATCHES(Value::Double(3.5).AsTime(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Double(3.5).AsTime(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// int32 group: INTEGER (4 bytes, same width as DATE) is not DATE. There
 	// is no public FromI32, so build a genuine INTEGER value through Cast.
 	auto integer_value = Value::Bigint(42).Cast(conn, LogicalType::INTEGER());
 	REQUIRE(integer_value.GetLogicalType().GetId() == TypeId::INTEGER);
-	REQUIRE_THROWS_MATCHES(integer_value.AsDate(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(integer_value.AsDate(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// AsBlob gates on the BLOB type: a BOOLEAN (1 byte) is rejected.
-	REQUIRE_THROWS_MATCHES(Value::Boolean(true).AsBlob(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Boolean(true).AsBlob(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// AsTimestampRaw is polymorphic across the timestamp family only: an int64
 	// TIME (8 bytes) is rejected.
-	REQUIRE_THROWS_MATCHES(Value::Time(1).AsTimestampRaw(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Time(1).AsTimestampRaw(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// Positive control: every getter works on its own correct type.
 	REQUIRE(Value::Date(42).AsDate() == 42);
@@ -755,9 +755,9 @@ TEST_CASE("Stable C++API: typed Value 128-bit getters round trip", "[cpp_api][ty
 	REQUIRE(std::memcmp(uuid.AsUuid().bytes, expected, 16) == 0);
 
 	// Type-mismatch guards, including between the two 128-bit widths.
-	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsHugeint(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(big.AsUhugeint(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(big.AsUuid(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsHugeint(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(big.AsUhugeint(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(big.AsUuid(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: TIME_TZ decodes to micros + offset", "[cpp_api][types_values]") {
 	using namespace duckdb_api;
@@ -778,7 +778,7 @@ TEST_CASE("Stable C++API: TIME_TZ decodes to micros + offset", "[cpp_api][types_
 	REQUIRE(west.offset_seconds == -(5 * 60 * 60 + 30 * 60));
 
 	// Type-mismatch guard.
-	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsTimeTz(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(Value::Bigint(1).AsTimeTz(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 TEST_CASE("Stable C++API: generic Value payload access (GetData / GetDataAs / FromData)", "[cpp_api][types_values]") {
 	using namespace duckdb_api;
@@ -798,10 +798,10 @@ TEST_CASE("Stable C++API: generic Value payload access (GetData / GetDataAs / Fr
 	REQUIRE(Value::Hugeint({0, 1}).GetDataAs<HugeintLayout>().upper == 1);
 	// A width mismatch is rejected (BIGINT is 8 bytes, not 4).
 	REQUIRE_THROWS_MATCHES(Value::Bigint(1).GetDataAs<int32_t>(), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	// A NULL value has no payload.
 	REQUIRE_THROWS_MATCHES(Value::Null(conn.ParseType("INTEGER")).GetData(), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// FromData builds a value of any type from its committed layout, and it
 	// round-trips through GetDataAs.

@@ -173,9 +173,9 @@ struct ScalarFunctionV2 {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(duckdb_v2_context_handle ctx,
-                                                              duckdb_v2_scalar_function_builder_handle *out,
-                                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_create(duckdb_v2_context_handle ctx,
+                                                         duckdb_v2_scalar_function_builder_handle *out,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!ctx) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
@@ -189,9 +189,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_create(duckdb_v2_context_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar_function_builder_handle func,
-                                                                duckdb_v2_identifier_t name,
-                                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar_function_builder_handle func,
+                                                           duckdb_v2_identifier_t name,
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -207,10 +207,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_handle func,
-                                                                     duckdb_v2_identifier_t name,
-                                                                     duckdb_v2_logical_type_handle type,
-                                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_handle func,
+                                                                duckdb_v2_identifier_t name,
+                                                                duckdb_v2_logical_type_handle type,
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -235,9 +235,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_s
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_varargs(duckdb_v2_scalar_function_builder_handle func,
-                                                                   duckdb_v2_logical_type_handle type,
-                                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_varargs(duckdb_v2_scalar_function_builder_handle func,
+                                                              duckdb_v2_logical_type_handle type,
+                                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -253,9 +253,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_varargs(duckdb_v2_sca
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
-                                                                       duckdb_v2_logical_type_handle type,
-                                                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
+                                                                  duckdb_v2_logical_type_handle type,
+                                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -272,7 +272,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_scalar_function_builder_set_bind_callback(duckdb_v2_scalar_function_builder_handle func,
                                                     duckdb_v2_scalar_function_bind_callback_fn callback,
                                                     duckdb_v2_error_info_handle *err) {
@@ -284,7 +284,7 @@ duckdb_v2_scalar_function_builder_set_bind_callback(duckdb_v2_scalar_function_bu
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_scalar_function_builder_set_init_callback(duckdb_v2_scalar_function_builder_handle func,
                                                     duckdb_v2_scalar_function_init_callback_fn callback,
                                                     duckdb_v2_error_info_handle *err) {
@@ -296,7 +296,7 @@ duckdb_v2_scalar_function_builder_set_init_callback(duckdb_v2_scalar_function_bu
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_scalar_function_builder_set_exec_callback(duckdb_v2_scalar_function_builder_handle func,
                                                     duckdb_v2_scalar_function_exec_callback_fn callback,
                                                     duckdb_v2_error_info_handle *err) {
@@ -307,9 +307,9 @@ duckdb_v2_scalar_function_builder_set_exec_callback(duckdb_v2_scalar_function_bu
 		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->info.exec_cb = callback;
 	});
 }
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar_function_builder_handle func,
-                                                                     duckdb_v2_opaque data,
-                                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar_function_builder_handle func,
+                                                                duckdb_v2_opaque data,
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -321,9 +321,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_s
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_context_handle ctx,
-                                                                duckdb_v2_scalar_function_builder_handle func,
-                                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register(duckdb_v2_context_handle ctx,
+                                                           duckdb_v2_scalar_function_builder_handle func,
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!ctx) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
@@ -389,10 +389,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_register(duckdb_v2_contex
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_property(duckdb_v2_scalar_function_builder_handle func,
-                                                                    DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-                                                                    DUCKDB_V2_FUNCTION_PROPERTY_VALUE value,
-                                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_property(duckdb_v2_scalar_function_builder_handle func,
+                                                               DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                                                               DUCKDB_V2_FUNCTION_PROPERTY_VALUE value,
+                                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -402,10 +402,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_set_property(duckdb_v2_sc
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property(duckdb_v2_scalar_function_builder_handle func,
-                                                                    DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-                                                                    DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value,
-                                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_get_property(duckdb_v2_scalar_function_builder_handle func,
+                                                               DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                                                               DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value,
+                                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
@@ -418,7 +418,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_get_property(duckdb_v2_sc
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_handle *func) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_function_builder_handle *func) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!func) {
 			return;
@@ -433,9 +433,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_builder_destroy(duckdb_v2_scalar_
 
 // --- Bind callback accessors -------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_function_name(duckdb_v2_scalar_function_bind_info_handle info,
-                                                                      duckdb_v2_identifier_t *out_name,
-                                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_get_function_name(duckdb_v2_scalar_function_bind_info_handle info,
+                                                                 duckdb_v2_identifier_t *out_name,
+                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -447,8 +447,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_function_name(duckdb_v2_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_user_data(duckdb_v2_scalar_function_bind_info_handle info,
-                                                                  void **out_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_get_user_data(duckdb_v2_scalar_function_bind_info_handle info,
+                                                             void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -460,9 +460,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_user_data(duckdb_v2_scal
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_arguments(duckdb_v2_scalar_function_bind_info_handle info,
-                                                                  duckdb_v2_bind_arguments_handle *out_arguments,
-                                                                  duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_get_arguments(duckdb_v2_scalar_function_bind_info_handle info,
+                                                             duckdb_v2_bind_arguments_handle *out_arguments,
+                                                             duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -475,9 +475,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_get_arguments(duckdb_v2_scal
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_set_bind_data(duckdb_v2_scalar_function_bind_info_handle info,
-                                                                  duckdb_v2_opaque data,
-                                                                  duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_set_bind_data(duckdb_v2_scalar_function_bind_info_handle info,
+                                                             duckdb_v2_opaque data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -488,9 +487,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_bind_set_bind_data(duckdb_v2_scal
 
 // --- Init callback accessors -------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_function_name(duckdb_v2_scalar_function_init_info_handle info,
-                                                                      duckdb_v2_identifier_t *out_name,
-                                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_init_get_function_name(duckdb_v2_scalar_function_init_info_handle info,
+                                                                 duckdb_v2_identifier_t *out_name,
+                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -502,8 +501,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_function_name(duckdb_v2_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_user_data(duckdb_v2_scalar_function_init_info_handle info,
-                                                                  void **out_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_init_get_user_data(duckdb_v2_scalar_function_init_info_handle info,
+                                                             void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -515,8 +514,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_user_data(duckdb_v2_scal
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_bind_data(duckdb_v2_scalar_function_init_info_handle info,
-                                                                  void **out_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_init_get_bind_data(duckdb_v2_scalar_function_init_info_handle info,
+                                                             void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -528,9 +527,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_get_bind_data(duckdb_v2_scal
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_set_init_data(duckdb_v2_scalar_function_init_info_handle info,
-                                                                  duckdb_v2_opaque data,
-                                                                  duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_init_set_init_data(duckdb_v2_scalar_function_init_info_handle info,
+                                                             duckdb_v2_opaque data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -541,9 +539,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_init_set_init_data(duckdb_v2_scal
 
 // --- Exec callback accessors -------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_function_name(duckdb_v2_scalar_function_exec_info_handle info,
-                                                                      duckdb_v2_identifier_t *out_name,
-                                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_exec_get_function_name(duckdb_v2_scalar_function_exec_info_handle info,
+                                                                 duckdb_v2_identifier_t *out_name,
+                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -555,8 +553,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_function_name(duckdb_v2_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_user_data(duckdb_v2_scalar_function_exec_info_handle info,
-                                                                  void **out_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_exec_get_user_data(duckdb_v2_scalar_function_exec_info_handle info,
+                                                             void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -568,8 +566,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_user_data(duckdb_v2_scal
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_bind_data(duckdb_v2_scalar_function_exec_info_handle info,
-                                                                  void **out_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_exec_get_bind_data(duckdb_v2_scalar_function_exec_info_handle info,
+                                                             void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -581,8 +579,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_bind_data(duckdb_v2_scal
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_init_data(duckdb_v2_scalar_function_exec_info_handle info,
-                                                                  void **out_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_exec_get_init_data(duckdb_v2_scalar_function_exec_info_handle info,
+                                                             void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -594,9 +592,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_init_data(duckdb_v2_scal
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_input(duckdb_v2_scalar_function_exec_info_handle info,
-                                                              duckdb_v2_data_chunk_handle *out_input,
-                                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_exec_get_input(duckdb_v2_scalar_function_exec_info_handle info,
+                                                         duckdb_v2_data_chunk_handle *out_input,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -609,9 +607,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_input(duckdb_v2_scalar_f
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_scalar_function_exec_get_result(duckdb_v2_scalar_function_exec_info_handle info,
-                                                               duckdb_v2_vector_handle *out_result,
-                                                               duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_exec_get_result(duckdb_v2_scalar_function_exec_info_handle info,
+                                                          duckdb_v2_vector_handle *out_result,
+                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");

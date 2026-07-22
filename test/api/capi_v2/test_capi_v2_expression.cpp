@@ -89,14 +89,14 @@ TEST_CASE("V2 expression: get_class rejects null args", "[capi_v2][expression]")
 	DUCKDB_V2_EXPRESSION_CLASS out = DUCKDB_V2_EXPRESSION_CLASS_INVALID;
 
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_expression_get_class(nullptr, &out, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_class(nullptr, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_error_info_destroy(&err);
 
-	REQUIRE(duckdb_v2_expression_get_class(AsExpr(*ref), nullptr, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_class(AsExpr(*ref), nullptr, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_error_info_destroy(&err);
 
 	// err is optional.
-	REQUIRE(duckdb_v2_expression_get_class(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_class(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -144,8 +144,8 @@ TEST_CASE("V2 expression: get_type across all fixtures", "[capi_v2][expression]"
 TEST_CASE("V2 expression: get_type rejects null args", "[capi_v2][expression]") {
 	auto ref = duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0);
 	DUCKDB_V2_EXPRESSION_TYPE out = DUCKDB_V2_EXPRESSION_TYPE_INVALID;
-	REQUIRE(duckdb_v2_expression_get_type(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_expression_get_type(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_type(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_expression_get_type(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -186,9 +186,9 @@ TEST_CASE("V2 expression: get_return_type returns an owned logical type", "[capi
 TEST_CASE("V2 expression: get_return_type nulls out-param and rejects null args", "[capi_v2][expression]") {
 	auto ref = duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0);
 	duckdb_v2_logical_type_handle type = reinterpret_cast<duckdb_v2_logical_type_handle>(0x1);
-	REQUIRE(duckdb_v2_expression_get_return_type(nullptr, &type, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_return_type(nullptr, &type, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(type == nullptr); // pointer out-param zeroed on failure
-	REQUIRE(duckdb_v2_expression_get_return_type(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_return_type(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -236,8 +236,8 @@ TEST_CASE("V2 expression: get_child_count", "[capi_v2][expression]") {
 TEST_CASE("V2 expression: get_child_count rejects null args", "[capi_v2][expression]") {
 	auto ref = duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0);
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_expression_get_child_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_expression_get_child_count(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_child_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_expression_get_child_count(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -353,7 +353,7 @@ TEST_CASE("V2 expression: get_child out-of-range is an error", "[capi_v2][expres
 
 	duckdb_v2_expression_handle child = reinterpret_cast<duckdb_v2_expression_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*cmp), 2, &child, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*cmp), 2, &child, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(child == nullptr); // pointer out-param zeroed on failure
 	duckdb_v2_error_info_destroy(&err);
 }
@@ -362,9 +362,9 @@ TEST_CASE("V2 expression: get_child on a leaf is always out-of-range", "[capi_v2
 	auto ref = duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0);
 	auto con = duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10));
 	duckdb_v2_expression_handle child = nullptr;
-	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*ref), 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*ref), 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(child == nullptr);
-	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*con), 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*con), 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(child == nullptr);
 }
 
@@ -400,15 +400,15 @@ TEST_CASE("V2 expression: child traversal works on a class this API doesn't mode
 	}
 	// Out of range past the real count still errors.
 	duckdb_v2_expression_handle child = reinterpret_cast<duckdb_v2_expression_handle>(0x1);
-	REQUIRE(duckdb_v2_expression_get_child(expr, 3, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_child(expr, 3, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(child == nullptr);
 }
 
 TEST_CASE("V2 expression: get_child rejects null args", "[capi_v2][expression]") {
 	auto ref = duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0);
 	duckdb_v2_expression_handle child = nullptr;
-	REQUIRE(duckdb_v2_expression_get_child(nullptr, 0, &child, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*ref), 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_child(nullptr, 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_expression_get_child(AsExpr(*ref), 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -448,7 +448,7 @@ TEST_CASE("V2 expression: get_function_name errors on non-function classes", "[c
 	duckdb_v2_expression_handle cases[] = {AsExpr(*ref), AsExpr(*con), AsExpr(*op), AsExpr(*conj), AsExpr(*cast)};
 	for (auto expr : cases) {
 		duckdb_v2_str name = {reinterpret_cast<const char *>(0x1), 99};
-		REQUIRE(duckdb_v2_expression_get_function_name(expr, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_expression_get_function_name(expr, &name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(name.ptr == nullptr); // out-param zeroed on failure
 	}
 }
@@ -460,8 +460,8 @@ TEST_CASE("V2 expression: get_function_name rejects null args", "[capi_v2][expre
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10)));
 	// Exercise the real duckdb_v2_str signature directly for the null checks.
 	duckdb_v2_str name = {nullptr, 0};
-	REQUIRE(duckdb_v2_expression_get_function_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_expression_get_function_name(AsExpr(*cmp), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_function_name(nullptr, &name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_expression_get_function_name(AsExpr(*cmp), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -486,18 +486,18 @@ TEST_CASE("V2 expression: get_constant_value errors on non-constant", "[capi_v2]
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10)));
 
 	duckdb_v2_value_handle value = reinterpret_cast<duckdb_v2_value_handle>(0x1);
-	REQUIRE(duckdb_v2_expression_get_constant_value(AsExpr(*ref), &value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_constant_value(AsExpr(*ref), &value, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(value == nullptr);
 	value = reinterpret_cast<duckdb_v2_value_handle>(0x1);
-	REQUIRE(duckdb_v2_expression_get_constant_value(AsExpr(*cmp), &value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_constant_value(AsExpr(*cmp), &value, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(value == nullptr);
 }
 
 TEST_CASE("V2 expression: get_constant_value rejects null args", "[capi_v2][expression]") {
 	auto con = duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10));
 	duckdb_v2_value_handle value = nullptr;
-	REQUIRE(duckdb_v2_expression_get_constant_value(nullptr, &value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_expression_get_constant_value(AsExpr(*con), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_constant_value(nullptr, &value, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_expression_get_constant_value(AsExpr(*con), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -515,7 +515,7 @@ TEST_CASE("V2 expression: get_reference_index errors on non-reference", "[capi_v
 	auto con = duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10));
 	idx_t index = 0;
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_expression_get_reference_index(AsExpr(*con), &index, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_reference_index(AsExpr(*con), &index, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_str text = {nullptr, 0};
 	REQUIRE(duckdb_v2_error_info_get_text(err, &text) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(text.ptr != nullptr);
@@ -525,8 +525,8 @@ TEST_CASE("V2 expression: get_reference_index errors on non-reference", "[capi_v
 TEST_CASE("V2 expression: get_reference_index rejects null args", "[capi_v2][expression]") {
 	auto ref = duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0);
 	idx_t index = 0;
-	REQUIRE(duckdb_v2_expression_get_reference_index(nullptr, &index, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_expression_get_reference_index(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_reference_index(nullptr, &index, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_expression_get_reference_index(AsExpr(*ref), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 // ===========================================================================
@@ -564,12 +564,12 @@ TEST_CASE("V2 expression: get_column_binding errors on non-column-ref", "[capi_v
 	// BOUND_REF is the physical-stage column representation — distinct from
 	// BOUND_COLUMN_REF, so it must NOT satisfy get_column_binding.
 	REQUIRE(duckdb_v2_expression_get_column_binding(AsExpr(*con), &table_index, &column_index, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_expression_get_column_binding(AsExpr(*ref), &table_index, &column_index, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2 expression: get_column_binding rejects null expression", "[capi_v2][expression]") {
 	idx_t v = 0;
-	REQUIRE(duckdb_v2_expression_get_column_binding(nullptr, &v, &v, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_expression_get_column_binding(nullptr, &v, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }

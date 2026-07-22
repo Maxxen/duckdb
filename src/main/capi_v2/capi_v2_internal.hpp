@@ -726,13 +726,13 @@ inline bool PreparedReusesPlan(const StatementProperties &properties) {
 
 // Forward declaration (defined below); lets ErrorInfoV2::ThrowAsException
 // rethrow with the mapped exception class.
-inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_API_CALL_t code, ExceptionType &out_type);
+inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_ERROR code, ExceptionType &out_type);
 
 // Backing struct for the opaque duckdb_v2_error_info_handle handle. Allocated
 // only on failure paths and only when the caller requested detail (i.e.
 // passed a non-null err out-parameter).
 struct ErrorInfoV2 {
-	DUCKDB_V2_API_CALL_t code = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR code = DUCKDB_V2_ERROR_NONE;
 	// message: full "<Type> Error: <raw>" (ErrorData::Message()). raw_message: the
 	// body with that prefix stripped (ErrorData::RawMessage()), in the engine's
 	// rendered form (caret block, or JSON under errors_as_json); empty for a
@@ -770,7 +770,7 @@ struct ErrorInfoV2 {
 // `error_info_destroy` on slots they own; callbacks must NEVER destroy the
 // err slot handed to them by the library (the slot's storage may live on
 // the library's stack).
-inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_handle *err, DUCKDB_V2_API_CALL_t code, const char *msg) {
+inline DUCKDB_V2_ERROR SetErrorInfo(duckdb_v2_error_info_handle *err, DUCKDB_V2_ERROR code, const char *msg) {
 	if (err) {
 		if (!*err) {
 			*err = reinterpret_cast<_duckdb_v2_error_info *>(new ErrorInfoV2());
@@ -786,18 +786,18 @@ inline DUCKDB_V2_API_CALL_t SetErrorInfo(duckdb_v2_error_info_handle *err, DUCKD
 
 // Inverse of GetErrorCodeFromExceptionType: maps a V2 error code back to the
 // DuckDB ExceptionType that round-trips to it. Returns false for codes with no
-// specific exception type (notably the DUCKDB_V2_API_ERROR sentinel and any
+// specific exception type (notably the DUCKDB_V2_ERROR_API sentinel and any
 // unmapped value), so callers can fall back to a phase-appropriate default.
-inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_API_CALL_t code, ExceptionType &out_type) {
+inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_ERROR code, ExceptionType &out_type) {
 	switch (code) {
 	// Invalid Input
-	case DUCKDB_V2_ERROR_INVALID_INPUT:
+	case DUCKDB_V2_ERROR_INPUT_INVALID:
 		out_type = ExceptionType::INVALID_INPUT;
 		return true;
-	case DUCKDB_V2_ERROR_OUT_OF_RANGE:
+	case DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE:
 		out_type = ExceptionType::OUT_OF_RANGE;
 		return true;
-	case DUCKDB_V2_ERROR_OBJECT_SIZE:
+	case DUCKDB_V2_ERROR_INPUT_OBJECT_SIZE:
 		out_type = ExceptionType::OBJECT_SIZE;
 		return true;
 	// IO
@@ -936,7 +936,7 @@ inline bool TryGetExceptionTypeFromErrorCode(DUCKDB_V2_API_CALL_t code, Exceptio
 // error code the callback signalled, so the code round-trips faithfully (a
 // callback signalling OUT_OF_MEMORY surfaces as a resource error, not the
 // phase default). EX is the fallback exception type used only when the code has
-// no specific mapping (e.g. the DUCKDB_V2_API_ERROR sentinel); it should be a
+// no specific mapping (e.g. the DUCKDB_V2_ERROR_API sentinel); it should be a
 // phase-appropriate default (BinderException for bind, InvalidInputException
 // for init/exec). The slot lives on this function's stack; per the slot
 // contract the callback must never destroy it. `invoke` receives the slot as
@@ -974,9 +974,9 @@ inline void VerifyUserChunk(DataChunk &chunk, const char *boundary) {
 // (PR4 vector-side) so the magnitude reconstruction + sign extraction
 // lives in exactly one place. Allocates an owned buffer with malloc
 // (caller frees with free()).
-inline DUCKDB_V2_API_CALL_t DecodeBignumStringT(const string_t &storage, uint8_t **out_data, idx_t *out_length,
-                                                bool *out_is_negative, const char *function_name,
-                                                duckdb_v2_error_info_handle *err) {
+inline DUCKDB_V2_ERROR DecodeBignumStringT(const string_t &storage, uint8_t **out_data, idx_t *out_length,
+                                           bool *out_is_negative, const char *function_name,
+                                           duckdb_v2_error_info_handle *err) {
 	*out_data = nullptr;
 	*out_length = 0;
 	*out_is_negative = false;
@@ -998,22 +998,22 @@ inline DUCKDB_V2_API_CALL_t DecodeBignumStringT(const string_t &storage, uint8_t
 		*out_is_negative = is_negative;
 		return DUCKDB_V2_ERROR_NONE;
 	} catch (std::exception &e) {
-		return SetErrorInfo(err, DUCKDB_V2_API_ERROR, e.what());
+		return SetErrorInfo(err, DUCKDB_V2_ERROR_API, e.what());
 	} catch (...) {
 		std::string msg = std::string("unknown error in ") + function_name;
-		return SetErrorInfo(err, DUCKDB_V2_API_ERROR, msg.c_str());
+		return SetErrorInfo(err, DUCKDB_V2_ERROR_API, msg.c_str());
 	}
 }
 
-inline DUCKDB_V2_API_CALL_t GetErrorCodeFromExceptionType(ExceptionType type) {
+inline DUCKDB_V2_ERROR GetErrorCodeFromExceptionType(ExceptionType type) {
 	switch (type) {
 	// Invalid Input
 	case ExceptionType::INVALID_INPUT:
-		return DUCKDB_V2_ERROR_INVALID_INPUT;
+		return DUCKDB_V2_ERROR_INPUT_INVALID;
 	case ExceptionType::OUT_OF_RANGE:
-		return DUCKDB_V2_ERROR_OUT_OF_RANGE;
+		return DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE;
 	case ExceptionType::OBJECT_SIZE:
-		return DUCKDB_V2_ERROR_OBJECT_SIZE;
+		return DUCKDB_V2_ERROR_INPUT_OBJECT_SIZE;
 	// IO
 	case ExceptionType::IO:
 		return DUCKDB_V2_ERROR_IO_GENERAL;
@@ -1100,13 +1100,13 @@ inline DUCKDB_V2_API_CALL_t GetErrorCodeFromExceptionType(ExceptionType type) {
 	case ExceptionType::NULL_POINTER:
 		return DUCKDB_V2_ERROR_RUNTIME_NULL_POINTER;
 	default:
-		return DUCKDB_V2_API_ERROR;
+		return DUCKDB_V2_ERROR_API;
 	}
 }
 
 template <class T>
-DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callback) {
-	auto code = static_cast<DUCKDB_V2_API_CALL_t>(DUCKDB_V2_ERROR_NONE);
+DUCKDB_V2_ERROR WithErrorHandler(duckdb_v2_error_info_handle *err, T callback) {
+	auto code = static_cast<DUCKDB_V2_ERROR>(DUCKDB_V2_ERROR_NONE);
 	auto text = string();
 	auto raw_message = string();
 
@@ -1120,10 +1120,10 @@ DUCKDB_V2_API_CALL_t WithErrorHandler(duckdb_v2_error_info_handle *err, T callba
 		// The unprefixed body (ErrorData::RawMessage()), in the engine's rendered form.
 		raw_message = error_data.RawMessage();
 	} catch (const std::exception &ex) {
-		code = DUCKDB_V2_API_ERROR;
+		code = DUCKDB_V2_ERROR_API;
 		text = ex.what();
 	} catch (...) {
-		code = DUCKDB_V2_API_ERROR;
+		code = DUCKDB_V2_ERROR_API;
 		text = "An unknown error occurred.";
 	}
 

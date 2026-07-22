@@ -74,9 +74,9 @@ duckdb_v2_identifier_t BorrowReplacementScanNamePart(const string &part) {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_register(duckdb_v2_database_handle db,
-                                                         duckdb_v2_replacement_scan_callback_fn callback,
-                                                         duckdb_v2_opaque user_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register(duckdb_v2_database_handle db,
+                                                    duckdb_v2_replacement_scan_callback_fn callback,
+                                                    duckdb_v2_opaque user_data, duckdb_v2_error_info_handle *err) {
 	duckdb::OpaqueDataHandle owned(user_data.ptr, user_data.destroy, user_data.equals);
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !callback) {
@@ -92,9 +92,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_register(duckdb_v2_database_hand
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_catalog_name(duckdb_v2_replacement_scan_info_handle info,
-                                                                 duckdb_v2_identifier_t *out_name,
-                                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_get_catalog_name(duckdb_v2_replacement_scan_info_handle info,
+                                                            duckdb_v2_identifier_t *out_name,
+                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
 			*out_name = duckdb_v2_identifier_t {nullptr, 0};
@@ -106,9 +106,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_catalog_name(duckdb_v2_repla
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_schema_name(duckdb_v2_replacement_scan_info_handle info,
-                                                                duckdb_v2_identifier_t *out_name,
-                                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_get_schema_name(duckdb_v2_replacement_scan_info_handle info,
+                                                           duckdb_v2_identifier_t *out_name,
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
 			*out_name = duckdb_v2_identifier_t {nullptr, 0};
@@ -120,9 +120,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_schema_name(duckdb_v2_replac
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_table_name(duckdb_v2_replacement_scan_info_handle info,
-                                                               duckdb_v2_identifier_t *out_name,
-                                                               duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_get_table_name(duckdb_v2_replacement_scan_info_handle info,
+                                                          duckdb_v2_identifier_t *out_name,
+                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_name) {
 			*out_name = duckdb_v2_identifier_t {nullptr, 0};
@@ -134,8 +134,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_table_name(duckdb_v2_replace
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_user_data(duckdb_v2_replacement_scan_info_handle info,
-                                                              void **out_data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_get_user_data(duckdb_v2_replacement_scan_info_handle info, void **out_data,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (out_data) {
 			*out_data = nullptr;
@@ -147,9 +147,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_get_user_data(duckdb_v2_replacem
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_set_function_name(duckdb_v2_replacement_scan_info_handle info,
-                                                                  duckdb_v2_identifier_t name,
-                                                                  duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_set_function_name(duckdb_v2_replacement_scan_info_handle info,
+                                                             duckdb_v2_identifier_t name,
+                                                             duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info || (!name.ptr && name.len > 0)) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_set_function_name");
@@ -158,9 +158,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_set_function_name(duckdb_v2_repl
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_add_parameter(duckdb_v2_replacement_scan_info_handle info,
-                                                              duckdb_v2_value_handle value,
-                                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_add_parameter(duckdb_v2_replacement_scan_info_handle info,
+                                                         duckdb_v2_value_handle value,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info || !value) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_add_parameter");
@@ -169,10 +169,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_add_parameter(duckdb_v2_replacem
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_replacement_scan_add_named_parameter(duckdb_v2_replacement_scan_info_handle info,
-                                                                    duckdb_v2_identifier_t name,
-                                                                    duckdb_v2_value_handle value,
-                                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_add_named_parameter(duckdb_v2_replacement_scan_info_handle info,
+                                                               duckdb_v2_identifier_t name,
+                                                               duckdb_v2_value_handle value,
+                                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info || (!name.ptr && name.len > 0) || !value) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_add_named_parameter");

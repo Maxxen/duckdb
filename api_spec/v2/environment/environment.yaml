@@ -21,7 +21,7 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR
   destroy_environment:
     summary: "Destroys the environment."
     description: |
@@ -36,7 +36,7 @@ functions:
         type: environment
         indirection: 1
         description: "The environment."
-    return_type: API_CALL
+    return_type: ERROR
   environment_database_count:
     summary: "Returns the number of databases currently open under the environment."
     description: |
@@ -60,4 +60,4 @@ functions:
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
-    return_type: API_CALL
+    return_type: ERROR

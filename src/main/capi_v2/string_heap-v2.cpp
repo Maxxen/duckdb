@@ -8,9 +8,8 @@
 // string-ness check; string_heap_allocate then hands out raw vector-lifetime
 // bytes. The caller assembles and places the duckdb_v2_string (see the C++ API).
 
-DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_string_heap(duckdb_v2_vector_handle vector,
-                                                      duckdb_v2_string_heap_handle *out_heap,
-                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_vector_get_string_heap(duckdb_v2_vector_handle vector, duckdb_v2_string_heap_handle *out_heap,
+                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_heap) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_get_string_heap");
@@ -29,8 +28,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_vector_get_string_heap(duckdb_v2_vector_handle ve
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_string_heap_allocate(duckdb_v2_string_heap_handle heap, idx_t byte_len,
-                                                    uint8_t **out_ptr, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_string_heap_allocate(duckdb_v2_string_heap_handle heap, idx_t byte_len, uint8_t **out_ptr,
+                                               duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_ptr) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_string_heap_allocate");

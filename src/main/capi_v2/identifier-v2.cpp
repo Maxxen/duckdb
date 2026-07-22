@@ -5,8 +5,8 @@
 #include <cstdlib>
 #include <cstring>
 
-DUCKDB_V2_API_CALL_t duckdb_v2_identifier_render_quoted(duckdb_v2_identifier_t name, char **out_text,
-                                                        duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_identifier_render_quoted(duckdb_v2_identifier_t name, char **out_text,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		// A {NULL, 0} view is a valid (empty) name; only a null pointer with a
 		// nonzero length is malformed.

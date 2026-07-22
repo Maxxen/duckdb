@@ -119,7 +119,7 @@ TEST_CASE("V2: connect / disconnect", "[capi_v2][conn]") {
 
 TEST_CASE("V2: null-arg validation on env / db / conn entrypoints", "[capi_v2][env][db][conn]") {
 	SECTION("create_environment rejects null out_env") {
-		REQUIRE(duckdb_v2_create_environment(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_create_environment(nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("destroy_environment with null pointer-to-handle is a no-op") {
 		REQUIRE(duckdb_v2_destroy_environment(nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -127,13 +127,13 @@ TEST_CASE("V2: null-arg validation on env / db / conn entrypoints", "[capi_v2][e
 	SECTION("open rejects null env") {
 		duckdb_v2_database_handle db = nullptr;
 		REQUIRE(duckdb_v2_open(nullptr, duckdb_v2_str {nullptr, 0}, nullptr, 0, &db, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("open rejects null out_db") {
 		duckdb_v2_environment_handle env = nullptr;
 		duckdb_v2_create_environment(&env, nullptr);
 		REQUIRE(duckdb_v2_open(env, duckdb_v2_str {nullptr, 0}, nullptr, 0, nullptr, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_destroy_environment(&env);
 	}
 	SECTION("open rejects option_count > 0 with null options") {
@@ -141,7 +141,7 @@ TEST_CASE("V2: null-arg validation on env / db / conn entrypoints", "[capi_v2][e
 		duckdb_v2_create_environment(&env, nullptr);
 		duckdb_v2_database_handle db = nullptr;
 		REQUIRE(duckdb_v2_open(env, duckdb_v2_str {nullptr, 0}, nullptr, 1, &db, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		duckdb_v2_destroy_environment(&env);
 	}
 	SECTION("close with null pointer-to-handle is a no-op") {
@@ -149,7 +149,7 @@ TEST_CASE("V2: null-arg validation on env / db / conn entrypoints", "[capi_v2][e
 	}
 	SECTION("connect rejects null db") {
 		duckdb_v2_connection_handle conn = nullptr;
-		REQUIRE(duckdb_v2_connect(nullptr, &conn, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_connect(nullptr, &conn, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("disconnect with null pointer-to-handle is a no-op") {
 		REQUIRE(duckdb_v2_disconnect(nullptr) == DUCKDB_V2_ERROR_NONE);

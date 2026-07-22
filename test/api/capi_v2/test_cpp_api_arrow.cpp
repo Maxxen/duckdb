@@ -118,8 +118,8 @@ TEST_CASE("Stable C++API: Arrow stream export", "[cpp_api]") {
 		REQUIRE(static_cast<bool>(moved));
 
 		ArrowSchema schema {};
-		REQUIRE_THROWS_MATCHES(stream.GetSchema(schema), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(stream.GetSchema(schema), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 		ArrowArray array {};
-		REQUIRE_THROWS_MATCHES(stream.Next(array), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(stream.Next(array), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	}
 }

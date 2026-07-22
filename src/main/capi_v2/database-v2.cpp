@@ -18,14 +18,14 @@ bool IsUniqueFileHandleConflict(const char *what) {
 // as RESOURCE_IN_USE. The default exception->code mapping in WithErrorHandler
 // would route this through IO_GENERAL, which loses the distinction the V2
 // surface wants for "this file is already open in this environment."
-DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_handle env, duckdb_v2_str path,
-                                    duckdb_v2_option_handle *options, idx_t option_count,
-                                    duckdb_v2_database_handle *out_db, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_open(duckdb_v2_environment_handle env, duckdb_v2_str path, duckdb_v2_option_handle *options,
+                               idx_t option_count, duckdb_v2_database_handle *out_db,
+                               duckdb_v2_error_info_handle *err) {
 	if (!env || !out_db || (!path.ptr && path.len > 0)) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, "null argument to duckdb_v2_open");
+		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INPUT_INVALID, "null argument to duckdb_v2_open");
 	}
 	if (option_count > 0 && !options) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
+		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INPUT_INVALID,
 		                            "option_count > 0 but options is null in duckdb_v2_open");
 	}
 	*out_db = nullptr;
@@ -36,7 +36,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_handle env, duckdb_v2_
 		for (idx_t i = 0; i < option_count; i++) {
 			auto *opt = duckdb::ToOption(options[i]);
 			if (!opt) {
-				return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT,
+				return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INPUT_INVALID,
 				                            "null option handle in options array passed to duckdb_v2_open");
 			}
 			config->SetOptionByName(opt->name, duckdb::Value(opt->setting));
@@ -57,13 +57,13 @@ DUCKDB_V2_API_CALL_t duckdb_v2_open(duckdb_v2_environment_handle env, duckdb_v2_
 		if (IsUniqueFileHandleConflict(e.what())) {
 			return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_RESOURCE_IN_USE, e.what());
 		}
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INVALID_INPUT, e.what());
+		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_INPUT_INVALID, e.what());
 	} catch (...) {
-		return duckdb::SetErrorInfo(err, DUCKDB_V2_API_ERROR, "unknown error in duckdb_v2_open");
+		return duckdb::SetErrorInfo(err, DUCKDB_V2_ERROR_API, "unknown error in duckdb_v2_open");
 	}
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_handle *db) {
+DUCKDB_V2_ERROR duckdb_v2_close(duckdb_v2_database_handle *db) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!db) {
 			return;
@@ -80,8 +80,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_close(duckdb_v2_database_handle *db) {
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_handle db, duckdb_v2_option_handle option,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_database_option_set(duckdb_v2_database_handle db, duckdb_v2_option_handle option,
+                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_set");
@@ -97,9 +97,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_set(duckdb_v2_database_handle db,
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db, duckdb_v2_identifier_t name,
-                                                   duckdb_v2_option_handle *out_option,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_database_option_get(duckdb_v2_database_handle db, duckdb_v2_identifier_t name,
+                                              duckdb_v2_option_handle *out_option, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || (!name.ptr && name.len > 0) || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_get");
@@ -114,8 +113,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get(duckdb_v2_database_handle db,
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_count(duckdb_v2_database_handle db, idx_t *out_count,
-                                                         duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_database_option_get_count(duckdb_v2_database_handle db, idx_t *out_count,
+                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !out_count) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_get_count");
@@ -126,9 +125,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_count(duckdb_v2_database_hand
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_handle db, idx_t index,
-                                                            duckdb_v2_option_handle *out_option,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_database_option_get_by_index(duckdb_v2_database_handle db, idx_t index,
+                                                       duckdb_v2_option_handle *out_option,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!db || !out_option) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_database_option_get_by_index");
@@ -143,7 +142,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_database_option_get_by_index(duckdb_v2_database_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_library_version(char **out_version, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!out_version) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_library_version");

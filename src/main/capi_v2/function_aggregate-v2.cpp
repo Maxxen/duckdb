@@ -289,9 +289,9 @@ struct AggregateFunctionBuilderV2 {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(duckdb_v2_context_handle context,
-                                                                 duckdb_v2_aggregate_function_builder_handle *out,
-                                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_create(duckdb_v2_context_handle context,
+                                                            duckdb_v2_aggregate_function_builder_handle *out,
+                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("context cannot be null");
@@ -304,8 +304,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_create(duckdb_v2_conte
 	});
 }
 
-DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builder_handle *builder) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builder_handle *builder) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!builder) {
 			return;
@@ -318,9 +317,9 @@ duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builde
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_aggregate_function_builder_handle builder,
-                                                                   duckdb_v2_identifier_t name,
-                                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_aggregate_function_builder_handle builder,
+                                                              duckdb_v2_identifier_t name,
+                                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -336,10 +335,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_agg
 	});
 }
 
-DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_handle func,
-                                                   duckdb_v2_identifier_t name, duckdb_v2_logical_type_handle type,
-                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_handle func,
+                                                                   duckdb_v2_identifier_t name,
+                                                                   duckdb_v2_logical_type_handle type,
+                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -362,9 +361,9 @@ duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_varargs(duckdb_v2_aggregate_function_builder_handle func,
-                                                                      duckdb_v2_logical_type_handle type,
-                                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_varargs(duckdb_v2_aggregate_function_builder_handle func,
+                                                                 duckdb_v2_logical_type_handle type,
+                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -380,10 +379,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_varargs(duckdb_v2_
 	});
 }
 
-DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_function_builder_handle func,
-                                                     duckdb_v2_logical_type_handle type,
-                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_function_builder_handle func,
+                                                                     duckdb_v2_logical_type_handle type,
+                                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -400,7 +398,7 @@ duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_functio
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_builder_set_bind_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                        duckdb_v2_aggregate_function_bind_callback_fn callback,
                                                        duckdb_v2_error_info_handle *err) {
@@ -413,7 +411,7 @@ duckdb_v2_aggregate_function_builder_set_bind_callback(duckdb_v2_aggregate_funct
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_builder_set_size_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                        duckdb_v2_aggregate_function_size_callback_fn callback,
                                                        duckdb_v2_error_info_handle *err) {
@@ -426,7 +424,7 @@ duckdb_v2_aggregate_function_builder_set_size_callback(duckdb_v2_aggregate_funct
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_builder_set_init_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                        duckdb_v2_aggregate_function_init_callback_fn callback,
                                                        duckdb_v2_error_info_handle *err) {
@@ -439,7 +437,7 @@ duckdb_v2_aggregate_function_builder_set_init_callback(duckdb_v2_aggregate_funct
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_builder_set_update_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                          duckdb_v2_aggregate_function_update_callback_fn callback,
                                                          duckdb_v2_error_info_handle *err) {
@@ -452,7 +450,7 @@ duckdb_v2_aggregate_function_builder_set_update_callback(duckdb_v2_aggregate_fun
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_builder_set_combine_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                           duckdb_v2_aggregate_function_combine_callback_fn callback,
                                                           duckdb_v2_error_info_handle *err) {
@@ -465,7 +463,7 @@ duckdb_v2_aggregate_function_builder_set_combine_callback(duckdb_v2_aggregate_fu
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_builder_set_finalize_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                            duckdb_v2_aggregate_function_finalize_callback_fn callback,
                                                            duckdb_v2_error_info_handle *err) {
@@ -478,7 +476,7 @@ duckdb_v2_aggregate_function_builder_set_finalize_callback(duckdb_v2_aggregate_f
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_builder_set_destroy_callback(duckdb_v2_aggregate_function_builder_handle builder,
                                                           duckdb_v2_aggregate_function_destroy_callback_fn callback,
                                                           duckdb_v2_error_info_handle *err) {
@@ -491,9 +489,9 @@ duckdb_v2_aggregate_function_builder_set_destroy_callback(duckdb_v2_aggregate_fu
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_handle context,
-                                                                   duckdb_v2_aggregate_function_builder_handle builder,
-                                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_handle context,
+                                                              duckdb_v2_aggregate_function_builder_handle builder,
+                                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("context cannot be null");
@@ -580,10 +578,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_register(duckdb_v2_con
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_property(duckdb_v2_aggregate_function_builder_handle func,
-                                                                       DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-                                                                       DUCKDB_V2_FUNCTION_PROPERTY_VALUE value,
-                                                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_property(duckdb_v2_aggregate_function_builder_handle func,
+                                                                  DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                                                                  DUCKDB_V2_FUNCTION_PROPERTY_VALUE value,
+                                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -593,10 +591,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_set_property(duckdb_v2
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_get_property(duckdb_v2_aggregate_function_builder_handle func,
-                                                                       DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
-                                                                       DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value,
-                                                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_get_property(duckdb_v2_aggregate_function_builder_handle func,
+                                                                  DUCKDB_V2_FUNCTION_PROPERTY_KEY key,
+                                                                  DUCKDB_V2_FUNCTION_PROPERTY_VALUE *out_value,
+                                                                  duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -609,9 +607,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_builder_get_property(duckdb_v2
 	});
 }
 
-DUCKDB_V2_API_CALL_t
-duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_builder_handle builder,
-                                                   duckdb_v2_opaque data, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_builder_handle builder,
+                                                                   duckdb_v2_opaque data,
+                                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
@@ -624,7 +622,7 @@ duckdb_v2_aggregate_function_builder_set_user_data(duckdb_v2_aggregate_function_
 
 // --- Bind callback accessors ----------------------------------
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_bind_get_function_name(duckdb_v2_aggregate_function_bind_info_handle info,
                                                     duckdb_v2_identifier_t *out_name,
                                                     duckdb_v2_error_info_handle *err) {
@@ -640,9 +638,8 @@ duckdb_v2_aggregate_function_bind_get_function_name(duckdb_v2_aggregate_function
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_user_data(duckdb_v2_aggregate_function_bind_info_handle info,
-                                                                     void **out_data,
-                                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_bind_get_user_data(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                                void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -655,9 +652,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_user_data(duckdb_v2_a
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_arguments(duckdb_v2_aggregate_function_bind_info_handle info,
-                                                                     duckdb_v2_bind_arguments_handle *out_arguments,
-                                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_bind_get_arguments(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                                duckdb_v2_bind_arguments_handle *out_arguments,
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -670,9 +667,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_get_arguments(duckdb_v2_a
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_set_bind_data(duckdb_v2_aggregate_function_bind_info_handle info,
-                                                                     duckdb_v2_opaque data,
-                                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_bind_set_bind_data(duckdb_v2_aggregate_function_bind_info_handle info,
+                                                                duckdb_v2_opaque data,
+                                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -684,9 +681,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_bind_set_bind_data(duckdb_v2_a
 
 // --- Size callback accessors ----------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_get_user_data(duckdb_v2_aggregate_function_size_info_handle info,
-                                                                     void **out_data,
-                                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_size_get_user_data(duckdb_v2_aggregate_function_size_info_handle info,
+                                                                void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -699,8 +695,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_get_user_data(duckdb_v2_a
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_set_size(duckdb_v2_aggregate_function_size_info_handle info,
-                                                                idx_t size, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_size_set_size(duckdb_v2_aggregate_function_size_info_handle info,
+                                                           idx_t size, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -712,9 +708,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_size_set_size(duckdb_v2_aggreg
 
 // --- Init callback accessors ----------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_user_data(duckdb_v2_aggregate_function_init_info_handle info,
-                                                                     void **out_data,
-                                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_init_get_user_data(duckdb_v2_aggregate_function_init_info_handle info,
+                                                                void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -727,8 +722,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_user_data(duckdb_v2_a
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_state(duckdb_v2_aggregate_function_init_info_handle info,
-                                                                 void **out_state, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_init_get_state(duckdb_v2_aggregate_function_init_info_handle info,
+                                                            void **out_state, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -743,7 +738,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_init_get_state(duckdb_v2_aggre
 
 // --- Update callback accessors --------------------------------
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_update_get_user_data(duckdb_v2_aggregate_function_update_info_handle info, void **out_data,
                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -758,7 +753,7 @@ duckdb_v2_aggregate_function_update_get_user_data(duckdb_v2_aggregate_function_u
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_update_get_bind_data(duckdb_v2_aggregate_function_update_info_handle info, void **out_data,
                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -773,8 +768,8 @@ duckdb_v2_aggregate_function_update_get_bind_data(duckdb_v2_aggregate_function_u
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_count(duckdb_v2_aggregate_function_update_info_handle info,
-                                                                   idx_t *out_count, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_update_get_count(duckdb_v2_aggregate_function_update_info_handle info,
+                                                              idx_t *out_count, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -787,9 +782,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_count(duckdb_v2_agg
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_input(duckdb_v2_aggregate_function_update_info_handle info,
-                                                                   duckdb_v2_data_chunk_handle *out_input,
-                                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_update_get_input(duckdb_v2_aggregate_function_update_info_handle info,
+                                                              duckdb_v2_data_chunk_handle *out_input,
+                                                              duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
@@ -802,7 +797,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_aggregate_function_update_get_input(duckdb_v2_agg
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_update_get_states(duckdb_v2_aggregate_function_update_info_handle info, void ***out_states,
                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -819,7 +814,7 @@ duckdb_v2_aggregate_function_update_get_states(duckdb_v2_aggregate_function_upda
 
 // --- Combine callback accessors -------------------------------
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_combine_get_user_data(duckdb_v2_aggregate_function_combine_info_handle info,
                                                    void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -834,7 +829,7 @@ duckdb_v2_aggregate_function_combine_get_user_data(duckdb_v2_aggregate_function_
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_combine_get_bind_data(duckdb_v2_aggregate_function_combine_info_handle info,
                                                    void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -849,7 +844,7 @@ duckdb_v2_aggregate_function_combine_get_bind_data(duckdb_v2_aggregate_function_
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_combine_get_count(duckdb_v2_aggregate_function_combine_info_handle info, idx_t *out_count,
                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -864,7 +859,7 @@ duckdb_v2_aggregate_function_combine_get_count(duckdb_v2_aggregate_function_comb
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_combine_get_sources(duckdb_v2_aggregate_function_combine_info_handle info,
                                                  void ***out_sources, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -879,7 +874,7 @@ duckdb_v2_aggregate_function_combine_get_sources(duckdb_v2_aggregate_function_co
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_combine_get_targets(duckdb_v2_aggregate_function_combine_info_handle info,
                                                  void ***out_targets, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -896,7 +891,7 @@ duckdb_v2_aggregate_function_combine_get_targets(duckdb_v2_aggregate_function_co
 
 // --- Finalize callback accessors ------------------------------
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_finalize_get_user_data(duckdb_v2_aggregate_function_finalize_info_handle info,
                                                     void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -911,7 +906,7 @@ duckdb_v2_aggregate_function_finalize_get_user_data(duckdb_v2_aggregate_function
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_finalize_get_bind_data(duckdb_v2_aggregate_function_finalize_info_handle info,
                                                     void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -926,7 +921,7 @@ duckdb_v2_aggregate_function_finalize_get_bind_data(duckdb_v2_aggregate_function
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_finalize_get_count(duckdb_v2_aggregate_function_finalize_info_handle info,
                                                 idx_t *out_count, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -941,7 +936,7 @@ duckdb_v2_aggregate_function_finalize_get_count(duckdb_v2_aggregate_function_fin
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_finalize_get_states(duckdb_v2_aggregate_function_finalize_info_handle info,
                                                  void ***out_states, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -956,7 +951,7 @@ duckdb_v2_aggregate_function_finalize_get_states(duckdb_v2_aggregate_function_fi
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_finalize_get_result(duckdb_v2_aggregate_function_finalize_info_handle info,
                                                  duckdb_v2_vector_handle *out_result,
                                                  duckdb_v2_error_info_handle *err) {
@@ -972,7 +967,7 @@ duckdb_v2_aggregate_function_finalize_get_result(duckdb_v2_aggregate_function_fi
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_finalize_get_result_offset(duckdb_v2_aggregate_function_finalize_info_handle info,
                                                         idx_t *out_offset, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -989,7 +984,7 @@ duckdb_v2_aggregate_function_finalize_get_result_offset(duckdb_v2_aggregate_func
 
 // --- Destroy callback accessors -------------------------------
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_destroy_get_user_data(duckdb_v2_aggregate_function_destroy_info_handle info,
                                                    void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -1004,7 +999,7 @@ duckdb_v2_aggregate_function_destroy_get_user_data(duckdb_v2_aggregate_function_
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_destroy_get_bind_data(duckdb_v2_aggregate_function_destroy_info_handle info,
                                                    void **out_data, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -1019,7 +1014,7 @@ duckdb_v2_aggregate_function_destroy_get_bind_data(duckdb_v2_aggregate_function_
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_destroy_get_count(duckdb_v2_aggregate_function_destroy_info_handle info, idx_t *out_count,
                                                duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
@@ -1034,7 +1029,7 @@ duckdb_v2_aggregate_function_destroy_get_count(duckdb_v2_aggregate_function_dest
 	});
 }
 
-DUCKDB_V2_API_CALL_t
+DUCKDB_V2_ERROR
 duckdb_v2_aggregate_function_destroy_get_states(duckdb_v2_aggregate_function_destroy_info_handle info,
                                                 void ***out_states, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {

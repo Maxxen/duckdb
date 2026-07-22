@@ -55,7 +55,7 @@ TEST_CASE("V2 qname: parse splits dotted text into parts", "[capi_v2][qname]") {
 	REQUIRE(part == "tbl");
 
 	// An out-of-range index is rejected; the borrowed part is untouched by the failure.
-	REQUIRE(duckdb_v2_qname_get_part(qname, 3, &part, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_get_part(qname, 3, &part, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_qname_destroy(&qname);
 	REQUIRE(qname == nullptr);
@@ -86,15 +86,15 @@ TEST_CASE("V2 qname: parse rejects malformed text", "[capi_v2][qname]") {
 	duckdb_v2_qname_handle qname = nullptr;
 
 	// Empty text carries no name.
-	REQUIRE(duckdb_v2_qname_parse(V2Str(""), &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_parse(V2Str(""), &qname, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(qname == nullptr);
 	// A zero-length delimited identifier ("") is rejected by the engine parser.
 	REQUIRE(duckdb_v2_qname_parse(V2Str("\"\""), &qname, nullptr) == DUCKDB_V2_ERROR_QUERY_PARSER);
 	REQUIRE(qname == nullptr);
 	// The malformed null-pointer-with-nonzero-length view.
-	REQUIRE(duckdb_v2_qname_parse(duckdb_v2_str {nullptr, 5}, &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_parse(duckdb_v2_str {nullptr, 5}, &qname, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	// A null out pointer.
-	REQUIRE(duckdb_v2_qname_parse(V2Str("t"), nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_parse(V2Str("t"), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// More than three parts is an engine parser error, surfaced through err.
 	duckdb_v2_error_info_handle err = nullptr;
@@ -137,24 +137,24 @@ TEST_CASE("V2 qname: create rejects empty and oversized paths", "[capi_v2][qname
 	duckdb_v2_qname_handle qname = nullptr;
 
 	// Zero parts.
-	REQUIRE(duckdb_v2_qname_create(nullptr, 0, &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_create(nullptr, 0, &qname, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(qname == nullptr);
 
 	// More than three parts: deeper qualification does not exist engine-side.
 	duckdb_v2_identifier_t four[] = {V2Str("a"), V2Str("b"), V2Str("c"), V2Str("d")};
-	REQUIRE(duckdb_v2_qname_create(four, 4, &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_create(four, 4, &qname, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// An empty part is a placeholder, and placeholders do not cross the ABI:
 	// partial qualification is expressed by passing fewer parts.
 	duckdb_v2_identifier_t with_empty[] = {V2Str(""), V2Str("tbl")};
-	REQUIRE(duckdb_v2_qname_create(with_empty, 2, &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_create(with_empty, 2, &qname, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// A null parts array with a nonzero count.
-	REQUIRE(duckdb_v2_qname_create(nullptr, 2, &qname, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_create(nullptr, 2, &qname, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// A null out pointer.
 	duckdb_v2_identifier_t just_name[] = {V2Str("tbl")};
-	REQUIRE(duckdb_v2_qname_create(just_name, 1, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_create(just_name, 1, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2 qname: render quotes each part only when required", "[capi_v2][qname]") {
@@ -224,10 +224,10 @@ TEST_CASE("V2 qname: equality and hash are case-insensitive", "[capi_v2][qname]"
 	duckdb_v2_qname_destroy(&parsed);
 
 	// Null arguments are rejected.
-	REQUIRE(duckdb_v2_qname_equals(nullptr, lower, &equal, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_qname_equals(lower, nullptr, &equal, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_equals(nullptr, lower, &equal, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_qname_equals(lower, nullptr, &equal, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	uint64_t hash = 0;
-	REQUIRE(duckdb_v2_qname_hash(nullptr, &hash, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_hash(nullptr, &hash, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_qname_destroy(&lower);
 	duckdb_v2_qname_destroy(&mixed);
@@ -248,7 +248,7 @@ TEST_CASE("V2 qname: destroy is null-safe and idempotent", "[capi_v2][qname]") {
 
 	// Null getter subjects are rejected.
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_qname_get_part_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_get_part_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	char *text = nullptr;
-	REQUIRE(duckdb_v2_qname_render(nullptr, &text, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_qname_render(nullptr, &text, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }

@@ -25,7 +25,7 @@ duckdb_v2_sql_statement_handle PsParseOne(duckdb_v2_connection_handle conn, cons
 // Prepare one statement from sql; returns the prepared handle (or nullptr on
 // the require_cacheable failure path, which the caller then asserts).
 duckdb_v2_prepared_statement_handle PsPrepare(duckdb_v2_connection_handle conn, const char *sql, bool require_cacheable,
-                                              DUCKDB_V2_API_CALL_t *out_rc = nullptr) {
+                                              DUCKDB_V2_ERROR *out_rc = nullptr) {
 	auto stmt = PsParseOne(conn, sql);
 	duckdb_v2_prepared_statement_handle prepared = nullptr;
 	auto rc = duckdb_v2_statement_prepare(conn, stmt, require_cacheable, &prepared, nullptr);
@@ -153,7 +153,7 @@ TEST_CASE("V2: prepared_reuses_plan reports true and false honestly", "[capi_v2]
 
 TEST_CASE("V2: statement_prepare require_cacheable accepts a cacheable plan", "[capi_v2][prepared_statement]") {
 	V2EnvFixture fx;
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	auto prepared = PsPrepare(fx.conn, "SELECT $1::INTEGER + $2::INTEGER", true, &rc);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(prepared != nullptr);
@@ -163,9 +163,9 @@ TEST_CASE("V2: statement_prepare require_cacheable accepts a cacheable plan", "[
 TEST_CASE("V2: statement_prepare require_cacheable rejects an uncacheable plan", "[capi_v2][prepared_statement]") {
 	V2EnvFixture fx;
 	SeedTable(fx.conn);
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	auto prepared = PsPrepare(fx.conn, "SELECT * FROM t WHERE x = $1", true, &rc);
-	REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(rc == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(prepared == nullptr);
 }
 
@@ -212,7 +212,7 @@ TEST_CASE("V2: prepared_execute binds named parameters correctly", "[capi_v2][pr
 	// A wrong key set (a name the statement does not declare) is a bind error.
 	duckdb_v2_str wrong[2] = {V2Str("x"), V2Str("z")};
 	duckdb_v2_value_handle wrong_values[2] = {a, b};
-	REQUIRE(duckdb_v2_prepared_execute(prepared, wrong, wrong_values, 2, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, wrong, wrong_values, 2, &r, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(r == nullptr);
 
 	duckdb_v2_value_destroy(&a);
@@ -465,11 +465,11 @@ TEST_CASE("V2: statement_prepare guards null arguments", "[capi_v2][prepared_sta
 	V2EnvFixture fx;
 	auto stmt = PsParseOne(fx.conn, "SELECT 1");
 	duckdb_v2_prepared_statement_handle prepared = nullptr;
-	REQUIRE(duckdb_v2_statement_prepare(nullptr, stmt, false, &prepared, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_prepare(nullptr, stmt, false, &prepared, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(prepared == nullptr);
-	REQUIRE(duckdb_v2_statement_prepare(fx.conn, nullptr, false, &prepared, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_prepare(fx.conn, nullptr, false, &prepared, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(prepared == nullptr);
-	REQUIRE(duckdb_v2_statement_prepare(fx.conn, stmt, false, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_statement_prepare(fx.conn, stmt, false, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_sql_statement_destroy(&stmt);
 }
 
@@ -478,19 +478,19 @@ TEST_CASE("V2: prepared_execute guards null arguments", "[capi_v2][prepared_stat
 	auto prepared = PsPrepare(fx.conn, "SELECT $1::INTEGER", false);
 	REQUIRE(prepared != nullptr);
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(duckdb_v2_prepared_execute(nullptr, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_prepared_execute(nullptr, nullptr, nullptr, 0, &r, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(r == nullptr);
 	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 0, nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	// A positive count with a null value array is refused.
-	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 1, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_prepared_execute(prepared, nullptr, nullptr, 1, &r, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(r == nullptr);
 	duckdb_v2_prepared_statement_destroy(&prepared);
 }
 
 TEST_CASE("V2: statement_prepare surfaces a catalog error", "[capi_v2][prepared_statement]") {
 	V2EnvFixture fx;
-	DUCKDB_V2_API_CALL_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	auto prepared = PsPrepare(fx.conn, "SELECT * FROM no_such_table", false, &rc);
 	REQUIRE(rc == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	REQUIRE(prepared == nullptr);

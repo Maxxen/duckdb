@@ -18,10 +18,10 @@ public:
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_with_alias(duckdb_v2_logical_type_handle base_type,
-                                                              duckdb_v2_identifier_t alias_name,
-                                                              duckdb_v2_logical_type_handle *out_type,
-                                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_create_with_alias(duckdb_v2_logical_type_handle base_type,
+                                                         duckdb_v2_identifier_t alias_name,
+                                                         duckdb_v2_logical_type_handle *out_type,
+                                                         duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!base_type || (!alias_name.ptr && alias_name.len > 0) || !out_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create_with_alias");
@@ -42,9 +42,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_type_create_with_alias(duckdb_v2_logical_
 // Custom Type Builder
 //-------------------------------------------------------------------------------------------------
 
-DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_create(duckdb_v2_context_handle context,
-                                                          duckdb_v2_custom_type_builder_handle *out_builder,
-                                                          duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_create(duckdb_v2_context_handle context,
+                                                     duckdb_v2_custom_type_builder_handle *out_builder,
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context || !out_builder) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_custom_type_builder_create");
@@ -64,9 +64,9 @@ void duckdb_v2_custom_type_builder_destroy(duckdb_v2_custom_type_builder_handle 
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_register(duckdb_v2_context_handle context,
-                                                            duckdb_v2_custom_type_builder_handle builder,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register(duckdb_v2_context_handle context,
+                                                       duckdb_v2_custom_type_builder_handle builder,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("null context argument to duckdb_v2_custom_type_builder_register");
@@ -101,9 +101,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_register(duckdb_v2_context_ha
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_set_name(duckdb_v2_custom_type_builder_handle builder,
-                                                            duckdb_v2_identifier_t name,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_set_name(duckdb_v2_custom_type_builder_handle builder,
+                                                       duckdb_v2_identifier_t name, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_custom_type_builder_set_name");
@@ -114,9 +113,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_set_name(duckdb_v2_custom_typ
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_custom_type_builder_set_base_type(duckdb_v2_custom_type_builder_handle builder,
-                                                                 duckdb_v2_logical_type_handle base_type,
-                                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_set_base_type(duckdb_v2_custom_type_builder_handle builder,
+                                                            duckdb_v2_logical_type_handle base_type,
+                                                            duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!builder || !base_type) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_custom_type_builder_set_base_type");

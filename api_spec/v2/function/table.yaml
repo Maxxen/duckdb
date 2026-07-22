@@ -201,7 +201,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_destroy:
     summary: Destroys a table function builder.
     description: |
@@ -212,7 +212,7 @@ functions:
         type: table_function_builder
         indirection: 1
         description: Pointer to the builder handle. Set to NULL after destruction.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_name:
     summary: Sets the function name.
     parameters:
@@ -226,7 +226,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_add_parameter:
     summary: Adds a positional parameter to the function signature.
     description: |
@@ -243,14 +243,14 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_varargs:
     summary: Sets the varargs type of a table function.
     description: |
       Makes the function variadic: after its fixed positional parameters, it accepts any number of
       extra trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail
       whose arguments keep their own types. A NULL or INVALID type is rejected with
-      ERROR_INVALID_INPUT; ANY is accepted. Calling this again overwrites the previous varargs type.
+      ERROR_INPUT_INVALID; ANY is accepted. Calling this again overwrites the previous varargs type.
       The bind callback reads all positional arguments, fixed and extra alike, via
       table_function_bind_get_parameter_count and table_function_bind_get_parameter. The library
       copies the type and does not take ownership.
@@ -265,7 +265,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_add_named_parameter:
     summary: Adds a named (keyword) parameter to the function signature.
     parameters:
@@ -282,7 +282,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_user_data:
     summary: Sets user data on the builder, accessible from all callbacks.
     description: |
@@ -299,7 +299,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Callback registration ---
   table_function_builder_set_bind_callback:
     summary: Sets the bind callback. Required.
@@ -314,7 +314,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_init_global_callback:
     summary: Sets the global init callback. Optional.
     parameters:
@@ -328,7 +328,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_init_local_callback:
     summary: Sets the local init callback. Optional.
     parameters:
@@ -342,7 +342,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_exec_callback:
     summary: Sets the execution callback. Required.
     parameters:
@@ -356,7 +356,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_cardinality_callback:
     summary: Sets the cardinality callback. Optional.
     parameters:
@@ -370,7 +370,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_progress_callback:
     summary: Sets the progress callback. Optional.
     parameters:
@@ -384,7 +384,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_pushdown_complex_filter_callback:
     summary: Sets the complex filter pushdown callback. Optional.
     description: |
@@ -401,7 +401,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_set_projection_pushdown:
     summary: Enables projection pushdown for this table function.
     description: |
@@ -418,7 +418,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_builder_register:
     summary: Registers the table function, making it available for use in queries.
     description: |
@@ -436,13 +436,13 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Bind callback methods ---
   table_function_bind_add_result_column:
     summary: Declares an output column during bind.
     description: |
       The column type must be a fully defined concrete type: ANY is rejected with
-      ERROR_INVALID_INPUT (a result column carries data, so a wildcard has no meaning).
+      ERROR_INPUT_INVALID (a result column carries data, so a wildcard has no meaning).
     parameters:
       info:
         type: table_function_bind_info
@@ -457,7 +457,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_bind_get_parameter_count:
     summary: Returns the number of positional parameters passed to the function.
     description: |
@@ -477,7 +477,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_bind_get_parameter:
     summary: Retrieves a positional parameter value during bind.
     parameters:
@@ -496,7 +496,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_bind_get_named_parameter:
     summary: Retrieves a named parameter value during bind.
     parameters:
@@ -515,7 +515,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_bind_set_bind_data:
     summary: Sets bind data that will be accessible to all later callbacks.
     description: |
@@ -532,7 +532,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_bind_set_cardinality:
     summary: Sets the estimated cardinality during bind.
     description: |
@@ -552,7 +552,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_bind_get_user_data:
     summary: Retrieves user data set on the builder.
     parameters:
@@ -568,7 +568,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Init callback methods ---
   table_function_init_get_bind_data:
     summary: Retrieves bind data set during bind.
@@ -585,7 +585,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_init_set_global_state:
     summary: Sets global state shared across all threads.
     description: |
@@ -602,7 +602,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_init_get_global_state:
     summary: Retrieves the global state set during init_global.
     description: |
@@ -622,7 +622,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_init_set_local_state:
     summary: Sets per-thread local state.
     description: |
@@ -639,7 +639,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_init_set_max_threads:
     summary: Sets the maximum number of threads for this scan.
     description: |
@@ -656,7 +656,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_init_get_column_count:
     summary: Returns the number of projected columns.
     description: |
@@ -676,7 +676,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_init_get_column_index:
     summary: Returns the original column index for a projected column.
     description: |
@@ -701,7 +701,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_init_get_user_data:
     summary: Retrieves user data set on the builder.
     parameters:
@@ -717,7 +717,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Complex filter pushdown callback methods ---
   table_function_filter_get_count:
     summary: Returns the number of candidate filter expressions.
@@ -734,7 +734,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_filter_get_expression:
     summary: Borrows a candidate filter expression by index.
     description: |
@@ -756,7 +756,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_filter_mark_handled:
     summary: Marks a candidate filter as applied by the function.
     description: |
@@ -774,7 +774,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_filter_get_column_count:
     summary: Returns the number of columns in the scan's pushdown-time column list.
     description: |
@@ -795,7 +795,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_filter_get_column_index:
     summary: Resolves a pushdown-time column position to its bind-declared column index.
     parameters:
@@ -814,7 +814,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_filter_get_user_data:
     summary: Retrieves user data set on the builder.
     parameters:
@@ -830,7 +830,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # --- Exec callback methods ---
   table_function_exec_get_bind_data:
     summary: Retrieves bind data set during bind.
@@ -847,7 +847,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_exec_get_global_state:
     summary: Retrieves global state set during init_global.
     parameters:
@@ -863,7 +863,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_exec_get_local_state:
     summary: Retrieves local state set during init_local.
     parameters:
@@ -879,7 +879,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_exec_get_output_chunk:
     summary: Retrieves the output chunk to fill.
     parameters:
@@ -895,7 +895,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_function_exec_get_user_data:
     summary: Retrieves user data set on the builder.
     parameters:
@@ -911,4 +911,4 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

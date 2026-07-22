@@ -64,7 +64,7 @@ TEST_CASE("V2: data_chunk_create null args", "[capi_v2][vector_write]") {
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 
 	// Null types array — out_chunk should be zeroed.
-	REQUIRE(duckdb_v2_data_chunk_create(nullptr, 2, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_data_chunk_create(nullptr, 2, &chunk, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(chunk == nullptr);
 
 	// Null out_chunk.
@@ -72,7 +72,7 @@ TEST_CASE("V2: data_chunk_create null args", "[capi_v2][vector_write]") {
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 	auto rc = duckdb_v2_data_chunk_create(types, 1, nullptr, nullptr);
 	duckdb_v2_logical_type_destroy(&int_type);
-	REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(rc == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: data_chunk_create with null element in types", "[capi_v2][vector_write]") {
@@ -82,7 +82,7 @@ TEST_CASE("V2: data_chunk_create with null element in types", "[capi_v2][vector_
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 2, &chunk, nullptr);
 	duckdb_v2_logical_type_destroy(&int_type);
-	REQUIRE(rc == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(rc == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(chunk == nullptr);
 }
 
@@ -91,7 +91,7 @@ TEST_CASE("V2: data_chunk_create with null element in types", "[capi_v2][vector_
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_set_size null arg", "[capi_v2][vector_write]") {
-	REQUIRE(duckdb_v2_vector_set_size(nullptr, 10, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_size(nullptr, 10, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: per-column sizing", "[capi_v2][vector_write]") {
@@ -242,9 +242,9 @@ TEST_CASE("V2: vector_make_sequence", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector_make_* null args", "[capi_v2][vector_write]") {
-	REQUIRE(duckdb_v2_vector_flatten(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_vector_make_constant(nullptr, nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_vector_make_sequence(nullptr, 0, 1, 10, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_flatten(nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_vector_make_constant(nullptr, nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_vector_make_sequence(nullptr, 0, 1, 10, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: vector_make_constant null value", "[capi_v2][vector_write]") {
@@ -260,7 +260,7 @@ TEST_CASE("V2: vector_make_constant null value", "[capi_v2][vector_write]") {
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// A non-null vector with a null value must be rejected.
-	REQUIRE(duckdb_v2_vector_make_constant(vec, nullptr, 5, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_make_constant(vec, nullptr, 5, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -311,8 +311,8 @@ TEST_CASE("V2: vector_flat_get_validity_mutable + set nulls", "[capi_v2][vector_
 
 TEST_CASE("V2: vector_flat_get_validity_mutable null args", "[capi_v2][vector_write]") {
 	uint64_t *validity = nullptr;
-	REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(nullptr, &validity, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(nullptr, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(nullptr, &validity, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(nullptr, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: vector_flat_get_validity_mutable rejects SEQUENCE vector", "[capi_v2][vector_write]") {
@@ -329,7 +329,7 @@ TEST_CASE("V2: vector_flat_get_validity_mutable rejects SEQUENCE vector", "[capi
 	REQUIRE(duckdb_v2_vector_make_sequence(vec, 0, 1, 10, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	uint64_t *validity = nullptr;
-	REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(vec, &validity, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_flat_get_validity_mutable(vec, &validity, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -385,8 +385,8 @@ TEST_CASE("V2: vector_constant_set_valid rejects FLAT vector", "[capi_v2][vector
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// FLAT (the default) is not a constant vector.
-	REQUIRE(duckdb_v2_vector_constant_set_valid(vec, false, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_vector_constant_set_valid(nullptr, false, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_constant_set_valid(vec, false, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_vector_constant_set_valid(nullptr, false, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -605,7 +605,7 @@ TEST_CASE("V2: vector_set_null leaves LIST children untouched", "[capi_v2][vecto
 }
 
 TEST_CASE("V2: vector_set_null argument validation", "[capi_v2][vector_write]") {
-	REQUIRE(duckdb_v2_vector_set_null(nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_null(nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	auto int_type = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
@@ -620,11 +620,11 @@ TEST_CASE("V2: vector_set_null argument validation", "[capi_v2][vector_write]") 
 	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// Row index is bounds-checked against the logical size.
-	REQUIRE(duckdb_v2_vector_set_null(vec, 2, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_null(vec, 2, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// Non-FLAT representations are rejected.
 	REQUIRE(duckdb_v2_vector_make_sequence(vec, 1, 1, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_set_null(vec, 0, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_null(vec, 0, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	REQUIRE(duckdb_v2_data_chunk_destroy(&chunk) == DUCKDB_V2_ERROR_NONE);
 }
@@ -1111,7 +1111,7 @@ TEST_CASE("V2: vector_get_value reads FLAT and CONSTANT rows", "[capi_v2][vector
 	// Row bounds are checked against the logical size.
 	auto cell = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_vector_get_value(vec, 3, &cell, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_value(vec, 3, &cell, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(cell == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -1122,7 +1122,7 @@ TEST_CASE("V2: vector_get_value reads FLAT and CONSTANT rows", "[capi_v2][vector
 	duckdb_v2_value_destroy(&forty_two);
 	REQUIRE(V2CellI32(vec, 0) == 42);
 	REQUIRE(V2CellI32(vec, 4) == 42);
-	REQUIRE(duckdb_v2_vector_get_value(vec, 5, &cell, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_value(vec, 5, &cell, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_data_chunk_destroy(&chunk);
 }
@@ -1154,7 +1154,7 @@ TEST_CASE("V2: vector_get_value resolves DICTIONARY rows through the selection",
 	REQUIRE(duckdb_v2_value_is_null(cell, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(is_null);
 	duckdb_v2_value_destroy(&cell);
-	REQUIRE(duckdb_v2_vector_get_value(handle, 4, &cell, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_value(handle, 4, &cell, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: vector_get_value is the VARIANT cell path", "[capi_v2][vector_write][cell]") {
@@ -1219,7 +1219,7 @@ TEST_CASE("V2: vector_set_value writes FLAT cells with casts and NULLs", "[capi_
 	// An uncastable value surfaces the conversion error.
 	duckdb_v2_value_handle bad = V2VarcharValue("abc");
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_vector_set_value(vec, 2, bad, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 2, bad, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_value_destroy(&bad);
@@ -1235,12 +1235,12 @@ TEST_CASE("V2: vector_set_value refuses non-FLAT vectors and bad rows", "[capi_v
 
 	// Out-of-range row on a FLAT vector.
 	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vector_set_value(vec, 2, value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 2, value, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// A CONSTANT vector is not row-addressable; flatten first.
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 4, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_vector_set_value(vec, 0, value, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 0, value, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 	REQUIRE(duckdb_v2_vector_flatten(vec, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1248,11 +1248,11 @@ TEST_CASE("V2: vector_set_value refuses non-FLAT vectors and bad rows", "[capi_v
 	REQUIRE(V2CellI32(vec, 0) == 1);
 
 	// Null-arg refusals.
-	REQUIRE(duckdb_v2_vector_set_value(nullptr, 0, value, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_vector_set_value(vec, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_set_value(nullptr, 0, value, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_vector_set_value(vec, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_handle out_cell = nullptr;
-	REQUIRE(duckdb_v2_vector_get_value(nullptr, 0, &out_cell, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_vector_get_value(vec, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_get_value(nullptr, 0, &out_cell, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_vector_get_value(vec, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_value_destroy(&value);
 	duckdb_v2_data_chunk_destroy(&chunk);
@@ -1298,7 +1298,7 @@ TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip",
 	// The type-mismatch hardening: an INTEGER value cannot constant a LIST vector.
 	duckdb_v2_value_handle wrong = V2Int32Value(9);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_vector_make_constant(vec, wrong, 3, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_vector_make_constant(vec, wrong, 3, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 	duckdb_v2_value_destroy(&wrong);

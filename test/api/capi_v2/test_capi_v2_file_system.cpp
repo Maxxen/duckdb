@@ -61,16 +61,16 @@ TEST_CASE("V2 fs: get_from_context returns a non-null handle", "[capi_v2][file_s
 TEST_CASE("V2 fs: get_from_* null-arg validation", "[capi_v2][file_system]") {
 	FsFixture fx;
 	SECTION("get_from_connection rejects null out_file_system") {
-		REQUIRE(duckdb_v2_file_system_get_from_connection(fx.conn, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_system_get_from_connection(fx.conn, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("get_from_connection rejects null connection") {
 		duckdb_v2_file_system_handle fs = nullptr;
-		REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(fs == nullptr);
 	}
 	SECTION("get_from_context rejects null context") {
 		duckdb_v2_file_system_handle fs = nullptr;
-		REQUIRE(duckdb_v2_file_system_get_from_context(nullptr, &fs, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_system_get_from_context(nullptr, &fs, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(fs == nullptr);
 	}
 }
@@ -163,7 +163,7 @@ TEST_CASE("V2 file_handle: seek / tell / read-after-seek", "[capi_v2][file_syste
 
 	SECTION("seek rejects negative offsets") {
 		duckdb_v2_error_info_handle err = nullptr;
-		REQUIRE(duckdb_v2_file_handle_seek(h, -1, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_seek(h, -1, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(err != nullptr);
 		duckdb_v2_error_info_destroy(&err);
 	}
@@ -257,7 +257,7 @@ TEST_CASE("V2 file_handle: open rejects an empty flag bitset", "[capi_v2][file_s
 	duckdb_v2_file_handle_handle h = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	// 0 == DUCKDB_V2_FILE_FLAG_INVALID; no capabilities is meaningless.
-	REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), 0, &h, &err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_file_system_open(fs, V2Str(path.c_str()), 0, &h, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(h == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -272,39 +272,39 @@ TEST_CASE("V2 file_handle: null-arg validation", "[capi_v2][file_system]") {
 		duckdb_v2_file_handle_handle h = nullptr;
 		char path[] = "/tmp/anything";
 		REQUIRE(duckdb_v2_file_system_open(nullptr, V2Str(path), DUCKDB_V2_FILE_FLAG_READ, &h, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("file_system_open rejects null out_file_handle") {
 		char path[] = "/tmp/anything";
 		REQUIRE(duckdb_v2_file_system_open(nullptr, V2Str(path), DUCKDB_V2_FILE_FLAG_READ, nullptr, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("read rejects null file_handle") {
 		char buf[1] = {0};
 		int64_t bytes_read = 0;
-		REQUIRE(duckdb_v2_file_handle_read(nullptr, buf, 1, &bytes_read, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_read(nullptr, buf, 1, &bytes_read, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("write rejects null file_handle") {
 		char buf[1] = {0};
 		int64_t bytes_written = 0;
-		REQUIRE(duckdb_v2_file_handle_write(nullptr, buf, 1, &bytes_written, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_write(nullptr, buf, 1, &bytes_written, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("tell rejects null file_handle") {
 		int64_t pos = 0;
-		REQUIRE(duckdb_v2_file_handle_tell(nullptr, &pos, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_tell(nullptr, &pos, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("size rejects null file_handle") {
 		int64_t sz = 0;
-		REQUIRE(duckdb_v2_file_handle_size(nullptr, &sz, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_size(nullptr, &sz, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("seek rejects null file_handle") {
-		REQUIRE(duckdb_v2_file_handle_seek(nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_seek(nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("sync rejects null file_handle") {
-		REQUIRE(duckdb_v2_file_handle_sync(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_sync(nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("close rejects null file_handle") {
-		REQUIRE(duckdb_v2_file_handle_close(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(duckdb_v2_file_handle_close(nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 	SECTION("destroy with null pointer-to-handle is a no-op") {
 		REQUIRE(duckdb_v2_file_handle_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);

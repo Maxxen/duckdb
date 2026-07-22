@@ -57,7 +57,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_system_get_from_connection:
     summary: Retrieves the file system associated with a DuckDB connection.
     description: |
@@ -76,7 +76,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_system_open:
     summary: Opens a file through the given file system, returning a file handle.
     description: |
@@ -102,7 +102,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   ### File Handle
   file_handle_read:
     summary: Reads bytes from a file handle into a caller-provided buffer.
@@ -130,7 +130,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_handle_write:
     summary: Writes bytes from a caller-provided buffer to a file handle.
     description: |
@@ -158,7 +158,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_handle_tell:
     summary: Retrieves the current read/write position of a file handle.
     description: |
@@ -176,7 +176,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_handle_size:
     summary: Retrieves the total size in bytes of the file backing a file handle.
     description: |
@@ -194,7 +194,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_handle_seek:
     summary: Seeks to a specific byte offset within a file handle.
     description: |
@@ -211,7 +211,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_handle_sync:
     summary: Flushes any buffered writes for a file handle to persistent storage.
     description: |
@@ -225,7 +225,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_handle_close:
     summary: Closes the underlying file of a file handle without destroying the handle.
     description: |
@@ -240,7 +240,7 @@ functions:
         type: error_info
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
-    return_type: API_CALL
+    return_type: ERROR
   file_handle_destroy:
     summary: Destroys a file handle, releasing its resources.
     description: |
@@ -252,4 +252,4 @@ functions:
         type: file_handle
         indirection: 1
         description: The file handle to destroy.
-    return_type: API_CALL
+    return_type: ERROR

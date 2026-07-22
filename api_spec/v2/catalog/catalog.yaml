@@ -46,7 +46,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_description_get_qname:
     summary: Returns the resolved qualified name of the described table.
     description: |
@@ -70,7 +70,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_description_get_schema:
     summary: Returns the described table's columns as an owned schema.
     description: |
@@ -93,7 +93,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_description_column_is_generated:
     summary: Returns whether the column at index is generated.
     description: |
@@ -120,7 +120,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_description_column_has_default:
     summary: Returns whether the column at index has a default value.
     description: |
@@ -148,7 +148,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_description_is_readonly:
     summary: Returns whether the described table's catalog is read-only.
     description: |
@@ -171,7 +171,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   table_description_destroy:
     summary: Destroys a table description handle.
     description: |
@@ -184,4 +184,4 @@ functions:
         type: table_description
         indirection: 1
         description: The description handle to destroy.
-    return_type: API_CALL
+    return_type: ERROR

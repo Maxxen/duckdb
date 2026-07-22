@@ -180,7 +180,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_get_vector_type:
     summary: Returns the internal representation kind (flat / constant / dict).
     description: |
@@ -200,7 +200,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # The view-getter
   # -----------------------------------------------------------------------
@@ -221,7 +221,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Generic vector size
   # -----------------------------------------------------------------------
@@ -242,7 +242,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_set_size:
     summary: Sets the number of elements in the vector.
     description: |
@@ -260,7 +260,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Single-cell value bridge
   # -----------------------------------------------------------------------
@@ -296,7 +296,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_set_value:
     summary: Writes one cell of a FLAT vector from a value.
     description: |
@@ -328,13 +328,13 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Mutable Access
   # -----------------------------------------------------------------------
   vector_get_data_mutable:
     summary: For a FLAT or CONSTANT vector, returns a mutable pointer to the data.
-    description: "Returns ERROR_INVALID_INPUT if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning \nchunk is destroyed; callers must not mutate the vector's storage shape (e.g. by flattening) while using the \npointer.\n"
+    description: "Returns ERROR_INPUT_INVALID if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning \nchunk is destroyed; callers must not mutate the vector's storage shape (e.g. by flattening) while using the \npointer.\n"
     role: getter
     belongs_to: vector
     parameters:
@@ -350,7 +350,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Vector type setup
   # -----------------------------------------------------------------------
@@ -372,7 +372,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_make_constant:
     summary: Turns the vector into a constant vector with the given Value.
     description: |
@@ -380,7 +380,7 @@ functions:
       logical row. Write the value via vector_get_data_mutable (which
       returns a pointer to the single element). For STRUCT vectors the
       type change propagates to all children. The value's logical type
-      must equal the vector's; a mismatch returns ERROR_INVALID_INPUT.
+      must equal the vector's; a mismatch returns ERROR_INPUT_INVALID.
     role: method
     belongs_to: vector
     parameters:
@@ -396,7 +396,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_make_sequence:
     summary: Sets a vector to a SEQUENCE representation.
     description: |
@@ -423,7 +423,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Validity (mutable)
   # -----------------------------------------------------------------------
@@ -456,7 +456,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_flat_get_validity_mutable:
     summary: Returns a mutable pointer to the validity mask of a FLAT vector.
     description: |
@@ -486,7 +486,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_constant_set_valid:
     summary: Sets the validity for a CONSTANT vector.
     description: Either true / false.
@@ -503,7 +503,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # String writing
   #
@@ -514,7 +514,7 @@ functions:
     summary: Borrows a string-backed vector's heap for writing.
     description: |
       Allocates the heap on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM
-      vectors; ERROR_INVALID_INPUT otherwise. This is the single string-ness
+      vectors; ERROR_INPUT_INVALID otherwise. This is the single string-ness
       check; the resulting heap's add calls skip it. Borrowed (do not destroy);
       valid until the vector is flattened, reallocated, or destroyed.
     role: getter
@@ -532,7 +532,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Generic structural accessors for nested kinds
   #
@@ -569,13 +569,13 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   vector_get_child:
     summary: Borrows a child vector by index.
     description: |
       Index convention follows the module docstring. The returned
       child Vector is borrowed; lifetime is the owning chunk's. Returns
-      ERROR_INVALID_INPUT if the vector has no children, or if index
+      ERROR_INPUT_INVALID if the vector has no children, or if index
       is out of range.
     role: getter
     belongs_to: vector
@@ -594,7 +594,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # String-backed kind decoders
   #
@@ -642,4 +642,4 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

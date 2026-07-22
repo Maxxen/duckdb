@@ -422,19 +422,19 @@ TEST_CASE("Stable C++API: Expression walk in the pushdown callback", "[cpp_api]"
 
 					    // Class-mismatch accessors throw INVALID_INPUT.
 					    REQUIRE_THROWS_MATCHES(expr.GetConstantValue(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 					    REQUIRE_THROWS_MATCHES(expr.GetColumnBinding(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 					    // GetReferenceIndex has no reachable happy path here:
 					    // BoundRef exists only after physical planning, which
 					    // this surface never exposes (pushdown trees carry
 					    // BoundColumnRef).
 					    REQUIRE_THROWS_MATCHES(expr.GetReferenceIndex(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 					    REQUIRE_THROWS_MATCHES(column->GetFunctionName(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 					    REQUIRE_THROWS_MATCHES(expr.GetChild(2), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 					    break;
 				    }
 				    case ExpressionType::CompareEqual: { // s = 'x'
@@ -496,16 +496,16 @@ TEST_CASE("Stable C++API: pushdown callback works without bind data", "[cpp_api]
 			    // No SetBindData: the pushdown callback needs none. No
 			    // SetUserData either: GetUserData throws a clear error.
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    input.AddResultColumn("v", LogicalType::BIGINT());
 		    })
 		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<bool>(false); })
 		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    // Unset bind data is a clear error, not a null deref.
 			    REQUIRE_THROWS_MATCHES(input.GetBindData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    // The optimization context is live for the callback duration.
 			    REQUIRE(static_cast<bool>(input.GetContext().GetFileSystem()));
 			    g_nobind_pushdown_ran = input.GetCount() > 0;
@@ -543,7 +543,7 @@ TEST_CASE("Stable C++API: a throw from the pushdown callback surfaces as a query
 		function.SetName("pushdown_throw_fn")
 		    .SetBindCallback([](TableFunction::BindInput &input) { input.AddResultColumn("v", LogicalType::BIGINT()); })
 		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &) {
-			    throw Exception(DUCKDB_V2_ERROR_OUT_OF_RANGE, "synthetic pushdown failure");
+			    throw Exception(DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE, "synthetic pushdown failure");
 		    })
 		    .SetExecCallback([](TableFunction::ExecInput &input) { input.GetResultChunk().GetVector(0).SetSize(0); })
 		    .Register(ctx);
@@ -551,7 +551,7 @@ TEST_CASE("Stable C++API: a throw from the pushdown callback surfaces as a query
 
 	// The guard turns the throw into a callback error; the code round-trips.
 	REQUIRE_THROWS_MATCHES(conn.Execute("SELECT v FROM pushdown_throw_fn() WHERE v = 1").Drain(), Exception,
-	                       HasErrorCode(DUCKDB_V2_ERROR_OUT_OF_RANGE));
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE));
 }
 TEST_CASE("Stable C++API: SetUserData is consumed by Register", "[cpp_api]") {
 	using namespace duckdb_api;
@@ -575,7 +575,7 @@ TEST_CASE("Stable C++API: SetUserData is consumed by Register", "[cpp_api]") {
 		function.SetName("consume_ud_fn2")
 		    .SetBindCallback([](TableFunction::BindInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			    input.AddResultColumn("v", LogicalType::BIGINT());
 		    })
 		    .Register(ctx);

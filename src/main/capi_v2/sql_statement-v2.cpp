@@ -8,9 +8,9 @@
 
 #include <algorithm>
 
-DUCKDB_V2_API_CALL_t duckdb_v2_parse_sql(duckdb_v2_connection_handle conn, const char *sql,
-                                         duckdb_v2_statement_iterator_handle *out_iterator,
-                                         duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_parse_sql(duckdb_v2_connection_handle conn, const char *sql,
+                                    duckdb_v2_statement_iterator_handle *out_iterator,
+                                    duckdb_v2_error_info_handle *err) {
 	if (out_iterator) {
 		*out_iterator = nullptr;
 	}
@@ -33,9 +33,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_parse_sql(duckdb_v2_connection_handle conn, const
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_statement_iterator_next(duckdb_v2_statement_iterator_handle iterator,
-                                                       duckdb_v2_sql_statement_handle *out_statement,
-                                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_statement_iterator_next(duckdb_v2_statement_iterator_handle iterator,
+                                                  duckdb_v2_sql_statement_handle *out_statement,
+                                                  duckdb_v2_error_info_handle *err) {
 	if (out_statement) {
 		*out_statement = nullptr;
 	}
@@ -78,7 +78,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_iterator_next(duckdb_v2_statement_itera
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_sql_statement_destroy(duckdb_v2_sql_statement_handle *statement) {
+DUCKDB_V2_ERROR duckdb_v2_sql_statement_destroy(duckdb_v2_sql_statement_handle *statement) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!statement) {
 			return;
@@ -90,7 +90,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_sql_statement_destroy(duckdb_v2_sql_statement_han
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_statement_iterator_destroy(duckdb_v2_statement_iterator_handle *iterator) {
+DUCKDB_V2_ERROR duckdb_v2_statement_iterator_destroy(duckdb_v2_statement_iterator_handle *iterator) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (!iterator) {
 			return;
@@ -102,11 +102,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_iterator_destroy(duckdb_v2_statement_it
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_statement_bind(duckdb_v2_connection_handle conn,
-                                              duckdb_v2_sql_statement_handle statement,
-                                              duckdb_v2_schema_handle *out_schema,
-                                              duckdb_v2_schema_handle *out_parameters,
-                                              duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_statement_bind(duckdb_v2_connection_handle conn, duckdb_v2_sql_statement_handle statement,
+                                         duckdb_v2_schema_handle *out_schema, duckdb_v2_schema_handle *out_parameters,
+                                         duckdb_v2_error_info_handle *err) {
 	if (out_schema) {
 		*out_schema = nullptr;
 	}
@@ -160,11 +158,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_statement_bind(duckdb_v2_connection_handle conn,
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_statement_add_collection(duckdb_v2_sql_statement_handle statement,
-                                                        duckdb_v2_identifier_t name,
-                                                        duckdb_v2_column_data_collection_handle collection,
-                                                        const duckdb_v2_identifier_t *column_names, idx_t column_count,
-                                                        duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_statement_add_collection(duckdb_v2_sql_statement_handle statement,
+                                                   duckdb_v2_identifier_t name,
+                                                   duckdb_v2_column_data_collection_handle collection,
+                                                   const duckdb_v2_identifier_t *column_names, idx_t column_count,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!statement) {
 			throw duckdb::InvalidInputException("null statement argument to duckdb_v2_statement_add_collection");

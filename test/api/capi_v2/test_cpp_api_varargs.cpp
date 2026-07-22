@@ -100,7 +100,7 @@ TEST_CASE("Stable C++API: LogicalType::ANY and its gates", "[cpp_api]") {
 		ScalarFunction f(ctx);
 		f.SetName("bad_any_return").AddParameter("a", LogicalType::INTEGER()).SetReturnType(LogicalType::ANY());
 		f.SetExecCallback([](ScalarFunction::ExecInput &) {});
-		REQUIRE_THROWS_MATCHES(f.Register(ctx), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(f.Register(ctx), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	});
 }
 
@@ -180,10 +180,10 @@ void ProbeBind(ScalarFunction::BindInput &input) {
 	REQUIRE(input.GetArgumentCount() == 2);
 	REQUIRE(input.GetArgumentType(0).GetId() == TypeId::INTEGER);
 	REQUIRE(input.GetArgumentType(1).GetId() == TypeId::INTEGER);
-	REQUIRE_THROWS_MATCHES(input.FoldArgument(0), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(input.FoldArgument(0), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	REQUIRE(input.FoldArgument(1).AsInteger() == 7);
-	REQUIRE_THROWS_MATCHES(input.GetArgumentType(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
-	REQUIRE_THROWS_MATCHES(input.FoldArgument(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+	REQUIRE_THROWS_MATCHES(input.GetArgumentType(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(input.FoldArgument(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	input.SetArgumentConstant(1, Value::Bigint(9));
 }
 

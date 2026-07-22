@@ -160,7 +160,7 @@ inline duckdb_v2_string V2StringFromHeapBytes(uint8_t *bytes, idx_t len) {
 // Assemble a duckdb_v2_string from raw bytes, using string_heap_allocate for the
 // non-inlined path. Mirrors the C++ StringHeap::Add. `rc` gets the allocate result.
 inline duckdb_v2_string V2MakeString(duckdb_v2_string_heap_handle heap, const char *data, idx_t len,
-                                     DUCKDB_V2_API_CALL_t &rc, duckdb_v2_error_info_handle *err) {
+                                     DUCKDB_V2_ERROR &rc, duckdb_v2_error_info_handle *err) {
 	duckdb_v2_string storage {};
 	rc = DUCKDB_V2_ERROR_NONE;
 	if (len <= DUCKDB_V2_STRING_INLINE_LENGTH) {
@@ -181,8 +181,8 @@ inline duckdb_v2_string V2MakeString(duckdb_v2_string_heap_handle heap, const ch
 
 // Borrow the heap, assemble the value, place it in slot `index`. Mirrors the C++
 // Vector::AssignString; used by the many tests that need one string in a slot.
-inline DUCKDB_V2_API_CALL_t V2VectorAssignString(duckdb_v2_vector_handle vec, idx_t index, const char *data, idx_t len,
-                                                 duckdb_v2_error_info_handle *err) {
+inline DUCKDB_V2_ERROR V2VectorAssignString(duckdb_v2_vector_handle vec, idx_t index, const char *data, idx_t len,
+                                            duckdb_v2_error_info_handle *err) {
 	duckdb_v2_string_heap_handle heap = nullptr;
 	auto rc = duckdb_v2_vector_get_string_heap(vec, &heap, err);
 	if (rc != DUCKDB_V2_ERROR_NONE) {
@@ -248,7 +248,7 @@ inline duckdb_v2_logical_type_handle V2CreateType(duckdb_v2_connection_handle co
 		}
 	}
 	duckdb_v2_logical_type_handle t = nullptr;
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
 		rc = duckdb_v2_logical_type_create(ctx, V2Str(name), names ? name_views.data() : nullptr,
 		                                   values.empty() ? nullptr : values.data(), values.size(), &t, nullptr);
@@ -296,8 +296,8 @@ inline bool RowValid(const duckdb_v2_vector_view &view, idx_t idx) {
 // test never truncates silently; multi-statement semantics have their
 // own iterator tests. An input with no statements propagates as
 // INVALID_INPUT from statement_execute, via the NULL statement handle.
-inline duckdb_v2_error_code_t V2Query(duckdb_v2_connection_handle conn, const char *sql,
-                                      duckdb_v2_result_handle *out_result, duckdb_v2_error_info_handle *err = nullptr) {
+inline DUCKDB_V2_ERROR V2Query(duckdb_v2_connection_handle conn, const char *sql, duckdb_v2_result_handle *out_result,
+                               duckdb_v2_error_info_handle *err = nullptr) {
 	if (out_result) {
 		*out_result = nullptr;
 	}
@@ -353,6 +353,8 @@ inline duckdb_v2_data_chunk_handle V2StepChunk(duckdb_v2_result_handle r) {
 			return nullptr;
 		case DUCKDB_V2_RESULT_STEP_STATUS_WAITING:
 			REQUIRE(duckdb_v2_result_wait(r, nullptr) == DUCKDB_V2_ERROR_NONE);
+			break;
+		default:
 			break;
 		}
 	}
@@ -412,7 +414,7 @@ inline void V2RequireColumn(duckdb_v2_result_handle r, idx_t index, const char *
 // reports INVALID_INPUT.
 inline void V2RequireSchemaDeferred(duckdb_v2_result_handle r) {
 	duckdb_v2_schema_handle schema = nullptr;
-	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_schema(r, &schema, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(schema == nullptr);
 }
 

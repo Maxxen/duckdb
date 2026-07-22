@@ -450,7 +450,7 @@ TEST_CASE("V2: querying with a NULL statement is rejected", "[capi_v2][query_res
 	for (const char *sql : {"", "   ", ";"}) {
 		INFO("sql: '" << sql << "'");
 		duckdb_v2_result_handle r = nullptr;
-		REQUIRE(V2Query(fx.conn, sql, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		REQUIRE(V2Query(fx.conn, sql, &r, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(r == nullptr);
 	}
 }
@@ -472,7 +472,7 @@ TEST_CASE("V2: execution error mid-stream is sticky", "[capi_v2][query_result]")
 	REQUIRE(r != nullptr);
 
 	// Step until the error surfaces; chunks may legitimately arrive first.
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_handle err = nullptr;
 	while (true) {
 		duckdb_v2_data_chunk_handle chunk = reinterpret_cast<duckdb_v2_data_chunk_handle>(uintptr_t(0xdead));
@@ -879,9 +879,9 @@ TEST_CASE("V2: statement_execute null-arg rejection", "[capi_v2][query_result]")
 	// Exercise the real duckdb_v2_str signature. A {NULL, 0} sql is a valid
 	// empty view; the malformed case is a null pointer with a nonzero length.
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(V2Query(nullptr, "SELECT 1", &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(V2Query(fx.conn, nullptr, &r, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(V2Query(fx.conn, "SELECT 1", nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(V2Query(nullptr, "SELECT 1", &r, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2Query(fx.conn, nullptr, &r, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2Query(fx.conn, "SELECT 1", nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: result_destroy is null-safe", "[capi_v2][query_result]") {
@@ -900,36 +900,36 @@ TEST_CASE("V2: result accessors reject null handle and null out-params", "[capi_
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	DUCKDB_V2_RESULT_STEP_STATUS status;
 
-	REQUIRE(duckdb_v2_result_get_result_type(nullptr, &rt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_get_statement_type(nullptr, &st, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_get_schema(nullptr, &schema, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_step(nullptr, &chunk, &status, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_fetch_chunk(nullptr, &chunk, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_wait(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_connection_interrupt(nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_result_type(nullptr, &rt, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_get_statement_type(nullptr, &st, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_get_schema(nullptr, &schema, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_step(nullptr, &chunk, &status, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_fetch_chunk(nullptr, &chunk, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_wait(nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_connection_interrupt(nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	double pct;
 	uint64_t rows, total;
 	duckdb_v2_query_progress_handle progress = nullptr;
-	REQUIRE(duckdb_v2_connection_query_progress(nullptr, &progress, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_query_progress_get_percentage(nullptr, &pct, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_query_progress_get_rows_processed(nullptr, &rows, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_connection_query_progress(nullptr, &progress, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_query_progress_get_percentage(nullptr, &pct, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_query_progress_get_rows_processed(nullptr, &rows, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_query_progress_get_total_rows_to_process(nullptr, &total, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_result_handle r = nullptr;
 	V2Query(fx.conn, "SELECT 1", &r, nullptr);
-	REQUIRE(duckdb_v2_result_get_result_type(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_get_statement_type(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_get_schema(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_step(r, nullptr, &status, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_step(r, &chunk, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_result_fetch_chunk(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_connection_query_progress(fx.conn, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_result_type(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_get_statement_type(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_get_schema(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_step(r, nullptr, &status, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_step(r, &chunk, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_result_fetch_chunk(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_connection_query_progress(fx.conn, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_connection_query_progress(fx.conn, &progress, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_query_progress_get_percentage(progress, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_query_progress_get_rows_processed(progress, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_query_progress_get_percentage(progress, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_query_progress_get_rows_processed(progress, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_query_progress_get_total_rows_to_process(progress, nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_query_progress_destroy(&progress);
 	duckdb_v2_result_destroy(&r);
 }
@@ -948,7 +948,7 @@ TEST_CASE("V2: statement_execute leaves pre-existing err untouched on success", 
 
 	REQUIRE(V2Query(fx.conn, "SELECT 1", &r, &err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(err != nullptr);
-	duckdb_v2_error_code_t code = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR code = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_get_code(err, &code);
 	REQUIRE(code == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	duckdb_v2_error_info_destroy(&err);
@@ -1115,7 +1115,7 @@ TEST_CASE("V2: a sticky execution error frees the connection", "[capi_v2][query_
 
 	duckdb_v2_result_handle live = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT 'oops'::INT FROM range(10) t(i)", &live, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	while (rc == DUCKDB_V2_ERROR_NONE) {
 		duckdb_v2_data_chunk_handle chunk = nullptr;
 		DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
@@ -1220,10 +1220,10 @@ TEST_CASE("V2: result_drain edge and error paths", "[capi_v2][query_result]") {
 	duckdb_v2_result_destroy(&live);
 
 	// Null-arg rejection.
-	REQUIRE(duckdb_v2_result_drain(nullptr, &rows_changed, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_drain(nullptr, &rows_changed, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fx.conn, "SELECT 1", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_result_drain(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_drain(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_result_destroy(&r);
 
 	// Draining released the connection: a fresh query still works.
@@ -1374,7 +1374,7 @@ TEST_CASE("V2: PIVOT expands to a group and streams the pivoted rows", "[capi_v2
 	// Metadata is deferred until the row-producing fragment is prepared.
 	DUCKDB_V2_RESULT_TYPE rt = DUCKDB_V2_RESULT_TYPE_NOTHING;
 	V2RequireSchemaDeferred(r);
-	REQUIRE(duckdb_v2_result_get_result_type(r, &rt, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_result_type(r, &rt, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// Only the pivoted SELECT's rows surface: one row per city.
 	REQUIRE(V2DrainRowCount(r) == 2);
@@ -1472,7 +1472,7 @@ TEST_CASE("V2: an error inside an expanded group is sticky and rolls back", "[ca
 	REQUIRE(V2Query(fx.conn, "ALTER TABLE t ADD COLUMN c INT DEFAULT ((random()::VARCHAR || 'x')::INT)", &r, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_handle err = nullptr;
 	while (rc == DUCKDB_V2_ERROR_NONE) {
 		duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -1623,9 +1623,9 @@ TEST_CASE("V2: result_get_schema null arguments", "[capi_v2][query_result]") {
 	REQUIRE(V2Query(fx.conn, "SELECT 1", &r) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_schema_handle schema = reinterpret_cast<duckdb_v2_schema_handle>(0x1);
-	REQUIRE(duckdb_v2_result_get_schema(nullptr, &schema, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_schema(nullptr, &schema, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(schema == nullptr); // pointer out-param nulled on failure
-	REQUIRE(duckdb_v2_result_get_schema(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_get_schema(r, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_result_destroy(&r);
 }
@@ -1702,14 +1702,14 @@ TEST_CASE("V2: result_render_box rejects null arguments and leaves the result in
 	// out_text NULL: rejected before adoption, so the result is NOT consumed.
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, nullptr, &err) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(r != nullptr); // intact
 	duckdb_v2_error_info_destroy(&err);
 
 	// A NULL result-slot pointer is rejected without a crash.
 	char *text = nullptr;
 	REQUIRE(duckdb_v2_result_render_box(nullptr, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 0, 0, &text, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(text == nullptr);
 
 	// The still-intact result renders normally now.
@@ -1760,7 +1760,7 @@ TEST_CASE("V2: result_render_box validates by-value arguments before consuming t
 		char *text = nullptr;
 		duckdb_v2_error_info_handle err = nullptr;
 		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 5}, 0, 0, &text, &err) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(r != nullptr); // intact
 		REQUIRE(text == nullptr);
 		duckdb_v2_error_info_destroy(&err);
@@ -1773,7 +1773,7 @@ TEST_CASE("V2: result_render_box validates by-value arguments before consuming t
 		REQUIRE(V2Query(fx.conn, "SELECT 1 AS one", &r) == DUCKDB_V2_ERROR_NONE);
 		char *text = nullptr;
 		REQUIRE(duckdb_v2_result_render_box(&r, 0, 0, 0, duckdb_v2_str {nullptr, 0}, 2, 0, &text, nullptr) ==
-		        DUCKDB_V2_ERROR_INVALID_INPUT);
+		        DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(r != nullptr); // intact
 		REQUIRE(text == nullptr);
 		REQUIRE(duckdb_v2_result_destroy(&r) == DUCKDB_V2_ERROR_NONE);

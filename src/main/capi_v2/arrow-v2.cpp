@@ -194,9 +194,9 @@ void ArrowStreamRelease(ArrowArrayStream *stream) {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_API_CALL_t duckdb_v2_result_to_arrow_stream(duckdb_v2_result_handle *result, idx_t batch_size,
-                                                      struct ArrowArrayStream *out_stream,
-                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_result_to_arrow_stream(duckdb_v2_result_handle *result, idx_t batch_size,
+                                                 struct ArrowArrayStream *out_stream,
+                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!result || !*result || !out_stream) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_result_to_arrow_stream");
@@ -263,11 +263,11 @@ DUCKDB_V2_API_CALL_t duckdb_v2_result_to_arrow_stream(duckdb_v2_result_handle *r
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_logical_types_to_arrow_schema(duckdb_v2_context_handle context,
-                                                             const duckdb_v2_logical_type_handle *types,
-                                                             const duckdb_v2_str *names, idx_t count,
-                                                             struct ArrowSchema *out_schema,
-                                                             duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_types_to_arrow_schema(duckdb_v2_context_handle context,
+                                                        const duckdb_v2_logical_type_handle *types,
+                                                        const duckdb_v2_str *names, idx_t count,
+                                                        struct ArrowSchema *out_schema,
+                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context || !out_schema) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_types_to_arrow_schema");
@@ -292,10 +292,8 @@ DUCKDB_V2_API_CALL_t duckdb_v2_logical_types_to_arrow_schema(duckdb_v2_context_h
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_to_arrow_array(duckdb_v2_context_handle context,
-                                                         duckdb_v2_data_chunk_handle chunk,
-                                                         struct ArrowArray *out_array,
-                                                         duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_data_chunk_to_arrow_array(duckdb_v2_context_handle context, duckdb_v2_data_chunk_handle chunk,
+                                                    struct ArrowArray *out_array, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context || !chunk || !out_array) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_data_chunk_to_arrow_array");
@@ -308,10 +306,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_data_chunk_to_arrow_array(duckdb_v2_context_handl
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_create(duckdb_v2_context_handle context,
-                                                            struct ArrowSchema *schema,
-                                                            duckdb_v2_arrow_conversion_plan_handle *out_plan,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_arrow_conversion_plan_create(duckdb_v2_context_handle context, struct ArrowSchema *schema,
+                                                       duckdb_v2_arrow_conversion_plan_handle *out_plan,
+                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context || !schema || !out_plan) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_conversion_plan_create");
@@ -324,10 +321,10 @@ DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_create(duckdb_v2_context_ha
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_arrow_array_to_data_chunk(duckdb_v2_context_handle context, struct ArrowArray *array,
-                                                         duckdb_v2_arrow_conversion_plan_handle plan,
-                                                         duckdb_v2_data_chunk_handle *out_chunk,
-                                                         duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_arrow_array_to_data_chunk(duckdb_v2_context_handle context, struct ArrowArray *array,
+                                                    duckdb_v2_arrow_conversion_plan_handle plan,
+                                                    duckdb_v2_data_chunk_handle *out_chunk,
+                                                    duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context || !array || !plan || !out_chunk) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_array_to_data_chunk");
@@ -401,9 +398,9 @@ DUCKDB_V2_API_CALL_t duckdb_v2_arrow_array_to_data_chunk(duckdb_v2_context_handl
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_get_schema(duckdb_v2_arrow_conversion_plan_handle plan,
-                                                                duckdb_v2_schema_handle *out_schema,
-                                                                duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_arrow_conversion_plan_get_schema(duckdb_v2_arrow_conversion_plan_handle plan,
+                                                           duckdb_v2_schema_handle *out_schema,
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!plan || !out_schema) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_arrow_conversion_plan_get_schema");
@@ -423,7 +420,7 @@ DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_get_schema(duckdb_v2_arrow_
 	});
 }
 
-DUCKDB_V2_API_CALL_t duckdb_v2_arrow_conversion_plan_destroy(duckdb_v2_arrow_conversion_plan_handle *plan) {
+DUCKDB_V2_ERROR duckdb_v2_arrow_conversion_plan_destroy(duckdb_v2_arrow_conversion_plan_handle *plan) {
 	return duckdb::WithErrorHandler(nullptr, [&]() {
 		if (plan && *plan) {
 			delete reinterpret_cast<duckdb::ArrowTableSchema *>(*plan);

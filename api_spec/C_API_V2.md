@@ -185,7 +185,7 @@ path already commits.
 
 ## Error handling
 
-Every fallible V2 function returns a `DUCKDB_V2_API_CALL_t` error code. On success the returned value is `DUCKDB_V2_ERROR_NONE`; on failure it is a non-zero code from `api_spec/v2/common/error_codes.yaml` (or the sentinel `DUCKDB_V2_API_ERROR` for an unspecified internal failure).
+Every fallible V2 function returns a `DUCKDB_V2_ERROR` error code. On success the returned value is `DUCKDB_V2_ERROR_NONE`; on failure it is a non-zero code from `api_spec/v2/common/error_codes.yaml` (or the sentinel `DUCKDB_V2_ERROR_API` for an unspecified internal failure).
 
 Fallible functions also take a trailing `duckdb_v2_error_info_handle *err` out-parameter that, on failure, receives an opaque handle carrying richer detail (currently the message, with room to grow). Destructors are the exception — see below.
 
@@ -202,7 +202,7 @@ Destructors — `duckdb_v2_close`, `duckdb_v2_disconnect`, `duckdb_v2_destroy_en
 
 - They are **null-safe**: a null pointer-to-handle, or a slot already set to `NULL`, is a no-op.
 - On return the handle slot is set to `NULL` to prevent double-free.
-- They still return `DUCKDB_V2_API_CALL_t`, so the return value remains the channel for the rare refusal that is genuinely actionable — e.g. `duckdb_v2_destroy_environment` returns `DUCKDB_V2_ERROR_RESOURCE_IN_USE` (and leaves the handle intact) while databases opened through it are still alive. Without an `err` slot there is no message detail for these cases; the code alone is the contract.
+- They still return `DUCKDB_V2_ERROR`, so the return value remains the channel for the rare refusal that is genuinely actionable — e.g. `duckdb_v2_destroy_environment` returns `DUCKDB_V2_ERROR_RESOURCE_IN_USE` (and leaves the handle intact) while databases opened through it are still alive. Without an `err` slot there is no message detail for these cases; the code alone is the contract.
 
 The message is borrowed and valid until the info is destroyed:
 
@@ -265,8 +265,8 @@ code in `WithExceptionGuard(err, fn)`. Three tiers:
 | thrown | code on slot | class survives? |
 | --- | --- | --- |
 | `duckdb_api::Exception` / subclass | its `GetCode()` | yes, round-trips end to end |
-| other `std::exception` | `DUCKDB_V2_API_ERROR` | no; message kept |
-| anything else | `DUCKDB_V2_API_ERROR` | no; "An unknown error occurred." |
+| other `std::exception` | `DUCKDB_V2_ERROR_API` | no; message kept |
+| anything else | `DUCKDB_V2_ERROR_API` | no; "An unknown error occurred." |
 
 Implementor rule: **throw to fail; throw a typed exception when the class
 matters** (it usually does: it decides what a Python/JS/... consumer catches).

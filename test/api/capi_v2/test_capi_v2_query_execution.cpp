@@ -96,7 +96,7 @@ TEST_CASE("V2: a max_execution_time timeout surfaces as an error, not CANCELLED"
 	// Step until the timeout fires. It must arrive as an error return code, not
 	// as the CANCELLED status. On the buggy code the timeout was conflated with
 	// a consumer cancellation and surfaced as a message-less CANCELLED.
-	duckdb_v2_error_code_t rc = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_error_info_handle err = nullptr;
 	DUCKDB_V2_RESULT_STEP_STATUS status = DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
 	for (int i = 0; i < 1000000; i++) {

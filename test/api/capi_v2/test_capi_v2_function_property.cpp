@@ -63,26 +63,26 @@ TEST_CASE("V2 scalar function properties: round-trip and validation", "[capi_v2]
 		// A value that belongs to a different key is rejected.
 		REQUIRE(duckdb_v2_scalar_function_builder_set_property(builder, DUCKDB_V2_FUNCTION_PROPERTY_STABILITY,
 		                                                       DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL,
-		                                                       err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		                                                       err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		// A value in the key's block but not a defined enumerator is rejected.
 		REQUIRE(duckdb_v2_scalar_function_builder_set_property(builder, DUCKDB_V2_FUNCTION_PROPERTY_STABILITY,
 		                                                       static_cast<DUCKDB_V2_FUNCTION_PROPERTY_VALUE>(0x010005),
-		                                                       err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		                                                       err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		// An aggregate-only key is not valid for a scalar function (set and get).
 		REQUIRE(duckdb_v2_scalar_function_builder_set_property(builder, DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT,
 		                                                       DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_NO,
-		                                                       err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		                                                       err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(duckdb_v2_scalar_function_builder_get_property(builder, DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT,
-		                                                       &value, err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		                                                       &value, err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		// Null-argument guards.
 		REQUIRE(duckdb_v2_scalar_function_builder_set_property(nullptr, DUCKDB_V2_FUNCTION_PROPERTY_STABILITY,
 		                                                       DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_VOLATILE,
-		                                                       err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		                                                       err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(duckdb_v2_scalar_function_builder_get_property(builder, DUCKDB_V2_FUNCTION_PROPERTY_STABILITY, nullptr,
-		                                                       err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		                                                       err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		REQUIRE(duckdb_v2_scalar_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
 	});
@@ -118,7 +118,7 @@ TEST_CASE("V2 aggregate function properties: common and aggregate keys", "[capi_
 		// Cross-key value mismatch is still rejected.
 		REQUIRE(duckdb_v2_aggregate_function_builder_set_property(
 		            builder, DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT,
-		            DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO, err) == DUCKDB_V2_ERROR_INVALID_INPUT);
+		            DUCKDB_V2_FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO, err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
 	});

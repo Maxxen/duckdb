@@ -225,7 +225,7 @@ TEST_CASE("Stable C++API: AssignString rejects misuse", "[cpp_api]") {
 			DataChunk chunk(ctx, types);
 			auto vec = chunk.GetVector(0);
 			vec.SetSize(1);
-			REQUIRE_THROWS_MATCHES(vec.AssignString(0, "x"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			REQUIRE_THROWS_MATCHES(vec.AssignString(0, "x"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 		});
 	}
 
@@ -240,7 +240,7 @@ TEST_CASE("Stable C++API: AssignString rejects misuse", "[cpp_api]") {
 			DataChunk chunk(ctx, types);
 			auto vec = chunk.GetVector(0);
 			vec.MakeConstant(Value::Varchar("const"), 2);
-			REQUIRE_THROWS_MATCHES(vec.AssignString(1, "x"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+			REQUIRE_THROWS_MATCHES(vec.AssignString(1, "x"), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 			REQUIRE_NOTHROW(vec.AssignString(0, "ok"));
 		});
 	}
@@ -565,16 +565,16 @@ TEST_CASE("Stable C++API: vector read surface rejects misuse", "[cpp_api]") {
 		auto seq = chunk.GetVector(0);
 		seq.MakeSequence(0, 1, 4);
 		REQUIRE(seq.GetVectorType() == VectorType::Other);
-		REQUIRE_THROWS_MATCHES(seq.GetView(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(seq.GetView(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 		// GetValidityMutable is FLAT-only.
 		auto con = chunk.GetVector(1);
 		con.MakeConstant(Value::Bigint(1), 2);
-		REQUIRE_THROWS_MATCHES(con.GetValidityMutable(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(con.GetValidityMutable(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 		// SetConstantValid is CONSTANT-only.
 		seq.Flatten();
-		REQUIRE_THROWS_MATCHES(seq.SetConstantValid(true), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(seq.SetConstantValid(true), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	});
 }
 
@@ -612,7 +612,7 @@ TEST_CASE("Stable C++API: Vector SetNull recurses into nested children", "[cpp_a
 		REQUIRE(score_vec.GetView().Data<double>()[2] == 2.0);
 
 		// FLAT-only and bounds-checked, matching the C contract.
-		REQUIRE_THROWS_MATCHES(vec.SetNull(3), Exception, HasErrorCode(DUCKDB_V2_ERROR_INVALID_INPUT));
+		REQUIRE_THROWS_MATCHES(vec.SetNull(3), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	});
 }
 

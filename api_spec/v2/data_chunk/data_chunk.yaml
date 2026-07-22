@@ -49,7 +49,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   # -----------------------------------------------------------------------
   # Chunk-level accessors
   # -----------------------------------------------------------------------
@@ -64,7 +64,7 @@ functions:
       chunk:
         type: data_chunk
         indirection: 1
-    return_type: API_CALL
+    return_type: ERROR
   data_chunk_get_size:
     summary: Returns the row count of a data chunk.
     role: getter
@@ -81,7 +81,7 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   data_chunk_get_vector_count:
     summary: Returns the number of vectors in a data chunk.
     description: Equals the column count of the producing result.
@@ -99,13 +99,13 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR
   data_chunk_get_vector:
     summary: Borrows the vector at the given index in a data chunk.
     description: |
       Returns a borrowed vector handle valid until the chunk is destroyed.
       Do not call destroy_* on it. Out-of-range index returns
-      ERROR_INVALID_INPUT.
+      ERROR_INPUT_INVALID.
     role: getter
     belongs_to: data_chunk
     parameters:
@@ -124,4 +124,4 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: API_CALL
+    return_type: ERROR

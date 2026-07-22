@@ -33,7 +33,7 @@ using CtxBody = std::function<void(duckdb_v2_context_handle, duckdb_v2_error_inf
 // Runs `body` with an active context + transaction on `conn`. Returns the
 // connection_execute_with_context return code; `body` stashes its own
 // per-call codes/outputs for the caller to assert after this returns.
-duckdb_v2_error_code_t V2RunWithContext(duckdb_v2_connection_handle conn, CtxBody body) {
+DUCKDB_V2_ERROR V2RunWithContext(duckdb_v2_connection_handle conn, CtxBody body) {
 	duckdb_v2_error_info_handle err = nullptr;
 	auto trampoline = [](duckdb_v2_context_handle ctx, void *ud, duckdb_v2_error_info_handle *e) {
 		(*static_cast<CtxBody *>(ud))(ctx, e);
@@ -177,8 +177,8 @@ TEST_CASE("V2 arrow: flat round-trip preserves values", "[capi_v2][arrow]") {
 	ArrowArray array {};
 	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
 	duckdb_v2_data_chunk_handle dst = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_array = DUCKDB_V2_API_ERROR;
-	duckdb_v2_error_code_t c_conv = DUCKDB_V2_API_ERROR, c_chunk = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
+	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
 
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, COLS, &schema, e);
@@ -252,8 +252,8 @@ TEST_CASE("V2 arrow: nested round-trip preserves structure", "[capi_v2][arrow]")
 	ArrowArray array {};
 	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
 	duckdb_v2_data_chunk_handle dst = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_array = DUCKDB_V2_API_ERROR;
-	duckdb_v2_error_code_t c_conv = DUCKDB_V2_API_ERROR, c_chunk = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
+	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
 
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, COLS, &schema, e);
@@ -539,7 +539,7 @@ TEST_CASE("V2 arrow: importing an oversized array yields one chunk", "[capi_v2][
 
 	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
 	duckdb_v2_data_chunk_handle dst = nullptr;
-	duckdb_v2_error_code_t c_conv = DUCKDB_V2_API_ERROR, c_chunk = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
 	auto rc = V2RunWithContext(conn2, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
 		c_chunk = duckdb_v2_arrow_array_to_data_chunk(ctx, &array, plan, &dst, e);
@@ -586,8 +586,8 @@ TEST_CASE("V2 arrow: NULL values survive the round-trip", "[capi_v2][arrow]") {
 	ArrowArray array {};
 	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
 	duckdb_v2_data_chunk_handle dst = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_array = DUCKDB_V2_API_ERROR;
-	duckdb_v2_error_code_t c_conv = DUCKDB_V2_API_ERROR, c_chunk = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
+	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
 
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, &type, &name, 1, &schema, e);
@@ -641,7 +641,7 @@ TEST_CASE("V2 arrow: ENUM schema round-trips both directions", "[capi_v2][arrow]
 
 	ArrowSchema schema {};
 	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_conv = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API;
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, &type, &name, 1, &schema, e);
 		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
@@ -711,8 +711,8 @@ TEST_CASE("V2 arrow: array/schema layout mismatch is rejected", "[capi_v2][arrow
 	ArrowArray array1 {};
 	duckdb_v2_arrow_conversion_plan_handle conv2 = nullptr;
 	duckdb_v2_data_chunk_handle dst = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_conv = DUCKDB_V2_API_ERROR;
-	duckdb_v2_error_code_t c_array = DUCKDB_V2_API_ERROR, c_mismatch = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API;
+	DUCKDB_V2_ERROR c_array = DUCKDB_V2_ERROR_API, c_mismatch = DUCKDB_V2_ERROR_NONE;
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, 2, &schema2, e);
 		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema2, &conv2, e);
@@ -724,7 +724,7 @@ TEST_CASE("V2 arrow: array/schema layout mismatch is rejected", "[capi_v2][arrow
 	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(c_array == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_mismatch == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(c_mismatch == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(dst == nullptr);
 
 	// The mismatch is detected before ownership transfer, so array1 is intact.
@@ -822,8 +822,8 @@ TEST_CASE("V2 arrow: multi-column import with a leading extension-cast column", 
 	ArrowArray array {};
 	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
 	duckdb_v2_data_chunk_handle dst = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_array = DUCKDB_V2_API_ERROR;
-	duckdb_v2_error_code_t c_conv = DUCKDB_V2_API_ERROR, c_chunk = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
+	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, 2, &schema, e);
 		c_array = duckdb_v2_data_chunk_to_arrow_array(ctx, src, &array, e);
@@ -971,7 +971,7 @@ TEST_CASE("V2 arrow: a 0-column import yields an empty chunk", "[capi_v2][arrow]
 	ArrowSchema schema {};
 	duckdb_v2_arrow_conversion_plan_handle conv = nullptr;
 	duckdb_v2_data_chunk_handle dst = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_conv = DUCKDB_V2_API_ERROR, c_chunk = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, nullptr, nullptr, 0, &schema, e);
 		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &conv, e);
@@ -1018,11 +1018,11 @@ TEST_CASE("V2 arrow: malformed import arrays are rejected", "[capi_v2][arrow]") 
 	ArrowSchema int_schema {}, enum_schema {};
 	duckdb_v2_arrow_conversion_plan_handle int_conv = nullptr, enum_conv = nullptr;
 	duckdb_v2_str int_name = V2Str("n"), enum_name = V2Str("m");
-	duckdb_v2_error_code_t c_int_s = DUCKDB_V2_API_ERROR, c_int_c = DUCKDB_V2_API_ERROR;
-	duckdb_v2_error_code_t c_enum_s = DUCKDB_V2_API_ERROR, c_enum_c = DUCKDB_V2_API_ERROR;
-	duckdb_v2_error_code_t c_null_children = DUCKDB_V2_ERROR_NONE, c_null_child = DUCKDB_V2_ERROR_NONE;
-	duckdb_v2_error_code_t c_released = DUCKDB_V2_ERROR_NONE, c_length = DUCKDB_V2_ERROR_NONE;
-	duckdb_v2_error_code_t c_dict = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR c_int_s = DUCKDB_V2_ERROR_API, c_int_c = DUCKDB_V2_ERROR_API;
+	DUCKDB_V2_ERROR c_enum_s = DUCKDB_V2_ERROR_API, c_enum_c = DUCKDB_V2_ERROR_API;
+	DUCKDB_V2_ERROR c_null_children = DUCKDB_V2_ERROR_NONE, c_null_child = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR c_released = DUCKDB_V2_ERROR_NONE, c_length = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR c_dict = DUCKDB_V2_ERROR_NONE;
 
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_int_s = duckdb_v2_logical_types_to_arrow_schema(ctx, &int_type, &int_name, 1, &int_schema, e);
@@ -1092,11 +1092,11 @@ TEST_CASE("V2 arrow: malformed import arrays are rejected", "[capi_v2][arrow]") 
 	REQUIRE(c_int_c == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(c_enum_s == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(c_enum_c == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_null_children == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(c_null_child == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(c_released == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(c_length == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(c_dict == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(c_null_children == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(c_null_child == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(c_released == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(c_length == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(c_dict == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	if (int_schema.release) {
 		int_schema.release(&int_schema);
@@ -1125,20 +1125,20 @@ TEST_CASE("V2 arrow: error paths reject invalid arguments", "[capi_v2][arrow]") 
 
 	// Null context.
 	REQUIRE(duckdb_v2_logical_types_to_arrow_schema(nullptr, nullptr, nullptr, 0, &schema, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(duckdb_v2_data_chunk_to_arrow_array(nullptr, nullptr, &array, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_data_chunk_to_arrow_array(nullptr, nullptr, &array, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_arrow_conversion_plan_create(nullptr, &schema, nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_INVALID_INPUT);
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// Null result to the stream exporter; the slot stays null.
-	REQUIRE(duckdb_v2_result_to_arrow_stream(nullptr, 0, &stream, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_to_arrow_stream(nullptr, 0, &stream, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_result_handle null_result = nullptr;
-	REQUIRE(duckdb_v2_result_to_arrow_stream(&null_result, 0, &stream, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_result_to_arrow_stream(&null_result, 0, &stream, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// Import with a null/empty conversion plan and null array.
 	duckdb_v2_data_chunk_handle dst = nullptr;
 	duckdb_v2_arrow_conversion_plan_handle empty = nullptr;
-	duckdb_v2_error_code_t c_null_array = DUCKDB_V2_ERROR_NONE, c_null_conv = DUCKDB_V2_ERROR_NONE;
+	DUCKDB_V2_ERROR c_null_array = DUCKDB_V2_ERROR_NONE, c_null_conv = DUCKDB_V2_ERROR_NONE;
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_null_array = duckdb_v2_arrow_array_to_data_chunk(ctx, nullptr, empty, &dst, e);
 		ArrowArray dummy {};
@@ -1147,8 +1147,8 @@ TEST_CASE("V2 arrow: error paths reject invalid arguments", "[capi_v2][arrow]") 
 	// The callback itself does not fail; the conversions report INVALID_INPUT
 	// on the err slot, which the bridge surfaces as a callback error.
 	(void)rc;
-	REQUIRE(c_null_array == DUCKDB_V2_ERROR_INVALID_INPUT);
-	REQUIRE(c_null_conv == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(c_null_array == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(c_null_conv == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// Destroy is null-safe.
 	REQUIRE(duckdb_v2_arrow_conversion_plan_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1180,7 +1180,7 @@ TEST_CASE("V2 arrow: conversion plan exposes names and logical types", "[capi_v2
 	ArrowSchema schema {};
 	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
 	duckdb_v2_schema_handle out_schema = nullptr;
-	duckdb_v2_error_code_t c_schema = DUCKDB_V2_API_ERROR, c_conv = DUCKDB_V2_API_ERROR, c_get = DUCKDB_V2_API_ERROR;
+	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API, c_get = DUCKDB_V2_ERROR_API;
 
 	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
 		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, COLS, &schema, e);
@@ -1213,9 +1213,9 @@ TEST_CASE("V2 arrow: conversion plan exposes names and logical types", "[capi_v2
 
 	// Null args are rejected.
 	duckdb_v2_schema_handle misuse = nullptr;
-	REQUIRE(duckdb_v2_arrow_conversion_plan_get_schema(nullptr, &misuse, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_arrow_conversion_plan_get_schema(nullptr, &misuse, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(misuse == nullptr);
-	REQUIRE(duckdb_v2_arrow_conversion_plan_get_schema(plan, nullptr, nullptr) == DUCKDB_V2_ERROR_INVALID_INPUT);
+	REQUIRE(duckdb_v2_arrow_conversion_plan_get_schema(plan, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_schema_destroy(&out_schema);
 	REQUIRE(out_schema == nullptr);
