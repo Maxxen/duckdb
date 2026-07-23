@@ -147,8 +147,8 @@ struct AggregateFunctionV2 {
 		return std::move(result);
 	}
 
-	static auto SizeCallback(const BoundAggregateFunction &function) -> idx_t {
-		const auto &info = function.GetExtraFunctionInfo().Cast<AggregateFunctionExtraDataV2>();
+	static auto SizeCallback(AggregateStateInput &input) -> idx_t {
+		const auto &info = input.function.GetExtraFunctionInfo().Cast<AggregateFunctionExtraDataV2>();
 
 		D_ASSERT(info.size_cb);
 
@@ -162,18 +162,21 @@ struct AggregateFunctionV2 {
 		return cb_info.out_size;
 	}
 
-	static auto InitCallback(const BoundAggregateFunction &function, data_ptr_t state) -> void {
-		const auto &info = function.GetExtraFunctionInfo().Cast<AggregateFunctionExtraDataV2>();
+	static auto InitCallback(AggregateStateInput &input, data_ptr_t *states, idx_t count) -> void {
+		const auto &info = input.function.GetExtraFunctionInfo().Cast<AggregateFunctionExtraDataV2>();
 
 		D_ASSERT(info.init_cb);
 
-		AggregateFunctionInitInfoV2 cb_info;
-		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
-		cb_info.state = state;
+		// The C init callback is single-state; drive it once per requested state.
+		for (idx_t i = 0; i < count; i++) {
+			AggregateFunctionInitInfoV2 cb_info;
+			cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
+			cb_info.state = states[i];
 
-		auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_init_info_handle>(&cb_info);
-		InvokeWithErrorSlot<InvalidInputException>(
-		    [&](duckdb_v2_error_info_handle *err) { info.init_cb(info_handle, err); });
+			auto info_handle = reinterpret_cast<duckdb_v2_aggregate_function_init_info_handle>(&cb_info);
+			InvokeWithErrorSlot<InvalidInputException>(
+			    [&](duckdb_v2_error_info_handle *err) { info.init_cb(info_handle, err); });
+		}
 	}
 
 	static auto UpdateCallback(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count, Vector &state,
