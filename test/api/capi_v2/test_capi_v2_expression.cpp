@@ -28,7 +28,7 @@
 //   comparison   BoundComparisonExpression::Create  class BOUND_FUNCTION
 //   operator     BoundOperatorExpression            class BOUND_OPERATOR
 //   conjunction  BoundConjunctionExpression         class BOUND_CONJUNCTION
-//   cast         BoundCastExpression                class BOUND_CAST
+//   cast         BoundCastExpression                class BOUND_FUNCTION
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -74,7 +74,7 @@ TEST_CASE("V2 expression: get_class across all fixtures", "[capi_v2][expression]
 	    {AsExpr(*cmp), DUCKDB_V2_EXPRESSION_CLASS_BOUND_FUNCTION},
 	    {AsExpr(*op), DUCKDB_V2_EXPRESSION_CLASS_BOUND_OPERATOR},
 	    {AsExpr(*conj), DUCKDB_V2_EXPRESSION_CLASS_BOUND_CONJUNCTION},
-	    {AsExpr(*cast), DUCKDB_V2_EXPRESSION_CLASS_BOUND_CAST},
+	    {AsExpr(*cast), DUCKDB_V2_EXPRESSION_CLASS_BOUND_FUNCTION},
 	};
 
 	for (auto &c : cases) {
@@ -425,11 +425,19 @@ TEST_CASE("V2 expression: get_function_name on a BOUND_FUNCTION", "[capi_v2][exp
 	duckdb_v2_str name = {nullptr, 0};
 	REQUIRE(duckdb_v2_expression_get_function_name(AsExpr(*cmp), &name, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(name == "=");
+
+	// A cast is a BOUND_FUNCTION too (the __cast scalar function).
+	auto cast = duckdb::BoundCastExpression::AddDefaultCastToType(
+	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0),
+	    duckdb::LogicalType::BIGINT);
+	duckdb_v2_str cast_name = {nullptr, 0};
+	REQUIRE(duckdb_v2_expression_get_function_name(AsExpr(*cast), &cast_name, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(cast_name == "__cast");
 }
 
 TEST_CASE("V2 expression: get_function_name errors on non-function classes", "[capi_v2][expression]") {
-	// Only BOUND_FUNCTION has a registered name. Operator / conjunction / cast
-	// are NOT functions here (their "name" would be a synthesized stringized
+	// Only BOUND_FUNCTION has a registered name. Operator / conjunction are
+	// NOT functions here (their "name" would be a synthesized stringized
 	// enum), so they error and push the caller to get_type. Leaves error too.
 	auto ref = duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0);
 	auto con = duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::INTEGER(10));
@@ -441,11 +449,8 @@ TEST_CASE("V2 expression: get_function_name errors on non-function classes", "[c
 	    duckdb::ExpressionType::CONJUNCTION_AND,
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::BOOLEAN(true)),
 	    duckdb::make_uniq<duckdb::BoundConstantExpression>(duckdb::Value::BOOLEAN(false)));
-	auto cast = duckdb::BoundCastExpression::AddDefaultCastToType(
-	    duckdb::make_uniq<duckdb::BoundReferenceExpression>(duckdb::LogicalType::INTEGER, 0),
-	    duckdb::LogicalType::BIGINT);
 
-	duckdb_v2_expression_handle cases[] = {AsExpr(*ref), AsExpr(*con), AsExpr(*op), AsExpr(*conj), AsExpr(*cast)};
+	duckdb_v2_expression_handle cases[] = {AsExpr(*ref), AsExpr(*con), AsExpr(*op), AsExpr(*conj)};
 	for (auto expr : cases) {
 		duckdb_v2_str name = {reinterpret_cast<const char *>(0x1), 99};
 		REQUIRE(duckdb_v2_expression_get_function_name(expr, &name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);

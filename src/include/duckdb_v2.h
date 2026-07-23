@@ -1615,7 +1615,8 @@ typedef enum DUCKDB_V2_EXPRESSION_CLASS {
 	DUCKDB_V2_EXPRESSION_CLASS_TYPE = 21,
 	DUCKDB_V2_EXPRESSION_CLASS_BOUND_AGGREGATE = 25,
 	DUCKDB_V2_EXPRESSION_CLASS_BOUND_CASE = 26,
-	DUCKDB_V2_EXPRESSION_CLASS_BOUND_CAST = 27,
+	/* Legacy; casts are now BOUND_FUNCTION. */
+	DUCKDB_V2_EXPRESSION_CLASS_LEGACY_BOUND_CAST = 27,
 	DUCKDB_V2_EXPRESSION_CLASS_BOUND_COLUMN_REF = 28,
 	/* Legacy — comparisons are now BOUND_FUNCTION. */
 	DUCKDB_V2_EXPRESSION_CLASS_LEGACY_BOUND_COMPARISON = 29,
@@ -1779,9 +1780,9 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_expression_get_return_type(duckdb_v2_expr
                                                                   duckdb_v2_error_info_handle *err);
 /*!
 * Returns the number of child expressions.
-* Total over every bound class that has children. Leaves (BOUND_CONSTANT, BOUND_REF) report 0, BOUND_CAST reports 1,
-and nested nodes report their full fan-out (including hidden children such as a CASE's when/then/else or an
-aggregate's filter and order keys). Never fails on bound classes.
+* Total over every bound class that has children. Leaves (BOUND_CONSTANT, BOUND_REF) report 0, a cast (a single-argument
+BOUND_FUNCTION) reports 1, and nested nodes report their full fan-out (including hidden children such as a CASE's
+when/then/else or an aggregate's filter and order keys). Never fails on bound classes.
 
 * @param expression The expression to inspect.
 * @param out_count Receives the child count.

@@ -103,8 +103,9 @@ enums:
         value: 25
       EXPRESSION_CLASS_BOUND_CASE:
         value: 26
-      EXPRESSION_CLASS_BOUND_CAST:
+      EXPRESSION_CLASS_LEGACY_BOUND_CAST:
         value: 27
+        description: Legacy; casts are now BOUND_FUNCTION.
       EXPRESSION_CLASS_BOUND_COLUMN_REF:
         value: 28
       EXPRESSION_CLASS_LEGACY_BOUND_COMPARISON:
@@ -378,7 +379,7 @@ functions:
   expression_get_child_count:
     summary: Returns the number of child expressions.
     description: |
-      Total over every bound class that has children. Leaves (BOUND_CONSTANT, BOUND_REF) report 0, BOUND_CAST reports 1,
+      Total over every bound class that has children. Leaves (BOUND_CONSTANT, BOUND_REF) report 0, a cast (a single-argument BOUND_FUNCTION) reports 1,
       and nested nodes report their full fan-out (including hidden children such as a CASE's when/then/else or an
       aggregate's filter and order keys). Never fails on bound classes.
     role: getter
