@@ -501,17 +501,16 @@ typedef void (*duckdb_v2_cast_function_exec_callback_fn)(duckdb_v2_cast_function
 /*!
 * Creates a new cast function builder.
 * Creates a new cast function builder that can be configured with the various `cast_function_builder_set_*` functions
-and registered with `cast_function_builder_register`. On success, returns a handle to the new builder. The builder is
-owned by the caller and must be destroyed with `cast_function_builder_destroy` when no longer needed.
+and registered with `cast_function_builder_register_with_connection` or `cast_function_builder_register_with_context`.
+On success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with
+`cast_function_builder_destroy` when no longer needed.
 
-* @param context The DuckDB context in which the cast function will be created.
 * @param out On success, receives the newly created cast function builder. The caller owns the builder and must destroy
 it with `cast_function_builder_destroy`.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_create(duckdb_v2_context_handle context,
-                                                                    duckdb_v2_cast_function_builder_handle *out,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_create(duckdb_v2_cast_function_builder_handle *out,
                                                                     duckdb_v2_error_info_handle *err);
 /*!
 * Sets the source type of a cast function.
@@ -586,22 +585,38 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_set_user_data(duckd
                                                                            duckdb_v2_opaque data,
                                                                            duckdb_v2_error_info_handle *err);
 /*!
-* Registers a cast function on a database via the current context, making the cast available in all subsequent queries
-to that database.
-* This function registers a fully configured cast function builder with a database, making the cast available for use in
-SQL queries (and for implicit casting, depending on the implicit cast cost). The function builder must have its source
-type, target type, and exec callback set before registration; otherwise, registration will fail with an error. DuckDB
-makes an internal copy of the configured function and its properties during registration, so the caller retains
-ownership of the builder and can safely destroy or modify it after registration without affecting the registered cast.
+* Registers a cast function on a connection, making the cast available in all subsequent queries to that database.
+* This function registers a fully configured cast function builder with the connection's database, making the cast
+available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). The registration runs
+in its own transaction on the connection's context. The function builder must have its source type, target type, and
+exec callback set before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of
+the configured function and its properties during registration, so the caller retains ownership of the builder and can
+safely destroy or modify it after registration without affecting the registered cast.
+
+* @param conn The connection whose database to register the cast function on.
+* @param func The cast function to register.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_connection(
+    duckdb_v2_connection_handle conn, duckdb_v2_cast_function_builder_handle func, duckdb_v2_error_info_handle *err);
+/*!
+* Registers a cast function on a context, making the cast available in all subsequent queries to that database.
+* This function registers a fully configured cast function builder with the context's database, making the cast
+available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). Use this from inside a
+callback or extension where a context is already in hand; it registers within the context's active transaction. The
+function builder must have its source type, target type, and exec callback set before registration; otherwise,
+registration will fail with an error. DuckDB makes an internal copy of the configured function and its properties during
+registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration
+without affecting the registered cast.
 
 * @param context The DuckDB context in which to register the cast function.
 * @param func The cast function to register.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register(duckdb_v2_context_handle context,
-                                                                      duckdb_v2_cast_function_builder_handle func,
-                                                                      duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_context(
+    duckdb_v2_context_handle context, duckdb_v2_cast_function_builder_handle func, duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a cast function builder, releasing its resources.
 * This function destroys a cast function builder that was created with `cast_function_builder_create`, releasing any
@@ -719,9 +734,28 @@ typedef struct _duckdb_v2_column_data_collection_append_state {
 
 /* --- Functions for column_data_collection --- */
 /*!
-* Creates an empty column data collection.
-* Allocates a new, empty column data collection. The collection starts with no chunks and is ready to have chunks
-appended to it. Caller owns the result and must destroy it via column_data_collection_destroy.
+* Creates an empty column data collection from a connection.
+* Allocates a new, empty column data collection, drawing its buffer allocator from the connection's context. The
+collection starts with no chunks and is ready to have chunks appended to it. Caller owns the result and must destroy it
+via column_data_collection_destroy. Appending is not transactional, so no active transaction is required.
+
+* @param conn The connection whose context supplies the collection's allocator.
+* @param types_array Pointer to an array of logical_type handles, one per column. This defines the schema for the chunks
+that will be stored in the collection. All chunks appended to this collection must have vectors that conform to these
+types.
+* @param types_count Number of elements in the types_array.
+* @param out_collection Receives the new collection handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_column_data_collection_create_with_connection(
+    duckdb_v2_connection_handle conn, const duckdb_v2_logical_type_handle *types_array, idx_t types_count,
+    duckdb_v2_column_data_collection_handle *out_collection, duckdb_v2_error_info_handle *err);
+/*!
+* Creates an empty column data collection from a context.
+* Allocates a new, empty column data collection, drawing its buffer allocator from the context. Use this from inside a
+callback or extension where a context is already in hand. The collection starts with no chunks and is ready to have
+chunks appended to it. Caller owns the result and must destroy it via column_data_collection_destroy.
 
 * @param context The context to create the collection within.
 * @param types_array Pointer to an array of logical_type handles, one per column. This defines the schema for the chunks
@@ -732,7 +766,7 @@ types.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_column_data_collection_create(
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_column_data_collection_create_with_context(
     duckdb_v2_context_handle context, const duckdb_v2_logical_type_handle *types_array, idx_t types_count,
     duckdb_v2_column_data_collection_handle *out_collection, duckdb_v2_error_info_handle *err);
 /*!
@@ -1148,16 +1182,15 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_with_alias(duckdb_v2_
 /*!
 * Creates a new custom type builder.
 * Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and
-registered with `custom_type_builder_register`. On success, returns a handle to the new builder. The builder is owned by
-the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.
+registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_context`. On
+success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with
+`custom_type_builder_destroy` when no longer needed.
 
-* @param context The context in which to create the custom type builder.
 * @param out_builder The created custom type builder.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_create(duckdb_v2_context_handle context,
-                                                                  duckdb_v2_custom_type_builder_handle *out_builder,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_create(duckdb_v2_custom_type_builder_handle *out_builder,
                                                                   duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a custom type builder, releasing its resources.
@@ -1171,9 +1204,26 @@ calling it with a null pointer is a no-op. The handle is set to null on return t
 */
 DUCKDB_C_API void duckdb_v2_custom_type_builder_destroy(duckdb_v2_custom_type_builder_handle *builder);
 /*!
-* Registers a custom type with a database, making the type available for use in queries.
-* This function registers a fully configured custom type builder with a database, making the type available for use in
-SQL queries executed on that database (referenced by its name). The builder must have both its name and base type set
+* Registers a custom type on a connection, making the type available for use in queries.
+* This function registers a fully configured custom type builder with the connection's database, making the type
+available for use in SQL queries executed on that database (referenced by its name). The registration runs in its own
+transaction on the connection's context. The builder must have both its name and base type set before registration;
+otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured type during
+registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration
+without affecting the registered type.
+
+* @param conn The connection whose database to register the custom type on.
+* @param builder The custom type builder to register.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_connection(
+    duckdb_v2_connection_handle conn, duckdb_v2_custom_type_builder_handle builder, duckdb_v2_error_info_handle *err);
+/*!
+* Registers a custom type on a context, making the type available for use in queries.
+* This function registers a fully configured custom type builder with the context's database, making the type available
+for use in SQL queries (referenced by its name). Use this from inside a callback or extension where a context is already
+in hand; it registers within the context's active transaction. The builder must have both its name and base type set
 before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured
 type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after
 registration without affecting the registered type.
@@ -1183,9 +1233,8 @@ registration without affecting the registered type.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register(duckdb_v2_context_handle context,
-                                                                    duckdb_v2_custom_type_builder_handle builder,
-                                                                    duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_context(
+    duckdb_v2_context_handle context, duckdb_v2_custom_type_builder_handle builder, duckdb_v2_error_info_handle *err);
 /*!
 * Sets the name of a custom type.
 * The library makes an internal copy of the provided name and does not take ownership.
@@ -2300,13 +2349,11 @@ typedef void (*duckdb_v2_log_callback_fn)(void *user_data, int64_t timestamp, DU
 /*!
  * Creates a new log storage builder.
  * Initializes and returns a new log storage builder handle for configuring log storage mechanisms.
- * @param context The context to create the log storage builder in.
  * @param out_builder Output parameter to receive the newly created log storage builder handle.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_create(duckdb_v2_context_handle context,
-                                                                  duckdb_v2_log_storage_builder_handle *out_builder,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_create(duckdb_v2_log_storage_builder_handle *out_builder,
                                                                   duckdb_v2_error_info_handle *err);
 /*!
  * Sets the name of the log storage builder.
@@ -2342,17 +2389,28 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_set_user_data(duckdb_
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_set_log_callback(
     duckdb_v2_log_storage_builder_handle builder, duckdb_v2_log_callback_fn callback, duckdb_v2_error_info_handle *err);
 /*!
- * Registers the log storage builder with the logging system.
- * Finalizes the configuration of the log storage builder and registers it so that it can be used by connections or
- * contexts to emit log messages.
- * @param context The context to register the log storage builder with.
+ * Registers the log storage builder with the logging system on a database.
+ * Finalizes the configuration of the log storage builder and registers it on the database so that it can be used by
+ * connections or contexts to emit log messages.
+ * @param db The database to register the log storage builder with.
  * @param builder The log storage builder handle to register.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register(duckdb_v2_context_handle context,
-                                                                    duckdb_v2_log_storage_builder_handle builder,
-                                                                    duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_database(
+    duckdb_v2_database_handle db, duckdb_v2_log_storage_builder_handle builder, duckdb_v2_error_info_handle *err);
+/*!
+ * Registers the log storage builder with the logging system on a context's database.
+ * Finalizes the configuration of the log storage builder and registers it on the context's database so that it can be
+ * used by connections or contexts to emit log messages. Use this from inside a callback or extension where a context is
+ * already in hand.
+ * @param context The context whose database to register the log storage builder with.
+ * @param builder The log storage builder handle to register.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_context(
+    duckdb_v2_context_handle context, duckdb_v2_log_storage_builder_handle builder, duckdb_v2_error_info_handle *err);
 /*!
  * Destroys a log storage builder.
  * Cleans up resources associated with the log storage builder handle.
@@ -2517,12 +2575,12 @@ type; the name is not preserved as an alias. Names are
 case-insensitive. Parse and bind errors surface from the call.
 
 Runs in the caller's context scope: a context handle arrives with
-the context lock held and a transaction active
-(connection_execute_with_context, function bind callbacks, custom
-type registration). External callers reach this call through
-connection_execute_with_context. Catalog-touching context calls
-belong in bind-phase callbacks and with-context scopes, not
-exec-phase worker callbacks.
+the context lock held and a transaction active (function bind
+callbacks, custom type registration). External callers with only a
+connection use logical_type_get_from_text. Catalog-touching context
+calls belong in bind-phase callbacks and with-context scopes, not
+exec-phase
+worker callbacks.
 
 The returned logical type is caller-owned and must be destroyed via
 logical_type_destroy. A type resolved from the catalog shares
@@ -2539,6 +2597,27 @@ constructible kind.
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
                                                                      duckdb_v2_logical_type_handle *out_type,
                                                                      duckdb_v2_error_info_handle *err);
+/*!
+* Gets a logical type by parsing SQL text, using a connection.
+* Same as logical_type_create_from_text, but supplies the catalog and
+transaction from a connection: the parse and bind run in their own
+transaction on the connection's context. Use this from outside
+DuckDB, where a connection — but no context — is in hand.
+
+The returned logical type is caller-owned and must be destroyed via
+logical_type_destroy. A type resolved from the catalog shares
+database-owned storage (e.g. an ENUM dictionary): destroy it before
+closing the database.
+
+* @param conn The connection supplying the catalog and active transaction.
+* @param text View of the SQL type expression to parse.
+* @param out_type Receives the new logical type handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_text(duckdb_v2_connection_handle conn, duckdb_v2_str text,
+                                                                  duckdb_v2_logical_type_handle *out_type,
+                                                                  duckdb_v2_error_info_handle *err);
 /*!
 * Creates a logical type from a type name plus value parameters.
 * The generic constructor: resolves the name in the context's catalog
@@ -2561,9 +2640,10 @@ parameters: passing any fails. Bind errors (unknown name, wrong
 parameter count or types) surface from the call.
 
 Runs in the caller's context scope (see
-logical_type_create_from_text): reach it through
-connection_execute_with_context or from a bind-phase callback, not
-an exec-phase worker callback.
+logical_type_create_from_text): reach it from a bind-phase callback
+or another context-holding scope, not an exec-phase worker
+callback. External callers with only a connection use
+logical_type_get_from_args.
 
 The returned logical type is caller-owned and must be destroyed via
 logical_type_destroy. A type resolved from the catalog shares
@@ -2581,11 +2661,39 @@ all-positional parameters.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create(duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name,
-                                                           const duckdb_v2_identifier_t *param_names,
-                                                           const duckdb_v2_value_handle *param_values,
-                                                           idx_t param_count, duckdb_v2_logical_type_handle *out_type,
-                                                           duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_args(
+    duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name, const duckdb_v2_identifier_t *param_names,
+    const duckdb_v2_value_handle *param_values, idx_t param_count, duckdb_v2_logical_type_handle *out_type,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Gets a logical type from a type name plus value parameters, using a connection.
+* Same as logical_type_create_from_args, but supplies the catalog and
+transaction from a connection: the bind runs in its own transaction
+on the connection's context. Use this from outside DuckDB, where a
+connection — but no context — is in hand.
+
+Parameters are (name, value) pairs in two parallel arrays, exactly
+as for logical_type_create_from_args.
+
+The returned logical type is caller-owned and must be destroyed via
+logical_type_destroy. A type resolved from the catalog shares
+database-owned storage (e.g. an ENUM dictionary): destroy it before
+closing the database.
+
+* @param conn The connection supplying the catalog and active transaction.
+* @param name View of the type name to resolve. Unqualified; case-insensitive.
+* @param param_names Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for
+all-positional parameters.
+* @param param_values An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+* @param param_count The number of parameters.
+* @param out_type Receives the new logical type handle.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_args(
+    duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name, const duckdb_v2_identifier_t *param_names,
+    const duckdb_v2_value_handle *param_values, idx_t param_count, duckdb_v2_logical_type_handle *out_type,
+    duckdb_v2_error_info_handle *err);
 /*!
  * Creates a copy of a logical type
  * On success, writes the new handle into *out_type.
@@ -2638,7 +2746,7 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_id(duckdb_v2_logical_typ
 * The alias when one is set (an extension or user-defined name, e.g.
 "POINT_2D"), otherwise the canonical fixed name of the type id
 (e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the
-empty view. This is exactly the name vocabulary logical_type_create
+empty view. This is exactly the name vocabulary logical_type_create_from_args
 consumes. The view is valid until the logical type is destroyed
 (the canonical-name arm points at static storage).
 
@@ -2668,7 +2776,7 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_to_text(duckdb_v2_logical_ty
                                                             duckdb_v2_error_info_handle *err);
 /*!
 * Returns the number of value parameters of a logical type.
-* The inspection dual of logical_type_create: the parameters that
+* The inspection dual of logical_type_create_from_args: the parameters that
 reconstruct the type through it. Per kind: DECIMAL 2 (width,
 scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
 (key type, value type); STRUCT and TUPLE one per field; UNION one per
@@ -2891,7 +2999,7 @@ typedef void (*duckdb_v2_replacement_scan_callback_fn)(duckdb_v2_replacement_sca
 
 /* --- Functions for replacement_scan --- */
 /*!
-* Registers a replacement scan callback on the database.
+* Registers a replacement scan callback on a database.
 * Scans are consulted in registration order; the first scan to claim an unresolved name wins. Registered scans
 live until the database closes; there is no unregistration. The user data's destroy callback (if set) runs
 exactly once, at database close; a NULL user data pointer has nothing to destroy.
@@ -2907,10 +3015,32 @@ an optional destroy callback that runs once at database close. The pointer may b
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register(duckdb_v2_database_handle db,
-                                                                 duckdb_v2_replacement_scan_callback_fn callback,
-                                                                 duckdb_v2_opaque user_data,
-                                                                 duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_database(
+    duckdb_v2_database_handle db, duckdb_v2_replacement_scan_callback_fn callback, duckdb_v2_opaque user_data,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Registers a replacement scan callback on the context's database.
+* Same as replacement_scan_register_with_database, but resolves the target database from a context. Use this from
+inside a callback or extension where a context is already in hand.
+
+Scans are consulted in registration order; the first scan to claim an unresolved name wins. Registered scans
+live until the database closes; there is no unregistration. The user data's destroy callback (if set) runs
+exactly once, at database close; a NULL user data pointer has nothing to destroy.
+
+Registration is not thread-safe with respect to running queries; register before issuing queries on any
+connection of the database.
+
+* @param context The context whose database to register the scan on.
+* @param callback The replacement scan callback.
+* @param user_data User data accessible from the callback via replacement_scan_get_user_data, bundling the pointer with
+an optional destroy callback that runs once at database close. The pointer may be NULL.
+
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_context(
+    duckdb_v2_context_handle context, duckdb_v2_replacement_scan_callback_fn callback, duckdb_v2_opaque user_data,
+    duckdb_v2_error_info_handle *err);
 /*!
 * Borrows the catalog name of the unresolved table reference.
 * Returns a borrowed string view, valid for the callback duration. The canonical empty view {NULL, 0} when the
@@ -3625,7 +3755,36 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_value_get_child(duckdb_v2_value_handle va
                                                        duckdb_v2_value_handle *out_child,
                                                        duckdb_v2_error_info_handle *err);
 /*!
-* Casts a value to a target type through the engine's cast machinery.
+* Casts a value to a target type through the engine's cast machinery, using a connection.
+* Same as value_cast_with_context, but supplies the cast machinery
+from a connection: the cast runs in its own transaction on the
+connection's context. Use this from outside DuckDB, where a
+connection — but no context — is in hand.
+
+The SQL-faithful conversion (non-strict), registered custom casts
+included. Cast failures surface from the call. With a VARCHAR built
+through value_create_from_data this constructs any value from text,
+extension values included; casting a member value to a union type
+or a VARCHAR to an enum type is the sanctioned way to build UNION
+and ENUM values.
+
+The input value and target type are borrowed. The returned value is
+caller-owned; destroy via value_destroy.
+
+* @param conn The connection whose context supplies the cast function set.
+* @param value The borrowed value to cast.
+* @param target_type The borrowed target logical type.
+* @param out_value Receives the owned cast result.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_value_cast_with_connection(duckdb_v2_connection_handle conn,
+                                                                  duckdb_v2_value_handle value,
+                                                                  duckdb_v2_logical_type_handle target_type,
+                                                                  duckdb_v2_value_handle *out_value,
+                                                                  duckdb_v2_error_info_handle *err);
+/*!
+* Casts a value to a target type through the engine's cast machinery, using a context.
 * The SQL-faithful conversion (non-strict), registered custom casts
 included. Cast failures surface from the call. With a VARCHAR built
 through value_create_from_data this constructs any value from text,
@@ -3634,9 +3793,9 @@ or a VARCHAR to an enum type is the sanctioned way to build UNION
 and ENUM values.
 
 Runs in the caller's context scope (see
-logical_type_create_from_text): reach it through
-connection_execute_with_context or from a bind-phase callback, not
-an exec-phase worker callback.
+logical_type_create_from_text): reach it from a bind-phase callback
+or another context-holding scope, not an exec-phase worker
+callback. From outside DuckDB use value_cast_with_connection.
 
 The input value and target type are borrowed. The returned value is
 caller-owned; destroy via value_destroy.
@@ -3648,9 +3807,11 @@ caller-owned; destroy via value_destroy.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_value_cast(duckdb_v2_context_handle ctx, duckdb_v2_value_handle value,
-                                                  duckdb_v2_logical_type_handle target_type,
-                                                  duckdb_v2_value_handle *out_value, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_value_cast_with_context(duckdb_v2_context_handle ctx,
+                                                               duckdb_v2_value_handle value,
+                                                               duckdb_v2_logical_type_handle target_type,
+                                                               duckdb_v2_value_handle *out_value,
+                                                               duckdb_v2_error_info_handle *err);
 /*!
  * Returns whether the value is NULL.
  * @param value
@@ -3875,6 +4036,23 @@ view; required for vectors whose vector_type is VECTOR_TYPE_OTHER.
 * @return DUCKDB_V2_ERROR
 */
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vector_flatten(duckdb_v2_vector_handle vector, duckdb_v2_error_info_handle *err);
+/*!
+* Repoints a vector at another vector's data and type (zero-copy).
+* Makes `vector` share the storage and logical type of `source`, like
+the engine's Vector::Reference: no data is copied, and the two
+vectors alias the same buffers until one is reset or re-referenced.
+Works for any type, nested included. The source's data must outlive
+any read of `vector`. Use to hand an already-materialised vector
+(e.g. a chunk column produced by arrow_array_to_data_chunk) straight
+to an output vector without a per-row copy.
+
+* @param vector The vector to repoint at the source's data.
+* @param source The vector whose data and logical type to reference.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vector_reference(duckdb_v2_vector_handle vector, duckdb_v2_vector_handle source,
+                                                        duckdb_v2_error_info_handle *err);
 /*!
 * Turns the vector into a constant vector with the given Value.
 * After this call the vector holds a single value that applies to every
@@ -4157,15 +4335,13 @@ typedef void (*duckdb_v2_aggregate_function_destroy_callback_fn)(duckdb_v2_aggre
  * Creates a new aggregate function builder that can be used to define and register a custom aggregate function in
  * DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation
  * callbacks.
- * @param context The DuckDB context in which to create the aggregate function builder.
  * @param out On success, receives the newly created aggregate function builder. The caller owns the builder and must
  * destroy it with `aggregate_function_builder_destroy`.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_create(
-    duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle *out,
-    duckdb_v2_error_info_handle *err);
+    duckdb_v2_aggregate_function_builder_handle *out, duckdb_v2_error_info_handle *err);
 /*!
  * Destroys an aggregate function builder
  * Destroys an aggregate function builder that was created with `aggregate_function_builder_create`. This should be
@@ -4337,16 +4513,32 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_destroy_ca
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_user_data(
     duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
-* Registers the aggregate function being built
-* Registers the aggregate function defined by the builder with DuckDB, making it available for use in SQL queries.
-Registered functions do not support plan serialization; the bind callback runs once per binding of a call site.
+* Registers the aggregate function being built on a connection
+* Registers the aggregate function defined by the builder with the connection's database, making it available for use in
+SQL queries. The registration runs in its own transaction on the connection's context. Registered functions do not
+support plan serialization; the bind callback runs once per binding of a call site.
+
+* @param conn The connection whose database to register the function on.
+* @param builder The aggregate function builder to register.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register_with_connection(
+    duckdb_v2_connection_handle conn, duckdb_v2_aggregate_function_builder_handle builder,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Registers the aggregate function being built on a context
+* Registers the aggregate function defined by the builder with the context's database, making it available for use in
+SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the
+context's active transaction. Registered functions do not support plan serialization; the bind callback runs once per
+binding of a call site.
 
 * @param context The DuckDB context in which to register the function.
 * @param builder The aggregate function builder to register.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register(
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register_with_context(
     duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle builder,
     duckdb_v2_error_info_handle *err);
 /*!
@@ -4720,8 +4912,7 @@ out_schema->release(out_schema).
 `types` and `names` are parallel arrays of length `count`; they may be
 NULL only when count is 0. Building the schema can touch the catalog /
 transaction (extension populate-schema callbacks, ENUM dictionaries), so
-`context` must have an active transaction (callbacks do; otherwise wrap
-the call in connection_execute_with_context).
+`context` must have an active transaction, which callback contexts do.
 
 * @param context The context whose Arrow options and transaction drive the conversion.
 * @param types Array of column logical types. May be NULL only when count is 0.
@@ -4990,8 +5181,6 @@ typedef struct _duckdb_v2_query_progress {
 /* --- Error Codes for connection --- */
 
 /* --- Function pointer typedefs for connection --- */
-typedef void (*duckdb_v2_connection_callback_fn)(duckdb_v2_context_handle context, void *user_data,
-                                                 duckdb_v2_error_info_handle *err);
 
 /* --- Functions for connection --- */
 /*!
@@ -5169,25 +5358,6 @@ no-op. On success the slot is set to nullptr.
 * @return DUCKDB_V2_ERROR
 */
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_query_progress_destroy(duckdb_v2_query_progress_handle *progress);
-/*!
-* Runs a callback in a transaction with the connection's context as the active context.
-* Invoke a user-provided callback within a transaction and the connection's context as the active context.
-
-Do not consume a streaming result inside the callback: the
-callback runs holding the context lock that result_step /
-result_fetch_chunk / result_wait need, so draining there
-deadlocks. Drain results before entering the callback.
-
-* @param conn The connection.
-* @param callback The callback to invoke within the transaction.
-* @param user_data Opaque user data pointer passed to the callback.
-* @param err Optional. Error info handle to write details to if the callback fails.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_execute_with_context(duckdb_v2_connection_handle conn,
-                                                                       duckdb_v2_connection_callback_fn callback,
-                                                                       void *user_data,
-                                                                       duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for connection --- */
 
@@ -5268,13 +5438,11 @@ typedef void (*duckdb_v2_copy_function_finalize_callback_fn)(duckdb_v2_copy_func
 /* --- Functions for copy --- */
 /*!
  * Creates a new copy function.
- * @param context The DuckDB context in which the function will be created
  * @param out Output parameter that will hold the created copy function builder handle.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_create(duckdb_v2_context_handle context,
-                                                                    duckdb_v2_copy_function_builder_handle *out,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_create(duckdb_v2_copy_function_builder_handle *out,
                                                                     duckdb_v2_error_info_handle *err);
 /*!
  * Sets the name of the copy function. This is the name that will be used to invoke the function in SQL.
@@ -5354,15 +5522,27 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_set_finalize_callba
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_set_user_data(
     duckdb_v2_copy_function_builder_handle builder, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
- * Registers the copy function with a database, making the function available for use in SQL queries.
+ * Registers the copy function on a connection, making the function available for use in SQL queries.
+ * Registers the copy function with the connection's database. The registration runs in its own transaction on the
+ * connection's context.
+ * @param conn The connection whose database to register the function on.
+ * @param builder The copy function builder handle.
+ * @param err Optional. Error info handle to write details to if the call fails.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_connection(
+    duckdb_v2_connection_handle conn, duckdb_v2_copy_function_builder_handle builder, duckdb_v2_error_info_handle *err);
+/*!
+ * Registers the copy function on a context, making the function available for use in SQL queries.
+ * Registers the copy function with the context's database. Use this from inside a callback or extension where a context
+ * is already in hand; it registers within the context's active transaction.
  * @param context The DuckDB context in which to register the function.
  * @param builder The copy function builder handle.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register(duckdb_v2_context_handle context,
-                                                                      duckdb_v2_copy_function_builder_handle builder,
-                                                                      duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_context(
+    duckdb_v2_context_handle context, duckdb_v2_copy_function_builder_handle builder, duckdb_v2_error_info_handle *err);
 /*!
  * Destroys a copy function builder handle, freeing any associated resources. After this call, the handle is no longer
  * valid and should not be used.
@@ -5657,17 +5837,16 @@ typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_func
 /*!
 * Creates a new scalar function.
 * Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and
-registered with `scalar_function_register`. On success, returns a handle to the new builder. The builder is owned by the
-caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.
+registered with `scalar_function_builder_register_with_connection` or `scalar_function_builder_register_with_context`.
+On success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with
+`scalar_function_builder_destroy` when no longer needed.
 
-* @param name The DuckDB context in which the function will be created.
 * @param out On success, receives the newly created scalar function builder. The caller owns the builder and must
 destroy it with `scalar_function_builder_destroy`.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_create(duckdb_v2_context_handle name,
-                                                                      duckdb_v2_scalar_function_builder_handle *out,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_create(duckdb_v2_scalar_function_builder_handle *out,
                                                                       duckdb_v2_error_info_handle *err);
 /*!
 * Sets the name of a scalar function.
@@ -5726,22 +5905,39 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_exec_callback
     duckdb_v2_scalar_function_builder_handle func, duckdb_v2_scalar_function_exec_callback_fn callback,
     duckdb_v2_error_info_handle *err);
 /*!
-* Registers a scalar function with a database, making the function available for use in queries.
-* This function registers a fully configured scalar function builder with a database, making the function available for
-use in SQL queries executed on that database. The function builder must have at least its name and exec callback set
-before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured
-function and its properties during registration, so the caller retains ownership of the builder and can safely destroy
-or modify it after registration without affecting the registered function. Registered functions do not support plan
-serialization; the bind callback runs once per binding of a call site.
+* Registers a scalar function on a connection, making the function available for use in queries.
+* This function registers a fully configured scalar function builder with the connection's database, making the function
+available for use in SQL queries executed on that database. The registration runs in its own transaction on the
+connection's context. The function builder must have at least its name and exec callback set before registration;
+otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured function and its
+properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after
+registration without affecting the registered function. Registered functions do not support plan serialization; the bind
+callback runs once per binding of a call site.
+
+* @param conn The connection whose database to register the function on.
+* @param func The scalar function to register.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_connection(
+    duckdb_v2_connection_handle conn, duckdb_v2_scalar_function_builder_handle func, duckdb_v2_error_info_handle *err);
+/*!
+* Registers a scalar function on a context, making the function available for use in queries.
+* This function registers a fully configured scalar function builder with the context's database, making the function
+available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it
+registers within the context's active transaction. The function builder must have at least its name and exec callback
+set before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the
+configured function and its properties during registration, so the caller retains ownership of the builder and can
+safely destroy or modify it after registration without affecting the registered function. Registered functions do not
+support plan serialization; the bind callback runs once per binding of a call site.
 
 * @param context The DuckDB context in which to register the function.
 * @param func The scalar function to register.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register(duckdb_v2_context_handle context,
-                                                                        duckdb_v2_scalar_function_builder_handle func,
-                                                                        duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_context(
+    duckdb_v2_context_handle context, duckdb_v2_scalar_function_builder_handle func, duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a scalar function, releasing its resources.
 * This function destroys a scalar function builder that was created with `scalar_function_builder_create`, releasing any
@@ -5859,6 +6055,22 @@ equality check is used.
 */
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_set_bind_data(
     duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
+/*!
+* Sets the function's return type from the bind callback.
+* Overrides the return type resolved at registration for this call site. Register the function with a
+return type of ANY and set the concrete return type here, derived from the argument types (read via
+scalar_function_bind_get_arguments), to build a function whose result type depends on its input — for
+example a generic pass-through that returns whatever type it was given. The type is copied. Callable
+only during the bind callback.
+
+* @param info The bind info handle.
+* @param type The concrete return type for this call site.
+* @param err Optional. Error info handle to write details to if the call fails.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR
+duckdb_v2_scalar_function_bind_set_return_type(duckdb_v2_scalar_function_bind_info_handle info,
+                                               duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
 /*!
  * Retrieves the name of the function being initialized.
  * @param info The init info handle.
@@ -6232,13 +6444,11 @@ typedef void (*duckdb_v2_table_function_pushdown_complex_filter_fn)(void *bind_d
 /* --- Functions for table --- */
 /*!
  * Creates a new table function builder.
- * @param context The DuckDB context.
  * @param out Receives the new builder handle. Caller owns it.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_create(duckdb_v2_context_handle context,
-                                                                     duckdb_v2_table_function_builder_handle *out,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_create(duckdb_v2_table_function_builder_handle *out,
                                                                      duckdb_v2_error_info_handle *err);
 /*!
 * Destroys a table function builder.
@@ -6380,19 +6590,39 @@ indices. The exec callback's output chunk is sized to the projected columns only
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_projection_pushdown(
     duckdb_v2_table_function_builder_handle builder, bool enable, duckdb_v2_error_info_handle *err);
 /*!
-* Registers the table function, making it available for use in queries.
-* The engine copies the builder's configuration at registration time.
-The builder can be destroyed or reused after this call. Requires
-at least a name, bind callback, and exec callback.
+* Registers the table function on a connection, making it available for use in queries.
+* Registers the table function with the connection's database. The
+registration runs in its own transaction on the connection's
+context. The engine copies the builder's configuration at
+registration time. The builder can be destroyed or reused after
+this call. Requires at least a name, bind callback, and exec
+callback.
+
+* @param conn The connection whose database to register the function on.
+* @param builder The configured builder.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register_with_connection(
+    duckdb_v2_connection_handle conn, duckdb_v2_table_function_builder_handle builder,
+    duckdb_v2_error_info_handle *err);
+/*!
+* Registers the table function on a context, making it available for use in queries.
+* Registers the table function with the context's database. Use this
+from inside a callback or extension where a context is already in
+hand; it registers within the context's active transaction. The
+engine copies the builder's configuration at registration time. The
+builder can be destroyed or reused after this call. Requires at
+least a name, bind callback, and exec callback.
 
 * @param context The DuckDB context.
 * @param builder The configured builder.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register(duckdb_v2_context_handle context,
-                                                                       duckdb_v2_table_function_builder_handle builder,
-                                                                       duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register_with_context(
+    duckdb_v2_context_handle context, duckdb_v2_table_function_builder_handle builder,
+    duckdb_v2_error_info_handle *err);
 /*!
 * Declares an output column during bind.
 * The column type must be a fully defined concrete type: ANY is rejected with

@@ -355,9 +355,9 @@ public:
 	FileSystem GetFileSystem() const;
 
 	// Parses a SQL type expression into an owned logical type: primitives,
-	// parameterized kinds, and catalog-registered names alike. The primary
-	// form, usable wherever a Context is live (WithTransaction scopes,
-	// function bind callbacks). Connection::ParseType is the sugar.
+	// parameterized kinds, and catalog-registered names alike. Usable
+	// wherever a Context is live (function bind callbacks). From outside,
+	// Connection::ParseType resolves the same directly from the connection.
 	auto ParseType(std::string_view text) const -> LogicalType;
 
 	// Builds a logical type from a catalog type name plus value parameters,
@@ -514,8 +514,6 @@ public:
 	void SetOption(const DatabaseOption &option);
 	void SetOption(const DatabaseOption &option, SettingScope scope);
 
-	void WithTransaction(std::function<void(const Context &ctx)> callback);
-
 	// Parses a SQL string into an iterator over its statements. Parsing
 	// only: no binding, no catalog access, no transaction.
 	StatementIterator ParseSQL(const char *sql);
@@ -559,11 +557,12 @@ public:
 	// error when the name resolves to nothing or to a view.
 	TableDescription DescribeTable(const QualifiedName &name) const;
 
-	// Connection-level sugar over Context::ParseType: runs the with-context
-	// dance internally via WithTransaction.
+	// Connection-level counterpart to Context::ParseType: resolves the type
+	// directly from the connection (its own transaction), no context scope needed.
 	auto ParseType(std::string_view text) -> LogicalType;
 
-	// Connection-level sugar over Context::CreateType.
+	// Connection-level counterpart to Context::CreateType: resolves directly
+	// from the connection (its own transaction), no context scope needed.
 	auto CreateType(const std::string &name, const std::vector<TypeParam> &params) -> LogicalType;
 
 	// Requests cancellation of the active query. Safe to call from any
@@ -1689,7 +1688,7 @@ class DataChunk final : public detail::Handle<DataChunk> {
 	friend detail::Factory;
 
 public:
-	DataChunk(const Context &context, const std::vector<LogicalType> &types);
+	explicit DataChunk(const std::vector<LogicalType> &types);
 
 	DataChunk(DataChunk &&other) noexcept {
 		std::swap(impl, other.impl);
@@ -1757,6 +1756,7 @@ class ColumnDataCollection final : public detail::Handle<ColumnDataCollection> {
 
 public:
 	ColumnDataCollection(const Context &context, const std::vector<LogicalType> &types);
+	ColumnDataCollection(const Connection &conn, const std::vector<LogicalType> &types);
 
 	ColumnDataCollection(ColumnDataCollection &&other) noexcept = default;
 	ColumnDataCollection &operator=(ColumnDataCollection &&other) noexcept = default;
@@ -2134,7 +2134,7 @@ inline QueryResult PreparedStatement::Execute(const std::vector<Value> &paramete
 
 class LogStorage final : public detail::Handle<LogStorage> {
 public:
-	explicit LogStorage(const Context &ctx);
+	LogStorage();
 
 	~LogStorage() override;
 
@@ -2150,6 +2150,7 @@ public:
 	auto SetLogCallback(LogCallback cb) & -> LogStorage &;
 	auto SetName(const std::string &name) & -> LogStorage &;
 	auto Register(const Context &ctx) -> void;
+	auto Register(const Database &db) -> void;
 
 public:
 	class LogEntry {
@@ -2302,7 +2303,7 @@ public:
 	using InitCallback = void (*)(InitInput &input);
 	using ExecCallback = void (*)(ExecInput &input);
 
-	explicit ScalarFunction(const Context &ctx);
+	ScalarFunction();
 
 	~ScalarFunction() override;
 
@@ -2337,6 +2338,7 @@ public:
 	auto GetCollationHandling() const -> FunctionCollationHandling;
 
 	void Register(const Context &ctx);
+	void Register(const Connection &conn);
 
 private:
 	BindCallback bind_callback = nullptr;
@@ -2525,7 +2527,7 @@ public:
 	using FinalizeCallback = void (*)(FinalizeInput &input);
 	using DestroyCallback = void (*)(DestroyInput &input);
 
-	explicit AggregateFunction(const Context &ctx);
+	AggregateFunction();
 
 	~AggregateFunction() override;
 
@@ -2572,6 +2574,7 @@ public:
 	auto GetDistinctDependence() const -> DistinctDependence;
 
 	void Register(const Context &ctx);
+	void Register(const Connection &conn);
 
 public:
 	class BindInput {
@@ -2875,7 +2878,7 @@ public:
 	using ExecCallback = void (*)(ExecInput &input);
 	using PushdownCallback = void (*)(PushdownInput &input);
 
-	explicit TableFunction(const Context &ctx);
+	TableFunction();
 
 	~TableFunction() override;
 
@@ -2914,6 +2917,7 @@ public:
 	auto SetProjectionPushdown(bool enable) & -> TableFunction &;
 
 	void Register(const Context &ctx);
+	void Register(const Connection &conn);
 
 private:
 	BindCallback bind_callback = nullptr;
@@ -3205,7 +3209,7 @@ public:
 	using FlushCallback = void (*)(FlushInput &input);
 	using FinalizeCallback = void (*)(FinalizeInput &input);
 
-	explicit CopyFunction(const Context &ctx);
+	CopyFunction();
 
 	CopyFunction(CopyFunction &&) = default;
 	CopyFunction &operator=(CopyFunction &&) = default;
@@ -3232,6 +3236,7 @@ public:
 	auto SetFinalizeCallback(FinalizeCallback callback) & -> CopyFunction &;
 
 	auto Register(const Context &ctx) -> void;
+	auto Register(const Connection &conn) -> void;
 
 public:
 	class BindInput {
@@ -3474,7 +3479,7 @@ public:
 
 	using ExecCallback = void (*)(ExecInput &input);
 
-	explicit CastFunction(const Context &ctx);
+	CastFunction();
 
 	~CastFunction() override;
 
@@ -3484,6 +3489,7 @@ public:
 	auto SetExecCallback(ExecCallback callback) & -> CastFunction &;
 
 	void Register(const Context &ctx);
+	void Register(const Connection &conn);
 
 private:
 	ExecCallback exec_callback = nullptr;
@@ -3522,7 +3528,7 @@ class CustomType final : public detail::Handle<CustomType> {
 	friend detail::Factory;
 
 public:
-	explicit CustomType(const Context &ctx);
+	CustomType();
 
 	~CustomType() override;
 
@@ -3530,6 +3536,7 @@ public:
 	auto SetBaseType(const LogicalType &type) & -> CustomType &;
 
 	void Register(const Context &ctx);
+	void Register(const Connection &conn);
 };
 
 } // namespace duckdb_api

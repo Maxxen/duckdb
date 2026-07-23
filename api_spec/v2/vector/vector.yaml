@@ -373,6 +373,31 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
+  vector_reference:
+    summary: Repoints a vector at another vector's data and type (zero-copy).
+    description: |
+      Makes `vector` share the storage and logical type of `source`, like
+      the engine's Vector::Reference: no data is copied, and the two
+      vectors alias the same buffers until one is reset or re-referenced.
+      Works for any type, nested included. The source's data must outlive
+      any read of `vector`. Use to hand an already-materialised vector
+      (e.g. a chunk column produced by arrow_array_to_data_chunk) straight
+      to an output vector without a per-row copy.
+    role: method
+    belongs_to: vector
+    parameters:
+      vector:
+        type: vector
+        description: The vector to repoint at the source's data.
+      source:
+        type: vector
+        description: The vector whose data and logical type to reference.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
   vector_make_constant:
     summary: Turns the vector into a constant vector with the given Value.
     description: |

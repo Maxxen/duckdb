@@ -43,11 +43,8 @@ callbacks:
 functions:
   cast_function_builder_create:
     summary: Creates a new cast function builder.
-    description: "Creates a new cast function builder that can be configured with the various `cast_function_builder_set_*` functions and registered with `cast_function_builder_register`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `cast_function_builder_destroy` when no longer needed.\n"
+    description: "Creates a new cast function builder that can be configured with the various `cast_function_builder_set_*` functions and registered with `cast_function_builder_register_with_connection` or `cast_function_builder_register_with_context`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `cast_function_builder_destroy` when no longer needed.\n"
     parameters:
-      context:
-        type: context
-        description: The DuckDB context in which the cast function will be created.
       out:
         type: cast_function_builder
         indirection: 1
@@ -133,9 +130,24 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  cast_function_builder_register:
-    summary: Registers a cast function on a database via the current context, making the cast available in all subsequent queries to that database.
-    description: "This function registers a fully configured cast function builder with a database, making the cast available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). \nThe function builder must have its source type, target type, and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered cast.\n"
+  cast_function_builder_register_with_connection:
+    summary: Registers a cast function on a connection, making the cast available in all subsequent queries to that database.
+    description: "This function registers a fully configured cast function builder with the connection's database, making the cast available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). The registration runs in its own transaction on the connection's context. \nThe function builder must have its source type, target type, and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered cast.\n"
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose database to register the cast function on.
+      func:
+        type: cast_function_builder
+        description: The cast function to register.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: ERROR
+  cast_function_builder_register_with_context:
+    summary: Registers a cast function on a context, making the cast available in all subsequent queries to that database.
+    description: "This function registers a fully configured cast function builder with the context's database, making the cast available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction. \nThe function builder must have its source type, target type, and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered cast.\n"
     parameters:
       context:
         type: context

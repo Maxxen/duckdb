@@ -218,9 +218,9 @@ inline Connection *ToConn(duckdb_v2_connection_handle ptr) {
 	return reinterpret_cast<Connection *>(ptr);
 }
 // duckdb_v2_context_handle is a borrowed duckdb::ClientContext, handed out only
-// inside library-managed scopes (connection_execute_with_context, function
-// bind callbacks, custom type registration), where the context lock is held
-// and a transaction is active. The bridge never owns or destroys it.
+// inside library-managed scopes (function bind/init/exec callbacks, replacement
+// scans, custom type registration), where the context lock is held and a
+// transaction is active. The bridge never owns or destroys it.
 inline ClientContext *ToContext(duckdb_v2_context_handle ptr) {
 	return reinterpret_cast<ClientContext *>(ptr);
 }

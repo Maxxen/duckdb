@@ -192,9 +192,6 @@ functions:
   table_function_builder_create:
     summary: Creates a new table function builder.
     parameters:
-      context:
-        type: context
-        description: The DuckDB context.
       out:
         type: table_function_builder
         indirection: 1
@@ -393,12 +390,36 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  table_function_builder_register:
-    summary: Registers the table function, making it available for use in queries.
+  table_function_builder_register_with_connection:
+    summary: Registers the table function on a connection, making it available for use in queries.
     description: |
-      The engine copies the builder's configuration at registration time.
-      The builder can be destroyed or reused after this call. Requires
-      at least a name, bind callback, and exec callback.
+      Registers the table function with the connection's database. The
+      registration runs in its own transaction on the connection's
+      context. The engine copies the builder's configuration at
+      registration time. The builder can be destroyed or reused after
+      this call. Requires at least a name, bind callback, and exec
+      callback.
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose database to register the function on.
+      builder:
+        type: table_function_builder
+        description: The configured builder.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  table_function_builder_register_with_context:
+    summary: Registers the table function on a context, making it available for use in queries.
+    description: |
+      Registers the table function with the context's database. Use this
+      from inside a callback or extension where a context is already in
+      hand; it registers within the context's active transaction. The
+      engine copies the builder's configuration at registration time. The
+      builder can be destroyed or reused after this call. Requires at
+      least a name, bind callback, and exec callback.
     parameters:
       context:
         type: context

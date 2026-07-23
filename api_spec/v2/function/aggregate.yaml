@@ -119,9 +119,6 @@ functions:
     summary: Creates a new aggregate function builder
     description: "Creates a new aggregate function builder that can be used to define and register a custom aggregate function in DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation callbacks."
     parameters:
-      context:
-        type: context
-        description: The DuckDB context in which to create the aggregate function builder.
       out:
         type: aggregate_function_builder
         indirection: 1
@@ -337,9 +334,24 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  aggregate_function_builder_register:
-    summary: Registers the aggregate function being built
-    description: "Registers the aggregate function defined by the builder with DuckDB, making it available for use in SQL queries.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+  aggregate_function_builder_register_with_connection:
+    summary: Registers the aggregate function being built on a connection
+    description: "Registers the aggregate function defined by the builder with the connection's database, making it available for use in SQL queries. The registration runs in its own transaction on the connection's context.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose database to register the function on.
+      builder:
+        type: aggregate_function_builder
+        description: The aggregate function builder to register.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: ERROR
+  aggregate_function_builder_register_with_context:
+    summary: Registers the aggregate function being built on a context
+    description: "Registers the aggregate function defined by the builder with the context's database, making it available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
     parameters:
       context:
         type: context

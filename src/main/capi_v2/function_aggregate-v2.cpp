@@ -287,13 +287,9 @@ struct AggregateFunctionBuilderV2 {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_create(duckdb_v2_context_handle context,
-                                                            duckdb_v2_aggregate_function_builder_handle *out,
+DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_create(duckdb_v2_aggregate_function_builder_handle *out,
                                                             duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("context cannot be null");
-		}
 		if (!out) {
 			throw duckdb::InvalidInputException("output parameter cannot be null");
 		}
@@ -440,90 +436,109 @@ duckdb_v2_aggregate_function_builder_set_destroy_callback(duckdb_v2_aggregate_fu
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_handle context,
+static void RegisterAggregateFunctionV2(duckdb::ClientContext &ctx, duckdb::AggregateFunctionBuilderV2 *agg_builder) {
+	if (agg_builder->name.empty()) {
+		throw duckdb::InvalidInputException("Function name cannot be empty");
+	}
+	if (!agg_builder->size_cb) {
+		throw duckdb::InvalidInputException("Size callback must be provided");
+	}
+	if (!agg_builder->init_cb) {
+		throw duckdb::InvalidInputException("Init callback must be provided");
+	}
+	if (!agg_builder->update_cb) {
+		throw duckdb::InvalidInputException("Update callback must be provided");
+	}
+	if (!agg_builder->combine_cb) {
+		throw duckdb::InvalidInputException("Combine callback must be provided");
+	}
+	if (!agg_builder->finalize_cb) {
+		throw duckdb::InvalidInputException("Finalize callback must be provided");
+	}
+	const auto &return_type = agg_builder->signature.GetReturnType();
+	if (return_type.id() == duckdb::LogicalTypeId::INVALID) {
+		throw duckdb::InvalidInputException("Return type must be set for the function.");
+	}
+	// ANY is a signature wildcard; a return type carries data, so keep ANY (and
+	// any other incomplete type) out of execution (an ANY stored here throws
+	// InternalException when hit).
+	if (!return_type.IsComplete()) {
+		throw duckdb::InvalidInputException("Return type must be a fully defined concrete type");
+	}
+
+	auto function_info = duckdb::make_shared_ptr<duckdb::AggregateFunctionExtraDataV2>();
+
+	function_info->bind_cb = agg_builder->bind_cb;
+	function_info->size_cb = agg_builder->size_cb;
+	function_info->init_cb = agg_builder->init_cb;
+	function_info->update_cb = agg_builder->update_cb;
+	function_info->combine_cb = agg_builder->combine_cb;
+	function_info->finalize_cb = agg_builder->finalize_cb;
+	function_info->destroy_cb = agg_builder->destroy_cb;
+
+	duckdb::AggregateFunction function(
+	    agg_builder->name, {}, return_type, duckdb::AggregateFunctionV2::SizeCallback,
+	    duckdb::AggregateFunctionV2::InitCallback, duckdb::AggregateFunctionV2::UpdateCallback,
+	    duckdb::AggregateFunctionV2::CombineCallback, duckdb::AggregateFunctionV2::FinalizeCallback,
+	    duckdb::FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, duckdb::AggregateFunctionV2::BindCallback);
+
+	if (agg_builder->destroy_cb) {
+		function.GetCallbacks().SetStateDestructorCallback(duckdb::AggregateFunctionV2::DestroyCallback);
+	}
+
+	function.GetCallbacks().SetSerializeCallback(duckdb::AggregateFunctionV2::SerializeCallback);
+	function.GetCallbacks().SetDeserializeCallback(duckdb::AggregateFunctionV2::DeserializeCallback);
+
+	// Adopt the stored signature so parameter names, defaults, the variadic
+	// tail, and the return type are all preserved on the registered function.
+	function.GetSignature() = agg_builder->signature;
+
+	function.SetExtraFunctionInfo(function_info);
+
+	function.SetProperties(agg_builder->properties);
+
+	// Verify signature
+	function.GetSignature().Verify();
+
+	auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
+	duckdb::CreateAggregateFunctionInfo create_info(function);
+	create_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
+	catalog.CreateFunction(ctx, create_info);
+
+	function_info->user_data = agg_builder->user_data;
+}
+
+DUCKDB_V2_ERROR
+duckdb_v2_aggregate_function_builder_register_with_connection(duckdb_v2_connection_handle conn,
                                                               duckdb_v2_aggregate_function_builder_handle builder,
                                                               duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
+		}
+		if (!builder) {
+			throw duckdb::InvalidInputException("Function builder cannot be null");
+		}
+		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
+		auto &ctx = *duckdb::ToConn(conn)->context;
+		ctx.RunFunctionInTransaction([&]() { RegisterAggregateFunctionV2(ctx, agg_builder); });
+	});
+}
+
+DUCKDB_V2_ERROR
+duckdb_v2_aggregate_function_builder_register_with_context(duckdb_v2_context_handle context,
+                                                           duckdb_v2_aggregate_function_builder_handle builder,
+                                                           duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("context cannot be null");
 		}
-
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
-		auto &ctx = *reinterpret_cast<duckdb::ClientContext *>(context);
-
-		if (agg_builder->name.empty()) {
-			throw duckdb::InvalidInputException("Function name cannot be empty");
-		}
-		if (!agg_builder->size_cb) {
-			throw duckdb::InvalidInputException("Size callback must be provided");
-		}
-		if (!agg_builder->init_cb) {
-			throw duckdb::InvalidInputException("Init callback must be provided");
-		}
-		if (!agg_builder->update_cb) {
-			throw duckdb::InvalidInputException("Update callback must be provided");
-		}
-		if (!agg_builder->combine_cb) {
-			throw duckdb::InvalidInputException("Combine callback must be provided");
-		}
-		if (!agg_builder->finalize_cb) {
-			throw duckdb::InvalidInputException("Finalize callback must be provided");
-		}
-		const auto &return_type = agg_builder->signature.GetReturnType();
-		if (return_type.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Return type must be set for the function.");
-		}
-		// ANY is a signature wildcard; a return type carries data, so keep ANY (and
-		// any other incomplete type) out of execution (an ANY stored here throws
-		// InternalException when hit).
-		if (!return_type.IsComplete()) {
-			throw duckdb::InvalidInputException("Return type must be a fully defined concrete type");
-		}
-
-		auto function_info = duckdb::make_shared_ptr<duckdb::AggregateFunctionExtraDataV2>();
-
-		function_info->bind_cb = agg_builder->bind_cb;
-		function_info->size_cb = agg_builder->size_cb;
-		function_info->init_cb = agg_builder->init_cb;
-		function_info->update_cb = agg_builder->update_cb;
-		function_info->combine_cb = agg_builder->combine_cb;
-		function_info->finalize_cb = agg_builder->finalize_cb;
-		function_info->destroy_cb = agg_builder->destroy_cb;
-
-		duckdb::AggregateFunction function(
-		    agg_builder->name, {}, return_type, duckdb::AggregateFunctionV2::SizeCallback,
-		    duckdb::AggregateFunctionV2::InitCallback, duckdb::AggregateFunctionV2::UpdateCallback,
-		    duckdb::AggregateFunctionV2::CombineCallback, duckdb::AggregateFunctionV2::FinalizeCallback,
-		    duckdb::FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, duckdb::AggregateFunctionV2::BindCallback);
-
-		if (agg_builder->destroy_cb) {
-			function.GetCallbacks().SetStateDestructorCallback(duckdb::AggregateFunctionV2::DestroyCallback);
-		}
-
-		function.GetCallbacks().SetSerializeCallback(duckdb::AggregateFunctionV2::SerializeCallback);
-		function.GetCallbacks().SetDeserializeCallback(duckdb::AggregateFunctionV2::DeserializeCallback);
-
-		// Adopt the stored signature so parameter names, defaults, the variadic
-		// tail, and the return type are all preserved on the registered function.
-		function.GetSignature() = agg_builder->signature;
-
-		function.SetExtraFunctionInfo(function_info);
-
-		function.SetProperties(agg_builder->properties);
-
-		// Verify signature
-		function.GetSignature().Verify();
-
-		auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
-		duckdb::CreateAggregateFunctionInfo create_info(function);
-		create_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
-		catalog.CreateFunction(ctx, create_info);
-
-		function_info->user_data = agg_builder->user_data;
+		auto &ctx = *duckdb::ToContext(context);
+		RegisterAggregateFunctionV2(ctx, agg_builder);
 	});
 }
 

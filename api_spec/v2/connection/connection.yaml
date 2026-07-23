@@ -8,21 +8,6 @@ handles:
       Read via the query_progress_get_* accessors; destroy via
       query_progress_destroy.
     cleanup_with: query_progress_destroy
-callbacks:
-  connection_callback:
-    return_type: void
-    parameters:
-      context:
-        type: context
-        description: "The connection's context active at the time of invocation."
-      user_data:
-        type: void
-        indirection: 1
-        description: "Opaque user data pointer passed through from connection_execute_with_context."
-      err:
-        type: error_info
-        indirection: 1
-        description: "Error handle to populate if the callback fails. The library treats any non-success code set here as a failure of the overall callback"
 functions:
   connect:
     summary: "Opens a connection to a database."
@@ -298,29 +283,4 @@ functions:
         type: query_progress
         indirection: 1
         description: "The progress snapshot to destroy."
-    return_type: ERROR
-  connection_execute_with_context:
-    summary: "Runs a callback in a transaction with the connection's context as the active context."
-    description: |
-      Invoke a user-provided callback within a transaction and the connection's context as the active context.
-
-      Do not consume a streaming result inside the callback: the
-      callback runs holding the context lock that result_step /
-      result_fetch_chunk / result_wait need, so draining there
-      deadlocks. Drain results before entering the callback.
-    parameters:
-      conn:
-        type: connection
-        description: "The connection."
-      callback:
-        type: connection_callback
-        description: "The callback to invoke within the transaction."
-      user_data:
-        type: void
-        indirection: 1
-        description: "Opaque user data pointer passed to the callback."
-      err:
-        type: error_info
-        indirection: 1
-        description: "Optional. Error info handle to write details to if the callback fails."
     return_type: ERROR

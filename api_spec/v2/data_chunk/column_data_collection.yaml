@@ -18,10 +18,38 @@ functions:
   # -----------------------------------------------------------------------
   # Construction and destruction
   # -----------------------------------------------------------------------
-  column_data_collection_create:
-    summary: Creates an empty column data collection.
+  column_data_collection_create_with_connection:
+    summary: Creates an empty column data collection from a connection.
     description: |
-      Allocates a new, empty column data collection. The collection starts with no chunks and is ready to have chunks appended to it. Caller owns the result and must destroy it via column_data_collection_destroy.
+      Allocates a new, empty column data collection, drawing its buffer allocator from the connection's context. The collection starts with no chunks and is ready to have chunks appended to it. Caller owns the result and must destroy it via column_data_collection_destroy. Appending is not transactional, so no active transaction is required.
+    role: constructor
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose context supplies the collection's allocator.
+      types_array:
+        type: logical_type
+        indirection: 1
+        const: true
+        description: Pointer to an array of logical_type handles, one per column. This defines the schema for the chunks that will be stored in the collection. All chunks appended to this collection must have vectors that conform to these types.
+      types_count:
+        type: idx
+        description: Number of elements in the types_array.
+      out_collection:
+        type: column_data_collection
+        indirection: 1
+        kind: OUT
+        description: Receives the new collection handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  column_data_collection_create_with_context:
+    summary: Creates an empty column data collection from a context.
+    description: |
+      Allocates a new, empty column data collection, drawing its buffer allocator from the context. Use this from inside a callback or extension where a context is already in hand. The collection starts with no chunks and is ready to have chunks appended to it. Caller owns the result and must destroy it via column_data_collection_destroy.
     role: constructor
     parameters:
       context:

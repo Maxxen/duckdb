@@ -57,9 +57,6 @@ functions:
     summary: "Creates a new log storage builder."
     description: "Initializes and returns a new log storage builder handle for configuring log storage mechanisms."
     parameters:
-      context:
-        type: context
-        description: "The context to create the log storage builder in."
       out_builder:
         type: log_storage_builder
         indirection: 1
@@ -114,13 +111,28 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  log_storage_builder_register:
-    summary: "Registers the log storage builder with the logging system."
-    description: "Finalizes the configuration of the log storage builder and registers it so that it can be used by connections or contexts to emit log messages."
+  log_storage_builder_register_with_database:
+    summary: "Registers the log storage builder with the logging system on a database."
+    description: "Finalizes the configuration of the log storage builder and registers it on the database so that it can be used by connections or contexts to emit log messages."
+    parameters:
+      db:
+        type: database
+        description: "The database to register the log storage builder with."
+      builder:
+        type: log_storage_builder
+        description: "The log storage builder handle to register."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: ERROR
+  log_storage_builder_register_with_context:
+    summary: "Registers the log storage builder with the logging system on a context's database."
+    description: "Finalizes the configuration of the log storage builder and registers it on the context's database so that it can be used by connections or contexts to emit log messages. Use this from inside a callback or extension where a context is already in hand."
     parameters:
       context:
         type: context
-        description: "The context to register the log storage builder with."
+        description: "The context whose database to register the log storage builder with."
       builder:
         type: log_storage_builder
         description: "The log storage builder handle to register."

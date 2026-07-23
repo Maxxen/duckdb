@@ -184,10 +184,9 @@ void ProbeExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_contex
 
 // --- registration helpers ---------------------------------------------------
 
-duckdb_v2_scalar_function_builder_handle NewScalar(duckdb_v2_context_handle ctx, const char *name,
-                                                   duckdb_v2_error_info_handle *err) {
+duckdb_v2_scalar_function_builder_handle NewScalar(const char *name, duckdb_v2_error_info_handle *err) {
 	duckdb_v2_scalar_function_builder_handle b = nullptr;
-	REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &b, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_create(&b, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_scalar_function_builder_set_name(b, V2Str(name), err) == DUCKDB_V2_ERROR_NONE);
 	return b;
 }
@@ -231,9 +230,7 @@ TEST_CASE("V2 varargs: from_text cannot parse ANY back", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
 	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	duckdb_v2_logical_type_handle t = nullptr;
-	V2WithContext(fix.conn, [&](duckdb_v2_context_handle ctx) {
-		rc = duckdb_v2_logical_type_create_from_text(ctx, V2Str("ANY"), &t, nullptr);
-	});
+	rc = duckdb_v2_logical_type_get_from_text(fix.conn, V2Str("ANY"), &t, nullptr);
 	// ANY renders as text but is not a parseable SQL type.
 	REQUIRE(rc != DUCKDB_V2_ERROR_NONE);
 	REQUIRE(t == nullptr);
@@ -274,70 +271,72 @@ TEST_CASE("V2 varargs: ANY rejected by value / data_chunk creation", "[capi_v2][
 // ---------------------------------------------------------------------------
 TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
-		auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
-		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
+	auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-		// A signature ACCEPTS an ANY parameter on every builder.
-		duckdb_v2_scalar_function_builder_handle sf = nullptr;
-		duckdb_v2_scalar_function_builder_create(ctx, &sf, nullptr);
-		duckdb_v2_scalar_function_builder_set_name(sf, V2Str("bad_scalar"), nullptr);
-		// ANY parameter accepted; ANY return type rejected (IsComplete gate) at register.
-		V2ScalarSignature(sf, [&](duckdb_v2_function_signature_handle sig) {
-			V2SigParam(sig, "a", any);
-			V2SigReturn(sig, any);
-		});
-		duckdb_v2_scalar_function_builder_set_exec_callback(sf, TwoAnyExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, sf, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_scalar_function_builder_destroy(&sf);
-
-		// aggregate return type ANY rejected at register.
-		duckdb_v2_aggregate_function_builder_handle af = nullptr;
-		duckdb_v2_aggregate_function_builder_create(ctx, &af, nullptr);
-		duckdb_v2_aggregate_function_builder_set_name(af, V2Str("bad_agg"), nullptr);
-		V2AggregateSignature(af, [&](duckdb_v2_function_signature_handle sig) {
-			V2SigParam(sig, "a", any);
-			V2SigReturn(sig, any);
-		});
-		// dummy callbacks so we reach the return-type gate
-		duckdb_v2_aggregate_function_builder_set_size_callback(
-		    af,
-		    [](duckdb_v2_aggregate_function_size_info_handle info, duckdb_v2_error_info_handle *err) {
-			    duckdb_v2_aggregate_function_size_set_size(info, 8, err);
-		    },
-		    nullptr);
-		duckdb_v2_aggregate_function_builder_set_init_callback(
-		    af, [](duckdb_v2_aggregate_function_init_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
-		duckdb_v2_aggregate_function_builder_set_update_callback(
-		    af, [](duckdb_v2_aggregate_function_update_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
-		duckdb_v2_aggregate_function_builder_set_combine_callback(
-		    af, [](duckdb_v2_aggregate_function_combine_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
-		duckdb_v2_aggregate_function_builder_set_finalize_callback(
-		    af, [](duckdb_v2_aggregate_function_finalize_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, af, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_aggregate_function_builder_destroy(&af);
-
-		// cast source / target ANY rejected at register.
-		duckdb_v2_cast_function_builder_handle cf = nullptr;
-		duckdb_v2_cast_function_builder_create(ctx, &cf, nullptr);
-		duckdb_v2_cast_function_builder_set_source_type(cf, any, nullptr);
-		duckdb_v2_cast_function_builder_set_target_type(cf, integer, nullptr);
-		duckdb_v2_cast_function_builder_set_exec_callback(
-		    cf, [](duckdb_v2_cast_function_exec_info_handle, duckdb_v2_error_info_handle *) -> void {}, nullptr);
-		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, cf, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_cast_function_builder_destroy(&cf);
-
-		// custom type base ANY rejected at register.
-		duckdb_v2_custom_type_builder_handle tb = nullptr;
-		duckdb_v2_custom_type_builder_create(ctx, &tb, nullptr);
-		duckdb_v2_custom_type_builder_set_name(tb, V2Str("bad_type"), nullptr);
-		duckdb_v2_custom_type_builder_set_base_type(tb, any, nullptr);
-		REQUIRE(duckdb_v2_custom_type_builder_register(ctx, tb, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_custom_type_builder_destroy(&tb);
-
-		duckdb_v2_logical_type_destroy(&any);
-		duckdb_v2_logical_type_destroy(&integer);
+	// A signature ACCEPTS an ANY parameter on every builder.
+	duckdb_v2_scalar_function_builder_handle sf = nullptr;
+	duckdb_v2_scalar_function_builder_create(&sf, nullptr);
+	duckdb_v2_scalar_function_builder_set_name(sf, V2Str("bad_scalar"), nullptr);
+	// ANY parameter accepted; ANY return type rejected (IsComplete gate) at register.
+	V2ScalarSignature(sf, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "a", any);
+		V2SigReturn(sig, any);
 	});
+	duckdb_v2_scalar_function_builder_set_exec_callback(sf, TwoAnyExec, nullptr);
+	REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, sf, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_scalar_function_builder_destroy(&sf);
+
+	// aggregate return type ANY rejected at register.
+	duckdb_v2_aggregate_function_builder_handle af = nullptr;
+	duckdb_v2_aggregate_function_builder_create(&af, nullptr);
+	duckdb_v2_aggregate_function_builder_set_name(af, V2Str("bad_agg"), nullptr);
+	V2AggregateSignature(af, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "a", any);
+		V2SigReturn(sig, any);
+	});
+	// dummy callbacks so we reach the return-type gate
+	duckdb_v2_aggregate_function_builder_set_size_callback(
+	    af,
+	    [](duckdb_v2_aggregate_function_size_info_handle info, duckdb_v2_error_info_handle *err) {
+		    duckdb_v2_aggregate_function_size_set_size(info, 8, err);
+	    },
+	    nullptr);
+	duckdb_v2_aggregate_function_builder_set_init_callback(
+	    af, [](duckdb_v2_aggregate_function_init_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
+	duckdb_v2_aggregate_function_builder_set_update_callback(
+	    af, [](duckdb_v2_aggregate_function_update_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
+	duckdb_v2_aggregate_function_builder_set_combine_callback(
+	    af, [](duckdb_v2_aggregate_function_combine_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
+	duckdb_v2_aggregate_function_builder_set_finalize_callback(
+	    af, [](duckdb_v2_aggregate_function_finalize_info_handle, duckdb_v2_error_info_handle *) {}, nullptr);
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(fix.conn, af, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_aggregate_function_builder_destroy(&af);
+
+	// cast source / target ANY rejected at register.
+	duckdb_v2_cast_function_builder_handle cf = nullptr;
+	duckdb_v2_cast_function_builder_create(&cf, nullptr);
+	duckdb_v2_cast_function_builder_set_source_type(cf, any, nullptr);
+	duckdb_v2_cast_function_builder_set_target_type(cf, integer, nullptr);
+	duckdb_v2_cast_function_builder_set_exec_callback(
+	    cf, [](duckdb_v2_cast_function_exec_info_handle, duckdb_v2_error_info_handle *) -> void {}, nullptr);
+	REQUIRE(duckdb_v2_cast_function_builder_register_with_connection(fix.conn, cf, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_cast_function_builder_destroy(&cf);
+
+	// custom type base ANY rejected at register.
+	duckdb_v2_custom_type_builder_handle tb = nullptr;
+	duckdb_v2_custom_type_builder_create(&tb, nullptr);
+	duckdb_v2_custom_type_builder_set_name(tb, V2Str("bad_type"), nullptr);
+	duckdb_v2_custom_type_builder_set_base_type(tb, any, nullptr);
+	REQUIRE(duckdb_v2_custom_type_builder_register_with_connection(fix.conn, tb, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_custom_type_builder_destroy(&tb);
+
+	duckdb_v2_logical_type_destroy(&any);
+	duckdb_v2_logical_type_destroy(&integer);
 }
 
 // ---------------------------------------------------------------------------
@@ -345,39 +344,42 @@ TEST_CASE("V2 varargs: ANY rejected by registration surfaces", "[capi_v2][vararg
 // ---------------------------------------------------------------------------
 TEST_CASE("V2 varargs: scalar concrete and ANY varargs", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+	{
 		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 		auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
 
 		// int_sum: 0 fixed params + INTEGER varargs.
-		auto b = NewScalar(ctx, "int_sum", nullptr);
+		auto b = NewScalar("int_sum", nullptr);
 		V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
 			V2SigVarargs(sig, integer);
 			V2SigReturn(sig, integer);
 		});
 		duckdb_v2_scalar_function_builder_set_exec_callback(b, IntSumExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_scalar_function_builder_destroy(&b);
 
 		// prefix_sum: 1 fixed INTEGER param + INTEGER varargs.
-		auto p = NewScalar(ctx, "prefix_sum", nullptr);
+		auto p = NewScalar("prefix_sum", nullptr);
 		V2ScalarSignature(p, [&](duckdb_v2_function_signature_handle sig) {
 			V2SigParam(sig, "base", integer);
 			V2SigVarargs(sig, integer);
 			V2SigReturn(sig, integer);
 		});
 		duckdb_v2_scalar_function_builder_set_exec_callback(p, IntSumExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, p, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, p, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_scalar_function_builder_destroy(&p);
 
 		// count_ints: ANY varargs, reads per-column types.
-		auto c = NewScalar(ctx, "count_ints", nullptr);
+		auto c = NewScalar("count_ints", nullptr);
 		V2ScalarSignature(c, [&](duckdb_v2_function_signature_handle sig) {
 			V2SigVarargs(sig, any);
 			V2SigReturn(sig, integer);
 		});
 		duckdb_v2_scalar_function_builder_set_exec_callback(c, CountIntsExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, c, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, c, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_scalar_function_builder_destroy(&c);
 
 		// NULL / INVALID varargs type rejected by the signature setter.
@@ -387,7 +389,7 @@ TEST_CASE("V2 varargs: scalar concrete and ANY varargs", "[capi_v2][varargs]") {
 
 		duckdb_v2_logical_type_destroy(&integer);
 		duckdb_v2_logical_type_destroy(&any);
-	});
+	}
 
 	auto scalar_i32 = [&](const char *sql) -> int32_t {
 		duckdb_v2_result_handle r = nullptr;
@@ -421,10 +423,10 @@ TEST_CASE("V2 varargs: scalar concrete and ANY varargs", "[capi_v2][varargs]") {
 // ---------------------------------------------------------------------------
 TEST_CASE("V2 varargs: ANY varargs with NULL and special null handling", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+	{
 		auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
 		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-		auto b = NewScalar(ctx, "count_non_null", nullptr);
+		auto b = NewScalar("count_non_null", nullptr);
 		V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
 			V2SigVarargs(sig, any);
 			V2SigReturn(sig, integer);
@@ -432,11 +434,12 @@ TEST_CASE("V2 varargs: ANY varargs with NULL and special null handling", "[capi_
 		duckdb_v2_scalar_function_builder_set_property(b, DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING,
 		                                               DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL, nullptr);
 		duckdb_v2_scalar_function_builder_set_exec_callback(b, CountNonNullExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_scalar_function_builder_destroy(&b);
 		duckdb_v2_logical_type_destroy(&any);
 		duckdb_v2_logical_type_destroy(&integer);
-	});
+	}
 
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fix.conn, "SELECT count_non_null(1, NULL, 3)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -456,21 +459,22 @@ TEST_CASE("V2 varargs: ANY varargs with NULL and special null handling", "[capi_
 // ---------------------------------------------------------------------------
 TEST_CASE("V2 varargs: fixed-arity ANY parameters", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+	{
 		auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
 		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-		auto b = NewScalar(ctx, "two_any", nullptr);
+		auto b = NewScalar("two_any", nullptr);
 		V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
 			V2SigParam(sig, "a", any);
 			V2SigParam(sig, "b", any);
 			V2SigReturn(sig, integer);
 		});
 		duckdb_v2_scalar_function_builder_set_exec_callback(b, TwoAnyExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_scalar_function_builder_destroy(&b);
 		duckdb_v2_logical_type_destroy(&any);
 		duckdb_v2_logical_type_destroy(&integer);
-	});
+	}
 
 	auto call = [&](const char *sql) {
 		duckdb_v2_result_handle r = nullptr;
@@ -497,9 +501,9 @@ TEST_CASE("V2 varargs: bind argument accessors", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
 	static ProbeResult probe;
 	probe.ran = false;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+	{
 		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-		auto b = NewScalar(ctx, "probe_add", nullptr);
+		auto b = NewScalar("probe_add", nullptr);
 		V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
 			V2SigParam(sig, "a", integer);
 			V2SigParam(sig, "b", integer);
@@ -508,10 +512,11 @@ TEST_CASE("V2 varargs: bind argument accessors", "[capi_v2][varargs]") {
 		duckdb_v2_scalar_function_builder_set_user_data(b, {&probe, nullptr, nullptr}, nullptr);
 		duckdb_v2_scalar_function_builder_set_bind_callback(b, ProbeBind, nullptr);
 		duckdb_v2_scalar_function_builder_set_exec_callback(b, ProbeExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_scalar_function_builder_destroy(&b);
 		duckdb_v2_logical_type_destroy(&integer);
-	});
+	}
 
 	// arg 0 is a column (non-foldable), arg 1 the literal 7.
 	duckdb_v2_result_handle r = nullptr;
@@ -596,12 +601,12 @@ void AggFinalize(duckdb_v2_aggregate_function_finalize_info_handle info, duckdb_
 	}
 }
 
-void RegisterAgg(duckdb_v2_context_handle ctx, const char *name,
+void RegisterAgg(duckdb_v2_connection_handle conn, const char *name,
                  duckdb_v2_aggregate_function_bind_callback_fn bind_cb) {
 	auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	auto bigint = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 	duckdb_v2_aggregate_function_builder_handle b = nullptr;
-	duckdb_v2_aggregate_function_builder_create(ctx, &b, nullptr);
+	duckdb_v2_aggregate_function_builder_create(&b, nullptr);
 	duckdb_v2_aggregate_function_builder_set_name(b, V2Str(name), nullptr);
 	V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
 		V2SigVarargs(sig, integer);
@@ -615,7 +620,7 @@ void RegisterAgg(duckdb_v2_context_handle ctx, const char *name,
 	if (bind_cb) {
 		duckdb_v2_aggregate_function_builder_set_bind_callback(b, bind_cb, nullptr);
 	}
-	REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(conn, b, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_aggregate_function_builder_destroy(&b);
 	duckdb_v2_logical_type_destroy(&integer);
 	duckdb_v2_logical_type_destroy(&bigint);
@@ -640,7 +645,7 @@ int64_t AggResult(duckdb_v2_connection_handle conn, const char *sql) {
 
 TEST_CASE("V2 varargs: aggregate varargs", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) { RegisterAgg(ctx, "multi_sum", nullptr); });
+	RegisterAgg(fix.conn, "multi_sum", nullptr);
 
 	// multi_sum sums every varargs column across every row: 1+2+3+4 = 10.
 	REQUIRE(AggResult(fix.conn, "SELECT multi_sum(a, b) FROM (VALUES (1,2),(3,4)) t(a,b)") == 10);
@@ -704,19 +709,20 @@ void TfExec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_ha
 
 TEST_CASE("V2 varargs: table function varargs + parameter count", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+	{
 		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 		duckdb_v2_table_function_builder_handle b = nullptr;
-		duckdb_v2_table_function_builder_create(ctx, &b, nullptr);
+		duckdb_v2_table_function_builder_create(&b, nullptr);
 		duckdb_v2_table_function_builder_set_name(b, V2Str("tf_count"), nullptr);
 		V2TableSignature(b, [&](duckdb_v2_function_signature_handle sig) { V2SigVarargs(sig, integer); });
 		duckdb_v2_table_function_builder_set_bind_callback(b, TfBind, nullptr);
 		duckdb_v2_table_function_builder_set_init_global_callback(b, TfInitGlobal, nullptr);
 		duckdb_v2_table_function_builder_set_exec_callback(b, TfExec, nullptr);
-		REQUIRE(duckdb_v2_table_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_table_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
 		duckdb_v2_table_function_builder_destroy(&b);
 		duckdb_v2_logical_type_destroy(&integer);
-	});
+	}
 
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fix.conn, "SELECT n FROM tf_count(10, 20, 30)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);

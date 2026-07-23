@@ -442,10 +442,8 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 	// from_text (create_from_id rejects VARIANT).
 	V2EnvFixture f;
 	duckdb_v2_logical_type_handle variant_type = nullptr;
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("VARIANT"), &variant_type, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-	});
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, V2Str("VARIANT"), &variant_type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_create_from_data(variant_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	duckdb_v2_logical_type_destroy(&variant_type);
@@ -921,10 +919,8 @@ TEST_CASE("V2: value_create STRUCT takes positional fields", "[capi_v2][value][c
 TEST_CASE("V2: value_create TUPLE takes positional fields", "[capi_v2][value][composite]") {
 	V2EnvFixture fx;
 	duckdb_v2_logical_type_handle tuple_type = nullptr;
-	V2WithContext(fx.conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("TUPLE(INTEGER, VARCHAR)"), &tuple_type, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-	});
+	REQUIRE(duckdb_v2_logical_type_get_from_text(fx.conn, V2Str("TUPLE(INTEGER, VARCHAR)"), &tuple_type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
 	auto t = V2Composite(tuple_type, {V2I32(42), V2Varchar("joe")});
 	REQUIRE(V2ChildCount(t) == 2);
@@ -1046,13 +1042,12 @@ TEST_CASE("V2: value_get_child_count is 0 for primitives and NULL composites", "
 
 namespace {
 
-// Context-scoped cast helper: returns the owned result.
+// Cast helper: casts straight from the connection.
+// Returns the owned result.
 duckdb_v2_value_handle V2CastValue(duckdb_v2_connection_handle conn, duckdb_v2_value_handle value,
                                    duckdb_v2_logical_type_handle target) {
 	duckdb_v2_value_handle out = nullptr;
-	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_value_cast(ctx, value, target, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
-	});
+	REQUIRE(duckdb_v2_value_cast_with_connection(conn, value, target, &out, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(out != nullptr);
 	return out;
 }
@@ -1097,19 +1092,17 @@ TEST_CASE("V2: value_cast converts across types and from text", "[capi_v2][value
 	duckdb_v2_logical_type_destroy(&list_type);
 
 	// A failing cast surfaces the conversion error and nulls the out param.
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		auto bad = V2Varchar("abc");
-		duckdb_v2_logical_type_handle int_type = nullptr;
-		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
-		auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
-		duckdb_v2_error_info_handle err = nullptr;
-		REQUIRE(duckdb_v2_value_cast(ctx, bad, int_type, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(out == nullptr);
-		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err);
-		duckdb_v2_logical_type_destroy(&int_type);
-		duckdb_v2_value_destroy(&bad);
-	});
+	auto bad = V2Varchar("abc");
+	duckdb_v2_logical_type_handle int_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, bad, int_type, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(out == nullptr);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
+	duckdb_v2_logical_type_destroy(&int_type);
+	duckdb_v2_value_destroy(&bad);
 }
 
 TEST_CASE("V2: UNION values build via value_cast and descend as tag + member", "[capi_v2][value][cast][union]") {
@@ -1177,16 +1170,14 @@ TEST_CASE("V2: ENUM values build via value_cast from VARCHAR", "[capi_v2][value]
 	duckdb_v2_value_destroy(&e);
 
 	// A string outside the dictionary fails the cast.
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		auto bad = V2Varchar("angry");
-		auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
-		duckdb_v2_error_info_handle err = nullptr;
-		REQUIRE(duckdb_v2_value_cast(ctx, bad, enum_type, &out, &err) != DUCKDB_V2_ERROR_NONE);
-		REQUIRE(out == nullptr);
-		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err);
-		duckdb_v2_value_destroy(&bad);
-	});
+	auto bad = V2Varchar("angry");
+	auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
+	duckdb_v2_error_info_handle err = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, bad, enum_type, &out, &err) != DUCKDB_V2_ERROR_NONE);
+	REQUIRE(out == nullptr);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
+	duckdb_v2_value_destroy(&bad);
 	duckdb_v2_logical_type_destroy(&enum_type);
 }
 
@@ -1197,14 +1188,14 @@ TEST_CASE("V2: value_cast null-arg refusals", "[capi_v2][value][cast]") {
 	duckdb_v2_logical_type_handle int_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
 
-	// A null context is refused without any scope.
-	REQUIRE(duckdb_v2_value_cast(nullptr, v, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	// A null connection is refused without any scope.
+	REQUIRE(duckdb_v2_value_cast_with_connection(nullptr, v, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_value_cast(ctx, nullptr, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(duckdb_v2_value_cast(ctx, v, nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(duckdb_v2_value_cast(ctx, v, int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	});
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, nullptr, int_type, &out, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, v, nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, v, int_type, nullptr, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&int_type);
 	duckdb_v2_value_destroy(&v);
 }
@@ -1262,51 +1253,46 @@ TEST_CASE("V2: extension type end to end: register, construct, cast, query, read
           "[capi_v2][value][cast][extension]") {
 	V2EnvFixture f;
 
-	// Register the FAHRENHEIT type and its VARCHAR cast in one context scope.
-	V2WithContext(f.conn, [](duckdb_v2_context_handle ctx) {
-		duckdb_v2_logical_type_handle int_type = nullptr;
-		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	// Register the FAHRENHEIT type and its VARCHAR cast on the connection.
+	duckdb_v2_logical_type_handle int_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
 
-		duckdb_v2_custom_type_builder_handle type_builder = nullptr;
-		REQUIRE(duckdb_v2_custom_type_builder_create(ctx, &type_builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_custom_type_builder_set_name(type_builder, V2Str("FAHRENHEIT"), nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_custom_type_builder_set_base_type(type_builder, int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_custom_type_builder_register(ctx, type_builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_custom_type_builder_destroy(&type_builder);
+	duckdb_v2_custom_type_builder_handle type_builder = nullptr;
+	REQUIRE(duckdb_v2_custom_type_builder_create(&type_builder, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_set_name(type_builder, V2Str("FAHRENHEIT"), nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_set_base_type(type_builder, int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_register_with_connection(f.conn, type_builder, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_custom_type_builder_destroy(&type_builder);
 
-		// The registered type constructs through the generic constructor.
-		duckdb_v2_logical_type_handle fahrenheit = nullptr;
-		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("fahrenheit"), nullptr, nullptr, 0, &fahrenheit, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_logical_type_handle varchar_type = nullptr;
-		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, nullptr);
+	// The registered type constructs through the generic constructor.
+	duckdb_v2_logical_type_handle fahrenheit = nullptr;
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, V2Str("fahrenheit"), nullptr, nullptr, 0, &fahrenheit,
+	                                             nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle varchar_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, nullptr);
 
-		duckdb_v2_cast_function_builder_handle cast_builder = nullptr;
-		REQUIRE(duckdb_v2_cast_function_builder_create(ctx, &cast_builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_cast_function_builder_set_source_type(cast_builder, varchar_type, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_cast_function_builder_set_target_type(cast_builder, fahrenheit, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_cast_function_builder_set_implicit_cast_cost(cast_builder, 0, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_cast_function_builder_set_exec_callback(cast_builder, VarcharToFahrenheit, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, cast_builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_cast_function_builder_destroy(&cast_builder);
+	duckdb_v2_cast_function_builder_handle cast_builder = nullptr;
+	REQUIRE(duckdb_v2_cast_function_builder_create(&cast_builder, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_set_source_type(cast_builder, varchar_type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_set_target_type(cast_builder, fahrenheit, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_set_implicit_cast_cost(cast_builder, 0, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_set_exec_callback(cast_builder, VarcharToFahrenheit, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_register_with_connection(f.conn, cast_builder, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_cast_function_builder_destroy(&cast_builder);
 
-		duckdb_v2_logical_type_destroy(&varchar_type);
-		duckdb_v2_logical_type_destroy(&fahrenheit);
-		duckdb_v2_logical_type_destroy(&int_type);
-	});
+	duckdb_v2_logical_type_destroy(&varchar_type);
+	duckdb_v2_logical_type_destroy(&fahrenheit);
+	duckdb_v2_logical_type_destroy(&int_type);
 
 	// Construct the type by name, build a value via value_cast through the
 	// registered cast ("72F" fails the default VARCHAR -> INTEGER cast).
 	duckdb_v2_logical_type_handle ftype = nullptr;
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("fahrenheit"), nullptr, nullptr, 0, &ftype, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-	});
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, V2Str("fahrenheit"), nullptr, nullptr, 0, &ftype, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	auto text = V2Varchar("72F");
 	auto fval = V2CastValue(f.conn, text, ftype);
 	duckdb_v2_value_destroy(&text);

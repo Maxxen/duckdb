@@ -715,19 +715,16 @@ TEST_CASE("V2: query_progress advances while stepping a query", "[capi_v2][query
 TEST_CASE("V2: drain a stream into a column data collection and scan it back", "[capi_v2][query_result]") {
 	V2EnvFixture fx;
 
-	// The collection needs a context to allocate through; borrow it via
-	// execute_with_context. The collection outlives the callback.
+	// The collection needs a connection to allocate through; it is created
+	// directly from the connection as an owned handle.
 	duckdb_v2_column_data_collection_handle cdc = nullptr;
-	REQUIRE(duckdb_v2_connection_execute_with_context(
-	            fx.conn,
-	            [](duckdb_v2_context_handle ctx, void *user_data, duckdb_v2_error_info_handle *err) {
-		            auto out = static_cast<duckdb_v2_column_data_collection_handle *>(user_data);
-		            duckdb_v2_logical_type_handle bigint = nullptr;
-		            duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint, err);
-		            duckdb_v2_column_data_collection_create(ctx, &bigint, 1, out, err);
-		            duckdb_v2_logical_type_destroy(&bigint);
-	            },
-	            &cdc, nullptr) == DUCKDB_V2_ERROR_NONE);
+	{
+		duckdb_v2_logical_type_handle bigint = nullptr;
+		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint, nullptr);
+		REQUIRE(duckdb_v2_column_data_collection_create_with_connection(fx.conn, &bigint, 1, &cdc, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_logical_type_destroy(&bigint);
+	}
 	REQUIRE(cdc != nullptr);
 
 	duckdb_v2_column_data_collection_append_state_handle append_state = nullptr;

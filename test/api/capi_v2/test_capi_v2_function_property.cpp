@@ -18,12 +18,7 @@ void WithContext(FN &&body) {
 	duckdb_v2_connection_handle conn = nullptr;
 	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_connection_execute_with_context(
-	    conn,
-	    [](duckdb_v2_context_handle ctx, void *data, duckdb_v2_error_info_handle *err) {
-		    (*static_cast<FN *>(data))(ctx, err);
-	    },
-	    &body, nullptr);
+	body(conn, nullptr);
 
 	duckdb_v2_disconnect(&conn);
 	duckdb_v2_close(&db);
@@ -33,9 +28,9 @@ void WithContext(FN &&body) {
 } // namespace
 
 TEST_CASE("V2 scalar function properties: round-trip and validation", "[capi_v2][function_property]") {
-	WithContext([](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
+	WithContext([](duckdb_v2_connection_handle conn, duckdb_v2_error_info_handle *err) {
 		duckdb_v2_scalar_function_builder_handle builder = nullptr;
-		REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_scalar_function_builder_create(&builder, err) == DUCKDB_V2_ERROR_NONE);
 
 		DUCKDB_V2_FUNCTION_PROPERTY_VALUE value = DUCKDB_V2_FUNCTION_PROPERTY_STABILITY_CONSISTENT;
 
@@ -89,9 +84,9 @@ TEST_CASE("V2 scalar function properties: round-trip and validation", "[capi_v2]
 }
 
 TEST_CASE("V2 aggregate function properties: common and aggregate keys", "[capi_v2][function_property]") {
-	WithContext([](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
+	WithContext([](duckdb_v2_connection_handle conn, duckdb_v2_error_info_handle *err) {
 		duckdb_v2_aggregate_function_builder_handle builder = nullptr;
-		REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_aggregate_function_builder_create(&builder, err) == DUCKDB_V2_ERROR_NONE);
 
 		DUCKDB_V2_FUNCTION_PROPERTY_VALUE value = DUCKDB_V2_FUNCTION_PROPERTY_AGG_ORDER_DEPENDENT_YES;
 

@@ -32,11 +32,8 @@ functions:
   #------------------------------------------------------------------------------------------------
   custom_type_builder_create:
     summary: Creates a new custom type builder.
-    description: "Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and registered with `custom_type_builder_register`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.\n"
+    description: "Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_context`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.\n"
     parameters:
-      context:
-        type: context
-        description: "The context in which to create the custom type builder."
       out_builder:
         type: custom_type_builder
         indirection: 1
@@ -57,9 +54,25 @@ functions:
         indirection: 1
         description: "The custom type builder to destroy."
     return_type: void
-  custom_type_builder_register:
-    summary: Registers a custom type with a database, making the type available for use in queries.
-    description: "This function registers a fully configured custom type builder with a database, making the type available for use in SQL queries executed on that database (referenced by its name). \nThe builder must have both its name and base type set before registration; otherwise, registration will fail with an error. \nDuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.\n"
+  custom_type_builder_register_with_connection:
+    summary: Registers a custom type on a connection, making the type available for use in queries.
+    description: "This function registers a fully configured custom type builder with the connection's database, making the type available for use in SQL queries executed on that database (referenced by its name). The registration runs in its own transaction on the connection's context. \nThe builder must have both its name and base type set before registration; otherwise, registration will fail with an error. \nDuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.\n"
+    parameters:
+      conn:
+        type: connection
+        description: "The connection whose database to register the custom type on."
+      builder:
+        type: custom_type_builder
+        description: "The custom type builder to register."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: ERROR
+  custom_type_builder_register_with_context:
+    summary: Registers a custom type on a context, making the type available for use in queries.
+    description: "This function registers a fully configured custom type builder with the context's database, making the type available for use in SQL queries (referenced by its name). Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction. \nThe builder must have both its name and base type set before registration; otherwise, registration will fail with an error. \nDuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.\n"
     parameters:
       context:
         type: context

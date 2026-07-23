@@ -120,17 +120,18 @@ void VarcharToTemperature(duckdb_v2_cast_function_exec_info_handle info, duckdb_
 }
 
 // Registers the TEMPERATURE custom type and both casts within the connection's transaction context.
-void RegisterTemperature(duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
+void RegisterTemperature(duckdb_v2_connection_handle conn, duckdb_v2_error_info_handle *err) {
 	duckdb_v2_logical_type_handle int_type = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, err) ==
 	        DUCKDB_V2_ERROR_NONE);
 
 	// Register the custom type TEMPERATURE as an alias of INTEGER.
 	duckdb_v2_custom_type_builder_handle type_builder = nullptr;
-	REQUIRE(duckdb_v2_custom_type_builder_create(ctx, &type_builder, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_create(&type_builder, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_custom_type_builder_set_name(type_builder, V2Str("TEMPERATURE"), err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_custom_type_builder_set_base_type(type_builder, int_type, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_custom_type_builder_register(ctx, type_builder, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_register_with_connection(conn, type_builder, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_custom_type_builder_destroy(&type_builder);
 
 	// Build a TEMPERATURE logical type handle to use as the cast source/target.
@@ -144,19 +145,20 @@ void RegisterTemperature(duckdb_v2_context_handle ctx, void *, duckdb_v2_error_i
 
 	// TEMPERATURE -> VARCHAR
 	duckdb_v2_cast_function_builder_handle to_varchar = nullptr;
-	REQUIRE(duckdb_v2_cast_function_builder_create(ctx, &to_varchar, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_create(&to_varchar, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_set_source_type(to_varchar, temperature_type, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_set_target_type(to_varchar, varchar_type, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_set_implicit_cast_cost(to_varchar, 0, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_set_exec_callback(to_varchar, TemperatureToVarchar, err) ==
 	        DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_cast_function_builder_register(ctx, to_varchar, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_register_with_connection(conn, to_varchar, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_destroy(&to_varchar) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(to_varchar == nullptr);
 
 	// VARCHAR -> TEMPERATURE (with user data)
 	duckdb_v2_cast_function_builder_handle from_varchar = nullptr;
-	REQUIRE(duckdb_v2_cast_function_builder_create(ctx, &from_varchar, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_create(&from_varchar, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_set_source_type(from_varchar, varchar_type, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_set_target_type(from_varchar, temperature_type, err) ==
 	        DUCKDB_V2_ERROR_NONE);
@@ -171,7 +173,8 @@ void RegisterTemperature(duckdb_v2_context_handle ctx, void *, duckdb_v2_error_i
 	REQUIRE(duckdb_v2_cast_function_builder_set_user_data(from_varchar, {secret, destroy, nullptr}, err) ==
 	        DUCKDB_V2_ERROR_NONE);
 
-	REQUIRE(duckdb_v2_cast_function_builder_register(ctx, from_varchar, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_cast_function_builder_register_with_connection(conn, from_varchar, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_cast_function_builder_destroy(&from_varchar) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_logical_type_destroy(&temperature_type);
@@ -231,8 +234,7 @@ TEST_CASE("V2 cast: custom type round-trip casts", "[capi_v2][cast]") {
 	V2EnvFixture fixture;
 	auto conn = fixture.conn;
 
-	REQUIRE(duckdb_v2_connection_execute_with_context(conn, RegisterTemperature, nullptr, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	RegisterTemperature(conn, nullptr);
 
 	SECTION("TEMPERATURE -> VARCHAR") {
 		REQUIRE(QuerySingleVarchar(conn, "SELECT CAST(CAST(42 AS TEMPERATURE) AS VARCHAR)") == "42C");
@@ -292,9 +294,9 @@ TEST_CASE("V2 cast: builder validation errors", "[capi_v2][cast]") {
 	V2EnvFixture fixture;
 	auto conn = fixture.conn;
 
-	auto check = [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
+	auto check = [](duckdb_v2_connection_handle conn, duckdb_v2_error_info_handle *err) {
 		// create requires a non-null context and out pointer
-		REQUIRE(duckdb_v2_cast_function_builder_create(nullptr, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(duckdb_v2_cast_function_builder_create(nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 		duckdb_v2_logical_type_handle int_type = nullptr;
 		REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, err) ==
@@ -304,24 +306,27 @@ TEST_CASE("V2 cast: builder validation errors", "[capi_v2][cast]") {
 		        DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_cast_function_builder_handle builder = nullptr;
-		REQUIRE(duckdb_v2_cast_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_cast_function_builder_create(&builder, err) == DUCKDB_V2_ERROR_NONE);
 
 		// register without source/target/exec set -> error (no err out param to keep it simple)
-		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, builder, nullptr) != DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_cast_function_builder_register_with_connection(conn, builder, nullptr) !=
+		        DUCKDB_V2_ERROR_NONE);
 
 		REQUIRE(duckdb_v2_cast_function_builder_set_source_type(builder, int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, builder, nullptr) != DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_cast_function_builder_register_with_connection(conn, builder, nullptr) !=
+		        DUCKDB_V2_ERROR_NONE);
 
 		REQUIRE(duckdb_v2_cast_function_builder_set_target_type(builder, varchar_type, nullptr) ==
 		        DUCKDB_V2_ERROR_NONE);
 		// still missing the exec callback
-		REQUIRE(duckdb_v2_cast_function_builder_register(ctx, builder, nullptr) != DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_cast_function_builder_register_with_connection(conn, builder, nullptr) !=
+		        DUCKDB_V2_ERROR_NONE);
 
 		duckdb_v2_cast_function_builder_destroy(&builder);
 		duckdb_v2_logical_type_destroy(&int_type);
 		duckdb_v2_logical_type_destroy(&varchar_type);
 	};
-	REQUIRE(duckdb_v2_connection_execute_with_context(conn, check, nullptr, nullptr) == DUCKDB_V2_ERROR_NONE);
+	check(conn, nullptr);
 
 	// null-safe destroy
 	REQUIRE(duckdb_v2_cast_function_builder_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);

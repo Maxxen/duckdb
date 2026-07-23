@@ -243,13 +243,9 @@ struct CopyFunctionBuilderV2 {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_create(duckdb_v2_context_handle context,
-                                                       duckdb_v2_copy_function_builder_handle *out,
+DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_create(duckdb_v2_copy_function_builder_handle *out,
                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
-		}
 		if (!out) {
 			throw duckdb::InvalidInputException("Output pointer cannot be null.");
 		}
@@ -362,9 +358,72 @@ DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_set_user_data(duckdb_v2_copy_fun
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register(duckdb_v2_context_handle context,
-                                                         duckdb_v2_copy_function_builder_handle builder,
-                                                         duckdb_v2_error_info_handle *err) {
+static void RegisterCopyFunctionV2(duckdb::ClientContext &context_ref, duckdb::CopyFunctionBuilderV2 *builder) {
+	auto &builder_ref = *builder;
+
+	if (builder_ref.name.empty()) {
+		throw duckdb::InvalidInputException("Function name cannot be empty.");
+	}
+	if (!builder_ref.bind_cb) {
+		throw duckdb::InvalidInputException("Bind callback function cannot be null.");
+	}
+	if (!builder_ref.init_cb) {
+		throw duckdb::InvalidInputException("Init callback function cannot be null.");
+	}
+	if (!builder_ref.batch_cb) {
+		throw duckdb::InvalidInputException("Batch callback function cannot be null.");
+	}
+	if (!builder_ref.flush_cb) {
+		throw duckdb::InvalidInputException("Flush callback must be set before registration.");
+	}
+	if (!builder_ref.finalize_cb) {
+		throw duckdb::InvalidInputException("Finalize callback function cannot be null.");
+	}
+
+	duckdb::CopyFunction function(builder_ref.name);
+	function.copy_to_bind = duckdb::CopyFunctionBuilderV2::CopyToBind;
+	function.copy_to_initialize_global = duckdb::CopyFunctionBuilderV2::CopyToInit;
+	function.prepare_batch = duckdb::CopyFunctionBuilderV2::CopyToBatch;
+	function.flush_batch = duckdb::CopyFunctionBuilderV2::CopyToFlush;
+	function.copy_to_finalize = duckdb::CopyFunctionBuilderV2::CopyToFinalize;
+
+	// Setup the persistent info
+	auto info = duckdb::make_shared_ptr<duckdb::CCopyFunctionInfoV2>();
+	info->bind_cb = builder_ref.bind_cb;
+	info->init_cb = builder_ref.init_cb;
+	info->batch_cb = builder_ref.batch_cb;
+	info->flush_cb = builder_ref.flush_cb;
+	info->finalize_cb = builder_ref.finalize_cb;
+	info->user_data = builder_ref.user_data;
+
+	function.function_info = std::move(info);
+
+	auto &catalog = duckdb::Catalog::GetSystemCatalog(context_ref);
+	duckdb::CreateCopyFunctionInfo cf_info(function);
+	cf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
+	catalog.CreateCopyFunction(context_ref, cf_info);
+}
+
+DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_connection(duckdb_v2_connection_handle conn,
+                                                                         duckdb_v2_copy_function_builder_handle builder,
+                                                                         duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
+		}
+		if (!builder) {
+			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
+		}
+
+		auto builder_ref = reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder);
+		auto &context_ref = *duckdb::ToConn(conn)->context;
+		context_ref.RunFunctionInTransaction([&]() { RegisterCopyFunctionV2(context_ref, builder_ref); });
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_context(duckdb_v2_context_handle context,
+                                                                      duckdb_v2_copy_function_builder_handle builder,
+                                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
@@ -373,51 +432,9 @@ DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register(duckdb_v2_context_handl
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
 
-		auto &builder_ref = *reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder);
-
-		if (builder_ref.name.empty()) {
-			throw duckdb::InvalidInputException("Function name cannot be empty.");
-		}
-		if (!builder_ref.bind_cb) {
-			throw duckdb::InvalidInputException("Bind callback function cannot be null.");
-		}
-		if (!builder_ref.init_cb) {
-			throw duckdb::InvalidInputException("Init callback function cannot be null.");
-		}
-		if (!builder_ref.batch_cb) {
-			throw duckdb::InvalidInputException("Batch callback function cannot be null.");
-		}
-		if (!builder_ref.flush_cb) {
-			throw duckdb::InvalidInputException("Flush callback must be set before registration.");
-		}
-		if (!builder_ref.finalize_cb) {
-			throw duckdb::InvalidInputException("Finalize callback function cannot be null.");
-		}
-
-		auto &context_ref = *reinterpret_cast<duckdb::ClientContext *>(context);
-
-		duckdb::CopyFunction function(builder_ref.name);
-		function.copy_to_bind = duckdb::CopyFunctionBuilderV2::CopyToBind;
-		function.copy_to_initialize_global = duckdb::CopyFunctionBuilderV2::CopyToInit;
-		function.prepare_batch = duckdb::CopyFunctionBuilderV2::CopyToBatch;
-		function.flush_batch = duckdb::CopyFunctionBuilderV2::CopyToFlush;
-		function.copy_to_finalize = duckdb::CopyFunctionBuilderV2::CopyToFinalize;
-
-		// Setup the persistent info
-		auto info = duckdb::make_shared_ptr<duckdb::CCopyFunctionInfoV2>();
-		info->bind_cb = builder_ref.bind_cb;
-		info->init_cb = builder_ref.init_cb;
-		info->batch_cb = builder_ref.batch_cb;
-		info->flush_cb = builder_ref.flush_cb;
-		info->finalize_cb = builder_ref.finalize_cb;
-		info->user_data = builder_ref.user_data;
-
-		function.function_info = std::move(info);
-
-		auto &catalog = duckdb::Catalog::GetSystemCatalog(context_ref);
-		duckdb::CreateCopyFunctionInfo cf_info(function);
-		cf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
-		catalog.CreateCopyFunction(context_ref, cf_info);
+		auto builder_ref = reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder);
+		auto &context_ref = *duckdb::ToContext(context);
+		RegisterCopyFunctionV2(context_ref, builder_ref);
 	});
 }
 

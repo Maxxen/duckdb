@@ -32,6 +32,8 @@ struct ScalarFunctionBindInfoV2 {
 	void *user_data = nullptr;
 	BindArgumentsV2 *arguments = nullptr;
 	duckdb_v2_opaque out_bind_data = {};
+	// The call site's bound function, for setting the return type in bind.
+	BoundScalarFunction *bound_function = nullptr;
 };
 
 struct ScalarFunctionInitInfoV2 {
@@ -79,6 +81,7 @@ struct ScalarFunctionV2 {
 		cb_info.function_name = ToStr(input.GetBoundFunction().GetName());
 		cb_info.user_data = info.user_data ? info.user_data->GetData() : nullptr;
 		cb_info.arguments = &bind_args;
+		cb_info.bound_function = &input.GetBoundFunction();
 
 		auto info_handle = reinterpret_cast<duckdb_v2_scalar_function_bind_info_handle>(&cb_info);
 		// Binding always runs under a client context.
@@ -170,14 +173,9 @@ struct ScalarFunctionV2 {
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_create(duckdb_v2_context_handle ctx,
-                                                         duckdb_v2_scalar_function_builder_handle *out,
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_create(duckdb_v2_scalar_function_builder_handle *out,
                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!ctx) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
-		}
-
 		if (!out) {
 			throw duckdb::InvalidInputException("Output pointer cannot be null.");
 		}
@@ -268,9 +266,80 @@ DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register(duckdb_v2_context_handle ctx,
-                                                           duckdb_v2_scalar_function_builder_handle func,
-                                                           duckdb_v2_error_info_handle *err) {
+static void RegisterScalarFunctionV2(duckdb::ClientContext &context, duckdb::ScalarFunctionV2 &builder) {
+	if (builder.name.empty()) {
+		throw duckdb::InvalidInputException("Function name cannot be empty.");
+	}
+
+	if (builder.info.exec_cb == nullptr) {
+		throw duckdb::InvalidInputException("Exec callback must be set for the function.");
+	}
+
+	const auto &return_type = builder.signature.GetReturnType();
+	if (return_type.id() == duckdb::LogicalTypeId::INVALID) {
+		throw duckdb::InvalidInputException("Return type must be set for the function.");
+	}
+
+	// ANY is allowed as a placeholder return type only when a bind callback is
+	// present to resolve the concrete type per call site (via
+	// scalar_function_bind_set_return_type). Every other type must be concrete.
+	if (return_type.id() == duckdb::LogicalTypeId::ANY) {
+		if (builder.info.bind_cb == nullptr) {
+			throw duckdb::InvalidInputException(
+			    "An ANY return type requires a bind callback to set the concrete return type.");
+		}
+	} else if (!return_type.IsComplete()) {
+		throw duckdb::InvalidInputException("Return type must be a fully defined concrete type");
+	}
+
+	duckdb::ScalarFunction function(builder.name, {}, return_type, duckdb::ScalarFunctionV2::ExecCallback);
+
+	// Adopt the stored signature so parameter names, defaults, the variadic
+	// tail, and the return type are all preserved on the registered function.
+	function.GetSignature() = builder.signature;
+
+	if (builder.info.bind_cb) {
+		function.SetBindCallback(duckdb::ScalarFunctionV2::BindCallback);
+	}
+
+	if (builder.info.init_cb) {
+		function.SetInitStateCallback(duckdb::ScalarFunctionV2::InitCallback);
+	}
+
+	function.SetSerializeCallback(duckdb::ScalarFunctionV2::SerializeCallback);
+	function.SetDeserializeCallback(duckdb::ScalarFunctionV2::DeserializeCallback);
+
+	function.SetExtraFunctionInfo<duckdb::ScalarFunctionV2::RuntimeInfo>(builder.info);
+
+	function.SetProperties(builder.properties);
+
+	// Also verify signature so that function parameters make sense
+	function.GetSignature().Verify();
+
+	auto &catalog = duckdb::Catalog::GetSystemCatalog(context);
+	duckdb::CreateScalarFunctionInfo sf_info(function);
+	sf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
+	catalog.CreateFunction(context, sf_info);
+}
+
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_connection(
+    duckdb_v2_connection_handle conn, duckdb_v2_scalar_function_builder_handle func, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
+		}
+		if (!func) {
+			throw duckdb::InvalidInputException("Function pointer cannot be null.");
+		}
+		auto &context = *duckdb::ToConn(conn)->context;
+		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
+		context.RunFunctionInTransaction([&]() { RegisterScalarFunctionV2(context, builder); });
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_context(duckdb_v2_context_handle ctx,
+                                                                        duckdb_v2_scalar_function_builder_handle func,
+                                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!ctx) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
@@ -278,55 +347,9 @@ DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register(duckdb_v2_context_han
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
 		}
-
+		auto &context = *duckdb::ToContext(ctx);
 		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
-		auto &context = *reinterpret_cast<duckdb::ClientContext *>(ctx);
-
-		if (builder.name.empty()) {
-			throw duckdb::InvalidInputException("Function name cannot be empty.");
-		}
-
-		if (builder.info.exec_cb == nullptr) {
-			throw duckdb::InvalidInputException("Exec callback must be set for the function.");
-		}
-
-		const auto &return_type = builder.signature.GetReturnType();
-		if (return_type.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Return type must be set for the function.");
-		}
-
-		if (!return_type.IsComplete()) {
-			throw duckdb::InvalidInputException("Return type must be a fully defined concrete type");
-		}
-
-		duckdb::ScalarFunction function(builder.name, {}, return_type, duckdb::ScalarFunctionV2::ExecCallback);
-
-		// Adopt the stored signature so parameter names, defaults, the variadic
-		// tail, and the return type are all preserved on the registered function.
-		function.GetSignature() = builder.signature;
-
-		if (builder.info.bind_cb) {
-			function.SetBindCallback(duckdb::ScalarFunctionV2::BindCallback);
-		}
-
-		if (builder.info.init_cb) {
-			function.SetInitStateCallback(duckdb::ScalarFunctionV2::InitCallback);
-		}
-
-		function.SetSerializeCallback(duckdb::ScalarFunctionV2::SerializeCallback);
-		function.SetDeserializeCallback(duckdb::ScalarFunctionV2::DeserializeCallback);
-
-		function.SetExtraFunctionInfo<duckdb::ScalarFunctionV2::RuntimeInfo>(builder.info);
-
-		function.SetProperties(builder.properties);
-
-		// Also verify signature so that function parameters make sense
-		function.GetSignature().Verify();
-
-		auto &catalog = duckdb::Catalog::GetSystemCatalog(context);
-		duckdb::CreateScalarFunctionInfo sf_info(function);
-		sf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
-		catalog.CreateFunction(context, sf_info);
+		RegisterScalarFunctionV2(context, builder);
 	});
 }
 
@@ -423,6 +446,19 @@ DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_set_bind_data(duckdb_v2_scalar_fu
 			throw duckdb::InvalidInputException("Info handle cannot be null.");
 		}
 		reinterpret_cast<duckdb::ScalarFunctionBindInfoV2 *>(info)->out_bind_data = data;
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_set_return_type(duckdb_v2_scalar_function_bind_info_handle info,
+                                                               duckdb_v2_logical_type_handle type,
+                                                               duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!info || !type) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_scalar_function_bind_set_return_type");
+		}
+		auto &cb_info = *reinterpret_cast<duckdb::ScalarFunctionBindInfoV2 *>(info);
+		// bound_function is only wired up while the bind callback runs.
+		cb_info.bound_function->SetReturnType(*duckdb::ToLogicalType(type));
 	});
 }
 

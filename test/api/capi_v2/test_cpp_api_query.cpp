@@ -42,69 +42,65 @@ TEST_CASE("Stable C++API: Column Data Single Scan", "[cpp_api]") {
 	auto result = conn.Execute("SELECT i AS a, i * 10 AS b FROM range(4100) t(i)");
 	REQUIRE(result.GetSchema().GetFieldCount() == 2);
 
-	// Drain the stream up front: chunks are appended twice below, and the
-	// result must be consumed outside WithTransaction (the transaction
-	// callback holds the context lock the stream needs).
+	// Drain the stream up front: chunks are appended twice below.
 	std::vector<DataChunk> chunks;
 	while (auto chunk = result.FetchChunk()) {
 		chunks.push_back(std::move(chunk));
 	}
 
-	conn.WithTransaction([&](const Context &ctx) {
-		std::vector<LogicalType> types;
-		types.push_back(LogicalType::BIGINT()); // range() produces BIGINT
-		types.push_back(LogicalType::BIGINT());
+	std::vector<LogicalType> types;
+	types.push_back(LogicalType::BIGINT()); // range() produces BIGINT
+	types.push_back(LogicalType::BIGINT());
 
-		ColumnDataCollection collection(ctx, types);
-		REQUIRE(collection.GetRowCount() == 0);
+	ColumnDataCollection collection(conn, types);
+	REQUIRE(collection.GetRowCount() == 0);
 
-		// Append every chunk of the query result into the collection.
-		{
-			auto append_state = collection.GetAppendState();
-			for (auto &chunk : chunks) {
-				collection.Append(append_state, chunk);
-			}
+	// Append every chunk of the query result into the collection.
+	{
+		auto append_state = collection.GetAppendState();
+		for (auto &chunk : chunks) {
+			collection.Append(append_state, chunk);
 		}
-		REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT));
+	}
+	REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT));
 
-		// Scan the collection back single-threaded and verify the values round-trip.
-		// The scan target is a fresh standalone chunk; Scan sets its cardinality.
-		{
-			auto scan_state = collection.GetSingleScanState();
-			DataChunk out(ctx, types);
+	// Scan the collection back single-threaded and verify the values round-trip.
+	// The scan target is a fresh standalone chunk; Scan sets its cardinality.
+	{
+		auto scan_state = collection.GetSingleScanState();
+		DataChunk out(types);
 
-			idx_t scanned = 0;
-			int64_t sum_a = 0;
-			while (collection.Scan(scan_state, out)) {
-				const auto rows = out.GetRowCount();
-				const auto va = out.GetVector(0).GetView();
-				const auto vb = out.GetVector(1).GetView();
-				const auto a = va.Data<int64_t>();
-				const auto b = vb.Data<int64_t>();
-				for (idx_t r = 0; r < rows; r++) {
-					REQUIRE(b[vb.SelAt(r)] == a[va.SelAt(r)] * 10);
-					sum_a += a[va.SelAt(r)];
-				}
-				scanned += rows;
+		idx_t scanned = 0;
+		int64_t sum_a = 0;
+		while (collection.Scan(scan_state, out)) {
+			const auto rows = out.GetRowCount();
+			const auto va = out.GetVector(0).GetView();
+			const auto vb = out.GetVector(1).GetView();
+			const auto a = va.Data<int64_t>();
+			const auto b = vb.Data<int64_t>();
+			for (idx_t r = 0; r < rows; r++) {
+				REQUIRE(b[vb.SelAt(r)] == a[va.SelAt(r)] * 10);
+				sum_a += a[va.SelAt(r)];
 			}
-
-			REQUIRE(scanned == idx_t(ROW_COUNT));
-			REQUIRE(sum_a == (ROW_COUNT - 1) * ROW_COUNT / 2); // sum of 0..4099
+			scanned += rows;
 		}
 
-		// Combine consumes another collection and merges its rows into this one.
-		{
-			ColumnDataCollection other(ctx, types);
-			auto append_state = other.GetAppendState();
-			for (auto &chunk : chunks) {
-				other.Append(append_state, chunk);
-			}
-			REQUIRE(other.GetRowCount() == idx_t(ROW_COUNT));
+		REQUIRE(scanned == idx_t(ROW_COUNT));
+		REQUIRE(sum_a == (ROW_COUNT - 1) * ROW_COUNT / 2); // sum of 0..4099
+	}
 
-			collection.Combine(std::move(other));
-			REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT * 2));
+	// Combine consumes another collection and merges its rows into this one.
+	{
+		ColumnDataCollection other(conn, types);
+		auto append_state = other.GetAppendState();
+		for (auto &chunk : chunks) {
+			other.Append(append_state, chunk);
 		}
-	});
+		REQUIRE(other.GetRowCount() == idx_t(ROW_COUNT));
+
+		collection.Combine(std::move(other));
+		REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT * 2));
+	}
 }
 TEST_CASE("Stable C++API: Column Data Multi Scan", "[cpp_api]") {
 	using namespace duckdb_api;
@@ -124,45 +120,43 @@ TEST_CASE("Stable C++API: Column Data Multi Scan", "[cpp_api]") {
 		chunks.push_back(std::move(chunk));
 	}
 
-	conn.WithTransaction([&](const Context &ctx) {
-		std::vector<LogicalType> types;
-		types.push_back(LogicalType::BIGINT());
-		types.push_back(LogicalType::BIGINT());
+	std::vector<LogicalType> types;
+	types.push_back(LogicalType::BIGINT());
+	types.push_back(LogicalType::BIGINT());
 
-		ColumnDataCollection collection(ctx, types);
+	ColumnDataCollection collection(conn, types);
 
-		{
-			auto append_state = collection.GetAppendState();
-			for (auto &chunk : chunks) {
-				collection.Append(append_state, chunk);
-			}
+	{
+		auto append_state = collection.GetAppendState();
+		for (auto &chunk : chunks) {
+			collection.Append(append_state, chunk);
 		}
-		REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT));
+	}
+	REQUIRE(collection.GetRowCount() == idx_t(ROW_COUNT));
 
-		// Drive the parallel scan API single-threaded: a shared state coordinates
-		// the scan, while a per-worker state tracks the current worker's position.
-		auto shared_state = collection.GetSharedScanState();
-		auto worker_state = collection.GetWorkerScanState();
-		DataChunk out(ctx, types);
+	// Drive the parallel scan API single-threaded: a shared state coordinates
+	// the scan, while a per-worker state tracks the current worker's position.
+	auto shared_state = collection.GetSharedScanState();
+	auto worker_state = collection.GetWorkerScanState();
+	DataChunk out(types);
 
-		idx_t scanned = 0;
-		int64_t sum_a = 0;
-		while (collection.Scan(shared_state, worker_state, out)) {
-			const auto rows = out.GetRowCount();
-			const auto va = out.GetVector(0).GetView();
-			const auto vb = out.GetVector(1).GetView();
-			const auto a = va.Data<int64_t>();
-			const auto b = vb.Data<int64_t>();
-			for (idx_t r = 0; r < rows; r++) {
-				REQUIRE(b[vb.SelAt(r)] == a[va.SelAt(r)] * 10);
-				sum_a += a[va.SelAt(r)];
-			}
-			scanned += rows;
+	idx_t scanned = 0;
+	int64_t sum_a = 0;
+	while (collection.Scan(shared_state, worker_state, out)) {
+		const auto rows = out.GetRowCount();
+		const auto va = out.GetVector(0).GetView();
+		const auto vb = out.GetVector(1).GetView();
+		const auto a = va.Data<int64_t>();
+		const auto b = vb.Data<int64_t>();
+		for (idx_t r = 0; r < rows; r++) {
+			REQUIRE(b[vb.SelAt(r)] == a[va.SelAt(r)] * 10);
+			sum_a += a[va.SelAt(r)];
 		}
+		scanned += rows;
+	}
 
-		REQUIRE(scanned == idx_t(ROW_COUNT));
-		REQUIRE(sum_a == (ROW_COUNT - 1) * ROW_COUNT / 2);
-	});
+	REQUIRE(scanned == idx_t(ROW_COUNT));
+	REQUIRE(sum_a == (ROW_COUNT - 1) * ROW_COUNT / 2);
 }
 TEST_CASE("Stable C++API: step loop drains a multi-chunk result", "[cpp_api]") {
 	using namespace duckdb_api;
@@ -798,35 +792,31 @@ struct CbRow {
 void CbFillRows(duckdb_api::Connection &conn, duckdb_api::ColumnDataCollection &collection,
                 const std::vector<CbRow> &rows) {
 	using namespace duckdb_api;
-	conn.WithTransaction([&](const Context &ctx) {
-		std::vector<LogicalType> types;
-		types.push_back(LogicalType::INTEGER());
-		types.push_back(LogicalType::VARCHAR());
-		DataChunk chunk(ctx, types);
-		auto ivec = chunk.GetVector(0);
-		auto svec = chunk.GetVector(1);
-		ivec.SetSize(rows.size());
-		svec.SetSize(rows.size());
-		auto *ids = ivec.GetDataMutable<int32_t>();
-		for (idx_t r = 0; r < rows.size(); r++) {
-			ids[r] = rows[r].id;
-			svec.AssignString(r, rows[r].name);
-		}
-		auto state = collection.GetAppendState();
-		collection.Append(state, chunk);
-	});
+	std::vector<LogicalType> types;
+	types.push_back(LogicalType::INTEGER());
+	types.push_back(LogicalType::VARCHAR());
+	DataChunk chunk(types);
+	auto ivec = chunk.GetVector(0);
+	auto svec = chunk.GetVector(1);
+	ivec.SetSize(rows.size());
+	svec.SetSize(rows.size());
+	auto *ids = ivec.GetDataMutable<int32_t>();
+	for (idx_t r = 0; r < rows.size(); r++) {
+		ids[r] = rows[r].id;
+		svec.AssignString(r, rows[r].name);
+	}
+	auto state = collection.GetAppendState();
+	collection.Append(state, chunk);
 }
 
 // Builds an (INTEGER, VARCHAR) collection filled with `rows`.
 duckdb_api::ColumnDataCollection CbMakeCollection(duckdb_api::Connection &conn, const std::vector<CbRow> &rows) {
 	using namespace duckdb_api;
 	std::unique_ptr<ColumnDataCollection> out;
-	conn.WithTransaction([&](const Context &ctx) {
-		std::vector<LogicalType> types;
-		types.push_back(LogicalType::INTEGER());
-		types.push_back(LogicalType::VARCHAR());
-		out = std::make_unique<ColumnDataCollection>(ctx, types);
-	});
+	std::vector<LogicalType> types;
+	types.push_back(LogicalType::INTEGER());
+	types.push_back(LogicalType::VARCHAR());
+	out = std::make_unique<ColumnDataCollection>(conn, types);
 	if (!rows.empty()) {
 		CbFillRows(conn, *out, rows);
 	}

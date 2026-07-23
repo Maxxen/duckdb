@@ -362,13 +362,9 @@ using duckdb::TableFunctionInitInfoV2;
 using duckdb::TableFunctionLocalStateV2;
 using duckdb::WithErrorHandler;
 
-DUCKDB_V2_ERROR duckdb_v2_table_function_builder_create(duckdb_v2_context_handle context,
-                                                        duckdb_v2_table_function_builder_handle *out,
+DUCKDB_V2_ERROR duckdb_v2_table_function_builder_create(duckdb_v2_table_function_builder_handle *out,
                                                         duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
-		}
 		if (!out) {
 			throw duckdb::InvalidInputException("Output pointer cannot be null.");
 		}
@@ -519,9 +515,107 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_pushdown_complex_filter_cal
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register(duckdb_v2_context_handle context,
+static void RegisterTableFunctionV2(duckdb::ClientContext &ctx, duckdb::TableFunctionBuilderV2 &b) {
+	if (b.name.empty()) {
+		throw duckdb::InvalidInputException("Function name must be set before registration.");
+	}
+	if (!b.info.bind_cb) {
+		throw duckdb::InvalidInputException("Bind callback must be set before registration.");
+	}
+	if (!b.info.exec_cb) {
+		throw duckdb::InvalidInputException("Exec callback must be set before registration.");
+	}
+	// A table function declares its columns in bind; a return type on the
+	// signature signals confusion.
+	if (b.signature.GetReturnType().id() != duckdb::LogicalTypeId::INVALID) {
+		throw duckdb::InvalidInputException("A table function signature cannot set a return type.");
+	}
+	// Structural validity: unique parameter names, defaults trailing.
+	b.signature.Verify();
+
+	// Route the signature onto the engine's two argument mechanisms: a
+	// parameter without a default is a required positional argument; a
+	// parameter with a default is an optional named argument.
+	duckdb::vector<duckdb::LogicalType> positional;
+	for (idx_t i = 0; i < b.signature.GetParameterCount(); i++) {
+		const auto &param = b.signature.GetParameter(i);
+		if (!param.HasDefaultValue()) {
+			positional.push_back(param.GetType());
+		}
+	}
+
+	duckdb::TableFunction func(b.name, positional, TableFunctionBuilderV2::ExecCallback,
+	                           TableFunctionBuilderV2::BindCallback, TableFunctionBuilderV2::InitGlobalCallback,
+	                           TableFunctionBuilderV2::InitLocalCallback);
+
+	func.projection_pushdown = b.projection_pushdown;
+
+	// Wire the varargs type (if any) so the engine expands trailing positional
+	// arguments to it during binding.
+	if (b.signature.HasVarArgs()) {
+		func.SetVarArgs(b.signature.GetVarArgs());
+	}
+
+	// Always wire the cardinality hook: it serves both the cardinality
+	// callback and the static cardinality set via bind_set_cardinality
+	// (a bind-time decision not known at registration). It returns null
+	// when neither is provided, which the optimizer treats as no estimate.
+	func.cardinality = TableFunctionBuilderV2::CardinalityCallback;
+	if (b.info.progress_cb) {
+		func.table_scan_progress = TableFunctionBuilderV2::ProgressCallback;
+	}
+	if (b.info.pushdown_complex_filter_cb) {
+		func.pushdown_complex_filter = TableFunctionBuilderV2::PushdownComplexFilterCallback;
+	}
+
+	auto *info_handle = new duckdb::TableFunctionRuntimeInfoV2();
+	info_handle->bind_cb = b.info.bind_cb;
+	info_handle->init_global_cb = b.info.init_global_cb;
+	info_handle->init_local_cb = b.info.init_local_cb;
+	info_handle->exec_cb = b.info.exec_cb;
+	info_handle->cardinality_cb = b.info.cardinality_cb;
+	info_handle->progress_cb = b.info.progress_cb;
+	info_handle->pushdown_complex_filter_cb = b.info.pushdown_complex_filter_cb;
+	info_handle->user_data = b.info.user_data;
+
+	// Route each optional (defaulted) parameter onto the engine's named-parameter
+	// declaration map, and remember its default for bind-time injection.
+	for (idx_t i = 0; i < b.signature.GetParameterCount(); i++) {
+		const auto &param = b.signature.GetParameter(i);
+		if (param.HasDefaultValue()) {
+			func.named_parameters[param.GetName()] = param.GetType();
+			info_handle->named_parameter_defaults[param.GetName()] = *param.GetDefaultValue();
+		}
+	}
+
+	func.function_info = duckdb::shared_ptr<duckdb::TableFunctionInfo>(info_handle);
+
+	auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
+	duckdb::CreateTableFunctionInfo tf_info(func);
+	tf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
+	catalog.CreateTableFunction(ctx, tf_info);
+}
+
+DUCKDB_V2_ERROR
+duckdb_v2_table_function_builder_register_with_connection(duckdb_v2_connection_handle conn,
                                                           duckdb_v2_table_function_builder_handle builder,
                                                           duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
+		}
+		if (!builder) {
+			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
+		}
+		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
+		auto &ctx = *duckdb::ToConn(conn)->context;
+		ctx.RunFunctionInTransaction([&]() { RegisterTableFunctionV2(ctx, b); });
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register_with_context(duckdb_v2_context_handle context,
+                                                                       duckdb_v2_table_function_builder_handle builder,
+                                                                       duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
@@ -529,88 +623,9 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register(duckdb_v2_context_hand
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-
 		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
-		auto &ctx = *reinterpret_cast<duckdb::ClientContext *>(context);
-
-		if (b.name.empty()) {
-			throw duckdb::InvalidInputException("Function name must be set before registration.");
-		}
-		if (!b.info.bind_cb) {
-			throw duckdb::InvalidInputException("Bind callback must be set before registration.");
-		}
-		if (!b.info.exec_cb) {
-			throw duckdb::InvalidInputException("Exec callback must be set before registration.");
-		}
-		// A table function declares its columns in bind; a return type on the
-		// signature signals confusion.
-		if (b.signature.GetReturnType().id() != duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("A table function signature cannot set a return type.");
-		}
-		// Structural validity: unique parameter names, defaults trailing.
-		b.signature.Verify();
-
-		// Route the signature onto the engine's two argument mechanisms: a
-		// parameter without a default is a required positional argument; a
-		// parameter with a default is an optional named argument.
-		duckdb::vector<duckdb::LogicalType> positional;
-		for (idx_t i = 0; i < b.signature.GetParameterCount(); i++) {
-			const auto &param = b.signature.GetParameter(i);
-			if (!param.HasDefaultValue()) {
-				positional.push_back(param.GetType());
-			}
-		}
-
-		duckdb::TableFunction func(b.name, positional, TableFunctionBuilderV2::ExecCallback,
-		                           TableFunctionBuilderV2::BindCallback, TableFunctionBuilderV2::InitGlobalCallback,
-		                           TableFunctionBuilderV2::InitLocalCallback);
-
-		func.projection_pushdown = b.projection_pushdown;
-
-		// Wire the varargs type (if any) so the engine expands trailing positional
-		// arguments to it during binding.
-		if (b.signature.HasVarArgs()) {
-			func.SetVarArgs(b.signature.GetVarArgs());
-		}
-
-		// Always wire the cardinality hook: it serves both the cardinality
-		// callback and the static cardinality set via bind_set_cardinality
-		// (a bind-time decision not known at registration). It returns null
-		// when neither is provided, which the optimizer treats as no estimate.
-		func.cardinality = TableFunctionBuilderV2::CardinalityCallback;
-		if (b.info.progress_cb) {
-			func.table_scan_progress = TableFunctionBuilderV2::ProgressCallback;
-		}
-		if (b.info.pushdown_complex_filter_cb) {
-			func.pushdown_complex_filter = TableFunctionBuilderV2::PushdownComplexFilterCallback;
-		}
-
-		auto *info_handle = new duckdb::TableFunctionRuntimeInfoV2();
-		info_handle->bind_cb = b.info.bind_cb;
-		info_handle->init_global_cb = b.info.init_global_cb;
-		info_handle->init_local_cb = b.info.init_local_cb;
-		info_handle->exec_cb = b.info.exec_cb;
-		info_handle->cardinality_cb = b.info.cardinality_cb;
-		info_handle->progress_cb = b.info.progress_cb;
-		info_handle->pushdown_complex_filter_cb = b.info.pushdown_complex_filter_cb;
-		info_handle->user_data = b.info.user_data;
-
-		// Route each optional (defaulted) parameter onto the engine's named-parameter
-		// declaration map, and remember its default for bind-time injection.
-		for (idx_t i = 0; i < b.signature.GetParameterCount(); i++) {
-			const auto &param = b.signature.GetParameter(i);
-			if (param.HasDefaultValue()) {
-				func.named_parameters[param.GetName()] = param.GetType();
-				info_handle->named_parameter_defaults[param.GetName()] = *param.GetDefaultValue();
-			}
-		}
-
-		func.function_info = duckdb::shared_ptr<duckdb::TableFunctionInfo>(info_handle);
-
-		auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
-		duckdb::CreateTableFunctionInfo tf_info(func);
-		tf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
-		catalog.CreateTableFunction(ctx, tf_info);
+		auto &ctx = *duckdb::ToContext(context);
+		RegisterTableFunctionV2(ctx, b);
 	});
 }
 

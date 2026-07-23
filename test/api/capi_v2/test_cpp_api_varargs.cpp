@@ -87,15 +87,12 @@ TEST_CASE("Stable C++API: LogicalType::ANY and its gates", "[cpp_api]") {
 	REQUIRE(any.ToText() == "ANY");
 
 	// An ANY return type is rejected at Register.
-	conn.WithTransaction([](const Context &ctx) {
-		ScalarFunction f(ctx);
-		f.SetName("bad_any_return")
-		    .SetSignature(FunctionSignature::Create()
-		                      .AddParameter("a", LogicalType::INTEGER())
-		                      .SetReturnType(LogicalType::ANY()));
-		f.SetExecCallback([](ScalarFunction::ExecInput &) {});
-		REQUIRE_THROWS_MATCHES(f.Register(ctx), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-	});
+	ScalarFunction f;
+	f.SetName("bad_any_return")
+	    .SetSignature(
+	        FunctionSignature::Create().AddParameter("a", LogicalType::INTEGER()).SetReturnType(LogicalType::ANY()));
+	f.SetExecCallback([](ScalarFunction::ExecInput &) {});
+	REQUIRE_THROWS_MATCHES(f.Register(conn), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 
 TEST_CASE("Stable C++API: scalar varargs", "[cpp_api]") {
@@ -103,39 +100,36 @@ TEST_CASE("Stable C++API: scalar varargs", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		ScalarFunction int_sum(ctx);
-		int_sum.SetName("cpp_int_sum")
-		    .SetSignature(
-		        FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()).SetReturnType(LogicalType::INTEGER()))
-		    .SetExecCallback(IntSumExec)
-		    .Register(ctx);
+	ScalarFunction int_sum;
+	int_sum.SetName("cpp_int_sum")
+	    .SetSignature(
+	        FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()).SetReturnType(LogicalType::INTEGER()))
+	    .SetExecCallback(IntSumExec)
+	    .Register(conn);
 
-		ScalarFunction prefix_sum(ctx);
-		prefix_sum.SetName("cpp_prefix_sum")
-		    .SetSignature(FunctionSignature::Create()
-		                      .AddParameter("base", LogicalType::INTEGER())
-		                      .SetVarArgs(LogicalType::INTEGER())
-		                      .SetReturnType(LogicalType::INTEGER()))
-		    .SetExecCallback(IntSumExec)
-		    .Register(ctx);
+	ScalarFunction prefix_sum;
+	prefix_sum.SetName("cpp_prefix_sum")
+	    .SetSignature(FunctionSignature::Create()
+	                      .AddParameter("base", LogicalType::INTEGER())
+	                      .SetVarArgs(LogicalType::INTEGER())
+	                      .SetReturnType(LogicalType::INTEGER()))
+	    .SetExecCallback(IntSumExec)
+	    .Register(conn);
 
-		ScalarFunction count_ints(ctx);
-		count_ints.SetName("cpp_count_ints")
-		    .SetSignature(
-		        FunctionSignature::Create().SetVarArgs(LogicalType::ANY()).SetReturnType(LogicalType::INTEGER()))
-		    .SetExecCallback(CountIntsExec)
-		    .Register(ctx);
+	ScalarFunction count_ints;
+	count_ints.SetName("cpp_count_ints")
+	    .SetSignature(FunctionSignature::Create().SetVarArgs(LogicalType::ANY()).SetReturnType(LogicalType::INTEGER()))
+	    .SetExecCallback(CountIntsExec)
+	    .Register(conn);
 
-		ScalarFunction two_any(ctx);
-		two_any.SetName("cpp_two_any")
-		    .SetSignature(FunctionSignature::Create()
-		                      .AddParameter("a", LogicalType::ANY())
-		                      .AddParameter("b", LogicalType::ANY())
-		                      .SetReturnType(LogicalType::INTEGER()))
-		    .SetExecCallback(TwoAnyExec)
-		    .Register(ctx);
-	});
+	ScalarFunction two_any;
+	two_any.SetName("cpp_two_any")
+	    .SetSignature(FunctionSignature::Create()
+	                      .AddParameter("a", LogicalType::ANY())
+	                      .AddParameter("b", LogicalType::ANY())
+	                      .SetReturnType(LogicalType::INTEGER()))
+	    .SetExecCallback(TwoAnyExec)
+	    .Register(conn);
 
 	REQUIRE(ScalarI32(conn, "SELECT cpp_int_sum(1, 2, 3)") == 6);
 	REQUIRE(ScalarI32(conn, "SELECT cpp_int_sum(1, '2', 3)") == 6);
@@ -168,17 +162,15 @@ TEST_CASE("Stable C++API: bind argument accessors", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		ScalarFunction probe(ctx);
-		probe.SetName("cpp_probe_add")
-		    .SetSignature(FunctionSignature::Create()
-		                      .AddParameter("a", LogicalType::INTEGER())
-		                      .AddParameter("b", LogicalType::INTEGER())
-		                      .SetReturnType(LogicalType::INTEGER()))
-		    .SetBindCallback(ProbeBind)
-		    .SetExecCallback(IntSumExec)
-		    .Register(ctx);
-	});
+	ScalarFunction probe;
+	probe.SetName("cpp_probe_add")
+	    .SetSignature(FunctionSignature::Create()
+	                      .AddParameter("a", LogicalType::INTEGER())
+	                      .AddParameter("b", LogicalType::INTEGER())
+	                      .SetReturnType(LogicalType::INTEGER()))
+	    .SetBindCallback(ProbeBind)
+	    .SetExecCallback(IntSumExec)
+	    .Register(conn);
 
 	REQUIRE(ScalarI32(conn, "SELECT cpp_probe_add(x, 7) FROM (VALUES (100)) t(x)") == 107);
 }
@@ -228,18 +220,16 @@ TEST_CASE("Stable C++API: aggregate varargs", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		AggregateFunction multi_sum(ctx);
-		multi_sum.SetName("cpp_multi_sum")
-		    .SetSignature(
-		        FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()).SetReturnType(LogicalType::BIGINT()))
-		    .SetSizeCallback(AggSize)
-		    .SetInitializeCallback(AggInit)
-		    .SetUpdateCallback(AggUpdate)
-		    .SetCombineCallback(AggCombine)
-		    .SetFinalizeCallback(AggFinalize)
-		    .Register(ctx);
-	});
+	AggregateFunction multi_sum;
+	multi_sum.SetName("cpp_multi_sum")
+	    .SetSignature(
+	        FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()).SetReturnType(LogicalType::BIGINT()))
+	    .SetSizeCallback(AggSize)
+	    .SetInitializeCallback(AggInit)
+	    .SetUpdateCallback(AggUpdate)
+	    .SetCombineCallback(AggCombine)
+	    .SetFinalizeCallback(AggFinalize)
+	    .Register(conn);
 
 	REQUIRE(ScalarI64(conn, "SELECT cpp_multi_sum(a, b) FROM (VALUES (1,2),(3,4)) t(a,b)") == 10);
 }
@@ -274,15 +264,13 @@ TEST_CASE("Stable C++API: table function varargs and parameter count", "[cpp_api
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction tf(ctx);
-		tf.SetName("cpp_tf_count")
-		    .SetSignature(FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()))
-		    .SetBindCallback(TfBind)
-		    .SetInitGlobalCallback(TfInitGlobal)
-		    .SetExecCallback(TfExec)
-		    .Register(ctx);
-	});
+	TableFunction tf;
+	tf.SetName("cpp_tf_count")
+	    .SetSignature(FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()))
+	    .SetBindCallback(TfBind)
+	    .SetInitGlobalCallback(TfInitGlobal)
+	    .SetExecCallback(TfExec)
+	    .Register(conn);
 
 	auto result = conn.Execute("SELECT n FROM cpp_tf_count(10, 20, 30)");
 	auto chunk = result.FetchChunk();

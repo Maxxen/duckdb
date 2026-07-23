@@ -53,7 +53,7 @@ std::string ApScalarVarchar(Connection &conn, const std::string &sql) {
 // it outside the transaction.
 std::unique_ptr<DataChunk> MakeChunk(Appender &app, Connection &conn) {
 	std::unique_ptr<DataChunk> chunk;
-	conn.WithTransaction([&](const Context &ctx) { chunk = std::make_unique<DataChunk>(ctx, app.ColumnTypes()); });
+	chunk = std::make_unique<DataChunk>(app.ColumnTypes());
 	return chunk;
 }
 
@@ -207,12 +207,10 @@ TEST_CASE("Stable C++API: Appender AppendChunk refuses a mismatched chunk", "[cp
 
 	// A chunk with the wrong column types is refused before anything is copied.
 	std::unique_ptr<DataChunk> wrong;
-	conn.WithTransaction([&](const Context &ctx) {
-		std::vector<LogicalType> types;
-		types.push_back(LogicalType::BIGINT());
-		types.push_back(LogicalType::VARCHAR());
-		wrong = std::make_unique<DataChunk>(ctx, types);
-	});
+	std::vector<LogicalType> types;
+	types.push_back(LogicalType::BIGINT());
+	types.push_back(LogicalType::VARCHAR());
+	wrong = std::make_unique<DataChunk>(types);
 	wrong->GetVector(0).SetSize(1);
 	wrong->GetVector(1).SetSize(1);
 	REQUIRE_THROWS_MATCHES(appender.AppendChunk(*wrong), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));

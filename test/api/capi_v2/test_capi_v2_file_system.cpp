@@ -45,20 +45,7 @@ TEST_CASE("V2 fs: get_from_connection returns a non-null handle", "[capi_v2][fil
 	REQUIRE(fs != nullptr);
 }
 
-TEST_CASE("V2 fs: get_from_context returns a non-null handle", "[capi_v2][file_system]") {
-	FsFixture fx;
-	duckdb_v2_file_system_handle captured = nullptr;
-	duckdb_v2_connection_execute_with_context(
-	    fx.conn,
-	    [](duckdb_v2_context_handle ctx, void *ud, duckdb_v2_error_info_handle *err) {
-		    auto &out = *reinterpret_cast<duckdb_v2_file_system_handle *>(ud);
-		    REQUIRE(duckdb_v2_file_system_get_from_context(ctx, &out, err) == DUCKDB_V2_ERROR_NONE);
-	    },
-	    &captured, nullptr);
-	REQUIRE(captured != nullptr);
-}
-
-TEST_CASE("V2 fs: get_from_* null-arg validation", "[capi_v2][file_system]") {
+TEST_CASE("V2 fs: get_from_connection null-arg validation", "[capi_v2][file_system]") {
 	FsFixture fx;
 	SECTION("get_from_connection rejects null out_file_system") {
 		REQUIRE(duckdb_v2_file_system_get_from_connection(fx.conn, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -66,11 +53,6 @@ TEST_CASE("V2 fs: get_from_* null-arg validation", "[capi_v2][file_system]") {
 	SECTION("get_from_connection rejects null connection") {
 		duckdb_v2_file_system_handle fs = nullptr;
 		REQUIRE(duckdb_v2_file_system_get_from_connection(nullptr, &fs, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(fs == nullptr);
-	}
-	SECTION("get_from_context rejects null context") {
-		duckdb_v2_file_system_handle fs = nullptr;
-		REQUIRE(duckdb_v2_file_system_get_from_context(nullptr, &fs, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(fs == nullptr);
 	}
 }

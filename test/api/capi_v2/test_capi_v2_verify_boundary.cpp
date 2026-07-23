@@ -42,7 +42,7 @@ void struct_fn_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_co
 	auto vtype = V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	duckdb_v2_str names[1] = {V2Str("v")};
 	duckdb_v2_logical_type_handle struct_type = nullptr;
-	duckdb_v2_logical_type_create(ctx, V2Str("struct"), names, &vtype, 1, &struct_type, err);
+	duckdb_v2_logical_type_create_from_args(ctx, V2Str("struct"), names, &vtype, 1, &struct_type, err);
 	duckdb_v2_value_destroy(&vtype);
 	duckdb_v2_table_function_bind_add_result_column(info, V2Str("s"), struct_type, err);
 	duckdb_v2_logical_type_destroy(&struct_type);
@@ -99,16 +99,16 @@ void good_struct_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_
 	EmitStructChunk(info, err, false);
 }
 
-void RegisterStructFn(duckdb_v2_context_handle ctx, const char *name, duckdb_v2_table_function_exec_fn exec,
+void RegisterStructFn(duckdb_v2_connection_handle conn, const char *name, duckdb_v2_table_function_exec_fn exec,
                       duckdb_v2_error_info_handle *err) {
 	duckdb_v2_table_function_builder_handle builder = nullptr;
-	REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_create(&builder, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str(name), err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, struct_fn_bind, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, emit_once_init, err) ==
 	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_table_function_builder_set_exec_callback(builder, exec, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_register_with_connection(conn, builder, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_table_function_builder_destroy(&builder);
 }
 
@@ -171,13 +171,8 @@ duckdb_v2_data_chunk_handle BuildStructChunk(duckdb_v2_logical_type_handle struc
 TEST_CASE("V2 verify boundary: table function output", "[capi_v2][verify_boundary]") {
 	V2EnvFixture fix;
 
-	duckdb_v2_connection_execute_with_context(
-	    fix.conn,
-	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
-		    RegisterStructFn(ctx, "bad_struct", bad_struct_exec, err);
-		    RegisterStructFn(ctx, "good_struct", good_struct_exec, err);
-	    },
-	    nullptr, nullptr);
+	RegisterStructFn(fix.conn, "bad_struct", bad_struct_exec, nullptr);
+	RegisterStructFn(fix.conn, "good_struct", good_struct_exec, nullptr);
 
 	SECTION("violating chunk is rejected under verify_vectors") {
 		VerifyVectorsGuard guard;
@@ -229,10 +224,11 @@ TEST_CASE("V2 verify boundary: column_data_collection_append", "[capi_v2][verify
 	auto struct_type = V2StructType(fix.conn, {"v"}, {DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR});
 
 	duckdb_v2_column_data_collection_handle cdc = nullptr;
-	V2WithContext(fix.conn, [&](duckdb_v2_context_handle ctx) {
+	{
 		duckdb_v2_logical_type_handle types[1] = {struct_type};
-		REQUIRE(duckdb_v2_column_data_collection_create(ctx, types, 1, &cdc, nullptr) == DUCKDB_V2_ERROR_NONE);
-	});
+		REQUIRE(duckdb_v2_column_data_collection_create_with_connection(fix.conn, types, 1, &cdc, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+	}
 	duckdb_v2_column_data_collection_append_state_handle append_state = nullptr;
 	REQUIRE(duckdb_v2_column_data_collection_append_state_create(cdc, &append_state, nullptr) == DUCKDB_V2_ERROR_NONE);
 

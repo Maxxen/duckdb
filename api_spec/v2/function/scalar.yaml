@@ -64,11 +64,8 @@ callbacks:
 functions:
   scalar_function_builder_create:
     summary: Creates a new scalar function.
-    description: "Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and registered with `scalar_function_register`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.\n"
+    description: "Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and registered with `scalar_function_builder_register_with_connection` or `scalar_function_builder_register_with_context`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.\n"
     parameters:
-      name:
-        type: context
-        description: The DuckDB context in which the function will be created.
       out:
         type: scalar_function_builder
         indirection: 1
@@ -141,9 +138,24 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  scalar_function_builder_register:
-    summary: Registers a scalar function with a database, making the function available for use in queries.
-    description: "This function registers a fully configured scalar function builder with a database, making the function available for use in SQL queries executed on that database. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+  scalar_function_builder_register_with_connection:
+    summary: Registers a scalar function on a connection, making the function available for use in queries.
+    description: "This function registers a fully configured scalar function builder with the connection's database, making the function available for use in SQL queries executed on that database. The registration runs in its own transaction on the connection's context. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose database to register the function on.
+      func:
+        type: scalar_function_builder
+        description: The scalar function to register.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: ERROR
+  scalar_function_builder_register_with_context:
+    summary: Registers a scalar function on a context, making the function available for use in queries.
+    description: "This function registers a fully configured scalar function builder with the context's database, making the function available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
     parameters:
       context:
         type: context
@@ -307,6 +319,26 @@ functions:
       data:
         type: opaque
         description: Opaque handle bundling the bind data pointer plus optional destructor and equality callbacks.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: ERROR
+  scalar_function_bind_set_return_type:
+    summary: Sets the function's return type from the bind callback.
+    description: |
+      Overrides the return type resolved at registration for this call site. Register the function with a
+      return type of ANY and set the concrete return type here, derived from the argument types (read via
+      scalar_function_bind_get_arguments), to build a function whose result type depends on its input — for
+      example a generic pass-through that returns whatever type it was given. The type is copied. Callable
+      only during the bind callback.
+    parameters:
+      info:
+        type: scalar_function_bind_info
+        description: The bind info handle.
+      type:
+        type: logical_type
+        description: The concrete return type for this call site.
       err:
         type: error_info
         indirection: 1

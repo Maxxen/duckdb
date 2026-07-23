@@ -67,13 +67,9 @@ bool CastFunctionExec(Vector &input, Vector &output, idx_t count, CastParameters
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_create(duckdb_v2_context_handle context,
-                                                       duckdb_v2_cast_function_builder_handle *out,
+DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_create(duckdb_v2_cast_function_builder_handle *out,
                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
-		}
 		if (!out) {
 			throw duckdb::InvalidInputException("Output pointer cannot be null.");
 		}
@@ -151,9 +147,56 @@ DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_set_user_data(duckdb_v2_cast_fun
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register(duckdb_v2_context_handle context,
-                                                         duckdb_v2_cast_function_builder_handle func,
-                                                         duckdb_v2_error_info_handle *err) {
+static void RegisterCastFunctionV2(duckdb::ClientContext &ctx, duckdb::CastFunctionV2 &builder) {
+	if (!builder.source_type) {
+		throw duckdb::InvalidInputException("Source type must be set for the cast function.");
+	}
+	if (!builder.target_type) {
+		throw duckdb::InvalidInputException("Target type must be set for the cast function.");
+	}
+	if (!builder.exec_cb) {
+		throw duckdb::InvalidInputException("Exec callback must be set for the cast function.");
+	}
+
+	const auto &source_type = *builder.source_type;
+	const auto &target_type = *builder.target_type;
+
+	// ANY / INVALID types make no sense as concrete cast endpoints.
+	if (duckdb::TypeVisitor::Contains(source_type, duckdb::LogicalTypeId::INVALID) ||
+	    duckdb::TypeVisitor::Contains(source_type, duckdb::LogicalTypeId::ANY)) {
+		throw duckdb::InvalidInputException("Source type must be a fully defined concrete type.");
+	}
+	if (duckdb::TypeVisitor::Contains(target_type, duckdb::LogicalTypeId::INVALID) ||
+	    duckdb::TypeVisitor::Contains(target_type, duckdb::LogicalTypeId::ANY)) {
+		throw duckdb::InvalidInputException("Target type must be a fully defined concrete type.");
+	}
+
+	auto bound_data = duckdb::make_uniq<duckdb::CastFunctionBoundDataV2>(builder.exec_cb, builder.user_data);
+	duckdb::BoundCastInfo cast_info(duckdb::CastFunctionExec, std::move(bound_data));
+
+	auto &casts = duckdb::CastFunctionSet::Get(ctx);
+	casts.RegisterCastFunction(source_type, target_type, std::move(cast_info), builder.implicit_cast_cost);
+}
+
+DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_connection(duckdb_v2_connection_handle conn,
+                                                                         duckdb_v2_cast_function_builder_handle func,
+                                                                         duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
+		}
+		if (!func) {
+			throw duckdb::InvalidInputException("Function pointer cannot be null.");
+		}
+		auto &builder = *reinterpret_cast<duckdb::CastFunctionV2 *>(func);
+		auto &ctx = *duckdb::ToConn(conn)->context;
+		ctx.RunFunctionInTransaction([&]() { RegisterCastFunctionV2(ctx, builder); });
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_context(duckdb_v2_context_handle context,
+                                                                      duckdb_v2_cast_function_builder_handle func,
+                                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
@@ -161,40 +204,9 @@ DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register(duckdb_v2_context_handl
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
 		}
-
 		auto &builder = *reinterpret_cast<duckdb::CastFunctionV2 *>(func);
-		auto &ctx = *reinterpret_cast<duckdb::ClientContext *>(context);
-
-		if (!builder.source_type) {
-			throw duckdb::InvalidInputException("Source type must be set for the cast function.");
-		}
-		if (!builder.target_type) {
-			throw duckdb::InvalidInputException("Target type must be set for the cast function.");
-		}
-		if (!builder.exec_cb) {
-			throw duckdb::InvalidInputException("Exec callback must be set for the cast function.");
-		}
-
-		const auto &source_type = *builder.source_type;
-		const auto &target_type = *builder.target_type;
-
-		// ANY / INVALID types make no sense as concrete cast endpoints.
-		if (duckdb::TypeVisitor::Contains(source_type, duckdb::LogicalTypeId::INVALID) ||
-		    duckdb::TypeVisitor::Contains(source_type, duckdb::LogicalTypeId::ANY)) {
-			throw duckdb::InvalidInputException("Source type must be a fully defined concrete type.");
-		}
-		if (duckdb::TypeVisitor::Contains(target_type, duckdb::LogicalTypeId::INVALID) ||
-		    duckdb::TypeVisitor::Contains(target_type, duckdb::LogicalTypeId::ANY)) {
-			throw duckdb::InvalidInputException("Target type must be a fully defined concrete type.");
-		}
-
-		auto bound_data = duckdb::make_uniq<duckdb::CastFunctionBoundDataV2>(builder.exec_cb, builder.user_data);
-		duckdb::BoundCastInfo cast_info(duckdb::CastFunctionExec, std::move(bound_data));
-
-		// We're already running inside the active context's transaction (e.g. via connection_execute_with_context),
-		// so register directly rather than nesting another transaction.
-		auto &casts = duckdb::CastFunctionSet::Get(ctx);
-		casts.RegisterCastFunction(source_type, target_type, std::move(cast_info), builder.implicit_cast_cost);
+		auto &ctx = *duckdb::ToContext(context);
+		RegisterCastFunctionV2(ctx, builder);
 	});
 }
 

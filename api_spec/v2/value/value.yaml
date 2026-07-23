@@ -431,8 +431,48 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  value_cast:
-    summary: Casts a value to a target type through the engine's cast machinery.
+  value_cast_with_connection:
+    summary: Casts a value to a target type through the engine's cast machinery, using a connection.
+    description: |
+      Same as value_cast_with_context, but supplies the cast machinery
+      from a connection: the cast runs in its own transaction on the
+      connection's context. Use this from outside DuckDB, where a
+      connection — but no context — is in hand.
+
+      The SQL-faithful conversion (non-strict), registered custom casts
+      included. Cast failures surface from the call. With a VARCHAR built
+      through value_create_from_data this constructs any value from text,
+      extension values included; casting a member value to a union type
+      or a VARCHAR to an enum type is the sanctioned way to build UNION
+      and ENUM values.
+
+      The input value and target type are borrowed. The returned value is
+      caller-owned; destroy via value_destroy.
+    role: method
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose context supplies the cast function set.
+      value:
+        type: value
+        description: The borrowed value to cast.
+      target_type:
+        type: logical_type
+        description: The borrowed target logical type.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned cast result.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_cast_with_context:
+    summary: Casts a value to a target type through the engine's cast machinery, using a context.
     description: |
       The SQL-faithful conversion (non-strict), registered custom casts
       included. Cast failures surface from the call. With a VARCHAR built
@@ -442,9 +482,9 @@ functions:
       and ENUM values.
 
       Runs in the caller's context scope (see
-      logical_type_create_from_text): reach it through
-      connection_execute_with_context or from a bind-phase callback, not
-      an exec-phase worker callback.
+      logical_type_create_from_text): reach it from a bind-phase callback
+      or another context-holding scope, not an exec-phase worker
+      callback. From outside DuckDB use value_cast_with_connection.
 
       The input value and target type are borrowed. The returned value is
       caller-owned; destroy via value_destroy.

@@ -97,9 +97,6 @@ functions:
   copy_function_builder_create:
     summary: "Creates a new copy function."
     parameters:
-      context:
-        type: context
-        description: "The DuckDB context in which the function will be created"
       out:
         type: copy_function_builder
         indirection: 1
@@ -207,8 +204,24 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  copy_function_builder_register:
-    summary: "Registers the copy function with a database, making the function available for use in SQL queries."
+  copy_function_builder_register_with_connection:
+    summary: "Registers the copy function on a connection, making the function available for use in SQL queries."
+    description: "Registers the copy function with the connection's database. The registration runs in its own transaction on the connection's context."
+    parameters:
+      conn:
+        type: connection
+        description: "The connection whose database to register the function on."
+      builder:
+        type: copy_function_builder
+        description: "The copy function builder handle."
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. Error info handle to write details to if the call fails.
+    return_type: ERROR
+  copy_function_builder_register_with_context:
+    summary: "Registers the copy function on a context, making the function available for use in SQL queries."
+    description: "Registers the copy function with the context's database. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction."
     parameters:
       context:
         type: context

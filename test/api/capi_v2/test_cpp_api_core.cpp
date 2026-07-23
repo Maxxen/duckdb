@@ -61,38 +61,47 @@ TEST_CASE("Stable C++API: File System", "[cpp_api]") {
 	using namespace duckdb_api;
 
 	Environment env;
-
 	auto db = env.Open(":memory:");
-
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		// Get file system handle
-		const auto fs = ctx.GetFileSystem();
+	const auto test_path = duckdb::TestCreatePath("test_file_system.txt");
 
-		const auto test_path = duckdb::TestCreatePath("test_file_system.txt");
+	// The file system is reached through a binding Context; outside a function a
+	// replacement scan callback exposes one via input.GetContext(). The path
+	// travels as user data (the callback is a plain function pointer, no captures).
+	db.AddReplacementScan<std::string>(
+	    [](Database::ReplacementScanInput &input) {
+		    const auto &path = input.GetUserData<std::string>();
+		    const auto fs = input.GetContext().GetFileSystem();
 
-		// Write a file
-		{
-			auto handle = fs.OpenFile(test_path, FileFlags::WRITE | FileFlags::FILE_CREATE);
+		    // Write a file
+		    {
+			    auto handle = fs.OpenFile(path, FileFlags::WRITE | FileFlags::FILE_CREATE);
 
-			// Write some data to the file
-			const std::string data = "Hello, DuckDB!";
+			    // Write some data to the file
+			    const std::string data = "Hello, DuckDB!";
 
-			REQUIRE(handle.Write(data.data(), (int64_t)data.size()) == (int64_t)data.size());
-		}
+			    REQUIRE(handle.Write(data.data(), (int64_t)data.size()) == (int64_t)data.size());
+		    }
 
-		// Now read it back
-		{
-			auto handle = fs.OpenFile(test_path, FileFlags::READ);
+		    // Now read it back
+		    {
+			    auto handle = fs.OpenFile(path, FileFlags::READ);
 
-			char buffer[64] = {0};
-			int64_t bytes_read = handle.Read(buffer, sizeof(buffer));
+			    char buffer[64] = {0};
+			    int64_t bytes_read = handle.Read(buffer, sizeof(buffer));
 
-			REQUIRE(bytes_read == 14);
-			REQUIRE(std::string(buffer, bytes_read) == "Hello, DuckDB!");
-		}
-	});
+			    REQUIRE(bytes_read == 14);
+			    REQUIRE(std::string(buffer, bytes_read) == "Hello, DuckDB!");
+		    }
+
+		    // Claim a trivial builtin so the placeholder query resolves.
+		    input.SetFunctionName("range");
+		    input.AddParameter(Value::Bigint(0));
+	    },
+	    test_path);
+
+	conn.Execute("SELECT * FROM cpp_api_fs_placeholder").Drain();
 }
 TEST_CASE("Stable C++API: Logging", "[cpp_api]") {
 	using namespace duckdb_api;
@@ -107,11 +116,9 @@ TEST_CASE("Stable C++API: Logging", "[cpp_api]") {
 
 	conn.Log(LogLevel::LOG_INFO, "This is an informational message from a connection");
 
-	conn.WithTransaction([](const Context &ctx) {
-		ctx.Log(LogLevel::LOG_INFO, "This is an informational message.");
-		ctx.Log(LogLevel::LOG_WARN, "This is a warning message.");
-		ctx.Log(LogLevel::LOG_ERROR, "This is an error message.");
-	});
+	conn.Log(LogLevel::LOG_INFO, "This is an informational message.");
+	conn.Log(LogLevel::LOG_WARN, "This is a warning message.");
+	conn.Log(LogLevel::LOG_ERROR, "This is an error message.");
 
 	auto res =
 	    conn.Execute("SELECT case when log_level = 'INFO' then 1 when log_level = 'WARNING' then 2 when log_level "
@@ -150,10 +157,9 @@ TEST_CASE("Stable C++API: Log Storage", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	// A Context is required to build and register a log storage, so do it inside
-	// a transaction.
-	conn.WithTransaction([&](const Context &ctx) {
-		LogStorage storage(ctx);
+	// A log storage registers on the database so it outlives any transaction.
+	{
+		LogStorage storage;
 		storage.SetName("cpp_custom_storage");
 
 		// The callback must be a plain function pointer (no captures), so it
@@ -174,8 +180,8 @@ TEST_CASE("Stable C++API: Log Storage", "[cpp_api]") {
 			captured.timestamps.push_back(entry.GetLogTimestamp());
 		});
 
-		storage.Register(ctx);
-	});
+		storage.Register(db);
+	}
 
 	// Activate logging and route it to the storage we just registered.
 	conn.Execute("SET enable_logging = true;").Drain();
@@ -197,12 +203,12 @@ TEST_CASE("Stable C++API: Log Storage", "[cpp_api]") {
 	REQUIRE(sink.levels[1] == LogLevel::LOG_ERROR);
 
 	// Registering a second storage under the same name should fail.
-	conn.WithTransaction([&](const Context &ctx) {
-		LogStorage storage(ctx);
+	{
+		LogStorage storage;
 		storage.SetName("cpp_custom_storage");
 		storage.SetLogCallback([](LogStorage::LogEntry &) {});
-		REQUIRE_THROWS_AS(storage.Register(ctx), Exception);
-	});
+		REQUIRE_THROWS_AS(storage.Register(db), Exception);
+	}
 }
 TEST_CASE("Stable C++API: Exception carries the code and message body", "[cpp_api]") {
 	using namespace duckdb_api;

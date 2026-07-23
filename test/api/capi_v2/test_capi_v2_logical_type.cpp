@@ -13,7 +13,7 @@
 // V2 logical_type tests.
 //
 // Fixtures are V2-native: primitives via create_from_id, composites via
-// logical_type_create in a context scope (V2CreateType and its sugar),
+// logical_type resolution from a connection (V2CreateType and its sugar),
 // aliases via logical_type_create_with_alias. V1 appears here only as
 // deliberate interop validation: two cross-version round-trip pins, one
 // V1-built decimal oracle, and the V1-only zero-entry enum (invalid in SQL,
@@ -246,7 +246,7 @@ TEST_CASE("V2: logical_type get_name null handle / null out", "[capi_v2][logical
 }
 
 // ===========================================================================
-// Fixtures shared by the sections below (V2-built via a context scope)
+// Fixtures shared by the sections below (V2-built via the connection)
 // ===========================================================================
 
 namespace {
@@ -319,9 +319,7 @@ std::string V2TypeText(duckdb_v2_logical_type_handle t) {
 
 duckdb_v2_logical_type_handle V2TypeFromText(duckdb_v2_connection_handle conn, const std::string &text) {
 	duckdb_v2_logical_type_handle t = nullptr;
-	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str(text), &t, nullptr) == DUCKDB_V2_ERROR_NONE);
-	});
+	REQUIRE(duckdb_v2_logical_type_get_from_text(conn, V2Str(text), &t, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(t != nullptr);
 	return t;
 }
@@ -407,15 +405,13 @@ DUCKDB_V2_ERROR V2CreateTypeErr(duckdb_v2_connection_handle conn, const char *na
 	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
 	bool out_nulled = false;
 	bool err_set = false;
-	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
-		auto t = reinterpret_cast<duckdb_v2_logical_type_handle>(0x1);
-		duckdb_v2_error_info_handle err = nullptr;
-		rc = duckdb_v2_logical_type_create(ctx, V2Str(name), names ? name_views.data() : nullptr,
-		                                   values.empty() ? nullptr : values.data(), values.size(), &t, &err);
-		out_nulled = (t == nullptr);
-		err_set = (err != nullptr);
-		duckdb_v2_error_info_destroy(&err);
-	});
+	auto t = reinterpret_cast<duckdb_v2_logical_type_handle>(0x1);
+	duckdb_v2_error_info_handle err = nullptr;
+	rc = duckdb_v2_logical_type_get_from_args(conn, V2Str(name), names ? name_views.data() : nullptr,
+	                                          values.empty() ? nullptr : values.data(), values.size(), &t, &err);
+	out_nulled = (t == nullptr);
+	err_set = (err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
 	// Assert only after the fixtures are destroyed, so a failure cannot leak.
 	for (auto &v : values) {
 		duckdb_v2_value_destroy(&v);
@@ -464,10 +460,9 @@ void RequireParamRoundTrip(duckdb_v2_connection_handle conn, duckdb_v2_logical_t
 	auto kind_name = V2KindName(t);
 	duckdb_v2_logical_type_handle rebuilt = nullptr;
 	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
-	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
-		rc = duckdb_v2_logical_type_create(ctx, V2Str(kind_name), any_named ? names.data() : nullptr,
-		                                   values.empty() ? nullptr : values.data(), values.size(), &rebuilt, nullptr);
-	});
+	rc = duckdb_v2_logical_type_get_from_args(conn, V2Str(kind_name), any_named ? names.data() : nullptr,
+	                                          values.empty() ? nullptr : values.data(), values.size(), &rebuilt,
+	                                          nullptr);
 	for (auto &v : values) {
 		duckdb_v2_value_destroy(&v);
 	}
@@ -769,66 +764,59 @@ TEST_CASE("V2: logical_type create_from_text resolves a catalog type", "[capi_v2
 
 TEST_CASE("V2: logical_type create_from_text error paths", "[capi_v2][logical_type][from_text]") {
 	V2EnvFixture f;
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		duckdb_v2_logical_type_handle t = nullptr;
-		duckdb_v2_error_info_handle err = nullptr;
+	duckdb_v2_logical_type_handle t = nullptr;
+	duckdb_v2_error_info_handle err = nullptr;
 
-		// Unresolvable type name: binder/catalog error surfaces from the call.
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("definitely_not_a_type"), &t, &err) !=
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(t == nullptr);
-		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err);
+	// Unresolvable type name: binder/catalog error surfaces from the call.
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, V2Str("definitely_not_a_type"), &t, &err) !=
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(t == nullptr);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
 
-		// Unparseable type expression.
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("INTEGER[["), &t, &err) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(t == nullptr);
-		REQUIRE(err != nullptr);
-		duckdb_v2_error_info_destroy(&err);
+	// Unparseable type expression.
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, V2Str("INTEGER[["), &t, &err) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(t == nullptr);
+	REQUIRE(err != nullptr);
+	duckdb_v2_error_info_destroy(&err);
 
-		// Empty text ({NULL, 0} is a valid empty view; parsing it fails).
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, duckdb_v2_str {nullptr, 0}, &t, &err) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(t == nullptr);
-		duckdb_v2_error_info_destroy(&err);
-	});
+	// Empty text ({NULL, 0} is a valid empty view; parsing it fails).
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, duckdb_v2_str {nullptr, 0}, &t, &err) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(t == nullptr);
+	duckdb_v2_error_info_destroy(&err);
 }
 
 TEST_CASE("V2: logical_type create_from_text null-arg refusals", "[capi_v2][logical_type][from_text]") {
 	V2EnvFixture f;
 	duckdb_v2_logical_type_handle t = nullptr;
 
-	// A null context is refused without any scope.
-	REQUIRE(duckdb_v2_logical_type_create_from_text(nullptr, V2Str("INTEGER"), &t, nullptr) ==
+	// A null connection is refused.
+	REQUIRE(duckdb_v2_logical_type_get_from_text(nullptr, V2Str("INTEGER"), &t, nullptr) ==
 	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("INTEGER"), nullptr, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		// Malformed view: null pointer with nonzero length.
-		duckdb_v2_logical_type_handle out = nullptr;
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, duckdb_v2_str {nullptr, 3}, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(out == nullptr);
-	});
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, V2Str("INTEGER"), nullptr, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	// Malformed view: null pointer with nonzero length.
+	duckdb_v2_logical_type_handle out = nullptr;
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, duckdb_v2_str {nullptr, 3}, &out, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(out == nullptr);
 }
 
 namespace {
-// The conn-level dance pinned as a contract: enter a context scope through
-// connection_execute_with_context, construct there, use the type after the
-// scope exits.
-void BuildDecimalFromText(duckdb_v2_context_handle ctx, void *user_data, duckdb_v2_error_info_handle *err) {
-	auto *out = static_cast<duckdb_v2_logical_type_handle *>(user_data);
-	duckdb_v2_logical_type_create_from_text(ctx, V2Str("DECIMAL(12,4)"), out, err);
+// The conn-level dance pinned as a contract: resolve a type straight from the
+// connection, then use the type afterward.
+void BuildDecimalFromText(duckdb_v2_connection_handle conn, duckdb_v2_logical_type_handle *out) {
+	duckdb_v2_logical_type_get_from_text(conn, V2Str("DECIMAL(12,4)"), out, nullptr);
 }
 } // namespace
 
-TEST_CASE("V2: create_from_text runs in a context scope and outlives it", "[capi_v2][logical_type][from_text]") {
+TEST_CASE("V2: get_from_text resolves a type that outlives the call", "[capi_v2][logical_type][from_text]") {
 	V2EnvFixture f;
 	duckdb_v2_logical_type_handle t = nullptr;
-	REQUIRE(duckdb_v2_connection_execute_with_context(f.conn, BuildDecimalFromText, &t, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	BuildDecimalFromText(f.conn, &t);
 	REQUIRE(t != nullptr);
 	// Fully usable after the scope exits.
 	REQUIRE(V2TypeIdOf(t) == DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL);
@@ -857,7 +845,7 @@ void TypeProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_co
 	}
 	duckdb_v2_logical_type_handle list = nullptr;
 	const duckdb_v2_value_handle params[1] = {elem};
-	auto rc = duckdb_v2_logical_type_create(context, V2Str("list"), nullptr, params, 1, &list, err);
+	auto rc = duckdb_v2_logical_type_create_from_args(context, V2Str("list"), nullptr, params, 1, &list, err);
 	duckdb_v2_value_destroy(&elem);
 	duckdb_v2_logical_type_destroy(&mood);
 	if (rc != DUCKDB_V2_ERROR_NONE) {
@@ -907,27 +895,25 @@ TEST_CASE("V2: a scalar function bind callback constructs types on its context",
 	V2EnvFixture f;
 	V2ExecSQL(f.conn, "CREATE TYPE mood AS ENUM('sad', 'ok', 'happy')");
 
-	V2WithContext(f.conn, [](duckdb_v2_context_handle ctx) {
-		duckdb_v2_scalar_function_builder_handle builder = nullptr;
-		REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_logical_type_handle int_type = nullptr;
-		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, V2Str("type_probe"), nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		V2ScalarSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
-			V2SigParam(sig, "a", int_type);
-			V2SigReturn(sig, int_type);
-		});
-		REQUIRE(duckdb_v2_scalar_function_builder_set_bind_callback(builder, TypeProbeBind, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_scalar_function_builder_set_init_callback(builder, TypeProbeInit, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_scalar_function_builder_set_exec_callback(builder, TypeProbeExec, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_scalar_function_builder_destroy(&builder);
-		duckdb_v2_logical_type_destroy(&int_type);
+	duckdb_v2_scalar_function_builder_handle builder = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_builder_create(&builder, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle int_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, V2Str("type_probe"), nullptr) == DUCKDB_V2_ERROR_NONE);
+	V2ScalarSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "a", int_type);
+		V2SigReturn(sig, int_type);
 	});
+	REQUIRE(duckdb_v2_scalar_function_builder_set_bind_callback(builder, TypeProbeBind, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_set_init_callback(builder, TypeProbeInit, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_set_exec_callback(builder, TypeProbeExec, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(f.conn, builder, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_scalar_function_builder_destroy(&builder);
+	duckdb_v2_logical_type_destroy(&int_type);
 
 	type_probe_bind_ok = false;
 	duckdb_v2_result_handle r = nullptr;
@@ -957,30 +943,27 @@ TEST_CASE("V2: type construction does not disturb a live streaming result",
 	duckdb_v2_data_chunk_get_size(first, &seen, nullptr);
 	duckdb_v2_data_chunk_destroy(&first);
 
-	// The context scope opens on the live stream's transaction; parse-only,
+	// The get_from_text call runs on the live stream's transaction; parse-only,
 	// catalog-lookup, and generic construction all run inside it without
 	// cancelling the stream. Do not step the stream inside the scope.
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		duckdb_v2_logical_type_handle list = nullptr;
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("INTEGER[]"), &list, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(V2TypeIdOf(list) == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
-		duckdb_v2_logical_type_destroy(&list);
+	duckdb_v2_logical_type_handle list = nullptr;
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, V2Str("INTEGER[]"), &list, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2TypeIdOf(list) == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
+	duckdb_v2_logical_type_destroy(&list);
 
-		duckdb_v2_logical_type_handle mood = nullptr;
-		REQUIRE(duckdb_v2_logical_type_create_from_text(ctx, V2Str("mood"), &mood, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(V2TypeIdOf(mood) == DUCKDB_V2_LOGICAL_TYPE_ID_ENUM);
-		duckdb_v2_logical_type_destroy(&mood);
+	duckdb_v2_logical_type_handle mood = nullptr;
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, V2Str("mood"), &mood, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2TypeIdOf(mood) == DUCKDB_V2_LOGICAL_TYPE_ID_ENUM);
+	duckdb_v2_logical_type_destroy(&mood);
 
-		duckdb_v2_value_handle elem = V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-		const duckdb_v2_value_handle params[1] = {elem};
-		duckdb_v2_logical_type_handle built = nullptr;
-		auto rc = duckdb_v2_logical_type_create(ctx, V2Str("list"), nullptr, params, 1, &built, nullptr);
-		duckdb_v2_value_destroy(&elem);
-		REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(V2TypeIdOf(built) == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
-		duckdb_v2_logical_type_destroy(&built);
-	});
+	duckdb_v2_value_handle elem = V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	const duckdb_v2_value_handle params[1] = {elem};
+	duckdb_v2_logical_type_handle built = nullptr;
+	auto rc = duckdb_v2_logical_type_get_from_args(f.conn, V2Str("list"), nullptr, params, 1, &built, nullptr);
+	duckdb_v2_value_destroy(&elem);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2TypeIdOf(built) == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
+	duckdb_v2_logical_type_destroy(&built);
 
 	// The stream is still live and drains to completion.
 	REQUIRE(seen + V2DrainRowCount(r) == 10000);
@@ -1252,17 +1235,15 @@ TEST_CASE("V2: logical_type_create resolves catalog and extension types", "[capi
 
 	// An extension type registered through custom_type_builder resolves via
 	// the system-catalog fallback and keeps its alias.
-	V2WithContext(f.conn, [](duckdb_v2_context_handle ctx) {
-		duckdb_v2_logical_type_handle int_type = nullptr;
-		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
-		duckdb_v2_custom_type_builder_handle builder = nullptr;
-		REQUIRE(duckdb_v2_custom_type_builder_create(ctx, &builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_custom_type_builder_set_name(builder, V2Str("TEMPERATURE"), nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_custom_type_builder_set_base_type(builder, int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_custom_type_builder_register(ctx, builder, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_custom_type_builder_destroy(&builder);
-		duckdb_v2_logical_type_destroy(&int_type);
-	});
+	duckdb_v2_logical_type_handle int_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	duckdb_v2_custom_type_builder_handle builder = nullptr;
+	REQUIRE(duckdb_v2_custom_type_builder_create(&builder, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_set_name(builder, V2Str("TEMPERATURE"), nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_set_base_type(builder, int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_custom_type_builder_register_with_connection(f.conn, builder, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_custom_type_builder_destroy(&builder);
+	duckdb_v2_logical_type_destroy(&int_type);
 
 	auto temp = V2CreateType(f.conn, "temperature", nullptr, {});
 	REQUIRE(V2TypeIdOf(temp) == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
@@ -1332,37 +1313,76 @@ TEST_CASE("V2: logical_type_create null-arg refusals", "[capi_v2][logical_type][
 	V2EnvFixture f;
 	duckdb_v2_logical_type_handle t = nullptr;
 
-	// A null context is refused without any scope.
-	REQUIRE(duckdb_v2_logical_type_create(nullptr, V2Str("integer"), nullptr, nullptr, 0, &t, nullptr) ==
+	// A null connection is refused.
+	REQUIRE(duckdb_v2_logical_type_get_from_args(nullptr, V2Str("integer"), nullptr, nullptr, 0, &t, nullptr) ==
 	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	V2WithContext(f.conn, [&](duckdb_v2_context_handle ctx) {
-		duckdb_v2_value_handle value = V2Int32Value(1);
-		const duckdb_v2_value_handle values[1] = {value};
-		duckdb_v2_logical_type_handle out = nullptr;
-		// Null out_type.
-		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("integer"), nullptr, nullptr, 0, nullptr, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		// Malformed name view.
-		REQUIRE(duckdb_v2_logical_type_create(ctx, duckdb_v2_str {nullptr, 3}, nullptr, nullptr, 0, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(out == nullptr);
-		// param_count > 0 with a null values array.
-		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("list"), nullptr, nullptr, 1, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(out == nullptr);
-		// A null value handle inside the array.
-		const duckdb_v2_value_handle holed[1] = {nullptr};
-		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("list"), nullptr, holed, 1, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(out == nullptr);
-		// A malformed name view inside the names array.
-		const duckdb_v2_str bad_names[1] = {{nullptr, 3}};
-		REQUIRE(duckdb_v2_logical_type_create(ctx, V2Str("list"), bad_names, values, 1, &out, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(out == nullptr);
-		duckdb_v2_value_destroy(&value);
-	});
+	duckdb_v2_value_handle value = V2Int32Value(1);
+	const duckdb_v2_value_handle values[1] = {value};
+	duckdb_v2_logical_type_handle out = nullptr;
+	// Null out_type.
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, V2Str("integer"), nullptr, nullptr, 0, nullptr, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	// Malformed name view.
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, duckdb_v2_str {nullptr, 3}, nullptr, nullptr, 0, &out,
+	                                             nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(out == nullptr);
+	// param_count > 0 with a null values array.
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, V2Str("list"), nullptr, nullptr, 1, &out, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(out == nullptr);
+	// A null value handle inside the array.
+	const duckdb_v2_value_handle holed[1] = {nullptr};
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, V2Str("list"), nullptr, holed, 1, &out, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(out == nullptr);
+	// A malformed name view inside the names array.
+	const duckdb_v2_str bad_names[1] = {{nullptr, 3}};
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, V2Str("list"), bad_names, values, 1, &out, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(out == nullptr);
+	duckdb_v2_value_destroy(&value);
+}
+
+// Resolve types straight from a connection: get_from_text / get_from_args run
+// the parse/bind in their own transaction on the connection's context.
+TEST_CASE("V2: logical_type get_from_text / get_from_args", "[capi_v2][logical_type][create]") {
+	V2EnvFixture f;
+
+	// get_from_text: parse a parameterized kind straight from the connection.
+	duckdb_v2_logical_type_handle dec = nullptr;
+	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, V2Str("DECIMAL(18,3)"), &dec, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(dec != nullptr);
+	DUCKDB_V2_LOGICAL_TYPE_ID dec_id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+	REQUIRE(duckdb_v2_logical_type_get_id(dec, &dec_id, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(dec_id == DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL);
+	duckdb_v2_logical_type_destroy(&dec);
+
+	// get_from_args: resolve a name plus a TYPE parameter (list(INTEGER)).
+	duckdb_v2_logical_type_handle child = nullptr;
+	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &child, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_value_handle child_type_value = nullptr;
+	REQUIRE(duckdb_v2_value_create_type(child, &child_type_value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	const duckdb_v2_value_handle params[1] = {child_type_value};
+	duckdb_v2_logical_type_handle list = nullptr;
+	REQUIRE(duckdb_v2_logical_type_get_from_args(f.conn, V2Str("list"), nullptr, params, 1, &list, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(list != nullptr);
+	DUCKDB_V2_LOGICAL_TYPE_ID list_id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+	REQUIRE(duckdb_v2_logical_type_get_id(list, &list_id, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(list_id == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
+	duckdb_v2_logical_type_destroy(&list);
+	duckdb_v2_value_destroy(&child_type_value);
+	duckdb_v2_logical_type_destroy(&child);
+
+	// A null connection is refused on both.
+	duckdb_v2_logical_type_handle out = nullptr;
+	REQUIRE(duckdb_v2_logical_type_get_from_text(nullptr, V2Str("INTEGER"), &out, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_logical_type_get_from_args(nullptr, V2Str("integer"), nullptr, nullptr, 0, &out, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
 TEST_CASE("V2: GEOMETRY with a coordinate system constructs and inspects",

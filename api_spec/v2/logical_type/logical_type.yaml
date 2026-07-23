@@ -4,14 +4,14 @@ module: logical_type
 # Introspection plus three construction paths: primitive ids
 # (logical_type_create_from_id, context-free), SQL text
 # (logical_type_create_from_text), and generic (name, params)
-# construction (logical_type_create), all covering built-in and
-# catalog-registered types alike. The two catalog-aware constructors
-# take a context; external callers reach them through
-# connection_execute_with_context. logical_type_to_text renders back to
-# SQL text.
+# construction (logical_type_create_from_args), all covering built-in and
+# catalog-registered types alike. The two catalog-aware constructors take
+# a context (from a callback); external callers with only a connection use
+# logical_type_get_from_text / logical_type_get_from_args.
+# logical_type_to_text renders back to SQL text.
 #
 # Inspection is generic: logical_type_get_param_count /
-# logical_type_get_param are the exact dual of logical_type_create.
+# logical_type_get_param are the exact dual of logical_type_create_from_args.
 # There are no per-kind getters. DECIMAL and ENUM physical storage tiers
 # are committed contract text in the vector module's view docstring
 # (derivable from width / dictionary size), not getters.
@@ -193,12 +193,12 @@ functions:
       case-insensitive. Parse and bind errors surface from the call.
 
       Runs in the caller's context scope: a context handle arrives with
-      the context lock held and a transaction active
-      (connection_execute_with_context, function bind callbacks, custom
-      type registration). External callers reach this call through
-      connection_execute_with_context. Catalog-touching context calls
-      belong in bind-phase callbacks and with-context scopes, not
-      exec-phase worker callbacks.
+      the context lock held and a transaction active (function bind
+      callbacks, custom type registration). External callers with only a
+      connection use logical_type_get_from_text. Catalog-touching context
+      calls belong in bind-phase callbacks and with-context scopes, not
+      exec-phase
+      worker callbacks.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
@@ -225,7 +225,39 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  logical_type_create:
+  logical_type_get_from_text:
+    summary: Gets a logical type by parsing SQL text, using a connection.
+    description: |
+      Same as logical_type_create_from_text, but supplies the catalog and
+      transaction from a connection: the parse and bind run in their own
+      transaction on the connection's context. Use this from outside
+      DuckDB, where a connection — but no context — is in hand.
+
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy. A type resolved from the catalog shares
+      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      closing the database.
+    role: constructor
+    belongs_to: logical_type
+    parameters:
+      conn:
+        type: connection
+        description: The connection supplying the catalog and active transaction.
+      text:
+        type: str
+        description: View of the SQL type expression to parse.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  logical_type_create_from_args:
     summary: Creates a logical type from a type name plus value parameters.
     description: |
       The generic constructor: resolves the name in the context's catalog
@@ -248,9 +280,10 @@ functions:
       parameter count or types) surface from the call.
 
       Runs in the caller's context scope (see
-      logical_type_create_from_text): reach it through
-      connection_execute_with_context or from a bind-phase callback, not
-      an exec-phase worker callback.
+      logical_type_create_from_text): reach it from a bind-phase callback
+      or another context-holding scope, not an exec-phase worker
+      callback. External callers with only a connection use
+      logical_type_get_from_args.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
@@ -263,6 +296,54 @@ functions:
       ctx:
         type: context
         description: The context supplying the catalog and active transaction.
+      name:
+        type: identifier
+        description: View of the type name to resolve. Unqualified; case-insensitive.
+      param_names:
+        type: identifier
+        indirection: 1
+        const: true
+        description: Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for all-positional parameters.
+      param_values:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+      param_count:
+        type: idx
+        description: The number of parameters.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  logical_type_get_from_args:
+    summary: Gets a logical type from a type name plus value parameters, using a connection.
+    description: |
+      Same as logical_type_create_from_args, but supplies the catalog and
+      transaction from a connection: the bind runs in its own transaction
+      on the connection's context. Use this from outside DuckDB, where a
+      connection — but no context — is in hand.
+
+      Parameters are (name, value) pairs in two parallel arrays, exactly
+      as for logical_type_create_from_args.
+
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy. A type resolved from the catalog shares
+      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      closing the database.
+    role: constructor
+    belongs_to: logical_type
+    parameters:
+      conn:
+        type: connection
+        description: The connection supplying the catalog and active transaction.
       name:
         type: identifier
         description: View of the type name to resolve. Unqualified; case-insensitive.
@@ -378,7 +459,7 @@ functions:
       The alias when one is set (an extension or user-defined name, e.g.
       "POINT_2D"), otherwise the canonical fixed name of the type id
       (e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the
-      empty view. This is exactly the name vocabulary logical_type_create
+      empty view. This is exactly the name vocabulary logical_type_create_from_args
       consumes. The view is valid until the logical type is destroyed
       (the canonical-name arm points at static storage).
     role: getter
@@ -430,7 +511,7 @@ functions:
   logical_type_get_param_count:
     summary: Returns the number of value parameters of a logical type.
     description: |
-      The inspection dual of logical_type_create: the parameters that
+      The inspection dual of logical_type_create_from_args: the parameters that
       reconstruct the type through it. Per kind: DECIMAL 2 (width,
       scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
       (key type, value type); STRUCT and TUPLE one per field; UNION one per

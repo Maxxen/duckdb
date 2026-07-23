@@ -58,13 +58,11 @@ TEST_CASE("Stable C++API: TypeId, ToText, and ParseType round trip", "[cpp_api][
 	REQUIRE(tup.GetParam(0).name.empty());
 	REQUIRE(tup.GetParam(0).value.AsType().GetId() == TypeId::INTEGER);
 
-	// Context primary form, usable inside a with-context scope.
-	conn.WithTransaction([](const Context &ctx) {
-		auto type_type = ctx.ParseType("TYPE");
-		REQUIRE(type_type.GetId() == TypeId::TYPE);
-		auto list = ctx.ParseType("INTEGER[]");
-		REQUIRE(list.GetId() == TypeId::LIST);
-	});
+	// Connection form.
+	auto type_type = conn.ParseType("TYPE");
+	REQUIRE(type_type.GetId() == TypeId::TYPE);
+	auto list = conn.ParseType("INTEGER[]");
+	REQUIRE(list.GetId() == TypeId::LIST);
 
 	REQUIRE_THROWS_MATCHES(conn.ParseType("definitely_not_a_type"), Exception,
 	                       HasErrorCode(DUCKDB_V2_ERROR_DATABASE_CATALOG));
@@ -193,11 +191,9 @@ TEST_CASE("Stable C++API: Value::Cast through Context and Connection", "[cpp_api
 	auto parsed = Value::Varchar("42").Cast(conn, LogicalType::INTEGER());
 	REQUIRE(parsed.AsInteger() == 42);
 
-	// Context primary form.
-	conn.WithTransaction([](const Context &ctx) {
-		auto date = Value::Varchar("2024-03-15").Cast(ctx, ctx.ParseType("DATE"));
-		REQUIRE(date.ToString() == "2024-03-15");
-	});
+	// Connection form.
+	auto date = Value::Varchar("2024-03-15").Cast(conn, conn.ParseType("DATE"));
+	REQUIRE(date.ToString() == "2024-03-15");
 
 	// UNION via cast: [0] = tag as UTINYINT, [1] = the active member.
 	auto union_type = conn.ParseType("UNION(i INTEGER, s VARCHAR)");
@@ -234,10 +230,10 @@ TEST_CASE("Stable C++API: Vector GetValue / SetValue", "[cpp_api][types_values]"
 	REQUIRE_THROWS_MATCHES(vec.GetValue(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 
 	// Write path: a manually built chunk, cast-on-write included.
-	conn.WithTransaction([](const Context &ctx) {
+	{
 		std::vector<LogicalType> types;
 		types.push_back(LogicalType::BIGINT());
-		DataChunk chunk(ctx, types);
+		DataChunk chunk(types);
 		auto vec = chunk.GetVector(0);
 		vec.SetSize(2);
 		vec.SetValue(0, Value::Bigint(7));
@@ -246,7 +242,7 @@ TEST_CASE("Stable C++API: Vector GetValue / SetValue", "[cpp_api][types_values]"
 		REQUIRE(vec.GetValue(1).AsBigint() == 8);
 		REQUIRE_THROWS_MATCHES(vec.SetValue(2, Value::Bigint(9)), Exception,
 		                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-	});
+	}
 }
 namespace {
 // VARCHAR -> CELSIUS cast: parses "<digits>C", so success proves the
@@ -283,19 +279,19 @@ TEST_CASE("Stable C++API: extension type end to end through the C++ surface", "[
 	auto conn = db.Connect();
 
 	// Register the type and its VARCHAR cast.
-	conn.WithTransaction([](const Context &ctx) {
-		CustomType custom_type(ctx);
-		custom_type.SetName("CELSIUS").SetBaseType(LogicalType::INTEGER()).Register(ctx);
+	{
+		CustomType custom_type;
+		custom_type.SetName("CELSIUS").SetBaseType(LogicalType::INTEGER()).Register(conn);
 
 		// The registered type constructs through the generic constructor.
-		auto celsius = ctx.CreateType("celsius", {});
-		CastFunction cast(ctx);
+		auto celsius = conn.CreateType("celsius", {});
+		CastFunction cast;
 		cast.SetSourceType(LogicalType::VARCHAR())
 		    .SetTargetType(celsius)
 		    .SetImplicitCastCost(0)
 		    .SetExecCallback(VarcharToCelsius)
-		    .Register(ctx);
-	});
+		    .Register(conn);
+	}
 
 	auto celsius = conn.CreateType("celsius", {});
 	REQUIRE(celsius.GetName() == "CELSIUS");
@@ -514,60 +510,58 @@ TEST_CASE("Stable C++API: writing a VARIANT vector through the boxed value path"
 	auto boxed_null = null_chunk.GetVector(0).GetValue(0);
 	REQUIRE(boxed_null.IsNull());
 
-	conn.WithTransaction([&](const Context &ctx) {
-		auto variant_type = ctx.ParseType("VARIANT");
-		std::vector<LogicalType> types;
-		types.push_back(ctx.ParseType("VARIANT"));
-		DataChunk chunk(ctx, types);
-		auto vec = chunk.GetVector(0);
-		REQUIRE(vec.GetLogicalType().GetId() == TypeId::VARIANT);
-		REQUIRE(vec.GetVectorType() == VectorType::Flat);
-		vec.SetSize(5);
+	auto variant_type = conn.ParseType("VARIANT");
+	std::vector<LogicalType> types;
+	types.push_back(conn.ParseType("VARIANT"));
+	DataChunk chunk(types);
+	auto vec = chunk.GetVector(0);
+	REQUIRE(vec.GetLogicalType().GetId() == TypeId::VARIANT);
+	REQUIRE(vec.GetVectorType() == VectorType::Flat);
+	vec.SetSize(5);
 
-		// PROBED: SetValue casts on write to VARIANT engine-side (the
-		// to-VARIANT cast needs no context), so plain values write directly.
-		vec.SetValue(0, Value::Bigint(42));
-		const char *heap_string = "a string long enough to spill";
-		vec.SetValue(1, Value::Varchar(heap_string));
-		auto list_type = ctx.ParseType("INTEGER[]");
-		std::vector<Value> elements;
-		elements.push_back(Value::Bigint(1));
-		elements.push_back(Value::Bigint(2));
-		elements.push_back(Value::Bigint(3));
-		vec.SetValue(2, Value::Create(list_type, elements));
-		vec.SetValue(3, boxed_null);
-		// The explicit route works too: box first, then write.
-		vec.SetValue(4, Value::Bigint(43).Cast(ctx, variant_type));
+	// PROBED: SetValue casts on write to VARIANT engine-side (the
+	// to-VARIANT cast needs no context), so plain values write directly.
+	vec.SetValue(0, Value::Bigint(42));
+	const char *heap_string = "a string long enough to spill";
+	vec.SetValue(1, Value::Varchar(heap_string));
+	auto list_type = conn.ParseType("INTEGER[]");
+	std::vector<Value> elements;
+	elements.push_back(Value::Bigint(1));
+	elements.push_back(Value::Bigint(2));
+	elements.push_back(Value::Bigint(3));
+	vec.SetValue(2, Value::Create(list_type, elements));
+	vec.SetValue(3, boxed_null);
+	// The explicit route works too: box first, then write.
+	vec.SetValue(4, Value::Bigint(43).Cast(conn, variant_type));
 
-		// Read back through the boxed path: every non-NULL cell is a
-		// VARIANT box; Cast back to the known inner type round-trips.
-		for (idx_t row : {idx_t(0), idx_t(1), idx_t(2), idx_t(4)}) {
-			auto box = vec.GetValue(row);
-			REQUIRE_FALSE(box.IsNull());
-			REQUIRE(box.GetLogicalType().GetId() == TypeId::VARIANT);
-		}
-		REQUIRE(vec.GetValue(0).ToString() == "42");
-		REQUIRE(vec.GetValue(0).Cast(ctx, ctx.ParseType("BIGINT")).AsBigint() == 42);
-		REQUIRE(vec.GetValue(1).Cast(ctx, LogicalType::VARCHAR()).AsVarchar() == heap_string);
-		auto unboxed_list = vec.GetValue(2).Cast(ctx, list_type);
-		REQUIRE(unboxed_list.GetChildCount() == 3);
-		REQUIRE(unboxed_list.GetChild(2).AsInteger() == 3);
-		REQUIRE(vec.GetValue(3).IsNull());
-		REQUIRE(vec.GetValue(4).Cast(ctx, ctx.ParseType("BIGINT")).AsBigint() == 43);
+	// Read back through the boxed path: every non-NULL cell is a
+	// VARIANT box; Cast back to the known inner type round-trips.
+	for (idx_t row : {idx_t(0), idx_t(1), idx_t(2), idx_t(4)}) {
+		auto box = vec.GetValue(row);
+		REQUIRE_FALSE(box.IsNull());
+		REQUIRE(box.GetLogicalType().GetId() == TypeId::VARIANT);
+	}
+	REQUIRE(vec.GetValue(0).ToString() == "42");
+	REQUIRE(vec.GetValue(0).Cast(conn, conn.ParseType("BIGINT")).AsBigint() == 42);
+	REQUIRE(vec.GetValue(1).Cast(conn, LogicalType::VARCHAR()).AsVarchar() == heap_string);
+	auto unboxed_list = vec.GetValue(2).Cast(conn, list_type);
+	REQUIRE(unboxed_list.GetChildCount() == 3);
+	REQUIRE(unboxed_list.GetChild(2).AsInteger() == 3);
+	REQUIRE(vec.GetValue(3).IsNull());
+	REQUIRE(vec.GetValue(4).Cast(conn, conn.ParseType("BIGINT")).AsBigint() == 43);
 
-		// MakeConstant interplay: the type-equality hardening refuses the
-		// raw non-VARIANT value; the boxed value works.
-		std::vector<LogicalType> constant_types;
-		constant_types.push_back(ctx.ParseType("VARIANT"));
-		DataChunk constant_chunk(ctx, constant_types);
-		auto cvec = constant_chunk.GetVector(0);
-		REQUIRE_THROWS_MATCHES(cvec.MakeConstant(Value::Bigint(7), 3), Exception,
-		                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-		auto boxed = Value::Bigint(7).Cast(ctx, variant_type);
-		cvec.MakeConstant(boxed, 3);
-		REQUIRE(cvec.GetValue(2).GetLogicalType().GetId() == TypeId::VARIANT);
-		REQUIRE(cvec.GetValue(2).ToString() == "7");
-	});
+	// MakeConstant interplay: the type-equality hardening refuses the
+	// raw non-VARIANT value; the boxed value works.
+	std::vector<LogicalType> constant_types;
+	constant_types.push_back(conn.ParseType("VARIANT"));
+	DataChunk constant_chunk(constant_types);
+	auto cvec = constant_chunk.GetVector(0);
+	REQUIRE_THROWS_MATCHES(cvec.MakeConstant(Value::Bigint(7), 3), Exception,
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	auto boxed = Value::Bigint(7).Cast(conn, variant_type);
+	cvec.MakeConstant(boxed, 3);
+	REQUIRE(cvec.GetValue(2).GetLogicalType().GetId() == TypeId::VARIANT);
+	REQUIRE(cvec.GetValue(2).ToString() == "7");
 }
 TEST_CASE("Stable C++API: typed Value leaf ctors/getters round trip", "[cpp_api][types_values]") {
 	using namespace duckdb_api;
@@ -624,14 +618,12 @@ TEST_CASE("Stable C++API: typed Value leaf ctors/getters round trip", "[cpp_api]
 
 	// TimestampTz: stored as UTC micros since epoch, same as TIMESTAMP;
 	// cross-check against a TIMESTAMPTZ literal cast through the engine.
-	conn.WithTransaction([&](const Context &ctx) {
-		auto tz_type = ctx.ParseType("TIMESTAMP WITH TIME ZONE");
-		auto engine_tz = Value::Varchar("2024-03-15 13:45:30.123456+00").Cast(ctx, tz_type);
-		auto tz_value = Value::TimestampTz(ts_micros);
-		REQUIRE(tz_value.GetLogicalType().GetId() == TypeId::TIMESTAMP_TZ);
-		REQUIRE(tz_value.AsTimestampRaw() == ts_micros);
-		REQUIRE(tz_value.AsTimestampRaw() == engine_tz.AsTimestampRaw());
-	});
+	auto tz_type = conn.ParseType("TIMESTAMP WITH TIME ZONE");
+	auto engine_tz = Value::Varchar("2024-03-15 13:45:30.123456+00").Cast(conn, tz_type);
+	auto tz_value = Value::TimestampTz(ts_micros);
+	REQUIRE(tz_value.GetLogicalType().GetId() == TypeId::TIMESTAMP_TZ);
+	REQUIRE(tz_value.AsTimestampRaw() == ts_micros);
+	REQUIRE(tz_value.AsTimestampRaw() == engine_tz.AsTimestampRaw());
 
 	// IntervalLayout: identity round trip plus a canonical-value cross-check.
 	auto interval_value = Value::Interval({14, 3, 14706789000LL});
@@ -695,23 +687,21 @@ TEST_CASE("Stable C++API: typed Value getters reject a mismatched logical type",
 
 	// AsTimestampRaw accepts all five timestamp variants (each stored as int64
 	// in its native unit). Built through the engine so the type ids are real.
-	conn.WithTransaction([](const Context &ctx) {
-		struct {
-			const char *type_name;
-			TypeId expected;
-		} variants[] = {
-		    {"TIMESTAMP", TypeId::TIMESTAMP},
-		    {"TIMESTAMP_S", TypeId::TIMESTAMP_SEC},
-		    {"TIMESTAMP_MS", TypeId::TIMESTAMP_MS},
-		    {"TIMESTAMP_NS", TypeId::TIMESTAMP_NS},
-		    {"TIMESTAMP WITH TIME ZONE", TypeId::TIMESTAMP_TZ},
-		};
-		for (auto &v : variants) {
-			auto value = Value::Varchar("2024-03-15 13:45:30").Cast(ctx, ctx.ParseType(v.type_name));
-			REQUIRE(value.GetLogicalType().GetId() == v.expected);
-			REQUIRE_NOTHROW(value.AsTimestampRaw());
-		}
-	});
+	struct {
+		const char *type_name;
+		TypeId expected;
+	} variants[] = {
+	    {"TIMESTAMP", TypeId::TIMESTAMP},
+	    {"TIMESTAMP_S", TypeId::TIMESTAMP_SEC},
+	    {"TIMESTAMP_MS", TypeId::TIMESTAMP_MS},
+	    {"TIMESTAMP_NS", TypeId::TIMESTAMP_NS},
+	    {"TIMESTAMP WITH TIME ZONE", TypeId::TIMESTAMP_TZ},
+	};
+	for (auto &v : variants) {
+		auto value = Value::Varchar("2024-03-15 13:45:30").Cast(conn, conn.ParseType(v.type_name));
+		REQUIRE(value.GetLogicalType().GetId() == v.expected);
+		REQUIRE_NOTHROW(value.AsTimestampRaw());
+	}
 }
 TEST_CASE("Stable C++API: typed Value 128-bit getters round trip", "[cpp_api][types_values]") {
 	using namespace duckdb_api;

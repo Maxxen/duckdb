@@ -65,6 +65,16 @@ DUCKDB_V2_ERROR duckdb_v2_vector_flatten(duckdb_v2_vector_handle vector, duckdb_
 	});
 }
 
+DUCKDB_V2_ERROR duckdb_v2_vector_reference(duckdb_v2_vector_handle vector, duckdb_v2_vector_handle source,
+                                           duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!vector || !source) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_vector_reference");
+		}
+		duckdb::ToVector(vector)->Reference(*duckdb::ToVector(source));
+	});
+}
+
 // ---------------------------------------------------------------------------
 // The view-getter
 // ---------------------------------------------------------------------------

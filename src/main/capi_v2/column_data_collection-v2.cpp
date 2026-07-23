@@ -2,34 +2,49 @@
 
 #include "duckdb/common/types/column/column_data_collection.hpp"
 
-DUCKDB_V2_ERROR duckdb_v2_column_data_collection_create(duckdb_v2_context_handle context,
-                                                        const duckdb_v2_logical_type_handle *types_array,
-                                                        idx_t types_count,
-                                                        duckdb_v2_column_data_collection_handle *out_collection,
-                                                        duckdb_v2_error_info_handle *err) {
+static void CreateColumnDataCollectionV2(duckdb::ClientContext &ctx, const duckdb_v2_logical_type_handle *types_array,
+                                         idx_t types_count, duckdb_v2_column_data_collection_handle *out_collection) {
+	if (!out_collection) {
+		throw duckdb::InvalidInputException("Output collection pointer cannot be null.");
+	}
+	if (!types_array) {
+		throw duckdb::InvalidInputException("Types array pointer cannot be null.");
+	}
+
+	std::vector<duckdb::LogicalType> types;
+	types.reserve(types_count);
+	for (idx_t i = 0; i < types_count; i++) {
+		if (!types_array[i]) {
+			throw duckdb::InvalidInputException("Null logical type pointer at index %llu", i);
+		}
+		types.push_back(*duckdb::ToLogicalType(types_array[i]));
+	}
+
+	auto collection = duckdb::make_uniq<duckdb::ColumnDataCollection>(ctx, std::move(types));
+	*out_collection = reinterpret_cast<duckdb_v2_column_data_collection_handle>(collection.release());
+}
+
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_create_with_connection(
+    duckdb_v2_connection_handle conn, const duckdb_v2_logical_type_handle *types_array, idx_t types_count,
+    duckdb_v2_column_data_collection_handle *out_collection, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
+		}
+		auto &ctx = *duckdb::ToConn(conn)->context;
+		CreateColumnDataCollectionV2(ctx, types_array, types_count, out_collection);
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_column_data_collection_create_with_context(
+    duckdb_v2_context_handle context, const duckdb_v2_logical_type_handle *types_array, idx_t types_count,
+    duckdb_v2_column_data_collection_handle *out_collection, duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
 		}
-		if (!out_collection) {
-			throw duckdb::InvalidInputException("Output collection pointer cannot be null.");
-		}
-		if (!types_array) {
-			throw duckdb::InvalidInputException("Types array pointer cannot be null.");
-		}
-
-		std::vector<duckdb::LogicalType> types;
-		types.reserve(types_count);
-		for (idx_t i = 0; i < types_count; i++) {
-			if (!types_array[i]) {
-				throw duckdb::InvalidInputException("Null logical type pointer at index %llu", i);
-			}
-			types.push_back(*duckdb::ToLogicalType(types_array[i]));
-		}
-
-		auto &ctx = *reinterpret_cast<duckdb::ClientContext *>(context);
-		auto collection = duckdb::make_uniq<duckdb::ColumnDataCollection>(ctx, std::move(types));
-		*out_collection = reinterpret_cast<duckdb_v2_column_data_collection_handle>(collection.release());
+		auto &ctx = *duckdb::ToContext(context);
+		CreateColumnDataCollectionV2(ctx, types_array, types_count, out_collection);
 	});
 }
 

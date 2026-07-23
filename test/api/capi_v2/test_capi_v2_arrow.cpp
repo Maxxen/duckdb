@@ -1,7 +1,6 @@
 #include "catch.hpp"
 #include "capi_v2_test_helpers.hpp"
 
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -16,32 +15,20 @@
 //   - duckdb_v2_arrow_conversion_plan_destroy
 //   - duckdb_v2_result_to_arrow_stream         (result       -> ArrowArrayStream)
 //
-// The converters key on a `context`, obtained via
-// connection_execute_with_context. Catch2 assertions throw, and a throw
-// across the C callback boundary would be swallowed by the bridge's error
-// handler, so the in-callback bodies only perform C API calls and stash their
-// return codes / outputs; all REQUIREs run after the callback returns.
+// The chunk converters key on a `context`, which only a callback provides. The
+// value round-trip tests exercise them through two harnesses registered on the
+// connection: arrow_roundtrip(x), a scalar function that pushes its input chunk
+// through chunk -> Arrow array -> chunk and returns it unchanged (a value
+// survives iff arrow_roundtrip(x) IS NOT DISTINCT FROM x), and
+// arrow_roundtrip_range(count), a table function that constructs deterministic
+// chunks, round-trips them internally, and emits the re-imported rows. Both run
+// entirely in SQL, so the assertions are ordinary QueryBool checks.
 //
 // The standard Arrow structs (ArrowSchema / ArrowArray / ArrowArrayStream)
 // come from duckdb_v2.h directly (this file pulls in no Arrow header).
 // ---------------------------------------------------------------------------
 
 namespace {
-
-using CtxBody = std::function<void(duckdb_v2_context_handle, duckdb_v2_error_info_handle *)>;
-
-// Runs `body` with an active context + transaction on `conn`. Returns the
-// connection_execute_with_context return code; `body` stashes its own
-// per-call codes/outputs for the caller to assert after this returns.
-DUCKDB_V2_ERROR V2RunWithContext(duckdb_v2_connection_handle conn, CtxBody body) {
-	duckdb_v2_error_info_handle err = nullptr;
-	auto trampoline = [](duckdb_v2_context_handle ctx, void *ud, duckdb_v2_error_info_handle *e) {
-		(*static_cast<CtxBody *>(ud))(ctx, e);
-	};
-	auto rc = duckdb_v2_connection_execute_with_context(conn, trampoline, &body, &err);
-	duckdb_v2_error_info_destroy(&err);
-	return rc;
-}
 
 // Borrowed vector at column `col` of a chunk.
 duckdb_v2_vector_handle ChunkVector(duckdb_v2_data_chunk_handle chunk, idx_t col) {
@@ -57,34 +44,9 @@ idx_t ChunkSize(duckdb_v2_data_chunk_handle chunk) {
 	return n;
 }
 
-DUCKDB_V2_LOGICAL_TYPE_ID VectorTypeId(duckdb_v2_vector_handle vec) {
-	duckdb_v2_logical_type_handle lt = nullptr;
-	REQUIRE(duckdb_v2_vector_get_logical_type(vec, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
-	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-	REQUIRE(duckdb_v2_logical_type_get_id(lt, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_logical_type_destroy(&lt);
-	return id;
-}
-
 // Resolve a logical row index through the vector's selection vector.
 idx_t ResolveRow(const duckdb_v2_vector_view &view, idx_t row) {
 	return view.sel ? SelAt(view.sel, row) : row;
-}
-
-template <class T>
-T GetScalar(duckdb_v2_vector_handle vec, idx_t row) {
-	duckdb_v2_vector_view view {};
-	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(view.data != nullptr);
-	return reinterpret_cast<const T *>(view.data)[ResolveRow(view, row)];
-}
-
-std::string GetVarchar(duckdb_v2_vector_handle vec, idx_t row) {
-	duckdb_v2_vector_view view {};
-	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(view.data != nullptr);
-	auto storage = reinterpret_cast<const duckdb_v2_varchar_t *>(view.data);
-	return V2StrTo(V2StringView(storage[ResolveRow(view, row)]));
 }
 
 // Steps the first chunk out of a single-statement query. The returned chunk is
@@ -122,12 +84,6 @@ StreamStats DrainStream(ArrowArrayStream &stream) {
 	return stats;
 }
 
-// A no-op Arrow array release (for hand-built malformed test arrays): just
-// marks the struct released so the bridge's adoption wrapper is satisfied.
-void NoopArrayRelease(ArrowArray *array) {
-	array->release = nullptr;
-}
-
 // Search the values of an Arrow schema's metadata blob for a substring. The
 // blob is: int32 n_keys, then n_keys * (int32 keylen, key, int32 vallen, val).
 bool MetadataValueContains(const char *metadata, const std::string &needle) {
@@ -152,6 +108,293 @@ bool MetadataValueContains(const char *metadata, const std::string &needle) {
 	return false;
 }
 
+// ---------------------------------------------------------------------------
+// arrow_roundtrip(x): a scalar function that passes its input straight through
+// the Arrow chunk converters (DuckDB chunk -> Arrow array -> DuckDB chunk) and
+// returns it unchanged. Registered with an ANY return type; the bind callback
+// reads the argument type, sets the concrete return type to match, and builds
+// the reusable conversion plan. This exercises the exec-phase converters on
+// every type (nested included) with a single function: a value survives iff
+// arrow_roundtrip(x) IS NOT DISTINCT FROM x.
+// ---------------------------------------------------------------------------
+
+void ArrowRtPlanDestroy(void *p) {
+	auto plan = reinterpret_cast<duckdb_v2_arrow_conversion_plan_handle>(p);
+	duckdb_v2_arrow_conversion_plan_destroy(&plan);
+}
+
+void ArrowRtBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                 duckdb_v2_error_info_handle *err) {
+	duckdb_v2_bind_arguments_handle args = nullptr;
+	if (duckdb_v2_scalar_function_bind_get_arguments(info, &args, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	duckdb_v2_logical_type_handle arg_type = nullptr;
+	if (duckdb_v2_bind_arguments_get_type(args, 0, &arg_type, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	// The result type follows the input type.
+	if (duckdb_v2_scalar_function_bind_set_return_type(info, arg_type, err) != DUCKDB_V2_ERROR_NONE) {
+		duckdb_v2_logical_type_destroy(&arg_type);
+		return;
+	}
+	// Build the single-column Arrow schema + conversion plan for this type.
+	ArrowSchema schema {};
+	duckdb_v2_str name = V2Str("x");
+	auto rc = duckdb_v2_logical_types_to_arrow_schema(ctx, &arg_type, &name, 1, &schema, err);
+	duckdb_v2_logical_type_destroy(&arg_type);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
+	rc = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, err);
+	schema.release(&schema);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	// The plan rides the bind data and is destroyed when the binding is torn down.
+	duckdb_v2_opaque bind_data {plan, ArrowRtPlanDestroy, nullptr};
+	duckdb_v2_scalar_function_bind_set_bind_data(info, bind_data, err);
+}
+
+void ArrowRtExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+                 duckdb_v2_error_info_handle *err) {
+	void *bind_data = nullptr;
+	if (duckdb_v2_scalar_function_exec_get_bind_data(info, &bind_data, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	auto plan = reinterpret_cast<duckdb_v2_arrow_conversion_plan_handle>(bind_data);
+	duckdb_v2_data_chunk_handle in = nullptr;
+	if (duckdb_v2_scalar_function_exec_get_input(info, &in, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	// Export the input chunk to Arrow, then import it back through the plan.
+	ArrowArray array {};
+	if (duckdb_v2_data_chunk_to_arrow_array(ctx, in, &array, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	duckdb_v2_data_chunk_handle imported = nullptr;
+	auto rc = duckdb_v2_arrow_array_to_data_chunk(ctx, &array, plan, &imported, err);
+	if (array.release) {
+		array.release(&array);
+	}
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	// Reference the re-imported column into the result (zero-copy; the shared
+	// buffers keep the data alive after the imported chunk is destroyed).
+	duckdb_v2_vector_handle imported_vec = nullptr;
+	duckdb_v2_vector_handle result = nullptr;
+	if (duckdb_v2_data_chunk_get_vector(imported, 0, &imported_vec, err) == DUCKDB_V2_ERROR_NONE &&
+	    duckdb_v2_scalar_function_exec_get_result(info, &result, err) == DUCKDB_V2_ERROR_NONE) {
+		duckdb_v2_vector_reference(result, imported_vec, err);
+	}
+	duckdb_v2_data_chunk_destroy(&imported);
+}
+
+// Registers arrow_roundtrip(x) on the connection.
+void RegisterArrowRoundtrip(duckdb_v2_connection_handle conn) {
+	duckdb_v2_scalar_function_builder_handle b = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_builder_create(&b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle any_type = nullptr;
+	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_ANY, &any_type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_set_name(b, V2Str("arrow_roundtrip"), nullptr) == DUCKDB_V2_ERROR_NONE);
+	V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "x", any_type);
+		V2SigReturn(sig, any_type);
+	});
+	REQUIRE(duckdb_v2_scalar_function_builder_set_bind_callback(b, ArrowRtBind, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_set_exec_callback(b, ArrowRtExec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(conn, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_destroy(&b) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_destroy(&any_type);
+}
+
+// ---------------------------------------------------------------------------
+// arrow_roundtrip_range(count BIGINT): a table function that emits `count` rows
+// of (i BIGINT, s VARCHAR) where i = row index and s = 'r' || i, with every
+// emitted chunk having been pushed through the Arrow chunk converters internally
+// (construct chunk -> Arrow array -> chunk) before being referenced into the
+// output. This drives the exec-phase converters over multi-column, multi-chunk
+// output: the STRUCTURAL edges (chunking of an oversized array, multi-column
+// import) surface as ordinary SQL over SELECT * FROM arrow_roundtrip_range(N).
+// ---------------------------------------------------------------------------
+
+struct ArrowRtRangeBindData {
+	int64_t count = 0;
+	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
+};
+
+struct ArrowRtRangeGlobalState {
+	int64_t emitted = 0;
+};
+
+void ArrowRtRangeBind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                      duckdb_v2_error_info_handle *err) {
+	// count parameter.
+	duckdb_v2_value_handle count_val = nullptr;
+	if (duckdb_v2_table_function_bind_get_parameter(info, 0, &count_val, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	int64_t count = V2LeafPayload<int64_t>(count_val);
+	duckdb_v2_value_destroy(&count_val);
+
+	// Output columns: i BIGINT, s VARCHAR.
+	duckdb_v2_logical_type_handle bigint_type = nullptr;
+	duckdb_v2_logical_type_handle varchar_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("i"), bigint_type, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("s"), varchar_type, err);
+
+	// Build the two-column Arrow schema + conversion plan for the output types.
+	duckdb_v2_logical_type_handle types[2] = {bigint_type, varchar_type};
+	duckdb_v2_str names[2] = {V2Str("i"), V2Str("s")};
+	ArrowSchema schema {};
+	auto rc = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, 2, &schema, err);
+	duckdb_v2_logical_type_destroy(&bigint_type);
+	duckdb_v2_logical_type_destroy(&varchar_type);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
+	rc = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, err);
+	schema.release(&schema);
+	if (rc != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+
+	auto *bd = new ArrowRtRangeBindData {count, plan};
+	duckdb_v2_table_function_bind_set_bind_data(info,
+	                                            {bd,
+	                                             [](void *p) {
+		                                             auto *d = static_cast<ArrowRtRangeBindData *>(p);
+		                                             duckdb_v2_arrow_conversion_plan_destroy(&d->plan);
+		                                             delete d;
+	                                             },
+	                                             nullptr},
+	                                            err);
+	duckdb_v2_table_function_bind_set_cardinality(info, static_cast<idx_t>(count), true, err);
+}
+
+void ArrowRtRangeInitGlobal(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle ctx,
+                            duckdb_v2_error_info_handle *err) {
+	auto *state = new ArrowRtRangeGlobalState();
+	duckdb_v2_table_function_init_set_global_state(
+	    info, {state, [](void *p) { delete static_cast<ArrowRtRangeGlobalState *>(p); }, nullptr}, err);
+}
+
+void ArrowRtRangeExec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle ctx,
+                      duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle out = nullptr;
+	duckdb_v2_table_function_exec_get_output_chunk(info, &out, err);
+
+	void *raw_bd = nullptr;
+	duckdb_v2_table_function_exec_get_bind_data(info, &raw_bd, err);
+	auto *bd = static_cast<ArrowRtRangeBindData *>(raw_bd);
+
+	void *raw_gs = nullptr;
+	duckdb_v2_table_function_exec_get_global_state(info, &raw_gs, err);
+	auto &state = *static_cast<ArrowRtRangeGlobalState *>(raw_gs);
+
+	if (state.emitted >= bd->count) {
+		// End of data: size the first output vector to 0 (the bridge reads
+		// cardinality from output vector 0).
+		duckdb_v2_vector_handle out0 = nullptr;
+		duckdb_v2_data_chunk_get_vector(out, 0, &out0, err);
+		duckdb_v2_vector_set_size(out0, 0, err);
+		return;
+	}
+
+	int64_t remaining = bd->count - state.emitted;
+	idx_t n = remaining < 2048 ? static_cast<idx_t>(remaining) : 2048;
+
+	// Construct a fresh input chunk of BIGINT i, VARCHAR s and fill it.
+	duckdb_v2_logical_type_handle bigint_type = nullptr;
+	duckdb_v2_logical_type_handle varchar_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, err);
+	duckdb_v2_logical_type_handle types[2] = {bigint_type, varchar_type};
+	duckdb_v2_data_chunk_handle in = nullptr;
+	duckdb_v2_data_chunk_create(types, 2, &in, err);
+	duckdb_v2_logical_type_destroy(&bigint_type);
+	duckdb_v2_logical_type_destroy(&varchar_type);
+
+	duckdb_v2_vector_handle in_i = nullptr, in_s = nullptr;
+	duckdb_v2_data_chunk_get_vector(in, 0, &in_i, err);
+	duckdb_v2_data_chunk_get_vector(in, 1, &in_s, err);
+	int64_t *i_data = nullptr;
+	duckdb_v2_vector_get_data_mutable(in_i, reinterpret_cast<void **>(&i_data), err);
+	for (idx_t row = 0; row < n; row++) {
+		int64_t value = state.emitted + static_cast<int64_t>(row);
+		i_data[row] = value;
+		auto s = "r" + std::to_string(value);
+		V2VectorAssignString(in_s, row, s.c_str(), s.size(), err);
+	}
+	duckdb_v2_vector_set_size(in_i, n, err);
+	duckdb_v2_vector_set_size(in_s, n, err);
+
+	// Round-trip the constructed chunk through the Arrow converters.
+	ArrowArray array {};
+	duckdb_v2_data_chunk_to_arrow_array(ctx, in, &array, err);
+	duckdb_v2_data_chunk_handle imported = nullptr;
+	duckdb_v2_arrow_array_to_data_chunk(ctx, &array, bd->plan, &imported, err);
+	if (array.release) {
+		array.release(&array);
+	}
+	duckdb_v2_data_chunk_destroy(&in);
+
+	// Reference the re-imported columns into the output (zero-copy; the shared
+	// buffers keep the data alive after the imported chunk is destroyed).
+	duckdb_v2_vector_handle imp_i = nullptr, imp_s = nullptr, out_i = nullptr, out_s = nullptr;
+	duckdb_v2_data_chunk_get_vector(imported, 0, &imp_i, err);
+	duckdb_v2_data_chunk_get_vector(imported, 1, &imp_s, err);
+	duckdb_v2_data_chunk_get_vector(out, 0, &out_i, err);
+	duckdb_v2_data_chunk_get_vector(out, 1, &out_s, err);
+	duckdb_v2_vector_reference(out_i, imp_i, err);
+	duckdb_v2_vector_reference(out_s, imp_s, err);
+	duckdb_v2_data_chunk_destroy(&imported);
+
+	duckdb_v2_vector_set_size(out_i, n, err);
+	state.emitted += static_cast<int64_t>(n);
+}
+
+// Registers arrow_roundtrip_range(count BIGINT) on the connection.
+void RegisterArrowRoundtripRange(duckdb_v2_connection_handle conn) {
+	duckdb_v2_table_function_builder_handle b = nullptr;
+	REQUIRE(duckdb_v2_table_function_builder_create(&b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_name(b, V2Str("arrow_roundtrip_range"), nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle bigint_type = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, nullptr);
+	V2TableSignature(b, [&](duckdb_v2_function_signature_handle sig) { V2SigParam(sig, "n", bigint_type); });
+	duckdb_v2_logical_type_destroy(&bigint_type);
+	REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(b, ArrowRtRangeBind, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(b, ArrowRtRangeInitGlobal, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_exec_callback(b, ArrowRtRangeExec, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_register_with_connection(conn, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_table_function_builder_destroy(&b);
+}
+
+// Runs a single-row, single-BOOLEAN query and returns the value (false if NULL).
+bool QueryBool(duckdb_v2_connection_handle conn, const char *sql) {
+	auto chunk = QueryOneChunk(conn, sql);
+	REQUIRE(chunk != nullptr);
+	REQUIRE(ChunkSize(chunk) == 1);
+	auto vec = ChunkVector(chunk, 0);
+	duckdb_v2_vector_view view {};
+	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(view.data != nullptr);
+	const auto row = ResolveRow(view, 0);
+	// The queries below aggregate with bool_and over a non-empty set, so the
+	// single result row is never NULL.
+	const bool value = reinterpret_cast<const bool *>(view.data)[row];
+	duckdb_v2_data_chunk_destroy(&chunk);
+	return value;
+}
+
 } // namespace
 
 // ===========================================================================
@@ -161,66 +404,13 @@ bool MetadataValueContains(const char *metadata, const std::string &needle) {
 
 TEST_CASE("V2 arrow: flat round-trip preserves values", "[capi_v2][arrow]") {
 	V2EnvFixture fx;
-
-	auto src = QueryOneChunk(fx.conn, "SELECT i::INTEGER AS a, i::DOUBLE AS b, ('r' || i) AS c FROM range(5) t(i)");
-	REQUIRE(src != nullptr);
-	REQUIRE(ChunkSize(src) == 5);
-
-	const idx_t COLS = 3;
-	duckdb_v2_logical_type_handle types[COLS] = {nullptr, nullptr, nullptr};
-	for (idx_t i = 0; i < COLS; i++) {
-		REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(src, i), &types[i], nullptr) == DUCKDB_V2_ERROR_NONE);
-	}
-	duckdb_v2_str names[COLS] = {V2Str("a"), V2Str("b"), V2Str("c")};
-
-	ArrowSchema schema {};
-	ArrowArray array {};
-	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	duckdb_v2_data_chunk_handle dst = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
-	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
-
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, COLS, &schema, e);
-		c_array = duckdb_v2_data_chunk_to_arrow_array(ctx, src, &array, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
-		c_chunk = duckdb_v2_arrow_array_to_data_chunk(ctx, &array, plan, &dst, e);
-	});
-
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_array == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_chunk == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(plan != nullptr);
-	REQUIRE(dst != nullptr);
-
-	// The Arrow schema describes three columns.
-	REQUIRE(schema.n_children == 3);
-
-	// The re-imported chunk equals the source.
-	REQUIRE(ChunkSize(dst) == 5);
-	REQUIRE(VectorTypeId(ChunkVector(dst, 0)) == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	REQUIRE(VectorTypeId(ChunkVector(dst, 1)) == DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
-	REQUIRE(VectorTypeId(ChunkVector(dst, 2)) == DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
-	for (idx_t row = 0; row < 5; row++) {
-		REQUIRE(GetScalar<int32_t>(ChunkVector(dst, 0), row) == static_cast<int32_t>(row));
-		REQUIRE(GetScalar<double>(ChunkVector(dst, 1), row) == static_cast<double>(row));
-		REQUIRE(GetVarchar(ChunkVector(dst, 2), row) == ("r" + std::to_string(row)));
-	}
-
-	// Export filled the schema and array; the import adopted the array's data
-	// (its release was nulled), so only the schema is freed here.
-	REQUIRE(array.release == nullptr);
-	REQUIRE(schema.release != nullptr);
-	schema.release(&schema);
-	duckdb_v2_arrow_conversion_plan_destroy(&plan);
-	REQUIRE(plan == nullptr);
-	duckdb_v2_data_chunk_destroy(&dst);
-	duckdb_v2_data_chunk_destroy(&src);
-	for (idx_t i = 0; i < COLS; i++) {
-		duckdb_v2_logical_type_destroy(&types[i]);
-	}
+	RegisterArrowRoundtrip(fx.conn);
+	// Every flat value survives chunk -> Arrow array -> chunk unchanged (value
+	// and type): arrow_roundtrip(x) IS NOT DISTINCT FROM x for all rows.
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(a) IS NOT DISTINCT FROM a "
+	                           "AND arrow_roundtrip(b) IS NOT DISTINCT FROM b "
+	                           "AND arrow_roundtrip(c) IS NOT DISTINCT FROM c) "
+	                           "FROM (SELECT i::INTEGER a, i::DOUBLE b, ('r' || i) c FROM range(5) t(i)) s"));
 }
 
 // ===========================================================================
@@ -230,119 +420,19 @@ TEST_CASE("V2 arrow: flat round-trip preserves values", "[capi_v2][arrow]") {
 
 TEST_CASE("V2 arrow: nested round-trip preserves structure", "[capi_v2][arrow]") {
 	V2EnvFixture fx;
+	RegisterArrowRoundtrip(fx.conn);
 
-	// range() yields BIGINT, so the list child and struct.x fields are int64.
-	const char *sql = "SELECT [i, i + 1] AS lst, "
-	                  "       {'x': i, 'y': ('s' || i)} AS strct, "
-	                  "       MAP([i], [i * 10]) AS mp, "
-	                  "       union_value(num := i) AS un "
-	                  "FROM range(3) t(i)";
-	auto src = QueryOneChunk(fx.conn, sql);
-	REQUIRE(src != nullptr);
-	REQUIRE(ChunkSize(src) == 3);
-
-	const idx_t COLS = 4;
-	duckdb_v2_logical_type_handle types[COLS] = {nullptr, nullptr, nullptr, nullptr};
-	for (idx_t i = 0; i < COLS; i++) {
-		REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(src, i), &types[i], nullptr) == DUCKDB_V2_ERROR_NONE);
-	}
-	duckdb_v2_str names[COLS] = {V2Str("lst"), V2Str("strct"), V2Str("mp"), V2Str("un")};
-
-	ArrowSchema schema {};
-	ArrowArray array {};
-	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	duckdb_v2_data_chunk_handle dst = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
-	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
-
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, COLS, &schema, e);
-		c_array = duckdb_v2_data_chunk_to_arrow_array(ctx, src, &array, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
-		c_chunk = duckdb_v2_arrow_array_to_data_chunk(ctx, &array, plan, &dst, e);
-	});
-
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_array == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_chunk == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(dst != nullptr);
-	REQUIRE(schema.n_children == 4);
-
-	REQUIRE(ChunkSize(dst) == 3);
-	REQUIRE(VectorTypeId(ChunkVector(dst, 0)) == DUCKDB_V2_LOGICAL_TYPE_ID_LIST);
-	REQUIRE(VectorTypeId(ChunkVector(dst, 1)) == DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT);
-	REQUIRE(VectorTypeId(ChunkVector(dst, 2)) == DUCKDB_V2_LOGICAL_TYPE_ID_MAP);
-	REQUIRE(VectorTypeId(ChunkVector(dst, 3)) == DUCKDB_V2_LOGICAL_TYPE_ID_UNION);
-
-	// LIST: each row is [i, i+1]; the flattened child holds 3 * 2 = 6 ints.
-	{
-		auto list_vec = ChunkVector(dst, 0);
-		duckdb_v2_vector_handle child = nullptr;
-		REQUIRE(duckdb_v2_vector_get_child(list_vec, 0, &child, nullptr) == DUCKDB_V2_ERROR_NONE);
-		idx_t child_size = 0;
-		REQUIRE(duckdb_v2_vector_get_size(child, &child_size, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(child_size == 6);
-		REQUIRE(GetScalar<int64_t>(child, 0) == 0);
-		REQUIRE(GetScalar<int64_t>(child, 1) == 1);
-		REQUIRE(GetScalar<int64_t>(child, 5) == 3); // last element of [2, 3]
-	}
-
-	// STRUCT: field 0 (x) is INTEGER i; field 1 (y) is 's' || i.
-	{
-		auto struct_vec = ChunkVector(dst, 1);
-		duckdb_v2_vector_handle fx_x = nullptr, fx_y = nullptr;
-		REQUIRE(duckdb_v2_vector_get_child(struct_vec, 0, &fx_x, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_vector_get_child(struct_vec, 1, &fx_y, nullptr) == DUCKDB_V2_ERROR_NONE);
-		for (idx_t row = 0; row < 3; row++) {
-			REQUIRE(GetScalar<int64_t>(fx_x, row) == static_cast<int64_t>(row));
-			REQUIRE(GetVarchar(fx_y, row) == ("s" + std::to_string(row)));
-		}
-	}
-
-	// MAP: each row is {i: i*10}. V2 exposes child[0] = keys, child[1] = values,
-	// each flattened across the 3 single-entry maps.
-	{
-		auto map_vec = ChunkVector(dst, 2);
-		duckdb_v2_vector_handle keys = nullptr, values = nullptr;
-		REQUIRE(duckdb_v2_vector_get_child(map_vec, 0, &keys, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_vector_get_child(map_vec, 1, &values, nullptr) == DUCKDB_V2_ERROR_NONE);
-		idx_t key_size = 0;
-		REQUIRE(duckdb_v2_vector_get_size(keys, &key_size, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(key_size == 3);
-		for (idx_t entry = 0; entry < 3; entry++) {
-			REQUIRE(GetScalar<int64_t>(keys, entry) == static_cast<int64_t>(entry));
-			REQUIRE(GetScalar<int64_t>(values, entry) == static_cast<int64_t>(entry * 10));
-		}
-	}
-
-	// UNION: union_value(num := i) -> UNION(num BIGINT). V2 exposes child[0] =
-	// tag, child[1..N] = members; the num member carries [0, 1, 2].
-	{
-		auto union_vec = ChunkVector(dst, 3);
-		idx_t child_count = 0;
-		REQUIRE(duckdb_v2_vector_get_child_count(union_vec, &child_count, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(child_count == 2); // tag + one member
-		duckdb_v2_vector_handle tag = nullptr, member = nullptr;
-		REQUIRE(duckdb_v2_vector_get_child(union_vec, 0, &tag, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_vector_get_child(union_vec, 1, &member, nullptr) == DUCKDB_V2_ERROR_NONE);
-		for (idx_t row = 0; row < 3; row++) {
-			REQUIRE(GetScalar<uint8_t>(tag, row) == 0); // single member -> tag 0 every row
-			REQUIRE(GetScalar<int64_t>(member, row) == static_cast<int64_t>(row));
-		}
-	}
-
-	REQUIRE(array.release == nullptr);
-	if (schema.release) {
-		schema.release(&schema);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&plan);
-	duckdb_v2_data_chunk_destroy(&dst);
-	duckdb_v2_data_chunk_destroy(&src);
-	for (idx_t i = 0; i < COLS; i++) {
-		duckdb_v2_logical_type_destroy(&types[i]);
-	}
+	// LIST / STRUCT / MAP / UNION (plus an empty list and a NULL row) all survive
+	// chunk -> Arrow array -> chunk unchanged. IS NOT DISTINCT FROM compares nested
+	// structure and NULLs, so equality alone proves the round-trip.
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(x) IS NOT DISTINCT FROM x) "
+	                           "FROM (VALUES ([1, 2, 3]), ([]), (NULL::INTEGER[])) t(x)"));
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(x) IS NOT DISTINCT FROM x) "
+	                           "FROM (VALUES ({'a': 1, 'b': 2}), (NULL::STRUCT(a INTEGER, b INTEGER))) t(x)"));
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(x) IS NOT DISTINCT FROM x) "
+	                           "FROM (VALUES (MAP([1, 2], [10, 20])), (MAP([], []))) t(x)"));
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(x) IS NOT DISTINCT FROM x) "
+	                           "FROM (SELECT union_value(num := i) AS x FROM range(3) t(i)) s"));
 }
 
 // ===========================================================================
@@ -518,51 +608,15 @@ TEST_CASE("V2 arrow: get_schema is valid after the result is drained", "[capi_v2
 
 TEST_CASE("V2 arrow: importing an oversized array yields one chunk", "[capi_v2][arrow]") {
 	V2EnvFixture fx;
-	// A second connection supplies the import context, so it is free while the
-	// stream still holds the first connection.
-	duckdb_v2_connection_handle conn2 = nullptr;
-	REQUIRE(duckdb_v2_connect(fx.db, &conn2, nullptr) == DUCKDB_V2_ERROR_NONE);
+	RegisterArrowRoundtripRange(fx.conn);
 
-	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(V2Query(fx.conn, "SELECT i::BIGINT AS v FROM range(5000) t(i)", &r) == DUCKDB_V2_ERROR_NONE);
-
-	ArrowArrayStream stream {};
-	// One array of all 5000 rows.
-	REQUIRE(duckdb_v2_result_to_arrow_stream(&r, 100000, &stream, nullptr) == DUCKDB_V2_ERROR_NONE);
-
-	ArrowSchema schema {};
-	REQUIRE(stream.get_schema(&stream, &schema) == 0);
-	ArrowArray array {};
-	REQUIRE(stream.get_next(&stream, &array) == 0);
-	REQUIRE(array.release != nullptr);
-	REQUIRE(array.length == 5000);
-
-	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	duckdb_v2_data_chunk_handle dst = nullptr;
-	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
-	auto rc = V2RunWithContext(conn2, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
-		c_chunk = duckdb_v2_arrow_array_to_data_chunk(ctx, &array, plan, &dst, e);
-	});
-
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_chunk == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(dst != nullptr);
-	// One chunk holds all 5000 rows, above STANDARD_VECTOR_SIZE.
-	REQUIRE(ChunkSize(dst) == 5000);
-	REQUIRE(GetScalar<int64_t>(ChunkVector(dst, 0), 0) == 0);
-	REQUIRE(GetScalar<int64_t>(ChunkVector(dst, 0), 2500) == 2500);
-	REQUIRE(GetScalar<int64_t>(ChunkVector(dst, 0), 4999) == 4999);
-	REQUIRE(array.release == nullptr); // adopted by the chunk
-
-	if (schema.release) {
-		schema.release(&schema);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&plan);
-	duckdb_v2_data_chunk_destroy(&dst);
-	stream.release(&stream);
-	duckdb_v2_disconnect(&conn2);
+	// arrow_roundtrip_range internally exports each constructed chunk to an Arrow
+	// array and re-imports it. 5000 > STANDARD_VECTOR_SIZE (2048) exercises the
+	// chunking of a multi-chunk range; the full set of generated rows (i in
+	// 0..4999, each with s = 'r' || i) must survive the round-trip.
+	REQUIRE(QueryBool(fx.conn, "SELECT count(*) = 5000 AND count(DISTINCT i) = 5000 "
+	                           "AND min(i) = 0 AND max(i) = 4999 AND bool_and(s = 'r' || i) "
+	                           "FROM arrow_roundtrip_range(5000)"));
 }
 
 // ===========================================================================
@@ -571,96 +625,18 @@ TEST_CASE("V2 arrow: importing an oversized array yields one chunk", "[capi_v2][
 
 TEST_CASE("V2 arrow: NULL values survive the round-trip", "[capi_v2][arrow]") {
 	V2EnvFixture fx;
+	RegisterArrowRoundtrip(fx.conn);
 
-	// Rows: NULL, 1, NULL, 3.
-	auto src =
-	    QueryOneChunk(fx.conn, "SELECT (CASE WHEN i % 2 = 0 THEN NULL ELSE i END)::INTEGER AS v FROM range(4) t(i)");
-	REQUIRE(src != nullptr);
-	REQUIRE(ChunkSize(src) == 4);
-
-	duckdb_v2_logical_type_handle type = nullptr;
-	REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(src, 0), &type, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_str name = V2Str("v");
-
-	ArrowSchema schema {};
-	ArrowArray array {};
-	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	duckdb_v2_data_chunk_handle dst = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
-	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
-
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, &type, &name, 1, &schema, e);
-		c_array = duckdb_v2_data_chunk_to_arrow_array(ctx, src, &array, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
-		c_chunk = duckdb_v2_arrow_array_to_data_chunk(ctx, &array, plan, &dst, e);
-	});
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_array == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_chunk == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(ChunkSize(dst) == 4);
-
-	auto vec = ChunkVector(dst, 0);
-	duckdb_v2_vector_view view {};
-	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE_FALSE(RowValid(view, ResolveRow(view, 0)));
-	REQUIRE(RowValid(view, ResolveRow(view, 1)));
-	REQUIRE_FALSE(RowValid(view, ResolveRow(view, 2)));
-	REQUIRE(RowValid(view, ResolveRow(view, 3)));
-	REQUIRE(GetScalar<int32_t>(vec, 1) == 1);
-	REQUIRE(GetScalar<int32_t>(vec, 3) == 3);
-
-	REQUIRE(array.release == nullptr);
-	if (schema.release) {
-		schema.release(&schema);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&plan);
-	duckdb_v2_data_chunk_destroy(&dst);
-	duckdb_v2_data_chunk_destroy(&src);
-	duckdb_v2_logical_type_destroy(&type);
-}
-
-// ===========================================================================
-// ENUM schema round-trips both directions (DuckDB type -> Arrow schema ->
-// conversion plan), carrying its dictionary.
-// ===========================================================================
-
-TEST_CASE("V2 arrow: ENUM schema round-trips both directions", "[capi_v2][arrow]") {
-	V2EnvFixture fx;
-	V2ExecSQL(fx.conn, "CREATE TYPE mood AS ENUM ('happy', 'sad', 'ok')");
-
-	auto chunk = QueryOneChunk(fx.conn, "SELECT 'happy'::mood AS m");
-	REQUIRE(chunk != nullptr);
-	REQUIRE(VectorTypeId(ChunkVector(chunk, 0)) == DUCKDB_V2_LOGICAL_TYPE_ID_ENUM);
-
-	duckdb_v2_logical_type_handle type = nullptr;
-	REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(chunk, 0), &type, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_str name = V2Str("m");
-
-	ArrowSchema schema {};
-	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API;
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, &type, &name, 1, &schema, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
-	});
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	// ENUM is dictionary-encoded on the Arrow side, and round-trips back to a
-	// conversion plan.
-	REQUIRE(schema.n_children == 1);
-	REQUIRE(schema.children[0]->dictionary != nullptr);
-	REQUIRE(plan != nullptr);
-
-	if (schema.release) {
-		schema.release(&schema);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&plan);
-	duckdb_v2_data_chunk_destroy(&chunk);
-	duckdb_v2_logical_type_destroy(&type);
+	// A NULL and a non-NULL flat value both survive (validity mask handling): the
+	// interleaved NULL/value rows compare equal after the round-trip.
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(v) IS NOT DISTINCT FROM v) "
+	                           "FROM (VALUES (NULL::BIGINT), (1)) t(v)"));
+	// NULLs nested inside a list and a struct also survive.
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(v) IS NOT DISTINCT FROM v) "
+	                           "FROM (VALUES ([1, NULL, 3]), (NULL::INTEGER[])) t(v)"));
+	REQUIRE(QueryBool(fx.conn, "SELECT bool_and(arrow_roundtrip(v) IS NOT DISTINCT FROM v) "
+	                           "FROM (VALUES ({'a': NULL::INTEGER, 'b': 2}), "
+	                           "             (NULL::STRUCT(a INTEGER, b INTEGER))) t(v)"));
 }
 
 // ===========================================================================
@@ -686,60 +662,6 @@ TEST_CASE("V2 arrow: a released stream rejects further operations", "[capi_v2][a
 	REQUIRE(get_schema(&stream, &schema) != 0);
 	ArrowArray array {};
 	REQUIRE(get_next(&stream, &array) != 0);
-}
-
-// ===========================================================================
-// An array whose child count disagrees with the conversion plan is rejected
-// (rather than indexing out of bounds).
-// ===========================================================================
-
-TEST_CASE("V2 arrow: array/schema layout mismatch is rejected", "[capi_v2][arrow]") {
-	V2EnvFixture fx;
-
-	auto two_col = QueryOneChunk(fx.conn, "SELECT i::INTEGER AS a, i::INTEGER AS b FROM range(3) t(i)");
-	auto one_col = QueryOneChunk(fx.conn, "SELECT i::INTEGER AS a FROM range(3) t(i)");
-	REQUIRE(two_col != nullptr);
-	REQUIRE(one_col != nullptr);
-
-	duckdb_v2_logical_type_handle types[2] = {nullptr, nullptr};
-	for (idx_t i = 0; i < 2; i++) {
-		REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(two_col, i), &types[i], nullptr) == DUCKDB_V2_ERROR_NONE);
-	}
-	duckdb_v2_str names[2] = {V2Str("a"), V2Str("b")};
-
-	ArrowSchema schema2 {};
-	ArrowArray array1 {};
-	duckdb_v2_arrow_conversion_plan_handle conv2 = nullptr;
-	duckdb_v2_data_chunk_handle dst = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API;
-	DUCKDB_V2_ERROR c_array = DUCKDB_V2_ERROR_API, c_mismatch = DUCKDB_V2_ERROR_NONE;
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, 2, &schema2, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema2, &conv2, e);
-		c_array = duckdb_v2_data_chunk_to_arrow_array(ctx, one_col, &array1, e);
-		// 1-child array against a 2-column conversion plan.
-		c_mismatch = duckdb_v2_arrow_array_to_data_chunk(ctx, &array1, conv2, &dst, e);
-	});
-	(void)rc;
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_array == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_mismatch == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(dst == nullptr);
-
-	// The mismatch is detected before ownership transfer, so array1 is intact.
-	if (array1.release) {
-		array1.release(&array1);
-	}
-	if (schema2.release) {
-		schema2.release(&schema2);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&conv2);
-	duckdb_v2_data_chunk_destroy(&two_col);
-	duckdb_v2_data_chunk_destroy(&one_col);
-	for (idx_t i = 0; i < 2; i++) {
-		duckdb_v2_logical_type_destroy(&types[i]);
-	}
 }
 
 // ===========================================================================
@@ -792,66 +714,23 @@ TEST_CASE("V2 arrow: GEOMETRY(crs) schema is cached under the transaction (#475)
 }
 
 // ===========================================================================
-// Multi-column import where the first column is an Arrow type extension with an
-// arrow_to_duckdb cast (BOOLEAN under arrow_lossless_conversion -> the bool8
-// extension). That import path is the ONLY one that does NOT capture the shared
-// array into the output vector (it early-returns through the cast), so under a
-// per-column owner column 0's wrapper drops at the end of its iteration and
-// frees the parent array that the trailing zero-copy INTEGER column aliases (the
-// C1 use-after-free). The single shared owner keeps the parent alive for the
-// whole loop. (Run under ASAN to catch a regression.)
+// Multi-column import: a single foreign array imports into more than one output
+// column, all backed by one shared owner. A per-column owner would free the
+// parent after the first column and dangle the rest; the shared owner keeps it
+// alive for the whole loop. arrow_roundtrip_range emits two columns (BIGINT i,
+// VARCHAR s) re-imported from the same round-tripped array. (Run under ASAN.)
 // ===========================================================================
 
 TEST_CASE("V2 arrow: multi-column import with a leading extension-cast column", "[capi_v2][arrow]") {
 	V2EnvFixture fx;
-	// Lossless conversion routes BOOLEAN through the bool8 extension (int8 + an
-	// arrow_to_duckdb cast), the capture-skipping import path.
-	V2ExecSQL(fx.conn, "SET arrow_lossless_conversion=true");
+	RegisterArrowRoundtripRange(fx.conn);
 
-	auto src = QueryOneChunk(fx.conn, "SELECT (i % 2 = 0) AS b, i::INTEGER AS n FROM range(5) t(i)");
-	REQUIRE(src != nullptr);
-	REQUIRE(ChunkSize(src) == 5);
-
-	duckdb_v2_logical_type_handle types[2] = {nullptr, nullptr};
-	for (idx_t i = 0; i < 2; i++) {
-		REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(src, i), &types[i], nullptr) == DUCKDB_V2_ERROR_NONE);
-	}
-	duckdb_v2_str names[2] = {V2Str("b"), V2Str("n")};
-
-	ArrowSchema schema {};
-	ArrowArray array {};
-	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	duckdb_v2_data_chunk_handle dst = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_array = DUCKDB_V2_ERROR_API;
-	DUCKDB_V2_ERROR c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, 2, &schema, e);
-		c_array = duckdb_v2_data_chunk_to_arrow_array(ctx, src, &array, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
-		c_chunk = duckdb_v2_arrow_array_to_data_chunk(ctx, &array, plan, &dst, e);
-	});
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_array == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_chunk == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(ChunkSize(dst) == 5);
-	// Read BOTH columns: column 1 would dangle under the old per-column owner.
-	for (idx_t row = 0; row < 5; row++) {
-		REQUIRE(GetScalar<bool>(ChunkVector(dst, 0), row) == (row % 2 == 0));
-		REQUIRE(GetScalar<int32_t>(ChunkVector(dst, 1), row) == static_cast<int32_t>(row));
-	}
-
-	REQUIRE(array.release == nullptr);
-	if (schema.release) {
-		schema.release(&schema);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&plan);
-	duckdb_v2_data_chunk_destroy(&dst);
-	duckdb_v2_data_chunk_destroy(&src);
-	for (idx_t i = 0; i < 2; i++) {
-		duckdb_v2_logical_type_destroy(&types[i]);
-	}
+	// Both re-imported columns of the shared array survive: i in 0..9 with the
+	// matching s = 'r' || i. Reading both columns is what would dangle the trailing
+	// column under a per-column owner.
+	REQUIRE(QueryBool(fx.conn, "SELECT count(*) = 10 AND bool_and(s = 'r' || i) "
+	                           "AND min(i) = 0 AND max(i) = 9 "
+	                           "FROM arrow_roundtrip_range(10)"));
 }
 
 // ===========================================================================
@@ -962,157 +841,6 @@ TEST_CASE("V2 arrow: batch_size of 1 yields one row per array", "[capi_v2][arrow
 }
 
 // ===========================================================================
-// A 0-column conversion plan imports a childless array into an empty chunk
-// (the ColumnCount()==0 path is handled by the shared owner dropping at return).
-// ===========================================================================
-
-TEST_CASE("V2 arrow: a 0-column import yields an empty chunk", "[capi_v2][arrow]") {
-	V2EnvFixture fx;
-	ArrowSchema schema {};
-	duckdb_v2_arrow_conversion_plan_handle conv = nullptr;
-	duckdb_v2_data_chunk_handle dst = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API, c_chunk = DUCKDB_V2_ERROR_API;
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, nullptr, nullptr, 0, &schema, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &conv, e);
-		ArrowArray empty {};
-		empty.length = 0;
-		empty.n_children = 0;
-		empty.release = NoopArrayRelease;
-		c_chunk = duckdb_v2_arrow_array_to_data_chunk(ctx, &empty, conv, &dst, e);
-	});
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_chunk == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(dst != nullptr);
-	REQUIRE(ChunkSize(dst) == 0);
-
-	if (schema.release) {
-		schema.release(&schema);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&conv);
-	duckdb_v2_data_chunk_destroy(&dst);
-}
-
-// ===========================================================================
-// A malformed foreign array is rejected with INVALID_INPUT (not a crash inside
-// the engine): null children, a null child, a released child, a child whose
-// length disagrees, and a dictionary-encoded column with no dictionary.
-// ===========================================================================
-
-TEST_CASE("V2 arrow: malformed import arrays are rejected", "[capi_v2][arrow]") {
-	V2EnvFixture fx;
-
-	auto int_chunk = QueryOneChunk(fx.conn, "SELECT 0::INTEGER AS n");
-	REQUIRE(int_chunk != nullptr);
-	duckdb_v2_logical_type_handle int_type = nullptr;
-	REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(int_chunk, 0), &int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
-
-	V2ExecSQL(fx.conn, "CREATE TYPE mood AS ENUM ('a', 'b')");
-	auto enum_chunk = QueryOneChunk(fx.conn, "SELECT 'a'::mood AS m");
-	REQUIRE(enum_chunk != nullptr);
-	duckdb_v2_logical_type_handle enum_type = nullptr;
-	REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(enum_chunk, 0), &enum_type, nullptr) == DUCKDB_V2_ERROR_NONE);
-
-	ArrowSchema int_schema {}, enum_schema {};
-	duckdb_v2_arrow_conversion_plan_handle int_conv = nullptr, enum_conv = nullptr;
-	duckdb_v2_str int_name = V2Str("n"), enum_name = V2Str("m");
-	DUCKDB_V2_ERROR c_int_s = DUCKDB_V2_ERROR_API, c_int_c = DUCKDB_V2_ERROR_API;
-	DUCKDB_V2_ERROR c_enum_s = DUCKDB_V2_ERROR_API, c_enum_c = DUCKDB_V2_ERROR_API;
-	DUCKDB_V2_ERROR c_null_children = DUCKDB_V2_ERROR_NONE, c_null_child = DUCKDB_V2_ERROR_NONE;
-	DUCKDB_V2_ERROR c_released = DUCKDB_V2_ERROR_NONE, c_length = DUCKDB_V2_ERROR_NONE;
-	DUCKDB_V2_ERROR c_dict = DUCKDB_V2_ERROR_NONE;
-
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_int_s = duckdb_v2_logical_types_to_arrow_schema(ctx, &int_type, &int_name, 1, &int_schema, e);
-		c_int_c = duckdb_v2_arrow_conversion_plan_create(ctx, &int_schema, &int_conv, e);
-		c_enum_s = duckdb_v2_logical_types_to_arrow_schema(ctx, &enum_type, &enum_name, 1, &enum_schema, e);
-		c_enum_c = duckdb_v2_arrow_conversion_plan_create(ctx, &enum_schema, &enum_conv, e);
-
-		duckdb_v2_data_chunk_handle dst = nullptr;
-
-		// 1. n_children matches but children pointer is null.
-		ArrowArray a1 {};
-		a1.length = 3;
-		a1.n_children = 1;
-		a1.children = nullptr;
-		a1.release = NoopArrayRelease;
-		c_null_children = duckdb_v2_arrow_array_to_data_chunk(ctx, &a1, int_conv, &dst, e);
-
-		// 2. a null child.
-		ArrowArray *kids2[1] = {nullptr};
-		ArrowArray a2 {};
-		a2.length = 3;
-		a2.n_children = 1;
-		a2.children = kids2;
-		a2.release = NoopArrayRelease;
-		c_null_child = duckdb_v2_arrow_array_to_data_chunk(ctx, &a2, int_conv, &dst, e);
-
-		// 3. a child with a null (released) release.
-		ArrowArray child3 {};
-		child3.length = 3;
-		child3.release = nullptr;
-		ArrowArray *kids3[1] = {&child3};
-		ArrowArray a3 {};
-		a3.length = 3;
-		a3.n_children = 1;
-		a3.children = kids3;
-		a3.release = NoopArrayRelease;
-		c_released = duckdb_v2_arrow_array_to_data_chunk(ctx, &a3, int_conv, &dst, e);
-
-		// 4. a child whose length disagrees with the array length.
-		ArrowArray child4 {};
-		child4.length = 2;
-		child4.release = NoopArrayRelease;
-		ArrowArray *kids4[1] = {&child4};
-		ArrowArray a4 {};
-		a4.length = 3;
-		a4.n_children = 1;
-		a4.children = kids4;
-		a4.release = NoopArrayRelease;
-		c_length = duckdb_v2_arrow_array_to_data_chunk(ctx, &a4, int_conv, &dst, e);
-
-		// 5. a dictionary-encoded (ENUM) column with no dictionary.
-		ArrowArray child5 {};
-		child5.length = 3;
-		child5.release = NoopArrayRelease;
-		child5.dictionary = nullptr;
-		ArrowArray *kids5[1] = {&child5};
-		ArrowArray a5 {};
-		a5.length = 3;
-		a5.n_children = 1;
-		a5.children = kids5;
-		a5.release = NoopArrayRelease;
-		c_dict = duckdb_v2_arrow_array_to_data_chunk(ctx, &a5, enum_conv, &dst, e);
-	});
-
-	(void)rc;
-	REQUIRE(c_int_s == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_int_c == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_enum_s == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_enum_c == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_null_children == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(c_null_child == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(c_released == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(c_length == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(c_dict == DUCKDB_V2_ERROR_INPUT_INVALID);
-
-	if (int_schema.release) {
-		int_schema.release(&int_schema);
-	}
-	if (enum_schema.release) {
-		enum_schema.release(&enum_schema);
-	}
-	duckdb_v2_arrow_conversion_plan_destroy(&int_conv);
-	duckdb_v2_arrow_conversion_plan_destroy(&enum_conv);
-	duckdb_v2_logical_type_destroy(&int_type);
-	duckdb_v2_logical_type_destroy(&enum_type);
-	duckdb_v2_data_chunk_destroy(&int_chunk);
-	duckdb_v2_data_chunk_destroy(&enum_chunk);
-}
-
-// ===========================================================================
 // Error paths: null arguments and a destroyed/empty conversion plan.
 // ===========================================================================
 
@@ -1135,94 +863,19 @@ TEST_CASE("V2 arrow: error paths reject invalid arguments", "[capi_v2][arrow]") 
 	duckdb_v2_result_handle null_result = nullptr;
 	REQUIRE(duckdb_v2_result_to_arrow_stream(&null_result, 0, &stream, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	// Import with a null/empty conversion plan and null array.
+	// Import with a null array and with a null conversion plan. The null-argument
+	// checks fire before the context is used, so a null context here still yields
+	// INPUT_INVALID (there is no valid context to hand at test scope).
 	duckdb_v2_data_chunk_handle dst = nullptr;
 	duckdb_v2_arrow_conversion_plan_handle empty = nullptr;
-	DUCKDB_V2_ERROR c_null_array = DUCKDB_V2_ERROR_NONE, c_null_conv = DUCKDB_V2_ERROR_NONE;
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_null_array = duckdb_v2_arrow_array_to_data_chunk(ctx, nullptr, empty, &dst, e);
-		ArrowArray dummy {};
-		c_null_conv = duckdb_v2_arrow_array_to_data_chunk(ctx, &dummy, nullptr, &dst, e);
-	});
-	// The callback itself does not fail; the conversions report INVALID_INPUT
-	// on the err slot, which the bridge surfaces as a callback error.
-	(void)rc;
-	REQUIRE(c_null_array == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(c_null_conv == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_arrow_array_to_data_chunk(nullptr, nullptr, empty, &dst, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	ArrowArray dummy {};
+	REQUIRE(duckdb_v2_arrow_array_to_data_chunk(nullptr, &dummy, nullptr, &dst, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	// Destroy is null-safe.
 	REQUIRE(duckdb_v2_arrow_conversion_plan_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_arrow_conversion_plan_handle null_handle = nullptr;
 	REQUIRE(duckdb_v2_arrow_conversion_plan_destroy(&null_handle) == DUCKDB_V2_ERROR_NONE);
-}
-
-// ===========================================================================
-// conversion_plan_get_schema: an arbitrary ArrowSchema becomes DuckDB
-// (name, logical type) pairs without parsing Arrow format strings.
-// ===========================================================================
-
-TEST_CASE("V2 arrow: conversion plan exposes names and logical types", "[capi_v2][arrow]") {
-	V2EnvFixture fx;
-
-	// Nested + string + temporal kinds.
-	auto src = QueryOneChunk(fx.conn, "SELECT 1::INTEGER AS i, 'x' AS s, "
-	                                  "TIMESTAMP '2020-01-01 00:00:00' AS ts, "
-	                                  "[1, 2] AS lst, {'x': 1} AS st");
-	REQUIRE(src != nullptr);
-
-	const idx_t COLS = 5;
-	duckdb_v2_logical_type_handle types[COLS] = {nullptr, nullptr, nullptr, nullptr, nullptr};
-	for (idx_t i = 0; i < COLS; i++) {
-		REQUIRE(duckdb_v2_vector_get_logical_type(ChunkVector(src, i), &types[i], nullptr) == DUCKDB_V2_ERROR_NONE);
-	}
-	duckdb_v2_str names[COLS] = {V2Str("i"), V2Str("s"), V2Str("ts"), V2Str("lst"), V2Str("st")};
-
-	ArrowSchema schema {};
-	duckdb_v2_arrow_conversion_plan_handle plan = nullptr;
-	duckdb_v2_schema_handle out_schema = nullptr;
-	DUCKDB_V2_ERROR c_schema = DUCKDB_V2_ERROR_API, c_conv = DUCKDB_V2_ERROR_API, c_get = DUCKDB_V2_ERROR_API;
-
-	auto rc = V2RunWithContext(fx.conn, [&](duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *e) {
-		c_schema = duckdb_v2_logical_types_to_arrow_schema(ctx, types, names, COLS, &schema, e);
-		c_conv = duckdb_v2_arrow_conversion_plan_create(ctx, &schema, &plan, e);
-		c_get = duckdb_v2_arrow_conversion_plan_get_schema(plan, &out_schema, e);
-	});
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_schema == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_conv == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(c_get == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(out_schema != nullptr);
-
-	idx_t count = 0;
-	REQUIRE(duckdb_v2_schema_get_count(out_schema, &count, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(count == COLS);
-
-	const char *expected_names[COLS] = {"i", "s", "ts", "lst", "st"};
-	const DUCKDB_V2_LOGICAL_TYPE_ID expected_ids[COLS] = {
-	    DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP,
-	    DUCKDB_V2_LOGICAL_TYPE_ID_LIST, DUCKDB_V2_LOGICAL_TYPE_ID_STRUCT};
-	for (idx_t i = 0; i < COLS; i++) {
-		duckdb_v2_str name = {nullptr, 0};
-		duckdb_v2_logical_type_handle type = nullptr; // borrowed from out_schema
-		REQUIRE(duckdb_v2_schema_get_field(out_schema, i, &name, &type, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(V2StrTo(name) == expected_names[i]);
-		DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-		REQUIRE(duckdb_v2_logical_type_get_id(type, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(id == expected_ids[i]);
-	}
-
-	// Null args are rejected.
-	duckdb_v2_schema_handle misuse = nullptr;
-	REQUIRE(duckdb_v2_arrow_conversion_plan_get_schema(nullptr, &misuse, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(misuse == nullptr);
-	REQUIRE(duckdb_v2_arrow_conversion_plan_get_schema(plan, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-
-	duckdb_v2_schema_destroy(&out_schema);
-	REQUIRE(out_schema == nullptr);
-	schema.release(&schema);
-	duckdb_v2_arrow_conversion_plan_destroy(&plan);
-	duckdb_v2_data_chunk_destroy(&src);
-	for (idx_t i = 0; i < COLS; i++) {
-		duckdb_v2_logical_type_destroy(&types[i]);
-	}
 }

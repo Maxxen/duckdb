@@ -15,24 +15,11 @@ inline duckdb_v2_logical_type_handle V1ToV2(duckdb_logical_type t) {
 
 // Owned V2-native primitive type fixture; destroy via logical_type_destroy.
 // Composites go through V2CreateType and its per-kind sugar below, which
-// build via logical_type_create in a context scope.
+// build via logical_type_get_from_args on a connection.
 inline duckdb_v2_logical_type_handle V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID id) {
 	duckdb_v2_logical_type_handle t = nullptr;
 	REQUIRE(duckdb_v2_logical_type_create_from_id(id, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
 	return t;
-}
-
-// Runs fn(ctx) inside the connection's context scope: the external path to a
-// duckdb_v2_context_handle. The scope call itself must succeed; failures of
-// calls made inside fn are asserted by fn.
-template <class FN>
-inline void V2WithContext(duckdb_v2_connection_handle conn, FN &&fn) {
-	using Fn = typename std::decay<FN>::type;
-	Fn body = std::forward<FN>(fn);
-	auto trampoline = [](duckdb_v2_context_handle ctx, void *user_data, duckdb_v2_error_info_handle *) {
-		(*static_cast<Fn *>(user_data))(ctx);
-	};
-	REQUIRE(duckdb_v2_connection_execute_with_context(conn, trampoline, &body, nullptr) == DUCKDB_V2_ERROR_NONE);
 }
 
 // Build a borrowed string view from a null-terminated C string. A null
@@ -235,9 +222,9 @@ inline duckdb_v2_value_handle V2TypeValueOfId(DUCKDB_V2_LOGICAL_TYPE_ID id) {
 	return v;
 }
 
-// Runs logical_type_create inside a context scope. Destroys the borrowed
-// param values. `names` entries may be nullptr (positional); pass nullptr
-// for all-positional.
+// Resolves a type by name plus value params directly from the connection.
+// Destroys the borrowed param values. `names` entries may be nullptr
+// (positional); pass nullptr for all-positional.
 inline duckdb_v2_logical_type_handle V2CreateType(duckdb_v2_connection_handle conn, const char *name,
                                                   const std::vector<const char *> *names,
                                                   std::vector<duckdb_v2_value_handle> values) {
@@ -248,11 +235,9 @@ inline duckdb_v2_logical_type_handle V2CreateType(duckdb_v2_connection_handle co
 		}
 	}
 	duckdb_v2_logical_type_handle t = nullptr;
-	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
-	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
-		rc = duckdb_v2_logical_type_create(ctx, V2Str(name), names ? name_views.data() : nullptr,
-		                                   values.empty() ? nullptr : values.data(), values.size(), &t, nullptr);
-	});
+	DUCKDB_V2_ERROR rc =
+	    duckdb_v2_logical_type_get_from_args(conn, V2Str(name), names ? name_views.data() : nullptr,
+	                                         values.empty() ? nullptr : values.data(), values.size(), &t, nullptr);
 	for (auto &v : values) {
 		duckdb_v2_value_destroy(&v);
 	}

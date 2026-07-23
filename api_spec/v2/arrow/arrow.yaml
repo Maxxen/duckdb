@@ -14,12 +14,13 @@ module: arrow
 # fills) requires. The structs keep their upstream names; they are NOT wrapped
 # in opaque duckdb_v2_arrow_* typedefs.
 #
-# The converters key on `context`, not a connection: a callback (a UDF, a type
-# extension cast) already has a context; a non-callback caller obtains one (and
-# a transaction) via connection_execute_with_context. Schema and data
-# conversion are split on purpose: arrow_conversion_plan_create builds a
-# reusable bound schema once, and arrow_array_to_data_chunk consumes it per
-# array (so a UDF binds the schema in init and reuses it per chunk).
+# The converters key on `context`: they are meant to run inside a callback (a
+# UDF, a type extension cast) that already holds a context and an active
+# transaction. External callers stream a result to Arrow via
+# result_to_arrow_stream instead. Schema and data conversion are split on
+# purpose: arrow_conversion_plan_create builds a reusable bound schema once, and
+# arrow_array_to_data_chunk consumes it per array (so a UDF binds the schema in
+# init and reuses it per chunk).
 #
 # Ownership conventions are stated per function. Export: the caller allocates
 # the ArrowSchema / ArrowArray struct, the library fills it and sets `release`,
@@ -130,8 +131,7 @@ functions:
       `types` and `names` are parallel arrays of length `count`; they may be
       NULL only when count is 0. Building the schema can touch the catalog /
       transaction (extension populate-schema callbacks, ENUM dictionaries), so
-      `context` must have an active transaction (callbacks do; otherwise wrap
-      the call in connection_execute_with_context).
+      `context` must have an active transaction, which callback contexts do.
     role: method
     parameters:
       context:

@@ -5,8 +5,8 @@
 
 using namespace duckdb_api;
 
-static void RegisterFunction(const Context &context) {
-	ScalarFunction function(context);
+static void RegisterFunction(const Connection &conn) {
+	ScalarFunction function;
 	function.SetName("add_two")
 	    .SetSignature(FunctionSignature::Create()
 	                      .AddParameter("input", LogicalType::INTEGER())
@@ -24,7 +24,7 @@ static void RegisterFunction(const Context &context) {
 			    out[i] = in[i] + 2;
 		    }
 	    })
-	    .Register(context);
+	    .Register(conn);
 }
 
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, duckdb_extension_access *access) {
@@ -34,7 +34,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
 	auto conn = Connection::FromOpaque(connection);
 
 	try {
-		conn.WithTransaction([](const Context &ctx) { RegisterFunction(ctx); });
+		RegisterFunction(conn);
 	} catch (const std::exception &ex) {
 		access->set_error(info, ex.what());
 		return false;

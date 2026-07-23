@@ -24,61 +24,59 @@ TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
 
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction table_function(ctx);
+	TableFunction table_function;
 
-		table_function
-		    .SetName("MyRangeFunction")
-		    // start and stop are required positional parameters; step is an optional
-		    // named parameter defaulting to 1 (injected into bind when the call omits it).
-		    .SetSignature(FunctionSignature::Create()
-		                      .AddParameter("start", LogicalType::INTEGER())
-		                      .AddParameter("stop", LogicalType::INTEGER())
-		                      .AddParameterDefault("step", LogicalType::INTEGER(), Value::Bigint(1)))
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    // We will emit one column named "i" of type INTEGER
-			    input.AddResultColumn("i", LogicalType::INTEGER());
+	table_function
+	    .SetName("MyRangeFunction")
+	    // start and stop are required positional parameters; step is an optional
+	    // named parameter defaulting to 1 (injected into bind when the call omits it).
+	    .SetSignature(FunctionSignature::Create()
+	                      .AddParameter("start", LogicalType::INTEGER())
+	                      .AddParameter("stop", LogicalType::INTEGER())
+	                      .AddParameterDefault("step", LogicalType::INTEGER(), Value::Bigint(1)))
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    // We will emit one column named "i" of type INTEGER
+		    input.AddResultColumn("i", LogicalType::INTEGER());
 
-			    // Get parameters
-			    const auto start = input.GetParameter(0).AsInteger();
-			    const auto stop = input.GetParameter(1).AsInteger();
+		    // Get parameters
+		    const auto start = input.GetParameter(0).AsInteger();
+		    const auto stop = input.GetParameter(1).AsInteger();
 
-			    // "Step" is optional and named, so we try to get it and default to 1 if it's not provided
-			    int32_t step = 1;
-			    if (const auto step_arg = input.TryGetNamedParameter("step")) {
-				    step = step_arg->AsInteger();
-			    }
+		    // "Step" is optional and named, so we try to get it and default to 1 if it's not provided
+		    int32_t step = 1;
+		    if (const auto step_arg = input.TryGetNamedParameter("step")) {
+			    step = step_arg->AsInteger();
+		    }
 
-			    // Store the parameters in the bind data for use in exec
-			    input.SetBindData<std::tuple<int32_t, int32_t, int32_t>>(start, step, stop);
-		    })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
-			    auto &[start, step, stop] = input.GetBindData<std::tuple<int32_t, int32_t, int32_t>>();
+		    // Store the parameters in the bind data for use in exec
+		    input.SetBindData<std::tuple<int32_t, int32_t, int32_t>>(start, step, stop);
+	    })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
+		    auto &[start, step, stop] = input.GetBindData<std::tuple<int32_t, int32_t, int32_t>>();
 
-			    // Initialize global state
-			    input.SetGlobalState<int32_t>(start);
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &[start, step, stop] = input.GetBindData<std::tuple<int32_t, int32_t, int32_t>>();
+		    // Initialize global state
+		    input.SetGlobalState<int32_t>(start);
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &[start, step, stop] = input.GetBindData<std::tuple<int32_t, int32_t, int32_t>>();
 
-			    auto &state = input.GetGlobalState<int32_t>();
+		    auto &state = input.GetGlobalState<int32_t>();
 
-			    auto &chunk = input.GetResultChunk();
-			    auto vec = chunk.GetVector(0);
-			    const auto data = vec.GetDataMutable<int32_t>();
+		    auto &chunk = input.GetResultChunk();
+		    auto vec = chunk.GetVector(0);
+		    const auto data = vec.GetDataMutable<int32_t>();
 
-			    auto emitted = 0;
-			    auto capacity = 2048; // TODO: Get capacity from vector
+		    auto emitted = 0;
+		    auto capacity = 2048; // TODO: Get capacity from vector
 
-			    while (state < stop && emitted < capacity) {
-				    data[emitted++] = state;
-				    state += step;
-			    }
+		    while (state < stop && emitted < capacity) {
+			    data[emitted++] = state;
+			    state += step;
+		    }
 
-			    vec.SetSize(emitted);
-		    })
-		    .Register(ctx);
-	});
+		    vec.SetSize(emitted);
+	    })
+	    .Register(conn);
 
 	auto result = conn.Execute("SELECT * FROM MyRangeFunction(0, 10, step => 2)");
 	REQUIRE(result.GetSchema().GetFieldCount() == 1);
@@ -168,6 +166,33 @@ struct ProjectionObservations {
 };
 ProjectionObservations g_proj;
 
+// Arrow export (Schema/DataChunk -> Arrow) needs a live Context, which only a
+// callback provides. This runs `body` inside a scalar function's exec callback,
+// triggered by a one-row query — the same pattern a real consumer uses to reach
+// a Context from outside.
+using CppCtxBody = std::function<void(const duckdb_api::Context &)>;
+inline void RunWithContext(duckdb_api::Connection &conn, const CppCtxBody &body) {
+	using namespace duckdb_api;
+	ScalarFunction probe;
+	probe.SetName("__cpp_ctx_probe")
+	    .SetSignature(
+	        FunctionSignature::Create().AddParameter("x", LogicalType::INTEGER()).SetReturnType(LogicalType::INTEGER()))
+	    .SetUserData<const CppCtxBody *>(&body)
+	    .SetExecCallback([](ScalarFunction::ExecInput &input) {
+		    (*input.GetUserData<const CppCtxBody *>())(input.GetContext());
+		    auto out = input.GetResultVector();
+		    auto *data = out.GetDataMutable<int32_t>();
+		    const auto rows = input.GetInputChunk().GetRowCount();
+		    for (idx_t i = 0; i < rows; i++) {
+			    data[i] = 0;
+		    }
+	    })
+	    .Register(conn);
+	auto r = conn.Execute("SELECT __cpp_ctx_probe(1)");
+	while (auto c = r.FetchChunk()) {
+	}
+}
+
 } // namespace
 TEST_CASE("Stable C++API: Arrow round-trip through a table function", "[cpp_api]") {
 	using namespace duckdb_api;
@@ -194,9 +219,10 @@ TEST_CASE("Stable C++API: Arrow round-trip through a table function", "[cpp_api]
 	REQUIRE_FALSE(source.FetchChunk()); // drain: frees the connection
 
 	// Export the schema once and the same chunk twice (two Arrow batches).
+	// The converters need a live Context, obtained via RunWithContext.
 	ArrowSchema arrow_schema {};
 	std::vector<ArrowArray> arrays(2);
-	conn.WithTransaction([&](const Context &ctx) {
+	RunWithContext(conn, [&](const Context &ctx) {
 		schema.ToArrowSchema(ctx, arrow_schema);
 		chunk.ToArrowArray(ctx, arrays[0]);
 		chunk.ToArrowArray(ctx, arrays[1]);
@@ -205,60 +231,58 @@ TEST_CASE("Stable C++API: Arrow round-trip through a table function", "[cpp_api]
 	REQUIRE(arrow_schema.n_children == 2);
 	REQUIRE(arrays[0].length == 5);
 
-	conn.WithTransaction([&](const Context &ctx) {
-		TableFunction function(ctx);
-		function
-		    .SetName("arrow_roundtrip")
-		    // The test-produced Arrow data rides the function's user data: no
-		    // file-scope state.
-		    .SetUserData<ArrowRoundtripState>(arrow_schema, std::move(arrays))
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    // Bind-time conversion of the test-produced Arrow schema. The
-			    // result columns are derived from it, not hardcoded: the real
-			    // client flow for an arbitrary ArrowSchema.
-			    auto &state = input.GetUserData<ArrowRoundtripState>();
-			    state.plan = std::make_unique<ArrowConversionPlan>(input.GetContext(), state.schema);
-			    input.AddResultColumns(state.plan->GetSchema());
-		    })
-		    .SetInitGlobalCallback(
-		        [](TableFunction::InitGlobalInput &input) { input.GetUserData<ArrowRoundtripState>().next = 0; })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &state = input.GetUserData<ArrowRoundtripState>();
-			    auto &out = input.GetResultChunk();
-			    if (state.next >= state.arrays.size()) {
-				    out.GetVector(0).SetSize(0);
-				    return;
-			    }
-			    // Exec-time conversion under the execution context.
-			    auto imported = state.plan->Convert(input.GetContext(), state.arrays[state.next++]);
-			    const auto rows = imported.GetRowCount();
+	TableFunction function;
+	function
+	    .SetName("arrow_roundtrip")
+	    // The test-produced Arrow data rides the function's user data: no
+	    // file-scope state.
+	    .SetUserData<ArrowRoundtripState>(arrow_schema, std::move(arrays))
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    // Bind-time conversion of the test-produced Arrow schema. The
+		    // result columns are derived from it, not hardcoded: the real
+		    // client flow for an arbitrary ArrowSchema.
+		    auto &state = input.GetUserData<ArrowRoundtripState>();
+		    state.plan = std::make_unique<ArrowConversionPlan>(input.GetContext(), state.schema);
+		    input.AddResultColumns(state.plan->GetSchema());
+	    })
+	    .SetInitGlobalCallback(
+	        [](TableFunction::InitGlobalInput &input) { input.GetUserData<ArrowRoundtripState>().next = 0; })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &state = input.GetUserData<ArrowRoundtripState>();
+		    auto &out = input.GetResultChunk();
+		    if (state.next >= state.arrays.size()) {
+			    out.GetVector(0).SetSize(0);
+			    return;
+		    }
+		    // Exec-time conversion under the execution context.
+		    auto imported = state.plan->Convert(input.GetContext(), state.arrays[state.next++]);
+		    const auto rows = imported.GetRowCount();
 
-			    auto in_a = imported.GetVector(0).GetView();
-			    auto out_a = out.GetVector(0);
-			    auto *a_data = out_a.GetDataMutable<int64_t>();
-			    auto a_validity = out_a.GetValidityMutable();
-			    for (idx_t i = 0; i < rows; i++) {
-				    if (in_a.IsValid(i)) {
-					    a_data[i] = in_a.Data<int64_t>()[in_a.SelAt(i)];
-				    } else {
-					    a_validity.SetInvalid(i);
-				    }
+		    auto in_a = imported.GetVector(0).GetView();
+		    auto out_a = out.GetVector(0);
+		    auto *a_data = out_a.GetDataMutable<int64_t>();
+		    auto a_validity = out_a.GetValidityMutable();
+		    for (idx_t i = 0; i < rows; i++) {
+			    if (in_a.IsValid(i)) {
+				    a_data[i] = in_a.Data<int64_t>()[in_a.SelAt(i)];
+			    } else {
+				    a_validity.SetInvalid(i);
 			    }
+		    }
 
-			    auto in_s = imported.GetVector(1).GetView();
-			    auto out_s = out.GetVector(1);
-			    auto s_validity = out_s.GetValidityMutable();
-			    for (idx_t i = 0; i < rows; i++) {
-				    if (in_s.IsValid(i)) {
-					    out_s.AssignString(i, in_s.Data<StringLayout>()[in_s.SelAt(i)].AsStringView());
-				    } else {
-					    s_validity.SetInvalid(i);
-				    }
+		    auto in_s = imported.GetVector(1).GetView();
+		    auto out_s = out.GetVector(1);
+		    auto s_validity = out_s.GetValidityMutable();
+		    for (idx_t i = 0; i < rows; i++) {
+			    if (in_s.IsValid(i)) {
+				    out_s.AssignString(i, in_s.Data<StringLayout>()[in_s.SelAt(i)].AsStringView());
+			    } else {
+				    s_validity.SetInvalid(i);
 			    }
-			    out.GetVector(0).SetSize(rows);
-		    })
-		    .Register(ctx);
-	});
+		    }
+		    out.GetVector(0).SetSize(rows);
+	    })
+	    .Register(conn);
 
 	// Two batches of the same 5 source rows. The result schema comes from
 	// GetSchema + AddResultColumns, so names and types prove that path.
@@ -304,61 +328,59 @@ TEST_CASE("Stable C++API: Table Function complex filter pushdown", "[cpp_api]") 
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("pushdown_fn")
-		    .SetUserData<std::string>("pushdown user data")
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    // The registration's user data is visible in bind and pushdown.
-			    REQUIRE(input.GetUserData<std::string>() == "pushdown user data");
-			    input.AddResultColumn("v", LogicalType::BIGINT());
-			    input.SetBindData<PushdownCapture>();
-		    })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<bool>(false); })
-		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
-			    REQUIRE(input.GetUserData<std::string>() == "pushdown user data");
-			    auto &capture = input.GetBindData<PushdownCapture>();
-			    for (idx_t i = 0; i < input.GetCount(); i++) {
-				    auto expr = input.GetExpression(i);
-				    if (expr.GetType() != ExpressionType::CompareGreaterThan) {
-					    continue; // leave every other filter to the engine
+	TableFunction function;
+	function.SetName("pushdown_fn")
+	    .SetUserData<std::string>("pushdown user data")
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    // The registration's user data is visible in bind and pushdown.
+		    REQUIRE(input.GetUserData<std::string>() == "pushdown user data");
+		    input.AddResultColumn("v", LogicalType::BIGINT());
+		    input.SetBindData<PushdownCapture>();
+	    })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<bool>(false); })
+	    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
+		    REQUIRE(input.GetUserData<std::string>() == "pushdown user data");
+		    auto &capture = input.GetBindData<PushdownCapture>();
+		    for (idx_t i = 0; i < input.GetCount(); i++) {
+			    auto expr = input.GetExpression(i);
+			    if (expr.GetType() != ExpressionType::CompareGreaterThan) {
+				    continue; // leave every other filter to the engine
+			    }
+			    // v > K: capture K into bind data and claim the filter.
+			    for (idx_t c = 0; c < expr.GetChildCount(); c++) {
+				    auto child = expr.GetChild(c);
+				    if (child.GetClass() == ExpressionClass::BoundConstant) {
+					    capture.captured = child.GetConstantValue().AsBigint();
 				    }
-				    // v > K: capture K into bind data and claim the filter.
-				    for (idx_t c = 0; c < expr.GetChildCount(); c++) {
-					    auto child = expr.GetChild(c);
-					    if (child.GetClass() == ExpressionClass::BoundConstant) {
-						    capture.captured = child.GetConstantValue().AsBigint();
-					    }
-				    }
-				    capture.handled = true;
-				    input.MarkHandled(i);
 			    }
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &done = input.GetGlobalState<bool>();
-			    auto &out = input.GetResultChunk();
-			    auto vec = out.GetVector(0);
-			    if (done) {
-				    vec.SetSize(0);
-				    return;
-			    }
-			    done = true;
-			    auto *data = vec.GetDataMutable<int64_t>();
-			    const auto &capture = input.GetBindData<PushdownCapture>();
-			    if (!capture.handled) {
-				    data[0] = -1; // sentinel: no filter reached the callback
-				    vec.SetSize(1);
-				    return;
-			    }
-			    // Emit K (violates v > K, so it survives only if the engine
-			    // dropped the claimed filter), K+10, and K+20.
-			    data[0] = capture.captured;
-			    data[1] = capture.captured + 10;
-			    data[2] = capture.captured + 20;
-			    vec.SetSize(3);
-		    })
-		    .Register(ctx);
-	});
+			    capture.handled = true;
+			    input.MarkHandled(i);
+		    }
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &done = input.GetGlobalState<bool>();
+		    auto &out = input.GetResultChunk();
+		    auto vec = out.GetVector(0);
+		    if (done) {
+			    vec.SetSize(0);
+			    return;
+		    }
+		    done = true;
+		    auto *data = vec.GetDataMutable<int64_t>();
+		    const auto &capture = input.GetBindData<PushdownCapture>();
+		    if (!capture.handled) {
+			    data[0] = -1; // sentinel: no filter reached the callback
+			    vec.SetSize(1);
+			    return;
+		    }
+		    // Emit K (violates v > K, so it survives only if the engine
+		    // dropped the claimed filter), K+10, and K+20.
+		    data[0] = capture.captured;
+		    data[1] = capture.captured + 10;
+		    data[2] = capture.captured + 20;
+		    vec.SetSize(3);
+	    })
+	    .Register(conn);
 
 	SECTION("a claimed filter is dropped by the engine; the rest still apply") {
 		auto rows = CollectI64(conn.Execute("SELECT v FROM pushdown_fn() WHERE v > 5 AND v != 15"));
@@ -381,101 +403,98 @@ TEST_CASE("Stable C++API: Expression walk in the pushdown callback", "[cpp_api]"
 
 	g_walk = WalkObservations {};
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("walk_fn")
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    input.AddResultColumn("a", LogicalType::BIGINT());
-			    input.AddResultColumn("s", LogicalType::VARCHAR());
-			    input.SetBindData<int>(0); // the pushdown route runs through bind data
-		    })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<bool>(false); })
-		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
-			    g_walk.filter_count = input.GetCount();
-			    for (idx_t i = 0; i < input.GetCount(); i++) {
-				    auto expr = input.GetExpression(i);
-				    // A comparison is a BoundFunction carrying an internal
-				    // symbol; the operator is the type.
-				    REQUIRE(expr.GetClass() == ExpressionClass::BoundFunction);
-				    REQUIRE_FALSE(expr.GetFunctionName().empty());
-				    REQUIRE(expr.GetChildCount() == 2);
+	TableFunction function;
+	function.SetName("walk_fn")
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    input.AddResultColumn("a", LogicalType::BIGINT());
+		    input.AddResultColumn("s", LogicalType::VARCHAR());
+		    input.SetBindData<int>(0); // the pushdown route runs through bind data
+	    })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<bool>(false); })
+	    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
+		    g_walk.filter_count = input.GetCount();
+		    for (idx_t i = 0; i < input.GetCount(); i++) {
+			    auto expr = input.GetExpression(i);
+			    // A comparison is a BoundFunction carrying an internal
+			    // symbol; the operator is the type.
+			    REQUIRE(expr.GetClass() == ExpressionClass::BoundFunction);
+			    REQUIRE_FALSE(expr.GetFunctionName().empty());
+			    REQUIRE(expr.GetChildCount() == 2);
 
-				    // Identify the operands by class (either order).
-				    std::optional<Expression> column;
-				    std::optional<Expression> constant;
-				    for (idx_t c = 0; c < 2; c++) {
-					    auto child = expr.GetChild(c);
-					    if (child.GetClass() == ExpressionClass::BoundColumnRef) {
-						    column.emplace(std::move(child));
-					    } else if (child.GetClass() == ExpressionClass::BoundConstant) {
-						    constant.emplace(std::move(child));
-					    }
-				    }
-				    REQUIRE(column.has_value());
-				    REQUIRE(constant.has_value());
-				    REQUIRE(column->GetChildCount() == 0);
-				    REQUIRE(constant->GetChildCount() == 0);
-
-				    switch (expr.GetType()) {
-				    case ExpressionType::CompareGreaterThan: { // a > 5
-					    REQUIRE(column->GetColumnBinding().column_index == 0);
-					    REQUIRE(column->GetReturnType() == LogicalType::BIGINT());
-					    REQUIRE(constant->GetReturnType() == LogicalType::BIGINT());
-					    REQUIRE(constant->GetConstantValue().AsBigint() == 5);
-					    g_walk.saw_greater_than = true;
-
-					    // Class-mismatch accessors throw INVALID_INPUT.
-					    REQUIRE_THROWS_MATCHES(expr.GetConstantValue(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-					    REQUIRE_THROWS_MATCHES(expr.GetColumnBinding(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-					    // GetReferenceIndex has no reachable happy path here:
-					    // BoundRef exists only after physical planning, which
-					    // this surface never exposes (pushdown trees carry
-					    // BoundColumnRef).
-					    REQUIRE_THROWS_MATCHES(expr.GetReferenceIndex(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-					    REQUIRE_THROWS_MATCHES(column->GetFunctionName(), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-					    REQUIRE_THROWS_MATCHES(expr.GetChild(2), Exception,
-					                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-					    break;
-				    }
-				    case ExpressionType::CompareEqual: { // s = 'x'
-					    REQUIRE(column->GetColumnBinding().column_index == 1);
-					    REQUIRE(column->GetReturnType() == LogicalType::VARCHAR());
-					    REQUIRE(constant->GetReturnType() == LogicalType::VARCHAR());
-					    REQUIRE(constant->GetConstantValue().AsVarchar() == "x");
-					    g_walk.saw_equal = true;
-					    break;
-				    }
-				    default:
-					    FAIL("unexpected filter type");
+			    // Identify the operands by class (either order).
+			    std::optional<Expression> column;
+			    std::optional<Expression> constant;
+			    for (idx_t c = 0; c < 2; c++) {
+				    auto child = expr.GetChild(c);
+				    if (child.GetClass() == ExpressionClass::BoundColumnRef) {
+					    column.emplace(std::move(child));
+				    } else if (child.GetClass() == ExpressionClass::BoundConstant) {
+					    constant.emplace(std::move(child));
 				    }
 			    }
-			    // Nothing marked handled: the engine applies both filters.
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &done = input.GetGlobalState<bool>();
-			    auto &out = input.GetResultChunk();
-			    auto a_vec = out.GetVector(0);
-			    if (done) {
-				    a_vec.SetSize(0);
-				    return;
+			    REQUIRE(column.has_value());
+			    REQUIRE(constant.has_value());
+			    REQUIRE(column->GetChildCount() == 0);
+			    REQUIRE(constant->GetChildCount() == 0);
+
+			    switch (expr.GetType()) {
+			    case ExpressionType::CompareGreaterThan: { // a > 5
+				    REQUIRE(column->GetColumnBinding().column_index == 0);
+				    REQUIRE(column->GetReturnType() == LogicalType::BIGINT());
+				    REQUIRE(constant->GetReturnType() == LogicalType::BIGINT());
+				    REQUIRE(constant->GetConstantValue().AsBigint() == 5);
+				    g_walk.saw_greater_than = true;
+
+				    // Class-mismatch accessors throw INVALID_INPUT.
+				    REQUIRE_THROWS_MATCHES(expr.GetConstantValue(), Exception,
+				                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+				    REQUIRE_THROWS_MATCHES(expr.GetColumnBinding(), Exception,
+				                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+				    // GetReferenceIndex has no reachable happy path here:
+				    // BoundRef exists only after physical planning, which
+				    // this surface never exposes (pushdown trees carry
+				    // BoundColumnRef).
+				    REQUIRE_THROWS_MATCHES(expr.GetReferenceIndex(), Exception,
+				                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+				    REQUIRE_THROWS_MATCHES(column->GetFunctionName(), Exception,
+				                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+				    REQUIRE_THROWS_MATCHES(expr.GetChild(2), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+				    break;
 			    }
-			    done = true;
-			    const int64_t a_values[] = {1, 6, 7};
-			    const char *s_values[] = {"x", "x", "y"};
-			    auto s_vec = out.GetVector(1);
-			    auto *a_data = a_vec.GetDataMutable<int64_t>();
-			    for (idx_t i = 0; i < 3; i++) {
-				    a_data[i] = a_values[i];
-				    s_vec.AssignString(i, s_values[i]);
+			    case ExpressionType::CompareEqual: { // s = 'x'
+				    REQUIRE(column->GetColumnBinding().column_index == 1);
+				    REQUIRE(column->GetReturnType() == LogicalType::VARCHAR());
+				    REQUIRE(constant->GetReturnType() == LogicalType::VARCHAR());
+				    REQUIRE(constant->GetConstantValue().AsVarchar() == "x");
+				    g_walk.saw_equal = true;
+				    break;
 			    }
-			    a_vec.SetSize(3);
-		    })
-		    .Register(ctx);
-	});
+			    default:
+				    FAIL("unexpected filter type");
+			    }
+		    }
+		    // Nothing marked handled: the engine applies both filters.
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &done = input.GetGlobalState<bool>();
+		    auto &out = input.GetResultChunk();
+		    auto a_vec = out.GetVector(0);
+		    if (done) {
+			    a_vec.SetSize(0);
+			    return;
+		    }
+		    done = true;
+		    const int64_t a_values[] = {1, 6, 7};
+		    const char *s_values[] = {"x", "x", "y"};
+		    auto s_vec = out.GetVector(1);
+		    auto *a_data = a_vec.GetDataMutable<int64_t>();
+		    for (idx_t i = 0; i < 3; i++) {
+			    a_data[i] = a_values[i];
+			    s_vec.AssignString(i, s_values[i]);
+		    }
+		    a_vec.SetSize(3);
+	    })
+	    .Register(conn);
 
 	auto rows = CollectI64(conn.Execute("SELECT a FROM walk_fn() WHERE a > 5 AND s = 'x'"));
 	REQUIRE(rows == std::vector<int64_t> {6}); // both filters engine-applied
@@ -493,42 +512,37 @@ TEST_CASE("Stable C++API: pushdown callback works without bind data", "[cpp_api]
 
 	g_nobind_pushdown_ran = false;
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("pushdown_nobind_fn")
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    // No SetBindData: the pushdown callback needs none. No
-			    // SetUserData either: GetUserData throws a clear error.
-			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-			    input.AddResultColumn("v", LogicalType::BIGINT());
-		    })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<bool>(false); })
-		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
-			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-			    // Unset bind data is a clear error, not a null deref.
-			    REQUIRE_THROWS_MATCHES(input.GetBindData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-			    // The optimization context is live for the callback duration.
-			    REQUIRE(static_cast<bool>(input.GetContext().GetFileSystem()));
-			    g_nobind_pushdown_ran = input.GetCount() > 0;
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &done = input.GetGlobalState<bool>();
-			    auto vec = input.GetResultChunk().GetVector(0);
-			    if (done) {
-				    vec.SetSize(0);
-				    return;
-			    }
-			    done = true;
-			    auto *data = vec.GetDataMutable<int64_t>();
-			    data[0] = 1;
-			    data[1] = 2;
-			    vec.SetSize(2);
-		    })
-		    .Register(ctx);
-	});
+	TableFunction function;
+	function.SetName("pushdown_nobind_fn")
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    // No SetBindData: the pushdown callback needs none. No
+		    // SetUserData either: GetUserData throws a clear error.
+		    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+		    input.AddResultColumn("v", LogicalType::BIGINT());
+	    })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<bool>(false); })
+	    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
+		    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+		    // Unset bind data is a clear error, not a null deref.
+		    REQUIRE_THROWS_MATCHES(input.GetBindData<int>(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+		    // The optimization context is live for the callback duration.
+		    REQUIRE(static_cast<bool>(input.GetContext().GetFileSystem()));
+		    g_nobind_pushdown_ran = input.GetCount() > 0;
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &done = input.GetGlobalState<bool>();
+		    auto vec = input.GetResultChunk().GetVector(0);
+		    if (done) {
+			    vec.SetSize(0);
+			    return;
+		    }
+		    done = true;
+		    auto *data = vec.GetDataMutable<int64_t>();
+		    data[0] = 1;
+		    data[1] = 2;
+		    vec.SetSize(2);
+	    })
+	    .Register(conn);
 
 	// The callback ran (claiming nothing) and the engine applied the filter.
 	auto rows = CollectI64(conn.Execute("SELECT v FROM pushdown_nobind_fn() WHERE v = 1"));
@@ -542,16 +556,14 @@ TEST_CASE("Stable C++API: a throw from the pushdown callback surfaces as a query
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("pushdown_throw_fn")
-		    .SetBindCallback([](TableFunction::BindInput &input) { input.AddResultColumn("v", LogicalType::BIGINT()); })
-		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &) {
-			    throw Exception(DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE, "synthetic pushdown failure");
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) { input.GetResultChunk().GetVector(0).SetSize(0); })
-		    .Register(ctx);
-	});
+	TableFunction function;
+	function.SetName("pushdown_throw_fn")
+	    .SetBindCallback([](TableFunction::BindInput &input) { input.AddResultColumn("v", LogicalType::BIGINT()); })
+	    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &) {
+		    throw Exception(DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE, "synthetic pushdown failure");
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) { input.GetResultChunk().GetVector(0).SetSize(0); })
+	    .Register(conn);
 
 	// The guard turns the throw into a callback error; the code round-trips.
 	REQUIRE_THROWS_MATCHES(conn.Execute("SELECT v FROM pushdown_throw_fn() WHERE v = 1").Drain(), Exception,
@@ -564,26 +576,23 @@ TEST_CASE("Stable C++API: SetUserData is consumed by Register", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("consume_ud_fn")
-		    .SetUserData<int>(7)
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    REQUIRE(input.GetUserData<int>() == 7);
-			    input.AddResultColumn("v", LogicalType::BIGINT());
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) { input.GetResultChunk().GetVector(0).SetSize(0); })
-		    .Register(ctx);
+	TableFunction function;
+	function.SetName("consume_ud_fn")
+	    .SetUserData<int>(7)
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    REQUIRE(input.GetUserData<int>() == 7);
+		    input.AddResultColumn("v", LogicalType::BIGINT());
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) { input.GetResultChunk().GetVector(0).SetSize(0); })
+	    .Register(conn);
 
-		// Register consumed the user data: the second registration has none.
-		function.SetName("consume_ud_fn2")
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
-			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-			    input.AddResultColumn("v", LogicalType::BIGINT());
-		    })
-		    .Register(ctx);
-	});
+	// Register consumed the user data: the second registration has none.
+	function.SetName("consume_ud_fn2")
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+		    input.AddResultColumn("v", LogicalType::BIGINT());
+	    })
+	    .Register(conn);
 
 	REQUIRE(CollectI64(conn.Execute("SELECT v FROM consume_ud_fn()")).empty());
 	REQUIRE(CollectI64(conn.Execute("SELECT v FROM consume_ud_fn2()")).empty());
@@ -595,29 +604,27 @@ TEST_CASE("Stable C++API: InitLocalInput reads the global state", "[cpp_api]") {
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("local_global_fn")
-		    .SetBindCallback([](TableFunction::BindInput &input) { input.AddResultColumn("v", LogicalType::BIGINT()); })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<int64_t>(41); })
-		    .SetInitLocalCallback([](TableFunction::InitLocalInput &input) {
-			    // Derive the local state from the shared global state.
-			    input.SetLocalState<int64_t>(input.GetGlobalState<int64_t>() + 1);
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &remaining = input.GetGlobalState<int64_t>();
-			    auto vec = input.GetResultChunk().GetVector(0);
-			    if (remaining == 0) {
-				    vec.SetSize(0);
-				    return;
-			    }
-			    remaining = 0;
-			    auto *data = vec.GetDataMutable<int64_t>();
-			    data[0] = input.GetLocalState<int64_t>();
-			    vec.SetSize(1);
-		    })
-		    .Register(ctx);
-	});
+	TableFunction function;
+	function.SetName("local_global_fn")
+	    .SetBindCallback([](TableFunction::BindInput &input) { input.AddResultColumn("v", LogicalType::BIGINT()); })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) { input.SetGlobalState<int64_t>(41); })
+	    .SetInitLocalCallback([](TableFunction::InitLocalInput &input) {
+		    // Derive the local state from the shared global state.
+		    input.SetLocalState<int64_t>(input.GetGlobalState<int64_t>() + 1);
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &remaining = input.GetGlobalState<int64_t>();
+		    auto vec = input.GetResultChunk().GetVector(0);
+		    if (remaining == 0) {
+			    vec.SetSize(0);
+			    return;
+		    }
+		    remaining = 0;
+		    auto *data = vec.GetDataMutable<int64_t>();
+		    data[0] = input.GetLocalState<int64_t>();
+		    vec.SetSize(1);
+	    })
+	    .Register(conn);
 
 	REQUIRE(CollectI64(conn.Execute("SELECT v FROM local_global_fn()")) == std::vector<int64_t> {42});
 }
@@ -630,50 +637,47 @@ TEST_CASE("Stable C++API: Table Function projection pushdown reports projected c
 
 	g_proj = ProjectionObservations {};
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("proj_fn")
-		    .SetProjectionPushdown(true)
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    input.AddResultColumn("a", LogicalType::BIGINT());
-			    input.AddResultColumn("b", LogicalType::BIGINT());
-			    input.AddResultColumn("c", LogicalType::BIGINT());
-		    })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
-			    // The scan context is live for the callback duration.
-			    REQUIRE(static_cast<bool>(input.GetContext().GetFileSystem()));
-			    g_proj.global_columns.clear();
-			    for (idx_t i = 0; i < input.GetColumnCount(); i++) {
-				    g_proj.global_columns.push_back(input.GetColumnIndex(i));
-			    }
-			    input.SetGlobalState<bool>(false);
-		    })
-		    .SetInitLocalCallback([](TableFunction::InitLocalInput &input) {
-			    REQUIRE(static_cast<bool>(input.GetContext().GetFileSystem()));
-			    g_proj.local_columns.clear();
-			    for (idx_t i = 0; i < input.GetColumnCount(); i++) {
-				    g_proj.local_columns.push_back(input.GetColumnIndex(i));
-			    }
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &done = input.GetGlobalState<bool>();
-			    auto &out = input.GetResultChunk();
-			    if (done) {
-				    out.GetVector(0).SetSize(0);
-				    return;
-			    }
-			    done = true;
-			    // The chunk is sized to the projected columns; each cell encodes
-			    // its original column index.
-			    REQUIRE(out.GetVectorCount() == g_proj.global_columns.size());
-			    for (idx_t col = 0; col < out.GetVectorCount(); col++) {
-				    out.GetVector(col).GetDataMutable<int64_t>()[0] =
-				        static_cast<int64_t>(g_proj.global_columns[col] * 10);
-			    }
-			    out.GetVector(0).SetSize(1);
-		    })
-		    .Register(ctx);
-	});
+	TableFunction function;
+	function.SetName("proj_fn")
+	    .SetProjectionPushdown(true)
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    input.AddResultColumn("a", LogicalType::BIGINT());
+		    input.AddResultColumn("b", LogicalType::BIGINT());
+		    input.AddResultColumn("c", LogicalType::BIGINT());
+	    })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
+		    // The scan context is live for the callback duration.
+		    REQUIRE(static_cast<bool>(input.GetContext().GetFileSystem()));
+		    g_proj.global_columns.clear();
+		    for (idx_t i = 0; i < input.GetColumnCount(); i++) {
+			    g_proj.global_columns.push_back(input.GetColumnIndex(i));
+		    }
+		    input.SetGlobalState<bool>(false);
+	    })
+	    .SetInitLocalCallback([](TableFunction::InitLocalInput &input) {
+		    REQUIRE(static_cast<bool>(input.GetContext().GetFileSystem()));
+		    g_proj.local_columns.clear();
+		    for (idx_t i = 0; i < input.GetColumnCount(); i++) {
+			    g_proj.local_columns.push_back(input.GetColumnIndex(i));
+		    }
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &done = input.GetGlobalState<bool>();
+		    auto &out = input.GetResultChunk();
+		    if (done) {
+			    out.GetVector(0).SetSize(0);
+			    return;
+		    }
+		    done = true;
+		    // The chunk is sized to the projected columns; each cell encodes
+		    // its original column index.
+		    REQUIRE(out.GetVectorCount() == g_proj.global_columns.size());
+		    for (idx_t col = 0; col < out.GetVectorCount(); col++) {
+			    out.GetVector(col).GetDataMutable<int64_t>()[0] = static_cast<int64_t>(g_proj.global_columns[col] * 10);
+		    }
+		    out.GetVector(0).SetSize(1);
+	    })
+	    .Register(conn);
 
 	SECTION("natural order") {
 		auto rows = Collect2<int64_t, int64_t>(conn.Execute("SELECT a, c FROM proj_fn()"), 0, 1);
@@ -714,29 +718,27 @@ TEST_CASE("Stable C++API: SetCardinality and SetMaxThreads smoke", "[cpp_api]") 
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("card_fn")
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    input.AddResultColumn("v", LogicalType::BIGINT());
-			    input.SetCardinality(555555, true);
-		    })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
-			    input.SetMaxThreads(2);
-			    input.SetGlobalState<std::atomic<bool>>(false);
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &emitted = input.GetGlobalState<std::atomic<bool>>();
-			    auto vec = input.GetResultChunk().GetVector(0);
-			    if (emitted.exchange(true)) {
-				    vec.SetSize(0);
-				    return;
-			    }
-			    vec.GetDataMutable<int64_t>()[0] = 42;
-			    vec.SetSize(1);
-		    })
-		    .Register(ctx);
-	});
+	TableFunction function;
+	function.SetName("card_fn")
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    input.AddResultColumn("v", LogicalType::BIGINT());
+		    input.SetCardinality(555555, true);
+	    })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
+		    input.SetMaxThreads(2);
+		    input.SetGlobalState<std::atomic<bool>>(false);
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &emitted = input.GetGlobalState<std::atomic<bool>>();
+		    auto vec = input.GetResultChunk().GetVector(0);
+		    if (emitted.exchange(true)) {
+			    vec.SetSize(0);
+			    return;
+		    }
+		    vec.GetDataMutable<int64_t>()[0] = 42;
+		    vec.SetSize(1);
+	    })
+	    .Register(conn);
 
 	// The bind-time cardinality reaches the optimizer: EXPLAIN reports it.
 	auto explain = conn.Execute("EXPLAIN SELECT v FROM card_fn()");
@@ -800,68 +802,66 @@ TEST_CASE("Stable C++API: pushdown-time column list resolves filter columns", "[
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
-	conn.WithTransaction([](const Context &ctx) {
-		TableFunction function(ctx);
-		function.SetName("pushdown_col_fn")
-		    .SetProjectionPushdown(true)
-		    .SetBindCallback([](TableFunction::BindInput &input) {
-			    // Bind schema: a=0, b=1, c=2, d=3.
-			    input.AddResultColumn("a", LogicalType::BIGINT());
-			    input.AddResultColumn("b", LogicalType::BIGINT());
-			    input.AddResultColumn("c", LogicalType::BIGINT());
-			    input.AddResultColumn("d", LogicalType::BIGINT());
-			    input.SetBindData<int>(0);
-		    })
-		    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
-			    g_pushdown_col_obs.init_cols.clear();
-			    for (idx_t i = 0; i < input.GetColumnCount(); i++) {
-				    g_pushdown_col_obs.init_cols.push_back(input.GetColumnIndex(i));
-			    }
-			    input.SetGlobalState<bool>(false);
-		    })
-		    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
-			    g_pushdown_col_obs.pushdown_col_count = input.GetColumnCount();
-			    g_pushdown_col_obs.pushdown_cols.clear();
-			    for (idx_t j = 0; j < input.GetColumnCount(); j++) {
-				    g_pushdown_col_obs.pushdown_cols.push_back(input.GetColumnIndex(j));
-			    }
-			    g_pushdown_col_obs.filters.clear();
-			    for (idx_t i = 0; i < input.GetCount(); i++) {
-				    auto expr = input.GetExpression(i);
-				    PushdownFilterObs obs;
-				    bool saw_column = false;
-				    for (idx_t c = 0; c < expr.GetChildCount(); c++) {
-					    auto child = expr.GetChild(c);
-					    if (child.GetClass() == ExpressionClass::BoundColumnRef) {
-						    obs.raw_index = child.GetColumnBinding().column_index;
-						    obs.resolved_index = input.GetColumnIndex(obs.raw_index);
-						    saw_column = true;
-					    } else if (child.GetClass() == ExpressionClass::BoundConstant) {
-						    obs.constant = child.GetConstantValue().AsBigint();
-					    }
-				    }
-				    REQUIRE(saw_column);
-				    g_pushdown_col_obs.filters.push_back(obs);
-				    if (g_pushdown_mark_equal_handled && expr.GetType() == ExpressionType::CompareEqual) {
-					    input.MarkHandled(i);
+	TableFunction function;
+	function.SetName("pushdown_col_fn")
+	    .SetProjectionPushdown(true)
+	    .SetBindCallback([](TableFunction::BindInput &input) {
+		    // Bind schema: a=0, b=1, c=2, d=3.
+		    input.AddResultColumn("a", LogicalType::BIGINT());
+		    input.AddResultColumn("b", LogicalType::BIGINT());
+		    input.AddResultColumn("c", LogicalType::BIGINT());
+		    input.AddResultColumn("d", LogicalType::BIGINT());
+		    input.SetBindData<int>(0);
+	    })
+	    .SetInitGlobalCallback([](TableFunction::InitGlobalInput &input) {
+		    g_pushdown_col_obs.init_cols.clear();
+		    for (idx_t i = 0; i < input.GetColumnCount(); i++) {
+			    g_pushdown_col_obs.init_cols.push_back(input.GetColumnIndex(i));
+		    }
+		    input.SetGlobalState<bool>(false);
+	    })
+	    .SetPushdownComplexFilterCallback([](TableFunction::PushdownInput &input) {
+		    g_pushdown_col_obs.pushdown_col_count = input.GetColumnCount();
+		    g_pushdown_col_obs.pushdown_cols.clear();
+		    for (idx_t j = 0; j < input.GetColumnCount(); j++) {
+			    g_pushdown_col_obs.pushdown_cols.push_back(input.GetColumnIndex(j));
+		    }
+		    g_pushdown_col_obs.filters.clear();
+		    for (idx_t i = 0; i < input.GetCount(); i++) {
+			    auto expr = input.GetExpression(i);
+			    PushdownFilterObs obs;
+			    bool saw_column = false;
+			    for (idx_t c = 0; c < expr.GetChildCount(); c++) {
+				    auto child = expr.GetChild(c);
+				    if (child.GetClass() == ExpressionClass::BoundColumnRef) {
+					    obs.raw_index = child.GetColumnBinding().column_index;
+					    obs.resolved_index = input.GetColumnIndex(obs.raw_index);
+					    saw_column = true;
+				    } else if (child.GetClass() == ExpressionClass::BoundConstant) {
+					    obs.constant = child.GetConstantValue().AsBigint();
 				    }
 			    }
-		    })
-		    .SetExecCallback([](TableFunction::ExecInput &input) {
-			    auto &done = input.GetGlobalState<bool>();
-			    auto &out = input.GetResultChunk();
-			    if (done) {
-				    out.GetVector(0).SetSize(0);
-				    return;
+			    REQUIRE(saw_column);
+			    g_pushdown_col_obs.filters.push_back(obs);
+			    if (g_pushdown_mark_equal_handled && expr.GetType() == ExpressionType::CompareEqual) {
+				    input.MarkHandled(i);
 			    }
-			    done = true;
-			    for (idx_t col = 0; col < out.GetVectorCount(); col++) {
-				    out.GetVector(col).GetDataMutable<int64_t>()[0] = 0;
-			    }
-			    out.GetVector(0).SetSize(1);
-		    })
-		    .Register(ctx);
-	});
+		    }
+	    })
+	    .SetExecCallback([](TableFunction::ExecInput &input) {
+		    auto &done = input.GetGlobalState<bool>();
+		    auto &out = input.GetResultChunk();
+		    if (done) {
+			    out.GetVector(0).SetSize(0);
+			    return;
+		    }
+		    done = true;
+		    for (idx_t col = 0; col < out.GetVectorCount(); col++) {
+			    out.GetVector(col).GetDataMutable<int64_t>()[0] = 0;
+		    }
+		    out.GetVector(0).SetSize(1);
+	    })
+	    .Register(conn);
 
 	SECTION("filter on a non-first column, projection pruned") {
 		g_pushdown_col_obs = PushdownColumnObservations {};

@@ -71,8 +71,8 @@ static void ReplScanClaimRange(duckdb_v2_replacement_scan_info_handle info, duck
 
 TEST_CASE("V2 replacement scan: claim a builtin table function", "[capi_v2][replacement_scan]") {
 	V2EnvFixture fix;
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanClaimRange, {nullptr, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(fix.db, ReplScanClaimRange, {nullptr, nullptr, nullptr},
+	                                                          nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(ReplScanQueryRowCount(fix.conn, "SELECT * FROM repl_scan_no_such_table") == 5);
 }
 
@@ -156,13 +156,13 @@ static void ReplScanSeqExec(duckdb_v2_table_function_exec_info_handle info, duck
 	duckdb_v2_vector_set_size(vec, count, err);
 }
 
-static void ReplScanRegisterSeqFn(duckdb_v2_context_handle ctx, duckdb_v2_error_info_handle *err) {
+static void ReplScanRegisterSeqFn(duckdb_v2_connection_handle conn) {
 	duckdb_v2_table_function_builder_handle builder = nullptr;
-	REQUIRE(duckdb_v2_table_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("repl_seq_fn"), err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_create(&builder, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_name(builder, V2Str("repl_seq_fn"), nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, nullptr);
 	// "n" is a required positional parameter; "start" is an optional named
 	// parameter defaulting to 0 (the bridge injects it when the call omits it).
 	duckdb_v2_value_handle start_default = V2Int64Value(0);
@@ -173,11 +173,13 @@ static void ReplScanRegisterSeqFn(duckdb_v2_context_handle ctx, duckdb_v2_error_
 	duckdb_v2_value_destroy(&start_default);
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
-	REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, ReplScanSeqBind, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, ReplScanSeqInitGlobal, err) ==
+	REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, ReplScanSeqBind, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_set_exec_callback(builder, ReplScanSeqExec, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_init_global_callback(builder, ReplScanSeqInitGlobal, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_exec_callback(builder, ReplScanSeqExec, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_register_with_connection(conn, builder, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_table_function_builder_destroy(&builder);
 }
 
@@ -197,13 +199,10 @@ static void ReplScanClaimSeq(duckdb_v2_replacement_scan_info_handle info, duckdb
 TEST_CASE("V2 replacement scan: named parameter targets a V2 table function", "[capi_v2][replacement_scan]") {
 	V2EnvFixture fix;
 
-	duckdb_v2_connection_execute_with_context(
-	    fix.conn,
-	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) { ReplScanRegisterSeqFn(ctx, err); },
-	    nullptr, nullptr);
+	ReplScanRegisterSeqFn(fix.conn);
 
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanClaimSeq, {nullptr, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(fix.db, ReplScanClaimSeq, {nullptr, nullptr, nullptr},
+	                                                          nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_result_handle result = nullptr;
 	REQUIRE(V2Query(fix.conn, "SELECT * FROM repl_scan_no_such_table", &result, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -277,8 +276,8 @@ static void ReplScanRecordNames(duckdb_v2_replacement_scan_info_handle info, duc
 TEST_CASE("V2 replacement scan: name getters and decline", "[capi_v2][replacement_scan]") {
 	V2EnvFixture fix;
 	ReplScanNameProbe probe;
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanRecordNames, {&probe, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(fix.db, ReplScanRecordNames, {&probe, nullptr, nullptr},
+	                                                          nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	SECTION("unqualified name: catalog and schema read as empty views, decline reaches catalog error") {
 		auto failure = ReplScanExpectQueryFailure(fix.conn, "SELECT * FROM repl_scan_nosuch");
@@ -364,10 +363,10 @@ static void ReplScanOrderSecond(duckdb_v2_replacement_scan_info_handle info, duc
 TEST_CASE("V2 replacement scan: registration order, first claim wins", "[capi_v2][replacement_scan]") {
 	V2EnvFixture fix;
 	ReplScanOrderFlags flags;
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanOrderFirst, {&flags, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanOrderSecond, {&flags, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(fix.db, ReplScanOrderFirst, {&flags, nullptr, nullptr},
+	                                                          nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(fix.db, ReplScanOrderSecond, {&flags, nullptr, nullptr},
+	                                                          nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	SECTION("first declines, second claims") {
 		flags.first_claims = false;
@@ -406,16 +405,16 @@ TEST_CASE("V2 replacement scan: callback error codes round-trip", "[capi_v2][rep
 	V2EnvFixture fix;
 
 	SECTION("mapped code surfaces exactly") {
-		REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanFailMapped, {nullptr, nullptr, nullptr}, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_replacement_scan_register_with_database(
+		            fix.db, ReplScanFailMapped, {nullptr, nullptr, nullptr}, nullptr) == DUCKDB_V2_ERROR_NONE);
 		auto failure = ReplScanExpectQueryFailure(fix.conn, "SELECT * FROM repl_scan_nosuch");
 		REQUIRE(failure.code == DUCKDB_V2_ERROR_IO_GENERAL);
 		REQUIRE(failure.message.find("replacement scan probe failure") != std::string::npos);
 	}
 
 	SECTION("generic sentinel falls back to the binder error") {
-		REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanFailSentinel, {nullptr, nullptr, nullptr},
-		                                            nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_replacement_scan_register_with_database(
+		            fix.db, ReplScanFailSentinel, {nullptr, nullptr, nullptr}, nullptr) == DUCKDB_V2_ERROR_NONE);
 		auto failure = ReplScanExpectQueryFailure(fix.conn, "SELECT * FROM repl_scan_nosuch");
 		REQUIRE(failure.code == DUCKDB_V2_ERROR_QUERY_BINDER);
 		REQUIRE(failure.message.find("unmapped replacement scan failure") != std::string::npos);
@@ -435,8 +434,8 @@ static void ReplScanClaimUnknownFn(duckdb_v2_replacement_scan_info_handle info, 
 
 TEST_CASE("V2 replacement scan: unknown claimed function surfaces a catalog error", "[capi_v2][replacement_scan]") {
 	V2EnvFixture fix;
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanClaimUnknownFn, {nullptr, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(
+	            fix.db, ReplScanClaimUnknownFn, {nullptr, nullptr, nullptr}, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto failure = ReplScanExpectQueryFailure(fix.conn, "SELECT * FROM repl_scan_nosuch");
 	REQUIRE(failure.code == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 	REQUIRE(failure.message.find("repl_scan_definitely_missing_fn") != std::string::npos);
@@ -458,8 +457,8 @@ static void ReplScanClaimTwice(duckdb_v2_replacement_scan_info_handle info, duck
 
 TEST_CASE("V2 replacement scan: set_function_name twice, last wins", "[capi_v2][replacement_scan]") {
 	V2EnvFixture fix;
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanClaimTwice, {nullptr, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(fix.db, ReplScanClaimTwice, {nullptr, nullptr, nullptr},
+	                                                          nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(ReplScanQueryRowCount(fix.conn, "SELECT * FROM repl_scan_nosuch") == 2);
 }
 
@@ -486,7 +485,7 @@ TEST_CASE("V2 replacement scan: user data flows, destructor runs once at close",
 	ReplScanUserDataProbe probe;
 	{
 		V2EnvFixture fix;
-		REQUIRE(duckdb_v2_replacement_scan_register(
+		REQUIRE(duckdb_v2_replacement_scan_register_with_database(
 		            fix.db, ReplScanCountInvocation,
 		            {&probe, [](void *p) { static_cast<ReplScanUserDataProbe *>(p)->destroy_calls++; }, nullptr},
 		            nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -505,8 +504,8 @@ TEST_CASE("V2 replacement scan: user data flows, destructor runs once at close",
 TEST_CASE("V2 replacement scan: not invoked for resolvable names", "[capi_v2][replacement_scan]") {
 	V2EnvFixture fix;
 	ReplScanUserDataProbe probe;
-	REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanCountInvocation, {&probe, nullptr, nullptr}, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_replacement_scan_register_with_database(
+	            fix.db, ReplScanCountInvocation, {&probe, nullptr, nullptr}, nullptr) == DUCKDB_V2_ERROR_NONE);
 	V2ExecSQL(fix.conn, "CREATE TABLE repl_scan_real(i INTEGER)");
 	V2ExecSQL(fix.conn, "INSERT INTO repl_scan_real VALUES (1), (2)");
 	REQUIRE(ReplScanQueryRowCount(fix.conn, "SELECT * FROM repl_scan_real") == 2);
@@ -553,10 +552,11 @@ TEST_CASE("V2 replacement scan: null argument rejection", "[capi_v2][replacement
 	V2EnvFixture fix;
 
 	SECTION("register rejects null db and null callback") {
-		REQUIRE(duckdb_v2_replacement_scan_register(nullptr, ReplScanClaimRange, {nullptr, nullptr, nullptr},
-		                                            nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		REQUIRE(duckdb_v2_replacement_scan_register(fix.db, nullptr, {nullptr, nullptr, nullptr}, nullptr) ==
-		        DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(duckdb_v2_replacement_scan_register_with_database(nullptr, ReplScanClaimRange,
+		                                                          {nullptr, nullptr, nullptr},
+		                                                          nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+		REQUIRE(duckdb_v2_replacement_scan_register_with_database(fix.db, nullptr, {nullptr, nullptr, nullptr},
+		                                                          nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	}
 
 	SECTION("info accessors reject a null info and null the pointer out-params") {
@@ -588,8 +588,8 @@ TEST_CASE("V2 replacement scan: null argument rejection", "[capi_v2][replacement
 
 	SECTION("in-callback null out-params and malformed inputs are rejected") {
 		ReplScanNullArgProbe probe;
-		REQUIRE(duckdb_v2_replacement_scan_register(fix.db, ReplScanProbeNullArgs, {&probe, nullptr, nullptr},
-		                                            nullptr) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(duckdb_v2_replacement_scan_register_with_database(
+		            fix.db, ReplScanProbeNullArgs, {&probe, nullptr, nullptr}, nullptr) == DUCKDB_V2_ERROR_NONE);
 		ReplScanExpectQueryFailure(fix.conn, "SELECT * FROM repl_scan_nosuch");
 		REQUIRE(probe.null_out_name == DUCKDB_V2_ERROR_INPUT_INVALID);
 		REQUIRE(probe.null_out_data == DUCKDB_V2_ERROR_INPUT_INVALID);

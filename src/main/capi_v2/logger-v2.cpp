@@ -55,13 +55,9 @@ public:
 } // namespace
 } // namespace duckdb
 
-DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_create(duckdb_v2_context_handle context,
-                                                     duckdb_v2_log_storage_builder_handle *out_builder,
+DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_create(duckdb_v2_log_storage_builder_handle *out_builder,
                                                      duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
-		}
 		if (!out_builder) {
 			throw duckdb::InvalidInputException("Output builder pointer cannot be null.");
 		}
@@ -108,42 +104,58 @@ DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_set_log_callback(duckdb_v2_log_sto
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register(duckdb_v2_context_handle context,
-                                                       duckdb_v2_log_storage_builder_handle builder,
-                                                       duckdb_v2_error_info_handle *err) {
+static void RegisterLogStorageV2(duckdb::DatabaseInstance &db, duckdb::LogStorageBuilder &b) {
+	if (b.name.empty()) {
+		throw duckdb::InvalidInputException("Log storage name cannot be empty.");
+	}
+	if (!b.log_callback) {
+		throw duckdb::InvalidInputException("Log callback cannot be null.");
+	}
+
+	const auto log_storage = duckdb::make_shared_ptr<duckdb::CAPILogStorage>();
+	duckdb::shared_ptr<duckdb::LogStorage> log_storage_ptr = log_storage;
+
+	const auto success = db.GetLogManager().RegisterLogStorage(b.name, log_storage_ptr);
+
+	if (!success) {
+		throw duckdb::InvalidInputException("A log storage with the name '" + b.name + "' is already registered.");
+	}
+
+	// Initialize after successful registration to ensure proper cleanup if registration fails
+	log_storage->name = b.name;
+	log_storage->log_callback = b.log_callback;
+	log_storage->user_data = b.user_data;
+}
+
+DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_database(duckdb_v2_database_handle db,
+                                                                     duckdb_v2_log_storage_builder_handle builder,
+                                                                     duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!db) {
+			throw duckdb::InvalidInputException("Database pointer cannot be null.");
+		}
+		if (!builder) {
+			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
+		}
+		auto &b = *reinterpret_cast<duckdb::LogStorageBuilder *>(builder);
+		auto &instance = *duckdb::ToDb(db)->database->instance;
+		RegisterLogStorageV2(instance, b);
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_context(duckdb_v2_context_handle context,
+                                                                    duckdb_v2_log_storage_builder_handle builder,
+                                                                    duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!context) {
 			throw duckdb::InvalidInputException("Context pointer cannot be null.");
 		}
-
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-
-		auto &ctx = *reinterpret_cast<duckdb::ClientContext *>(context);
+		auto &ctx = *duckdb::ToContext(context);
 		auto &b = *reinterpret_cast<duckdb::LogStorageBuilder *>(builder);
-
-		if (b.name.empty()) {
-			throw duckdb::InvalidInputException("Log storage name cannot be empty.");
-		}
-		if (!b.log_callback) {
-			throw duckdb::InvalidInputException("Log callback cannot be null.");
-		}
-
-		const auto &db = ctx.db;
-		const auto log_storage = duckdb::make_shared_ptr<duckdb::CAPILogStorage>();
-		duckdb::shared_ptr<duckdb::LogStorage> log_storage_ptr = log_storage;
-
-		const auto success = db->GetLogManager().RegisterLogStorage(b.name, log_storage_ptr);
-
-		if (!success) {
-			throw duckdb::InvalidInputException("A log storage with the name '" + b.name + "' is already registered.");
-		}
-
-		// Initialize after successful registration to ensure proper cleanup if registration fails
-		log_storage->name = b.name;
-		log_storage->log_callback = b.log_callback;
-		log_storage->user_data = b.user_data;
+		RegisterLogStorageV2(*ctx.db, b);
 	});
 }
 

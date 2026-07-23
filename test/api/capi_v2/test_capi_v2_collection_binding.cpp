@@ -4,7 +4,7 @@
 #include <vector>
 
 // Collection binding: statement_add_collection + column_data_collection_reset.
-// Fixtures dogfood the V2 API: collections are built through the V2 context scope
+// Fixtures dogfood the V2 API: collections are built directly from the connection
 // and filled through the V2 chunk write surface.
 
 namespace {
@@ -23,22 +23,20 @@ struct V2Cdc {
 	}
 };
 
-// Creates an empty collection over the given type ids, borrowing a context via
-// execute_with_context. The collection outlives the callback.
+// Creates an empty collection over the given type ids directly from the
+// connection. The collection is an owned handle that outlives the connection.
 duckdb_v2_column_data_collection_handle MakeCdc(duckdb_v2_connection_handle conn,
                                                 const std::vector<DUCKDB_V2_LOGICAL_TYPE_ID> &ids) {
 	duckdb_v2_column_data_collection_handle cdc = nullptr;
-	DUCKDB_V2_ERROR rc = DUCKDB_V2_ERROR_NONE;
-	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
-		std::vector<duckdb_v2_logical_type_handle> types;
-		for (auto id : ids) {
-			types.push_back(V2TypeOf(id));
-		}
-		rc = duckdb_v2_column_data_collection_create(ctx, types.data(), types.size(), &cdc, nullptr);
-		for (auto &t : types) {
-			duckdb_v2_logical_type_destroy(&t);
-		}
-	});
+	std::vector<duckdb_v2_logical_type_handle> types;
+	for (auto id : ids) {
+		types.push_back(V2TypeOf(id));
+	}
+	DUCKDB_V2_ERROR rc =
+	    duckdb_v2_column_data_collection_create_with_connection(conn, types.data(), types.size(), &cdc, nullptr);
+	for (auto &t : types) {
+		duckdb_v2_logical_type_destroy(&t);
+	}
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(cdc != nullptr);
 	return cdc;
@@ -721,9 +719,8 @@ duckdb_v2_column_data_collection_handle BuildCollection(duckdb_v2_connection_han
                                                         duckdb_v2_logical_type_handle col_type,
                                                         const std::vector<duckdb_v2_value_handle> &values) {
 	duckdb_v2_column_data_collection_handle cdc = nullptr;
-	V2WithContext(conn, [&](duckdb_v2_context_handle ctx) {
-		REQUIRE(duckdb_v2_column_data_collection_create(ctx, &col_type, 1, &cdc, nullptr) == DUCKDB_V2_ERROR_NONE);
-	});
+	REQUIRE(duckdb_v2_column_data_collection_create_with_connection(conn, &col_type, 1, &cdc, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(cdc != nullptr);
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;

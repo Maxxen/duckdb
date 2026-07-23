@@ -659,7 +659,7 @@ void Database::AddReplacementScanInternal(ReplacementScanCallback callback, void
 	// The engine owns the payload on success (freed at db close); on failure we still own it.
 	duckdb_v2_opaque opaque {payload, detail::TypedDelete<ReplacementScanInfo>, nullptr};
 	try {
-		CheckedAPICall(duckdb_v2_replacement_scan_register, handle(), trampoline, opaque);
+		CheckedAPICall(duckdb_v2_replacement_scan_register_with_database, handle(), trampoline, opaque);
 	} catch (...) {
 		detail::TypedDelete<ReplacementScanInfo>(payload);
 		throw;
@@ -756,38 +756,26 @@ void Connection::SetOption(const DatabaseOption &option, SettingScope scope) {
 	               static_cast<DUCKDB_V2_SETTING_SCOPE>(scope));
 }
 
-void Connection::WithTransaction(std::function<void(const Context &ctx)> callback) {
-	static auto trampoline = [](duckdb_v2_context_handle ctx, void *user_data, duckdb_v2_error_info_handle *err) {
-		// Catch any exceptions thrown by the user callback and propagate them to the error info
-
-		WithExceptionGuard(err, [&]() {
-			// Unwrap the callback
-			auto &callback = *static_cast<std::function<void(const Context &)> *>(user_data);
-
-			// Make a Context wrapper for the provided ctx and pass it to the callback
-			auto ctx_wrapper = detail::Factory::Make<Context>(ctx);
-
-			// Invoke the user callback
-			callback(ctx_wrapper);
-		});
-	};
-
-	CheckedAPICall(duckdb_v2_connection_execute_with_context, handle(), trampoline, &callback);
-}
-
 auto Connection::ParseType(std::string_view text) -> LogicalType {
 	duckdb_v2_logical_type_handle type = nullptr;
-	WithTransaction([&](const Context &ctx) { //
-		type = static_cast<duckdb_v2_logical_type_handle>(ctx.ParseType(text).release());
-	});
+	CheckedAPICall(duckdb_v2_logical_type_get_from_text, handle(), duckdb_v2_str {text.data(), text.size()}, &type);
 	return detail::Factory::Make<LogicalType>(type);
 }
 
 auto Connection::CreateType(const std::string &name, const std::vector<TypeParam> &params) -> LogicalType {
+	// Split into the C API's parallel arrays; an empty name crosses as the
+	// positional {NULL, 0} view.
+	std::vector<duckdb_v2_identifier_t> names;
+	std::vector<duckdb_v2_value_handle> values;
+	names.reserve(params.size());
+	values.reserve(params.size());
+	for (const auto &param : params) {
+		names.push_back(param.name.empty() ? duckdb_v2_identifier_t {nullptr, 0} : ToStr(param.name));
+		values.push_back(param.value.handle());
+	}
 	duckdb_v2_logical_type_handle type = nullptr;
-	WithTransaction([&](const Context &ctx) { //
-		type = static_cast<duckdb_v2_logical_type_handle>(ctx.CreateType(name, params).release());
-	});
+	CheckedAPICall(duckdb_v2_logical_type_get_from_args, handle(), ToStr(name), names.empty() ? nullptr : names.data(),
+	               values.empty() ? nullptr : values.data(), static_cast<idx_t>(params.size()), &type);
 	return detail::Factory::Make<LogicalType>(type);
 }
 
@@ -940,8 +928,9 @@ auto Context::CreateType(const std::string &name, const std::vector<TypeParam> &
 		values.push_back(param.value.handle());
 	}
 	duckdb_v2_logical_type_handle type = nullptr;
-	CheckedAPICall(duckdb_v2_logical_type_create, handle(), ToStr(name), names.empty() ? nullptr : names.data(),
-	               values.empty() ? nullptr : values.data(), static_cast<idx_t>(params.size()), &type);
+	CheckedAPICall(duckdb_v2_logical_type_create_from_args, handle(), ToStr(name),
+	               names.empty() ? nullptr : names.data(), values.empty() ? nullptr : values.data(),
+	               static_cast<idx_t>(params.size()), &type);
 	return detail::Factory::Make<LogicalType>(type);
 }
 
@@ -1718,15 +1707,13 @@ Value Value::Create(const LogicalType &type, const std::vector<Value> &children)
 
 auto Value::Cast(const Context &ctx, const LogicalType &target) const -> Value {
 	duckdb_v2_value_handle value = nullptr;
-	CheckedAPICall(duckdb_v2_value_cast, ctx.handle(), handle(), target.handle(), &value);
+	CheckedAPICall(duckdb_v2_value_cast_with_context, ctx.handle(), handle(), target.handle(), &value);
 	return detail::Factory::Make<Value>(value);
 }
 
 auto Value::Cast(Connection &conn, const LogicalType &target) const -> Value {
 	duckdb_v2_value_handle value = nullptr;
-	conn.WithTransaction([&](const Context &ctx) { //
-		value = static_cast<duckdb_v2_value_handle>(Cast(ctx, target).release());
-	});
+	CheckedAPICall(duckdb_v2_value_cast_with_connection, conn.handle(), handle(), target.handle(), &value);
 	return detail::Factory::Make<Value>(value);
 }
 
@@ -2050,7 +2037,7 @@ auto Vector::SetString(idx_t index, StringLayout value) -> void {
 //----------------------------------------------------------------------------------------------------------------------
 // Data Chunk
 //----------------------------------------------------------------------------------------------------------------------
-DataChunk::DataChunk(const Context &context, const std::vector<LogicalType> &types) {
+DataChunk::DataChunk(const std::vector<LogicalType> &types) {
 	// LogicalType is a Handle (with a vtable), so its storage is not layout-compatible with a raw
 	// duckdb_v2_logical_type_handle array. Extract the underlying handles into a contiguous buffer.
 	std::vector<duckdb_v2_logical_type_handle> type_pointers;
@@ -2059,7 +2046,6 @@ DataChunk::DataChunk(const Context &context, const std::vector<LogicalType> &typ
 		type_pointers.push_back(type.handle());
 	}
 
-	// TODO: Pass context to create buffer-managed data chunks.
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	CheckedAPICall(duckdb_v2_data_chunk_create, type_pointers.data(), type_pointers.size(), &chunk);
 
@@ -2320,7 +2306,22 @@ ColumnDataCollection::ColumnDataCollection(const Context &context, const std::ve
 	}
 
 	auto _h = handle();
-	CheckedAPICall(duckdb_v2_column_data_collection_create, context.handle(), type_pointers.data(),
+	CheckedAPICall(duckdb_v2_column_data_collection_create_with_context, context.handle(), type_pointers.data(),
+	               type_pointers.size(), &_h);
+	impl = _h;
+}
+
+ColumnDataCollection::ColumnDataCollection(const Connection &conn, const std::vector<LogicalType> &types) {
+	// LogicalType is a Handle (with a vtable), so its storage is not layout-compatible with a raw
+	// duckdb_v2_logical_type_handle array. Extract the underlying handles into a contiguous buffer.
+	std::vector<duckdb_v2_logical_type_handle> type_pointers;
+	type_pointers.reserve(types.size());
+	for (const auto &type : types) {
+		type_pointers.push_back(type.handle());
+	}
+
+	auto _h = handle();
+	CheckedAPICall(duckdb_v2_column_data_collection_create_with_connection, conn.handle(), type_pointers.data(),
 	               type_pointers.size(), &_h);
 	impl = _h;
 }
@@ -2479,7 +2480,7 @@ std::unique_ptr<AppenderState> BuildAppenderState(Connection &con, std::vector<L
 	}
 	auto s = std::make_unique<AppenderState>();
 	s->types = std::move(types);
-	con.WithTransaction([&](const Context &ctx) { s->buffer = std::make_unique<ColumnDataCollection>(ctx, s->types); });
+	s->buffer = std::make_unique<ColumnDataCollection>(con, s->types);
 
 	// Parse once, attach the buffer once, re-execute per flush. Exactly one
 	// statement: a multi-statement query would silently bind only the first.
@@ -2619,9 +2620,9 @@ public:
 	}
 };
 
-LogStorage::LogStorage(const Context &ctx) {
+LogStorage::LogStorage() {
 	duckdb_v2_log_storage_builder_handle handle = nullptr;
-	CheckedAPICall(duckdb_v2_log_storage_builder_create, ctx.handle(), &handle);
+	CheckedAPICall(duckdb_v2_log_storage_builder_create, &handle);
 	impl = handle;
 }
 
@@ -2637,7 +2638,13 @@ auto LogStorage::SetUserDataInternal(void *data, void (*destructor)(void *)) -> 
 auto LogStorage::Register(const Context &ctx) -> void {
 	auto info = detail::MakeUserData<LogStorageInfo>(callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_log_storage_builder_set_user_data, handle(), info);
-	CheckedAPICall(duckdb_v2_log_storage_builder_register, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_log_storage_builder_register_with_context, ctx.handle(), handle());
+}
+
+auto LogStorage::Register(const Database &db) -> void {
+	auto info = detail::MakeUserData<LogStorageInfo>(callback, std::move(user_data));
+	CheckedAPICall(duckdb_v2_log_storage_builder_set_user_data, handle(), info);
+	CheckedAPICall(duckdb_v2_log_storage_builder_register_with_database, db.handle(), handle());
 }
 
 auto LogStorage::SetName(const std::string &name) & -> LogStorage & {
@@ -2802,9 +2809,9 @@ auto FunctionSignature::GetReturnType() const -> LogicalType {
 // Scalar Function
 //----------------------------------------------------------------------------------------------------------------------
 
-ScalarFunction::ScalarFunction(const Context &context) {
+ScalarFunction::ScalarFunction() {
 	duckdb_v2_scalar_function_builder_handle _h = nullptr;
-	CheckedAPICall(duckdb_v2_scalar_function_builder_create, context.handle(), &_h);
+	CheckedAPICall(duckdb_v2_scalar_function_builder_create, &_h);
 	impl = _h;
 }
 
@@ -3156,7 +3163,15 @@ void ScalarFunction::Register(const Context &ctx) {
 	    detail::MakeUserData<ScalarFunctionInfo>(bind_callback, init_callback, exec_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_scalar_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_scalar_function_builder_register, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_scalar_function_builder_register_with_context, ctx.handle(), handle());
+}
+
+void ScalarFunction::Register(const Connection &conn) {
+	auto info =
+	    detail::MakeUserData<ScalarFunctionInfo>(bind_callback, init_callback, exec_callback, std::move(user_data));
+	CheckedAPICall(duckdb_v2_scalar_function_builder_set_user_data, handle(), info);
+
+	CheckedAPICall(duckdb_v2_scalar_function_builder_register_with_connection, conn.handle(), handle());
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -3202,9 +3217,9 @@ public:
 	}
 };
 
-AggregateFunction::AggregateFunction(const Context &ctx) {
+AggregateFunction::AggregateFunction() {
 	duckdb_v2_aggregate_function_builder_handle _h = nullptr;
-	CheckedAPICall(duckdb_v2_aggregate_function_builder_create, ctx.handle(), &_h);
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_create, &_h);
 	impl = _h;
 }
 
@@ -3757,7 +3772,16 @@ void AggregateFunction::Register(const Context &ctx) {
 	                                                        destroy_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_aggregate_function_builder_register, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_register_with_context, ctx.handle(), handle());
+}
+
+void AggregateFunction::Register(const Connection &conn) {
+	auto info = detail::MakeUserData<AggregateFunctionInfo>(bind_callback, size_callback, initialize_callback,
+	                                                        update_callback, combine_callback, finalize_callback,
+	                                                        destroy_callback, std::move(user_data));
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_user_data, handle(), info);
+
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_register_with_connection, conn.handle(), handle());
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -3799,9 +3823,9 @@ void *GetTableFunctionUserData(const TableFunctionInfo &function) {
 
 } // namespace
 
-TableFunction::TableFunction(const Context &ctx) {
+TableFunction::TableFunction() {
 	duckdb_v2_table_function_builder_handle _h = nullptr;
-	CheckedAPICall(duckdb_v2_table_function_builder_create, ctx.handle(), &_h);
+	CheckedAPICall(duckdb_v2_table_function_builder_create, &_h);
 	impl = _h;
 }
 
@@ -4248,7 +4272,15 @@ void TableFunction::Register(const Context &ctx) {
 	                                                    exec_callback, pushdown_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_table_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_table_function_builder_register, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_table_function_builder_register_with_context, ctx.handle(), handle());
+}
+
+void TableFunction::Register(const Connection &conn) {
+	auto info = detail::MakeUserData<TableFunctionInfo>(bind_callback, init_global_callback, init_local_callback,
+	                                                    exec_callback, pushdown_callback, std::move(user_data));
+	CheckedAPICall(duckdb_v2_table_function_builder_set_user_data, handle(), info);
+
+	CheckedAPICall(duckdb_v2_table_function_builder_register_with_connection, conn.handle(), handle());
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -4281,9 +4313,9 @@ struct CopyFunctionInfo {
 	}
 };
 
-CopyFunction::CopyFunction(const Context &ctx) {
+CopyFunction::CopyFunction() {
 	duckdb_v2_copy_function_builder_handle _h = nullptr;
-	CheckedAPICall(duckdb_v2_copy_function_builder_create, ctx.handle(), &_h);
+	CheckedAPICall(duckdb_v2_copy_function_builder_create, &_h);
 	impl = _h;
 }
 
@@ -4605,7 +4637,15 @@ auto CopyFunction::Register(const Context &ctx) -> void {
 	                                                   finalize_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_copy_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_copy_function_builder_register, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_copy_function_builder_register_with_context, ctx.handle(), handle());
+}
+
+auto CopyFunction::Register(const Connection &conn) -> void {
+	auto info = detail::MakeUserData<CopyFunctionInfo>(bind_callback, init_callback, batch_callback, flush_callback,
+	                                                   finalize_callback, std::move(user_data));
+	CheckedAPICall(duckdb_v2_copy_function_builder_set_user_data, handle(), info);
+
+	CheckedAPICall(duckdb_v2_copy_function_builder_register_with_connection, conn.handle(), handle());
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -4623,9 +4663,9 @@ struct CastFunctionInfo {
 	}
 };
 
-CastFunction::CastFunction(const Context &ctx) {
+CastFunction::CastFunction() {
 	duckdb_v2_cast_function_builder_handle _h = nullptr;
-	CheckedAPICall(duckdb_v2_cast_function_builder_create, ctx.handle(), &_h);
+	CheckedAPICall(duckdb_v2_cast_function_builder_create, &_h);
 	impl = _h;
 }
 
@@ -4705,16 +4745,23 @@ void CastFunction::Register(const Context &ctx) {
 	auto info = detail::MakeUserData<CastFunctionInfo>(exec_callback);
 	CheckedAPICall(duckdb_v2_cast_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_cast_function_builder_register, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_cast_function_builder_register_with_context, ctx.handle(), handle());
+}
+
+void CastFunction::Register(const Connection &conn) {
+	auto info = detail::MakeUserData<CastFunctionInfo>(exec_callback);
+	CheckedAPICall(duckdb_v2_cast_function_builder_set_user_data, handle(), info);
+
+	CheckedAPICall(duckdb_v2_cast_function_builder_register_with_connection, conn.handle(), handle());
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 // Custom Type
 //----------------------------------------------------------------------------------------------------------------------
 
-CustomType::CustomType(const Context &ctx) {
+CustomType::CustomType() {
 	duckdb_v2_custom_type_builder_handle _h = nullptr;
-	CheckedAPICall(duckdb_v2_custom_type_builder_create, ctx.handle(), &_h);
+	CheckedAPICall(duckdb_v2_custom_type_builder_create, &_h);
 	impl = _h;
 }
 
@@ -4734,7 +4781,11 @@ auto CustomType::SetBaseType(const LogicalType &type) & -> CustomType & {
 }
 
 void CustomType::Register(const Context &ctx) {
-	CheckedAPICall(duckdb_v2_custom_type_builder_register, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_custom_type_builder_register_with_context, ctx.handle(), handle());
+}
+
+void CustomType::Register(const Connection &conn) {
+	CheckedAPICall(duckdb_v2_custom_type_builder_register_with_connection, conn.handle(), handle());
 }
 
 } // namespace duckdb_api

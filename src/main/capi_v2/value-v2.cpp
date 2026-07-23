@@ -531,7 +531,8 @@ DUCKDB_V2_ERROR duckdb_v2_value_create(duckdb_v2_logical_type_handle type, const
 		}
 		default:
 			throw duckdb::InvalidInputException("duckdb_v2_value_create builds LIST, ARRAY, STRUCT, and MAP values; "
-			                                    "build UNION and ENUM values via duckdb_v2_value_cast");
+			                                    "build UNION and ENUM values via duckdb_v2_value_cast_with_context "
+			                                    "or duckdb_v2_value_cast_with_connection");
 		}
 		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(v)));
 	});
@@ -588,17 +589,38 @@ DUCKDB_V2_ERROR duckdb_v2_value_get_child(duckdb_v2_value_handle value, idx_t in
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_value_cast(duckdb_v2_context_handle ctx, duckdb_v2_value_handle value,
-                                     duckdb_v2_logical_type_handle target_type, duckdb_v2_value_handle *out_value,
-                                     duckdb_v2_error_info_handle *err) {
+static void CastValueV2(duckdb::ClientContext &ctx, duckdb_v2_value_handle value,
+                        duckdb_v2_logical_type_handle target_type, duckdb_v2_value_handle *out_value) {
+	if (!value || !target_type || !out_value) {
+		throw duckdb::InvalidInputException("null argument to duckdb_v2_value_cast");
+	}
+	*out_value = nullptr;
+	// Non-strict, through the context's cast function set (registered
+	// custom casts included). Cast failures propagate.
+	auto casted = duckdb::ToValue(value)->CastAs(ctx, *duckdb::ToLogicalType(target_type));
+	*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(casted)));
+}
+
+DUCKDB_V2_ERROR duckdb_v2_value_cast_with_connection(duckdb_v2_connection_handle conn, duckdb_v2_value_handle value,
+                                                     duckdb_v2_logical_type_handle target_type,
+                                                     duckdb_v2_value_handle *out_value,
+                                                     duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!ctx || !value || !target_type || !out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_cast");
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
 		}
-		*out_value = nullptr;
-		// Non-strict, through the context's cast function set (registered
-		// custom casts included). Cast failures propagate.
-		auto casted = duckdb::ToValue(value)->CastAs(*duckdb::ToContext(ctx), *duckdb::ToLogicalType(target_type));
-		*out_value = reinterpret_cast<_duckdb_v2_value *>(new duckdb::Value(std::move(casted)));
+		auto &ctx = *duckdb::ToConn(conn)->context;
+		ctx.RunFunctionInTransaction([&]() { CastValueV2(ctx, value, target_type, out_value); });
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_value_cast_with_context(duckdb_v2_context_handle ctx, duckdb_v2_value_handle value,
+                                                  duckdb_v2_logical_type_handle target_type,
+                                                  duckdb_v2_value_handle *out_value, duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!ctx) {
+			throw duckdb::InvalidInputException("Context pointer cannot be null.");
+		}
+		CastValueV2(*duckdb::ToContext(ctx), value, target_type, out_value);
 	});
 }

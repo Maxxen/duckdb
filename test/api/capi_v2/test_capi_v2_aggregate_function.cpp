@@ -155,45 +155,41 @@ TEST_CASE("V2 aggregate: median with stateful aggregate", "[capi_v2][aggregate]"
 	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(conn != nullptr);
 
-	// Register the aggregate within a transaction so we have a context.
-	duckdb_v2_connection_execute_with_context(
-	    conn,
-	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
-		    duckdb_v2_aggregate_function_builder_handle builder = nullptr;
-		    REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+	// Register the aggregate on the connection.
+	duckdb_v2_aggregate_function_builder_handle builder = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_builder_create(&builder, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		    duckdb_v2_logical_type_handle type = nullptr;
-		    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
-		            DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle type = nullptr;
+	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("my_median"), err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    V2AggregateSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
-			    V2SigParam(sig, "x", type);
-			    V2SigReturn(sig, type);
-		    });
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("my_median"), nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	V2AggregateSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "x", type);
+		V2SigReturn(sig, type);
+	});
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, SizeCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, InitCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, UpdateCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, CombineCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, FinalizeCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_destroy_callback(builder, DestroyCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, SizeCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, InitCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, UpdateCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, CombineCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, FinalizeCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_destroy_callback(builder, DestroyCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(conn, builder, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(builder == nullptr);
+	REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(builder == nullptr);
 
-		    duckdb_v2_logical_type_destroy(&type);
-	    },
-	    nullptr, nullptr);
+	duckdb_v2_logical_type_destroy(&type);
 
 	SECTION("median over a single group") {
 		duckdb_v2_result_handle result = nullptr;
@@ -387,42 +383,38 @@ TEST_CASE("V2 aggregate: bind data threads through to execution callbacks", "[ca
 	duckdb_v2_connection_handle conn = nullptr;
 	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_connection_execute_with_context(
-	    conn,
-	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
-		    duckdb_v2_aggregate_function_builder_handle builder = nullptr;
-		    REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_aggregate_function_builder_handle builder = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_builder_create(&builder, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		    duckdb_v2_logical_type_handle type = nullptr;
-		    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
-		            DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle type = nullptr;
+	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("sum_times_ten"), err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    V2AggregateSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
-			    V2SigParam(sig, "x", type);
-			    V2SigReturn(sig, type);
-		    });
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("sum_times_ten"), nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	V2AggregateSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "x", type);
+		V2SigReturn(sig, type);
+	});
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_bind_callback(builder, BindDataBindCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, BindDataSizeCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, BindDataInitCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, BindDataUpdateCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, BindDataCombineCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, BindDataFinalizeCallback,
-		                                                                       err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_bind_callback(builder, BindDataBindCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, BindDataSizeCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, BindDataInitCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, BindDataUpdateCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, BindDataCombineCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, BindDataFinalizeCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(conn, builder, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
 
-		    duckdb_v2_logical_type_destroy(&type);
-	    },
-	    nullptr, nullptr);
+	duckdb_v2_logical_type_destroy(&type);
 
 	duckdb_v2_result_handle result = nullptr;
 	REQUIRE(V2Query(conn, "SELECT sum_times_ten(i) AS result FROM (VALUES (1), (2), (3), (4), (5)) AS t(i)", &result,
@@ -493,40 +485,36 @@ TEST_CASE("V2 aggregate: a callback error code round-trips (not collapsed to INV
 	duckdb_v2_connection_handle conn = nullptr;
 	REQUIRE(duckdb_v2_connect(db, &conn, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_connection_execute_with_context(
-	    conn,
-	    [](duckdb_v2_context_handle ctx, void *, duckdb_v2_error_info_handle *err) {
-		    duckdb_v2_aggregate_function_builder_handle builder = nullptr;
-		    REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &builder, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_aggregate_function_builder_handle builder = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_builder_create(&builder, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-		    duckdb_v2_logical_type_handle type = nullptr;
-		    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
-		            DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle type = nullptr;
+	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("failing_agg"), err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    V2AggregateSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
-			    V2SigParam(sig, "x", type);
-			    V2SigReturn(sig, type);
-		    });
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_name(builder, V2Str("failing_agg"), nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	V2AggregateSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "x", type);
+		V2SigReturn(sig, type);
+	});
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, FailingSizeCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, FailingInitCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, FailingUpdateCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, FailingCombineCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, FailingFinalizeCallback, err) ==
-		            DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_size_callback(builder, FailingSizeCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_init_callback(builder, FailingInitCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_update_callback(builder, FailingUpdateCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_combine_callback(builder, FailingCombineCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_finalize_callback(builder, FailingFinalizeCallback, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 
-		    REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, builder, err) == DUCKDB_V2_ERROR_NONE);
-		    REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(conn, builder, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_destroy(&builder) == DUCKDB_V2_ERROR_NONE);
 
-		    duckdb_v2_logical_type_destroy(&type);
-	    },
-	    nullptr, nullptr);
+	duckdb_v2_logical_type_destroy(&type);
 
 	duckdb_v2_result_handle result = nullptr;
 	REQUIRE(V2Query(conn, "SELECT failing_agg(i) FROM (VALUES (1), (2), (3)) AS t(i)", &result, nullptr) ==
@@ -646,30 +634,29 @@ void SumPlusFinalize(duckdb_v2_aggregate_function_finalize_info_handle info, duc
 
 TEST_CASE("V2 aggregate: defaulted parameter and named-argument resolution", "[capi_v2][aggregate][signature]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
-		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-		// sum_plus(x INTEGER, extra INTEGER DEFAULT 7): sums (x + extra) over rows.
-		duckdb_v2_aggregate_function_builder_handle b = nullptr;
-		REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_aggregate_function_builder_set_name(b, V2Str("sum_plus"), nullptr);
-		duckdb_v2_value_handle seven = V2Int32Value(7);
-		V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
-			V2SigParam(sig, "x", integer);
-			V2SigParamDefault(sig, "extra", integer, seven);
-			V2SigReturn(sig, integer);
-		});
-		duckdb_v2_value_destroy(&seven);
-		duckdb_v2_aggregate_function_builder_set_size_callback(b, SumPlusSize, nullptr);
-		duckdb_v2_aggregate_function_builder_set_init_callback(b, SumPlusInit, nullptr);
-		duckdb_v2_aggregate_function_builder_set_update_callback(b, SumPlusUpdate, nullptr);
-		duckdb_v2_aggregate_function_builder_set_combine_callback(b, SumPlusCombine, nullptr);
-		duckdb_v2_aggregate_function_builder_set_finalize_callback(b, SumPlusFinalize, nullptr);
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_aggregate_function_builder_destroy(&b);
-
-		duckdb_v2_logical_type_destroy(&integer);
+	// sum_plus(x INTEGER, extra INTEGER DEFAULT 7): sums (x + extra) over rows.
+	duckdb_v2_aggregate_function_builder_handle b = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_builder_create(&b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_aggregate_function_builder_set_name(b, V2Str("sum_plus"), nullptr);
+	duckdb_v2_value_handle seven = V2Int32Value(7);
+	V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "x", integer);
+		V2SigParamDefault(sig, "extra", integer, seven);
+		V2SigReturn(sig, integer);
 	});
+	duckdb_v2_value_destroy(&seven);
+	duckdb_v2_aggregate_function_builder_set_size_callback(b, SumPlusSize, nullptr);
+	duckdb_v2_aggregate_function_builder_set_init_callback(b, SumPlusInit, nullptr);
+	duckdb_v2_aggregate_function_builder_set_update_callback(b, SumPlusUpdate, nullptr);
+	duckdb_v2_aggregate_function_builder_set_combine_callback(b, SumPlusCombine, nullptr);
+	duckdb_v2_aggregate_function_builder_set_finalize_callback(b, SumPlusFinalize, nullptr);
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_aggregate_function_builder_destroy(&b);
+
+	duckdb_v2_logical_type_destroy(&integer);
 
 	const char *rows = " FROM (VALUES (1), (2), (3)) t(i)";
 	// Default extra = 7: (1+7)+(2+7)+(3+7) = 27.
@@ -685,10 +672,9 @@ namespace {
 
 // Builder with a name and all five required callbacks, so registration
 // reaches the signature checks.
-duckdb_v2_aggregate_function_builder_handle AggBuilderForSignatureChecks(duckdb_v2_context_handle ctx,
-                                                                         const char *name) {
+duckdb_v2_aggregate_function_builder_handle AggBuilderForSignatureChecks(const char *name) {
 	duckdb_v2_aggregate_function_builder_handle b = nullptr;
-	REQUIRE(duckdb_v2_aggregate_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_create(&b, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_aggregate_function_builder_set_name(b, V2Str(name), nullptr);
 	duckdb_v2_aggregate_function_builder_set_size_callback(b, SumPlusSize, nullptr);
 	duckdb_v2_aggregate_function_builder_set_init_callback(b, SumPlusInit, nullptr);
@@ -702,63 +688,64 @@ duckdb_v2_aggregate_function_builder_handle AggBuilderForSignatureChecks(duckdb_
 
 TEST_CASE("V2 aggregate: registration requires a return type", "[capi_v2][aggregate][signature]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
-		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-		// No set_signature at all: the empty signature has no return type.
-		auto b = AggBuilderForSignatureChecks(ctx, "agg_no_signature");
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_aggregate_function_builder_destroy(&b);
+	// No set_signature at all: the empty signature has no return type.
+	auto b = AggBuilderForSignatureChecks("agg_no_signature");
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_aggregate_function_builder_destroy(&b);
 
-		// A signature with a parameter but no return type.
-		b = AggBuilderForSignatureChecks(ctx, "agg_no_return_type");
-		V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) { V2SigParam(sig, "x", integer); });
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_aggregate_function_builder_destroy(&b);
+	// A signature with a parameter but no return type.
+	b = AggBuilderForSignatureChecks("agg_no_return_type");
+	V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) { V2SigParam(sig, "x", integer); });
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_aggregate_function_builder_destroy(&b);
 
-		// ANY (incomplete) return type: a return type carries data, so the
-		// signature wildcard is rejected.
-		auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
-		b = AggBuilderForSignatureChecks(ctx, "agg_any_return_type");
-		V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
-			V2SigParam(sig, "x", integer);
-			V2SigReturn(sig, any);
-		});
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_aggregate_function_builder_destroy(&b);
-		duckdb_v2_logical_type_destroy(&any);
-
-		duckdb_v2_logical_type_destroy(&integer);
+	// ANY (incomplete) return type: a return type carries data, so the
+	// signature wildcard is rejected.
+	auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
+	b = AggBuilderForSignatureChecks("agg_any_return_type");
+	V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "x", integer);
+		V2SigReturn(sig, any);
 	});
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_aggregate_function_builder_destroy(&b);
+	duckdb_v2_logical_type_destroy(&any);
+
+	duckdb_v2_logical_type_destroy(&integer);
 }
 
 TEST_CASE("V2 aggregate: registration rejects a structurally invalid signature", "[capi_v2][aggregate][signature]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
-		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-		// Duplicate parameter name.
-		auto b = AggBuilderForSignatureChecks(ctx, "agg_dup_name");
-		V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
-			V2SigParam(sig, "x", integer);
-			V2SigParam(sig, "x", integer);
-			V2SigReturn(sig, integer);
-		});
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_aggregate_function_builder_destroy(&b);
-
-		// A required parameter after a defaulted one (defaults must trail).
-		b = AggBuilderForSignatureChecks(ctx, "agg_non_trailing_default");
-		duckdb_v2_value_handle one = V2Int32Value(1);
-		V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
-			V2SigParamDefault(sig, "opt", integer, one);
-			V2SigParam(sig, "req", integer);
-			V2SigReturn(sig, integer);
-		});
-		duckdb_v2_value_destroy(&one);
-		REQUIRE(duckdb_v2_aggregate_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-		duckdb_v2_aggregate_function_builder_destroy(&b);
-
-		duckdb_v2_logical_type_destroy(&integer);
+	// Duplicate parameter name.
+	auto b = AggBuilderForSignatureChecks("agg_dup_name");
+	V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "x", integer);
+		V2SigParam(sig, "x", integer);
+		V2SigReturn(sig, integer);
 	});
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_aggregate_function_builder_destroy(&b);
+
+	// A required parameter after a defaulted one (defaults must trail).
+	b = AggBuilderForSignatureChecks("agg_non_trailing_default");
+	duckdb_v2_value_handle one = V2Int32Value(1);
+	V2AggregateSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParamDefault(sig, "opt", integer, one);
+		V2SigParam(sig, "req", integer);
+		V2SigReturn(sig, integer);
+	});
+	duckdb_v2_value_destroy(&one);
+	REQUIRE(duckdb_v2_aggregate_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+	        DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_aggregate_function_builder_destroy(&b);
+
+	duckdb_v2_logical_type_destroy(&integer);
 }
