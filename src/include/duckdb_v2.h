@@ -2161,9 +2161,8 @@ typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
 
 /* --- Types for function --- */
 //! Borrowed handle to a function's bound argument list during the bind callback. Provides the
-//! argument count, per-index access to argument types and folded values, and two mutations
-//! (replace an argument with a constant, truncate the list from the tail). Valid only for the
-//! duration of the bind callback; do not store it.
+//! argument count and per-index access to argument types and folded values. Read-only; valid
+//! only for the duration of the bind callback; do not store it.
 typedef struct _duckdb_v2_bind_arguments {
 	void *internal_ptr;
 } * duckdb_v2_bind_arguments_handle;
@@ -2220,35 +2219,6 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_bind_arguments_fold(duckdb_v2_bind_argume
                                                            duckdb_v2_context_handle ctx, idx_t index,
                                                            duckdb_v2_value_handle *out_value,
                                                            duckdb_v2_error_info_handle *err);
-/*!
-* Replaces a bound argument with a constant value.
-* Replaces the argument at `index` with a bound constant carrying `value`. The engine casts the
-constant to the function's declared type for that slot, exactly as it would any argument. Use
-it to bake a folded configuration value back into the plan. The value is borrowed and copied
-in. Returns ERROR_INPUT_INVALID if index is out of range.
-
-* @param args The bind arguments handle.
-* @param index Zero-based argument index to replace.
-* @param value The constant value. Borrowed; copied in.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_bind_arguments_set_constant(duckdb_v2_bind_arguments_handle args, idx_t index,
-                                                                   duckdb_v2_value_handle value,
-                                                                   duckdb_v2_error_info_handle *err);
-/*!
-* Shrinks the bound argument list from the tail.
-* Drops trailing arguments so the list keeps exactly `count` arguments; the exec (scalar) or
-update (aggregate) callback then sees `count` input columns. Only shrinking is allowed:
-`count` must be <= the current count, otherwise ERROR_INPUT_INVALID.
-
-* @param args The bind arguments handle.
-* @param count The number of arguments to keep. Must be <= the current count.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_bind_arguments_truncate(duckdb_v2_bind_arguments_handle args, idx_t count,
-                                                               duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for function --- */
 
@@ -4177,8 +4147,7 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_bind_get_user_data(
 /*!
 * Retrieves the bound argument list for inspection and mutation during bind.
 * Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
-argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list
-from the tail. Borrowed; valid only for the duration of the callback.
+argument's type, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
 
 * @param info The bind info handle.
 * @param out_arguments Receives the borrowed bound argument list handle.
@@ -5671,8 +5640,7 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_get_user_data(
 /*!
 * Retrieves the bound argument list for inspection and mutation during bind.
 * Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
-argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list
-from the tail. Borrowed; valid only for the duration of the callback.
+argument's type, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
 
 * @param info The bind info handle.
 * @param out_arguments Receives the borrowed bound argument list handle.

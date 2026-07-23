@@ -2871,16 +2871,6 @@ auto ScalarFunction::BindInput::FoldArgument(idx_t index) const -> Value {
 	return detail::Factory::Make<Value>(value);
 }
 
-auto ScalarFunction::BindInput::SetArgumentConstant(idx_t index, const Value &value) -> void {
-	CheckedAPICall(duckdb_v2_bind_arguments_set_constant,
-	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), index, value.handle());
-}
-
-auto ScalarFunction::BindInput::TruncateArguments(idx_t count) -> void {
-	CheckedAPICall(duckdb_v2_bind_arguments_truncate,
-	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), count);
-}
-
 auto ScalarFunction::BindInput::GetContext() const -> Context {
 	if (!context) {
 		throw Exception(DUCKDB_V2_ERROR_INPUT_INVALID, "Invalid Input Error: this bind runs without a client context");
@@ -3268,16 +3258,6 @@ auto AggregateFunction::BindInput::FoldArgument(idx_t index) const -> Value {
 	CheckedAPICall(duckdb_v2_bind_arguments_fold, static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()),
 	               static_cast<duckdb_v2_context_handle>(context), index, &value);
 	return detail::Factory::Make<Value>(value);
-}
-
-auto AggregateFunction::BindInput::SetArgumentConstant(idx_t index, const Value &value) -> void {
-	CheckedAPICall(duckdb_v2_bind_arguments_set_constant,
-	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), index, value.handle());
-}
-
-auto AggregateFunction::BindInput::TruncateArguments(idx_t count) -> void {
-	CheckedAPICall(duckdb_v2_bind_arguments_truncate,
-	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), count);
 }
 
 auto AggregateFunction::BindInput::GetContext() const -> Context {

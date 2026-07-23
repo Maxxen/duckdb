@@ -24,15 +24,6 @@ int32_t ScalarI32(Connection &conn, const std::string &sql) {
 	return view.Data<int32_t>()[view.SelAt(0)];
 }
 
-double ScalarF64(Connection &conn, const std::string &sql) {
-	auto result = conn.Execute(sql);
-	auto chunk = result.FetchChunk();
-	REQUIRE(chunk);
-	auto view = chunk.GetVector(0).GetView();
-	REQUIRE(view.IsValid(0));
-	return view.Data<double>()[view.SelAt(0)];
-}
-
 int64_t ScalarI64(Connection &conn, const std::string &sql) {
 	auto result = conn.Execute(sql);
 	auto chunk = result.FetchChunk();
@@ -153,29 +144,8 @@ TEST_CASE("Stable C++API: scalar varargs", "[cpp_api]") {
 
 namespace {
 
-// scaled(x, q): bind folds q, stashes it, and truncates so exec sees only x.
-void ScaledBind(ScalarFunction::BindInput &input) {
-	REQUIRE(input.GetArgumentCount() == 2);
-	// The bind context stays reachable for context-scoped work.
-	REQUIRE(input.GetContext().ParseType("INTEGER").GetId() == TypeId::INTEGER);
-	input.SetBindData<double>(input.FoldArgument(1).AsDouble());
-	input.TruncateArguments(1);
-}
-
-void ScaledExec(ScalarFunction::ExecInput &input) {
-	auto chunk = input.GetInputChunk();
-	REQUIRE(chunk.GetVectorCount() == 1);
-	const double q = input.GetBindData<double>();
-	auto view = chunk.GetVector(0).GetView();
-	auto x = view.Data<int32_t>();
-	auto out = input.GetResultVector().GetDataMutable<double>();
-	for (idx_t r = 0; r < chunk.GetRowCount(); r++) {
-		out[r] = x[view.SelAt(r)] * q;
-	}
-}
-
-// probe_add(a, b): bind checks argument types, folds the constant b (folding
-// the column a fails), then replaces b with a constant 9. exec returns a + b.
+// probe_add(a, b): bind checks argument types and folds the constant b (folding
+// the column a fails). exec returns a + b.
 void ProbeBind(ScalarFunction::BindInput &input) {
 	REQUIRE(input.GetArgumentCount() == 2);
 	REQUIRE(input.GetArgumentType(0).GetId() == TypeId::INTEGER);
@@ -184,27 +154,16 @@ void ProbeBind(ScalarFunction::BindInput &input) {
 	REQUIRE(input.FoldArgument(1).AsInteger() == 7);
 	REQUIRE_THROWS_MATCHES(input.GetArgumentType(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	REQUIRE_THROWS_MATCHES(input.FoldArgument(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
-	input.SetArgumentConstant(1, Value::Bigint(9));
 }
 
 } // namespace
 
-TEST_CASE("Stable C++API: bind fold, set_constant, and truncate", "[cpp_api]") {
+TEST_CASE("Stable C++API: bind argument accessors", "[cpp_api]") {
 	Environment env;
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
 
 	conn.WithTransaction([](const Context &ctx) {
-		auto dbl = ctx.ParseType("DOUBLE");
-		ScalarFunction scaled(ctx);
-		scaled.SetName("cpp_scaled")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .AddParameter("q", dbl)
-		    .SetReturnType(dbl)
-		    .SetBindCallback(ScaledBind)
-		    .SetExecCallback(ScaledExec)
-		    .Register(ctx);
-
 		ScalarFunction probe(ctx);
 		probe.SetName("cpp_probe_add")
 		    .AddParameter("a", LogicalType::INTEGER())
@@ -215,8 +174,7 @@ TEST_CASE("Stable C++API: bind fold, set_constant, and truncate", "[cpp_api]") {
 		    .Register(ctx);
 	});
 
-	REQUIRE(ScalarF64(conn, "SELECT cpp_scaled(10, (0.25 + 0.25)::DOUBLE)") == 5.0);
-	REQUIRE(ScalarI32(conn, "SELECT cpp_probe_add(x, 7) FROM (VALUES (100)) t(x)") == 109);
+	REQUIRE(ScalarI32(conn, "SELECT cpp_probe_add(x, 7) FROM (VALUES (100)) t(x)") == 107);
 }
 
 namespace {
@@ -257,14 +215,9 @@ void AggFinalize(AggregateFunction::FinalizeInput &input) {
 		out[offset + i] = *states[i];
 	}
 }
-void AggDropTailBind(AggregateFunction::BindInput &input) {
-	REQUIRE(input.GetArgumentCount() == 2);
-	input.TruncateArguments(1);
-}
-
 } // namespace
 
-TEST_CASE("Stable C++API: aggregate varargs and bind truncate", "[cpp_api]") {
+TEST_CASE("Stable C++API: aggregate varargs", "[cpp_api]") {
 	Environment env;
 	auto db = env.Open(":memory:");
 	auto conn = db.Connect();
@@ -280,22 +233,9 @@ TEST_CASE("Stable C++API: aggregate varargs and bind truncate", "[cpp_api]") {
 		    .SetCombineCallback(AggCombine)
 		    .SetFinalizeCallback(AggFinalize)
 		    .Register(ctx);
-
-		AggregateFunction first_only(ctx);
-		first_only.SetName("cpp_first_only")
-		    .SetVarArgs(LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::BIGINT())
-		    .SetSizeCallback(AggSize)
-		    .SetInitializeCallback(AggInit)
-		    .SetUpdateCallback(AggUpdate)
-		    .SetCombineCallback(AggCombine)
-		    .SetFinalizeCallback(AggFinalize)
-		    .SetBindCallback(AggDropTailBind)
-		    .Register(ctx);
 	});
 
 	REQUIRE(ScalarI64(conn, "SELECT cpp_multi_sum(a, b) FROM (VALUES (1,2),(3,4)) t(a,b)") == 10);
-	REQUIRE(ScalarI64(conn, "SELECT cpp_first_only(a, b) FROM (VALUES (1,2),(3,4)) t(a,b)") == 4);
 }
 
 namespace {

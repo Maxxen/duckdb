@@ -124,57 +124,6 @@ void TwoAnyExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_conte
 	}
 }
 
-// scaled(x, q): bind folds the (constant) q argument, stashes it, and truncates
-// the argument list so exec sees only x. exec returns x * q as a DOUBLE.
-void ScaledBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_context_handle ctx,
-                duckdb_v2_error_info_handle *err) {
-	duckdb_v2_bind_arguments_handle arguments = nullptr;
-	REQUIRE(duckdb_v2_scalar_function_bind_get_arguments(info, &arguments, err) == DUCKDB_V2_ERROR_NONE);
-	idx_t count = 0;
-	REQUIRE(duckdb_v2_bind_arguments_get_count(arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(count == 2);
-
-	// The q argument (index 1) is constant-foldable; fold it to a DOUBLE.
-	duckdb_v2_value_handle q_val = nullptr;
-	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 1, &q_val, err) == DUCKDB_V2_ERROR_NONE);
-	const void *data = nullptr;
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_value_get_data(q_val, &data, &len, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == sizeof(double));
-	auto *q = new double;
-	std::memcpy(q, data, sizeof(double));
-	duckdb_v2_value_destroy(&q_val);
-
-	// Stash it in bind data and drop the q argument so exec sees only x.
-	duckdb_v2_opaque bind_data {q, [](void *p) { delete static_cast<double *>(p); }, nullptr};
-	REQUIRE(duckdb_v2_scalar_function_bind_set_bind_data(info, bind_data, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 1, err) == DUCKDB_V2_ERROR_NONE);
-}
-
-void ScaledExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
-                duckdb_v2_error_info_handle *err) {
-	duckdb_v2_data_chunk_handle chunk = nullptr;
-	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &chunk, err) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_vector_handle result = nullptr;
-	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result, err) == DUCKDB_V2_ERROR_NONE);
-	void *bind_data = nullptr;
-	REQUIRE(duckdb_v2_scalar_function_exec_get_bind_data(info, &bind_data, err) == DUCKDB_V2_ERROR_NONE);
-	// Truncation dropped q, so exactly one input column remains.
-	REQUIRE(ChunkCols(chunk) == 1);
-	const double q = *static_cast<const double *>(bind_data);
-	const idx_t rows = ChunkRows(chunk);
-	duckdb_v2_vector_handle x_vec = nullptr;
-	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &x_vec, err) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_vector_view view;
-	REQUIRE(duckdb_v2_vector_get_view(x_vec, &view, err) == DUCKDB_V2_ERROR_NONE);
-	const auto x = static_cast<const int32_t *>(view.data);
-	double *out = nullptr;
-	REQUIRE(duckdb_v2_vector_get_data_mutable(result, reinterpret_cast<void **>(&out), err) == DUCKDB_V2_ERROR_NONE);
-	for (idx_t r = 0; r < rows; r++) {
-		out[r] = x[view.sel ? view.sel[r] : r] * q;
-	}
-}
-
 // probe_bind: exercises the bind-argument accessors and their error paths, and
 // signals success/failure back through a captured flag in user data.
 struct ProbeResult {
@@ -210,14 +159,10 @@ void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_contex
 	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 0, &bad, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(bad == nullptr);
 
-	// arg 1 is the constant literal 7; fold it and replace it with a constant 9.
+	// arg 1 is the constant literal 7; fold it.
 	duckdb_v2_value_handle folded = nullptr;
 	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 1, &folded, err) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2LeafPayloadConsume<int32_t>(folded) == 7);
-
-	duckdb_v2_value_handle nine = V2Int32Value(9);
-	REQUIRE(duckdb_v2_bind_arguments_set_constant(arguments, 1, nine, err) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_value_destroy(&nine);
 
 	// Out-of-range index and null handles are rejected.
 	duckdb_v2_logical_type_handle oob_type = nullptr;
@@ -225,14 +170,13 @@ void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_contex
 	REQUIRE(oob_type == nullptr);
 	duckdb_v2_value_handle oob_val = nullptr;
 	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 5, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 9, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_get_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_get_type(nullptr, 0, &oob_type, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_fold(nullptr, ctx, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, nullptr, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
 
-// probe_bind exec: returns arg0 + arg1, so set_constant(1, 9) is observable.
+// probe_bind exec: returns arg0 + arg1.
 void ProbeExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
                duckdb_v2_error_info_handle *err) {
 	IntSumExec(info, nullptr, err);
@@ -534,39 +478,9 @@ TEST_CASE("V2 varargs: fixed-arity ANY parameters", "[capi_v2][varargs]") {
 }
 
 // ---------------------------------------------------------------------------
-// Bind introspection: count, fold, set_constant, truncate, quantile pattern.
+// Bind introspection: count, get_type, fold.
 // ---------------------------------------------------------------------------
-TEST_CASE("V2 varargs: bind fold + truncate (quantile pattern)", "[capi_v2][varargs]") {
-	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
-		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-		auto dbl = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
-		auto b = NewScalar(ctx, "scaled", nullptr);
-		duckdb_v2_scalar_function_builder_add_parameter(b, V2Str("x"), integer, nullptr);
-		duckdb_v2_scalar_function_builder_add_parameter(b, V2Str("q"), dbl, nullptr);
-		duckdb_v2_scalar_function_builder_set_return_type(b, dbl, nullptr);
-		duckdb_v2_scalar_function_builder_set_bind_callback(b, ScaledBind, nullptr);
-		duckdb_v2_scalar_function_builder_set_exec_callback(b, ScaledExec, nullptr);
-		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
-		duckdb_v2_scalar_function_builder_destroy(&b);
-		duckdb_v2_logical_type_destroy(&integer);
-		duckdb_v2_logical_type_destroy(&dbl);
-	});
-
-	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(V2Query(fix.conn, "SELECT scaled(10, (0.25 + 0.25)::DOUBLE)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
-	auto chunk = V2StepChunk(r);
-	REQUIRE(chunk != nullptr);
-	duckdb_v2_vector_handle vec = nullptr;
-	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
-	duckdb_v2_vector_view view;
-	duckdb_v2_vector_get_view(vec, &view, nullptr);
-	REQUIRE(static_cast<const double *>(view.data)[view.sel ? view.sel[0] : 0] == 5.0);
-	duckdb_v2_data_chunk_destroy(&chunk);
-	duckdb_v2_result_destroy(&r);
-}
-
-TEST_CASE("V2 varargs: bind argument accessors and set_constant", "[capi_v2][varargs]") {
+TEST_CASE("V2 varargs: bind argument accessors", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
 	static ProbeResult probe;
 	probe.ran = false;
@@ -584,7 +498,7 @@ TEST_CASE("V2 varargs: bind argument accessors and set_constant", "[capi_v2][var
 		duckdb_v2_logical_type_destroy(&integer);
 	});
 
-	// arg 0 is a column (non-foldable), arg 1 the literal 7 (replaced with 9).
+	// arg 0 is a column (non-foldable), arg 1 the literal 7.
 	duckdb_v2_result_handle r = nullptr;
 	REQUIRE(V2Query(fix.conn, "SELECT probe_add(x, 7) FROM (VALUES (100)) t(x)", &r, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto chunk = V2StepChunk(r);
@@ -593,8 +507,8 @@ TEST_CASE("V2 varargs: bind argument accessors and set_constant", "[capi_v2][var
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
 	duckdb_v2_vector_view view;
 	duckdb_v2_vector_get_view(vec, &view, nullptr);
-	// set_constant(1, 9) means 100 + 9 = 109.
-	REQUIRE(static_cast<const int32_t *>(view.data)[view.sel ? view.sel[0] : 0] == 109);
+	// probe_add returns arg0 + arg1 = 100 + 7 = 107.
+	REQUIRE(static_cast<const int32_t *>(view.data)[view.sel ? view.sel[0] : 0] == 107);
 	duckdb_v2_data_chunk_destroy(&chunk);
 	duckdb_v2_result_destroy(&r);
 	REQUIRE(probe.ran);
@@ -667,18 +581,6 @@ void AggFinalize(duckdb_v2_aggregate_function_finalize_info_handle info, duckdb_
 	}
 }
 
-// Bind callback that truncates the argument list to a single argument, so update
-// sees only the first varargs column.
-void AggDropTailBind(duckdb_v2_aggregate_function_bind_info_handle info, duckdb_v2_context_handle,
-                     duckdb_v2_error_info_handle *err) {
-	duckdb_v2_bind_arguments_handle arguments = nullptr;
-	REQUIRE(duckdb_v2_aggregate_function_bind_get_arguments(info, &arguments, err) == DUCKDB_V2_ERROR_NONE);
-	idx_t count = 0;
-	REQUIRE(duckdb_v2_bind_arguments_get_count(arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(count == 2);
-	REQUIRE(duckdb_v2_bind_arguments_truncate(arguments, 1, err) == DUCKDB_V2_ERROR_NONE);
-}
-
 void RegisterAgg(duckdb_v2_context_handle ctx, const char *name,
                  duckdb_v2_aggregate_function_bind_callback_fn bind_cb) {
 	auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
@@ -719,17 +621,12 @@ int64_t AggResult(duckdb_v2_connection_handle conn, const char *sql) {
 
 } // namespace
 
-TEST_CASE("V2 varargs: aggregate varargs and bind truncate", "[capi_v2][varargs]") {
+TEST_CASE("V2 varargs: aggregate varargs", "[capi_v2][varargs]") {
 	V2EnvFixture fix;
-	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
-		RegisterAgg(ctx, "multi_sum", nullptr);
-		RegisterAgg(ctx, "first_only", AggDropTailBind);
-	});
+	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) { RegisterAgg(ctx, "multi_sum", nullptr); });
 
 	// multi_sum sums every varargs column across every row: 1+2+3+4 = 10.
 	REQUIRE(AggResult(fix.conn, "SELECT multi_sum(a, b) FROM (VALUES (1,2),(3,4)) t(a,b)") == 10);
-	// first_only truncates to the first argument, so it sums only column a: 1+3 = 4.
-	REQUIRE(AggResult(fix.conn, "SELECT first_only(a, b) FROM (VALUES (1,2),(3,4)) t(a,b)") == 4);
 }
 
 // ---------------------------------------------------------------------------

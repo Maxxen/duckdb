@@ -120,12 +120,8 @@ struct AggregateFunctionV2 {
 
 		// Run the optional user bind callback and capture any bind data it sets.
 		if (info.bind_cb) {
-			// The aggregate binder resizes the argument expressions to the
-			// argument-type list after this callback; truncation shrinks both so
-			// they stay in sync (see BindArgumentsV2).
 			BindArgumentsV2 bind_args;
 			bind_args.arguments = &input.GetArguments();
-			bind_args.argument_types = &input.GetBoundFunction().GetArguments();
 
 			AggregateFunctionBindInfoV2 cb_info;
 			cb_info.function_name = ToStr(input.GetBoundFunction().GetName());

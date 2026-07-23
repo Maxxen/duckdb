@@ -2318,12 +2318,6 @@ public:
 		// optimizer constant folding. Throws INVALID_INPUT when the argument is
 		// not constant-foldable or index is out of range.
 		auto FoldArgument(idx_t index) const -> Value;
-		// Replaces the argument at index with a constant (cast to the declared
-		// parameter type).
-		auto SetArgumentConstant(idx_t index, const Value &value) -> void;
-		// Drops trailing arguments so exactly count remain; the exec callback
-		// then sees count input columns. count must be <= the current count.
-		auto TruncateArguments(idx_t count) -> void;
 
 		// The binding context (bind always runs under one). Borrowed, valid only
 		// for the callback duration.
@@ -2553,12 +2547,6 @@ public:
 		// optimizer constant folding. Throws INVALID_INPUT when the argument is
 		// not constant-foldable or index is out of range.
 		auto FoldArgument(idx_t index) const -> Value;
-		// Replaces the argument at index with a constant (cast to the declared
-		// parameter type).
-		auto SetArgumentConstant(idx_t index, const Value &value) -> void;
-		// Drops trailing arguments so exactly count remain; the update callback
-		// then sees count input columns. count must be <= the current count.
-		auto TruncateArguments(idx_t count) -> void;
 
 		// The binding context (bind always runs under one). Borrowed, valid only
 		// for the callback duration.

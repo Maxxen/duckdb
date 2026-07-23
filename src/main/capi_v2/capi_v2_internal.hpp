@@ -539,15 +539,11 @@ inline Expression *ToExpression(duckdb_v2_expression_handle ptr) {
 // Backing struct for the opaque duckdb_v2_bind_arguments_handle: a borrowed view
 // of a function's bound argument list during a scalar / aggregate bind callback,
 // reached via the `arguments` field on the bind-args struct. `arguments` points
-// at the argument expressions the binder threads through (the children); the
-// optional `argument_types` points at the bound function's argument-type list.
-// Truncation shrinks both so they stay in sync, which keeps the scalar path
-// (children mutated directly) and the aggregate path (children resized to the
-// argument-type list) both valid. Lives on the trampoline's stack for the
-// duration of the callback; the handle is never owned or destroyed by the caller.
+// at the argument expressions the binder threads through (the children). Lives on
+// the trampoline's stack for the duration of the callback; the handle is never
+// owned or destroyed by the caller.
 struct BindArgumentsV2 {
 	vector<unique_ptr<Expression>> *arguments = nullptr;
-	vector<LogicalType> *argument_types = nullptr;
 };
 inline BindArgumentsV2 *ToBindArguments(duckdb_v2_bind_arguments_handle ptr) {
 	return reinterpret_cast<BindArgumentsV2 *>(ptr);

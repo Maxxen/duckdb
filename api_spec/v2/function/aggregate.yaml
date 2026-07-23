@@ -426,8 +426,7 @@ functions:
     summary: Retrieves the bound argument list for inspection and mutation during bind.
     description: |
       Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
-      argument's type, fold an argument to a value, replace an argument with a constant, or truncate the list
-      from the tail. Borrowed; valid only for the duration of the callback.
+      argument's type, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
     parameters:
       info:
         type: aggregate_function_bind_info
