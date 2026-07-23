@@ -80,14 +80,12 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 			    REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &type, err) ==
 			            DUCKDB_V2_ERROR_NONE);
 
-			    // Setup parameters
-			    REQUIRE(duckdb_v2_scalar_function_builder_add_parameter(builder, V2Str("a"), type, err) ==
-			            DUCKDB_V2_ERROR_NONE);
-			    REQUIRE(duckdb_v2_scalar_function_builder_add_parameter(builder, V2Str("b"), type, err) ==
-			            DUCKDB_V2_ERROR_NONE);
-
-			    // Also add return type
-			    REQUIRE(duckdb_v2_scalar_function_builder_set_return_type(builder, type, err) == DUCKDB_V2_ERROR_NONE);
+			    // Setup parameters and return type through a signature.
+			    V2ScalarSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+				    V2SigParam(sig, "a", type);
+				    V2SigParam(sig, "b", type);
+				    V2SigReturn(sig, type);
+			    });
 
 			    // Setup function callbacks
 			    REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, V2Str("my_func"), err) ==
@@ -158,4 +156,179 @@ TEST_CASE("V2 scalar: create / destroy", "[capi_v2][scalar]") {
 	REQUIRE(conn == nullptr);
 	duckdb_v2_close(&db);
 	duckdb_v2_destroy_environment(&env);
+}
+
+// ---------------------------------------------------------------------------
+// Signature parameter defaults, named-argument resolution, and the
+// registration-time Verify() gate (duplicate names, non-trailing defaults).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Sums the first two input columns per row (handles constant columns, which is
+// how a defaulted argument arrives).
+void SumTwoExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
+                duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle input = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &input, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle v0 = nullptr;
+	duckdb_v2_vector_handle v1 = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(input, 0, &v0, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_get_vector(input, 1, &v1, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_view view0;
+	duckdb_v2_vector_view view1;
+	REQUIRE(duckdb_v2_vector_get_view(v0, &view0, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_view(v1, &view1, err) == DUCKDB_V2_ERROR_NONE);
+	const auto d0 = static_cast<const int32_t *>(view0.data);
+	const auto d1 = static_cast<const int32_t *>(view1.data);
+	duckdb_v2_vector_handle result_vec = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result_vec, err) == DUCKDB_V2_ERROR_NONE);
+	int32_t *out = nullptr;
+	REQUIRE(duckdb_v2_vector_get_data_mutable(result_vec, reinterpret_cast<void **>(&out), err) ==
+	        DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < view0.count; i++) {
+		out[i] = d0[SelAt(view0.sel, i)] + d1[SelAt(view1.sel, i)];
+	}
+}
+
+// Returns column 0 plus 100 for every row whose column-1 cell is NULL (a
+// typed-NULL default arrives as an all-NULL constant column).
+void NullDefaultProbeExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
+                          duckdb_v2_error_info_handle *err) {
+	duckdb_v2_data_chunk_handle input = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_input(info, &input, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_handle v0 = nullptr;
+	duckdb_v2_vector_handle v1 = nullptr;
+	REQUIRE(duckdb_v2_data_chunk_get_vector(input, 0, &v0, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_data_chunk_get_vector(input, 1, &v1, err) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vector_view view0;
+	duckdb_v2_vector_view view1;
+	REQUIRE(duckdb_v2_vector_get_view(v0, &view0, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vector_get_view(v1, &view1, err) == DUCKDB_V2_ERROR_NONE);
+	const auto d0 = static_cast<const int32_t *>(view0.data);
+	duckdb_v2_vector_handle result_vec = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_exec_get_result(info, &result_vec, err) == DUCKDB_V2_ERROR_NONE);
+	int32_t *out = nullptr;
+	REQUIRE(duckdb_v2_vector_get_data_mutable(result_vec, reinterpret_cast<void **>(&out), err) ==
+	        DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < view0.count; i++) {
+		const bool b_null = !RowValid(view1, SelAt(view1.sel, i));
+		out[i] = d0[SelAt(view0.sel, i)] + (b_null ? 100 : 0);
+	}
+}
+
+void NoopExec(duckdb_v2_scalar_function_exec_info_handle, duckdb_v2_context_handle, duckdb_v2_error_info_handle *) {
+}
+
+} // namespace
+
+TEST_CASE("V2 scalar: parameter defaults and named-argument calls", "[capi_v2][scalar][signature]") {
+	V2EnvFixture fix;
+	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+
+		// defsum(a INTEGER, b INTEGER DEFAULT 5) -> a + b
+		duckdb_v2_scalar_function_builder_handle b = nullptr;
+		REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_scalar_function_builder_set_name(b, V2Str("defsum"), nullptr);
+		duckdb_v2_value_handle five = V2Int32Value(5);
+		V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParam(sig, "a", integer);
+			V2SigParamDefault(sig, "b", integer, five);
+			V2SigReturn(sig, integer);
+		});
+		duckdb_v2_value_destroy(&five);
+		duckdb_v2_scalar_function_builder_set_exec_callback(b, SumTwoExec, nullptr);
+		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_scalar_function_builder_destroy(&b);
+
+		duckdb_v2_logical_type_destroy(&integer);
+	});
+
+	// Omitted default -> b is 5; provided -> the value; named args resolve to the
+	// signature parameter names "a" and "b".
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT defsum(10)") == 15);
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT defsum(10, 20)") == 30);
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT defsum(a := 7)") == 12);
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT defsum(a := 7, b := 8)") == 15);
+}
+
+TEST_CASE("V2 scalar: a typed-NULL default on an ANY parameter binds and executes", "[capi_v2][scalar][signature]") {
+	V2EnvFixture fix;
+	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+		auto any = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_ANY);
+
+		// null_probe(a INTEGER, b ANY DEFAULT NULL::INTEGER) -> a + (b IS NULL ? 100 : 0)
+		duckdb_v2_scalar_function_builder_handle b = nullptr;
+		REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_scalar_function_builder_set_name(b, V2Str("null_probe"), nullptr);
+		duckdb_v2_value_handle null_int = nullptr;
+		REQUIRE(duckdb_v2_value_create_null(integer, &null_int, nullptr) == DUCKDB_V2_ERROR_NONE);
+		V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParam(sig, "a", integer);
+			V2SigParamDefault(sig, "b", any, null_int);
+			V2SigReturn(sig, integer);
+		});
+		duckdb_v2_value_destroy(&null_int);
+		// SPECIAL null handling so exec runs even when the (defaulted) argument is
+		// NULL; DEFAULT handling would short-circuit the whole result to NULL.
+		duckdb_v2_scalar_function_builder_set_property(b, DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING,
+		                                               DUCKDB_V2_FUNCTION_PROPERTY_NULL_HANDLING_SPECIAL, nullptr);
+		duckdb_v2_scalar_function_builder_set_exec_callback(b, NullDefaultProbeExec, nullptr);
+		REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_scalar_function_builder_destroy(&b);
+
+		duckdb_v2_logical_type_destroy(&integer);
+		duckdb_v2_logical_type_destroy(&any);
+	});
+
+	// Omitting b materializes the typed-NULL default -> +100. Providing a non-NULL
+	// b keeps the base value.
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT null_probe(7)") == 107);
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT null_probe(7, 5)") == 7);
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT null_probe(7, 'x')") == 7);
+}
+
+TEST_CASE("V2 scalar: registration rejects a signature that fails Verify()", "[capi_v2][scalar][signature]") {
+	V2EnvFixture fix;
+	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+
+		// Duplicate parameter names are rejected at register (Verify).
+		{
+			duckdb_v2_scalar_function_builder_handle b = nullptr;
+			REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+			duckdb_v2_scalar_function_builder_set_name(b, V2Str("dup_names"), nullptr);
+			duckdb_v2_scalar_function_builder_set_exec_callback(b, NoopExec, nullptr);
+			auto sig = V2SigCreate();
+			V2SigParam(sig, "x", integer);
+			V2SigParam(sig, "x", integer);
+			V2SigReturn(sig, integer);
+			REQUIRE(duckdb_v2_scalar_function_builder_set_signature(b, sig, nullptr) == DUCKDB_V2_ERROR_NONE);
+			duckdb_v2_function_signature_destroy(&sig);
+			REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+			duckdb_v2_scalar_function_builder_destroy(&b);
+		}
+
+		// A required parameter following a defaulted one is rejected at register.
+		{
+			duckdb_v2_scalar_function_builder_handle b = nullptr;
+			REQUIRE(duckdb_v2_scalar_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+			duckdb_v2_scalar_function_builder_set_name(b, V2Str("bad_default_order"), nullptr);
+			duckdb_v2_scalar_function_builder_set_exec_callback(b, NoopExec, nullptr);
+			duckdb_v2_value_handle five = V2Int32Value(5);
+			auto sig = V2SigCreate();
+			V2SigParamDefault(sig, "a", integer, five);
+			V2SigParam(sig, "b", integer);
+			V2SigReturn(sig, integer);
+			duckdb_v2_value_destroy(&five);
+			REQUIRE(duckdb_v2_scalar_function_builder_set_signature(b, sig, nullptr) == DUCKDB_V2_ERROR_NONE);
+			duckdb_v2_function_signature_destroy(&sig);
+			REQUIRE(duckdb_v2_scalar_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+			duckdb_v2_scalar_function_builder_destroy(&b);
+		}
+
+		duckdb_v2_logical_type_destroy(&integer);
+	});
 }

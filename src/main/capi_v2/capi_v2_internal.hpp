@@ -277,6 +277,11 @@ inline LogicalType *ToLogicalType(duckdb_v2_logical_type_handle ptr) {
 inline Value *ToValue(duckdb_v2_value_handle ptr) {
 	return reinterpret_cast<Value *>(ptr);
 }
+// The function_signature handle is not wrapped: a duckdb_v2_function_signature
+// is a heap-allocated duckdb::FunctionSignature. Keep it identity; do not wrap.
+inline FunctionSignature *ToFunctionSignature(duckdb_v2_function_signature_handle ptr) {
+	return reinterpret_cast<FunctionSignature *>(ptr);
+}
 
 // Builds the engine's name-keyed parameter map from the parallel (names, values)
 // arrays that statement_execute / prepared_execute receive. A parameter binds by

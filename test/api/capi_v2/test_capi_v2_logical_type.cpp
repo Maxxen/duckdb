@@ -914,9 +914,10 @@ TEST_CASE("V2: a scalar function bind callback constructs types on its context",
 		duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
 		REQUIRE(duckdb_v2_scalar_function_builder_set_name(builder, V2Str("type_probe"), nullptr) ==
 		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_scalar_function_builder_add_parameter(builder, V2Str("a"), int_type, nullptr) ==
-		        DUCKDB_V2_ERROR_NONE);
-		REQUIRE(duckdb_v2_scalar_function_builder_set_return_type(builder, int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+		V2ScalarSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParam(sig, "a", int_type);
+			V2SigReturn(sig, int_type);
+		});
 		REQUIRE(duckdb_v2_scalar_function_builder_set_bind_callback(builder, TypeProbeBind, nullptr) ==
 		        DUCKDB_V2_ERROR_NONE);
 		REQUIRE(duckdb_v2_scalar_function_builder_set_init_callback(builder, TypeProbeInit, nullptr) ==

@@ -32,9 +32,10 @@ TEST_CASE("Stable C++API: Basic", "[cpp_api]") {
 		ScalarFunction function(ctx);
 
 		function.SetName("MyFunction")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .AddParameter("b", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .AddParameter("b", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetBindCallback([](ScalarFunction::BindInput &input) {
 			    // Initialize bind data
 			    input.SetBindData<std::string>("foobar");
@@ -104,8 +105,9 @@ TEST_CASE("Stable C++API: Scalar Function user data", "[cpp_api]") {
 		// Set once; visible in bind, init and exec.
 		ScalarFunction function(ctx);
 		function.SetName("scalar_ud")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetUserData<std::string>("scalar user data")
 		    .SetBindCallback([](ScalarFunction::BindInput &input) {
 			    REQUIRE(input.GetUserData<std::string>() == "scalar user data");
@@ -126,8 +128,9 @@ TEST_CASE("Stable C++API: Scalar Function user data", "[cpp_api]") {
 		// Never set: GetUserData and GetBindData throw clear errors.
 		ScalarFunction none(ctx);
 		none.SetName("scalar_ud_none")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
 			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
@@ -155,8 +158,9 @@ TEST_CASE("Stable C++API: Scalar SetUserData is consumed by Register", "[cpp_api
 	conn.WithTransaction([](const Context &ctx) {
 		ScalarFunction function(ctx);
 		function.SetName("scalar_ud_consume")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetUserData<int>(7)
 		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
 			    auto out = input.GetResultVector().GetDataMutable<int32_t>();
@@ -197,8 +201,9 @@ TEST_CASE("Stable C++API: Aggregate Function", "[cpp_api]") {
 		AggregateFunction aggregate(ctx);
 
 		aggregate.SetName("MyAggregate")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) { input.Reserve<int32_t>(); })
 		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
 		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
@@ -292,8 +297,9 @@ TEST_CASE("Stable C++API: Aggregate Function user data", "[cpp_api]") {
 		// cleanup, so they are not asserted here.
 		AggregateFunction aggregate(ctx);
 		aggregate.SetName("agg_ud")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetUserData<std::string>("aggregate user data")
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
 			    REQUIRE(input.GetUserData<std::string>() == "aggregate user data");
@@ -317,8 +323,9 @@ TEST_CASE("Stable C++API: Aggregate Function user data", "[cpp_api]") {
 		// Never set: GetUserData throws a clear error.
 		AggregateFunction none(ctx);
 		none.SetName("agg_ud_none")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
 			    REQUIRE_THROWS_MATCHES(input.GetUserData<int>(), Exception,
 			                           HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
@@ -349,8 +356,9 @@ TEST_CASE("Stable C++API: Aggregate SetUserData is consumed by Register", "[cpp_
 	conn.WithTransaction([](const Context &ctx) {
 		AggregateFunction aggregate(ctx);
 		aggregate.SetName("agg_ud_consume")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetUserData<int>(7)
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) {
 			    REQUIRE(input.GetUserData<int>() == 7);
@@ -386,8 +394,9 @@ TEST_CASE("Stable C++API: Aggregate Function bind data", "[cpp_api]") {
 		// Bind data (a multiplier) set at bind, read in update and finalize.
 		AggregateFunction aggregate(ctx);
 		aggregate.SetName("agg_bind")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetBindCallback([](AggregateFunction::BindInput &input) { input.SetBindData<int32_t>(10); })
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) { input.Reserve<int32_t>(); })
 		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
@@ -409,8 +418,9 @@ TEST_CASE("Stable C++API: Aggregate Function bind data", "[cpp_api]") {
 		// No bind callback: phase GetBindData throws a clear error.
 		AggregateFunction none(ctx);
 		none.SetName("agg_bind_none")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetSizeCallback([](AggregateFunction::SizeInput &input) { input.Reserve<int32_t>(); })
 		    .SetInitializeCallback([](AggregateFunction::InitializeInput &input) { input.Initialize<int32_t>(0); })
 		    .SetUpdateCallback([](AggregateFunction::UpdateInput &input) {
@@ -708,8 +718,9 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 		// Default stability (CONSISTENT): foldable when its argument is constant.
 		ScalarFunction consistent(ctx);
 		consistent.SetName("prop_consistent")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetUserData<std::atomic<idx_t> *>(&exec_rows)
 		    .SetExecCallback(exec)
 		    .Register(ctx);
@@ -717,8 +728,9 @@ TEST_CASE("Stable C++API: Volatility affects constant folding", "[cpp_api]") {
 		// Same function, but VOLATILE: must be evaluated for every row.
 		ScalarFunction vol(ctx);
 		vol.SetName("prop_volatile")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetStability(FunctionStability::Volatile)
 		    .SetUserData<std::atomic<idx_t> *>(&exec_rows)
 		    .SetExecCallback(exec)
@@ -791,8 +803,9 @@ TEST_CASE("Stable C++API: Scalar exec sees the execution context", "[cpp_api]") 
 	conn.WithTransaction([&](const Context &ctx) {
 		ScalarFunction f(ctx);
 		f.SetName("exec_ctx_probe")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetUserData<ScalarExecContextProbe *>(&probe)
 		    .SetExecCallback(exec)
 		    .Register(ctx);
@@ -899,8 +912,9 @@ TEST_CASE("Stable C++API: Scalar init sees a nullable execution context", "[cpp_
 	conn.WithTransaction([&](const Context &ctx) {
 		ScalarFunction f(ctx);
 		f.SetName("init_ctx_fn")
-		    .AddParameter("x", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetUserData<ScalarInitContextProbe *>(&probe)
 		    .SetInitCallback(init)
 		    .SetExecCallback(exec)
@@ -959,8 +973,9 @@ TEST_CASE("Stable C++API: scalar function with a DECIMAL return type", "[cpp_api
 		// fully defined concrete type" here.
 		ScalarFunction f(ctx);
 		f.SetName("decimal_ret")
-		    .AddParameter("x", LogicalType::BIGINT())
-		    .SetReturnType(ctx.ParseType("DECIMAL(18,3)"))
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("x", LogicalType::BIGINT())
+		                      .SetReturnType(ctx.ParseType("DECIMAL(18,3)")))
 		    .SetExecCallback([](ScalarFunction::ExecInput &input) {
 			    // DECIMAL(18,3) is INT64-backed: value x is written as x.000.
 			    auto out = input.GetResultVector().GetDataMutable<int64_t>();
@@ -995,4 +1010,46 @@ TEST_CASE("Stable C++API: scalar function with a DECIMAL return type", "[cpp_api
 	auto text_view = text_chunk.GetVector(0).GetView();
 	REQUIRE(text_view.IsValid(0));
 	REQUIRE(text_view.Data<StringLayout>()[text_view.SelAt(0)].AsStringView() == "2.000");
+}
+
+// ---------------------------------------------------------------------------
+// Stable C++ API: the FunctionSignature wrapper (build, introspect, and the
+// eager default cast). Applying a signature to a builder is exercised across
+// the scalar/aggregate/table suites; this covers the getters directly.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Stable C++API: FunctionSignature build and introspection", "[cpp_api]") {
+	using namespace duckdb_api;
+
+	auto sig = FunctionSignature::Create();
+	sig.AddParameter("a", LogicalType::INTEGER())
+	    .AddParameterDefault("b", LogicalType::INTEGER(), Value::Bigint(5)) // BIGINT 5, cast to INTEGER
+	    .SetVarArgs(LogicalType::ANY())
+	    .SetReturnType(LogicalType::BIGINT());
+
+	REQUIRE(sig.GetParameterCount() == 2);
+	REQUIRE(sig.GetParameterName(0) == "a");
+	REQUIRE(sig.GetParameterName(1) == "b");
+	REQUIRE(sig.GetParameterType(0).GetId() == TypeId::INTEGER);
+	REQUIRE_FALSE(sig.ParameterHasDefault(0));
+	REQUIRE(sig.ParameterHasDefault(1));
+	// The default was eagerly cast to the concrete parameter type (INTEGER 5).
+	auto def = sig.GetParameterDefault(1);
+	REQUIRE(def.GetLogicalType().GetId() == TypeId::INTEGER);
+	REQUIRE(def.AsInteger() == 5);
+	REQUIRE(sig.HasVarArgs());
+	REQUIRE(sig.GetVarArgs().GetId() == TypeId::ANY);
+	REQUIRE(sig.HasReturnType());
+	REQUIRE(sig.GetReturnType().GetId() == TypeId::BIGINT);
+
+	// A non-castable default is rejected.
+	auto bad = FunctionSignature::Create();
+	REQUIRE_THROWS_MATCHES(bad.AddParameterDefault("x", LogicalType::INTEGER(), Value::Varchar("abc")), Exception,
+	                       HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+
+	// Absent varargs / return type on an empty signature: getters throw.
+	auto empty = FunctionSignature::Create();
+	REQUIRE_FALSE(empty.HasVarArgs());
+	REQUIRE_FALSE(empty.HasReturnType());
+	REQUIRE_THROWS_MATCHES(empty.GetReturnType(), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }

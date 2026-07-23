@@ -112,6 +112,12 @@ struct TableFunctionRuntimeInfoV2 final : public TableFunctionInfo {
 	duckdb_v2_table_function_pushdown_complex_filter_fn pushdown_complex_filter_cb = nullptr;
 
 	shared_ptr<OpaqueDataHandle> user_data = nullptr;
+
+	// Default values for the signature's optional (defaulted) parameters, which
+	// route onto the engine's named-parameter map. The bind wrapper injects these
+	// into the bind input for any name the call site omits, so get_named_parameter
+	// always yields a value for a declared parameter.
+	identifier_map_t<Value> named_parameter_defaults;
 };
 
 // --- Builder struct ----------------------------------------------------------
@@ -119,10 +125,11 @@ struct TableFunctionRuntimeInfoV2 final : public TableFunctionInfo {
 struct TableFunctionBuilderV2 {
 	Identifier name;
 	TableFunctionRuntimeInfoV2 info;
-	vector<LogicalType> parameters;
-	identifier_map_t<LogicalType> named_parameters;
-	//! Varargs type (INVALID when the function is not variadic).
-	LogicalType varargs;
+	//! Fixed parameters (names, types, defaults) and the variadic tail, copied in
+	//! from a function_signature via set_signature. Parameters without a default
+	//! route onto positional arguments; parameters with a default route onto named
+	//! arguments (see set_signature). A return type is rejected.
+	FunctionSignature signature;
 	bool projection_pushdown = false;
 
 	static unique_ptr<FunctionData> BindCallback(ClientContext &context, TableFunctionBindInput &input,
@@ -136,6 +143,14 @@ struct TableFunctionBuilderV2 {
 			cb_info.parameters.push_back(v);
 		}
 		cb_info.named_parameters = input.named_parameters;
+		// Inject the declared default for every optional parameter the call site
+		// omitted, so get_named_parameter yields a value for every declared
+		// parameter (the scalar contract that bind observes a value for each).
+		for (auto &entry : rt_info.named_parameter_defaults) {
+			if (cb_info.named_parameters.find(entry.first) == cb_info.named_parameters.end()) {
+				cb_info.named_parameters[entry.first] = entry.second;
+			}
+		}
 
 		auto info_handle = reinterpret_cast<duckdb_v2_table_function_bind_info_handle>(&cb_info);
 		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
@@ -385,55 +400,19 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_name(duckdb_v2_table_functi
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_table_function_builder_add_parameter(duckdb_v2_table_function_builder_handle builder,
-                                                               duckdb_v2_logical_type_handle type,
+DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_signature(duckdb_v2_table_function_builder_handle builder,
+                                                               duckdb_v2_function_signature_handle sig,
                                                                duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Parameter type cannot be null.");
+		if (!sig) {
+			throw duckdb::InvalidInputException("Signature pointer cannot be null.");
 		}
-		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
-		b.parameters.push_back(*reinterpret_cast<duckdb::LogicalType *>(type));
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_table_function_builder_add_named_parameter(duckdb_v2_table_function_builder_handle builder,
-                                                                     duckdb_v2_identifier_t name,
-                                                                     duckdb_v2_logical_type_handle type,
-                                                                     duckdb_v2_error_info_handle *err) {
-	return WithErrorHandler(err, [&]() {
-		if (!builder) {
-			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
-		}
-		if (name.len == 0 || !name.ptr) {
-			throw duckdb::InvalidInputException("Parameter name cannot be null or empty.");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Parameter type cannot be null.");
-		}
-		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
-		b.named_parameters[duckdb::ToIdentifier(name)] = *reinterpret_cast<duckdb::LogicalType *>(type);
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_varargs(duckdb_v2_table_function_builder_handle builder,
-                                                             duckdb_v2_logical_type_handle type,
-                                                             duckdb_v2_error_info_handle *err) {
-	return WithErrorHandler(err, [&]() {
-		if (!builder) {
-			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Varargs type cannot be null.");
-		}
-		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
-		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Varargs type cannot be invalid.");
-		}
-		reinterpret_cast<TableFunctionBuilderV2 *>(builder)->varargs = ltype;
+		// Copy the borrowed signature in; the caller keeps ownership. The routing
+		// onto positional / named arguments happens at registration.
+		reinterpret_cast<TableFunctionBuilderV2 *>(builder)->signature = *duckdb::ToFunctionSignature(sig);
 	});
 }
 
@@ -563,8 +542,26 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register(duckdb_v2_context_hand
 		if (!b.info.exec_cb) {
 			throw duckdb::InvalidInputException("Exec callback must be set before registration.");
 		}
+		// A table function declares its columns in bind; a return type on the
+		// signature signals confusion.
+		if (b.signature.GetReturnType().id() != duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("A table function signature cannot set a return type.");
+		}
+		// Structural validity: unique parameter names, defaults trailing.
+		b.signature.Verify();
 
-		duckdb::TableFunction func(b.name, b.parameters, TableFunctionBuilderV2::ExecCallback,
+		// Route the signature onto the engine's two argument mechanisms: a
+		// parameter without a default is a required positional argument; a
+		// parameter with a default is an optional named argument.
+		duckdb::vector<duckdb::LogicalType> positional;
+		for (idx_t i = 0; i < b.signature.GetParameterCount(); i++) {
+			const auto &param = b.signature.GetParameter(i);
+			if (!param.HasDefaultValue()) {
+				positional.push_back(param.GetType());
+			}
+		}
+
+		duckdb::TableFunction func(b.name, positional, TableFunctionBuilderV2::ExecCallback,
 		                           TableFunctionBuilderV2::BindCallback, TableFunctionBuilderV2::InitGlobalCallback,
 		                           TableFunctionBuilderV2::InitLocalCallback);
 
@@ -572,8 +569,8 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register(duckdb_v2_context_hand
 
 		// Wire the varargs type (if any) so the engine expands trailing positional
 		// arguments to it during binding.
-		if (b.varargs.id() != duckdb::LogicalTypeId::INVALID) {
-			func.SetVarArgs(b.varargs);
+		if (b.signature.HasVarArgs()) {
+			func.SetVarArgs(b.signature.GetVarArgs());
 		}
 
 		// Always wire the cardinality hook: it serves both the cardinality
@@ -598,11 +595,17 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register(duckdb_v2_context_hand
 		info_handle->pushdown_complex_filter_cb = b.info.pushdown_complex_filter_cb;
 		info_handle->user_data = b.info.user_data;
 
-		func.function_info = duckdb::shared_ptr<duckdb::TableFunctionInfo>(info_handle);
-
-		for (auto &[name, type] : b.named_parameters) {
-			func.named_parameters[name] = type;
+		// Route each optional (defaulted) parameter onto the engine's named-parameter
+		// declaration map, and remember its default for bind-time injection.
+		for (idx_t i = 0; i < b.signature.GetParameterCount(); i++) {
+			const auto &param = b.signature.GetParameter(i);
+			if (param.HasDefaultValue()) {
+				func.named_parameters[param.GetName()] = param.GetType();
+				info_handle->named_parameter_defaults[param.GetName()] = *param.GetDefaultValue();
+			}
 		}
+
+		func.function_info = duckdb::shared_ptr<duckdb::TableFunctionInfo>(info_handle);
 
 		auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
 		duckdb::CreateTableFunctionInfo tf_info(func);

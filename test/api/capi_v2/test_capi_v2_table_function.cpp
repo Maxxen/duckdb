@@ -319,9 +319,14 @@ void register_counter_n(duckdb_v2_context_handle ctx, duckdb_v2_error_info_handl
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
-	REQUIRE(duckdb_v2_table_function_builder_add_parameter(builder, bigint_type, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_add_named_parameter(builder, V2Str("start"), bigint_type, err) ==
-	        DUCKDB_V2_ERROR_NONE);
+	// "n" is a required positional parameter; "start" is an optional named
+	// parameter defaulting to 0 (the bridge injects it when the call omits it).
+	duckdb_v2_value_handle start_default = V2Int64Value(0);
+	V2TableSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "n", bigint_type);
+		V2SigParamDefault(sig, "start", bigint_type, start_default);
+	});
+	duckdb_v2_value_destroy(&start_default);
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
 	REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, counter_n_bind, err) == DUCKDB_V2_ERROR_NONE);
@@ -1446,4 +1451,171 @@ TEST_CASE("V2 table function: builder validation", "[capi_v2][table_function]") 
 		    duckdb_v2_table_function_builder_destroy(&builder3);
 	    },
 	    nullptr, nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Table default injection: a declared-default (named) parameter that the call
+// omits is injected into the bind input, so get_named_parameter yields the
+// default; a provided value overrides it. (counter_n exercises this end to end;
+// this test asserts the observed value directly.)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct InjBindData {
+	int64_t observed = -1;
+};
+struct InjGlobalState {
+	bool emitted = false;
+};
+
+void inj_probe_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle,
+                    duckdb_v2_error_info_handle *err) {
+	// "opt" is a defaulted named parameter (default 42). The bridge injects the
+	// default when the call omits it, so this lookup always succeeds.
+	duckdb_v2_value_handle opt = nullptr;
+	REQUIRE(duckdb_v2_table_function_bind_get_named_parameter(info, V2Str("opt"), &opt, err) == DUCKDB_V2_ERROR_NONE);
+	int64_t observed = V2LeafPayload<int64_t>(opt);
+	duckdb_v2_value_destroy(&opt);
+
+	duckdb_v2_logical_type_handle bigint = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("v"), bigint, err);
+	duckdb_v2_logical_type_destroy(&bigint);
+
+	auto *bd = new InjBindData {observed};
+	duckdb_v2_table_function_bind_set_bind_data(
+	    info, {bd, [](void *p) { delete static_cast<InjBindData *>(p); }, nullptr}, err);
+	duckdb_v2_table_function_bind_set_cardinality(info, 1, true, err);
+}
+
+void inj_probe_init(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle,
+                    duckdb_v2_error_info_handle *err) {
+	auto *state = new InjGlobalState();
+	duckdb_v2_table_function_init_set_global_state(
+	    info, {state, [](void *p) { delete static_cast<InjGlobalState *>(p); }, nullptr}, err);
+}
+
+void inj_probe_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle,
+                    duckdb_v2_error_info_handle *err) {
+	void *global = nullptr;
+	duckdb_v2_table_function_exec_get_global_state(info, &global, err);
+	auto &gstate = *static_cast<InjGlobalState *>(global);
+	void *bind = nullptr;
+	duckdb_v2_table_function_exec_get_bind_data(info, &bind, err);
+	auto &bstate = *static_cast<InjBindData *>(bind);
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
+	duckdb_v2_vector_handle vec = nullptr;
+	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, err);
+	if (gstate.emitted) {
+		duckdb_v2_vector_set_size(vec, 0, err);
+		return;
+	}
+	int64_t *out = nullptr;
+	duckdb_v2_vector_get_data_mutable(vec, reinterpret_cast<void **>(&out), err);
+	out[0] = bstate.observed;
+	gstate.emitted = true;
+	duckdb_v2_vector_set_size(vec, 1, err);
+}
+
+} // namespace
+
+TEST_CASE("V2 table function: declared-default named parameter injection", "[capi_v2][table_function][signature]") {
+	V2EnvFixture fix;
+	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+		auto bigint = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+		duckdb_v2_table_function_builder_handle b = nullptr;
+		REQUIRE(duckdb_v2_table_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_table_function_builder_set_name(b, V2Str("inj_probe"), nullptr);
+		// seed is a required positional; opt is an optional named parameter (default 42).
+		duckdb_v2_value_handle def = V2Int64Value(42);
+		V2TableSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParam(sig, "seed", bigint);
+			V2SigParamDefault(sig, "opt", bigint, def);
+		});
+		duckdb_v2_value_destroy(&def);
+		duckdb_v2_table_function_builder_set_bind_callback(b, inj_probe_bind, nullptr);
+		duckdb_v2_table_function_builder_set_init_global_callback(b, inj_probe_init, nullptr);
+		duckdb_v2_table_function_builder_set_exec_callback(b, inj_probe_exec, nullptr);
+		REQUIRE(duckdb_v2_table_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_table_function_builder_destroy(&b);
+		duckdb_v2_logical_type_destroy(&bigint);
+	});
+
+	// opt omitted -> the injected default (42); opt provided -> that value.
+	REQUIRE(V2QueryCell<int64_t>(fix.conn, "SELECT v FROM inj_probe(0)") == 42);
+	REQUIRE(V2QueryCell<int64_t>(fix.conn, "SELECT v FROM inj_probe(0, opt := 9)") == 9);
+}
+
+namespace {
+
+// Builder with a name and the required bind/exec callbacks (reusing the
+// inj_probe callbacks as inert stand-ins), so registration reaches the
+// signature checks.
+duckdb_v2_table_function_builder_handle TableBuilderForSignatureChecks(duckdb_v2_context_handle ctx, const char *name) {
+	duckdb_v2_table_function_builder_handle b = nullptr;
+	REQUIRE(duckdb_v2_table_function_builder_create(ctx, &b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_table_function_builder_set_name(b, V2Str(name), nullptr);
+	duckdb_v2_table_function_builder_set_bind_callback(b, inj_probe_bind, nullptr);
+	duckdb_v2_table_function_builder_set_exec_callback(b, inj_probe_exec, nullptr);
+	return b;
+}
+
+} // namespace
+
+TEST_CASE("V2 table function: registration rejects a return type on the signature",
+          "[capi_v2][table_function][signature]") {
+	V2EnvFixture fix;
+	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+		auto bigint = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+
+		// set_signature itself accepts the signature; the rejection happens at
+		// registration.
+		auto b = TableBuilderForSignatureChecks(ctx, "tf_return_type");
+		V2TableSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParam(sig, "seed", bigint);
+			V2SigReturn(sig, bigint);
+		});
+		REQUIRE(duckdb_v2_table_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+		duckdb_v2_table_function_builder_destroy(&b);
+
+		duckdb_v2_logical_type_destroy(&bigint);
+	});
+}
+
+TEST_CASE("V2 table function: registration rejects a structurally invalid signature",
+          "[capi_v2][table_function][signature]") {
+	V2EnvFixture fix;
+	V2WithContext(fix.conn, [](duckdb_v2_context_handle ctx) {
+		auto bigint = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+
+		// Duplicate parameter name; without the check the two would silently
+		// collapse to one entry in the engine's named-parameter map.
+		auto b = TableBuilderForSignatureChecks(ctx, "tf_dup_name");
+		duckdb_v2_value_handle one = V2Int64Value(1);
+		duckdb_v2_value_handle two = V2Int64Value(2);
+		V2TableSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParamDefault(sig, "opt", bigint, one);
+			V2SigParamDefault(sig, "opt", bigint, two);
+		});
+		duckdb_v2_value_destroy(&one);
+		duckdb_v2_value_destroy(&two);
+		REQUIRE(duckdb_v2_table_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+		duckdb_v2_table_function_builder_destroy(&b);
+
+		// A required parameter after a defaulted one (defaults must trail).
+		b = TableBuilderForSignatureChecks(ctx, "tf_non_trailing_default");
+		duckdb_v2_value_handle three = V2Int64Value(3);
+		V2TableSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParamDefault(sig, "opt", bigint, three);
+			V2SigParam(sig, "req", bigint);
+		});
+		duckdb_v2_value_destroy(&three);
+		REQUIRE(duckdb_v2_table_function_builder_register(ctx, b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+		duckdb_v2_table_function_builder_destroy(&b);
+
+		duckdb_v2_logical_type_destroy(&bigint);
+	});
 }

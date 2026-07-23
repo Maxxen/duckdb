@@ -8,8 +8,9 @@ using namespace duckdb_api;
 static void RegisterFunction(const Context &context) {
 	ScalarFunction function(context);
 	function.SetName("add_two")
-	    .AddParameter("input", LogicalType::INTEGER())
-	    .SetReturnType(LogicalType::INTEGER())
+	    .SetSignature(FunctionSignature::Create()
+	                      .AddParameter("input", LogicalType::INTEGER())
+	                      .SetReturnType(LogicalType::INTEGER()))
 	    .SetExecCallback([](ScalarFunction::ExecInput &input) {
 		    auto in_vec = input.GetInputChunk().GetVector(0);
 		    auto out_vec = input.GetResultVector();

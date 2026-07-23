@@ -2227,6 +2227,66 @@ enum class FunctionCollationHandling : uint8_t {
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// Function Signature
+//----------------------------------------------------------------------------------------------------------------------
+
+// A callable function's shared shape: its fixed parameters (name plus type, each
+// optionally with a default value), an optional variadic tail type, and an
+// optional return type. Build one, then hand it to a function builder via
+// SetSignature. The builder copies it in, so the signature can be destroyed
+// afterwards. Structural validity (unique names, trailing defaults) is checked
+// when the signature is registered with a builder, not while building it.
+class FunctionSignature final : public detail::Handle<FunctionSignature> {
+	friend detail::Factory;
+
+public:
+	FunctionSignature(FunctionSignature &&) noexcept = default;
+	FunctionSignature &operator=(FunctionSignature &&) noexcept = default;
+
+	~FunctionSignature() override;
+
+	// Creates an empty signature.
+	static FunctionSignature Create();
+
+	// Appends a parameter (no default). ANY is accepted. Returns *this so the
+	// setters chain, on a named signature or an inline temporary alike.
+	auto AddParameter(const std::string &name, const LogicalType &type) -> FunctionSignature &;
+	// Appends a parameter with a default value: the caller may omit it, the callee
+	// still gets the default. The value is cast to type when type is concrete
+	// (throws INVALID_INPUT if not castable) and stored as-is when type is ANY.
+	auto AddParameterDefault(const std::string &name, const LogicalType &type, const Value &value)
+	    -> FunctionSignature &;
+	// Sets the variadic tail type (pass LogicalType::ANY to leave the tail
+	// un-cast). Overwrites any prior variadic tail.
+	auto SetVarArgs(const LogicalType &type) -> FunctionSignature &;
+	// Sets the return type. Overwrites any prior return type.
+	auto SetReturnType(const LogicalType &type) -> FunctionSignature &;
+
+	// The number of fixed parameters, with and without defaults.
+	auto GetParameterCount() const -> idx_t;
+	// An owned copy of the parameter name at index.
+	auto GetParameterName(idx_t index) const -> std::string;
+	// An owned copy of the parameter type at index.
+	auto GetParameterType(idx_t index) const -> LogicalType;
+	// Whether the parameter at index carries a default value.
+	auto ParameterHasDefault(idx_t index) const -> bool;
+	// An owned copy of the parameter's default value; throws INVALID_INPUT when it
+	// has none (test with ParameterHasDefault first).
+	auto GetParameterDefault(idx_t index) const -> Value;
+	auto HasVarArgs() const -> bool;
+	// An owned copy of the variadic tail type; throws INVALID_INPUT when there is
+	// none (test with HasVarArgs first).
+	auto GetVarArgs() const -> LogicalType;
+	auto HasReturnType() const -> bool;
+	// An owned copy of the return type; throws INVALID_INPUT when there is none
+	// (test with HasReturnType first).
+	auto GetReturnType() const -> LogicalType;
+
+private:
+	explicit FunctionSignature(void *impl);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Scalar Function
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -2247,12 +2307,10 @@ public:
 	~ScalarFunction() override;
 
 	auto SetName(const std::string &name) & -> ScalarFunction &;
-	auto AddParameter(const std::string &name, const LogicalType &type) & -> ScalarFunction &;
-	// Makes the function variadic: extra trailing arguments are each cast to
-	// type (pass LogicalType::ANY to leave them un-cast). Overwrites any prior
-	// varargs type.
-	auto SetVarArgs(const LogicalType &type) & -> ScalarFunction &;
-	auto SetReturnType(const LogicalType &type) & -> ScalarFunction &;
+	// Copies a signature (parameter names, types, defaults, variadic tail, return
+	// type) into the builder. Registration requires the return type to be present
+	// and a fully defined concrete type. Overwrites any prior signature.
+	auto SetSignature(const FunctionSignature &sig) & -> ScalarFunction &;
 
 	// Constructs user data of type T, carried by the registered function and
 	// freed at engine teardown; read from any callback via the inputs'
@@ -2472,12 +2530,10 @@ public:
 	~AggregateFunction() override;
 
 	auto SetName(const std::string &name) & -> AggregateFunction &;
-	auto AddParameter(const std::string &name, const LogicalType &type) & -> AggregateFunction &;
-	// Makes the aggregate variadic: extra trailing arguments are each cast to
-	// type (pass LogicalType::ANY to leave them un-cast). Overwrites any prior
-	// varargs type.
-	auto SetVarArgs(const LogicalType &type) & -> AggregateFunction &;
-	auto SetReturnType(const LogicalType &type) & -> AggregateFunction &;
+	// Copies a signature (parameter names, types, defaults, variadic tail, return
+	// type) into the builder. Registration requires a return type that is not ANY.
+	// Overwrites any prior signature.
+	auto SetSignature(const FunctionSignature &sig) & -> AggregateFunction &;
 
 	// Constructs user data of type T, carried by the registered function and
 	// freed at engine teardown; read from any callback via the inputs'
@@ -2824,13 +2880,13 @@ public:
 	~TableFunction() override;
 
 	auto SetName(const std::string &name) & -> TableFunction &;
-	auto AddParameter(const LogicalType &type) & -> TableFunction &;
-	auto AddNamedParameter(const std::string &name, const LogicalType &type) & -> TableFunction &;
-	// Makes the function variadic: extra trailing positional arguments are each
-	// cast to type (pass LogicalType::ANY to leave them un-cast). The bind
-	// callback reads all positional arguments via BindInput::GetParameterCount
-	// and GetParameter. Overwrites any prior varargs type.
-	auto SetVarArgs(const LogicalType &type) & -> TableFunction &;
+	// Copies a signature into the builder. A parameter without a default becomes a
+	// required positional argument; a parameter with a default becomes a named
+	// argument the caller may omit, its default injected by the bridge when the
+	// call site omits it. The variadic tail applies to the positional arguments.
+	// Registration rejects a signature with a return type set (a table function
+	// declares its columns in bind). Overwrites any prior signature.
+	auto SetSignature(const FunctionSignature &sig) & -> TableFunction &;
 
 	// Constructs user data of type T, carried by the registered function and
 	// freed at engine teardown; read from any callback via the inputs'

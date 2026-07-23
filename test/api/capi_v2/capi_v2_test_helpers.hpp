@@ -373,6 +373,25 @@ inline idx_t V2DrainRowCount(duckdb_v2_result_handle r) {
 	return total;
 }
 
+// Runs a query and reads the first cell of the first column as T (a fixed-width
+// payload type matching the column's physical type). For single-cell probe
+// queries in function tests.
+template <class T>
+inline T V2QueryCell(duckdb_v2_connection_handle conn, const char *sql) {
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(conn, sql, &r) == DUCKDB_V2_ERROR_NONE);
+	auto chunk = V2StepChunk(r);
+	REQUIRE(chunk != nullptr);
+	duckdb_v2_vector_handle vec = nullptr;
+	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
+	duckdb_v2_vector_view view;
+	duckdb_v2_vector_get_view(vec, &view, nullptr);
+	T out = static_cast<const T *>(view.data)[SelAt(view.sel, 0)];
+	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_result_destroy(&r);
+	return out;
+}
+
 // Executes a side-effecting statement (DDL, DML, SET, ...) to completion:
 // query + drain + destroy. Streaming execution is lazy, so a statement
 // only takes effect once its result is stepped; setup statements must be
@@ -465,6 +484,63 @@ inline V2Progress V2ReadProgress(duckdb_v2_connection_handle conn) {
 	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(progress == nullptr);
 	return out;
+}
+
+// ---- Function signature fixtures ------------------------------------------
+// The per-builder parameter/varargs/return-type setters were replaced by a
+// shared function_signature handle. These helpers keep the many migrated call
+// sites terse while exercising the real signature surface: create a signature,
+// let a config lambda populate it via the setters below, apply it through the
+// family's set_signature, and destroy the borrowed signature.
+
+inline duckdb_v2_function_signature_handle V2SigCreate() {
+	duckdb_v2_function_signature_handle sig = nullptr;
+	REQUIRE(duckdb_v2_function_signature_create(&sig, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return sig;
+}
+inline void V2SigParam(duckdb_v2_function_signature_handle sig, const char *name, duckdb_v2_logical_type_handle type) {
+	REQUIRE(duckdb_v2_function_signature_add_parameter(sig, V2Str(name), type, nullptr) == DUCKDB_V2_ERROR_NONE);
+}
+inline void V2SigParamDefault(duckdb_v2_function_signature_handle sig, const char *name,
+                              duckdb_v2_logical_type_handle type, duckdb_v2_value_handle value) {
+	REQUIRE(duckdb_v2_function_signature_add_parameter_default(sig, V2Str(name), type, value, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+}
+inline void V2SigVarargs(duckdb_v2_function_signature_handle sig, duckdb_v2_logical_type_handle type) {
+	REQUIRE(duckdb_v2_function_signature_set_varargs(sig, type, nullptr) == DUCKDB_V2_ERROR_NONE);
+}
+inline void V2SigReturn(duckdb_v2_function_signature_handle sig, duckdb_v2_logical_type_handle type) {
+	REQUIRE(duckdb_v2_function_signature_set_return_type(sig, type, nullptr) == DUCKDB_V2_ERROR_NONE);
+}
+
+// Build a signature via `cfg`, apply it to a scalar builder, destroy it. The
+// destroy runs before the REQUIREs so a failed set_signature does not leak.
+template <class CONFIG>
+inline void V2ScalarSignature(duckdb_v2_scalar_function_builder_handle b, CONFIG cfg) {
+	auto sig = V2SigCreate();
+	cfg(sig);
+	auto set_rc = duckdb_v2_scalar_function_builder_set_signature(b, sig, nullptr);
+	auto destroy_rc = duckdb_v2_function_signature_destroy(&sig);
+	REQUIRE(set_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
+}
+template <class CONFIG>
+inline void V2AggregateSignature(duckdb_v2_aggregate_function_builder_handle b, CONFIG cfg) {
+	auto sig = V2SigCreate();
+	cfg(sig);
+	auto set_rc = duckdb_v2_aggregate_function_builder_set_signature(b, sig, nullptr);
+	auto destroy_rc = duckdb_v2_function_signature_destroy(&sig);
+	REQUIRE(set_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
+}
+template <class CONFIG>
+inline void V2TableSignature(duckdb_v2_table_function_builder_handle b, CONFIG cfg) {
+	auto sig = V2SigCreate();
+	cfg(sig);
+	auto set_rc = duckdb_v2_table_function_builder_set_signature(b, sig, nullptr);
+	auto destroy_rc = duckdb_v2_function_signature_destroy(&sig);
+	REQUIRE(set_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
 }
 
 // RAII fixture: in-memory environment + database + connection.

@@ -1,0 +1,372 @@
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+module: signature
+#
+# A function signature: a function's return type and parameter definition.
+# Parameters have a name plus a type, optionally with a default value. Varargs
+# have a type.
+handles:
+  function_signature:
+    description: |
+      An owned function signature. Build it with function_signature_create,
+      add fixed parameters via function_signature_add_parameter (and
+      function_signature_add_parameter_default for parameters with a default),
+      configure a variadic tail via function_signature_set_varargs, and a
+      return type via function_signature_set_return_type. All parameters
+      added to the signature are required, and the callee always gets a value
+      for each; the caller may omit a parameter that has a default value.
+      Read it back with the matching getters. Hand it to a function-family
+      builder through that builder's set_signature, which copies it in; the
+      caller keeps ownership and destroys it via function_signature_destroy.
+      Structural validity (unique parameter names, defaults trailing) is
+      checked when the signature is registered with a builder, not here.
+    cleanup_with: function_signature_destroy
+functions:
+  function_signature_create:
+    summary: Creates an empty function signature.
+    description: |
+      Creates a function signature with no parameters, no variadic tail, and
+      no return type. Populate it with the add and set functions before
+      handing it to a builder.
+    role: constructor
+    belongs_to: function_signature
+    parameters:
+      out_sig:
+        type: function_signature
+        indirection: 1
+        kind: OUT
+        description: Receives the owned signature. Destroy via function_signature_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_destroy:
+    summary: Destroys a function signature handle.
+    description: |
+      Frees the handle. On success the slot is set to null. Safe to call on
+      an already-null slot.
+    role: destructor
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        indirection: 1
+        description: The signature handle to destroy.
+    return_type: ERROR
+  function_signature_add_parameter:
+    summary: Adds a parameter to a signature.
+    description: |
+      Appends a fixed parameter with the given name and type. The name and
+      type are borrowed and copied in. ANY is accepted (a fixed-arity
+      wildcard parameter); a variadic tail is configured separately via
+      function_signature_set_varargs. Parameter order is the order of
+      addition. Use function_signature_add_parameter_default for a
+      parameter with a default.
+    role: setter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to configure.
+      name:
+        type: identifier
+        description: The parameter name. Borrowed and copied.
+      type:
+        type: logical_type
+        description: The parameter type. Borrowed and copied.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_add_parameter_default:
+    summary: Adds a parameter with a default value to a signature.
+    description: |
+      Appends a fixed parameter with the given name, type, and default value.
+      The name, type, and value are borrowed and copied in. The caller may
+      omit the parameter; the callee still gets a value (the default). When
+      type is a concrete (complete) type, the value is eagerly cast to it and
+      INVALID_INPUT is returned if it is not castable; when type is ANY the
+      value is stored unchanged. Parameters with defaults must come last;
+      that ordering is enforced when the signature is registered with a
+      builder.
+    role: setter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to configure.
+      name:
+        type: identifier
+        description: The parameter name. Borrowed and copied.
+      type:
+        type: logical_type
+        description: The parameter type. Borrowed and copied.
+      value:
+        type: value
+        description: The default value. Borrowed and copied, cast to type when type is concrete.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_set_varargs:
+    summary: Sets the variadic tail type of a signature.
+    description: |
+      Makes the signature variadic: after its fixed parameters it accepts any
+      number of extra trailing arguments, each implicitly cast to type. Pass
+      ANY for a heterogeneous tail whose arguments keep their own types. A
+      NULL or INVALID type is rejected with INVALID_INPUT; ANY is accepted.
+      Calling this again overwrites the previous variadic tail type. The type
+      is borrowed and copied.
+    role: setter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to configure.
+      type:
+        type: logical_type
+        description: The type extra trailing arguments are cast to. ANY leaves them un-cast.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_set_return_type:
+    summary: Sets the return type of a signature.
+    description: |
+      Sets the signature's return type. The type is borrowed and copied.
+      Calling this again overwrites the previous return type. An INVALID
+      type is rejected with ERROR_INPUT_INVALID. Whether a concrete return
+      type is required, and whether ANY is accepted, depends on the function
+      family and is enforced when the signature is registered with a builder.
+    role: setter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to configure.
+      type:
+        type: logical_type
+        description: The return type. Borrowed and copied.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_get_parameter_count:
+    summary: Returns the number of fixed parameters in a signature.
+    description: |
+      The count covers the fixed parameters only, with and without defaults;
+      the variadic tail is not a parameter.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the fixed parameter count.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_get_parameter_name:
+    summary: Borrows the name of the parameter at index.
+    description: |
+      Borrows the name of the fixed parameter at index. The view is valid
+      only until the signature is next modified or destroyed; adding a
+      parameter can move the stored names. An out-of-range index is
+      rejected with INVALID_INPUT.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      index:
+        type: idx
+        description: Zero-based parameter index.
+      out_name:
+        type: identifier
+        indirection: 1
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the parameter name. Valid until the signature is next modified or destroyed.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_get_parameter_type:
+    summary: Returns an owned copy of the type of the parameter at index.
+    description: |
+      Copies the type of the fixed parameter at index into a new owned
+      logical type. An out-of-range index is rejected with INVALID_INPUT.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      index:
+        type: idx
+        description: Zero-based parameter index.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives an owned copy of the parameter type. Destroy via logical_type_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_parameter_has_default:
+    summary: Reports whether the parameter at index has a default value.
+    description: |
+      True when the fixed parameter at index carries a default value. An
+      out-of-range index is rejected with INVALID_INPUT.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      index:
+        type: idx
+        description: Zero-based parameter index.
+      out:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives true when the parameter has a default value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_get_parameter_default:
+    summary: Returns an owned copy of the default value of the parameter at index.
+    description: |
+      Copies the default value of the fixed parameter at index into a new
+      owned value. An out-of-range index, or an index whose parameter has no
+      default value, is rejected with INVALID_INPUT; test with
+      function_signature_parameter_has_default first.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      index:
+        type: idx
+        description: Zero-based parameter index.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives an owned copy of the default value. Destroy via value_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_has_varargs:
+    summary: Reports whether a signature has a variadic tail.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      out:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives true when a variadic tail type is set.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_get_varargs:
+    summary: Returns an owned copy of the variadic tail type.
+    description: |
+      Copies the variadic tail type into a new owned logical type. A
+      signature without a variadic tail is rejected with INVALID_INPUT; test
+      with function_signature_has_varargs first.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives an owned copy of the variadic tail type. Destroy via logical_type_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_has_return_type:
+    summary: Reports whether a signature has a return type.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      out:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives true when a return type is set.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  function_signature_get_return_type:
+    summary: Returns an owned copy of the return type.
+    description: |
+      Copies the return type into a new owned logical type. A signature
+      without a return type is rejected with INVALID_INPUT; test with
+      function_signature_has_return_type first.
+    role: getter
+    belongs_to: function_signature
+    parameters:
+      sig:
+        type: function_signature
+        description: The signature to query.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives an owned copy of the return type. Destroy via logical_type_destroy.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR

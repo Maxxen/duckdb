@@ -45,7 +45,7 @@ api_spec/                        API specs (YAML) -- the canonical API definitio
     query_result/, sql_statement/, prepared_statement/  Streaming results, parsed + prepared statements
     value/, logical_type/, data_chunk/, vector/   Data + type surface
     expression/, replacement_scan/, filesystem/   Bound expressions, replacement scans, VFS
-    function/                    scalar / aggregate / table / cast / copy builders
+    function/                    scalar / aggregate / table / cast / copy builders + the shared function_signature handle
   v1/                            Declarative reconstruction of the V1 surface. Regenerates
                                  src/include/duckdb_v1.h, and from extension/duckdb_extension.h.in
                                  the extension header (src/include/duckdb_extension.h) and its

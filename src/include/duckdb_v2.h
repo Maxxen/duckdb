@@ -3068,6 +3068,260 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_schema_destroy(duckdb_v2_schema_handle *s
 /* --- Struct definitions for schema --- */
 
 /* ============================================================================
+ * MODULE: signature
+ * ============================================================================ */
+
+/* --- Enums for signature --- */
+
+/* --- Struct forward declarations for signature --- */
+
+/* --- Types for signature --- */
+//! An owned function signature. Build it with function_signature_create,
+//! add fixed parameters via function_signature_add_parameter (and
+//! function_signature_add_parameter_default for parameters with a default),
+//! configure a variadic tail via function_signature_set_varargs, and a
+//! return type via function_signature_set_return_type. All parameters
+//! added to the signature are required, and the callee always gets a value
+//! for each; the caller may omit a parameter that has a default value.
+//! Read it back with the matching getters. Hand it to a function-family
+//! builder through that builder's set_signature, which copies it in; the
+//! caller keeps ownership and destroys it via function_signature_destroy.
+//! Structural validity (unique parameter names, defaults trailing) is
+//! checked when the signature is registered with a builder, not here.
+typedef struct _duckdb_v2_function_signature {
+	void *internal_ptr;
+} * duckdb_v2_function_signature_handle;
+
+/* --- Constants for signature --- */
+
+/* --- Error Codes for signature --- */
+
+/* --- Function pointer typedefs for signature --- */
+
+/* --- Functions for signature --- */
+/*!
+* Creates an empty function signature.
+* Creates a function signature with no parameters, no variadic tail, and
+no return type. Populate it with the add and set functions before
+handing it to a builder.
+
+* @param out_sig Receives the owned signature. Destroy via function_signature_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_create(duckdb_v2_function_signature_handle *out_sig,
+                                                                 duckdb_v2_error_info_handle *err);
+/*!
+* Destroys a function signature handle.
+* Frees the handle. On success the slot is set to null. Safe to call on
+an already-null slot.
+
+* @param sig The signature handle to destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_destroy(duckdb_v2_function_signature_handle *sig);
+/*!
+* Adds a parameter to a signature.
+* Appends a fixed parameter with the given name and type. The name and
+type are borrowed and copied in. ANY is accepted (a fixed-arity
+wildcard parameter); a variadic tail is configured separately via
+function_signature_set_varargs. Parameter order is the order of
+addition. Use function_signature_add_parameter_default for a
+parameter with a default.
+
+* @param sig The signature to configure.
+* @param name The parameter name. Borrowed and copied.
+* @param type The parameter type. Borrowed and copied.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_add_parameter(duckdb_v2_function_signature_handle sig,
+                                                                        duckdb_v2_identifier_t name,
+                                                                        duckdb_v2_logical_type_handle type,
+                                                                        duckdb_v2_error_info_handle *err);
+/*!
+* Adds a parameter with a default value to a signature.
+* Appends a fixed parameter with the given name, type, and default value.
+The name, type, and value are borrowed and copied in. The caller may
+omit the parameter; the callee still gets a value (the default). When
+type is a concrete (complete) type, the value is eagerly cast to it and
+INVALID_INPUT is returned if it is not castable; when type is ANY the
+value is stored unchanged. Parameters with defaults must come last;
+that ordering is enforced when the signature is registered with a
+builder.
+
+* @param sig The signature to configure.
+* @param name The parameter name. Borrowed and copied.
+* @param type The parameter type. Borrowed and copied.
+* @param value The default value. Borrowed and copied, cast to type when type is concrete.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_add_parameter_default(duckdb_v2_function_signature_handle sig,
+                                                                                duckdb_v2_identifier_t name,
+                                                                                duckdb_v2_logical_type_handle type,
+                                                                                duckdb_v2_value_handle value,
+                                                                                duckdb_v2_error_info_handle *err);
+/*!
+* Sets the variadic tail type of a signature.
+* Makes the signature variadic: after its fixed parameters it accepts any
+number of extra trailing arguments, each implicitly cast to type. Pass
+ANY for a heterogeneous tail whose arguments keep their own types. A
+NULL or INVALID type is rejected with INVALID_INPUT; ANY is accepted.
+Calling this again overwrites the previous variadic tail type. The type
+is borrowed and copied.
+
+* @param sig The signature to configure.
+* @param type The type extra trailing arguments are cast to. ANY leaves them un-cast.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_set_varargs(duckdb_v2_function_signature_handle sig,
+                                                                      duckdb_v2_logical_type_handle type,
+                                                                      duckdb_v2_error_info_handle *err);
+/*!
+* Sets the return type of a signature.
+* Sets the signature's return type. The type is borrowed and copied.
+Calling this again overwrites the previous return type. An INVALID
+type is rejected with ERROR_INPUT_INVALID. Whether a concrete return
+type is required, and whether ANY is accepted, depends on the function
+family and is enforced when the signature is registered with a builder.
+
+* @param sig The signature to configure.
+* @param type The return type. Borrowed and copied.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_set_return_type(duckdb_v2_function_signature_handle sig,
+                                                                          duckdb_v2_logical_type_handle type,
+                                                                          duckdb_v2_error_info_handle *err);
+/*!
+* Returns the number of fixed parameters in a signature.
+* The count covers the fixed parameters only, with and without defaults;
+the variadic tail is not a parameter.
+
+* @param sig The signature to query.
+* @param out_count Receives the fixed parameter count.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_get_parameter_count(duckdb_v2_function_signature_handle sig,
+                                                                              idx_t *out_count,
+                                                                              duckdb_v2_error_info_handle *err);
+/*!
+* Borrows the name of the parameter at index.
+* Borrows the name of the fixed parameter at index. The view is valid
+only until the signature is next modified or destroyed; adding a
+parameter can move the stored names. An out-of-range index is
+rejected with INVALID_INPUT.
+
+* @param sig The signature to query.
+* @param index Zero-based parameter index.
+* @param out_name Receives a borrowed view of the parameter name. Valid until the signature is next modified or
+destroyed.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_get_parameter_name(duckdb_v2_function_signature_handle sig,
+                                                                             idx_t index,
+                                                                             duckdb_v2_identifier_t *out_name,
+                                                                             duckdb_v2_error_info_handle *err);
+/*!
+* Returns an owned copy of the type of the parameter at index.
+* Copies the type of the fixed parameter at index into a new owned
+logical type. An out-of-range index is rejected with INVALID_INPUT.
+
+* @param sig The signature to query.
+* @param index Zero-based parameter index.
+* @param out_type Receives an owned copy of the parameter type. Destroy via logical_type_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_get_parameter_type(duckdb_v2_function_signature_handle sig,
+                                                                             idx_t index,
+                                                                             duckdb_v2_logical_type_handle *out_type,
+                                                                             duckdb_v2_error_info_handle *err);
+/*!
+* Reports whether the parameter at index has a default value.
+* True when the fixed parameter at index carries a default value. An
+out-of-range index is rejected with INVALID_INPUT.
+
+* @param sig The signature to query.
+* @param index Zero-based parameter index.
+* @param out Receives true when the parameter has a default value.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_parameter_has_default(duckdb_v2_function_signature_handle sig,
+                                                                                idx_t index, bool *out,
+                                                                                duckdb_v2_error_info_handle *err);
+/*!
+* Returns an owned copy of the default value of the parameter at index.
+* Copies the default value of the fixed parameter at index into a new
+owned value. An out-of-range index, or an index whose parameter has no
+default value, is rejected with INVALID_INPUT; test with
+function_signature_parameter_has_default first.
+
+* @param sig The signature to query.
+* @param index Zero-based parameter index.
+* @param out_value Receives an owned copy of the default value. Destroy via value_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_get_parameter_default(duckdb_v2_function_signature_handle sig,
+                                                                                idx_t index,
+                                                                                duckdb_v2_value_handle *out_value,
+                                                                                duckdb_v2_error_info_handle *err);
+/*!
+ * Reports whether a signature has a variadic tail.
+ * @param sig The signature to query.
+ * @param out Receives true when a variadic tail type is set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_has_varargs(duckdb_v2_function_signature_handle sig,
+                                                                      bool *out, duckdb_v2_error_info_handle *err);
+/*!
+* Returns an owned copy of the variadic tail type.
+* Copies the variadic tail type into a new owned logical type. A
+signature without a variadic tail is rejected with INVALID_INPUT; test
+with function_signature_has_varargs first.
+
+* @param sig The signature to query.
+* @param out_type Receives an owned copy of the variadic tail type. Destroy via logical_type_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_get_varargs(duckdb_v2_function_signature_handle sig,
+                                                                      duckdb_v2_logical_type_handle *out_type,
+                                                                      duckdb_v2_error_info_handle *err);
+/*!
+ * Reports whether a signature has a return type.
+ * @param sig The signature to query.
+ * @param out Receives true when a return type is set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_has_return_type(duckdb_v2_function_signature_handle sig,
+                                                                          bool *out, duckdb_v2_error_info_handle *err);
+/*!
+* Returns an owned copy of the return type.
+* Copies the return type into a new owned logical type. A signature
+without a return type is rejected with INVALID_INPUT; test with
+function_signature_has_return_type first.
+
+* @param sig The signature to query.
+* @param out_type Receives an owned copy of the return type. Destroy via logical_type_destroy.
+* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+* @return DUCKDB_V2_ERROR
+*/
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_get_return_type(duckdb_v2_function_signature_handle sig,
+                                                                          duckdb_v2_logical_type_handle *out_type,
+                                                                          duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for signature --- */
+
+/* ============================================================================
  * MODULE: string_heap
  * ============================================================================ */
 
@@ -3934,50 +4188,20 @@ duckdb_v2_aggregate_function_builder_destroy(duckdb_v2_aggregate_function_builde
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_name(
     duckdb_v2_aggregate_function_builder_handle builder, duckdb_v2_identifier_t name, duckdb_v2_error_info_handle *err);
 /*!
-* Adds a parameter to a aggregate function.
-* Adds a fixed parameter to a aggregate function with the specified name and type.
-The library makes an internal copy of the provided name and type, and does not take ownership of either.
-ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured separately via
-aggregate_function_builder_set_varargs.
+* Sets the signature of an aggregate function.
+* Copies a function signature into the builder: the fixed parameters (names, types, defaults), the optional variadic
+tail, and the return type. The signature is borrowed and copied; the caller destroys it independently. Calling this
+again replaces the previous signature. Registration requires a signature whose return type is present and a fully
+defined concrete type: it rejects a missing return type, and rejects ANY (or any other incomplete type) with
+ERROR_INPUT_INVALID.
 
 * @param func The aggregate function to configure.
-* @param name The name of the parameter to add.
-* @param type The type of the parameter to add.
+* @param sig The signature to copy into the builder. Borrowed; the caller retains ownership.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_add_parameter(
-    duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_identifier_t name, duckdb_v2_logical_type_handle type,
-    duckdb_v2_error_info_handle *err);
-/*!
-* Sets the varargs type of an aggregate function.
-* Makes the aggregate variadic: after its fixed parameters, it accepts any number of extra
-trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail whose
-arguments keep their own types. A NULL or INVALID type is rejected with ERROR_INPUT_INVALID;
-ANY is accepted. Calling this again overwrites the previous varargs type. The library copies
-the type and does not take ownership.
-
-* @param func The aggregate function to configure.
-* @param type The type extra trailing arguments are cast to. ANY leaves them un-cast.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR
-duckdb_v2_aggregate_function_builder_set_varargs(duckdb_v2_aggregate_function_builder_handle func,
-                                                 duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
-/*!
-* Sets the return type of a aggregate function.
-* Sets the return type of a aggregate function. The library makes an internal copy of the provided type and does not
-take ownership of it. Failing to set a return type before registration results in an error. The return type must not be
-ANY: registration rejects an ANY return type with ERROR_INPUT_INVALID.
-
-* @param func The aggregate function to configure.
-* @param type The return type to set for the function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_return_type(
-    duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_logical_type_handle type,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_signature(
+    duckdb_v2_aggregate_function_builder_handle func, duckdb_v2_function_signature_handle sig,
     duckdb_v2_error_info_handle *err);
 /*!
 * Sets a property on an aggregate function.
@@ -5544,51 +5768,21 @@ callbacks via the `scalar_function_*_get_user_data` accessors.
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_user_data(
     duckdb_v2_scalar_function_builder_handle func, duckdb_v2_opaque data, duckdb_v2_error_info_handle *err);
 /*!
-* Sets the varargs type of a scalar function.
-* Makes the function variadic: after its fixed parameters, it accepts any number of extra
-trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail whose
-arguments keep their own types (read them per column in the exec callback). A NULL or INVALID
-type is rejected with ERROR_INPUT_INVALID; ANY is accepted. Calling this again overwrites the
-previous varargs type. The library copies the type and does not take ownership.
+* Sets the signature of a scalar function.
+* Copies a function signature into the builder: the fixed parameters (names, types, defaults), the optional variadic
+tail, and the return type. The signature is borrowed and copied; the caller destroys it independently. Calling this
+again replaces the previous signature. Registration requires a signature whose return type is present and a fully
+defined concrete type: it rejects a missing return type, and rejects ANY (or any other incomplete type) with
+ERROR_INPUT_INVALID.
 
 * @param func The scalar function to configure.
-* @param type The type extra trailing arguments are cast to. ANY leaves them un-cast.
+* @param sig The signature to copy into the builder. Borrowed; the caller retains ownership.
 * @param err Optional. Error info handle to write details to if the call fails.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR
-duckdb_v2_scalar_function_builder_set_varargs(duckdb_v2_scalar_function_builder_handle func,
-                                              duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
-/*!
-* Adds a parameter to a scalar function.
-* Adds a fixed parameter to a scalar function with the specified name and type.
-The library makes an internal copy of the provided name and type, and does not take ownership of either.
-ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured separately via
-scalar_function_builder_set_varargs.
-
-* @param func The scalar function to configure.
-* @param name The name of the parameter to add.
-* @param type The type of the parameter to add.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_add_parameter(
-    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_identifier_t name, duckdb_v2_logical_type_handle type,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_signature(
+    duckdb_v2_scalar_function_builder_handle func, duckdb_v2_function_signature_handle sig,
     duckdb_v2_error_info_handle *err);
-/*!
-* Sets the return type of a scalar function.
-* Sets the return type of a scalar function. The library makes an internal copy of the provided type and does not take
-ownership of it. Failing to set a return type before registration results in an error. The return type must be a fully
-defined concrete type: registration rejects ANY (and any other incomplete type) with ERROR_INPUT_INVALID.
-
-* @param func The scalar function to configure.
-* @param type The return type to set for the function.
-* @param err Optional. Error info handle to write details to if the call fails.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR
-duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
-                                                  duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
 /*!
 * Sets a property on a scalar function.
 * Configures a function property that influences planning and execution, such as stability (volatility), NULL handling,
@@ -6066,46 +6260,27 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_name(duckdb_v2
                                                                        duckdb_v2_identifier_t name,
                                                                        duckdb_v2_error_info_handle *err);
 /*!
-* Adds a positional parameter to the function signature.
-* ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured
-separately via table_function_builder_set_varargs.
+* Sets the signature of a table function.
+* Copies a function signature into the builder. A table function maps the signature onto the
+engine's two argument mechanisms by whether each parameter has a default: a parameter without
+a default becomes a required positional argument (read in bind via
+table_function_bind_get_parameter_count and table_function_bind_get_parameter); a parameter
+with a default becomes a named argument the caller may omit (read in bind via
+table_function_bind_get_named_parameter), and the bridge injects the default into the bind
+input when the call site omits it, so the named getter always yields a value for a declared
+parameter. The variadic tail applies to the positional arguments. Registration rejects a
+signature with a return type set with ERROR_INPUT_INVALID: a table function declares its
+columns in bind, not through a return type.
+The signature is borrowed and copied; the caller destroys it independently. Calling this again
+replaces the previous signature.
 
 * @param builder The builder to configure.
-* @param type The parameter's logical type.
+* @param sig The signature to copy into the builder. Borrowed; the caller retains ownership.
 * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
 * @return DUCKDB_V2_ERROR
 */
-DUCKDB_C_API DUCKDB_V2_ERROR
-duckdb_v2_table_function_builder_add_parameter(duckdb_v2_table_function_builder_handle builder,
-                                               duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
-/*!
-* Sets the varargs type of a table function.
-* Makes the function variadic: after its fixed positional parameters, it accepts any number of
-extra trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail
-whose arguments keep their own types. A NULL or INVALID type is rejected with
-ERROR_INPUT_INVALID; ANY is accepted. Calling this again overwrites the previous varargs type.
-The bind callback reads all positional arguments, fixed and extra alike, via
-table_function_bind_get_parameter_count and table_function_bind_get_parameter. The library
-copies the type and does not take ownership.
-
-* @param builder The builder to configure.
-* @param type The type extra trailing arguments are cast to. ANY leaves them un-cast.
-* @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-* @return DUCKDB_V2_ERROR
-*/
-DUCKDB_C_API DUCKDB_V2_ERROR
-duckdb_v2_table_function_builder_set_varargs(duckdb_v2_table_function_builder_handle builder,
-                                             duckdb_v2_logical_type_handle type, duckdb_v2_error_info_handle *err);
-/*!
- * Adds a named (keyword) parameter to the function signature.
- * @param builder The builder to configure.
- * @param name Parameter name. The library copies it.
- * @param type The parameter's logical type.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_add_named_parameter(
-    duckdb_v2_table_function_builder_handle builder, duckdb_v2_identifier_t name, duckdb_v2_logical_type_handle type,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_signature(
+    duckdb_v2_table_function_builder_handle builder, duckdb_v2_function_signature_handle sig,
     duckdb_v2_error_info_handle *err);
 /*!
 * Sets user data on the builder, accessible from all callbacks.
@@ -6235,7 +6410,7 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_bind_add_result_column(
 /*!
 * Returns the number of positional parameters passed to the function.
 * Counts every positional argument the call supplied, fixed and (for a variadic function
-configured via table_function_builder_set_varargs) extra alike. Read each one by index with
+whose signature sets a variadic tail) extra alike. Read each one by index with
 table_function_bind_get_parameter. Named parameters are not included.
 
 * @param info The bind info handle.

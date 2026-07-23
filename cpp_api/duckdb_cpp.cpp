@@ -86,6 +86,10 @@ struct HandleTraits<Value> {
 	using handle = duckdb_v2_value_handle;
 };
 template <>
+struct HandleTraits<FunctionSignature> {
+	using handle = duckdb_v2_function_signature_handle;
+};
+template <>
 struct HandleTraits<Expression> {
 	using handle = duckdb_v2_expression_handle;
 };
@@ -2701,6 +2705,100 @@ auto LogStorage::SetLogCallback(LogCallback cb) & -> LogStorage & {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+// Function Signature
+//----------------------------------------------------------------------------------------------------------------------
+
+FunctionSignature::FunctionSignature(void *impl) : detail::Handle<FunctionSignature>(impl) {
+}
+
+FunctionSignature::~FunctionSignature() {
+	auto _h = handle();
+	duckdb_v2_function_signature_destroy(&_h);
+}
+
+FunctionSignature FunctionSignature::Create() {
+	duckdb_v2_function_signature_handle _h = nullptr;
+	CheckedAPICall(duckdb_v2_function_signature_create, &_h);
+	return detail::Factory::Make<FunctionSignature>(_h);
+}
+
+auto FunctionSignature::AddParameter(const std::string &name, const LogicalType &type) -> FunctionSignature & {
+	CheckedAPICall(duckdb_v2_function_signature_add_parameter, handle(), ToStr(name), type.handle());
+	return *this;
+}
+
+auto FunctionSignature::AddParameterDefault(const std::string &name, const LogicalType &type, const Value &value)
+    -> FunctionSignature & {
+	CheckedAPICall(duckdb_v2_function_signature_add_parameter_default, handle(), ToStr(name), type.handle(),
+	               value.handle());
+	return *this;
+}
+
+auto FunctionSignature::SetVarArgs(const LogicalType &type) -> FunctionSignature & {
+	CheckedAPICall(duckdb_v2_function_signature_set_varargs, handle(), type.handle());
+	return *this;
+}
+
+auto FunctionSignature::SetReturnType(const LogicalType &type) -> FunctionSignature & {
+	CheckedAPICall(duckdb_v2_function_signature_set_return_type, handle(), type.handle());
+	return *this;
+}
+
+auto FunctionSignature::GetParameterCount() const -> idx_t {
+	idx_t count = 0;
+	CheckedAPICall(duckdb_v2_function_signature_get_parameter_count, handle(), &count);
+	return count;
+}
+
+auto FunctionSignature::GetParameterName(idx_t index) const -> std::string {
+	duckdb_v2_identifier_t name = {nullptr, 0};
+	CheckedAPICall(duckdb_v2_function_signature_get_parameter_name, handle(), index, &name);
+	return std::string(FromStr(name));
+}
+
+auto FunctionSignature::GetParameterType(idx_t index) const -> LogicalType {
+	duckdb_v2_logical_type_handle type = nullptr;
+	CheckedAPICall(duckdb_v2_function_signature_get_parameter_type, handle(), index, &type);
+	return detail::Factory::Make<LogicalType>(type);
+}
+
+auto FunctionSignature::ParameterHasDefault(idx_t index) const -> bool {
+	bool has_default = false;
+	CheckedAPICall(duckdb_v2_function_signature_parameter_has_default, handle(), index, &has_default);
+	return has_default;
+}
+
+auto FunctionSignature::GetParameterDefault(idx_t index) const -> Value {
+	duckdb_v2_value_handle value = nullptr;
+	CheckedAPICall(duckdb_v2_function_signature_get_parameter_default, handle(), index, &value);
+	return detail::Factory::Make<Value>(value);
+}
+
+auto FunctionSignature::HasVarArgs() const -> bool {
+	bool has_varargs = false;
+	CheckedAPICall(duckdb_v2_function_signature_has_varargs, handle(), &has_varargs);
+	return has_varargs;
+}
+
+auto FunctionSignature::GetVarArgs() const -> LogicalType {
+	duckdb_v2_logical_type_handle type = nullptr;
+	CheckedAPICall(duckdb_v2_function_signature_get_varargs, handle(), &type);
+	return detail::Factory::Make<LogicalType>(type);
+}
+
+auto FunctionSignature::HasReturnType() const -> bool {
+	bool has_return_type = false;
+	CheckedAPICall(duckdb_v2_function_signature_has_return_type, handle(), &has_return_type);
+	return has_return_type;
+}
+
+auto FunctionSignature::GetReturnType() const -> LogicalType {
+	duckdb_v2_logical_type_handle type = nullptr;
+	CheckedAPICall(duckdb_v2_function_signature_get_return_type, handle(), &type);
+	return detail::Factory::Make<LogicalType>(type);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 // Scalar Function
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -2720,18 +2818,8 @@ auto ScalarFunction::SetName(const std::string &name) & -> ScalarFunction & {
 	return *this;
 }
 
-auto ScalarFunction::AddParameter(const std::string &name, const LogicalType &type) & -> ScalarFunction & {
-	CheckedAPICall(duckdb_v2_scalar_function_builder_add_parameter, handle(), ToStr(name), type.handle());
-	return *this;
-}
-
-auto ScalarFunction::SetVarArgs(const LogicalType &type) & -> ScalarFunction & {
-	CheckedAPICall(duckdb_v2_scalar_function_builder_set_varargs, handle(), type.handle());
-	return *this;
-}
-
-auto ScalarFunction::SetReturnType(const LogicalType &type) & -> ScalarFunction & {
-	CheckedAPICall(duckdb_v2_scalar_function_builder_set_return_type, handle(), type.handle());
+auto ScalarFunction::SetSignature(const FunctionSignature &sig) & -> ScalarFunction & {
+	CheckedAPICall(duckdb_v2_scalar_function_builder_set_signature, handle(), sig.handle());
 	return *this;
 }
 
@@ -3130,18 +3218,8 @@ auto AggregateFunction::SetName(const std::string &name) & -> AggregateFunction 
 	return *this;
 }
 
-auto AggregateFunction::AddParameter(const std::string &name, const LogicalType &type) & -> AggregateFunction & {
-	CheckedAPICall(duckdb_v2_aggregate_function_builder_add_parameter, handle(), ToStr(name), type.handle());
-	return *this;
-}
-
-auto AggregateFunction::SetVarArgs(const LogicalType &type) & -> AggregateFunction & {
-	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_varargs, handle(), type.handle());
-	return *this;
-}
-
-auto AggregateFunction::SetReturnType(const LogicalType &type) & -> AggregateFunction & {
-	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_return_type, handle(), type.handle());
+auto AggregateFunction::SetSignature(const FunctionSignature &sig) & -> AggregateFunction & {
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_signature, handle(), sig.handle());
 	return *this;
 }
 
@@ -3737,18 +3815,8 @@ auto TableFunction::SetName(const std::string &name) & -> TableFunction & {
 	return *this;
 }
 
-auto TableFunction::AddParameter(const LogicalType &type) & -> TableFunction & {
-	CheckedAPICall(duckdb_v2_table_function_builder_add_parameter, handle(), type.handle());
-	return *this;
-}
-
-auto TableFunction::AddNamedParameter(const std::string &name, const LogicalType &type) & -> TableFunction & {
-	CheckedAPICall(duckdb_v2_table_function_builder_add_named_parameter, handle(), ToStr(name), type.handle());
-	return *this;
-}
-
-auto TableFunction::SetVarArgs(const LogicalType &type) & -> TableFunction & {
-	CheckedAPICall(duckdb_v2_table_function_builder_set_varargs, handle(), type.handle());
+auto TableFunction::SetSignature(const FunctionSignature &sig) & -> TableFunction & {
+	CheckedAPICall(duckdb_v2_table_function_builder_set_signature, handle(), sig.handle());
 	return *this;
 }
 

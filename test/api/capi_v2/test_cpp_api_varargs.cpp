@@ -89,7 +89,10 @@ TEST_CASE("Stable C++API: LogicalType::ANY and its gates", "[cpp_api]") {
 	// An ANY return type is rejected at Register.
 	conn.WithTransaction([](const Context &ctx) {
 		ScalarFunction f(ctx);
-		f.SetName("bad_any_return").AddParameter("a", LogicalType::INTEGER()).SetReturnType(LogicalType::ANY());
+		f.SetName("bad_any_return")
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::ANY()));
 		f.SetExecCallback([](ScalarFunction::ExecInput &) {});
 		REQUIRE_THROWS_MATCHES(f.Register(ctx), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	});
@@ -103,31 +106,33 @@ TEST_CASE("Stable C++API: scalar varargs", "[cpp_api]") {
 	conn.WithTransaction([](const Context &ctx) {
 		ScalarFunction int_sum(ctx);
 		int_sum.SetName("cpp_int_sum")
-		    .SetVarArgs(LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(
+		        FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()).SetReturnType(LogicalType::INTEGER()))
 		    .SetExecCallback(IntSumExec)
 		    .Register(ctx);
 
 		ScalarFunction prefix_sum(ctx);
 		prefix_sum.SetName("cpp_prefix_sum")
-		    .AddParameter("base", LogicalType::INTEGER())
-		    .SetVarArgs(LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("base", LogicalType::INTEGER())
+		                      .SetVarArgs(LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetExecCallback(IntSumExec)
 		    .Register(ctx);
 
 		ScalarFunction count_ints(ctx);
 		count_ints.SetName("cpp_count_ints")
-		    .SetVarArgs(LogicalType::ANY())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(
+		        FunctionSignature::Create().SetVarArgs(LogicalType::ANY()).SetReturnType(LogicalType::INTEGER()))
 		    .SetExecCallback(CountIntsExec)
 		    .Register(ctx);
 
 		ScalarFunction two_any(ctx);
 		two_any.SetName("cpp_two_any")
-		    .AddParameter("a", LogicalType::ANY())
-		    .AddParameter("b", LogicalType::ANY())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::ANY())
+		                      .AddParameter("b", LogicalType::ANY())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetExecCallback(TwoAnyExec)
 		    .Register(ctx);
 	});
@@ -166,9 +171,10 @@ TEST_CASE("Stable C++API: bind argument accessors", "[cpp_api]") {
 	conn.WithTransaction([](const Context &ctx) {
 		ScalarFunction probe(ctx);
 		probe.SetName("cpp_probe_add")
-		    .AddParameter("a", LogicalType::INTEGER())
-		    .AddParameter("b", LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("a", LogicalType::INTEGER())
+		                      .AddParameter("b", LogicalType::INTEGER())
+		                      .SetReturnType(LogicalType::INTEGER()))
 		    .SetBindCallback(ProbeBind)
 		    .SetExecCallback(IntSumExec)
 		    .Register(ctx);
@@ -225,8 +231,8 @@ TEST_CASE("Stable C++API: aggregate varargs", "[cpp_api]") {
 	conn.WithTransaction([](const Context &ctx) {
 		AggregateFunction multi_sum(ctx);
 		multi_sum.SetName("cpp_multi_sum")
-		    .SetVarArgs(LogicalType::INTEGER())
-		    .SetReturnType(LogicalType::BIGINT())
+		    .SetSignature(
+		        FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()).SetReturnType(LogicalType::BIGINT()))
 		    .SetSizeCallback(AggSize)
 		    .SetInitializeCallback(AggInit)
 		    .SetUpdateCallback(AggUpdate)
@@ -271,7 +277,7 @@ TEST_CASE("Stable C++API: table function varargs and parameter count", "[cpp_api
 	conn.WithTransaction([](const Context &ctx) {
 		TableFunction tf(ctx);
 		tf.SetName("cpp_tf_count")
-		    .SetVarArgs(LogicalType::INTEGER())
+		    .SetSignature(FunctionSignature::Create().SetVarArgs(LogicalType::INTEGER()))
 		    .SetBindCallback(TfBind)
 		    .SetInitGlobalCallback(TfInitGlobal)
 		    .SetExecCallback(TfExec)

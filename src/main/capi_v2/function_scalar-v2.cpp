@@ -61,10 +61,9 @@ struct ScalarFunctionV2 {
 	RuntimeInfo info;
 	Identifier name;
 
-	vector<pair<Identifier, LogicalType>> parameters;
-	//! Varargs type (INVALID when the function is not variadic).
-	LogicalType varargs;
-	LogicalType return_type;
+	//! Fixed parameters (names, types, defaults), varargs, and return type,
+	//! copied in from a function_signature via set_signature.
+	FunctionSignature signature;
 	FunctionProperties properties;
 
 	static auto BindCallback(BindScalarFunctionInput &input) -> unique_ptr<FunctionData> {
@@ -205,68 +204,18 @@ DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_name(duckdb_v2_scalar_func
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_add_parameter(duckdb_v2_scalar_function_builder_handle func,
-                                                                duckdb_v2_identifier_t name,
-                                                                duckdb_v2_logical_type_handle type,
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_signature(duckdb_v2_scalar_function_builder_handle func,
+                                                                duckdb_v2_function_signature_handle sig,
                                                                 duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
 		}
-		if (!name.ptr && name.len > 0) {
-			throw duckdb::InvalidInputException("Parameter name cannot be null.");
+		if (!sig) {
+			throw duckdb::InvalidInputException("Signature pointer cannot be null.");
 		}
-		if (name.len == 0) {
-			throw duckdb::InvalidInputException("Parameter name cannot be empty.");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Parameter type pointer cannot be null.");
-		}
-
-		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
-		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Parameter type cannot be invalid.");
-		}
-
-		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
-		builder.parameters.emplace_back(duckdb::ToString(name), ltype);
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_varargs(duckdb_v2_scalar_function_builder_handle func,
-                                                              duckdb_v2_logical_type_handle type,
-                                                              duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!func) {
-			throw duckdb::InvalidInputException("Function pointer cannot be null.");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Varargs type pointer cannot be null.");
-		}
-		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
-		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Varargs type cannot be invalid.");
-		}
-		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->varargs = ltype;
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_return_type(duckdb_v2_scalar_function_builder_handle func,
-                                                                  duckdb_v2_logical_type_handle type,
-                                                                  duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!func) {
-			throw duckdb::InvalidInputException("Function pointer cannot be null.");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Return type pointer cannot be null.");
-		}
-		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
-		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Return type cannot be invalid.");
-		}
-		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
-		builder.return_type = ltype;
+		// Copy the borrowed signature in; the caller keeps ownership.
+		reinterpret_cast<duckdb::ScalarFunctionV2 *>(func)->signature = *duckdb::ToFunctionSignature(sig);
 	});
 }
 
@@ -341,26 +290,20 @@ DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register(duckdb_v2_context_han
 			throw duckdb::InvalidInputException("Exec callback must be set for the function.");
 		}
 
-		if (builder.return_type.id() == duckdb::LogicalTypeId::INVALID) {
+		const auto &return_type = builder.signature.GetReturnType();
+		if (return_type.id() == duckdb::LogicalTypeId::INVALID) {
 			throw duckdb::InvalidInputException("Return type must be set for the function.");
 		}
 
-		if (!builder.return_type.IsComplete()) {
+		if (!return_type.IsComplete()) {
 			throw duckdb::InvalidInputException("Return type must be a fully defined concrete type");
 		}
 
-		duckdb::ScalarFunction function(builder.name, {}, builder.return_type, duckdb::ScalarFunctionV2::ExecCallback);
+		duckdb::ScalarFunction function(builder.name, {}, return_type, duckdb::ScalarFunctionV2::ExecCallback);
 
-		// Set the signature
-		for (const auto &[param_name, param_type] : builder.parameters) {
-			function.GetSignature().AddParameter(param_name, param_type);
-		}
-
-		// Wire the varargs type (if any) before the signature is verified so the
-		// engine expands trailing arguments to it during binding.
-		if (builder.varargs.id() != duckdb::LogicalTypeId::INVALID) {
-			function.SetVarArgs(builder.varargs);
-		}
+		// Adopt the stored signature so parameter names, defaults, the variadic
+		// tail, and the return type are all preserved on the registered function.
+		function.GetSignature() = builder.signature;
 
 		if (builder.info.bind_cb) {
 			function.SetBindCallback(duckdb::ScalarFunctionV2::BindCallback);

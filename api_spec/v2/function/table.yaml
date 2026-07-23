@@ -10,6 +10,9 @@
 # configure it with callbacks and metadata, register it, then destroy the
 # builder. The engine copies the configuration at registration time.
 #
+# Arguments are declared through the shared function_signature handle only
+# (see set_signature for the mapping).
+#
 # Each callback phase has its own info handle type, providing access to
 # exactly the state and inputs available at that stage. This avoids
 # runtime "which getters are valid" checks.
@@ -227,57 +230,28 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  table_function_builder_add_parameter:
-    summary: Adds a positional parameter to the function signature.
+  table_function_builder_set_signature:
+    summary: Sets the signature of a table function.
     description: |
-      ANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured
-      separately via table_function_builder_set_varargs.
+      Copies a function signature into the builder. A table function maps the signature onto the
+      engine's two argument mechanisms by whether each parameter has a default: a parameter without
+      a default becomes a required positional argument (read in bind via
+      table_function_bind_get_parameter_count and table_function_bind_get_parameter); a parameter
+      with a default becomes a named argument the caller may omit (read in bind via
+      table_function_bind_get_named_parameter), and the bridge injects the default into the bind
+      input when the call site omits it, so the named getter always yields a value for a declared
+      parameter. The variadic tail applies to the positional arguments. Registration rejects a
+      signature with a return type set with ERROR_INPUT_INVALID: a table function declares its
+      columns in bind, not through a return type.
+      The signature is borrowed and copied; the caller destroys it independently. Calling this again
+      replaces the previous signature.
     parameters:
       builder:
         type: table_function_builder
         description: The builder to configure.
-      type:
-        type: logical_type
-        description: The parameter's logical type.
-      err:
-        type: error_info
-        indirection: 1
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-  table_function_builder_set_varargs:
-    summary: Sets the varargs type of a table function.
-    description: |
-      Makes the function variadic: after its fixed positional parameters, it accepts any number of
-      extra trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail
-      whose arguments keep their own types. A NULL or INVALID type is rejected with
-      ERROR_INPUT_INVALID; ANY is accepted. Calling this again overwrites the previous varargs type.
-      The bind callback reads all positional arguments, fixed and extra alike, via
-      table_function_bind_get_parameter_count and table_function_bind_get_parameter. The library
-      copies the type and does not take ownership.
-    parameters:
-      builder:
-        type: table_function_builder
-        description: The builder to configure.
-      type:
-        type: logical_type
-        description: The type extra trailing arguments are cast to. ANY leaves them un-cast.
-      err:
-        type: error_info
-        indirection: 1
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-  table_function_builder_add_named_parameter:
-    summary: Adds a named (keyword) parameter to the function signature.
-    parameters:
-      builder:
-        type: table_function_builder
-        description: The builder to configure.
-      name:
-        type: identifier
-        description: Parameter name. The library copies it.
-      type:
-        type: logical_type
-        description: The parameter's logical type.
+      sig:
+        type: function_signature
+        description: The signature to copy into the builder. Borrowed; the caller retains ownership.
       err:
         type: error_info
         indirection: 1
@@ -462,7 +436,7 @@ functions:
     summary: Returns the number of positional parameters passed to the function.
     description: |
       Counts every positional argument the call supplied, fixed and (for a variadic function
-      configured via table_function_builder_set_varargs) extra alike. Read each one by index with
+      whose signature sets a variadic tail) extra alike. Read each one by index with
       table_function_bind_get_parameter. Named parameters are not included.
     parameters:
       info:

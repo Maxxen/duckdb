@@ -268,10 +268,9 @@ struct AggregateFunctionV2 {
 
 struct AggregateFunctionBuilderV2 {
 	Identifier name;
-	vector<pair<Identifier, LogicalType>> parameters;
-	//! Varargs type (INVALID when the function is not variadic).
-	LogicalType varargs;
-	LogicalType return_type;
+	//! Fixed parameters (names, types, defaults), varargs, and return type,
+	//! copied in from a function_signature via set_signature.
+	FunctionSignature signature;
 
 	duckdb_v2_aggregate_function_bind_callback_fn bind_cb = nullptr;
 	duckdb_v2_aggregate_function_size_callback_fn size_cb = nullptr;
@@ -334,66 +333,19 @@ DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_name(duckdb_v2_aggregat
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_add_parameter(duckdb_v2_aggregate_function_builder_handle func,
-                                                                   duckdb_v2_identifier_t name,
-                                                                   duckdb_v2_logical_type_handle type,
-                                                                   duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR
+duckdb_v2_aggregate_function_builder_set_signature(duckdb_v2_aggregate_function_builder_handle func,
+                                                   duckdb_v2_function_signature_handle sig,
+                                                   duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
 		if (!func) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
-		if (!name.ptr && name.len > 0) {
-			throw duckdb::InvalidInputException("Parameter name cannot be null");
+		if (!sig) {
+			throw duckdb::InvalidInputException("Signature pointer cannot be null");
 		}
-		if (name.len == 0) {
-			throw duckdb::InvalidInputException("Parameter name cannot be empty");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Parameter type pointer cannot be null");
-		}
-		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
-		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Parameter type cannot be invalid.");
-		}
-		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
-		agg_builder->parameters.emplace_back(duckdb::ToIdentifier(name), ltype);
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_varargs(duckdb_v2_aggregate_function_builder_handle func,
-                                                                 duckdb_v2_logical_type_handle type,
-                                                                 duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!func) {
-			throw duckdb::InvalidInputException("Function builder cannot be null");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Varargs type pointer cannot be null");
-		}
-		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
-		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Varargs type cannot be invalid.");
-		}
-		reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func)->varargs = ltype;
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_set_return_type(duckdb_v2_aggregate_function_builder_handle func,
-                                                                     duckdb_v2_logical_type_handle type,
-                                                                     duckdb_v2_error_info_handle *err) {
-	return duckdb::WithErrorHandler(err, [&]() {
-		if (!func) {
-			throw duckdb::InvalidInputException("Function builder cannot be null");
-		}
-		if (!type) {
-			throw duckdb::InvalidInputException("Return type pointer cannot be null");
-		}
-		const auto &ltype = *reinterpret_cast<duckdb::LogicalType *>(type);
-		if (ltype.id() == duckdb::LogicalTypeId::INVALID) {
-			throw duckdb::InvalidInputException("Return type cannot be invalid.");
-		}
-		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func);
-		agg_builder->return_type = ltype;
+		// Copy the borrowed signature in; the caller keeps ownership.
+		reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(func)->signature = *duckdb::ToFunctionSignature(sig);
 	});
 }
 
@@ -521,10 +473,15 @@ DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_
 		if (!agg_builder->finalize_cb) {
 			throw duckdb::InvalidInputException("Finalize callback must be provided");
 		}
-		// ANY is a signature wildcard; a return type carries data, so keep ANY out
-		// of execution (an ANY stored here throws InternalException when hit).
-		if (agg_builder->return_type.id() == duckdb::LogicalTypeId::ANY) {
-			throw duckdb::InvalidInputException("Return type cannot be ANY.");
+		const auto &return_type = agg_builder->signature.GetReturnType();
+		if (return_type.id() == duckdb::LogicalTypeId::INVALID) {
+			throw duckdb::InvalidInputException("Return type must be set for the function.");
+		}
+		// ANY is a signature wildcard; a return type carries data, so keep ANY (and
+		// any other incomplete type) out of execution (an ANY stored here throws
+		// InternalException when hit).
+		if (!return_type.IsComplete()) {
+			throw duckdb::InvalidInputException("Return type must be a fully defined concrete type");
 		}
 
 		auto function_info = duckdb::make_shared_ptr<duckdb::AggregateFunctionExtraDataV2>();
@@ -537,13 +494,8 @@ DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_
 		function_info->finalize_cb = agg_builder->finalize_cb;
 		function_info->destroy_cb = agg_builder->destroy_cb;
 
-		duckdb::vector<duckdb::LogicalType> argument_types;
-		for (const auto &param : agg_builder->parameters) {
-			argument_types.push_back(param.second);
-		}
-
 		duckdb::AggregateFunction function(
-		    agg_builder->name, argument_types, agg_builder->return_type, duckdb::AggregateFunctionV2::SizeCallback,
+		    agg_builder->name, {}, return_type, duckdb::AggregateFunctionV2::SizeCallback,
 		    duckdb::AggregateFunctionV2::InitCallback, duckdb::AggregateFunctionV2::UpdateCallback,
 		    duckdb::AggregateFunctionV2::CombineCallback, duckdb::AggregateFunctionV2::FinalizeCallback,
 		    duckdb::FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, duckdb::AggregateFunctionV2::BindCallback);
@@ -555,11 +507,9 @@ DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register(duckdb_v2_context_
 		function.GetCallbacks().SetSerializeCallback(duckdb::AggregateFunctionV2::SerializeCallback);
 		function.GetCallbacks().SetDeserializeCallback(duckdb::AggregateFunctionV2::DeserializeCallback);
 
-		// Wire the varargs type (if any) before the signature is verified so the
-		// engine expands trailing arguments to it during binding.
-		if (agg_builder->varargs.id() != duckdb::LogicalTypeId::INVALID) {
-			function.SetVarArgs(agg_builder->varargs);
-		}
+		// Adopt the stored signature so parameter names, defaults, the variadic
+		// tail, and the return type are all preserved on the registered function.
+		function.GetSignature() = agg_builder->signature;
 
 		function.SetExtraFunctionInfo(function_info);
 

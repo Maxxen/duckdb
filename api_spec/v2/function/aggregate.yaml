@@ -156,56 +156,19 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  aggregate_function_builder_add_parameter:
-    summary: Adds a parameter to a aggregate function.
-    description: "Adds a fixed parameter to a aggregate function with the specified name and type. \nThe library makes an internal copy of the provided name and type, and does not take ownership of either. \nANY is accepted (a fixed-arity wildcard parameter); a variadic tail is configured separately via aggregate_function_builder_set_varargs.\n"
-    parameters:
-      func:
-        type: aggregate_function_builder
-        description: The aggregate function to configure.
-      name:
-        type: identifier
-        description: The name of the parameter to add.
-      type:
-        type: logical_type
-        description: The type of the parameter to add.
-      err:
-        type: error_info
-        indirection: 1
-        description: Optional. Error info handle to write details to if the call fails.
-    return_type: ERROR
-  aggregate_function_builder_set_varargs:
-    summary: Sets the varargs type of an aggregate function.
+  aggregate_function_builder_set_signature:
+    summary: Sets the signature of an aggregate function.
     description: |
-      Makes the aggregate variadic: after its fixed parameters, it accepts any number of extra
-      trailing arguments, each implicitly cast to `type`. Pass ANY for a heterogeneous tail whose
-      arguments keep their own types. A NULL or INVALID type is rejected with ERROR_INPUT_INVALID;
-      ANY is accepted. Calling this again overwrites the previous varargs type. The library copies
-      the type and does not take ownership.
+      Copies a function signature into the builder: the fixed parameters (names, types, defaults), the optional variadic tail, and the return type.
+      The signature is borrowed and copied; the caller destroys it independently. Calling this again replaces the previous signature.
+      Registration requires a signature whose return type is present and a fully defined concrete type: it rejects a missing return type, and rejects ANY (or any other incomplete type) with ERROR_INPUT_INVALID.
     parameters:
       func:
         type: aggregate_function_builder
         description: The aggregate function to configure.
-      type:
-        type: logical_type
-        description: The type extra trailing arguments are cast to. ANY leaves them un-cast.
-      err:
-        type: error_info
-        indirection: 1
-        description: Optional. Error info handle to write details to if the call fails.
-    return_type: ERROR
-  aggregate_function_builder_set_return_type:
-    summary: Sets the return type of a aggregate function.
-    description: |
-      Sets the return type of a aggregate function. The library makes an internal copy of the provided type and does not take ownership of it.
-      Failing to set a return type before registration results in an error. The return type must not be ANY: registration rejects an ANY return type with ERROR_INPUT_INVALID.
-    parameters:
-      func:
-        type: aggregate_function_builder
-        description: The aggregate function to configure.
-      type:
-        type: logical_type
-        description: The return type to set for the function.
+      sig:
+        type: function_signature
+        description: The signature to copy into the builder. Borrowed; the caller retains ownership.
       err:
         type: error_info
         indirection: 1

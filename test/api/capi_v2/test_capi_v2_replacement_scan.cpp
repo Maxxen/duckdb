@@ -163,9 +163,14 @@ static void ReplScanRegisterSeqFn(duckdb_v2_context_handle ctx, duckdb_v2_error_
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
-	REQUIRE(duckdb_v2_table_function_builder_add_parameter(builder, bigint_type, err) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_table_function_builder_add_named_parameter(builder, V2Str("start"), bigint_type, err) ==
-	        DUCKDB_V2_ERROR_NONE);
+	// "n" is a required positional parameter; "start" is an optional named
+	// parameter defaulting to 0 (the bridge injects it when the call omits it).
+	duckdb_v2_value_handle start_default = V2Int64Value(0);
+	V2TableSignature(builder, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "n", bigint_type);
+		V2SigParamDefault(sig, "start", bigint_type, start_default);
+	});
+	duckdb_v2_value_destroy(&start_default);
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
 	REQUIRE(duckdb_v2_table_function_builder_set_bind_callback(builder, ReplScanSeqBind, err) == DUCKDB_V2_ERROR_NONE);

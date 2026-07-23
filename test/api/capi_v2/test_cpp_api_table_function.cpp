@@ -27,10 +27,14 @@ TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
 	conn.WithTransaction([](const Context &ctx) {
 		TableFunction table_function(ctx);
 
-		table_function.SetName("MyRangeFunction")
-		    .AddParameter(LogicalType::INTEGER())              // Start
-		    .AddParameter(LogicalType::INTEGER())              // Stop
-		    .AddNamedParameter("step", LogicalType::INTEGER()) // Optional step, defaults to 1
+		table_function
+		    .SetName("MyRangeFunction")
+		    // start and stop are required positional parameters; step is an optional
+		    // named parameter defaulting to 1 (injected into bind when the call omits it).
+		    .SetSignature(FunctionSignature::Create()
+		                      .AddParameter("start", LogicalType::INTEGER())
+		                      .AddParameter("stop", LogicalType::INTEGER())
+		                      .AddParameterDefault("step", LogicalType::INTEGER(), Value::Bigint(1)))
 		    .SetBindCallback([](TableFunction::BindInput &input) {
 			    // We will emit one column named "i" of type INTEGER
 			    input.AddResultColumn("i", LogicalType::INTEGER());
