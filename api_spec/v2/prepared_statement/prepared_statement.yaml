@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: prepared_statement
 #
 # The opt-in cached-execution path, a sibling to stateless statement_execute.
@@ -42,8 +42,9 @@ handles:
     cleanup_with: prepared_statement_destroy
 functions:
   statement_prepare:
-    summary: Prepares a parsed statement into a reusable cached-execution handle. Non-consuming.
     description: |
+      Prepares a parsed statement into a reusable cached-execution handle. Non-consuming.
+
       Copies the statement's AST, binds and plans it once through the engine's
       Prepare, and returns a handle prepared_execute runs repeatedly. Prepare-time
       errors (binder, catalog, parse) surface here. Borrowed, not consumed (a copy
@@ -85,8 +86,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   prepared_execute:
-    summary: Executes a prepared statement with named or positional parameters, streaming its result. Non-consuming.
     description: |
+      Executes a prepared statement with named or positional parameters, streaming its result. Non-consuming.
+
       Returns a result without executing anything: execution happens incrementally
       as the result is stepped or drained, exactly like statement_execute. The
       returned handle is the same query_result with identical behaviour (streaming,
@@ -143,8 +145,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   prepared_reuses_plan:
-    summary: Reports whether the prepared statement reuses its compiled plan across executions.
     description: |
+      Reports whether the prepared statement reuses its compiled plan across executions.
+
       True if this statement reuses its cached plan every execution (the real
       speedup), false if it re-binds each time (no faster than statement_execute).
       Reuses iff all parameter types were resolved at prepare time and the plan is
@@ -173,8 +176,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   prepared_statement_destroy:
-    summary: Destroys a prepared-statement handle.
     description: |
+      Destroys a prepared-statement handle.
+
       Null-safe: passing nullptr or an already-null slot is a no-op. A result from
       prepared_execute is independently owned and keeps the context alive itself, so
       the prepared handle may be destroyed while its results are still live. On

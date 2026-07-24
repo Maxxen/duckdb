@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: column_data_collection
 handles:
   column_data_collection:
@@ -19,8 +19,9 @@ functions:
   # Construction and destruction
   # -----------------------------------------------------------------------
   column_data_collection_create_with_connection:
-    summary: Creates an empty column data collection from a connection.
     description: |
+      Creates an empty column data collection from a connection.
+
       Allocates a new, empty column data collection, drawing its buffer allocator from the connection's context. The collection starts with no chunks and is ready to have chunks appended to it. Caller owns the result and must destroy it via column_data_collection_destroy. Appending is not transactional, so no active transaction is required.
     role: constructor
     parameters:
@@ -47,8 +48,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   column_data_collection_create_with_context:
-    summary: Creates an empty column data collection from a context.
     description: |
+      Creates an empty column data collection from a context.
+
       Allocates a new, empty column data collection, drawing its buffer allocator from the context. Use this from inside a callback or extension where a context is already in hand. The collection starts with no chunks and is ready to have chunks appended to it. Caller owns the result and must destroy it via column_data_collection_destroy.
     role: constructor
     parameters:
@@ -75,8 +77,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   column_data_collection_destroy:
-    summary: Destroys a column data collection and all its chunks.
     description: |
+      Destroys a column data collection and all its chunks.
+
       Cleans up the collection and all resources associated with it, including all contained chunks. Sets the collection handle to NULL.
     role: destructor
     parameters:
@@ -86,8 +89,10 @@ functions:
         description: The collection to destroy.
     return_type: ERROR
   column_data_collection_combine:
-    summary: Merges the source collection into the target collection, consuming the source in the process.
-    description: Transfers all chunks from the source collection to the target collection. This destroys the source collection, setting the source handle to NULL.
+    description: |
+      Merges the source collection into the target collection, consuming the source in the process.
+
+      Transfers all chunks from the source collection to the target collection. This destroys the source collection, setting the source handle to NULL.
     parameters:
       target:
         type: column_data_collection
@@ -103,8 +108,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   column_data_collection_reset:
-    summary: Drops all buffered rows, keeping the column types.
     description: |
+      Drops all buffered rows, keeping the column types.
+
       Drops all buffered rows and releases their memory. The column types are
       unchanged and the collection is immediately appendable again. Outstanding
       append and scan states are invalidated; create new ones. Must not be
@@ -125,8 +131,9 @@ functions:
   # Accessors
   # -----------------------------------------------------------------------
   column_data_collection_row_count:
-    summary: Returns the total number of rows across all chunks in the collection.
     description: |
+      Returns the total number of rows across all chunks in the collection.
+
       Sums the row counts of all chunks in the collection. This is the total
       number of rows represented by the collection, which may be more than
       the number of rows in any individual chunk.
@@ -151,8 +158,9 @@ functions:
   ## Appending
   ## -----------------------------------------------------------------------
   column_data_collection_append_state_create:
-    summary: Initializes an append state for the collection.
     description: |
+      Initializes an append state for the collection.
+
       Returns an append state handle that can be used to append chunks to the collection while maintaining any necessary state across calls. Caller owns the returned state and must destroy it via column_data_collection_append_state_destroy when done.
     belongs_to: column_data_collection
     parameters:
@@ -171,8 +179,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   column_data_collection_append_state_destroy:
-    summary: Destroys an append state handle.
     description: |
+      Destroys an append state handle.
+
       Cleans up any resources associated with the append state. After this call, the state handle must not be used again.
     role: destructor
     belongs_to: column_data_collection
@@ -183,8 +192,9 @@ functions:
         description: The append state to destroy.
     return_type: ERROR
   column_data_collection_append:
-    summary: Appends a data chunk to the collection.
     description: |
+      Appends a data chunk to the collection.
+
       Appends a copy of the given chunk to the end of the collection. The
       chunk's column count and types must equal the collection's exactly; a
       mismatch is rejected with INVALID_INPUT before anything is copied.
@@ -210,8 +220,9 @@ functions:
   ## Single Threaded Scanning
   ## -----------------------------------------------------------------------
   column_data_collection_scan_state_create:
-    summary: Initializes a scan state for the collection.
     description: |
+      Initializes a scan state for the collection.
+
       Returns a scan state handle that can be used to scan the collection while maintaining progress and any other necessary state across multiple scan calls. Caller owns the returned state and must destroy it via column_data_collection_scan_state_destroy when done.
     belongs_to: column_data_collection
     parameters:
@@ -230,8 +241,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   column_data_collection_scan_state_destroy:
-    summary: Destroys a scan state handle.
     description: |
+      Destroys a scan state handle.
+
       Cleans up any resources associated with the scan state. After this call, the state handle must not be used again.
     role: destructor
     belongs_to: column_data_collection
@@ -242,8 +254,10 @@ functions:
         description: The scan state to destroy.
     return_type: ERROR
   column_data_collection_scan:
-    summary: Scans the collection to retrieve the next data chunk.
-    description: Retrieves the next chunk of data from the collection based on the provided shared scan states.
+    description: |
+      Scans the collection to retrieve the next data chunk.
+
+      Retrieves the next chunk of data from the collection based on the provided shared scan states.
     role: getter
     belongs_to: column_data_collection
     parameters:
@@ -271,8 +285,9 @@ functions:
   ## Multi-Threaded Scanning
   ## -----------------------------------------------------------------------
   column_data_collection_shared_scan_state_create:
-    summary: Initializes a shared scan state for the collection.
     description: |
+      Initializes a shared scan state for the collection.
+
       Returns a shared scan state handle that can be used by multiple threads to coordinate scanning of the collection. Caller owns the returned state and must destroy it via column_data_collection_shared_scan_state_destroy when done.
     parameters:
       collection:
@@ -290,8 +305,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   column_data_collection_shared_scan_state_destroy:
-    summary: Destroys a shared scan state handle.
     description: |
+      Destroys a shared scan state handle.
+
       Cleans up any resources associated with the shared scan state. After this call, the state handle must not be used again.
     role: destructor
     parameters:
@@ -301,8 +317,9 @@ functions:
         description: The shared scan state to destroy.
     return_type: ERROR
   column_data_collection_worker_scan_state_create:
-    summary: Initializes a worker scan state for the collection.
     description: |
+      Initializes a worker scan state for the collection.
+
       Returns a "local" scan state handle for a worker thread to use while scanning the collection. This allows each worker to maintain its own progress and any other necessary information across multiple scan calls, while still coordinating with other workers via the shared scan state. Caller owns the returned state and must destroy it via column_data_collection_worker_scan_state_destroy when done.
     parameters:
       collection:
@@ -320,8 +337,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   column_data_collection_worker_scan_state_destroy:
-    summary: Destroys a worker scan state handle.
     description: |
+      Destroys a worker scan state handle.
+
       Cleans up any resources associated with the worker scan state. After this call, the state handle must not be used again.
     role: destructor
     parameters:
@@ -331,8 +349,9 @@ functions:
         description: The worker scan state to destroy.
     return_type: ERROR
   column_data_collection_parallel_scan:
-    summary: Scans the collection to retrieve the next data chunk, using shared state for coordination across threads and worker-local state for individual progress tracking.
     description: |
+      Scans the collection to retrieve the next data chunk, using shared state for coordination across threads and worker-local state for individual progress tracking.
+
       Retrieves the next chunk of data from the collection based on the provided shared scan state and worker-local scan state.
     role: getter
     belongs_to: column_data_collection

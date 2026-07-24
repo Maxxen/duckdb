@@ -1,9 +1,8 @@
 module: table_description
 functions:
   table_description_create:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a table description object.
     role: constructor
     belongs_to: table_description
     parameters:
@@ -26,12 +25,12 @@ functions:
         kind: OUT
         description: The resulting table description object.
     return_type: state
-    description: Creates a table description object. Note that `duckdb_table_description_destroy` should always be called on the resulting table_description, even if the function returns `DuckDBError`.
+    description: |
+      Creates a table description object. Note that `duckdb_table_description_destroy` should always be called on the resulting table_description, even if the function returns `DuckDBError`.
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   table_description_create_ext:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a table description object.
     role: constructor
     belongs_to: table_description
     parameters:
@@ -59,12 +58,12 @@ functions:
         kind: OUT
         description: The resulting table description object.
     return_type: state
-    description: Creates a table description object. Note that `duckdb_table_description_destroy` must be called on the resulting table_description, even if the function returns `DuckDBError`.
+    description: |
+      Creates a table description object. Note that `duckdb_table_description_destroy` must be called on the resulting table_description, even if the function returns `DuckDBError`.
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   table_description_destroy:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Destroy the TableDescription object
     role: destructor
     belongs_to: table_description
     parameters:
@@ -73,11 +72,11 @@ functions:
         indirection: 1
         description: The table_description to destroy.
     return_type: opaque
-    description: Destroy the TableDescription object.
+    description: |
+      Destroy the TableDescription object.
   table_description_error:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Returns the error message associated with the given table_description.
     parameters:
       table_description:
         type: table_description
@@ -85,15 +84,14 @@ functions:
     return_type: char
     return_pointer: 1
     return_const: true
-    description: |-
+    description: |
       Returns the error message associated with the given table_description.
       If the table_description has no error message, this returns `nullptr` instead.
       The error message should not be freed. It will be de-allocated when `duckdb_table_description_destroy` is called.
     return_description: The error message, or `nullptr` if there is none.
   column_has_default:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Check if the column at 'index' index of the table has a DEFAULT expression
     parameters:
       table_description:
         type: table_description
@@ -107,23 +105,23 @@ functions:
         kind: OUT
         description: The out-parameter used to store the result.
     return_type: state
-    description: Check if the column at 'index' index of the table has a DEFAULT expression.
+    description: |
+      Check if the column at 'index' index of the table has a DEFAULT expression.
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   table_description_get_column_count:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Return the number of columns of the described table
     parameters:
       table_description:
         type: table_description
         description: The table_description to query.
     return_type: idx
-    description: Return the number of columns of the described table.
+    description: |
+      Return the number of columns of the described table.
     return_description: The column count.
   table_description_get_column_name:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Obtain the column name at 'index'.
     parameters:
       table_description:
         type: table_description
@@ -133,14 +131,13 @@ functions:
         description: The index of the column to query.
     return_type: char
     return_pointer: 1
-    description: |-
+    description: |
       Obtain the column name at 'index'.
       The out result must be destroyed with `duckdb_free`.
     return_description: The column name.
   table_description_get_column_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Obtain the column type at 'index'.
     parameters:
       table_description:
         type: table_description
@@ -149,7 +146,7 @@ functions:
         type: idx
         description: The index of the column to query.
     return_type: logical_type
-    description: |-
+    description: |
       Obtain the column type at 'index'.
       The return value must be destroyed with `duckdb_destroy_logical_type`.
     return_description: The column type.

@@ -1,7 +1,7 @@
 module: common_enums
 aliases:
   type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     underlying: TYPE
     description: "Alias for the DUCKDB_TYPE enum."
@@ -53,7 +53,7 @@ enums:
       TYPE_VARIANT: {value: 41, description: "VARIANT type"}
       TYPE_TIMESTAMP_TZ_NS: {value: 42, description: "duckdb_timestamp (nanoseconds)"}
   pending_state:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An enum over the pending state of a pending query result."
     values:
@@ -62,7 +62,7 @@ enums:
       PENDING_ERROR: {value: 2}
       PENDING_NO_TASKS_AVAILABLE: {value: 3}
   result_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An enum over DuckDB's different result types."
     values:
@@ -71,7 +71,7 @@ enums:
       RESULT_TYPE_NOTHING: {value: 2}
       RESULT_TYPE_QUERY_RESULT: {value: 3}
   statement_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An enum over DuckDB's different statement types."
     values:
@@ -104,7 +104,7 @@ enums:
       STATEMENT_TYPE_DETACH: {value: 26}
       STATEMENT_TYPE_MULTI: {value: 27}
   error_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An enum over DuckDB's different error types."
     values:
@@ -152,14 +152,14 @@ enums:
       ERROR_SEQUENCE: {value: 41}
       INVALID_CONFIGURATION: {value: 42}
   cast_mode:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An enum over DuckDB's different cast modes."
     values:
       CAST_NORMAL: {value: 0}
       CAST_TRY: {value: 1}
   file_flag:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "Flags for opening files."
     values:
@@ -170,7 +170,7 @@ enums:
       FILE_FLAG_CREATE_NEW: {value: 4, description: "Create a new file, or fail if it already exists."}
       FILE_FLAG_APPEND: {value: 5, description: "Open the file in append mode."}
   config_option_scope:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An enum over DuckDB's configuration option scopes."
     values:
@@ -179,7 +179,7 @@ enums:
       CONFIG_OPTION_SCOPE_SESSION: {value: 2, description: "The option is set for the current session/connection only."}
       CONFIG_OPTION_SCOPE_GLOBAL: {value: 3, description: "Set the option globally for all sessions/connections."}
   catalog_entry_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An enum over DuckDB's catalog entry types."
     values:

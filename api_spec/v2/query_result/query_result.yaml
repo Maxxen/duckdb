@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: query_result
 #
 # Run a query with lazy, streaming execution and inspect its schema.
@@ -170,8 +170,9 @@ enums:
         description: Query was interrupted. Sticky.
 functions:
   statement_execute:
-    summary: Executes a parsed statement on the connection, streaming its result. Non-consuming.
     description: |
+      Executes a parsed statement on the connection, streaming its result. Non-consuming.
+
       Takes a statement produced by the sql_statement module
       (parse_sql / statement_iterator_next), preprocesses and prepares
       it, and returns a result handle without executing anything:
@@ -252,8 +253,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_destroy:
-    summary: Destroys a result handle.
     description: |
+      Destroys a result handle.
+
       Null-safe: passing nullptr or a slot already set to nullptr is a
       no-op. Frees all owned memory and frees the connection for its
       next query. Safe at any point in the stream's life: destroying a
@@ -270,8 +272,9 @@ functions:
         description: The result to destroy.
     return_type: ERROR
   result_step:
-    summary: Runs one bounded unit of query execution and returns without blocking.
     description: |
+      Runs one bounded unit of query execution and returns without blocking.
+
       The streaming primitive: a step runs a bounded amount of execution work,
       (partly / mostly) non-blocking, and returns control to the caller, so an
       event loop stays responsive and can interleave other work between
@@ -317,8 +320,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_fetch_chunk:
-    summary: Blocks until the next chunk is available and returns it.
     description: |
+      Blocks until the next chunk is available and returns it.
+
       Convenience over result_step: blocks until a chunk is produced or
       the stream ends. On success *out_chunk receives a caller-owned
       chunk (destroy via data_chunk_destroy), or nullptr at
@@ -350,8 +354,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_wait:
-    summary: Blocks until result_step can make progress.
     description: |
+      Blocks until result_step can make progress.
+
       Convenience over result_step: blocks until a
       step is worth issuing again, i.e. until a unit of execution work
       is executable on the calling thread. Never produces or consumes
@@ -370,8 +375,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_render_box:
-    summary: Renders the result as the engine's box table, consuming it.
     description: |
+      Renders the result as the engine's box table, consuming it.
+
       Drains the result into a column data collection and renders it with
       the engine's BoxRenderer (the same renderer as the DuckDB CLI), so
       every client shows results identically without reimplementing table
@@ -428,8 +434,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_drain:
-    summary: Runs the result to completion and reports the changed-row count.
     description: |
+      Runs the result to completion and reports the changed-row count.
+
       Convenience over result_step: blocks until the
       stream is fully consumed, so all side effects are applied. Rows of
       a row-producing result are discarded. For CHANGED_ROWS results
@@ -460,8 +467,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_get_result_type:
-    summary: Returns the shape of the result (query / changed_rows / nothing).
     description: |
+      Returns the shape of the result (query / changed_rows / nothing).
+
       Returns the result shape: QUERY_RESULT for statements that produce
       rows (SELECT, RETURNING, EXPLAIN), CHANGED_ROWS for
       INSERT/UPDATE/DELETE without RETURNING, NOTHING for DDL and other
@@ -483,8 +491,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_get_statement_type:
-    summary: Returns the SQL statement type that produced the result.
     description: |
+      Returns the SQL statement type that produced the result.
+
       Returns the duckdb::StatementType variant numerically. Prepare-time
       metadata (deferred for expanding statements; see the module
       commentary).
@@ -504,8 +513,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   result_get_schema:
-    summary: Returns the result's output schema as a single schema handle.
     description: |
+      Returns the result's output schema as a single schema handle.
+
       Builds an owned schema of the result's column names and types into
       *out_schema; destroy via schema_destroy. Prepare-time metadata, available
       before the first step (for an expanding statement, once stepping has prepared

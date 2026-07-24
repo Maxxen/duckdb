@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: arrow
 #
 # Arrow C Data Interface interop: convert between DuckDB and Arrow in both
@@ -66,8 +66,9 @@ handles:
     cleanup_with: arrow_conversion_plan_destroy
 functions:
   result_to_arrow_stream:
-    summary: Exports a native streaming result as a lazy ArrowArrayStream.
     description: |
+      Exports a native streaming result as a lazy ArrowArrayStream.
+
       Consumes the result by transfer (the slot is set to NULL) and writes a
       lazy ArrowArrayStream into the caller-allocated *out_stream. The stream
       owns the result cursor: its `release` drains nothing, but it unpins the
@@ -121,8 +122,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_types_to_arrow_schema:
-    summary: Converts a list of DuckDB logical types and column names into an Arrow schema.
     description: |
+      Converts a list of DuckDB logical types and column names into an Arrow schema.
+
       Fills the caller-allocated *out_schema with the Arrow schema for the
       given column types and names, using the Arrow options carried by
       `context`. The caller owns the result and frees it via
@@ -162,8 +164,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   data_chunk_to_arrow_array:
-    summary: Converts a DuckDB data chunk into an Arrow array.
     description: |
+      Converts a DuckDB data chunk into an Arrow array.
+
       Fills the caller-allocated *out_array with the Arrow array for `chunk`,
       using the Arrow options and extension type casts resolved from `context`.
       The caller owns the result and frees it via out_array->release(out_array).
@@ -189,8 +192,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   arrow_conversion_plan_create:
-    summary: Builds a reusable conversion plan from an Arrow schema.
     description: |
+      Builds a reusable conversion plan from an Arrow schema.
+
       Resolves `schema` against `context` (column logical types plus per-column
       Arrow type info) and writes an owned arrow_conversion_plan handle into
       *out_plan. Reuse it across many arrays via arrow_array_to_data_chunk.
@@ -219,8 +223,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   arrow_array_to_data_chunk:
-    summary: Converts an Arrow array into a DuckDB data chunk using a conversion plan.
     description: |
+      Converts an Arrow array into a DuckDB data chunk using a conversion plan.
+
       Builds a data chunk from `array`, interpreted through `plan` (from
       arrow_conversion_plan_create). Data ownership transfers to the produced
       chunk: the chunk holds the Arrow buffers zero-copy and `array`'s `release`
@@ -259,8 +264,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   arrow_conversion_plan_get_schema:
-    summary: Returns the conversion plan's fields as an owned schema handle.
     description: |
+      Returns the conversion plan's fields as an owned schema handle.
+
       Writes an owned schema handle carrying the plan's field names and DuckDB
       logical types into *out_schema; destroy it via schema_destroy. This is
       how a caller learns the DuckDB-side shape of an arbitrary ArrowSchema
@@ -287,8 +293,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   arrow_conversion_plan_destroy:
-    summary: Destroys a conversion plan handle.
     description: |
+      Destroys a conversion plan handle.
+
       Null-safe: passing NULL or a slot already set to NULL is a no-op. On
       return the slot is set to NULL to prevent double-free.
     role: destructor

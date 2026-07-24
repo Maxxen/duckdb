@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: logging
 enums:
   LOG_LEVEL:
@@ -54,8 +54,10 @@ callbacks:
 functions:
   # Log Storage Builder Functions
   log_storage_builder_create:
-    summary: "Creates a new log storage builder."
-    description: "Initializes and returns a new log storage builder handle for configuring log storage mechanisms."
+    description: |
+      Creates a new log storage builder.
+
+      Initializes and returns a new log storage builder handle for configuring log storage mechanisms.
     parameters:
       out_builder:
         type: log_storage_builder
@@ -67,8 +69,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   log_storage_builder_set_name:
-    summary: "Sets the name of the log storage builder."
-    description: "Assigns a name to the log storage builder for identification purposes."
+    description: |
+      Sets the name of the log storage builder.
+
+      Assigns a name to the log storage builder for identification purposes.
     parameters:
       builder:
         type: log_storage_builder
@@ -82,8 +86,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   log_storage_builder_set_user_data:
-    summary: "Associates user data with the log storage builder."
-    description: "Attaches arbitrary user data to the log storage builder, which can be retrieved later when processing logs."
+    description: |
+      Associates user data with the log storage builder.
+
+      Attaches arbitrary user data to the log storage builder, which can be retrieved later when processing logs.
     parameters:
       builder:
         type: log_storage_builder
@@ -97,8 +103,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   log_storage_builder_set_log_callback:
-    summary: "Sets the log callback function for the log storage builder."
-    description: "Defines a callback function that will be invoked to process log messages emitted by connections or contexts that use this log storage builder."
+    description: |
+      Sets the log callback function for the log storage builder.
+
+      Defines a callback function that will be invoked to process log messages emitted by connections or contexts that use this log storage builder.
     parameters:
       builder:
         type: log_storage_builder
@@ -112,8 +120,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   log_storage_builder_register_with_database:
-    summary: "Registers the log storage builder with the logging system on a database."
-    description: "Finalizes the configuration of the log storage builder and registers it on the database so that it can be used by connections or contexts to emit log messages."
+    description: |
+      Registers the log storage builder with the logging system on a database.
+
+      Finalizes the configuration of the log storage builder and registers it on the database so that it can be used by connections or contexts to emit log messages.
     parameters:
       db:
         type: database
@@ -127,8 +137,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   log_storage_builder_register_with_context:
-    summary: "Registers the log storage builder with the logging system on a context's database."
-    description: "Finalizes the configuration of the log storage builder and registers it on the context's database so that it can be used by connections or contexts to emit log messages. Use this from inside a callback or extension where a context is already in hand."
+    description: |
+      Registers the log storage builder with the logging system on a context's database.
+
+      Finalizes the configuration of the log storage builder and registers it on the context's database so that it can be used by connections or contexts to emit log messages. Use this from inside a callback or extension where a context is already in hand.
     parameters:
       context:
         type: context
@@ -142,8 +154,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   log_storage_builder_destroy:
-    summary: "Destroys a log storage builder."
-    description: "Cleans up resources associated with the log storage builder handle."
+    description: |
+      Destroys a log storage builder.
+
+      Cleans up resources associated with the log storage builder handle.
     parameters:
       builder:
         type: log_storage_builder
@@ -152,8 +166,9 @@ functions:
     return_type: ERROR
   # Log Emission Functions
   connection_log:
-    summary: "Emits a log message associated with a connection."
     description: |
+      Emits a log message associated with a connection.
+
       Logs the provided message at the specified log level, associating it with the given connection.
       DuckDB makes no guarantee that the message will actually be emitted, as it depends on the logging configuration of the connection's context.
     belongs_to: connection
@@ -173,8 +188,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   context_log:
-    summary: "Emits a log message associated with a context."
     description: |
+      Emits a log message associated with a context.
+
       Logs the provided message at the specified log level, associating it with the given context.
       DuckDB makes no guarantee that the message will actually be emitted, as it depends on the logging configuration of the context.
     belongs_to: context

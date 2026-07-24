@@ -1,19 +1,18 @@
 module: log_storage
 functions:
   create_log_storage:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a new log storage object
     role: constructor
     belongs_to: log_storage
     parameters: {}
     return_type: log_storage
-    description: Creates a new log storage object.
+    description: |
+      Creates a new log storage object.
     return_description: A log storage object. Must be destroyed with `duckdb_destroy_log_storage`.
   destroy_log_storage:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Destroys a log storage object
     role: destructor
     belongs_to: log_storage
     parameters:
@@ -22,11 +21,11 @@ functions:
         indirection: 1
         description: The log storage object to destroy.
     return_type: opaque
-    description: Destroys a log storage object.
+    description: |
+      Destroys a log storage object.
   log_storage_set_write_log_entry:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the callback function for writing log entries
     parameters:
       log_storage:
         type: log_storage
@@ -35,11 +34,11 @@ functions:
         type: logger_write_log_entry_t
         description: The function to call.
     return_type: opaque
-    description: Sets the callback function for writing log entries.
+    description: |
+      Sets the callback function for writing log entries.
   log_storage_set_extra_data:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the extra data of the custom log storage
     parameters:
       log_storage:
         type: log_storage
@@ -51,11 +50,11 @@ functions:
       destroy:
         type: delete_callback_t
     return_type: opaque
-    description: Sets the extra data of the custom log storage.
+    description: |
+      Sets the extra data of the custom log storage.
   log_storage_set_name:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the name of the log storage
     parameters:
       log_storage:
         type: log_storage
@@ -66,11 +65,11 @@ functions:
         const: true
         description: The name of the log storage.
     return_type: opaque
-    description: Sets the name of the log storage.
+    description: |
+      Sets the name of the log storage.
   register_log_storage:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Registers a custom log storage for the logger
     parameters:
       database:
         type: database
@@ -79,5 +78,6 @@ functions:
         type: log_storage
         description: The log storage object.
     return_type: state
-    description: Registers a custom log storage for the logger.
+    description: |
+      Registers a custom log storage for the logger.
     return_description: Whether the registration was successful.

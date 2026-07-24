@@ -1,22 +1,20 @@
 module: aggregate_function
 functions:
   create_aggregate_function:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a new empty aggregate function.
     role: constructor
     belongs_to: aggregate_function
     parameters: {}
     return_type: aggregate_function
-    description: |-
+    description: |
       Creates a new empty aggregate function.
 
       The return value should be destroyed with `duckdb_destroy_aggregate_function`.
     return_description: The aggregate function object.
   destroy_aggregate_function:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Destroys the given aggregate function object
     role: destructor
     belongs_to: aggregate_function
     parameters:
@@ -24,11 +22,11 @@ functions:
         type: aggregate_function
         indirection: 1
     return_type: opaque
-    description: Destroys the given aggregate function object.
+    description: |
+      Destroys the given aggregate function object.
   aggregate_function_set_name:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the name of the given aggregate function
     parameters:
       aggregate_function:
         type: aggregate_function
@@ -39,11 +37,11 @@ functions:
         const: true
         description: The name of the aggregate function
     return_type: opaque
-    description: Sets the name of the given aggregate function.
+    description: |
+      Sets the name of the given aggregate function.
   aggregate_function_add_parameter:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Adds a parameter to the aggregate function
     parameters:
       aggregate_function:
         type: aggregate_function
@@ -52,11 +50,11 @@ functions:
         type: logical_type
         description: The parameter type. Cannot contain INVALID.
     return_type: opaque
-    description: Adds a parameter to the aggregate function.
+    description: |
+      Adds a parameter to the aggregate function.
   aggregate_function_set_return_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the return type of the aggregate function
     parameters:
       aggregate_function:
         type: aggregate_function
@@ -65,11 +63,11 @@ functions:
         type: logical_type
         description: The return type. Cannot contain INVALID or ANY.
     return_type: opaque
-    description: Sets the return type of the aggregate function.
+    description: |
+      Sets the return type of the aggregate function.
   aggregate_function_set_functions:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the main functions of the aggregate function
     parameters:
       aggregate_function:
         type: aggregate_function
@@ -90,11 +88,11 @@ functions:
         type: aggregate_finalize_t
         description: finalize states
     return_type: opaque
-    description: Sets the main functions of the aggregate function.
+    description: |
+      Sets the main functions of the aggregate function.
   aggregate_function_set_destructor:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the state destructor callback of the aggregate function (optional)
     parameters:
       aggregate_function:
         type: aggregate_function
@@ -103,11 +101,11 @@ functions:
         type: aggregate_destroy_t
         description: state destroy callback
     return_type: opaque
-    description: Sets the state destructor callback of the aggregate function (optional)
+    description: |
+      Sets the state destructor callback of the aggregate function (optional)
   register_aggregate_function:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Register the aggregate function object within the given connection.
     parameters:
       con:
         type: connection
@@ -115,7 +113,7 @@ functions:
       aggregate_function:
         type: aggregate_function
     return_type: state
-    description: |-
+    description: |
       Register the aggregate function object within the given connection.
 
       The function requires at least a name, functions and a return type.
@@ -123,19 +121,18 @@ functions:
       If the function is incomplete or a function with this name already exists DuckDBError is returned.
     return_description: Whether or not the registration was successful.
   aggregate_function_set_special_handling:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the NULL handling of the aggregate function to SPECIAL_HANDLING
     parameters:
       aggregate_function:
         type: aggregate_function
         description: The aggregate function
     return_type: opaque
-    description: Sets the NULL handling of the aggregate function to SPECIAL_HANDLING.
+    description: |
+      Sets the NULL handling of the aggregate function to SPECIAL_HANDLING.
   aggregate_function_set_extra_info:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Assigns extra information to the scalar function that can be fetched during binding, etc
     parameters:
       aggregate_function:
         type: aggregate_function
@@ -148,23 +145,23 @@ functions:
         type: delete_callback_t
         description: The callback that will be called to destroy the extra information (if any)
     return_type: opaque
-    description: Assigns extra information to the scalar function that can be fetched during binding, etc.
+    description: |
+      Assigns extra information to the scalar function that can be fetched during binding, etc.
   aggregate_function_get_extra_info:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the extra info of the function as set in `duckdb_aggregate_function_set_extra_info`
     parameters:
       info:
         type: function_info
         description: The info object
     return_type: opaque
     return_pointer: 1
-    description: Retrieves the extra info of the function as set in `duckdb_aggregate_function_set_extra_info`.
+    description: |
+      Retrieves the extra info of the function as set in `duckdb_aggregate_function_set_extra_info`.
     return_description: The extra info
   aggregate_function_set_error:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Report that an error has occurred while executing the aggregate function
     parameters:
       info:
         type: function_info
@@ -175,11 +172,11 @@ functions:
         const: true
         description: The error message
     return_type: opaque
-    description: Report that an error has occurred while executing the aggregate function.
+    description: |
+      Report that an error has occurred while executing the aggregate function.
   create_aggregate_function_set:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a new empty aggregate function set.
     role: constructor
     belongs_to: aggregate_function_set
     parameters:
@@ -188,15 +185,14 @@ functions:
         indirection: 1
         const: true
     return_type: aggregate_function_set
-    description: |-
+    description: |
       Creates a new empty aggregate function set.
 
       The return value should be destroyed with `duckdb_destroy_aggregate_function_set`.
     return_description: The aggregate function set object.
   destroy_aggregate_function_set:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Destroys the given aggregate function set object
     role: destructor
     belongs_to: aggregate_function_set
     parameters:
@@ -204,11 +200,11 @@ functions:
         type: aggregate_function_set
         indirection: 1
     return_type: opaque
-    description: Destroys the given aggregate function set object.
+    description: |
+      Destroys the given aggregate function set object.
   add_aggregate_function_to_set:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Adds the aggregate function as a new overload to the aggregate function set.
     parameters:
       set:
         type: aggregate_function_set
@@ -217,14 +213,13 @@ functions:
         type: aggregate_function
         description: The function to add
     return_type: state
-    description: |-
+    description: |
       Adds the aggregate function as a new overload to the aggregate function set.
 
       Returns DuckDBError if the function could not be added, for example if the overload already exists.
   register_aggregate_function_set:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Register the aggregate function set within the given connection.
     parameters:
       con:
         type: connection
@@ -233,7 +228,7 @@ functions:
         type: aggregate_function_set
         description: The function set to register
     return_type: state
-    description: |-
+    description: |
       Register the aggregate function set within the given connection.
 
       The set requires at least a single valid overload.

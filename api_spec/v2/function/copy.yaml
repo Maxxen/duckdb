@@ -2,7 +2,7 @@ module: copy
 handles:
   copy_function_builder:
     description: "An opaque handle to a copy function builder. This is used to build a copy function, which can be used to copy data from one source to another."
-    cleanup_with: copy_function_builder_cleanup
+    cleanup_with: copy_function_builder_destroy
   copy_function_bind_info:
     description: |
       Borrowed handle passed to the bind callback. Provides access to the user data set at registration and the list
@@ -95,7 +95,7 @@ callbacks:
         description: "Error info handle, provided by DuckDB. \nCan be used to signal failure and report error details if the callback encounters an error. \nOn success, leave `*err` unchanged. On failure, set an appropriate error code and message in `err` and return. DuckDB will inspect the error info after the callback returns to determine whether the call succeeded or failed.\nThe error info handle is owned by DuckDB, is always valid when the callback is invoked, and must not be stored or destroyed by the callee.\n"
 functions:
   copy_function_builder_create:
-    summary: "Creates a new copy function."
+    description: "Creates a new copy function."
     parameters:
       out:
         type: copy_function_builder
@@ -107,7 +107,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_set_name:
-    summary: "Sets the name of the copy function. This is the name that will be used to invoke the function in SQL."
+    description: "Sets the name of the copy function. This is the name that will be used to invoke the function in SQL."
     parameters:
       builder:
         type: copy_function_builder
@@ -121,7 +121,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_set_bind_callback:
-    summary: "Sets the bind callback for the copy function. The bind callback is responsible for binding the function to a specific set of arguments and return type. It is called during query planning when the function is invoked in SQL."
+    description: "Sets the bind callback for the copy function. The bind callback is responsible for binding the function to a specific set of arguments and return type. It is called during query planning when the function is invoked in SQL."
     parameters:
       builder:
         type: copy_function_builder
@@ -135,7 +135,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_set_init_callback:
-    summary: "Sets the init callback for the copy function. The init callback is responsible for initializing any state or resources needed to execute the function. It is called during query execution when the function is invoked in SQL, before any batches are processed."
+    description: "Sets the init callback for the copy function. The init callback is responsible for initializing any state or resources needed to execute the function. It is called during query execution when the function is invoked in SQL, before any batches are processed."
     parameters:
       builder:
         type: copy_function_builder
@@ -149,7 +149,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_set_batch_callback:
-    summary: "Sets the batch callback for the copy function. The batch callback is responsible for processing a batch of data. It is called during query execution when the function is invoked in SQL."
+    description: "Sets the batch callback for the copy function. The batch callback is responsible for processing a batch of data. It is called during query execution when the function is invoked in SQL."
     parameters:
       builder:
         type: copy_function_builder
@@ -163,7 +163,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_set_flush_callback:
-    summary: "Sets the flush callback for the copy function. The flush callback is responsible for flushing a processed batch of data to the output."
+    description: "Sets the flush callback for the copy function. The flush callback is responsible for flushing a processed batch of data to the output."
     parameters:
       builder:
         type: copy_function_builder
@@ -177,7 +177,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_set_finalize_callback:
-    summary: "Sets the finalize callback for the copy function. The finalize callback is responsible for finalizing the output (for example flushing and closing the underlying file) after all batches have been flushed. It is called once per output file at the end of query execution."
+    description: "Sets the finalize callback for the copy function. The finalize callback is responsible for finalizing the output (for example flushing and closing the underlying file) after all batches have been flushed. It is called once per output file at the end of query execution."
     parameters:
       builder:
         type: copy_function_builder
@@ -191,7 +191,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_set_user_data:
-    summary: "Sets the user data for the copy function. The user data is a pointer that will be passed to the callbacks when they are invoked. This can be used to store any state or context that the callbacks need to operate."
+    description: "Sets the user data for the copy function. The user data is a pointer that will be passed to the callbacks when they are invoked. This can be used to store any state or context that the callbacks need to operate."
     parameters:
       builder:
         type: copy_function_builder
@@ -205,8 +205,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_register_with_connection:
-    summary: "Registers the copy function on a connection, making the function available for use in SQL queries."
-    description: "Registers the copy function with the connection's database. The registration runs in its own transaction on the connection's context."
+    description: |
+      Registers the copy function on a connection, making the function available for use in SQL queries.
+
+      Registers the copy function with the connection's database. The registration runs in its own transaction on the connection's context.
     parameters:
       conn:
         type: connection
@@ -220,8 +222,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_register_with_context:
-    summary: "Registers the copy function on a context, making the function available for use in SQL queries."
-    description: "Registers the copy function with the context's database. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction."
+    description: |
+      Registers the copy function on a context, making the function available for use in SQL queries.
+
+      Registers the copy function with the context's database. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.
     parameters:
       context:
         type: context
@@ -235,7 +239,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_builder_destroy:
-    summary: "Destroys a copy function builder handle, freeing any associated resources. After this call, the handle is no longer valid and should not be used."
+    description: "Destroys a copy function builder handle, freeing any associated resources. After this call, the handle is no longer valid and should not be used."
     parameters:
       builder:
         type: copy_function_builder
@@ -244,7 +248,7 @@ functions:
     return_type: ERROR
   # --- Bind callback accessors ---
   copy_function_bind_get_user_data:
-    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
     parameters:
       info:
         type: copy_function_bind_info
@@ -260,7 +264,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_bind_get_column_count:
-    summary: Retrieves the number of columns being copied.
+    description: Retrieves the number of columns being copied.
     parameters:
       info:
         type: copy_function_bind_info
@@ -276,7 +280,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_bind_get_column_type:
-    summary: Retrieves the type of the column at the given index.
+    description: Retrieves the type of the column at the given index.
     parameters:
       info:
         type: copy_function_bind_info
@@ -295,7 +299,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_bind_get_column_name:
-    summary: Retrieves the name of the column at the given index.
+    description: Retrieves the name of the column at the given index.
     parameters:
       info:
         type: copy_function_bind_info
@@ -314,8 +318,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_bind_set_bind_data:
-    summary: Sets the function's bind data from the bind callback.
     description: |
+      Sets the function's bind data from the bind callback.
+
       Sets an opaque handle bundling a pointer to user data (the function's "bind data") plus optional
       destructor and equality callbacks. The bind data is accessible from later callbacks (init, batch, flush,
       and finalize). The destructor, if provided, destroys the bind data when it is no longer needed. The
@@ -335,7 +340,7 @@ functions:
     return_type: ERROR
   # --- Init callback accessors ---
   copy_function_init_get_user_data:
-    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
     parameters:
       info:
         type: copy_function_init_info
@@ -351,7 +356,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_init_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: copy_function_init_info
@@ -367,7 +372,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_init_get_file_path:
-    summary: Retrieves the target file path for the copy operation.
+    description: Retrieves the target file path for the copy operation.
     parameters:
       info:
         type: copy_function_init_info
@@ -383,8 +388,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_init_set_init_data:
-    summary: Sets the function's global init data from the init callback.
     description: |
+      Sets the function's global init data from the init callback.
+
       Sets an opaque handle bundling a pointer to "init data" plus an optional destructor callback. The init
       data is accessible from the batch, flush, and finalize callbacks. The destructor, if provided, destroys
       the init data when it is no longer needed; the opaque handle's equality callback is unused for init data.
@@ -402,7 +408,7 @@ functions:
     return_type: ERROR
   # --- Batch callback accessors ---
   copy_function_batch_get_user_data:
-    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
     parameters:
       info:
         type: copy_function_batch_info
@@ -418,7 +424,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_batch_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: copy_function_batch_info
@@ -434,7 +440,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_batch_get_init_data:
-    summary: Retrieves the global init data set by the function's init callback.
+    description: Retrieves the global init data set by the function's init callback.
     parameters:
       info:
         type: copy_function_batch_info
@@ -450,8 +456,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_batch_get_input:
-    summary: Retrieves the input column data collection to prepare for this batch.
     description: |
+      Retrieves the input column data collection to prepare for this batch.
+
       Ownership of the collection is transferred to the callback: the callback (or the C++ wrapper around it)
       is responsible for destroying it via column_data_collection_destroy once it is done with it.
     parameters:
@@ -469,8 +476,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_batch_set_batch_data:
-    summary: Sets the prepared batch data from the batch callback.
     description: |
+      Sets the prepared batch data from the batch callback.
+
       Sets an opaque handle bundling a pointer to the prepared batch data plus an optional destructor callback,
       to be handed to the flush callback. The destructor, if provided, destroys the batch data when it is no
       longer needed; the opaque handle's equality callback is unused for batch data.
@@ -488,7 +496,7 @@ functions:
     return_type: ERROR
   # --- Flush callback accessors ---
   copy_function_flush_get_user_data:
-    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
     parameters:
       info:
         type: copy_function_flush_info
@@ -504,7 +512,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_flush_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: copy_function_flush_info
@@ -520,7 +528,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_flush_get_init_data:
-    summary: Retrieves the global init data set by the function's init callback.
+    description: Retrieves the global init data set by the function's init callback.
     parameters:
       info:
         type: copy_function_flush_info
@@ -536,7 +544,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_flush_get_batch_data:
-    summary: Retrieves the prepared batch data set by the function's batch callback.
+    description: Retrieves the prepared batch data set by the function's batch callback.
     parameters:
       info:
         type: copy_function_flush_info
@@ -553,7 +561,7 @@ functions:
     return_type: ERROR
   # --- Finalize callback accessors ---
   copy_function_finalize_get_user_data:
-    summary: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via copy_function_builder_set_user_data.
     parameters:
       info:
         type: copy_function_finalize_info
@@ -569,7 +577,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_finalize_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: copy_function_finalize_info
@@ -585,7 +593,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   copy_function_finalize_get_init_data:
-    summary: Retrieves the global init data set by the function's init callback.
+    description: Retrieves the global init data set by the function's init callback.
     parameters:
       info:
         type: copy_function_finalize_info

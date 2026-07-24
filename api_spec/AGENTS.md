@@ -16,10 +16,10 @@ Each module file defines handles, types, enums, and functions. Example:
 
 ```yaml
 functions:
-  duckdb_v2_option_create:
-    summary: "Creates an option handle carrying a name and a setting."
+  option_create:
+    description: "Creates an option handle carrying a name and a setting."
     role: constructor
-    belongs_to: duckdb_v2_option
+    belongs_to: option
     parameters:
       name:
         type: char
@@ -27,16 +27,16 @@ functions:
         const: true
         description: "Null-terminated option name."
       out_option:
-        type: duckdb_v2_option
+        type: option
         indirection: 1
         kind: OUT
         description: "Receives the new option handle."
       err:
-        type: duckdb_v2_error_info
+        type: error_info
         indirection: 1
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via duckdb_v2_error_info_destroy."
-    return_type: status
+    return_type: ERROR
 ```
 
 ## Authoring conventions
@@ -46,13 +46,13 @@ functions:
 - **Parameter order.** Primary subject, then inputs, then `out_*`, then the trailing `err`. Every fallible function returns the `DUCKDB_V2_ERROR` enum and takes `err` last (`kind: OUT`, `indirection: 1`). See the error-slot contract in the reference doc.
 - **Shared handles** are declared once in `common/common.yaml`, never redeclared per module. Use `qualified: true` for names owned elsewhere (`idx_t`, `sel_t`).
 - **Lexical style.** `Connection` -> `conn`, `Callback` -> `cb`, `Statement` -> `stmt`, `Execution` -> `exec`, `Destroy` -> `destroy`, `Begin` / `End` -> `begin_...` / `end_...`. String data is `type: char, indirection: 1`.
-- **Descriptions.** One description per function, leading with the contract. Annotate enum values only where the name alone is insufficient. No forward references to in-flight work (it ages badly). No first-person editorialising ("at this moment", "for now"): state the contract, and put deferral rationale in the file's top-of-file commentary. For string types write "null-terminated byte string", not "UTF-8" (DuckDB does not enforce encoding).
+- **Descriptions.** One `description` per construct (there is no separate summary field), leading with the contract. Annotate enum values only where the name alone is insufficient. No forward references to in-flight work (it ages badly). No first-person editorialising ("at this moment", "for now"): state the contract, and put deferral rationale in the file's top-of-file commentary. For string types write "null-terminated byte string", not "UTF-8" (DuckDB does not enforce encoding).
 - **Borrowed vs owned out-params** use those exact words. Borrowed string out-params return `NULL` for "no value" (not `""`); they are null-terminated and carry a length.
 - **Numeric enum-id round-trip.** V2 enum values stay numerically identical to their internal counterparts (`duckdb::LogicalTypeId`, `PhysicalType`, ...). If a new internal variant is added, add a matching id in the same change, or the bridge cast silently produces an undefined enum value.
 
 ## Use the schema, don't hand-roll
 
 - `description:` on `handles` / `aliases` / `structs` renders as `//!` comments. Put per-handle docs there, not in the function descriptions that mention them.
-- `tagged_struct` handle style is the default (`options.c.handles.default_style`); `override_style` opts an individual handle back to `void *`. Handle typedefs carry the `_handle` suffix.
+- `tagged_struct` handle style is the default (`handles.default_style` in the adapter options file `options/c.yaml`); `override_style` opts an individual handle back to `void *`. Handle typedefs carry the `_handle` suffix.
 - `qualified` on an alias references an external type name unchanged (no prefix, no `_t` suffix).
 - The IDL field reference and spec-language features live in the capigen repository (`schema_reference.md` and its `CLAUDE.md`).

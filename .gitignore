@@ -370,3 +370,6 @@ generated_extension_loader_package_build.cpp
 
 # clangd tidy/format cache
 .cache
+
+# C API spec generator environment (api_spec/pyproject.toml)
+api_spec/.venv

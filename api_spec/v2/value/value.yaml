@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: value
 #
 # Value construction + reading + NULL + composition + descent + cast.
@@ -40,8 +40,9 @@ functions:
   # Lifecycle + NULL
   # -----------------------------------------------------------------------
   value_destroy:
-    summary: Destroys a value handle.
     description: |
+      Destroys a value handle.
+
       Null-safe: passing nullptr or a slot already set to nullptr is a
       no-op. On success the slot is set to nullptr.
     role: destructor
@@ -53,8 +54,9 @@ functions:
         description: The value to destroy.
     return_type: ERROR
   value_create_null:
-    summary: Creates a NULL value of the given logical type.
     description: |
+      Creates a NULL value of the given logical type.
+
       The input logical type is borrowed; the value internally copies the
       type so the caller can destroy the logical type independently.
     role: constructor
@@ -78,8 +80,9 @@ functions:
   # Leaf payload codec
   # -----------------------------------------------------------------------
   value_create_from_data:
-    summary: Creates a leaf value of the given type from its committed physical layout.
     description: |
+      Creates a leaf value of the given type from its committed physical layout.
+
       The generic leaf constructor: data holds the payload in exactly the
       committed physical layout of the type, the same bytes a vector view
       exposes. Fixed-size kinds (BOOLEAN, the integer and float widths,
@@ -130,8 +133,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_get_data:
-    summary: Borrows a leaf value's payload in its committed physical layout.
     description: |
+      Borrows a leaf value's payload in its committed physical layout.
+
       The inverse of value_create_from_data: a borrowed view of the
       payload in the same committed layout, valid until the value is
       destroyed. Fixed-size kinds report the layout size; VARCHAR, BLOB,
@@ -164,8 +168,9 @@ functions:
   # BIGNUM codec (engine-owned decode + allocation; see module commentary)
   # -----------------------------------------------------------------------
   value_create_bignum:
-    summary: Creates a BIGNUM (arbitrary-precision integer) value from raw bytes.
     description: |
+      Creates a BIGNUM (arbitrary-precision integer) value from raw bytes.
+
       Takes the magnitude bytes (big-endian) plus a sign flag. The library
       builds the VARINT-format payload (3-byte header carrying length and
       sign bit) internally. Fixes the V1 gap where BIGNUM values had no
@@ -198,8 +203,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_get_bignum:
-    summary: Returns the magnitude bytes and sign flag of a BIGNUM value.
     description: |
+      Returns the magnitude bytes and sign flag of a BIGNUM value.
+
       Returns the decoded big-endian magnitude bytes (no VARINT header)
       and the sign flag. Caller reconstructs the integer as
       (-1)**is_negative * unsigned_big_endian(out_data[0..out_length]).
@@ -238,8 +244,9 @@ functions:
   # VARIANT codec (wire encoding not committed; unwrap is the read path)
   # -----------------------------------------------------------------------
   value_get_variant:
-    summary: Unwraps a VARIANT value into the plain value it carries.
     description: |
+      Unwraps a VARIANT value into the plain value it carries.
+
       Decodes the variant payload engine-side and returns the carried
       value with its real logical type, so per-row inner-type discovery
       needs no prior knowledge: inspect the result via
@@ -278,8 +285,9 @@ functions:
   # TYPE values (a logical type carried as a value)
   # -----------------------------------------------------------------------
   value_create_type:
-    summary: Creates a TYPE value wrapping a logical type.
     description: |
+      Creates a TYPE value wrapping a logical type.
+
       The input logical type is borrowed; the value stores its own copy
       (serialized form), so the caller can destroy the logical type
       independently. TYPE values carry types where a value is expected,
@@ -302,8 +310,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_get_type:
-    summary: Unwraps the logical type carried by a TYPE value.
     description: |
+      Unwraps the logical type carried by a TYPE value.
+
       Returns ERROR_INPUT_INVALID unless the value is a non-NULL TYPE
       value. The returned logical type is caller-owned and must be
       destroyed via logical_type_destroy.
@@ -327,8 +336,9 @@ functions:
   # Composite construction + descent + cast
   # -----------------------------------------------------------------------
   value_create:
-    summary: Creates a composite value from a type plus child values.
     description: |
+      Creates a composite value from a type plus child values.
+
       The generic composite constructor. Per type kind:
       LIST, children are the elements, any count including 0;
       ARRAY, count must equal the declared array size;
@@ -374,8 +384,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_get_child_count:
-    summary: Returns the number of child values of a value.
     description: |
+      Returns the number of child values of a value.
+
       Per type kind: LIST and ARRAY, the element count; STRUCT and TUPLE,
       the field count; MAP, 2 x the entry count (children alternate key,
       value);
@@ -398,8 +409,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_get_child:
-    summary: Returns one child of a composite value as an owned copy.
     description: |
+      Returns one child of a composite value as an owned copy.
+
       LIST and ARRAY children are the elements; STRUCT and TUPLE children
       are the fields in declared order (STRUCT field names come from the
       type, e.g. logical_type_get_param); MAP children alternate key, value,
@@ -432,8 +444,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_cast_with_connection:
-    summary: Casts a value to a target type through the engine's cast machinery, using a connection.
     description: |
+      Casts a value to a target type through the engine's cast machinery, using a connection.
+
       Same as value_cast_with_context, but supplies the cast machinery
       from a connection: the cast runs in its own transaction on the
       connection's context. Use this from outside DuckDB, where a
@@ -472,8 +485,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_cast_with_context:
-    summary: Casts a value to a target type through the engine's cast machinery, using a context.
     description: |
+      Casts a value to a target type through the engine's cast machinery, using a context.
+
       The SQL-faithful conversion (non-strict), registered custom casts
       included. Cast failures surface from the call. With a VARCHAR built
       through value_create_from_data this constructs any value from text,
@@ -515,7 +529,7 @@ functions:
   # Common introspection
   # -----------------------------------------------------------------------
   value_is_null:
-    summary: Returns whether the value is NULL.
+    description: Returns whether the value is NULL.
     role: getter
     belongs_to: value
     parameters:
@@ -532,8 +546,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_get_logical_type:
-    summary: Returns the logical type of the value.
     description: |
+      Returns the logical type of the value.
+
       The returned logical type is caller-owned (must be destroyed via
       logical_type_destroy).
     role: getter
@@ -553,8 +568,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   value_to_string:
-    summary: Renders the value as a human-readable string. Diagnostic only.
     description: |
+      Renders the value as a human-readable string. Diagnostic only.
+
       The returned char* is caller-owned and must be freed with free().
       Mirrors duckdb::Value::ToString().
     role: getter

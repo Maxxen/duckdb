@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: data_chunk
 #
 # Construct and inspect data chunks.
@@ -22,8 +22,9 @@ functions:
   # DataChunk construction
   # -----------------------------------------------------------------------
   data_chunk_create:
-    summary: Creates an empty data chunk with the given column types.
     description: |
+      Creates an empty data chunk with the given column types.
+
       Allocates a new DataChunk with one FLAT vector per element of the
       types array, each initialized to default capacity. Each vector's
       size starts at 0; set it via vector_set_size after populating the
@@ -54,8 +55,9 @@ functions:
   # Chunk-level accessors
   # -----------------------------------------------------------------------
   data_chunk_destroy:
-    summary: Destroys a data chunk handle.
     description: |
+      Destroys a data chunk handle.
+
       Null-safe. On success the slot is set to nullptr. Any vectors
       previously borrowed from this chunk become invalid.
     role: destructor
@@ -66,7 +68,7 @@ functions:
         indirection: 1
     return_type: ERROR
   data_chunk_get_size:
-    summary: Returns the row count of a data chunk.
+    description: Returns the row count of a data chunk.
     role: getter
     belongs_to: data_chunk
     parameters:
@@ -83,8 +85,10 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   data_chunk_get_vector_count:
-    summary: Returns the number of vectors in a data chunk.
-    description: Equals the column count of the producing result.
+    description: |
+      Returns the number of vectors in a data chunk.
+
+      Equals the column count of the producing result.
     role: getter
     belongs_to: data_chunk
     parameters:
@@ -101,8 +105,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   data_chunk_get_vector:
-    summary: Borrows the vector at the given index in a data chunk.
     description: |
+      Borrows the vector at the given index in a data chunk.
+
       Returns a borrowed vector handle valid until the chunk is destroyed.
       Do not call destroy_* on it. Out-of-range index returns
       ERROR_INPUT_INVALID.

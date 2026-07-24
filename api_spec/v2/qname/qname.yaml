@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: qname
 #
 # A qualified name: the ordered path of identifiers that names a database
@@ -20,8 +20,9 @@ handles:
     cleanup_with: qname_destroy
 functions:
   qname_parse:
-    summary: Parses SQL text into a qualified name.
     description: |
+      Parses SQL text into a qualified name.
+
       Parses text with the engine's qualified-name rules: dots separate
       parts, and a double-quoted part may contain dots and doubled interior
       quotes. More than three parts and an unterminated quote are rejected
@@ -47,8 +48,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   qname_create:
-    summary: Creates a qualified name from identifier parts.
     description: |
+      Creates a qualified name from identifier parts.
+
       Builds a qualified name from part_count identifier views ordered
       outermost first; the last part is the object name. Between one and
       three parts are accepted, and every part must be non-empty: partial
@@ -79,7 +81,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   qname_get_part_count:
-    summary: Returns the number of parts in a qualified name.
+    description: Returns the number of parts in a qualified name.
     role: getter
     belongs_to: qname
     parameters:
@@ -98,8 +100,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   qname_get_part:
-    summary: Borrows the part at index.
     description: |
+      Borrows the part at index.
+
       Borrows the identifier part at index; parts are ordered outermost
       first, and the last part is the object name. out_part is valid only
       until the qualified name is destroyed. An out-of-range index is
@@ -125,8 +128,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   qname_render:
-    summary: Renders a qualified name as SQL text.
     description: |
+      Renders a qualified name as SQL text.
+
       Produces the dot-separated SQL text for the name, quoting and escaping
       each part only when required, exactly as identifier_render_quoted does
       for a single part. The returned char* is caller-owned and must be freed
@@ -149,8 +153,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   qname_equals:
-    summary: Compares two qualified names.
     description: |
+      Compares two qualified names.
+
       True when the two names have the same number of parts and each part
       matches case-insensitively, the engine's identifier equality. Casing
       differences never distinguish two names.
@@ -175,8 +180,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   qname_hash:
-    summary: Returns a hash of a qualified name.
     description: |
+      Returns a hash of a qualified name.
+
       A hash consistent with qname_equals: names that compare equal hash
       equal, including casing differences. The value is not stable across
       processes or library versions; use it for in-process tables only,
@@ -199,8 +205,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   qname_destroy:
-    summary: Destroys a qualified name handle.
     description: |
+      Destroys a qualified name handle.
+
       Frees the handle. On success the slot is set to null. Safe to call on
       an already-null slot.
     role: destructor

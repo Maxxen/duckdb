@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: logical_type
 #
 # Introspection plus three construction paths: primitive ids
@@ -144,8 +144,9 @@ functions:
   # Lifecycle
   # -----------------------------------------------------------------------
   logical_type_create_from_id:
-    summary: Creates a logical type from a primitive type id.
     description: |
+      Creates a logical type from a primitive type id.
+
       Accepts primitive type ids (no kind-specific parameters):
       BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
       FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
@@ -181,8 +182,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_create_from_text:
-    summary: Creates a logical type by parsing SQL text.
     description: |
+      Creates a logical type by parsing SQL text.
+
       Parses a SQL type expression in the given context and returns the
       bound logical type: primitives ("INTEGER"), parameterized kinds
       ("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)",
@@ -226,8 +228,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_get_from_text:
-    summary: Gets a logical type by parsing SQL text, using a connection.
     description: |
+      Gets a logical type by parsing SQL text, using a connection.
+
       Same as logical_type_create_from_text, but supplies the catalog and
       transaction from a connection: the parse and bind run in their own
       transaction on the connection's context. Use this from outside
@@ -258,8 +261,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_create_from_args:
-    summary: Creates a logical type from a type name plus value parameters.
     description: |
+      Creates a logical type from a type name plus value parameters.
+
       The generic constructor: resolves the name in the context's catalog
       (search path first, then the system catalog) and binds it with the
       given parameters, mirroring how SQL binds a type expression.
@@ -324,8 +328,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_get_from_args:
-    summary: Gets a logical type from a type name plus value parameters, using a connection.
     description: |
+      Gets a logical type from a type name plus value parameters, using a connection.
+
       Same as logical_type_create_from_args, but supplies the catalog and
       transaction from a connection: the bind runs in its own transaction
       on the connection's context. Use this from outside DuckDB, where a
@@ -372,8 +377,10 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_copy:
-    summary: Creates a copy of a logical type
-    description: On success, writes the new handle into *out_type.
+    description: |
+      Creates a copy of a logical type
+
+      On success, writes the new handle into *out_type.
     role: constructor
     belongs_to: logical_type
     parameters:
@@ -392,8 +399,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_destroy:
-    summary: Destroys a logical type handle.
     description: |
+      Destroys a logical type handle.
+
       Null-safe: passing nullptr or a slot already set to nullptr is a
       no-op. On success the slot is set to nullptr.
     role: destructor
@@ -408,8 +416,9 @@ functions:
   # Common introspection
   # -----------------------------------------------------------------------
   logical_type_is_equal:
-    summary: Compares two logical types for deep equality.
     description: |
+      Compares two logical types for deep equality.
+
       Returns true if the types are identical in kind and all parameters,
       recursively. For example, two DECIMAL(10, 2) types are equal, but
       DECIMAL(10, 2) is not equal to DECIMAL(10, 3) or to FLOAT. Two
@@ -435,7 +444,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_get_id:
-    summary: Returns the logical type id.
+    description: Returns the logical type id.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -454,8 +463,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_get_name:
-    summary: Borrows the logical type's name.
     description: |
+      Borrows the logical type's name.
+
       The alias when one is set (an extension or user-defined name, e.g.
       "POINT_2D"), otherwise the canonical fixed name of the type id
       (e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the
@@ -480,8 +490,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_to_text:
-    summary: Renders a logical type as SQL text.
     description: |
+      Renders a logical type as SQL text.
+
       Mirrors duckdb::LogicalType::ToString(). An aliased type renders as
       its alias; logical_type_create_from_text resolves that spelling only
       when the name is registered in the connection's catalog. Round-trips
@@ -509,8 +520,9 @@ functions:
   # Generic parameter inspection
   # -----------------------------------------------------------------------
   logical_type_get_param_count:
-    summary: Returns the number of value parameters of a logical type.
     description: |
+      Returns the number of value parameters of a logical type.
+
       The inspection dual of logical_type_create_from_args: the parameters that
       reconstruct the type through it. Per kind: DECIMAL 2 (width,
       scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
@@ -538,8 +550,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   logical_type_get_param:
-    summary: Returns one value parameter of a logical type.
     description: |
+      Returns one value parameter of a logical type.
+
       out_name receives a borrowed view of the parameter name (a STRUCT
       field name, a UNION member name, "collation"), or the empty view
       {NULL, 0} for a positional parameter; a non-empty view is valid

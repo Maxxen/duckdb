@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: scalar
 handles:
   scalar_function_builder:
@@ -63,8 +63,9 @@ callbacks:
 # Functions
 functions:
   scalar_function_builder_create:
-    summary: Creates a new scalar function.
-    description: "Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and registered with `scalar_function_builder_register_with_connection` or `scalar_function_builder_register_with_context`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.\n"
+    description: |
+      Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and registered with `scalar_function_builder_register_with_connection` or `scalar_function_builder_register_with_context`.
+      On success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.
     parameters:
       out:
         type: scalar_function_builder
@@ -77,8 +78,11 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_set_name:
-    summary: Sets the name of a scalar function.
-    description: "The library makes an internal copy of the provided name and does not take ownership. \nFailing to set a name before registration results in an error.\n"
+    description: |
+      Sets the name of a scalar function.
+
+      The library makes an internal copy of the provided name and does not take ownership.
+      Failing to set a name before registration results in an error.
     parameters:
       func:
         type: scalar_function_builder
@@ -92,8 +96,11 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_set_bind_callback:
-    summary: Sets the bind callback for a scalar function.
-    description: "The \"Bind\" callback is invoked during query planning and can be used to perform type resolution, argument validation, and other setup tasks. \nAdditionally a \"Bind\" callback can set a \"bind data\" pointer which can be accessed by later callbacks (e.g. \"Init\" and \"Exec\") to share information between the planning and execution phases.\n"
+    description: |
+      Sets the bind callback for a scalar function.
+
+      The "Bind" callback is invoked during query planning and can be used to perform type resolution, argument validation, and other setup tasks.
+      Additionally a "Bind" callback can set a "bind data" pointer which can be accessed by later callbacks (e.g. "Init" and "Exec") to share information between the planning and execution phases.
     parameters:
       func:
         type: scalar_function_builder
@@ -107,8 +114,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_set_init_callback:
-    summary: Sets the init callback for a scalar function.
     description: |
+      Sets the init callback for a scalar function.
+
       The "Init" callback is invoked at the beginning of query execution for each worker thread that will execute the function.
       It can be used to setup an "init data" pointer which can be accessed by the "Exec" callback via `scalar_function_exec_get_init_data` to keep worker-local mutable state across invocations of the function.
     parameters:
@@ -124,8 +132,12 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_set_exec_callback:
-    summary: Sets the "exec" callback for a scalar function.
-    description: "The \"Exec\" callback is invoked during query execution to evaluate the function for each batch of input rows. \nThis is the main callback that implements the logic of the function. \nFailing to set an \"exec\" callback before registration results in an error.\n"
+    description: |
+      Sets the "exec" callback for a scalar function.
+
+      The "Exec" callback is invoked during query execution to evaluate the function for each batch of input rows.
+      This is the main callback that implements the logic of the function.
+      Failing to set an "exec" callback before registration results in an error.
     parameters:
       func:
         type: scalar_function_builder
@@ -139,8 +151,13 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_register_with_connection:
-    summary: Registers a scalar function on a connection, making the function available for use in queries.
-    description: "This function registers a fully configured scalar function builder with the connection's database, making the function available for use in SQL queries executed on that database. The registration runs in its own transaction on the connection's context. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+    description: |
+      Registers a scalar function on a connection, making the function available for use in queries.
+
+      This function registers a fully configured scalar function builder with the connection's database, making the function available for use in SQL queries executed on that database. The registration runs in its own transaction on the connection's context.
+      The function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.
+      DuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.
+      Registered functions do not support plan serialization; the bind callback runs once per binding of a call site.
     parameters:
       conn:
         type: connection
@@ -154,8 +171,13 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_register_with_context:
-    summary: Registers a scalar function on a context, making the function available for use in queries.
-    description: "This function registers a fully configured scalar function builder with the context's database, making the function available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction. \nThe function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.\nDuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+    description: |
+      Registers a scalar function on a context, making the function available for use in queries.
+
+      This function registers a fully configured scalar function builder with the context's database, making the function available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.
+      The function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.
+      DuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.
+      Registered functions do not support plan serialization; the bind callback runs once per binding of a call site.
     parameters:
       context:
         type: context
@@ -169,8 +191,13 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_destroy:
-    summary: Destroys a scalar function, releasing its resources.
-    description: "This function destroys a scalar function builder that was created with `scalar_function_builder_create`, releasing any resources associated with it. \nIf the builder has already been registered with a database, destroying it does not affect the registered function in the database, as DuckDB makes an internal copy of the function during registration. \nThis function is null-safe: calling it with a null pointer is a no-op and returns ERROR_NONE.\nThe handle is set to null on return to prevent double-destruction.\n"
+    description: |
+      Destroys a scalar function, releasing its resources.
+
+      This function destroys a scalar function builder that was created with `scalar_function_builder_create`, releasing any resources associated with it.
+      If the builder has already been registered with a database, destroying it does not affect the registered function in the database, as DuckDB makes an internal copy of the function during registration.
+      This function is null-safe: calling it with a null pointer is a no-op and returns ERROR_NONE.
+      The handle is set to null on return to prevent double-destruction.
     parameters:
       func:
         type: scalar_function_builder
@@ -178,8 +205,11 @@ functions:
         description: The scalar function to destroy.
     return_type: ERROR
   scalar_function_builder_set_user_data:
-    summary: Sets arbitrary extra data on a scalar function.
-    description: "This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function. \nThis is useful for associating custom metadata or static context with the function that can be retrieved later from callbacks via the `scalar_function_*_get_user_data` accessors.\n"
+    description: |
+      Sets arbitrary extra data on a scalar function.
+
+      This function allows the caller to associate an opaque pointer to arbitrary user data with a scalar function.
+      This is useful for associating custom metadata or static context with the function that can be retrieved later from callbacks via the `scalar_function_*_get_user_data` accessors.
     parameters:
       func:
         type: scalar_function_builder
@@ -193,8 +223,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_set_signature:
-    summary: Sets the signature of a scalar function.
     description: |
+      Sets the signature of a scalar function.
+
       Copies a function signature into the builder: the fixed parameters (names, types, defaults), the optional variadic tail, and the return type.
       The signature is borrowed and copied; the caller destroys it independently. Calling this again replaces the previous signature.
       Registration requires a signature whose return type is present and a fully defined concrete type: it rejects a missing return type, and rejects ANY (or any other incomplete type) with ERROR_INPUT_INVALID.
@@ -211,8 +242,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_set_property:
-    summary: Sets a property on a scalar function.
     description: |
+      Sets a property on a scalar function.
+
       Configures a function property that influences planning and execution, such as stability (volatility), NULL handling, fallibility, or collation handling.
       The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches `key`; passing a value that does not correspond to `key`, or a key that is not valid for scalar functions, results in an error.
     parameters:
@@ -231,8 +263,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_builder_get_property:
-    summary: Gets a property from a scalar function.
     description: |
+      Gets a property from a scalar function.
+
       Retrieves the current value of a function property previously set with `scalar_function_builder_set_property`, or its default if it was never set.
       Passing a key that is not valid for scalar functions results in an error.
     parameters:
@@ -254,7 +287,7 @@ functions:
     return_type: ERROR
   # --- Bind callback accessors ---
   scalar_function_bind_get_function_name:
-    summary: Retrieves the name of the function being bound.
+    description: Retrieves the name of the function being bound.
     parameters:
       info:
         type: scalar_function_bind_info
@@ -270,7 +303,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_bind_get_user_data:
-    summary: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
     parameters:
       info:
         type: scalar_function_bind_info
@@ -286,8 +319,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_bind_get_arguments:
-    summary: Retrieves the bound argument list for inspection and mutation during bind.
     description: |
+      Retrieves the bound argument list for inspection and mutation during bind.
+
       Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
       argument's type, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
     parameters:
@@ -305,8 +339,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_bind_set_bind_data:
-    summary: Sets the function's bind data from the bind callback.
     description: |
+      Sets the function's bind data from the bind callback.
+
       Sets an opaque handle bundling a pointer to user data (the function's "bind data") plus optional
       destructor and equality callbacks. The bind data is accessible from later callbacks (init and exec).
       The destructor, if provided, destroys the bind data when it is no longer needed. The equality callback,
@@ -325,8 +360,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_bind_set_return_type:
-    summary: Sets the function's return type from the bind callback.
     description: |
+      Sets the function's return type from the bind callback.
+
       Overrides the return type resolved at registration for this call site. Register the function with a
       return type of ANY and set the concrete return type here, derived from the argument types (read via
       scalar_function_bind_get_arguments), to build a function whose result type depends on its input — for
@@ -346,7 +382,7 @@ functions:
     return_type: ERROR
   # --- Init callback accessors ---
   scalar_function_init_get_function_name:
-    summary: Retrieves the name of the function being initialized.
+    description: Retrieves the name of the function being initialized.
     parameters:
       info:
         type: scalar_function_init_info
@@ -362,7 +398,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_init_get_user_data:
-    summary: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
     parameters:
       info:
         type: scalar_function_init_info
@@ -378,7 +414,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_init_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: scalar_function_init_info
@@ -394,8 +430,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_init_set_init_data:
-    summary: Sets the function's worker-local init data from the init callback.
     description: |
+      Sets the function's worker-local init data from the init callback.
+
       Sets an opaque handle bundling a pointer to worker-local "init data" plus an optional destructor
       callback. The init data is associated with the executing worker thread for the duration of the query
       and accessible from the exec callback. The destructor, if provided, destroys the init data when it is no
@@ -414,7 +451,7 @@ functions:
     return_type: ERROR
   # --- Exec callback accessors ---
   scalar_function_exec_get_function_name:
-    summary: Retrieves the name of the function being executed.
+    description: Retrieves the name of the function being executed.
     parameters:
       info:
         type: scalar_function_exec_info
@@ -430,7 +467,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_exec_get_user_data:
-    summary: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via scalar_function_builder_set_user_data.
     parameters:
       info:
         type: scalar_function_exec_info
@@ -446,7 +483,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_exec_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: scalar_function_exec_info
@@ -462,7 +499,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_exec_get_init_data:
-    summary: Retrieves the worker-local init data set by the function's init callback.
+    description: Retrieves the worker-local init data set by the function's init callback.
     parameters:
       info:
         type: scalar_function_exec_info
@@ -478,8 +515,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_exec_get_input:
-    summary: Retrieves the input data chunk for the current invocation.
-    description: The chunk contains one vector per argument passed to the function, with one row per input row for the current batch. Borrowed; valid only for the duration of the callback.
+    description: |
+      Retrieves the input data chunk for the current invocation.
+
+      The chunk contains one vector per argument passed to the function, with one row per input row for the current batch. Borrowed; valid only for the duration of the callback.
     parameters:
       info:
         type: scalar_function_exec_info
@@ -495,8 +534,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   scalar_function_exec_get_result:
-    summary: Retrieves the result vector the callback must write into.
-    description: The vector has space for the current batch's rows. Borrowed; valid only for the duration of the callback.
+    description: |
+      Retrieves the result vector the callback must write into.
+
+      The vector has space for the current batch's rows. Borrowed; valid only for the duration of the callback.
     parameters:
       info:
         type: scalar_function_exec_info

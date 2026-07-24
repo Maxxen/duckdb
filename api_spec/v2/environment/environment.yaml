@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: environment
 # The environment is the required root for opening databases. Create at
 # program start; destroy at program end. Destroy refuses while any
@@ -7,7 +7,7 @@ module: environment
 # for the program-lifetime root.
 functions:
   create_environment:
-    summary: "Creates the V2 environment. Call once at program start."
+    description: "Creates the V2 environment. Call once at program start."
     role: constructor
     belongs_to: environment
     parameters:
@@ -23,8 +23,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   destroy_environment:
-    summary: "Destroys the environment."
     description: |
+      Destroys the environment.
+
       Refuses with ERROR_RESOURCE_IN_USE if any database opened
       through this environment is still alive. Close outstanding
       databases first, then retry. On success, the environment handle is
@@ -38,8 +39,9 @@ functions:
         description: "The environment."
     return_type: ERROR
   environment_database_count:
-    summary: "Returns the number of databases currently open under the environment."
     description: |
+      Returns the number of databases currently open under the environment.
+
       Diagnostic accessor for debugging leaked database handles when
       destroy_environment returns ERROR_RESOURCE_IN_USE.
       The value is a snapshot; it may change between this call and any

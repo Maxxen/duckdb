@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 #
 # Replacement scan API.
 #
@@ -61,8 +61,9 @@ callbacks:
         description: Error slot. Signal failure via error_info_set_code / error_info_set_text and return.
 functions:
   replacement_scan_register_with_database:
-    summary: Registers a replacement scan callback on a database.
     description: |
+      Registers a replacement scan callback on a database.
+
       Scans are consulted in registration order; the first scan to claim an unresolved name wins. Registered scans
       live until the database closes; there is no unregistration. The user data's destroy callback (if set) runs
       exactly once, at database close; a NULL user data pointer has nothing to destroy.
@@ -90,8 +91,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_register_with_context:
-    summary: Registers a replacement scan callback on the context's database.
     description: |
+      Registers a replacement scan callback on the context's database.
+
       Same as replacement_scan_register_with_database, but resolves the target database from a context. Use this from
       inside a callback or extension where a context is already in hand.
 
@@ -122,8 +124,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_get_catalog_name:
-    summary: Borrows the catalog name of the unresolved table reference.
     description: |
+      Borrows the catalog name of the unresolved table reference.
+
       Returns a borrowed string view, valid for the callback duration. The canonical empty view {NULL, 0} when the
       reference carries no catalog qualifier (the engine reports an absent part as an empty string; this accessor
       translates that to the empty view per the borrowed-string convention).
@@ -145,8 +148,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_get_schema_name:
-    summary: Borrows the schema name of the unresolved table reference.
     description: |
+      Borrows the schema name of the unresolved table reference.
+
       Returns a borrowed string view, valid for the callback duration. The canonical empty view {NULL, 0} when the
       reference carries no schema qualifier (the engine reports an absent part as an empty string; this accessor
       translates that to the empty view per the borrowed-string convention).
@@ -168,8 +172,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_get_table_name:
-    summary: Borrows the table name of the unresolved table reference.
     description: |
+      Borrows the table name of the unresolved table reference.
+
       Returns a borrowed string view, valid for the callback duration. Always a non-empty view.
     role: getter
     belongs_to: replacement_scan_info
@@ -189,7 +194,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_get_user_data:
-    summary: Retrieves the user data passed at registration.
+    description: Retrieves the user data passed at registration.
     role: getter
     belongs_to: replacement_scan_info
     parameters:
@@ -208,8 +213,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_set_function_name:
-    summary: Claims the unresolved name by naming the target table function.
     description: |
+      Claims the unresolved name by naming the target table function.
+
       The library copies the name. The name is not validated here: an unknown function surfaces later as the binder's
       own catalog error. Calling this more than once overwrites the previous name; the last call wins.
     role: setter
@@ -228,8 +234,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_add_parameter:
-    summary: Adds a positional parameter for the target table function.
     description: |
+      Adds a positional parameter for the target table function.
+
       Parameters are passed to the table function in the order they are added. The value is borrowed and copied at
       the call; the caller still owns it and destroys it.
     role: method
@@ -248,8 +255,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   replacement_scan_add_named_parameter:
-    summary: Adds a named (keyword) parameter for the target table function.
     description: |
+      Adds a named (keyword) parameter for the target table function.
+
       The library copies the name. The value is borrowed and copied at the call; the caller still owns it and
       destroys it.
     role: method

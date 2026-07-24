@@ -1,9 +1,8 @@
 module: replacement_scan
 functions:
   add_replacement_scan:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Add a replacement scan definition to the specified database
     parameters:
       db:
         type: database
@@ -19,11 +18,11 @@ functions:
         type: delete_callback_t
         description: The delete callback to call on the extra data, if any
     return_type: opaque
-    description: Add a replacement scan definition to the specified database.
+    description: |
+      Add a replacement scan definition to the specified database.
   replacement_scan_set_function_name:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the replacement function name.
     parameters:
       info:
         type: replacement_scan_info
@@ -34,13 +33,12 @@ functions:
         const: true
         description: The function name to substitute.
     return_type: opaque
-    description: |-
+    description: |
       Sets the replacement function name. If this function is called in the replacement callback,
       the replacement scan is performed. If it is not called, the replacement callback is not performed.
   replacement_scan_add_parameter:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Adds a parameter to the replacement scan function
     parameters:
       info:
         type: replacement_scan_info
@@ -49,11 +47,11 @@ functions:
         type: value
         description: The parameter to add.
     return_type: opaque
-    description: Adds a parameter to the replacement scan function.
+    description: |
+      Adds a parameter to the replacement scan function.
   replacement_scan_set_error:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Report that an error has occurred while executing the replacement scan
     parameters:
       info:
         type: replacement_scan_info
@@ -64,4 +62,5 @@ functions:
         const: true
         description: The error message
     return_type: opaque
-    description: Report that an error has occurred while executing the replacement scan.
+    description: |
+      Report that an error has occurred while executing the replacement scan.

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: aggregate
 handles:
   aggregate_function_builder:
@@ -116,8 +116,8 @@ callbacks:
 functions:
   # Builder Functions
   aggregate_function_builder_create:
-    summary: Creates a new aggregate function builder
-    description: "Creates a new aggregate function builder that can be used to define and register a custom aggregate function in DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation callbacks."
+    description: |
+      Creates a new aggregate function builder that can be used to define and register a custom aggregate function in DuckDB. The builder allows you to specify the function's name, argument types, return type, and implementation callbacks.
     parameters:
       out:
         type: aggregate_function_builder
@@ -130,8 +130,8 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_destroy:
-    summary: Destroys an aggregate function builder
-    description: "Destroys an aggregate function builder that was created with `aggregate_function_builder_create`. This should be called to free resources associated with the builder when it is no longer needed."
+    description: |
+      Destroys an aggregate function builder that was created with `aggregate_function_builder_create`. This should be called to free resources associated with the builder when it is no longer needed.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -139,8 +139,10 @@ functions:
         description: The aggregate function builder to destroy. After this call, the builder handle is invalid and should not be used.
     return_type: ERROR
   aggregate_function_builder_set_name:
-    summary: Sets the name of the aggregate function being built
-    description: "Sets the name of the aggregate function being defined by the builder. This is the name that will be used to call the function in SQL queries."
+    description: |
+      Sets the name of the aggregate function being built
+
+      Sets the name of the aggregate function being defined by the builder. This is the name that will be used to call the function in SQL queries.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -154,8 +156,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_signature:
-    summary: Sets the signature of an aggregate function.
     description: |
+      Sets the signature of an aggregate function.
+
       Copies a function signature into the builder: the fixed parameters (names, types, defaults), the optional variadic tail, and the return type.
       The signature is borrowed and copied; the caller destroys it independently. Calling this again replaces the previous signature.
       Registration requires a signature whose return type is present and a fully defined concrete type: it rejects a missing return type, and rejects ANY (or any other incomplete type) with ERROR_INPUT_INVALID.
@@ -172,8 +175,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_property:
-    summary: Sets a property on an aggregate function.
     description: |
+      Sets a property on an aggregate function.
+
       Configures a function property that influences planning and execution. In addition to the shared base properties (stability, NULL handling, fallibility, collation handling), aggregate functions also accept the aggregate-specific keys (order dependence, distinct dependence).
       The `value` must be one of the `FUNCTION_PROPERTY_VALUE` entries that matches `key`; passing a value that does not correspond to `key`, or a key that is not valid for aggregate functions, results in an error.
     parameters:
@@ -192,8 +196,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_get_property:
-    summary: Gets a property from an aggregate function.
     description: |
+      Gets a property from an aggregate function.
+
       Retrieves the current value of a function property previously set with `aggregate_function_builder_set_property`, or its default if it was never set.
       Passing a key that is not valid for aggregate functions results in an error.
     parameters:
@@ -214,8 +219,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_bind_callback:
-    summary: Sets the bind callback for the aggregate function being built
     description: |
+      Sets the bind callback for the aggregate function being built
+
       The "bind" callback is invoked once during query planning. It can set bind data via `out_bind_data`, which is then passed to the update, combine, finalize, and destroy callbacks. This is useful for sharing information computed during binding (e.g. resolved argument types or configuration) with execution. The bind callback is optional; if not set, no bind data is associated with the function. Note that bind data is not available to the size and init callbacks.
     parameters:
       builder:
@@ -230,8 +236,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_size_callback:
-    summary: Sets the size callback for the aggregate function being built
-    description: "Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB to determine how much memory to allocate for each aggregate state."
+    description: |
+      Sets the size callback for the aggregate function being built
+
+      Sets the size callback for the aggregate function being defined by the builder. The size callback is used by DuckDB to determine how much memory to allocate for each aggregate state.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -245,8 +253,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_init_callback:
-    summary: Sets the init callback for the aggregate function being built
-    description: "Sets the init callback for the aggregate function being defined by the builder. The init callback is called by DuckDB to initialize the aggregate state for a single state before any updates are applied."
+    description: |
+      Sets the init callback for the aggregate function being built
+
+      Sets the init callback for the aggregate function being defined by the builder. The init callback is called by DuckDB to initialize the aggregate state for a single state before any updates are applied.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -260,8 +270,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_update_callback:
-    summary: Sets the update callback for the aggregate function being built
-    description: "Sets the update callback for the aggregate function being defined by the builder. The update callback is called by DuckDB to apply a batch of input rows to a batch of aggregate states."
+    description: |
+      Sets the update callback for the aggregate function being built
+
+      Sets the update callback for the aggregate function being defined by the builder. The update callback is called by DuckDB to apply a batch of input rows to a batch of aggregate states.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -275,8 +287,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_combine_callback:
-    summary: Sets the combine callback for the aggregate function being built
-    description: "Sets the combine callback for the aggregate function being defined by the builder. The combine callback is called by DuckDB to combine batches of source aggregate states into batches of destination aggregate states, such as when merging partial aggregates in a parallel execution."
+    description: |
+      Sets the combine callback for the aggregate function being built
+
+      Sets the combine callback for the aggregate function being defined by the builder. The combine callback is called by DuckDB to combine batches of source aggregate states into batches of destination aggregate states, such as when merging partial aggregates in a parallel execution.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -290,8 +304,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_finalize_callback:
-    summary: Sets the finalize callback for the aggregate function being built
-    description: "Sets the finalize callback for the aggregate function being defined by the builder. The finalize callback is called by DuckDB to finalize a batch of aggregate states into a batch of result values, such as when producing the final output of an aggregate function."
+    description: |
+      Sets the finalize callback for the aggregate function being built
+
+      Sets the finalize callback for the aggregate function being defined by the builder. The finalize callback is called by DuckDB to finalize a batch of aggregate states into a batch of result values, such as when producing the final output of an aggregate function.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -305,8 +321,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_destroy_callback:
-    summary: Sets the destroy callback for the aggregate function being built
-    description: "Sets the destroy callback for the aggregate function being defined by the builder. The destroy callback is called by DuckDB to destroy a batch of aggregate states and free their resources, such as when cleaning up after an aggregate function has finished processing."
+    description: |
+      Sets the destroy callback for the aggregate function being built
+
+      Sets the destroy callback for the aggregate function being defined by the builder. The destroy callback is called by DuckDB to destroy a batch of aggregate states and free their resources, such as when cleaning up after an aggregate function has finished processing.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -320,8 +338,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_set_user_data:
-    summary: Sets user data for the aggregate function being built
-    description: "Sets a user data pointer for the aggregate function being defined by the builder. This pointer is passed to all of the function's callbacks and can be used to store context or state needed by the callbacks."
+    description: |
+      Sets user data for the aggregate function being built
+
+      Sets a user data pointer for the aggregate function being defined by the builder. This pointer is passed to all of the function's callbacks and can be used to store context or state needed by the callbacks.
     parameters:
       builder:
         type: aggregate_function_builder
@@ -335,8 +355,11 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_register_with_connection:
-    summary: Registers the aggregate function being built on a connection
-    description: "Registers the aggregate function defined by the builder with the connection's database, making it available for use in SQL queries. The registration runs in its own transaction on the connection's context.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+    description: |
+      Registers the aggregate function being built on a connection
+
+      Registers the aggregate function defined by the builder with the connection's database, making it available for use in SQL queries. The registration runs in its own transaction on the connection's context.
+      Registered functions do not support plan serialization; the bind callback runs once per binding of a call site.
     parameters:
       conn:
         type: connection
@@ -350,8 +373,11 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_builder_register_with_context:
-    summary: Registers the aggregate function being built on a context
-    description: "Registers the aggregate function defined by the builder with the context's database, making it available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.\nRegistered functions do not support plan serialization; the bind callback runs once per binding of a call site.\n"
+    description: |
+      Registers the aggregate function being built on a context
+
+      Registers the aggregate function defined by the builder with the context's database, making it available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.
+      Registered functions do not support plan serialization; the bind callback runs once per binding of a call site.
     parameters:
       context:
         type: context
@@ -366,7 +392,7 @@ functions:
     return_type: ERROR
   # --- Bind callback accessors ---
   aggregate_function_bind_get_function_name:
-    summary: Retrieves the name of the function being bound.
+    description: Retrieves the name of the function being bound.
     parameters:
       info:
         type: aggregate_function_bind_info
@@ -382,7 +408,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_bind_get_user_data:
-    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
     parameters:
       info:
         type: aggregate_function_bind_info
@@ -398,8 +424,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_bind_get_arguments:
-    summary: Retrieves the bound argument list for inspection and mutation during bind.
     description: |
+      Retrieves the bound argument list for inspection and mutation during bind.
+
       Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
       argument's type, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
     parameters:
@@ -417,8 +444,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_bind_set_bind_data:
-    summary: Sets the function's bind data from the bind callback.
     description: |
+      Sets the function's bind data from the bind callback.
+
       Sets an opaque handle bundling a pointer to the aggregate's "bind data" plus optional destructor and
       equality callbacks. The bind data is accessible from the update, combine, finalize, and destroy callbacks.
       The destructor, if provided, destroys the bind data when it is no longer needed. The equality callback, if
@@ -438,7 +466,7 @@ functions:
     return_type: ERROR
   # --- Size callback accessors ---
   aggregate_function_size_get_user_data:
-    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
     parameters:
       info:
         type: aggregate_function_size_info
@@ -454,8 +482,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_size_set_size:
-    summary: Sets the size of the aggregate state for a single row, in bytes.
-    description: The callback must set the required per-row aggregate state size, which DuckDB uses to allocate state memory.
+    description: |
+      Sets the size of the aggregate state for a single row, in bytes.
+
+      The callback must set the required per-row aggregate state size, which DuckDB uses to allocate state memory.
     parameters:
       info:
         type: aggregate_function_size_info
@@ -470,7 +500,7 @@ functions:
     return_type: ERROR
   # --- Init callback accessors ---
   aggregate_function_init_get_user_data:
-    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
     parameters:
       info:
         type: aggregate_function_init_info
@@ -486,8 +516,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_init_get_state:
-    summary: Retrieves the aggregate state to initialize for a single row.
-    description: The memory for this state is allocated by DuckDB based on the size returned by the size callback and is zero-initialized. The callback should initialize it in place.
+    description: |
+      Retrieves the aggregate state to initialize for a single row.
+
+      The memory for this state is allocated by DuckDB based on the size returned by the size callback and is zero-initialized. The callback should initialize it in place.
     parameters:
       info:
         type: aggregate_function_init_info
@@ -504,7 +536,7 @@ functions:
     return_type: ERROR
   # --- Update callback accessors ---
   aggregate_function_update_get_user_data:
-    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
     parameters:
       info:
         type: aggregate_function_update_info
@@ -520,7 +552,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_update_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: aggregate_function_update_info
@@ -536,8 +568,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_update_get_count:
-    summary: Retrieves the number of rows in the current batch being processed.
-    description: This is the size of the input data chunk and the number of aggregate states.
+    description: |
+      Retrieves the number of rows in the current batch being processed.
+
+      This is the size of the input data chunk and the number of aggregate states.
     parameters:
       info:
         type: aggregate_function_update_info
@@ -553,8 +587,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_update_get_input:
-    summary: Retrieves the input data chunk for the current batch of rows.
-    description: The chunk contains one vector per argument passed to the aggregate function, with one row per input row for the current batch. Borrowed; valid only for the duration of the callback.
+    description: |
+      Retrieves the input data chunk for the current batch of rows.
+
+      The chunk contains one vector per argument passed to the aggregate function, with one row per input row for the current batch. Borrowed; valid only for the duration of the callback.
     parameters:
       info:
         type: aggregate_function_update_info
@@ -570,8 +606,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_update_get_states:
-    summary: Retrieves the array of aggregate states to update for the current batch.
-    description: An array of pointers, one per row, each pointing to the aggregate state for that row. The callback applies updates to these states based on the input data.
+    description: |
+      Retrieves the array of aggregate states to update for the current batch.
+
+      An array of pointers, one per row, each pointing to the aggregate state for that row. The callback applies updates to these states based on the input data.
     parameters:
       info:
         type: aggregate_function_update_info
@@ -588,7 +626,7 @@ functions:
     return_type: ERROR
   # --- Combine callback accessors ---
   aggregate_function_combine_get_user_data:
-    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
     parameters:
       info:
         type: aggregate_function_combine_info
@@ -604,7 +642,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_combine_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: aggregate_function_combine_info
@@ -620,8 +658,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_combine_get_count:
-    summary: Retrieves the number of source and target states to combine.
-    description: This is the size of the sources and targets arrays.
+    description: |
+      Retrieves the number of source and target states to combine.
+
+      This is the size of the sources and targets arrays.
     parameters:
       info:
         type: aggregate_function_combine_info
@@ -637,8 +677,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_combine_get_sources:
-    summary: Retrieves the array of source aggregate states to combine.
-    description: An array of pointers, one per state, each pointing to a source aggregate state that should be combined into the corresponding target state.
+    description: |
+      Retrieves the array of source aggregate states to combine.
+
+      An array of pointers, one per state, each pointing to a source aggregate state that should be combined into the corresponding target state.
     parameters:
       info:
         type: aggregate_function_combine_info
@@ -654,8 +696,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_combine_get_targets:
-    summary: Retrieves the array of destination aggregate states.
-    description: An array of pointers, one per state, each pointing to a destination aggregate state that should be updated with the combined results from the source states.
+    description: |
+      Retrieves the array of destination aggregate states.
+
+      An array of pointers, one per state, each pointing to a destination aggregate state that should be updated with the combined results from the source states.
     parameters:
       info:
         type: aggregate_function_combine_info
@@ -672,7 +716,7 @@ functions:
     return_type: ERROR
   # --- Finalize callback accessors ---
   aggregate_function_finalize_get_user_data:
-    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
     parameters:
       info:
         type: aggregate_function_finalize_info
@@ -688,7 +732,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_finalize_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: aggregate_function_finalize_info
@@ -704,8 +748,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_finalize_get_count:
-    summary: Retrieves the number of rows in the current batch being finalized.
-    description: This is the size of the states array and the number of rows written to the result vector.
+    description: |
+      Retrieves the number of rows in the current batch being finalized.
+
+      This is the size of the states array and the number of rows written to the result vector.
     parameters:
       info:
         type: aggregate_function_finalize_info
@@ -721,8 +767,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_finalize_get_states:
-    summary: Retrieves the array of aggregate states for the current batch being finalized.
-    description: An array of pointers, one per row, each pointing to the aggregate state for that row.
+    description: |
+      Retrieves the array of aggregate states for the current batch being finalized.
+
+      An array of pointers, one per row, each pointing to the aggregate state for that row.
     parameters:
       info:
         type: aggregate_function_finalize_info
@@ -738,8 +786,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_finalize_get_result:
-    summary: Retrieves the result vector the callback must write into.
-    description: The callback writes its finalized result values into this vector, starting at the result offset. Borrowed; valid only for the duration of the callback.
+    description: |
+      Retrieves the result vector the callback must write into.
+
+      The callback writes its finalized result values into this vector, starting at the result offset. Borrowed; valid only for the duration of the callback.
     parameters:
       info:
         type: aggregate_function_finalize_info
@@ -755,8 +805,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_finalize_get_result_offset:
-    summary: Retrieves the offset in the result vector at which to start writing results.
-    description: Used when finalizing multiple batches of rows into a single result vector.
+    description: |
+      Retrieves the offset in the result vector at which to start writing results.
+
+      Used when finalizing multiple batches of rows into a single result vector.
     parameters:
       info:
         type: aggregate_function_finalize_info
@@ -773,7 +825,7 @@ functions:
     return_type: ERROR
   # --- Destroy callback accessors ---
   aggregate_function_destroy_get_user_data:
-    summary: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
+    description: Retrieves the user data set on the builder via aggregate_function_builder_set_user_data.
     parameters:
       info:
         type: aggregate_function_destroy_info
@@ -789,7 +841,7 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_destroy_get_bind_data:
-    summary: Retrieves the bind data set by the function's bind callback.
+    description: Retrieves the bind data set by the function's bind callback.
     parameters:
       info:
         type: aggregate_function_destroy_info
@@ -805,8 +857,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_destroy_get_count:
-    summary: Retrieves the number of aggregate states to destroy.
-    description: This is the size of the states array.
+    description: |
+      Retrieves the number of aggregate states to destroy.
+
+      This is the size of the states array.
     parameters:
       info:
         type: aggregate_function_destroy_info
@@ -822,8 +876,10 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   aggregate_function_destroy_get_states:
-    summary: Retrieves the array of aggregate states to destroy.
-    description: An array of pointers, one per state, each pointing to an aggregate state that should be destroyed and have its resources freed.
+    description: |
+      Retrieves the array of aggregate states to destroy.
+
+      An array of pointers, one per state, each pointing to an aggregate state that should be destroyed and have its resources freed.
     parameters:
       info:
         type: aggregate_function_destroy_info

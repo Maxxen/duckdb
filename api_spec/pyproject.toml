@@ -1,15 +1,14 @@
 [project]
-name = "duckdb-capi-v2-dev"
+name = "duckdb-api-spec"
 version = "0.1.0"
-description = "Development environment for the DuckDB C API v2 fork"
+description = "Generator and formatting environment for the DuckDB C API spec"
 requires-python = ">=3.12"
 dependencies = [
-    "capigen~=0.4.0",
+    "capigen~=0.5.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0",
     "pre-commit>=4.0",
     # scripts/format.py runtime: pinned to match .pre-commit-config.yaml so the
     # formatter behaves identically inside and outside the commit hook.

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: vector
 #
 # Read-side vector access.
@@ -162,8 +162,9 @@ functions:
   # Vector-level introspection
   # -----------------------------------------------------------------------
   vector_get_logical_type:
-    summary: Returns the logical type of a vector.
     description: |
+      Returns the logical type of a vector.
+
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy.
     role: getter
@@ -182,8 +183,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_get_vector_type:
-    summary: Returns the internal representation kind (flat / constant / dict).
     description: |
+      Returns the internal representation kind (flat / constant / dict).
+
       Returns VECTOR_TYPE_OTHER for FSST / SEQUENCE / SHREDDED vectors;
       callers must vector_flatten first before reading via vector_get_view.
     role: getter
@@ -205,8 +207,22 @@ functions:
   # The view-getter
   # -----------------------------------------------------------------------
   vector_get_view:
-    summary: Reads a vector as a unified-format view (data + validity + sel + count).
-    description: "Populates out_view with borrowed pointers valid until the owning\nchunk is destroyed. Per-kind view.data semantics live in the module docstring. \nRejects VECTOR_TYPE_OTHER — call vector_flatten first.\n\nSide effect on DICTIONARY vectors: the dictionary's underlying\nchild is flattened in place if it isn't already FLAT (matching\nduckdb::DictionaryBuffer::ToUnifiedFormat). The parent vector\nstays DICTIONARY; only the underlying child's storage shape\nchanges. Any pointers a caller previously borrowed into that\nchild (e.g. from a prior vector_get_view on a vector that\naliases the same buffer) are invalidated. This is the one\nmutation vector_get_view performs — see also vector_flatten,\nwhich materialises the whole vector to FLAT.\n"
+    description: |
+      Reads a vector as a unified-format view (data + validity + sel + count).
+
+      Populates out_view with borrowed pointers valid until the owning
+      chunk is destroyed. Per-kind view.data semantics live in the module docstring.
+      Rejects VECTOR_TYPE_OTHER — call vector_flatten first.
+
+      Side effect on DICTIONARY vectors: the dictionary's underlying
+      child is flattened in place if it isn't already FLAT (matching
+      duckdb::DictionaryBuffer::ToUnifiedFormat). The parent vector
+      stays DICTIONARY; only the underlying child's storage shape
+      changes. Any pointers a caller previously borrowed into that
+      child (e.g. from a prior vector_get_view on a vector that
+      aliases the same buffer) are invalidated. This is the one
+      mutation vector_get_view performs — see also vector_flatten,
+      which materialises the whole vector to FLAT.
     role: getter
     belongs_to: vector
     parameters:
@@ -226,8 +242,12 @@ functions:
   # Generic vector size
   # -----------------------------------------------------------------------
   vector_get_size:
-    summary: Returns the number of elements in the vector.
-    description: "The size is the number of logical elements represented by the vector, which for nested kinds may differ from\nthe number of elements of their child vectors. E.g. an ARRAY vector with size 10 and an 'array size' of 3 has 10 \nlogical elements but its single child vector has 30 elements.\n"
+    description: |
+      Returns the number of elements in the vector.
+
+      The size is the number of logical elements represented by the vector, which for nested kinds may differ from
+      the number of elements of their child vectors. E.g. an ARRAY vector with size 10 and an 'array size' of 3 has 10
+      logical elements but its single child vector has 30 elements.
     role: getter
     belongs_to: vector
     parameters:
@@ -244,8 +264,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_set_size:
-    summary: Sets the number of elements in the vector.
     description: |
+      Sets the number of elements in the vector.
+
       Sets how many elements are present in the vector.
     role: setter
     belongs_to: vector
@@ -265,8 +286,9 @@ functions:
   # Single-cell value bridge
   # -----------------------------------------------------------------------
   vector_get_value:
-    summary: Reads one cell of a vector as an owned value.
     description: |
+      Reads one cell of a vector as an owned value.
+
       The total fallback reader: reads any logical row of any vector
       representation without flattening (FLAT, CONSTANT, DICTIONARY, and
       the compressed kinds the view getter rejects) and over every type
@@ -298,8 +320,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_set_value:
-    summary: Writes one cell of a FLAT vector from a value.
     description: |
+      Writes one cell of a FLAT vector from a value.
+
       The total fallback writer over every type kind, including kinds
       without a committed view layout (VARIANT, GEOMETRY today), where
       this is the only cell write path. The value is borrowed (copied
@@ -333,8 +356,12 @@ functions:
   # Mutable Access
   # -----------------------------------------------------------------------
   vector_get_data_mutable:
-    summary: For a FLAT or CONSTANT vector, returns a mutable pointer to the data.
-    description: "Returns ERROR_INPUT_INVALID if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning \nchunk is destroyed; callers must not mutate the vector's storage shape (e.g. by flattening) while using the \npointer.\n"
+    description: |
+      For a FLAT or CONSTANT vector, returns a mutable pointer to the data.
+
+      Returns ERROR_INPUT_INVALID if the vector is not FLAT or CONSTANT. The returned pointer is valid until the owning
+      chunk is destroyed; callers must not mutate the vector's storage shape (e.g. by flattening) while using the
+      pointer.
     role: getter
     belongs_to: vector
     parameters:
@@ -355,8 +382,9 @@ functions:
   # Vector type setup
   # -----------------------------------------------------------------------
   vector_flatten:
-    summary: Forces a vector into FLAT representation in place.
     description: |
+      Forces a vector into FLAT representation in place.
+
       No-op for FLAT vectors. For CONSTANT / DICTIONARY / FSST / SEQUENCE /
       SHREDDED vectors, materialises the per-row data and updates the
       vector's internal representation to FLAT. Use before vector_get_view
@@ -374,8 +402,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_reference:
-    summary: Repoints a vector at another vector's data and type (zero-copy).
     description: |
+      Repoints a vector at another vector's data and type (zero-copy).
+
       Makes `vector` share the storage and logical type of `source`, like
       the engine's Vector::Reference: no data is copied, and the two
       vectors alias the same buffers until one is reset or re-referenced.
@@ -399,8 +428,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_make_constant:
-    summary: Turns the vector into a constant vector with the given Value.
     description: |
+      Turns the vector into a constant vector with the given Value.
+
       After this call the vector holds a single value that applies to every
       logical row. Write the value via vector_get_data_mutable (which
       returns a pointer to the single element). For STRUCT vectors the
@@ -423,8 +453,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_make_sequence:
-    summary: Sets a vector to a SEQUENCE representation.
     description: |
+      Sets a vector to a SEQUENCE representation.
+
       After this call the vector represents an arithmetic sequence
       start, start+increment, start+2*increment, ... for count elements.
       No data pointer is needed; the sequence is fully described by
@@ -453,8 +484,9 @@ functions:
   # Validity (mutable)
   # -----------------------------------------------------------------------
   vector_set_null:
-    summary: Sets one row of a FLAT vector to NULL, including nested children.
     description: |
+      Sets one row of a FLAT vector to NULL, including nested children.
+
       Clears the row's validity and recursively broadcasts the NULL to
       every descendant slot under the row (STRUCT fields; ARRAY
       elements, strided by the array size), maintaining the nested NULL
@@ -483,8 +515,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_flat_get_validity_mutable:
-    summary: Returns a mutable pointer to the validity mask of a FLAT vector.
     description: |
+      Returns a mutable pointer to the validity mask of a FLAT vector.
+
       Lazily allocates the validity mask if it has not been allocated yet.
       The returned pointer is always non-null. Each uint64_t word covers
       64 rows; bit N of word W represents row W*64+N. A set bit means
@@ -513,8 +546,10 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_constant_set_valid:
-    summary: Sets the validity for a CONSTANT vector.
-    description: Either true / false.
+    description: |
+      Sets the validity for a CONSTANT vector.
+
+      Either true / false.
     role: setter
     belongs_to: vector
     parameters:
@@ -536,8 +571,9 @@ functions:
   # string_heap module, which documents the two-step write and lifetime.
   # -----------------------------------------------------------------------
   vector_get_string_heap:
-    summary: Borrows a string-backed vector's heap for writing.
     description: |
+      Borrows a string-backed vector's heap for writing.
+
       Allocates the heap on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM
       vectors; ERROR_INPUT_INVALID otherwise. This is the single string-ness
       check; the resulting heap's add calls skip it. Borrowed (do not destroy);
@@ -574,8 +610,9 @@ functions:
   # is the owning chunk's. The child's element count is NOT returned here.
   # -----------------------------------------------------------------------
   vector_get_child_count:
-    summary: Returns the number of child vectors a nested vector exposes.
     description: |
+      Returns the number of child vectors a nested vector exposes.
+
       For LIST / ARRAY returns 1; for MAP returns 2 (keys, values); for
       STRUCT returns the field count; for UNION returns member_count +
       1 (tag plus members); 0 for any non-nested kind. The per-kind
@@ -596,8 +633,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   vector_get_child:
-    summary: Borrows a child vector by index.
     description: |
+      Borrows a child vector by index.
+
       Index convention follows the module docstring. The returned
       child Vector is borrowed; lifetime is the owning chunk's. Returns
       ERROR_INPUT_INVALID if the vector has no children, or if index
@@ -632,8 +670,9 @@ functions:
   # bytes don't exist on disk.
   # -----------------------------------------------------------------------
   bignum_decode:
-    summary: Decodes a BIGNUM value into a fresh magnitude buffer + sign flag.
     description: |
+      Decodes a BIGNUM value into a fresh magnitude buffer + sign flag.
+
       Allocates a malloc'd buffer of big-endian magnitude bytes and
       returns it via out_data; caller frees with free(). out_is_negative
       receives the sign flag; reconstruct the integer as

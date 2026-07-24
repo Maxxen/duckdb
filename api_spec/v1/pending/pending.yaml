@@ -1,9 +1,8 @@
 module: pending
 functions:
   pending_prepared:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Executes the prepared statement with the given bound parameters, and returns a pending result.
     parameters:
       prepared_statement:
         type: prepared_statement
@@ -14,7 +13,7 @@ functions:
         kind: OUT
         description: The pending query result.
     return_type: state
-    description: |-
+    description: |
       Executes the prepared statement with the given bound parameters, and returns a pending result.
       The pending result represents an intermediate structure for a query that is not yet fully executed.
       The pending result can be used to incrementally execute a query, returning control to the client between tasks.
@@ -23,9 +22,8 @@ functions:
       `duckdb_destroy_pending`, even if this function returns DuckDBError.
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   destroy_pending:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Closes the pending result and de-allocates all memory allocated for the result
     role: destructor
     belongs_to: pending_result
     parameters:
@@ -34,11 +32,11 @@ functions:
         indirection: 1
         description: The pending result to destroy.
     return_type: opaque
-    description: Closes the pending result and de-allocates all memory allocated for the result.
+    description: |
+      Closes the pending result and de-allocates all memory allocated for the result.
   pending_error:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Returns the error message contained within the pending result.
     parameters:
       pending_result:
         type: pending_result
@@ -46,21 +44,20 @@ functions:
     return_type: char
     return_pointer: 1
     return_const: true
-    description: |-
+    description: |
       Returns the error message contained within the pending result.
 
       The result of this function must not be freed. It will be cleaned up when `duckdb_destroy_pending` is called.
     return_description: The error of the pending result.
   pending_execute_task:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Executes a single task within the query, returning whether or not the query is ready.
     parameters:
       pending_result:
         type: pending_result
         description: The pending result to execute a task within.
     return_type: pending_state
-    description: |-
+    description: |
       Executes a single task within the query, returning whether or not the query is ready.
 
       If this returns DUCKDB_PENDING_RESULT_READY, the duckdb_execute_pending function can be called to obtain the result.
@@ -70,15 +67,14 @@ functions:
       The error message can be obtained by calling duckdb_pending_error on the pending_result.
     return_description: The state of the pending result after the execution.
   pending_execute_check_state:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: If this returns DUCKDB_PENDING_RESULT_READY, the duckdb_execute_pending function can be called to obtain the result.
     parameters:
       pending_result:
         type: pending_result
         description: The pending result.
     return_type: pending_state
-    description: |-
+    description: |
       If this returns DUCKDB_PENDING_RESULT_READY, the duckdb_execute_pending function can be called to obtain the result.
       If this returns DUCKDB_PENDING_RESULT_NOT_READY, the duckdb_pending_execute_check_state function should be called again.
       If this returns DUCKDB_PENDING_ERROR, an error occurred during execution.
@@ -86,9 +82,8 @@ functions:
       The error message can be obtained by calling duckdb_pending_error on the pending_result.
     return_description: The state of the pending result.
   execute_pending:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Fully execute a pending query result, returning the final query result.
     parameters:
       pending_result:
         type: pending_result
@@ -99,7 +94,7 @@ functions:
         kind: OUT
         description: The result object.
     return_type: state
-    description: |-
+    description: |
       Fully execute a pending query result, returning the final query result.
 
       If duckdb_pending_execute_task has been called until DUCKDB_PENDING_RESULT_READY was returned, this will return fast.
@@ -108,15 +103,14 @@ functions:
       Note that the result must be freed with `duckdb_destroy_result`.
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   pending_execution_is_finished:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Returns whether a duckdb_pending_state is finished executing.
     parameters:
       pending_state:
         type: pending_state
         description: The pending state on which to decide whether to finish execution.
     return_type: bool
-    description: |-
+    description: |
       Returns whether a duckdb_pending_state is finished executing. For example if `pending_state` is
       DUCKDB_PENDING_RESULT_READY, this function will return true.
     return_description: Boolean indicating pending execution should be considered finished.

@@ -1,9 +1,8 @@
 module: vector
 functions:
   create_vector:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a flat vector.
     role: constructor
     belongs_to: vector
     parameters:
@@ -14,12 +13,12 @@ functions:
         type: idx
         description: The capacity of the vector.
     return_type: vector
-    description: Creates a flat vector. Must be destroyed with `duckdb_destroy_vector`.
+    description: |
+      Creates a flat vector. Must be destroyed with `duckdb_destroy_vector`.
     return_description: The vector.
   destroy_vector:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Destroys the vector and de-allocates its memory
     role: destructor
     belongs_to: vector
     parameters:
@@ -28,48 +27,46 @@ functions:
         indirection: 1
         description: A pointer to the vector.
     return_type: opaque
-    description: Destroys the vector and de-allocates its memory.
+    description: |
+      Destroys the vector and de-allocates its memory.
   vector_get_column_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the column type of the specified vector.
     parameters:
       vector:
         type: vector
         description: The vector get the data from
     return_type: logical_type
-    description: |-
+    description: |
       Retrieves the column type of the specified vector.
 
       The result must be destroyed with `duckdb_destroy_logical_type`.
     return_description: The type of the vector
   vector_get_data:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the data pointer of the vector.
     parameters:
       vector:
         type: vector
         description: The vector to get the data from
     return_type: opaque
     return_pointer: 1
-    description: |-
+    description: |
       Retrieves the data pointer of the vector.
 
       The data pointer can be used to read or write values from the vector.
       How to read or write values depends on the type of the vector.
     return_description: The data pointer
   vector_get_validity:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the validity mask pointer of the specified vector.
     parameters:
       vector:
         type: vector
         description: The vector to get the data from
     return_type: u64
     return_pointer: 1
-    description: |-
+    description: |
       Retrieves the validity mask pointer of the specified vector.
 
       If all values are valid, this function MIGHT return NULL!
@@ -87,23 +84,21 @@ functions:
       Alternatively, the (slower) duckdb_validity_row_is_valid function can be used.
     return_description: The pointer to the validity mask, or NULL if no validity mask is present
   vector_ensure_validity_writable:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Ensures the validity mask is writable by allocating it.
     parameters:
       vector:
         type: vector
         description: The vector to alter
     return_type: opaque
-    description: |-
+    description: |
       Ensures the validity mask is writable by allocating it.
 
       After this function is called, `duckdb_vector_get_validity` will ALWAYS return non-NULL.
       This allows NULL values to be written to the vector, regardless of whether a validity mask was present before.
   vector_assign_string_element:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Assigns a string element in the vector at the specified location.
     parameters:
       vector:
         type: vector
@@ -117,14 +112,13 @@ functions:
         const: true
         description: The null-terminated string
     return_type: opaque
-    description: |-
+    description: |
       Assigns a string element in the vector at the specified location. For VARCHAR vectors, the input is validated as UTF-8; if invalid, a NULL value is assigned at that index.
 
       Superseded by `duckdb_unsafe_vector_assign_string_element_len`, optionally combined with `duckdb_valid_utf8_check`.
   vector_assign_string_element_len:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Assigns a string element in the vector at the specified location.
     parameters:
       vector:
         type: vector
@@ -141,14 +135,13 @@ functions:
         type: idx
         description: The length of the string (in bytes)
     return_type: opaque
-    description: |-
+    description: |
       Assigns a string element in the vector at the specified location. For VARCHAR vectors, the input is validated as UTF-8; if invalid, a NULL value is assigned at that index. For BLOB vectors, no validation is performed.
 
       Superseded by `duckdb_unsafe_vector_assign_string_element_len`, optionally combined with `duckdb_valid_utf8_check`.
   unsafe_vector_assign_string_element_len:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Assigns a string element in the vector at the specified location without UTF-8 validation.
     parameters:
       vector:
         type: vector
@@ -165,36 +158,35 @@ functions:
         type: idx
         description: The length of the string (in bytes)
     return_type: opaque
-    description: Assigns a string element in the vector at the specified location without UTF-8 validation. The caller is responsible for ensuring the input is valid UTF-8. Use `duckdb_valid_utf8_check` to validate strings before calling this function if needed. If the input is known to be valid UTF-8, this function can be called directly for better performance, avoiding the overhead of redundant validation.
+    description: |
+      Assigns a string element in the vector at the specified location without UTF-8 validation. The caller is responsible for ensuring the input is valid UTF-8. Use `duckdb_valid_utf8_check` to validate strings before calling this function if needed. If the input is known to be valid UTF-8, this function can be called directly for better performance, avoiding the overhead of redundant validation.
   list_vector_get_child:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the child vector of a list vector.
     parameters:
       vector:
         type: vector
         description: The vector
     return_type: vector
-    description: |-
+    description: |
       Retrieves the child vector of a list vector.
 
       The resulting vector is valid as long as the parent vector is valid.
     return_description: The child vector
   list_vector_get_size:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Returns the size of the child vector of the list
     parameters:
       vector:
         type: vector
         description: The vector
     return_type: idx
-    description: Returns the size of the child vector of the list.
+    description: |
+      Returns the size of the child vector of the list.
     return_description: The size of the child list
   list_vector_set_size:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the size of the underlying child-vector of a list vector.
     parameters:
       vector:
         type: vector
@@ -203,16 +195,15 @@ functions:
         type: idx
         description: The size of the child list.
     return_type: state
-    description: |-
+    description: |
       Sets the size of the underlying child-vector of a list vector.
       Note that this does NOT reserve the memory in the child buffer,
       and that it is possible to set a size exceeding the capacity.
       To set the capacity, use `duckdb_list_vector_reserve`.
     return_description: The duckdb state. Returns DuckDBError, if the vector is nullptr.
   list_vector_reserve:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the capacity of the underlying child-vector of a list vector.
     parameters:
       vector:
         type: vector
@@ -221,16 +212,15 @@ functions:
         type: idx
         description: The child buffer capacity to reserve.
     return_type: state
-    description: |-
+    description: |
       Sets the capacity of the underlying child-vector of a list vector.
       We increment to the next power of two, based on the required capacity.
       Thus, the capacity might not match the size of the list (capacity >= size),
       which is set via `duckdb_list_vector_set_size`.
     return_description: The duckdb state. Returns DuckDBError, if the vector is nullptr.
   struct_vector_get_child:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the child vector of a struct vector.
     parameters:
       vector:
         type: vector
@@ -239,28 +229,26 @@ functions:
         type: idx
         description: The child index
     return_type: vector
-    description: |-
+    description: |
       Retrieves the child vector of a struct vector.
       The resulting vector is valid as long as the parent vector is valid.
     return_description: The child vector
   array_vector_get_child:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the child vector of an array vector.
     parameters:
       vector:
         type: vector
         description: The vector
     return_type: vector
-    description: |-
+    description: |
       Retrieves the child vector of an array vector.
       The resulting vector is valid as long as the parent vector is valid.
       The resulting vector has the size of the parent vector multiplied by the array size.
     return_description: The child vector
   slice_vector:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Slice a vector with a selection vector.
     parameters:
       vector:
         type: vector
@@ -272,14 +260,13 @@ functions:
         type: idx
         description: The length of the selection vector.
     return_type: opaque
-    description: |-
+    description: |
       Slice a vector with a selection vector.
       The length of the selection vector must be less than or equal to the length of the vector.
       Turns the vector into a dictionary vector.
   vector_copy_sel:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Copy the src vector to the dst with a selection vector that identifies which indices to copy
     parameters:
       src:
         type: vector
@@ -300,11 +287,11 @@ functions:
         type: idx
         description: The offset in the dst vector to start copying to.
     return_type: opaque
-    description: Copy the src vector to the dst with a selection vector that identifies which indices to copy.
+    description: |
+      Copy the src vector to the dst with a selection vector that identifies which indices to copy.
   vector_reference_value:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Copies the value from `value` to `vector`
     parameters:
       vector:
         type: vector
@@ -313,11 +300,11 @@ functions:
         type: value
         description: The value to copy into the vector.
     return_type: opaque
-    description: Copies the value from `value` to `vector`.
+    description: |
+      Copies the value from `value` to `vector`.
   vector_reference_vector:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Changes `to_vector` to reference `from_vector.
     parameters:
       to_vector:
         type: vector
@@ -326,11 +313,11 @@ functions:
         type: vector
         description: The vector to reference.
     return_type: opaque
-    description: Changes `to_vector` to reference `from_vector. After, the vectors share ownership of the data.
+    description: |
+      Changes `to_vector` to reference `from_vector. After, the vectors share ownership of the data.
   validity_row_is_valid:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Returns whether or not a row is valid (i.e.
     parameters:
       validity:
         type: u64
@@ -340,12 +327,12 @@ functions:
         type: idx
         description: The row index
     return_type: bool
-    description: Returns whether or not a row is valid (i.e. not NULL) in the given validity mask.
+    description: |
+      Returns whether or not a row is valid (i.e. not NULL) in the given validity mask.
     return_description: true if the row is valid, false otherwise
   validity_set_row_validity:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: In a validity mask, sets a specific row to either valid or invalid.
     parameters:
       validity:
         type: u64
@@ -358,15 +345,14 @@ functions:
         type: bool
         description: Whether or not to set the row to valid, or invalid
     return_type: opaque
-    description: |-
+    description: |
       In a validity mask, sets a specific row to either valid or invalid.
 
       Note that `duckdb_vector_ensure_validity_writable` should be called before calling `duckdb_vector_get_validity`,
       to ensure that there is a validity mask to write to.
   validity_set_row_invalid:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: In a validity mask, sets a specific row to invalid.
     parameters:
       validity:
         type: u64
@@ -376,14 +362,13 @@ functions:
         type: idx
         description: The row index
     return_type: opaque
-    description: |-
+    description: |
       In a validity mask, sets a specific row to invalid.
 
       Equivalent to `duckdb_validity_set_row_validity` with valid set to false.
   validity_set_row_valid:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: In a validity mask, sets a specific row to valid.
     parameters:
       validity:
         type: u64
@@ -393,14 +378,13 @@ functions:
         type: idx
         description: The row index
     return_type: opaque
-    description: |-
+    description: |
       In a validity mask, sets a specific row to valid.
 
       Equivalent to `duckdb_validity_set_row_validity` with valid set to true.
   create_selection_vector:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a new selection vector of size `size`.
     role: constructor
     belongs_to: selection_vector
     parameters:
@@ -408,14 +392,13 @@ functions:
         type: idx
         description: The size of the selection vector.
     return_type: selection_vector
-    description: |-
+    description: |
       Creates a new selection vector of size `size`.
       Must be destroyed with `duckdb_destroy_selection_vector`.
     return_description: The selection vector.
   destroy_selection_vector:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Destroys the selection vector and de-allocates its memory
     role: destructor
     belongs_to: selection_vector
     parameters:
@@ -423,16 +406,17 @@ functions:
         type: selection_vector
         description: The selection vector.
     return_type: opaque
-    description: Destroys the selection vector and de-allocates its memory.
+    description: |
+      Destroys the selection vector and de-allocates its memory.
   selection_vector_get_data_ptr:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Access the data pointer of a selection vector
     parameters:
       sel:
         type: selection_vector
         description: The selection vector.
     return_type: sel_t
     return_pointer: 1
-    description: Access the data pointer of a selection vector.
+    description: |
+      Access the data pointer of a selection vector.
     return_description: The data pointer.

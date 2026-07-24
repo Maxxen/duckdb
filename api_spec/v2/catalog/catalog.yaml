@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: catalog
 #
 # Resolve-and-read catalog primitives: look one named object up and read the
@@ -16,8 +16,9 @@ handles:
     cleanup_with: table_description_destroy
 functions:
   table_description_create:
-    summary: Resolves a table name and snapshots its description.
     description: |
+      Resolves a table name and snapshots its description.
+
       Resolves name in the connection's catalogs and returns an owned
       description of the table it names. name may be partial: an unqualified
       or schema-qualified name resolves through the connection's search path,
@@ -48,8 +49,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   table_description_get_qname:
-    summary: Returns the resolved qualified name of the described table.
     description: |
+      Returns the resolved qualified name of the described table.
+
       Returns an owned copy of the fully resolved name: the catalog, schema,
       and table the lookup landed on, with the casing the table was created
       with, never an echo of the requested name. Rendering it produces SQL
@@ -72,8 +74,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   table_description_get_schema:
-    summary: Returns the described table's columns as an owned schema.
     description: |
+      Returns the described table's columns as an owned schema.
+
       Returns an owned schema holding every column of the table in declared
       order, generated columns included. The per-column flag getters are
       index-aligned with the schema's fields.
@@ -95,8 +98,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   table_description_column_is_generated:
-    summary: Returns whether the column at index is generated.
     description: |
+      Returns whether the column at index is generated.
+
       True when the column at index is a generated column, computed by the
       engine and not writable. index is aligned with the schema returned by
       table_description_get_schema; an out-of-range index is rejected with
@@ -122,8 +126,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   table_description_column_has_default:
-    summary: Returns whether the column at index has a default value.
     description: |
+      Returns whether the column at index has a default value.
+
       True when the column at index declares a default expression; the engine
       evaluates it for rows that omit the column. Generated columns report
       false. index is aligned with the schema returned by
@@ -150,8 +155,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   table_description_is_readonly:
-    summary: Returns whether the described table's catalog is read-only.
     description: |
+      Returns whether the described table's catalog is read-only.
+
       True when the catalog the name resolved into was attached read-only, in
       which case no write to the table can succeed. False does not by itself
       prove a write will succeed; it clears the catalog-level check only.
@@ -173,8 +179,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   table_description_destroy:
-    summary: Destroys a table description handle.
     description: |
+      Destroys a table description handle.
+
       Frees the handle. On success the slot is set to null. Safe to call on
       an already-null slot.
     role: destructor

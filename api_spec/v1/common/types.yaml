@@ -1,14 +1,14 @@
 module: common_types
 structs:
   date:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "DATE is stored as days since 1970-01-01."
     fields:
       - name: days
         type: i32
   date_struct:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "Decomposed date components."
     fields:
@@ -19,14 +19,14 @@ structs:
       - name: day
         type: i8
   time:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "TIME is stored as microseconds since 00:00:00."
     fields:
       - name: micros
         type: i64
   time_struct:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "Decomposed time components."
     fields:
@@ -39,21 +39,21 @@ structs:
       - name: micros
         type: i32
   time_ns:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "TIME_NS is stored as nanoseconds since 00:00:00."
     fields:
       - name: nanos
         type: i64
   time_tz:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "TIME_TZ stored as 40 bits for microseconds and 24 bits for offset."
     fields:
       - name: bits
         type: u64
   time_tz_struct:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "Decomposed TIME_TZ components."
     fields:
@@ -62,14 +62,14 @@ structs:
       - name: offset
         type: i32
   timestamp:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "TIMESTAMP is stored as microseconds since 1970-01-01."
     fields:
       - name: micros
         type: i64
   timestamp_struct:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "Decomposed timestamp components."
     fields:
@@ -78,28 +78,28 @@ structs:
       - name: time
         type: time_struct
   timestamp_s:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "TIMESTAMP_S is stored as seconds since 1970-01-01."
     fields:
       - name: seconds
         type: i64
   timestamp_ms:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "TIMESTAMP_MS is stored as milliseconds since 1970-01-01."
     fields:
       - name: millis
         type: i64
   timestamp_ns:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "TIMESTAMP_NS is stored as nanoseconds since 1970-01-01."
     fields:
       - name: nanos
         type: i64
   interval:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "INTERVAL is stored in months, days, and micros."
     fields:
@@ -110,7 +110,7 @@ structs:
       - name: micros
         type: i64
   hugeint:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "HUGEINT is composed of a lower and upper component. Value is upper * 2^64 + lower."
     fields:
@@ -119,7 +119,7 @@ structs:
       - name: upper
         type: i64
   uhugeint:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "UHUGEINT is composed of a lower and upper component. Value is upper * 2^64 + lower."
     fields:
@@ -128,7 +128,7 @@ structs:
       - name: upper
         type: u64
   decimal:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "DECIMAL is composed of a width and a scale. Value is stored in a HUGEINT."
     fields:
@@ -139,7 +139,7 @@ structs:
       - name: value
         type: hugeint
   query_progress_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "A type holding information about the query execution progress."
     fields:
@@ -150,7 +150,7 @@ structs:
       - name: total_rows_to_process
         type: u64
   list_entry:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "Internal representation of a LIST metadata entry."
     fields:
@@ -159,7 +159,7 @@ structs:
       - name: length
         type: u64
   column:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "A column in a result. Use accessor functions rather than accessing fields directly."
     fields:
@@ -178,7 +178,7 @@ structs:
         type: opaque
         pointer: 1
   string:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "A DuckDB string (char* + size). Free data with duckdb_free."
     fields:
@@ -188,7 +188,7 @@ structs:
       - name: size
         type: idx
   blob:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "A DuckDB BLOB (void* + size). Free data with duckdb_free."
     fields:
@@ -198,7 +198,7 @@ structs:
       - name: size
         type: idx
   bit:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "A DuckDB BIT (uint8_t* + size). Free data with duckdb_free."
     fields:
@@ -208,7 +208,7 @@ structs:
       - name: size
         type: idx
   bignum:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "A DuckDB BIGNUM (uint8_t* + size + is_negative). The absolute value is stored in data in big endian format. Free data with duckdb_free."
     fields:
@@ -220,7 +220,7 @@ structs:
       - name: is_negative
         type: bool
   result:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "A query result. Must be freed with duckdb_destroy_result."
     fields:

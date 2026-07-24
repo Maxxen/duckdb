@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: file_system
 enums:
   FILE_FLAG:
@@ -40,8 +40,9 @@ handles:
 functions:
   ### File System
   file_system_get_from_context:
-    summary: Retrieves the file system associated with a DuckDB context.
     description: |
+      Retrieves the file system associated with a DuckDB context.
+
       Retrieves a non-owning handle to the file system associated with the given DuckDB context.
       The returned handle remains valid only for the lifetime of the context and must not be destroyed by the caller.
     parameters:
@@ -59,8 +60,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_system_get_from_connection:
-    summary: Retrieves the file system associated with a DuckDB connection.
     description: |
+      Retrieves the file system associated with a DuckDB connection.
+
       Retrieves a non-owning handle to the file system associated with the given DuckDB connection.
       The returned handle remains valid only for the lifetime of the connection and must not be destroyed by the caller.
     parameters:
@@ -78,8 +80,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_system_open:
-    summary: Opens a file through the given file system, returning a file handle.
     description: |
+      Opens a file through the given file system, returning a file handle.
+
       Opens the file at the given path through the provided file system, using the provided file flags to control how the file is opened.
       On success, returns a handle to the open file. The handle is owned by the caller and must be destroyed with `duckdb_v2_file_handle_destroy` when no longer needed.
       If the file cannot be opened (e.g. it does not exist, permissions are insufficient, or the flags are incompatible with the file), this function reports an error.
@@ -105,8 +108,9 @@ functions:
     return_type: ERROR
   ### File Handle
   file_handle_read:
-    summary: Reads bytes from a file handle into a caller-provided buffer.
     description: |
+      Reads bytes from a file handle into a caller-provided buffer.
+
       Reads up to `buffer_size` bytes from the current position of the file into the provided buffer, advancing the file's position by the number of bytes read.
       The actual number of bytes read is written to `bytes_read` and may be less than `buffer_size` if e.g. the end of the file is reached.
       The file handle must have been opened with read capabilities (see `DUCKDB_V2_FILE_FLAG_READ`).
@@ -132,8 +136,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_handle_write:
-    summary: Writes bytes from a caller-provided buffer to a file handle.
     description: |
+      Writes bytes from a caller-provided buffer to a file handle.
+
       Writes up to `buffer_size` bytes from the provided buffer to the current position of the file, advancing the file's position by the number of bytes written.
       The actual number of bytes written is reported via `bytes_written`.
       The file handle must have been opened with write capabilities (see `DUCKDB_V2_FILE_FLAG_WRITE` or `DUCKDB_V2_FILE_FLAG_APPEND`).
@@ -160,8 +165,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_handle_tell:
-    summary: Retrieves the current read/write position of a file handle.
     description: |
+      Retrieves the current read/write position of a file handle.
+
       Retrieves the current byte offset of the file handle's read/write position, measured from the beginning of the file.
     parameters:
       file_handle:
@@ -178,8 +184,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_handle_size:
-    summary: Retrieves the total size in bytes of the file backing a file handle.
     description: |
+      Retrieves the total size in bytes of the file backing a file handle.
+
       Retrieves the total size in bytes of the file backing the file handle.
     parameters:
       file_handle:
@@ -196,8 +203,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_handle_seek:
-    summary: Seeks to a specific byte offset within a file handle.
     description: |
+      Seeks to a specific byte offset within a file handle.
+
       Sets the file handle's read/write position to the given absolute byte offset, measured from the beginning of the file.
       Subsequent reads and writes will start from the new position.
     parameters:
@@ -213,8 +221,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_handle_sync:
-    summary: Flushes any buffered writes for a file handle to persistent storage.
     description: |
+      Flushes any buffered writes for a file handle to persistent storage.
+
       Forces any buffered writes on the file handle to be flushed to persistent storage.
       This is useful for ensuring durability of writes before the file is closed or the program exits.
     parameters:
@@ -227,8 +236,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_handle_close:
-    summary: Closes the underlying file of a file handle without destroying the handle.
     description: |
+      Closes the underlying file of a file handle without destroying the handle.
+
       Closes the underlying file backing the file handle, releasing any operating-system-level resources (e.g. file descriptors) associated with it.
       The file handle itself remains valid and must still be destroyed with `duckdb_v2_file_handle_destroy`.
       After closing, the handle can no longer be used to read, write, seek, or otherwise manipulate the file.
@@ -242,8 +252,9 @@ functions:
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
   file_handle_destroy:
-    summary: Destroys a file handle, releasing its resources.
     description: |
+      Destroys a file handle, releasing its resources.
+
       Destroys a file handle that was created with `file_system_open`, closing the underlying file if it is still open and releasing any resources associated with it.
       This function is null-safe: calling it with a null pointer is a no-op and returns DUCKDB_V2_ERROR_NONE.
       The handle is set to null on return to prevent double-destruction.

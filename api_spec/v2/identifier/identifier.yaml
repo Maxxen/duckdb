@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: identifier
 #
 # Operations on identifier-semantic names (the `identifier` alias declared in
@@ -8,8 +8,9 @@ module: identifier
 # rather than quoted by hand.
 functions:
   identifier_render_quoted:
-    summary: Renders a name as a SQL identifier, quoting and escaping only when required.
     description: |
+      Renders a name as a SQL identifier, quoting and escaping only when required.
+
       Produces the SQL text for name as an identifier: returned verbatim when it
       is already a legal bare identifier, or double-quoted with interior quotes
       escaped when it is a keyword or contains characters that require quoting.

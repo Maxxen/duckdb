@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: string_heap
 #
 # Write side of string-backed vectors. Borrow the heap once with
@@ -11,8 +11,9 @@ module: string_heap
 # only while the owning vector lives. Inlined values are self-contained.
 functions:
   string_heap_allocate:
-    summary: Reserves byte_len bytes of vector-lifetime memory from the heap.
     description: |
+      Reserves byte_len bytes of vector-lifetime memory from the heap.
+
       Raw arena allocation: returns a writable pointer to byte_len uninitialized
       bytes. No string semantics and no size gating; byte_len may be 0. The
       caller writes the bytes and assembles the duckdb_v2_string. A

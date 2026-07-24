@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: sql_statement
 #
 # Turn a SQL string into individual statements. parse_sql() parses only:
@@ -40,8 +40,9 @@ handles:
     cleanup_with: statement_iterator_destroy
 functions:
   parse_sql:
-    summary: Parses a SQL string into an iterator over its statements.
     description: |
+      Parses a SQL string into an iterator over its statements.
+
       Parses only: no binding, no catalog access, and no transaction.
       The connection supplies the parser options and parser extensions;
       it is not otherwise touched. Statements are raw parser output;
@@ -72,8 +73,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   statement_iterator_next:
-    summary: Yields the next statement, or NULL when exhausted.
     description: |
+      Yields the next statement, or NULL when exhausted.
+
       On success *out_statement receives the next owned statement, or
       NULL when the iterator is exhausted (idempotently). A parse error
       within the input surfaces no later than the call that reaches the
@@ -98,8 +100,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   statement_bind:
-    summary: Binds a parsed statement without executing, yielding its schema signature.
     description: |
+      Binds a parsed statement without executing, yielding its schema signature.
+
       Preprocesses and binds the statement exactly as execution would, but runs
       nothing: returns its signature as two schemas, no result. Borrowed, not
       consumed: bind it as often as you like and execute it later. out_schema
@@ -144,8 +147,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   statement_add_collection:
-    summary: Binds a filled column data collection to the statement under a name.
     description: |
+      Binds a filled column data collection to the statement under a name.
+
       Makes the collection visible to the statement as a table named name, by
       injecting a common table expression into the parsed statement. The
       statement can then be bound, prepared, or executed through the existing
@@ -198,8 +202,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   sql_statement_destroy:
-    summary: Destroys a statement handle.
     description: |
+      Destroys a statement handle.
+
       Null-safe: passing nullptr or a slot already set to nullptr is a
       no-op. statement_execute is non-consuming, so every statement is
       destroyed here once done with it. On success the slot is set to nullptr.
@@ -212,8 +217,9 @@ functions:
         description: The statement to destroy.
     return_type: ERROR
   statement_iterator_destroy:
-    summary: Destroys a statement iterator handle.
     description: |
+      Destroys a statement iterator handle.
+
       Null-safe: passing nullptr or a slot already set to nullptr is a
       no-op. Statements already yielded are independently owned and stay
       valid. On success the slot is set to nullptr.

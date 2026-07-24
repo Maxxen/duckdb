@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: custom_type
 handles:
   custom_type_builder:
@@ -7,8 +7,10 @@ handles:
 functions:
   # TODO: This function should be moved/removed/changed
   logical_type_create_with_alias:
-    summary: "Constructs a logical type that is an alias of another logical type."
-    description: "This is intended for use in custom type bind callbacks to create logical type instances that are aliases of the base type. The resulting logical type will have the same internal representation as the base type, but with a different name and potentially different metadata. This allows custom types to be created that are logically distinct from their base type but do not require custom handling in the execution engine."
+    description: |
+      Constructs a logical type that is an alias of another logical type.
+
+      This is intended for use in custom type bind callbacks to create logical type instances that are aliases of the base type. The resulting logical type will have the same internal representation as the base type, but with a different name and potentially different metadata. This allows custom types to be created that are logically distinct from their base type but do not require custom handling in the execution engine.
     parameters:
       base_type:
         type: logical_type
@@ -31,8 +33,9 @@ functions:
   # Custom Type Builder Functions
   #------------------------------------------------------------------------------------------------
   custom_type_builder_create:
-    summary: Creates a new custom type builder.
-    description: "Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_context`. \nOn success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.\n"
+    description: |
+      Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_context`.
+      On success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.
     parameters:
       out_builder:
         type: custom_type_builder
@@ -46,8 +49,13 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   custom_type_builder_destroy:
-    summary: Destroys a custom type builder, releasing its resources.
-    description: "This function destroys a custom type builder that was created with `custom_type_builder_create`, releasing any resources associated with it. \nIf the builder has already been registered with a database, destroying it does not affect the registered type, as DuckDB makes an internal copy of the type during registration. \nThis function is null-safe: calling it with a null pointer is a no-op. \nThe handle is set to null on return to prevent double-destruction.\n"
+    description: |
+      Destroys a custom type builder, releasing its resources.
+
+      This function destroys a custom type builder that was created with `custom_type_builder_create`, releasing any resources associated with it.
+      If the builder has already been registered with a database, destroying it does not affect the registered type, as DuckDB makes an internal copy of the type during registration.
+      This function is null-safe: calling it with a null pointer is a no-op.
+      The handle is set to null on return to prevent double-destruction.
     parameters:
       builder:
         type: custom_type_builder
@@ -55,8 +63,12 @@ functions:
         description: "The custom type builder to destroy."
     return_type: void
   custom_type_builder_register_with_connection:
-    summary: Registers a custom type on a connection, making the type available for use in queries.
-    description: "This function registers a fully configured custom type builder with the connection's database, making the type available for use in SQL queries executed on that database (referenced by its name). The registration runs in its own transaction on the connection's context. \nThe builder must have both its name and base type set before registration; otherwise, registration will fail with an error. \nDuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.\n"
+    description: |
+      Registers a custom type on a connection, making the type available for use in queries.
+
+      This function registers a fully configured custom type builder with the connection's database, making the type available for use in SQL queries executed on that database (referenced by its name). The registration runs in its own transaction on the connection's context.
+      The builder must have both its name and base type set before registration; otherwise, registration will fail with an error.
+      DuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.
     parameters:
       conn:
         type: connection
@@ -71,8 +83,12 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   custom_type_builder_register_with_context:
-    summary: Registers a custom type on a context, making the type available for use in queries.
-    description: "This function registers a fully configured custom type builder with the context's database, making the type available for use in SQL queries (referenced by its name). Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction. \nThe builder must have both its name and base type set before registration; otherwise, registration will fail with an error. \nDuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.\n"
+    description: |
+      Registers a custom type on a context, making the type available for use in queries.
+
+      This function registers a fully configured custom type builder with the context's database, making the type available for use in SQL queries (referenced by its name). Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.
+      The builder must have both its name and base type set before registration; otherwise, registration will fail with an error.
+      DuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.
     parameters:
       context:
         type: context
@@ -87,8 +103,11 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   custom_type_builder_set_name:
-    summary: Sets the name of a custom type.
-    description: "The library makes an internal copy of the provided name and does not take ownership. \nThe name is used to reference the custom type in SQL and must be set before registration; otherwise registration will fail with an error.\n"
+    description: |
+      Sets the name of a custom type.
+
+      The library makes an internal copy of the provided name and does not take ownership.
+      The name is used to reference the custom type in SQL and must be set before registration; otherwise registration will fail with an error.
     parameters:
       builder:
         type: custom_type_builder
@@ -103,8 +122,12 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   custom_type_builder_set_base_type:
-    summary: Sets the base type of a custom type.
-    description: "Sets the logical type the custom type is based on. The custom type shares the base type's internal (physical) representation but is logically distinct, so it can carry its own cast functions. \nThe library makes an internal copy of the provided type and does not take ownership of it. \nThe base type must be set before registration; otherwise registration will fail with an error.\n"
+    description: |
+      Sets the base type of a custom type.
+
+      Sets the logical type the custom type is based on. The custom type shares the base type's internal (physical) representation but is logically distinct, so it can carry its own cast functions.
+      The library makes an internal copy of the provided type and does not take ownership of it.
+      The base type must be set before registration; otherwise registration will fail with an error.
     parameters:
       builder:
         type: custom_type_builder

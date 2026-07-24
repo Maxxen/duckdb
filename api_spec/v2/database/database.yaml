@@ -1,9 +1,10 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: database
 functions:
   open:
-    summary: "Opens a database under the environment."
     description: |
+      Opens a database under the environment.
+
       `path` semantics:
         - `nullptr`, ":memory:", or any ":memory:..." path: opens a fresh
           in-memory database. In-memory databases are never deduplicated
@@ -51,8 +52,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   close:
-    summary: "Closes the database."
     description: |
+      Closes the database.
+
       Always succeeds. The underlying database instance remains alive as
       long as any connection still holds a reference; when the last
       reference drops, the instance is destroyed and its path becomes
@@ -66,8 +68,9 @@ functions:
         description: "The database to close."
     return_type: ERROR
   database_option_set:
-    summary: "Sets a config option on the database (GLOBAL scope)."
     description: |
+      Sets a config option on the database (GLOBAL scope).
+
       Reads name and setting from the option; other fields ignored.
       Equivalent to SQL `SET GLOBAL name = setting`. Returns
       ERROR_INPUT_INVALID if the option is declared LOCAL_ONLY,
@@ -91,8 +94,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   database_option_get:
-    summary: "Reads a config option from the database (GLOBAL scope) by name."
     description: |
+      Reads a config option from the database (GLOBAL scope) by name.
+
       Allocates a fully-populated option (canonical name, current GLOBAL
       setting, default setting, description, target scope, aliases).
       Aliases resolve transparently — passing an alias returns the
@@ -120,8 +124,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   database_option_get_count:
-    summary: "Returns the count of config options registered on the database."
     description: |
+      Returns the count of config options registered on the database.
+
       Counts core options + extension options registered on the database.
       Aliases are NOT counted separately — each alias is reachable
       through its canonical option's alias array.
@@ -143,8 +148,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   database_option_get_by_index:
-    summary: "Reads the config option at the given index from the database."
     description: |
+      Reads the config option at the given index from the database.
+
       Index space: [0, core_count) addresses core options;
       [core_count, total) addresses extension options. Stable for the
       database while no extensions register new options. Out-of-range
@@ -170,7 +176,7 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   library_version:
-    summary: "Returns the version of the linked DuckDB library."
+    description: "Returns the version of the linked DuckDB library."
     role: getter
     parameters:
       out_version:

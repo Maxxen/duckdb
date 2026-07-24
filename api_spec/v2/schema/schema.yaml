@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: schema
 # An ordered list of (name, type) fields: a row schema. The single schema type
 # across the V2 API: a bound statement's output (result columns) and input
@@ -15,7 +15,7 @@ handles:
     cleanup_with: schema_destroy
 functions:
   schema_get_count:
-    summary: "Returns the number of fields in a schema."
+    description: "Returns the number of fields in a schema."
     role: getter
     belongs_to: schema
     parameters:
@@ -34,8 +34,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   schema_get_field:
-    summary: "Borrows the name and type of the field at index."
     description: |
+      Borrows the name and type of the field at index.
+
       Borrows the field at index. out_name and out_type are valid only until the
       schema is destroyed, and out_type must not be destroyed. An out-of-range
       index is rejected with INVALID_INPUT.
@@ -65,8 +66,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   schema_destroy:
-    summary: "Destroys a schema handle."
     description: |
+      Destroys a schema handle.
+
       Frees the handle and all owned names and types. On success the slot is set
       to null. Safe to call on an already-null slot.
     role: destructor

@@ -1,11 +1,12 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: error
 # Accessors and lifecycle for error_info, the opaque handle that
 # every fallible function optionally writes out when it fails.
 functions:
   error_info_get_code:
-    summary: "Retrieves the error code associated with an error info handle."
     description: |
+      Retrieves the error code associated with an error info handle.
+
       On success, writes the info's error code to `*out_code`. On failure
       (e.g. if `info` is invalid), leaves `*out_code` unchanged and returns
       a non-success error code.
@@ -22,8 +23,9 @@ functions:
         description: "The error code associated with the info, if the call succeeds."
     return_type: ERROR
   error_info_get_text:
-    summary: "Retrieves the error message associated with an error info handle."
     description: |
+      Retrieves the error message associated with an error info handle.
+
       Returns a borrowed pointer to the info's null-terminated error message.
       The pointer is owned by the library and is valid until the info is
       destroyed; callers must not free it and must not read it after the
@@ -41,8 +43,9 @@ functions:
         description: "Receives a borrowed view of the message. Owned by the library; valid until the info handle is destroyed."
     return_type: ERROR
   error_info_get_raw_message:
-    summary: "Retrieves the error message body without the leading category prefix."
     description: |
+      Retrieves the error message body without the leading category prefix.
+
       Borrowed view of the message body with the "<Type> Error: " prefix that
       error_info_get_text carries stripped off (ErrorData::RawMessage()). The
       authoritative unprefixed body: with no type name in the API the prefix cannot
@@ -63,8 +66,9 @@ functions:
         description: "Receives a borrowed view of the raw message. Owned by the library; valid until the info handle is destroyed."
     return_type: ERROR
   error_info_set_code:
-    summary: "Sets the error code for an error info handle."
     description: |
+      Sets the error code for an error info handle.
+
       On success, sets the error code to the provided value. On failure,
       nothing is changed. Can accept a `nullptr` info handle: in that case,
       the call is a no-op and returns ERROR_NONE.
@@ -79,8 +83,13 @@ functions:
         description: "The error code to set in the info."
     return_type: ERROR
   error_info_set_text:
-    summary: "Sets the error code and message for an error info handle."
-    description: "On success, sets the errors message to the provided value.\nThe library allocates its own copy of the message string. \nOn failure, nothing is changed. Can accept a `nullptr` info handle: in that case,\nthe call is a no-op and returns ERROR_NONE.\n"
+    description: |
+      Sets the error code and message for an error info handle.
+
+      On success, sets the errors message to the provided value.
+      The library allocates its own copy of the message string.
+      On failure, nothing is changed. Can accept a `nullptr` info handle: in that case,
+      the call is a no-op and returns ERROR_NONE.
     role: setter
     belongs_to: error_info
     parameters:
@@ -92,8 +101,9 @@ functions:
         description: "The error message to set in the info."
     return_type: ERROR
   error_info_destroy:
-    summary: "Destroys an error info handle and frees its resources."
     description: |
+      Destroys an error info handle and frees its resources.
+
       Null-safe: calling with a null handle or a null pointer-to-handle is a
       no-op and returns ERROR_NONE. On return, `*info` is set to
       nullptr. Safe to call on any info returned by the library.

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: function
 # Shared, generic function property channel. Used by the various function
 # builders (scalar, aggregate, ...) via `*_builder_set_property` /
@@ -128,8 +128,9 @@ handles:
       only for the duration of the bind callback; do not store it.
 functions:
   bind_arguments_get_count:
-    summary: Returns the number of bound arguments.
     description: |
+      Returns the number of bound arguments.
+
       One entry per argument the call supplied, including varargs extras (already expanded).
     role: getter
     belongs_to: bind_arguments
@@ -149,8 +150,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   bind_arguments_get_type:
-    summary: Returns the resolved type of a bound argument.
     description: |
+      Returns the resolved type of a bound argument.
+
       An owned copy of argument `index`'s resolved type; the caller destroys it via
       logical_type_destroy. Returns ERROR_INPUT_INVALID if index is out of range (>= the count
       from bind_arguments_get_count).
@@ -175,8 +177,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   bind_arguments_fold:
-    summary: Folds a bound argument to a constant value.
     description: |
+      Folds a bound argument to a constant value.
+
       Evaluates argument `index` to a single owned value the caller destroys via value_destroy.
       Exists because bind runs before optimizer constant folding, so a constant-computable
       argument (e.g. 0.25 + 0.25) is not yet a plain constant. Returns ERROR_INPUT_INVALID if the

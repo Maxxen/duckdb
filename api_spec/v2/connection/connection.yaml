@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: connection
 handles:
   query_progress:
@@ -10,8 +10,9 @@ handles:
     cleanup_with: query_progress_destroy
 functions:
   connect:
-    summary: "Opens a connection to a database."
     description: |
+      Opens a connection to a database.
+
       Each connection carries its own ClientContext and session-scoped
       settings (LOCAL scope). Multiple connections to the same database
       share the underlying catalog, buffer pool, and transaction manager.
@@ -33,8 +34,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   disconnect:
-    summary: "Closes the connection."
     description: |
+      Closes the connection.
+
       Always succeeds. Releases the connection's reference on the
       underlying DatabaseInstance; the instance survives as long as any
       other reference (open queries, prepared statements, etc.) holds
@@ -48,8 +50,9 @@ functions:
         description: "The connection to close."
     return_type: ERROR
   connection_option_set:
-    summary: "Sets a config option through the connection."
     description: |
+      Sets a config option through the connection.
+
       Reads name and setting from the option; other fields ignored.
       The `scope` parameter chooses the destination, mirroring SQL:
         - AUTOMATIC: resolved from the option's target scope (matches
@@ -83,8 +86,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   connection_option_get:
-    summary: "Reads a config option through the connection."
     description: |
+      Reads a config option through the connection.
+
       Returns the option's effective setting at the connection's scope:
       LOCAL override (if set on this connection) → GLOBAL value → static
       default. Other fields populated identically to the database get.
@@ -111,8 +115,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   connection_option_get_count:
-    summary: "Returns the count of config options visible to this connection."
     description: |
+      Returns the count of config options visible to this connection.
+
       Same as database_option_get_count for the underlying
       database (core + extensions, no aliases).
     role: getter
@@ -133,8 +138,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   connection_option_get_by_index:
-    summary: "Reads the config option at the given index visible to this connection."
     description: |
+      Reads the config option at the given index visible to this connection.
+
       Index space: [0, core_count) addresses core options;
       [core_count, total) addresses extension options visible from this
       connection's database. Out-of-range index returns
@@ -160,8 +166,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   connection_interrupt:
-    summary: "Interrupts the query currently executing on the connection."
     description: |
+      Interrupts the query currently executing on the connection.
+
       Requests cancellation of the connection's active query. This is
       the cross-thread cancellation entry point for streaming results:
       safe to call from any thread, including while another thread
@@ -182,8 +189,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   connection_query_progress:
-    summary: "Captures a snapshot of the active query's execution progress."
     description: |
+      Captures a snapshot of the active query's execution progress.
+
       Captures the progress of the query currently executing on the
       connection into an owned snapshot handle; read it via the
       query_progress_get_* accessors and destroy it via
@@ -212,8 +220,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   query_progress_get_percentage:
-    summary: "Returns the snapshot's percentage complete."
     description: |
+      Returns the snapshot's percentage complete.
+
       The percentage complete in [0, 100], or -1 when no progress
       information was available at capture time.
     role: getter
@@ -234,7 +243,7 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   query_progress_get_rows_processed:
-    summary: "Returns the snapshot's processed row count."
+    description: "Returns the snapshot's processed row count."
     role: getter
     belongs_to: query_progress
     parameters:
@@ -253,7 +262,7 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   query_progress_get_total_rows_to_process:
-    summary: "Returns the snapshot's total row count."
+    description: "Returns the snapshot's total row count."
     role: getter
     belongs_to: query_progress
     parameters:
@@ -272,8 +281,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   query_progress_destroy:
-    summary: "Destroys a progress snapshot handle."
     description: |
+      Destroys a progress snapshot handle.
+
       Null-safe: passing nullptr or a slot already set to nullptr is a
       no-op. On success the slot is set to nullptr.
     role: destructor

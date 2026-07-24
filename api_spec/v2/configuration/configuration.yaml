@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: configuration
 # The option handle is an opaque carrier of an option's name,
 # current setting, and (when populated by a database/connection get)
@@ -56,8 +56,9 @@ enums:
         description: "Write to the connection's session only."
 functions:
   option_create:
-    summary: "Creates an option handle carrying a name and a setting."
     description: |
+      Creates an option handle carrying a name and a setting.
+
       Allocates an option with the given name and setting copied in. The
       remaining fields (description, default setting, target scope,
       aliases) stay empty / UNKNOWN until the option is resolved through
@@ -84,8 +85,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   option_destroy:
-    summary: "Destroys an option handle."
     description: |
+      Destroys an option handle.
+
       Frees the handle and all owned strings. On success the slot is set
       to null. Safe to call on an already-null slot.
     role: destructor
@@ -97,8 +99,9 @@ functions:
         description: "The option handle to destroy."
     return_type: ERROR
   option_get_name:
-    summary: "Borrows the option's canonical name."
     description: |
+      Borrows the option's canonical name.
+
       For options returned by a database/connection get (landing in a
       follow-up) where the user passed an alias, the canonical name is
       returned; the alias is reachable via option_get_alias.
@@ -120,8 +123,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   option_get_setting:
-    summary: "Borrows the option's current setting (string-encoded value)."
     description: |
+      Borrows the option's current setting (string-encoded value).
+
       For options created via option_create this is the
       caller-supplied setting verbatim. For options resolved through a
       database/connection get this is the effective setting at the
@@ -144,8 +148,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   option_get_default_setting:
-    summary: "Borrows the option's static default setting."
     description: |
+      Borrows the option's static default setting.
+
       Empty string for options created via option_create until
       the option has been resolved through a database/connection get.
     role: getter
@@ -166,8 +171,10 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   option_get_description:
-    summary: "Borrows the option's human-readable description."
-    description: "Empty string for options created via option_create until the option has been resolved through a database/connection get."
+    description: |
+      Borrows the option's human-readable description.
+
+      Empty string for options created via option_create until the option has been resolved through a database/connection get.
     role: getter
     belongs_to: option
     parameters:
@@ -186,8 +193,9 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   option_get_target_scope:
-    summary: "Returns the option's target scope."
     description: |
+      Returns the option's target scope.
+
       OPTION_TARGET_SCOPE_UNKNOWN for options created via
       option_create until the option has been resolved through
       a database/connection get, and for options whose DuckDB declaration
@@ -210,8 +218,10 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   option_get_alias_count:
-    summary: "Returns the number of aliases registered for this option."
-    description: "Zero for options created via option_create until the option has been resolved through a database/connection get."
+    description: |
+      Returns the number of aliases registered for this option.
+
+      Zero for options created via option_create until the option has been resolved through a database/connection get.
     role: getter
     belongs_to: option
     parameters:
@@ -230,8 +240,10 @@ functions:
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
   option_get_alias:
-    summary: "Borrows the alias name at the given index."
-    description: "Out-of-range index returns ERROR_INPUT_INVALID."
+    description: |
+      Borrows the alias name at the given index.
+
+      Out-of-range index returns ERROR_INPUT_INVALID.
     role: getter
     belongs_to: option
     parameters:

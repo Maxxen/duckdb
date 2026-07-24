@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: expression
 #
 # Read-side introspection of bound expression trees. A duckdb_v2_expression
@@ -311,8 +311,9 @@ functions:
   # Universal introspection — valid for every expression class.
   # -----------------------------------------------------------------------
   expression_get_class:
-    summary: Returns the class of a bound expression.
     description: |
+      Returns the class of a bound expression.
+
       The expression class can be used to determine which class-specific accessors are valid (get_function_name
       for function-like classes; get_constant_value for BOUND_CONSTANT; get_reference_index for BOUND_REF).
     role: getter
@@ -333,8 +334,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   expression_get_type:
-    summary: Returns the semantic operation type of a bound expression.
     description: |
+      Returns the semantic operation type of a bound expression.
+
       Distinguishes two nodes of the same class (e.g. COMPARE_EQUAL versus
       COMPARE_GREATERTHAN on two BOUND_FUNCTION nodes). Never fails on class
       grounds.
@@ -356,8 +358,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   expression_get_return_type:
-    summary: Returns the logical type of the expression's result.
     description: |
+      Returns the logical type of the expression's result.
+
       The returned logical type is caller-owned and must be destroyed via logical_type_destroy.
     role: getter
     belongs_to: expression
@@ -377,8 +380,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   expression_get_child_count:
-    summary: Returns the number of child expressions.
     description: |
+      Returns the number of child expressions.
+
       Total over every bound class that has children. Leaves (BOUND_CONSTANT, BOUND_REF) report 0, a cast (a single-argument BOUND_FUNCTION) reports 1,
       and nested nodes report their full fan-out (including hidden children such as a CASE's when/then/else or an
       aggregate's filter and order keys). Never fails on bound classes.
@@ -400,8 +404,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   expression_get_child:
-    summary: Borrows a child expression by index.
     description: |
+      Borrows a child expression by index.
+
       Child order follows the engine's ExpressionIterator. Returns
       ERROR_INPUT_INVALID if index is out of range (>= the count from
       expression_get_child_count), which includes every index on a leaf
@@ -431,8 +436,9 @@ functions:
   # BOUND_FUNCTION.
   # -----------------------------------------------------------------------
   expression_get_function_name:
-    summary: Borrows the function name of a BOUND_FUNCTION expression.
     description: |
+      Borrows the function name of a BOUND_FUNCTION expression.
+
       Returns the bound scalar function's registered name. For comparison
       operators this is an internal symbol such as "__comparison" — dispatch on
       expression_get_type for the semantic operator (e.g. COMPARE_EQUAL).
@@ -460,8 +466,9 @@ functions:
   # BOUND_CONSTANT.
   # -----------------------------------------------------------------------
   expression_get_constant_value:
-    summary: Returns the value of a BOUND_CONSTANT expression.
     description: |
+      Returns the value of a BOUND_CONSTANT expression.
+
       The returned value is caller-owned and must be destroyed via
       value_destroy. Returns ERROR_INPUT_INVALID if the expression class is
       not BOUND_CONSTANT.
@@ -486,8 +493,9 @@ functions:
   # BOUND_COLUMN_REF.
   # -----------------------------------------------------------------------
   expression_get_column_binding:
-    summary: Returns the column binding of a BOUND_COLUMN_REF expression.
     description: |
+      Returns the column binding of a BOUND_COLUMN_REF expression.
+
       A BOUND_COLUMN_REF identifies a column logically, by binding — this is
       the representation seen during binding and optimization, including
       table-function filter pushdown (columns only become physical BOUND_REF
@@ -522,8 +530,9 @@ functions:
   # BOUND_REF.
   # -----------------------------------------------------------------------
   expression_get_reference_index:
-    summary: Returns the physical column index of a BOUND_REF expression.
     description: |
+      Returns the physical column index of a BOUND_REF expression.
+
       The index identifies the column within the expression's input DataChunk.
       BOUND_REF is the execution-stage column representation assigned after
       physical planning; binding/optimization-stage trees (e.g. filter

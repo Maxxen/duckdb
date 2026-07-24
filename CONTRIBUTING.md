@@ -56,10 +56,10 @@ Install [Astral uv](https://docs.astral.sh/uv/getting-started/installation/) (th
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Provision the root virtual environment, which installs `capigen` (from PyPI, pinned) and the formatter runtime (clang-format, black, ...) pinned to the versions CI uses. `cmake-format` is deliberately not in the root venv; it runs only inside its pre-commit hook's isolated environment.
+Provision the spec generator environment, which installs `capigen` (from PyPI, pinned) and the formatter runtime (clang-format, black, ...) pinned to the versions CI uses. The project lives in `api_spec/` so the repository root stays free of a Python project; `--project api_spec` selects it without changing directory. `cmake-format` is deliberately not in this venv; it runs only inside its pre-commit hook's isolated environment.
 
 ```bash
-uv sync --group dev
+uv sync --project api_spec --group dev
 ```
 
 You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, and Ninja (optional but recommended).
@@ -74,10 +74,10 @@ You also need the standard DuckDB build dependencies: a C++17 compiler, CMake, a
 - **`cmake-format`** (from `cheshirekow/cmake-format-precommit`) formats `CMakeLists.txt` and `*.cmake` in its own isolated venv pinned to Python 3.12.
 - **`check-yaml` / `yamlfmt`** validate and format the `api_spec/` YAML.
 
-One-time setup per clone (alongside `uv sync --group dev`):
+One-time setup per clone (alongside `uv sync --project api_spec --group dev`):
 
 ```bash
-uv run pre-commit install
+uv run --project api_spec pre-commit install
 ```
 
 When a hook modifies a staged file, pre-commit aborts the commit and prints the changed files; re-`git add` them and commit again. To bypass for a single commit (not recommended), use `git commit --no-verify`.
@@ -114,7 +114,7 @@ Common gotchas:
 
 `.github/workflows/v2-capi.yml` runs on every push to `main` and on PRs, as two jobs:
 
-- **`format`** provisions the root venv with `uv sync --group dev`, runs `pre-commit run --all-files` and the manual full-tree `scripts/format.py --all --check`, then `git diff --exit-code` to fail if the committed headers or stubs are out of sync with `api_spec/`.
+- **`format`** provisions the spec generator env with `uv sync --project api_spec --group dev`, runs `pre-commit run --all-files` and the manual full-tree `scripts/format.py --all --check`, then `git diff --exit-code` to fail if the committed headers or stubs are out of sync with `api_spec/`.
 - **`build`** builds with `make relassert` (`FORCE_DEBUG=1 FORCE_ASSERT=1`, RelWithDebInfo plus ASan/UBSan/LSan and the slow verifiers), then runs `make unittest_relassert T="[capi_v2],[capi]"`, plus the SQL `SET` regression suites that exercise the same `PhysicalSet::ApplyVariable` path the V2 `*_option_set` bridges use.
 
 A second workflow, `.github/workflows/sqllogic-cpp-api.yml`, runs nightly (and on demand). It runs the full sqllogic suite through the stable C++ API executor and diffs it against the internal `ClientContext::Query` path across the configuration matrix and platforms, failing only on tests that regress under the C-API runner but pass under the internal one.

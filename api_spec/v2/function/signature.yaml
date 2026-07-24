@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.4.0/src/capigen/schema/module.schema.json
+# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: signature
 #
 # A function signature: a function's return type and parameter definition.
@@ -22,8 +22,9 @@ handles:
     cleanup_with: function_signature_destroy
 functions:
   function_signature_create:
-    summary: Creates an empty function signature.
     description: |
+      Creates an empty function signature.
+
       Creates a function signature with no parameters, no variadic tail, and
       no return type. Populate it with the add and set functions before
       handing it to a builder.
@@ -42,8 +43,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_destroy:
-    summary: Destroys a function signature handle.
     description: |
+      Destroys a function signature handle.
+
       Frees the handle. On success the slot is set to null. Safe to call on
       an already-null slot.
     role: destructor
@@ -55,8 +57,9 @@ functions:
         description: The signature handle to destroy.
     return_type: ERROR
   function_signature_add_parameter:
-    summary: Adds a parameter to a signature.
     description: |
+      Adds a parameter to a signature.
+
       Appends a fixed parameter with the given name and type. The name and
       type are borrowed and copied in. ANY is accepted (a fixed-arity
       wildcard parameter); a variadic tail is configured separately via
@@ -82,8 +85,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_add_parameter_default:
-    summary: Adds a parameter with a default value to a signature.
     description: |
+      Adds a parameter with a default value to a signature.
+
       Appends a fixed parameter with the given name, type, and default value.
       The name, type, and value are borrowed and copied in. The caller may
       omit the parameter; the callee still gets a value (the default). When
@@ -114,8 +118,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_set_varargs:
-    summary: Sets the variadic tail type of a signature.
     description: |
+      Sets the variadic tail type of a signature.
+
       Makes the signature variadic: after its fixed parameters it accepts any
       number of extra trailing arguments, each implicitly cast to type. Pass
       ANY for a heterogeneous tail whose arguments keep their own types. A
@@ -138,8 +143,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_set_return_type:
-    summary: Sets the return type of a signature.
     description: |
+      Sets the return type of a signature.
+
       Sets the signature's return type. The type is borrowed and copied.
       Calling this again overwrites the previous return type. An INVALID
       type is rejected with ERROR_INPUT_INVALID. Whether a concrete return
@@ -161,8 +167,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_get_parameter_count:
-    summary: Returns the number of fixed parameters in a signature.
     description: |
+      Returns the number of fixed parameters in a signature.
+
       The count covers the fixed parameters only, with and without defaults;
       the variadic tail is not a parameter.
     role: getter
@@ -183,8 +190,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_get_parameter_name:
-    summary: Borrows the name of the parameter at index.
     description: |
+      Borrows the name of the parameter at index.
+
       Borrows the name of the fixed parameter at index. The view is valid
       only until the signature is next modified or destroyed; adding a
       parameter can move the stored names. An out-of-range index is
@@ -210,8 +218,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_get_parameter_type:
-    summary: Returns an owned copy of the type of the parameter at index.
     description: |
+      Returns an owned copy of the type of the parameter at index.
+
       Copies the type of the fixed parameter at index into a new owned
       logical type. An out-of-range index is rejected with INVALID_INPUT.
     role: getter
@@ -235,8 +244,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_parameter_has_default:
-    summary: Reports whether the parameter at index has a default value.
     description: |
+      Reports whether the parameter at index has a default value.
+
       True when the fixed parameter at index carries a default value. An
       out-of-range index is rejected with INVALID_INPUT.
     role: getter
@@ -260,8 +270,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_get_parameter_default:
-    summary: Returns an owned copy of the default value of the parameter at index.
     description: |
+      Returns an owned copy of the default value of the parameter at index.
+
       Copies the default value of the fixed parameter at index into a new
       owned value. An out-of-range index, or an index whose parameter has no
       default value, is rejected with INVALID_INPUT; test with
@@ -287,7 +298,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_has_varargs:
-    summary: Reports whether a signature has a variadic tail.
+    description: Reports whether a signature has a variadic tail.
     role: getter
     belongs_to: function_signature
     parameters:
@@ -306,8 +317,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_get_varargs:
-    summary: Returns an owned copy of the variadic tail type.
     description: |
+      Returns an owned copy of the variadic tail type.
+
       Copies the variadic tail type into a new owned logical type. A
       signature without a variadic tail is rejected with INVALID_INPUT; test
       with function_signature_has_varargs first.
@@ -329,7 +341,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_has_return_type:
-    summary: Reports whether a signature has a return type.
+    description: Reports whether a signature has a return type.
     role: getter
     belongs_to: function_signature
     parameters:
@@ -348,8 +360,9 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
   function_signature_get_return_type:
-    summary: Returns an owned copy of the return type.
     description: |
+      Returns an owned copy of the return type.
+
       Copies the return type into a new owned logical type. A signature
       without a return type is rejected with INVALID_INPUT; test with
       function_signature_has_return_type first.

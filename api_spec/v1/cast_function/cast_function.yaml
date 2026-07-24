@@ -1,19 +1,18 @@
 module: cast_function
 functions:
   create_cast_function:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Creates a new cast function object
     role: constructor
     belongs_to: cast_function
     parameters: {}
     return_type: cast_function
-    description: Creates a new cast function object.
+    description: |
+      Creates a new cast function object.
     return_description: The cast function object.
   cast_function_set_source_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the source type of the cast function
     parameters:
       cast_function:
         type: cast_function
@@ -22,11 +21,11 @@ functions:
         type: logical_type
         description: The source type to set.
     return_type: opaque
-    description: Sets the source type of the cast function.
+    description: |
+      Sets the source type of the cast function.
   cast_function_set_target_type:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the target type of the cast function
     parameters:
       cast_function:
         type: cast_function
@@ -35,11 +34,11 @@ functions:
         type: logical_type
         description: The target type to set.
     return_type: opaque
-    description: Sets the target type of the cast function.
+    description: |
+      Sets the target type of the cast function.
   cast_function_set_implicit_cast_cost:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the "cost" of implicitly casting the source type to the target type using this function
     parameters:
       cast_function:
         type: cast_function
@@ -48,11 +47,11 @@ functions:
         type: i64
         description: The cost to set.
     return_type: opaque
-    description: Sets the "cost" of implicitly casting the source type to the target type using this function.
+    description: |
+      Sets the "cost" of implicitly casting the source type to the target type using this function.
   cast_function_set_function:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Sets the actual cast function to use
     parameters:
       cast_function:
         type: cast_function
@@ -61,11 +60,11 @@ functions:
         type: cast_function_t
         description: The function to set.
     return_type: opaque
-    description: Sets the actual cast function to use.
+    description: |
+      Sets the actual cast function to use.
   cast_function_set_extra_info:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Assigns extra information to the cast function that can be fetched during execution, etc
     parameters:
       cast_function:
         type: cast_function
@@ -77,34 +76,34 @@ functions:
         type: delete_callback_t
         description: The callback that will be called to destroy the extra information (if any)
     return_type: opaque
-    description: Assigns extra information to the cast function that can be fetched during execution, etc.
+    description: |
+      Assigns extra information to the cast function that can be fetched during execution, etc.
   cast_function_get_extra_info:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Retrieves the extra info of the function as set in `duckdb_cast_function_set_extra_info`
     parameters:
       info:
         type: function_info
         description: The info object.
     return_type: opaque
     return_pointer: 1
-    description: Retrieves the extra info of the function as set in `duckdb_cast_function_set_extra_info`.
+    description: |
+      Retrieves the extra info of the function as set in `duckdb_cast_function_set_extra_info`.
     return_description: The extra info.
   cast_function_get_cast_mode:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Get the cast execution mode from the given function info
     parameters:
       info:
         type: function_info
         description: The info object.
     return_type: cast_mode
-    description: Get the cast execution mode from the given function info.
+    description: |
+      Get the cast execution mode from the given function info.
     return_description: The cast mode.
   cast_function_set_error:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Report that an error has occurred while executing the cast function
     parameters:
       info:
         type: function_info
@@ -115,11 +114,11 @@ functions:
         const: true
         description: The error message.
     return_type: opaque
-    description: Report that an error has occurred while executing the cast function.
+    description: |
+      Report that an error has occurred while executing the cast function.
   cast_function_set_row_error:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Report that an error has occurred while executing the cast function, setting the corresponding output row to NULL
     parameters:
       info:
         type: function_info
@@ -136,11 +135,11 @@ functions:
         type: vector
         description: The output vector.
     return_type: opaque
-    description: Report that an error has occurred while executing the cast function, setting the corresponding output row to NULL.
+    description: |
+      Report that an error has occurred while executing the cast function, setting the corresponding output row to NULL.
   register_cast_function:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Registers a cast function within the given connection
     parameters:
       con:
         type: connection
@@ -149,12 +148,12 @@ functions:
         type: cast_function
         description: The cast function to register.
     return_type: state
-    description: Registers a cast function within the given connection.
+    description: |
+      Registers a cast function within the given connection.
     return_description: Whether or not the registration was successful.
   destroy_cast_function:
-    status:
+    lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]
-    summary: Destroys the cast function object
     role: destructor
     belongs_to: cast_function
     parameters:
@@ -163,4 +162,5 @@ functions:
         indirection: 1
         description: The cast function object.
     return_type: opaque
-    description: Destroys the cast function object.
+    description: |
+      Destroys the cast function object.
