@@ -1,4 +1,3 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: query_result
 #
 # Run a query with lazy, streaming execution and inspect its schema.

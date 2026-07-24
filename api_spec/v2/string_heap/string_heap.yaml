@@ -1,4 +1,3 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/duckdb/capigen@v0.5.0/src/capigen/schema/module.schema.json
 module: string_heap
 #
 # Write side of string-backed vectors. Borrow the heap once with
