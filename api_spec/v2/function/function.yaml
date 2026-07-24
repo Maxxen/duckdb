@@ -113,19 +113,20 @@ enums:
       FUNCTION_PROPERTY_AGG_DISTINCT_DEPENDENT_NO:
         value: 0x030101
         description: "The aggregate's result is not affected by a DISTINCT modifier."
-# Bind-time argument list, shared by scalar and aggregate functions. Reached via the `arguments`
-# field on scalar_function_bind_args / aggregate_function_bind_args during the bind callback. A
-# bound argument list has one entry per argument the call supplied (fixed parameters plus any
-# varargs extras, already expanded). Arguments surface as types and folded values, never as
-# expressions: the interface generalizes to table functions, whose arguments are constant values
-# engine-side. The list is read-only: a bind callback inspects the arguments (count, types, and
-# folded constants for its own bind data) but does not mutate the plan.
+# Bind-time argument list, shared by scalar, aggregate, and table functions. Reached via the
+# family's bind_get_arguments during the bind callback. The list is in signature-slot order: one
+# entry per fixed parameter (a table call's omitted defaults already injected), then any varargs
+# extras, already expanded. Arguments surface as types, folded values, and slot names, never as
+# expressions (table arguments are constant values engine-side, so folding them is a copy). The
+# list is read-only: a bind callback inspects the arguments for its own bind data but does not
+# mutate the plan.
 handles:
   bind_arguments:
     description: |
-      Borrowed handle to a function's bound argument list during the bind callback. Provides the
-      argument count and per-index access to argument types and folded values. Read-only; valid
-      only for the duration of the bind callback; do not store it.
+      Borrowed handle to a function's bound argument list during the bind callback, in
+      signature-slot order. Provides the argument count and per-index access to argument types,
+      folded values, and slot names. Read-only; valid only for the duration of the bind callback;
+      do not store it.
 functions:
   bind_arguments_get_count:
     description: |
@@ -176,15 +177,44 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
+  bind_arguments_get_name:
+    description: |
+      Borrows the resolved slot name of a bound argument.
+
+      The resolved name of the slot at `index`: the signature parameter name for a fixed slot,
+      the caller-provided name for a named vararg, and the empty view {NULL, 0} for an unnamed
+      vararg. The view is borrowed and valid only for the duration of the bind callback. Returns
+      ERROR_INPUT_INVALID if index is out of range.
+    role: getter
+    belongs_to: bind_arguments
+    parameters:
+      args:
+        type: bind_arguments
+        description: The bind arguments handle.
+      index:
+        type: idx
+        description: Zero-based argument index.
+      out_name:
+        type: identifier
+        indirection: 1
+        kind: OUT_BORROW
+        description: Receives a borrowed view of the slot name; the empty view for an unnamed vararg.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
   bind_arguments_fold:
     description: |
       Folds a bound argument to a constant value.
 
       Evaluates argument `index` to a single owned value the caller destroys via value_destroy.
       Exists because bind runs before optimizer constant folding, so a constant-computable
-      argument (e.g. 0.25 + 0.25) is not yet a plain constant. Returns ERROR_INPUT_INVALID if the
-      argument is not constant-foldable (e.g. it references a column) or index is out of range; a
-      runtime error raised while evaluating surfaces as its own error code.
+      argument (e.g. 0.25 + 0.25) is not yet a plain constant. Table function arguments are
+      already constant values, so folding them always succeeds. Returns ERROR_INPUT_INVALID if
+      the argument is not constant-foldable (e.g. it references a column) or index is out of
+      range; a runtime error raised while evaluating surfaces as its own error code.
     belongs_to: bind_arguments
     parameters:
       args:

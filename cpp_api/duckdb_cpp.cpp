@@ -2966,6 +2966,13 @@ auto ScalarFunction::BindInput::FoldArgument(idx_t index) const -> Value {
 	return detail::Factory::Make<Value>(value);
 }
 
+auto ScalarFunction::BindInput::GetArgumentName(idx_t index) const -> std::string {
+	duckdb_v2_identifier_t name {nullptr, 0};
+	CheckedAPICall(duckdb_v2_bind_arguments_get_name,
+	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), index, &name);
+	return name.ptr ? std::string(name.ptr, name.len) : std::string();
+}
+
 auto ScalarFunction::BindInput::GetContext() const -> Context {
 	if (!context) {
 		throw Exception(DUCKDB_V2_ERROR_INPUT_INVALID, "Invalid Input Error: this bind runs without a client context");
@@ -3351,6 +3358,13 @@ auto AggregateFunction::BindInput::FoldArgument(idx_t index) const -> Value {
 	CheckedAPICall(duckdb_v2_bind_arguments_fold, static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()),
 	               static_cast<duckdb_v2_context_handle>(context), index, &value);
 	return detail::Factory::Make<Value>(value);
+}
+
+auto AggregateFunction::BindInput::GetArgumentName(idx_t index) const -> std::string {
+	duckdb_v2_identifier_t name {nullptr, 0};
+	CheckedAPICall(duckdb_v2_bind_arguments_get_name,
+	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), index, &name);
+	return name.ptr ? std::string(name.ptr, name.len) : std::string();
 }
 
 auto AggregateFunction::BindInput::GetContext() const -> Context {
@@ -3888,41 +3902,38 @@ auto TableFunction::BindInput::AddResultColumns(const Schema &schema) -> void {
 	}
 }
 
-auto TableFunction::BindInput::GetParameterCount() const -> idx_t {
+void *TableFunction::BindInput::GetArgumentsHandle() const {
+	duckdb_v2_bind_arguments_handle arguments = nullptr;
+	CheckedAPICall(duckdb_v2_table_function_bind_get_arguments, inner.info, &arguments);
+	return arguments;
+}
+
+auto TableFunction::BindInput::GetArgumentCount() const -> idx_t {
 	idx_t count = 0;
-	CheckedAPICall(duckdb_v2_table_function_bind_get_parameter_count, inner.info, &count);
+	CheckedAPICall(duckdb_v2_bind_arguments_get_count,
+	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), &count);
 	return count;
 }
 
-auto TableFunction::BindInput::GetParameter(idx_t index) const -> Value {
+auto TableFunction::BindInput::GetArgumentType(idx_t index) const -> LogicalType {
+	duckdb_v2_logical_type_handle type = nullptr;
+	CheckedAPICall(duckdb_v2_bind_arguments_get_type,
+	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), index, &type);
+	return detail::Factory::Make<LogicalType>(type);
+}
+
+auto TableFunction::BindInput::FoldArgument(idx_t index) const -> Value {
 	duckdb_v2_value_handle value = nullptr;
-	CheckedAPICall(duckdb_v2_table_function_bind_get_parameter, inner.info, index, &value);
+	CheckedAPICall(duckdb_v2_bind_arguments_fold, static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()),
+	               inner.ctx, index, &value);
 	return detail::Factory::Make<Value>(value);
 }
 
-auto TableFunction::BindInput::GetNamedParameter(const std::string &name) const -> Value {
-	duckdb_v2_value_handle value = nullptr;
-	CheckedAPICall(duckdb_v2_table_function_bind_get_named_parameter, inner.info, ToStr(name), &value);
-	return detail::Factory::Make<Value>(value);
-}
-
-auto TableFunction::BindInput::TryGetParameter(idx_t index) const -> std::optional<Value> {
-	duckdb_v2_value_handle value = nullptr;
-	const auto res = duckdb_v2_table_function_bind_get_parameter(inner.info, index, &value, nullptr);
-	if (res != DUCKDB_V2_ERROR_NONE) {
-		return std::nullopt;
-	}
-	return detail::Factory::Make<Value>(value);
-}
-
-auto TableFunction::BindInput::TryGetNamedParameter(const std::string &name) const -> std::optional<Value> {
-	duckdb_v2_value_handle value = nullptr;
-
-	const auto res = duckdb_v2_table_function_bind_get_named_parameter(inner.info, ToStr(name), &value, nullptr);
-	if (res != DUCKDB_V2_ERROR_NONE) {
-		return std::nullopt;
-	}
-	return detail::Factory::Make<Value>(value);
+auto TableFunction::BindInput::GetArgumentName(idx_t index) const -> std::string {
+	duckdb_v2_identifier_t name {nullptr, 0};
+	CheckedAPICall(duckdb_v2_bind_arguments_get_name,
+	               static_cast<duckdb_v2_bind_arguments_handle>(GetArgumentsHandle()), index, &name);
+	return name.ptr ? std::string(name.ptr, name.len) : std::string();
 }
 
 auto TableFunction::SetBindCallback(BindCallback callback) & -> TableFunction & {

@@ -2442,9 +2442,9 @@ typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
 /* --- Types for function --- */
 
 /*!
- * Borrowed handle to a function's bound argument list during the bind callback. Provides the argument count and
- * per-index access to argument types and folded values. Read-only; valid only for the duration of the bind callback; do
- * not store it.
+ * Borrowed handle to a function's bound argument list during the bind callback, in signature-slot order. Provides the
+ * argument count and per-index access to argument types, folded values, and slot names. Read-only; valid only for the
+ * duration of the bind callback; do not store it.
  */
 typedef struct _duckdb_v2_bind_arguments {
 	void *internal_ptr;
@@ -2486,12 +2486,30 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_bind_arguments_get_type(duckdb_v2_bind_ar
                                                                duckdb_v2_error_info_handle *err);
 
 /*!
+ * Borrows the resolved slot name of a bound argument.
+ *
+ * The resolved name of the slot at `index`: the signature parameter name for a fixed slot, the caller-provided name for
+ * a named vararg, and the empty view {NULL, 0} for an unnamed vararg. The view is borrowed and valid only for the
+ * duration of the bind callback. Returns ERROR_INPUT_INVALID if index is out of range.
+ *
+ * @param args The bind arguments handle.
+ * @param index Zero-based argument index.
+ * @param out_name Receives a borrowed view of the slot name; the empty view for an unnamed vararg.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_bind_arguments_get_name(duckdb_v2_bind_arguments_handle args, idx_t index,
+                                                               duckdb_v2_identifier_t *out_name,
+                                                               duckdb_v2_error_info_handle *err);
+
+/*!
  * Folds a bound argument to a constant value.
  *
  * Evaluates argument `index` to a single owned value the caller destroys via value_destroy. Exists because bind runs
  * before optimizer constant folding, so a constant-computable argument (e.g. 0.25 + 0.25) is not yet a plain constant.
- * Returns ERROR_INPUT_INVALID if the argument is not constant-foldable (e.g. it references a column) or index is out of
- * range; a runtime error raised while evaluating surfaces as its own error code.
+ * Table function arguments are already constant values, so folding them always succeeds. Returns ERROR_INPUT_INVALID if
+ * the argument is not constant-foldable (e.g. it references a column) or index is out of range; a runtime error raised
+ * while evaluating surfaces as its own error code.
  *
  * @param args The bind arguments handle.
  * @param ctx The bind callback's context.
@@ -4902,10 +4920,10 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_bind_get_user_data(
     duckdb_v2_aggregate_function_bind_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
 
 /*!
- * Retrieves the bound argument list for inspection and mutation during bind.
+ * Retrieves the bound argument list for inspection during bind.
  *
- * Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an argument's type,
- * or fold an argument to a value. Borrowed; valid only for the duration of the callback.
+ * Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an argument's type
+ * or slot name, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
  *
  * @param info The bind info handle.
  * @param out_arguments Receives the borrowed bound argument list handle.
@@ -6539,10 +6557,10 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_bind_get_user_data(
     duckdb_v2_scalar_function_bind_info_handle info, void **out_data, duckdb_v2_error_info_handle *err);
 
 /*!
- * Retrieves the bound argument list for inspection and mutation during bind.
+ * Retrieves the bound argument list for inspection during bind.
  *
- * Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an argument's type,
- * or fold an argument to a value. Borrowed; valid only for the duration of the callback.
+ * Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an argument's type
+ * or slot name, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
  *
  * @param info The bind info handle.
  * @param out_arguments Receives the borrowed bound argument list handle.
@@ -6893,8 +6911,9 @@ typedef struct _duckdb_v2_table_function_builder {
 } * duckdb_v2_table_function_builder_handle;
 
 /*!
- * Borrowed handle passed to the bind callback. Provides access to function parameters and user data. Used to declare
- * output columns and set bind data. Valid only for the callback duration.
+ * Borrowed handle passed to the bind callback. Provides access to the call's arguments (via
+ * table_function_bind_get_arguments) and user data. Used to declare output columns and set bind data. Valid only for
+ * the callback duration.
  */
 typedef struct _duckdb_v2_table_function_bind_info {
 	void *internal_ptr;
@@ -7031,13 +7050,12 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_name(duckdb_v2
  *
  * Copies a function signature into the builder. A table function maps the signature onto the engine's two argument
  * mechanisms by whether each parameter has a default: a parameter without a default becomes a required positional
- * argument (read in bind via table_function_bind_get_parameter_count and table_function_bind_get_parameter); a
- * parameter with a default becomes a named argument the caller may omit (read in bind via
- * table_function_bind_get_named_parameter), and the bridge injects the default into the bind input when the call site
- * omits it, so the named getter always yields a value for a declared parameter. The variadic tail applies to the
- * positional arguments. Registration rejects a signature with a return type set with ERROR_INPUT_INVALID: a table
- * function declares its columns in bind, not through a return type. The signature is borrowed and copied; the caller
- * destroys it independently. Calling this again replaces the previous signature.
+ * argument; a parameter with a default becomes a named argument the caller may omit. Bind reads the call through
+ * table_function_bind_get_arguments, which presents the arguments in signature-slot order with omitted defaults
+ * injected, so bind observes a value for every parameter. The variadic tail applies to the positional arguments.
+ * Registration rejects a signature with a return type set with ERROR_INPUT_INVALID: a table function declares its
+ * columns in bind, not through a return type. The signature is borrowed and copied; the caller destroys it
+ * independently. Calling this again replaces the previous signature.
  *
  * @param builder The builder to configure.
  * @param sig The signature to copy into the builder. Borrowed; the caller retains ownership.
@@ -7213,45 +7231,22 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_bind_add_result_column(
     duckdb_v2_error_info_handle *err);
 
 /*!
- * Returns the number of positional parameters passed to the function.
+ * Returns the call's bound argument list.
  *
- * Counts every positional argument the call supplied, fixed and (for a variadic function whose signature sets a
- * variadic tail) extra alike. Read each one by index with table_function_bind_get_parameter. Named parameters are not
- * included.
+ * Returns a borrowed `bind_arguments` handle over the call's arguments in signature-slot order: the fixed parameters
+ * first (a value for every one, the declared default injected when the call site omitted a defaulted parameter), then
+ * any variadic tail. Read it with the bind_arguments accessors: count, per-index type, folded value (always a plain
+ * copy here, table arguments are constants), and slot name (the signature parameter name for fixed slots; the tail is
+ * unnamed). Valid only for the duration of the bind callback.
  *
  * @param info The bind info handle.
- * @param out_count Receives the positional parameter count.
+ * @param out_arguments Receives the borrowed bind arguments handle.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_parameter_count(
-    duckdb_v2_table_function_bind_info_handle info, idx_t *out_count, duckdb_v2_error_info_handle *err);
-
-/*!
- * Retrieves a positional parameter value during bind.
- *
- * @param info The bind info handle.
- * @param index Zero-based parameter index.
- * @param out_value Receives the parameter value. Caller owns it.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_parameter(duckdb_v2_table_function_bind_info_handle info,
-                                                                         idx_t index, duckdb_v2_value_handle *out_value,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_arguments(duckdb_v2_table_function_bind_info_handle info,
+                                                                         duckdb_v2_bind_arguments_handle *out_arguments,
                                                                          duckdb_v2_error_info_handle *err);
-
-/*!
- * Retrieves a named parameter value during bind.
- *
- * @param info The bind info handle.
- * @param name Parameter name.
- * @param out_value Receives the parameter value. Caller owns it.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_named_parameter(
-    duckdb_v2_table_function_bind_info_handle info, duckdb_v2_identifier_t name, duckdb_v2_value_handle *out_value,
-    duckdb_v2_error_info_handle *err);
 
 /*!
  * Sets bind data that will be accessible to all later callbacks.

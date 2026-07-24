@@ -64,8 +64,13 @@ struct TableFunctionBindInfoV2 {
 	bool cardinality_is_exact = false;
 	bool cardinality_set = false;
 	void *user_data = nullptr;
-	vector<Value> parameters;
-	named_parameter_map_t named_parameters;
+	//! The call's arguments in signature-slot order (fixed parameters with
+	//! omitted defaults injected, then the variadic tail) and their parallel
+	//! slot names (tail slots unnamed). Backs `arguments`, reached via
+	//! table_function_bind_get_arguments.
+	vector<Value> argument_values;
+	vector<Identifier> argument_names;
+	BindArgumentsV2 *arguments = nullptr;
 };
 
 struct TableFunctionInitInfoV2 {
@@ -113,10 +118,13 @@ struct TableFunctionRuntimeInfoV2 final : public TableFunctionInfo {
 
 	shared_ptr<OpaqueDataHandle> user_data = nullptr;
 
-	// Default values for the signature's optional (defaulted) parameters, which
-	// route onto the engine's named-parameter map. The bind wrapper injects these
-	// into the bind input for any name the call site omits, so get_named_parameter
-	// always yields a value for a declared parameter.
+	// The signature's slot plan, captured at registration: fixed parameter names
+	// in signature order, how many lead the positional prefix (no default), and
+	// the default for each defaulted (trailing) parameter. The bind wrapper
+	// assembles the bind_arguments slots from it, injecting the default for any
+	// name the call site omits, so bind observes a value for every parameter.
+	vector<Identifier> parameter_names;
+	idx_t positional_count = 0;
 	identifier_map_t<Value> named_parameter_defaults;
 };
 
@@ -139,18 +147,35 @@ struct TableFunctionBuilderV2 {
 
 		TableFunctionBindInfoV2 cb_info;
 		cb_info.user_data = rt_info.user_data ? rt_info.user_data->GetData() : nullptr;
-		for (auto &v : input.inputs) {
-			cb_info.parameters.push_back(v);
+		// Assemble the argument slots in signature order: the no-default prefix
+		// from the positional inputs, the defaulted suffix from the named
+		// arguments (declared default injected when the call site omits it),
+		// then the variadic tail, unnamed.
+		D_ASSERT(input.inputs.size() >= rt_info.positional_count);
+		for (idx_t i = 0; i < rt_info.positional_count; i++) {
+			cb_info.argument_values.push_back(input.inputs[i]);
+			cb_info.argument_names.push_back(rt_info.parameter_names[i]);
 		}
-		cb_info.named_parameters = input.named_parameters;
-		// Inject the declared default for every optional parameter the call site
-		// omitted, so get_named_parameter yields a value for every declared
-		// parameter (the scalar contract that bind observes a value for each).
-		for (auto &entry : rt_info.named_parameter_defaults) {
-			if (cb_info.named_parameters.find(entry.first) == cb_info.named_parameters.end()) {
-				cb_info.named_parameters[entry.first] = entry.second;
+		for (idx_t i = rt_info.positional_count; i < rt_info.parameter_names.size(); i++) {
+			const auto &name = rt_info.parameter_names[i];
+			auto provided = input.named_parameters.find(name);
+			if (provided != input.named_parameters.end()) {
+				cb_info.argument_values.push_back(provided->second);
+			} else {
+				auto injected = rt_info.named_parameter_defaults.find(name);
+				D_ASSERT(injected != rt_info.named_parameter_defaults.end());
+				cb_info.argument_values.push_back(injected->second);
 			}
+			cb_info.argument_names.push_back(name);
 		}
+		for (idx_t i = rt_info.positional_count; i < input.inputs.size(); i++) {
+			cb_info.argument_values.push_back(input.inputs[i]);
+			cb_info.argument_names.emplace_back();
+		}
+		BindArgumentsV2 bind_args;
+		bind_args.values = &cb_info.argument_values;
+		bind_args.value_names = &cb_info.argument_names;
+		cb_info.arguments = &bind_args;
 
 		auto info_handle = reinterpret_cast<duckdb_v2_table_function_bind_info_handle>(&cb_info);
 		auto ctx_ptr = reinterpret_cast<duckdb_v2_context_handle>(&context);
@@ -568,7 +593,9 @@ static void RegisterTableFunctionV2(duckdb::ClientContext &ctx, duckdb::TableFun
 		func.pushdown_complex_filter = TableFunctionBuilderV2::PushdownComplexFilterCallback;
 	}
 
-	auto *info_handle = new duckdb::TableFunctionRuntimeInfoV2();
+	// Owned from the start so a throw in the allocating routing loop below
+	// cleans up the runtime info (and the user's opaque data handle).
+	auto info_handle = duckdb::make_shared_ptr<duckdb::TableFunctionRuntimeInfoV2>();
 	info_handle->bind_cb = b.info.bind_cb;
 	info_handle->init_global_cb = b.info.init_global_cb;
 	info_handle->init_local_cb = b.info.init_local_cb;
@@ -578,17 +605,20 @@ static void RegisterTableFunctionV2(duckdb::ClientContext &ctx, duckdb::TableFun
 	info_handle->pushdown_complex_filter_cb = b.info.pushdown_complex_filter_cb;
 	info_handle->user_data = b.info.user_data;
 
-	// Route each optional (defaulted) parameter onto the engine's named-parameter
-	// declaration map, and remember its default for bind-time injection.
+	// Route each defaulted parameter onto the engine's named-parameter
+	// declaration map, and capture the slot plan (names, positional prefix
+	// size, defaults) the bind wrapper assembles the arguments from.
 	for (idx_t i = 0; i < b.signature.GetParameterCount(); i++) {
 		const auto &param = b.signature.GetParameter(i);
 		if (param.HasDefaultValue()) {
 			func.named_parameters[param.GetName()] = param.GetType();
 			info_handle->named_parameter_defaults[param.GetName()] = *param.GetDefaultValue();
 		}
+		info_handle->parameter_names.push_back(param.GetName());
 	}
+	info_handle->positional_count = positional.size();
 
-	func.function_info = duckdb::shared_ptr<duckdb::TableFunctionInfo>(info_handle);
+	func.function_info = std::move(info_handle);
 
 	auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
 	duckdb::CreateTableFunctionInfo tf_info(func);
@@ -698,60 +728,18 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_user_data(duckdb_v2_table_func
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_parameter_count(duckdb_v2_table_function_bind_info_handle info,
-                                                                  idx_t *out_count, duckdb_v2_error_info_handle *err) {
-	return WithErrorHandler(err, [&]() {
-		if (!info) {
-			throw duckdb::InvalidInputException("Bind info pointer cannot be null.");
-		}
-		if (!out_count) {
-			throw duckdb::InvalidInputException("Output count pointer cannot be null.");
-		}
-		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
-		*out_count = cb_info.parameters.size();
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_parameter(duckdb_v2_table_function_bind_info_handle info, idx_t index,
-                                                            duckdb_v2_value_handle *out_value,
+DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_arguments(duckdb_v2_table_function_bind_info_handle info,
+                                                            duckdb_v2_bind_arguments_handle *out_arguments,
                                                             duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!info) {
 			throw duckdb::InvalidInputException("Bind info pointer cannot be null.");
 		}
-		if (!out_value) {
-			throw duckdb::InvalidInputException("Output value pointer cannot be null.");
+		if (!out_arguments) {
+			throw duckdb::InvalidInputException("Output pointer cannot be null.");
 		}
 		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
-		if (index >= cb_info.parameters.size()) {
-			throw duckdb::InvalidInputException("Parameter index %llu out of range (have %llu).", index,
-			                                    cb_info.parameters.size());
-		}
-		*out_value = reinterpret_cast<duckdb_v2_value_handle>(new duckdb::Value(cb_info.parameters[index]));
-	});
-}
-
-DUCKDB_V2_ERROR duckdb_v2_table_function_bind_get_named_parameter(duckdb_v2_table_function_bind_info_handle info,
-                                                                  duckdb_v2_identifier_t name,
-                                                                  duckdb_v2_value_handle *out_value,
-                                                                  duckdb_v2_error_info_handle *err) {
-	return WithErrorHandler(err, [&]() {
-		if (!info) {
-			throw duckdb::InvalidInputException("Bind info pointer cannot be null.");
-		}
-		if (!name.ptr && name.len > 0) {
-			throw duckdb::InvalidInputException("Parameter name cannot be null.");
-		}
-		if (!out_value) {
-			throw duckdb::InvalidInputException("Output value pointer cannot be null.");
-		}
-		auto &cb_info = *reinterpret_cast<TableFunctionBindInfoV2 *>(info);
-		auto name_str = duckdb::ToIdentifier(name);
-		auto it = cb_info.named_parameters.find(name_str);
-		if (it == cb_info.named_parameters.end()) {
-			throw duckdb::InvalidInputException("Named parameter '%s' not found.", name_str);
-		}
-		*out_value = reinterpret_cast<duckdb_v2_value_handle>(new duckdb::Value(it->second));
+		*out_arguments = reinterpret_cast<duckdb_v2_bind_arguments_handle>(cb_info.arguments);
 	});
 }
 

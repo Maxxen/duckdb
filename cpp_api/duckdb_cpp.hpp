@@ -2367,9 +2367,10 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
-		// The bound argument list (fixed parameters plus any varargs extras,
-		// already expanded). Arguments surface as types and folded values, never
-		// as expressions; the interface generalizes to table functions.
+		// The bound argument list in signature-slot order (fixed parameters plus
+		// any varargs extras, already expanded). Arguments surface as types,
+		// folded values, and slot names, never as expressions; the same accessor
+		// family serves the aggregate and table binds.
 		auto GetArgumentCount() const -> idx_t;
 		// An owned copy of the argument's resolved type. Throws INVALID_INPUT
 		// when index is out of range.
@@ -2378,6 +2379,10 @@ public:
 		// optimizer constant folding. Throws INVALID_INPUT when the argument is
 		// not constant-foldable or index is out of range.
 		auto FoldArgument(idx_t index) const -> Value;
+		// The slot's resolved name: the signature parameter name for a fixed
+		// slot, the caller-provided name for a named vararg, empty for an
+		// unnamed vararg. Throws INVALID_INPUT when index is out of range.
+		auto GetArgumentName(idx_t index) const -> std::string;
 
 		// The binding context (bind always runs under one). Borrowed, valid only
 		// for the callback duration.
@@ -2595,9 +2600,10 @@ public:
 			return *static_cast<T *>(ptr);
 		}
 
-		// The bound argument list (fixed parameters plus any varargs extras,
-		// already expanded). Arguments surface as types and folded values, never
-		// as expressions; the interface generalizes to table functions.
+		// The bound argument list in signature-slot order (fixed parameters plus
+		// any varargs extras, already expanded). Arguments surface as types,
+		// folded values, and slot names, never as expressions; the same accessor
+		// family serves the aggregate and table binds.
 		auto GetArgumentCount() const -> idx_t;
 		// An owned copy of the argument's resolved type. Throws INVALID_INPUT
 		// when index is out of range.
@@ -2606,6 +2612,10 @@ public:
 		// optimizer constant folding. Throws INVALID_INPUT when the argument is
 		// not constant-foldable or index is out of range.
 		auto FoldArgument(idx_t index) const -> Value;
+		// The slot's resolved name: the signature parameter name for a fixed
+		// slot, the caller-provided name for a named vararg, empty for an
+		// unnamed vararg. Throws INVALID_INPUT when index is out of range.
+		auto GetArgumentName(idx_t index) const -> std::string;
 
 		// The binding context (bind always runs under one). Borrowed, valid only
 		// for the callback duration.
@@ -2954,15 +2964,20 @@ public:
 		// ArrowConversionPlan::GetSchema).
 		auto AddResultColumns(const Schema &schema) -> void;
 
-		// The number of positional arguments the call supplied (fixed plus, for a
-		// variadic function, varargs extras). Named parameters are not counted.
-		auto GetParameterCount() const -> idx_t;
-
-		auto GetParameter(idx_t index) const -> Value;
-		auto GetNamedParameter(const std::string &name) const -> Value;
-
-		auto TryGetParameter(idx_t index) const -> std::optional<Value>;
-		auto TryGetNamedParameter(const std::string &name) const -> std::optional<Value>;
+		// The call's arguments in signature-slot order: the fixed parameters
+		// (a value for every one, omitted defaults injected), then any varargs
+		// extras. The same accessor family as the scalar and aggregate binds.
+		auto GetArgumentCount() const -> idx_t;
+		// An owned copy of the argument's type. Throws INVALID_INPUT when index
+		// is out of range.
+		auto GetArgumentType(idx_t index) const -> LogicalType;
+		// An owned copy of the argument's value (table arguments are constants,
+		// so folding always succeeds). Throws INVALID_INPUT when index is out of
+		// range.
+		auto FoldArgument(idx_t index) const -> Value;
+		// The slot's name: the signature parameter name for a fixed slot, empty
+		// for a vararg. Throws INVALID_INPUT when index is out of range.
+		auto GetArgumentName(idx_t index) const -> std::string;
 
 		// Binding context (callback-duration).
 		auto GetContext() const -> Context;
@@ -2978,6 +2993,7 @@ public:
 
 		void SetBindDataInternal(void *data, bool (*equals)(void *a, void *b), void (*destructor)(void *));
 		void *GetUserDataInternal() const;
+		void *GetArgumentsHandle() const;
 	};
 
 	class InitGlobalInput {

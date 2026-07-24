@@ -320,10 +320,11 @@ functions:
     return_type: ERROR
   scalar_function_bind_get_arguments:
     description: |
-      Retrieves the bound argument list for inspection and mutation during bind.
+      Retrieves the bound argument list for inspection during bind.
 
       Returns a borrowed `bind_arguments` handle. Read it with the bind_arguments accessors: count, get an
-      argument's type, or fold an argument to a value. Borrowed; valid only for the duration of the callback.
+      argument's type or slot name, or fold an argument to a value. Borrowed; valid only for the duration of
+      the callback.
     parameters:
       info:
         type: scalar_function_bind_info

@@ -149,10 +149,13 @@ void ProbeBind(ScalarFunction::BindInput &input) {
 	REQUIRE(input.GetArgumentCount() == 2);
 	REQUIRE(input.GetArgumentType(0).GetId() == TypeId::INTEGER);
 	REQUIRE(input.GetArgumentType(1).GetId() == TypeId::INTEGER);
+	REQUIRE(input.GetArgumentName(0) == "a");
+	REQUIRE(input.GetArgumentName(1) == "b");
 	REQUIRE_THROWS_MATCHES(input.FoldArgument(0), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	REQUIRE(input.FoldArgument(1).AsInteger() == 7);
 	REQUIRE_THROWS_MATCHES(input.GetArgumentType(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 	REQUIRE_THROWS_MATCHES(input.FoldArgument(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
+	REQUIRE_THROWS_MATCHES(input.GetArgumentName(5), Exception, HasErrorCode(DUCKDB_V2_ERROR_INPUT_INVALID));
 }
 
 } // namespace
@@ -237,7 +240,11 @@ TEST_CASE("Stable C++API: aggregate varargs", "[cpp_api]") {
 namespace {
 
 void TfBind(TableFunction::BindInput &input) {
-	const idx_t count = input.GetParameterCount();
+	// Pure-varargs signature: every slot is tail, and tail slots are unnamed.
+	const idx_t count = input.GetArgumentCount();
+	for (idx_t i = 0; i < count; i++) {
+		REQUIRE(input.GetArgumentName(i).empty());
+	}
 	input.AddResultColumn("n", LogicalType::INTEGER());
 	input.SetBindData<idx_t>(count);
 }

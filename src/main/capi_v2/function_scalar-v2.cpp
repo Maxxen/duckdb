@@ -73,9 +73,9 @@ struct ScalarFunctionV2 {
 
 		D_ASSERT(info.bind_cb);
 
-		// Scalar binds mutate the argument expressions directly.
 		BindArgumentsV2 bind_args;
 		bind_args.arguments = &input.GetArguments();
+		bind_args.argument_names = input.GetArgumentNames();
 
 		ScalarFunctionBindInfoV2 cb_info;
 		cb_info.function_name = ToStr(input.GetBoundFunction().GetName());

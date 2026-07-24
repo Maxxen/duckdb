@@ -122,6 +122,7 @@ struct AggregateFunctionV2 {
 		if (info.bind_cb) {
 			BindArgumentsV2 bind_args;
 			bind_args.arguments = &input.GetArguments();
+			bind_args.argument_names = input.GetArgumentNames();
 
 			AggregateFunctionBindInfoV2 cb_info;
 			cb_info.function_name = ToStr(input.GetBoundFunction().GetName());

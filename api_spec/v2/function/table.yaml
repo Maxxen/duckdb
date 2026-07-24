@@ -27,8 +27,9 @@ handles:
     cleanup_with: table_function_builder_destroy
   table_function_bind_info:
     description: |
-      Borrowed handle passed to the bind callback. Provides access to function parameters and user data. Used to
-      declare output columns and set bind data. Valid only for the callback duration.
+      Borrowed handle passed to the bind callback. Provides access to the call's arguments (via
+      table_function_bind_get_arguments) and user data. Used to declare output columns and set
+      bind data. Valid only for the callback duration.
   table_function_init_info:
     description: |
       Borrowed handle passed to init_global and init_local callbacks. Provides access to bind data and projected column
@@ -234,14 +235,12 @@ functions:
 
       Copies a function signature into the builder. A table function maps the signature onto the
       engine's two argument mechanisms by whether each parameter has a default: a parameter without
-      a default becomes a required positional argument (read in bind via
-      table_function_bind_get_parameter_count and table_function_bind_get_parameter); a parameter
-      with a default becomes a named argument the caller may omit (read in bind via
-      table_function_bind_get_named_parameter), and the bridge injects the default into the bind
-      input when the call site omits it, so the named getter always yields a value for a declared
-      parameter. The variadic tail applies to the positional arguments. Registration rejects a
-      signature with a return type set with ERROR_INPUT_INVALID: a table function declares its
-      columns in bind, not through a return type.
+      a default becomes a required positional argument; a parameter with a default becomes a named
+      argument the caller may omit. Bind reads the call through table_function_bind_get_arguments,
+      which presents the arguments in signature-slot order with omitted defaults injected, so bind
+      observes a value for every parameter. The variadic tail applies to the positional arguments.
+      Registration rejects a signature with a return type set with ERROR_INPUT_INVALID: a table
+      function declares its columns in bind, not through a return type.
       The signature is borrowed and copied; the caller destroys it independently. Calling this again
       replaces the previous signature.
     parameters:
@@ -461,60 +460,25 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  table_function_bind_get_parameter_count:
+  table_function_bind_get_arguments:
     description: |
-      Returns the number of positional parameters passed to the function.
+      Returns the call's bound argument list.
 
-      Counts every positional argument the call supplied, fixed and (for a variadic function
-      whose signature sets a variadic tail) extra alike. Read each one by index with
-      table_function_bind_get_parameter. Named parameters are not included.
+      Returns a borrowed `bind_arguments` handle over the call's arguments in signature-slot
+      order: the fixed parameters first (a value for every one, the declared default injected
+      when the call site omitted a defaulted parameter), then any variadic tail. Read it with
+      the bind_arguments accessors: count, per-index type, folded value (always a plain copy
+      here, table arguments are constants), and slot name (the signature parameter name for
+      fixed slots; the tail is unnamed). Valid only for the duration of the bind callback.
     parameters:
       info:
         type: table_function_bind_info
         description: The bind info handle.
-      out_count:
-        type: idx
+      out_arguments:
+        type: bind_arguments
         indirection: 1
-        kind: OUT
-        description: Receives the positional parameter count.
-      err:
-        type: error_info
-        indirection: 1
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-  table_function_bind_get_parameter:
-    description: Retrieves a positional parameter value during bind.
-    parameters:
-      info:
-        type: table_function_bind_info
-        description: The bind info handle.
-      index:
-        type: idx
-        description: Zero-based parameter index.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-        description: Receives the parameter value. Caller owns it.
-      err:
-        type: error_info
-        indirection: 1
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-  table_function_bind_get_named_parameter:
-    description: Retrieves a named parameter value during bind.
-    parameters:
-      info:
-        type: table_function_bind_info
-        description: The bind info handle.
-      name:
-        type: identifier
-        description: Parameter name.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-        description: Receives the parameter value. Caller owns it.
+        kind: OUT_BORROW
+        description: Receives the borrowed bind arguments handle.
       err:
         type: error_info
         indirection: 1

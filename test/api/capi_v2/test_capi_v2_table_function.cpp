@@ -238,20 +238,28 @@ namespace {
 
 void counter_n_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
                     duckdb_v2_error_info_handle *err) {
+	// The arguments arrive in signature-slot order: n, then start (its default
+	// injected when the call site omits it), named after their parameters.
+	duckdb_v2_bind_arguments_handle args = nullptr;
+	REQUIRE(duckdb_v2_table_function_bind_get_arguments(info, &args, err) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_bind_arguments_get_count(args, &count, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 2);
+	duckdb_v2_identifier_t slot_name = {nullptr, 0};
+	REQUIRE(duckdb_v2_bind_arguments_get_name(args, 0, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name == "n");
+	REQUIRE(duckdb_v2_bind_arguments_get_name(args, 1, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name == "start");
+
 	duckdb_v2_value_handle n_val = nullptr;
-	REQUIRE(duckdb_v2_table_function_bind_get_parameter(info, 0, &n_val, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_fold(args, ctx, 0, &n_val, err) == DUCKDB_V2_ERROR_NONE);
 	int64_t n = V2LeafPayload<int64_t>(n_val);
 	duckdb_v2_value_destroy(&n_val);
 
-	int64_t start = 0;
 	duckdb_v2_value_handle start_val = nullptr;
-	duckdb_v2_error_info_handle local_err = nullptr;
-	if (duckdb_v2_table_function_bind_get_named_parameter(info, V2Str("start"), &start_val, &local_err) ==
-	    DUCKDB_V2_ERROR_NONE) {
-		start = V2LeafPayload<int64_t>(start_val);
-		duckdb_v2_value_destroy(&start_val);
-	}
-	duckdb_v2_error_info_destroy(&local_err);
+	REQUIRE(duckdb_v2_bind_arguments_fold(args, ctx, 1, &start_val, err) == DUCKDB_V2_ERROR_NONE);
+	int64_t start = V2LeafPayload<int64_t>(start_val);
+	duckdb_v2_value_destroy(&start_val);
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);
@@ -1385,12 +1393,15 @@ struct InjGlobalState {
 	bool emitted = false;
 };
 
-void inj_probe_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle,
+void inj_probe_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
                     duckdb_v2_error_info_handle *err) {
-	// "opt" is a defaulted named parameter (default 42). The bridge injects the
-	// default when the call omits it, so this lookup always succeeds.
+	// "opt" is the defaulted parameter, so it is slot 1 (after positional seed).
+	// The bridge injects the default when the call omits it, so a value is
+	// always present.
+	duckdb_v2_bind_arguments_handle args = nullptr;
+	REQUIRE(duckdb_v2_table_function_bind_get_arguments(info, &args, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_handle opt = nullptr;
-	REQUIRE(duckdb_v2_table_function_bind_get_named_parameter(info, V2Str("opt"), &opt, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_fold(args, ctx, 1, &opt, err) == DUCKDB_V2_ERROR_NONE);
 	int64_t observed = V2LeafPayload<int64_t>(opt);
 	duckdb_v2_value_destroy(&opt);
 
@@ -1461,6 +1472,147 @@ TEST_CASE("V2 table function: declared-default named parameter injection", "[cap
 	// opt omitted -> the injected default (42); opt provided -> that value.
 	REQUIRE(V2QueryCell<int64_t>(fix.conn, "SELECT v FROM inj_probe(0)") == 42);
 	REQUIRE(V2QueryCell<int64_t>(fix.conn, "SELECT v FROM inj_probe(0, opt := 9)") == 9);
+	// The named-argument lookup is case-insensitive, so a case-variant name still
+	// overrides the default rather than silently injecting it.
+	REQUIRE(V2QueryCell<int64_t>(fix.conn, "SELECT v FROM inj_probe(0, OPT := 9)") == 9);
+}
+
+// ---------------------------------------------------------------------------
+// Table slot assembly with all three segments present at once: a positional
+// prefix, a defaulted (named-only) parameter, and a variadic tail. The bind
+// wrapper must present them in signature-slot order (seed, opt, then the tail),
+// so the defaulted slot sits before tail extras the call site wrote earlier.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct ComboBindData {
+	std::vector<int64_t> slots;
+};
+
+void combo_bind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                duckdb_v2_error_info_handle *err) {
+	duckdb_v2_bind_arguments_handle args = nullptr;
+	REQUIRE(duckdb_v2_table_function_bind_get_arguments(info, &args, err) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_bind_arguments_get_count(args, &count, err) == DUCKDB_V2_ERROR_NONE);
+
+	// Slot names: seed (fixed), opt (defaulted), then unnamed tail slots.
+	duckdb_v2_identifier_t name = {nullptr, 0};
+	REQUIRE(duckdb_v2_bind_arguments_get_name(args, 0, &name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(name == "seed");
+	REQUIRE(duckdb_v2_bind_arguments_get_name(args, 1, &name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(name == "opt");
+	for (idx_t i = 2; i < count; i++) {
+		REQUIRE(duckdb_v2_bind_arguments_get_name(args, i, &name, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(name.ptr == nullptr);
+		REQUIRE(name.len == 0);
+	}
+
+	auto *bd = new ComboBindData();
+	for (idx_t i = 0; i < count; i++) {
+		duckdb_v2_value_handle v = nullptr;
+		REQUIRE(duckdb_v2_bind_arguments_fold(args, ctx, i, &v, err) == DUCKDB_V2_ERROR_NONE);
+		bd->slots.push_back(V2LeafPayload<int64_t>(v));
+		duckdb_v2_value_destroy(&v);
+	}
+
+	duckdb_v2_logical_type_handle bigint = nullptr;
+	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint, err);
+	duckdb_v2_table_function_bind_add_result_column(info, V2Str("s"), bigint, err);
+	duckdb_v2_logical_type_destroy(&bigint);
+
+	auto rows = static_cast<idx_t>(bd->slots.size());
+	duckdb_v2_table_function_bind_set_bind_data(
+	    info, {bd, [](void *p) { delete static_cast<ComboBindData *>(p); }, nullptr}, err);
+	duckdb_v2_table_function_bind_set_cardinality(info, rows, true, err);
+}
+
+void combo_init(duckdb_v2_table_function_init_info_handle info, duckdb_v2_context_handle,
+                duckdb_v2_error_info_handle *err) {
+	auto *state = new InjGlobalState();
+	duckdb_v2_table_function_init_set_global_state(
+	    info, {state, [](void *p) { delete static_cast<InjGlobalState *>(p); }, nullptr}, err);
+}
+
+void combo_exec(duckdb_v2_table_function_exec_info_handle info, duckdb_v2_context_handle,
+                duckdb_v2_error_info_handle *err) {
+	void *global = nullptr;
+	duckdb_v2_table_function_exec_get_global_state(info, &global, err);
+	auto &gstate = *static_cast<InjGlobalState *>(global);
+	void *bind = nullptr;
+	duckdb_v2_table_function_exec_get_bind_data(info, &bind, err);
+	auto &bstate = *static_cast<ComboBindData *>(bind);
+
+	duckdb_v2_data_chunk_handle chunk = nullptr;
+	duckdb_v2_table_function_exec_get_output_chunk(info, &chunk, err);
+	duckdb_v2_vector_handle vec = nullptr;
+	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, err);
+	if (gstate.emitted) {
+		duckdb_v2_vector_set_size(vec, 0, err);
+		return;
+	}
+	int64_t *out = nullptr;
+	duckdb_v2_vector_get_data_mutable(vec, reinterpret_cast<void **>(&out), err);
+	for (idx_t i = 0; i < bstate.slots.size(); i++) {
+		out[i] = bstate.slots[i];
+	}
+	gstate.emitted = true;
+	duckdb_v2_vector_set_size(vec, static_cast<idx_t>(bstate.slots.size()), err);
+}
+
+// Drains a single-column BIGINT result to a vector.
+std::vector<int64_t> DrainInt64Column(duckdb_v2_connection_handle conn, const char *sql) {
+	std::vector<int64_t> out;
+	duckdb_v2_result_handle r = nullptr;
+	REQUIRE(V2Query(conn, sql, &r, nullptr) == DUCKDB_V2_ERROR_NONE);
+	while (auto chunk = V2StepChunk(r)) {
+		idx_t size = 0;
+		duckdb_v2_data_chunk_get_size(chunk, &size, nullptr);
+		duckdb_v2_vector_handle vec = nullptr;
+		duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
+		duckdb_v2_vector_view view;
+		duckdb_v2_vector_get_view(vec, &view, nullptr);
+		const auto data = static_cast<const int64_t *>(view.data);
+		for (idx_t i = 0; i < size; i++) {
+			out.push_back(data[SelAt(view.sel, i)]);
+		}
+		duckdb_v2_data_chunk_destroy(&chunk);
+	}
+	duckdb_v2_result_destroy(&r);
+	return out;
+}
+
+} // namespace
+
+TEST_CASE("V2 table function: positional, defaulted, and varargs slots together",
+          "[capi_v2][table_function][signature]") {
+	V2EnvFixture fix;
+	auto bigint = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	duckdb_v2_table_function_builder_handle b = nullptr;
+	REQUIRE(duckdb_v2_table_function_builder_create(&b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_table_function_builder_set_name(b, V2Str("combo"), nullptr);
+	// seed: required positional; opt: defaulted (named-only, default 100);
+	// plus a BIGINT variadic tail.
+	duckdb_v2_value_handle def = V2Int64Value(100);
+	V2TableSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+		V2SigParam(sig, "seed", bigint);
+		V2SigParamDefault(sig, "opt", bigint, def);
+		V2SigVarargs(sig, bigint);
+	});
+	duckdb_v2_value_destroy(&def);
+	duckdb_v2_table_function_builder_set_bind_callback(b, combo_bind, nullptr);
+	duckdb_v2_table_function_builder_set_init_global_callback(b, combo_init, nullptr);
+	duckdb_v2_table_function_builder_set_exec_callback(b, combo_exec, nullptr);
+	REQUIRE(duckdb_v2_table_function_builder_register_with_connection(fix.conn, b, nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_table_function_builder_destroy(&b);
+	duckdb_v2_logical_type_destroy(&bigint);
+
+	// opt omitted: seed=10, opt=default 100, tail=[20]. The defaulted slot sits
+	// before the tail extra even though 20 was written first.
+	REQUIRE(DrainInt64Column(fix.conn, "SELECT s FROM combo(10, 20)") == std::vector<int64_t> {10, 100, 20});
+	// opt provided by name (must trail the positionals): seed=1, opt=5, tail=[2,3].
+	REQUIRE(DrainInt64Column(fix.conn, "SELECT s FROM combo(1, 2, 3, opt := 5)") == std::vector<int64_t> {1, 5, 2, 3});
 }
 
 namespace {

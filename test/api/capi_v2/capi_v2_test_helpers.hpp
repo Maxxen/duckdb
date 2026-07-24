@@ -364,9 +364,18 @@ inline idx_t V2DrainRowCount(duckdb_v2_result_handle r) {
 template <class T>
 inline T V2QueryCell(duckdb_v2_connection_handle conn, const char *sql) {
 	duckdb_v2_result_handle r = nullptr;
-	REQUIRE(V2Query(conn, sql, &r) == DUCKDB_V2_ERROR_NONE);
+	// Destroy the result before any REQUIRE that can throw, so a failing probe
+	// does not also leak the handle.
+	auto query_rc = V2Query(conn, sql, &r);
+	if (query_rc != DUCKDB_V2_ERROR_NONE) {
+		duckdb_v2_result_destroy(&r);
+		REQUIRE(query_rc == DUCKDB_V2_ERROR_NONE);
+	}
 	auto chunk = V2StepChunk(r);
-	REQUIRE(chunk != nullptr);
+	if (chunk == nullptr) {
+		duckdb_v2_result_destroy(&r);
+		REQUIRE(chunk != nullptr);
+	}
 	duckdb_v2_vector_handle vec = nullptr;
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr);
 	duckdb_v2_vector_view view;
@@ -483,6 +492,21 @@ inline duckdb_v2_function_signature_handle V2SigCreate() {
 	REQUIRE(duckdb_v2_function_signature_create(&sig, nullptr) == DUCKDB_V2_ERROR_NONE);
 	return sig;
 }
+
+// RAII signature holder: destroyed on scope exit, so a REQUIRE that throws while
+// the signature is live (e.g. inside the cfg lambda below) does not leak it.
+struct V2Signature {
+	duckdb_v2_function_signature_handle handle = V2SigCreate();
+	V2Signature() = default;
+	V2Signature(const V2Signature &) = delete;
+	V2Signature &operator=(const V2Signature &) = delete;
+	~V2Signature() {
+		duckdb_v2_function_signature_destroy(&handle);
+	}
+	operator duckdb_v2_function_signature_handle() const {
+		return handle;
+	}
+};
 inline void V2SigParam(duckdb_v2_function_signature_handle sig, const char *name, duckdb_v2_logical_type_handle type) {
 	REQUIRE(duckdb_v2_function_signature_add_parameter(sig, V2Str(name), type, nullptr) == DUCKDB_V2_ERROR_NONE);
 }
@@ -498,34 +522,26 @@ inline void V2SigReturn(duckdb_v2_function_signature_handle sig, duckdb_v2_logic
 	REQUIRE(duckdb_v2_function_signature_set_return_type(sig, type, nullptr) == DUCKDB_V2_ERROR_NONE);
 }
 
-// Build a signature via `cfg`, apply it to a scalar builder, destroy it. The
-// destroy runs before the REQUIREs so a failed set_signature does not leak.
+// Build a signature via `cfg`, apply it to a builder. The signature is held by
+// RAII, so a REQUIRE that throws inside cfg or at set_signature still destroys
+// it (test AGENTS.md: destroy intermediates before any REQUIRE that can throw).
 template <class CONFIG>
 inline void V2ScalarSignature(duckdb_v2_scalar_function_builder_handle b, CONFIG cfg) {
-	auto sig = V2SigCreate();
+	V2Signature sig;
 	cfg(sig);
-	auto set_rc = duckdb_v2_scalar_function_builder_set_signature(b, sig, nullptr);
-	auto destroy_rc = duckdb_v2_function_signature_destroy(&sig);
-	REQUIRE(set_rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_scalar_function_builder_set_signature(b, sig, nullptr) == DUCKDB_V2_ERROR_NONE);
 }
 template <class CONFIG>
 inline void V2AggregateSignature(duckdb_v2_aggregate_function_builder_handle b, CONFIG cfg) {
-	auto sig = V2SigCreate();
+	V2Signature sig;
 	cfg(sig);
-	auto set_rc = duckdb_v2_aggregate_function_builder_set_signature(b, sig, nullptr);
-	auto destroy_rc = duckdb_v2_function_signature_destroy(&sig);
-	REQUIRE(set_rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_aggregate_function_builder_set_signature(b, sig, nullptr) == DUCKDB_V2_ERROR_NONE);
 }
 template <class CONFIG>
 inline void V2TableSignature(duckdb_v2_table_function_builder_handle b, CONFIG cfg) {
-	auto sig = V2SigCreate();
+	V2Signature sig;
 	cfg(sig);
-	auto set_rc = duckdb_v2_table_function_builder_set_signature(b, sig, nullptr);
-	auto destroy_rc = duckdb_v2_function_signature_destroy(&sig);
-	REQUIRE(set_rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(destroy_rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_table_function_builder_set_signature(b, sig, nullptr) == DUCKDB_V2_ERROR_NONE);
 }
 
 // RAII fixture: in-memory environment + database + connection.

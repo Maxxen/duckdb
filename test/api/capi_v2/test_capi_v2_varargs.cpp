@@ -154,6 +154,15 @@ void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_contex
 		REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	}
 
+	// Resolved slot names follow the signature parameters, however the call
+	// site spelled the arguments.
+	duckdb_v2_identifier_t slot_name = {nullptr, 0};
+	REQUIRE(duckdb_v2_bind_arguments_get_name(arguments, 0, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name == "a");
+	REQUIRE(strlen(slot_name.ptr) == slot_name.len);
+	REQUIRE(duckdb_v2_bind_arguments_get_name(arguments, 1, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name == "b");
+
 	// arg 0 is a column reference: folding it fails.
 	duckdb_v2_value_handle bad = nullptr;
 	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 0, &bad, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -170,8 +179,11 @@ void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_contex
 	REQUIRE(oob_type == nullptr);
 	duckdb_v2_value_handle oob_val = nullptr;
 	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, ctx, 5, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_identifier_t oob_name = {nullptr, 0};
+	REQUIRE(duckdb_v2_bind_arguments_get_name(arguments, 5, &oob_name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_get_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_get_type(nullptr, 0, &oob_type, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_bind_arguments_get_name(nullptr, 0, &oob_name, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_fold(nullptr, ctx, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_bind_arguments_fold(arguments, nullptr, 0, &oob_val, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 }
@@ -180,6 +192,31 @@ void ProbeBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_contex
 void ProbeExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_context_handle,
                duckdb_v2_error_info_handle *err) {
 	IntSumExec(info, nullptr, err);
+}
+
+// name_tail_probe bind: the slot names distinguish the call's named vararg
+// from its unnamed one. Called as name_tail_probe(1, 2, tag := 3): slot 0 is
+// the fixed parameter a, slot 1 an unnamed vararg, slot 2 a named vararg
+// carrying the caller-provided name.
+void NameTailBind(duckdb_v2_scalar_function_bind_info_handle info, duckdb_v2_context_handle ctx,
+                  duckdb_v2_error_info_handle *err) {
+	void *user_data = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_bind_get_user_data(info, &user_data, err) == DUCKDB_V2_ERROR_NONE);
+	static_cast<ProbeResult *>(user_data)->ran = true;
+
+	duckdb_v2_bind_arguments_handle arguments = nullptr;
+	REQUIRE(duckdb_v2_scalar_function_bind_get_arguments(info, &arguments, err) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_bind_arguments_get_count(arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 3);
+	duckdb_v2_identifier_t slot_name = {nullptr, 0};
+	REQUIRE(duckdb_v2_bind_arguments_get_name(arguments, 0, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name == "a");
+	REQUIRE(duckdb_v2_bind_arguments_get_name(arguments, 1, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name.ptr == nullptr);
+	REQUIRE(slot_name.len == 0);
+	REQUIRE(duckdb_v2_bind_arguments_get_name(arguments, 2, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name == "tag");
 }
 
 // --- registration helpers ---------------------------------------------------
@@ -534,6 +571,33 @@ TEST_CASE("V2 varargs: bind argument accessors", "[capi_v2][varargs]") {
 	REQUIRE(probe.ran);
 }
 
+TEST_CASE("V2 varargs: named varargs surface their caller-provided names", "[capi_v2][varargs]") {
+	V2EnvFixture fix;
+	static ProbeResult probe;
+	probe.ran = false;
+	{
+		auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+		auto b = NewScalar("name_tail_probe", nullptr);
+		V2ScalarSignature(b, [&](duckdb_v2_function_signature_handle sig) {
+			V2SigParam(sig, "a", integer);
+			V2SigVarargs(sig, integer);
+			V2SigReturn(sig, integer);
+		});
+		duckdb_v2_scalar_function_builder_set_user_data(b, {&probe, nullptr, nullptr}, nullptr);
+		duckdb_v2_scalar_function_builder_set_bind_callback(b, NameTailBind, nullptr);
+		duckdb_v2_scalar_function_builder_set_exec_callback(b, ProbeExec, nullptr);
+		REQUIRE(duckdb_v2_scalar_function_builder_register_with_connection(fix.conn, b, nullptr) ==
+		        DUCKDB_V2_ERROR_NONE);
+		duckdb_v2_scalar_function_builder_destroy(&b);
+		duckdb_v2_logical_type_destroy(&integer);
+	}
+
+	// One unnamed vararg, one named vararg; NameTailBind asserts the slot names.
+	// IntSumExec sums every column: 1 + 2 + 3 = 6.
+	REQUIRE(V2QueryCell<int32_t>(fix.conn, "SELECT name_tail_probe(1, 2, tag := 3)") == 6);
+	REQUIRE(probe.ran);
+}
+
 // ---------------------------------------------------------------------------
 // Aggregate varargs.
 // ---------------------------------------------------------------------------
@@ -663,8 +727,17 @@ struct TfState {
 
 void TfBind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle,
             duckdb_v2_error_info_handle *err) {
+	// A pure-varargs signature: every slot is tail, and tail slots are unnamed.
+	duckdb_v2_bind_arguments_handle args = nullptr;
+	REQUIRE(duckdb_v2_table_function_bind_get_arguments(info, &args, err) == DUCKDB_V2_ERROR_NONE);
 	idx_t count = 0;
-	REQUIRE(duckdb_v2_table_function_bind_get_parameter_count(info, &count, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_get_count(args, &count, err) == DUCKDB_V2_ERROR_NONE);
+	for (idx_t i = 0; i < count; i++) {
+		duckdb_v2_identifier_t slot_name = {"sentinel", 8};
+		REQUIRE(duckdb_v2_bind_arguments_get_name(args, i, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+		REQUIRE(slot_name.ptr == nullptr);
+		REQUIRE(slot_name.len == 0);
+	}
 	auto integer = V2TypeOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_table_function_bind_add_result_column(info, V2Str("n"), integer, err);
 	duckdb_v2_logical_type_destroy(&integer);

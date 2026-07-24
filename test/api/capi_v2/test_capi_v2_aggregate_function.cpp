@@ -261,6 +261,17 @@ std::atomic<int> g_bind_data_destroyed {0};
 
 void BindDataBindCallback(duckdb_v2_aggregate_function_bind_info_handle info, duckdb_v2_context_handle,
                           duckdb_v2_error_info_handle *err) {
+	// The aggregate bind sees the same bind_arguments surface as scalar: one
+	// slot, named after the signature parameter.
+	duckdb_v2_bind_arguments_handle arguments = nullptr;
+	REQUIRE(duckdb_v2_aggregate_function_bind_get_arguments(info, &arguments, err) == DUCKDB_V2_ERROR_NONE);
+	idx_t count = 0;
+	REQUIRE(duckdb_v2_bind_arguments_get_count(arguments, &count, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(count == 1);
+	duckdb_v2_identifier_t slot_name = {nullptr, 0};
+	REQUIRE(duckdb_v2_bind_arguments_get_name(arguments, 0, &slot_name, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(slot_name == "x");
+
 	// Compute a "multiplier" at bind time and hand it to execution as bind data.
 	duckdb_v2_opaque bind_data {new int32_t(10),
 	                            [](void *p) {

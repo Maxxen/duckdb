@@ -94,20 +94,18 @@ struct ReplScanSeqState {
 
 static void ReplScanSeqBind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
                             duckdb_v2_error_info_handle *err) {
+	// Slots arrive in signature order: n, then start (default injected).
+	duckdb_v2_bind_arguments_handle args = nullptr;
+	REQUIRE(duckdb_v2_table_function_bind_get_arguments(info, &args, err) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_handle n_val = nullptr;
-	REQUIRE(duckdb_v2_table_function_bind_get_parameter(info, 0, &n_val, err) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bind_arguments_fold(args, ctx, 0, &n_val, err) == DUCKDB_V2_ERROR_NONE);
 	int64_t n = V2LeafPayload<int64_t>(n_val);
 	duckdb_v2_value_destroy(&n_val);
 
-	int64_t start = 0;
 	duckdb_v2_value_handle start_val = nullptr;
-	duckdb_v2_error_info_handle local_err = nullptr;
-	if (duckdb_v2_table_function_bind_get_named_parameter(info, V2Str("start"), &start_val, &local_err) ==
-	    DUCKDB_V2_ERROR_NONE) {
-		start = V2LeafPayload<int64_t>(start_val);
-		duckdb_v2_value_destroy(&start_val);
-	}
-	duckdb_v2_error_info_destroy(&local_err);
+	REQUIRE(duckdb_v2_bind_arguments_fold(args, ctx, 1, &start_val, err) == DUCKDB_V2_ERROR_NONE);
+	int64_t start = V2LeafPayload<int64_t>(start_val);
+	duckdb_v2_value_destroy(&start_val);
 
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
 	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, err);

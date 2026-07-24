@@ -232,9 +232,13 @@ struct ArrowRtRangeGlobalState {
 
 void ArrowRtRangeBind(duckdb_v2_table_function_bind_info_handle info, duckdb_v2_context_handle ctx,
                       duckdb_v2_error_info_handle *err) {
-	// count parameter.
+	// count parameter (slot 0).
+	duckdb_v2_bind_arguments_handle args = nullptr;
+	if (duckdb_v2_table_function_bind_get_arguments(info, &args, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
 	duckdb_v2_value_handle count_val = nullptr;
-	if (duckdb_v2_table_function_bind_get_parameter(info, 0, &count_val, err) != DUCKDB_V2_ERROR_NONE) {
+	if (duckdb_v2_bind_arguments_fold(args, ctx, 0, &count_val, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
 	int64_t count = V2LeafPayload<int64_t>(count_val);

@@ -38,15 +38,14 @@ TEST_CASE("Stable C++API: Table Function", "[cpp_api]") {
 		    // We will emit one column named "i" of type INTEGER
 		    input.AddResultColumn("i", LogicalType::INTEGER());
 
-		    // Get parameters
-		    const auto start = input.GetParameter(0).AsInteger();
-		    const auto stop = input.GetParameter(1).AsInteger();
-
-		    // "Step" is optional and named, so we try to get it and default to 1 if it's not provided
-		    int32_t step = 1;
-		    if (const auto step_arg = input.TryGetNamedParameter("step")) {
-			    step = step_arg->AsInteger();
-		    }
+		    // Arguments arrive in signature-slot order: start, stop, step.
+		    // step's default is injected when the call omits it, so a value
+		    // is always present.
+		    REQUIRE(input.GetArgumentCount() == 3);
+		    REQUIRE(input.GetArgumentName(2) == "step");
+		    const auto start = input.FoldArgument(0).AsInteger();
+		    const auto stop = input.FoldArgument(1).AsInteger();
+		    const auto step = input.FoldArgument(2).AsInteger();
 
 		    // Store the parameters in the bind data for use in exec
 		    input.SetBindData<std::tuple<int32_t, int32_t, int32_t>>(start, step, stop);
