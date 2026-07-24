@@ -103,6 +103,9 @@ enums:
       STATEMENT_TYPE_ATTACH: {value: 25}
       STATEMENT_TYPE_DETACH: {value: 26}
       STATEMENT_TYPE_MULTI: {value: 27}
+      STATEMENT_TYPE_COPY_DATABASE: {value: 28}
+      STATEMENT_TYPE_UPDATE_EXTENSIONS: {value: 29}
+      STATEMENT_TYPE_MERGE_INTO: {value: 30}
   error_type:
     lifecycle:
       - ["frozen", "v1.5.4", "2026-05-18"]

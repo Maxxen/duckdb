@@ -350,6 +350,7 @@ functions:
     return_description: nullptr if the string is valid UTF-8. Otherwise, a duckdb_error_data containing error information. Must be destroyed with `duckdb_destroy_error_data`.
   row_count:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -364,6 +365,7 @@ functions:
     return_description: The number of rows present in the result object.
   column_data:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -392,6 +394,7 @@ functions:
     return_description: The column data of the specified column.
   nullmask_data:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -422,6 +425,7 @@ functions:
     return_description: The nullmask of the specified column.
   result_get_chunk:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -448,6 +452,7 @@ functions:
     return_description: The resulting data chunk. Returns `NULL` if the chunk index is out of bounds.
   result_is_streaming:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -461,6 +466,7 @@ functions:
     return_description: Whether or not the result object is of the type StreamQueryResult
   result_chunk_count:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -474,6 +480,7 @@ functions:
     return_description: Number of data chunks present in the result.
   stream_fetch_chunk:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:

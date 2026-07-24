@@ -275,6 +275,9 @@ typedef enum duckdb_statement_type {
 	DUCKDB_STATEMENT_TYPE_ATTACH = 25,
 	DUCKDB_STATEMENT_TYPE_DETACH = 26,
 	DUCKDB_STATEMENT_TYPE_MULTI = 27,
+	DUCKDB_STATEMENT_TYPE_COPY_DATABASE = 28,
+	DUCKDB_STATEMENT_TYPE_UPDATE_EXTENSIONS = 29,
+	DUCKDB_STATEMENT_TYPE_MERGE_INTO = 30,
 } duckdb_statement_type;
 
 //! An enum over DuckDB's different error types.
@@ -730,25 +733,33 @@ typedef struct _duckdb_arrow_options {
 	void *internal_ptr;
 } * duckdb_arrow_options;
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 //! An arrow result set. Must be destroyed with duckdb_destroy_arrow.
 typedef struct _duckdb_arrow {
 	void *internal_ptr;
 } * duckdb_arrow;
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 //! An arrow stream wrapper. Must be destroyed with duckdb_destroy_arrow_stream.
 typedef struct _duckdb_arrow_stream {
 	void *internal_ptr;
 } * duckdb_arrow_stream;
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 //! An arrow schema wrapper.
 typedef struct _duckdb_arrow_schema {
 	void *internal_ptr;
 } * duckdb_arrow_schema;
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 //! An arrow array wrapper.
 typedef struct _duckdb_arrow_array {
 	void *internal_ptr;
 } * duckdb_arrow_array;
+#endif
 
 //! Holds a converted Arrow schema. Must be destroyed with duckdb_destroy_arrow_converted_schema.
 typedef struct _duckdb_arrow_converted_schema {
@@ -1728,6 +1739,7 @@ DUCKDB_C_API duckdb_state duckdb_append_value(duckdb_appender appender, duckdb_v
  */
 DUCKDB_C_API duckdb_state duckdb_append_data_chunk(duckdb_appender appender, duckdb_data_chunk chunk);
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release. Use duckdb_appender_error_data
  * instead.
@@ -1741,6 +1753,7 @@ DUCKDB_C_API duckdb_state duckdb_append_data_chunk(duckdb_appender appender, duc
  * @return const char*
  */
 DUCKDB_C_API const char *duckdb_appender_error(duckdb_appender appender);
+#endif
 
 /* --- Struct definitions for appender --- */
 
@@ -1822,6 +1835,7 @@ DUCKDB_C_API duckdb_error_data duckdb_data_chunk_from_arrow(duckdb_connection co
  */
 DUCKDB_C_API void duckdb_destroy_arrow_converted_schema(duckdb_arrow_converted_schema *arrow_converted_schema);
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1838,7 +1852,9 @@ DUCKDB_C_API void duckdb_destroy_arrow_converted_schema(duckdb_arrow_converted_s
  * @return duckdb_state
  */
 DUCKDB_C_API duckdb_state duckdb_query_arrow(duckdb_connection connection, const char *query, duckdb_arrow *out_result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1849,7 +1865,9 @@ DUCKDB_C_API duckdb_state duckdb_query_arrow(duckdb_connection connection, const
  * @return duckdb_state
  */
 DUCKDB_C_API duckdb_state duckdb_query_arrow_schema(duckdb_arrow result, duckdb_arrow_schema *out_schema);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1862,7 +1880,9 @@ DUCKDB_C_API duckdb_state duckdb_query_arrow_schema(duckdb_arrow result, duckdb_
  */
 DUCKDB_C_API duckdb_state duckdb_prepared_arrow_schema(duckdb_prepared_statement prepared,
                                                        duckdb_arrow_schema *out_schema);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1875,7 +1895,9 @@ DUCKDB_C_API duckdb_state duckdb_prepared_arrow_schema(duckdb_prepared_statement
  */
 DUCKDB_C_API void duckdb_result_arrow_array(duckdb_result result, duckdb_data_chunk chunk,
                                             duckdb_arrow_array *out_array);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1890,7 +1912,9 @@ DUCKDB_C_API void duckdb_result_arrow_array(duckdb_result result, duckdb_data_ch
  * @return duckdb_state
  */
 DUCKDB_C_API duckdb_state duckdb_query_arrow_array(duckdb_arrow result, duckdb_arrow_array *out_array);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1900,7 +1924,9 @@ DUCKDB_C_API duckdb_state duckdb_query_arrow_array(duckdb_arrow result, duckdb_a
  * @return idx_t
  */
 DUCKDB_C_API idx_t duckdb_arrow_column_count(duckdb_arrow result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1910,7 +1936,9 @@ DUCKDB_C_API idx_t duckdb_arrow_column_count(duckdb_arrow result);
  * @return idx_t
  */
 DUCKDB_C_API idx_t duckdb_arrow_row_count(duckdb_arrow result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1921,7 +1949,9 @@ DUCKDB_C_API idx_t duckdb_arrow_row_count(duckdb_arrow result);
  * @return idx_t
  */
 DUCKDB_C_API idx_t duckdb_arrow_rows_changed(duckdb_arrow result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1934,7 +1964,9 @@ DUCKDB_C_API idx_t duckdb_arrow_rows_changed(duckdb_arrow result);
  * @return const char*
  */
 DUCKDB_C_API const char *duckdb_query_arrow_error(duckdb_arrow result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1944,7 +1976,9 @@ DUCKDB_C_API const char *duckdb_query_arrow_error(duckdb_arrow result);
  * @return void
  */
 DUCKDB_C_API void duckdb_destroy_arrow(duckdb_arrow *result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1954,7 +1988,9 @@ DUCKDB_C_API void duckdb_destroy_arrow(duckdb_arrow *result);
  * @return void
  */
 DUCKDB_C_API void duckdb_destroy_arrow_stream(duckdb_arrow_stream *stream_p);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1967,7 +2003,9 @@ DUCKDB_C_API void duckdb_destroy_arrow_stream(duckdb_arrow_stream *stream_p);
  */
 DUCKDB_C_API duckdb_state duckdb_execute_prepared_arrow(duckdb_prepared_statement prepared_statement,
                                                         duckdb_arrow *out_result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1980,7 +2018,9 @@ DUCKDB_C_API duckdb_state duckdb_execute_prepared_arrow(duckdb_prepared_statemen
  */
 DUCKDB_C_API duckdb_state duckdb_arrow_scan(duckdb_connection connection, const char *table_name,
                                             duckdb_arrow_stream arrow);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -1997,6 +2037,7 @@ DUCKDB_C_API duckdb_state duckdb_arrow_scan(duckdb_connection connection, const 
 DUCKDB_C_API duckdb_state duckdb_arrow_array_scan(duckdb_connection connection, const char *table_name,
                                                   duckdb_arrow_schema arrow_schema, duckdb_arrow_array arrow_array,
                                                   duckdb_arrow_stream *out_stream);
+#endif
 
 /* --- Struct definitions for arrow --- */
 
@@ -4234,6 +4275,7 @@ DUCKDB_C_API const char *duckdb_extract_statements_error(duckdb_extracted_statem
  */
 DUCKDB_C_API void duckdb_destroy_extracted(duckdb_extracted_statements *extracted_statements);
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -4251,7 +4293,9 @@ DUCKDB_C_API void duckdb_destroy_extracted(duckdb_extracted_statements *extracte
  */
 DUCKDB_C_API duckdb_state duckdb_execute_prepared_streaming(duckdb_prepared_statement prepared_statement,
                                                             duckdb_result *out_result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -4268,6 +4312,7 @@ DUCKDB_C_API duckdb_state duckdb_execute_prepared_streaming(duckdb_prepared_stat
  */
 DUCKDB_C_API duckdb_state duckdb_pending_prepared_streaming(duckdb_prepared_statement prepared_statement,
                                                             duckdb_pending_result *out_result);
+#endif
 
 /* --- Struct definitions for prepared_statement --- */
 
@@ -4519,6 +4564,7 @@ DUCKDB_C_API const char *duckdb_string_t_data(duckdb_string_t *string);
  */
 DUCKDB_C_API duckdb_error_data duckdb_valid_utf8_check(const char *str, idx_t len);
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -4528,7 +4574,9 @@ DUCKDB_C_API duckdb_error_data duckdb_valid_utf8_check(const char *str, idx_t le
  * @return idx_t
  */
 DUCKDB_C_API idx_t duckdb_row_count(duckdb_result *result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATED**: Prefer using `duckdb_result_get_chunk` instead.
  *
@@ -4546,7 +4594,9 @@ DUCKDB_C_API idx_t duckdb_row_count(duckdb_result *result);
  * @return void*
  */
 DUCKDB_C_API void *duckdb_column_data(duckdb_result *result, idx_t col);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATED**: Prefer using `duckdb_result_get_chunk` instead.
  *
@@ -4563,7 +4613,9 @@ DUCKDB_C_API void *duckdb_column_data(duckdb_result *result, idx_t col);
  * @return bool*
  */
 DUCKDB_C_API bool *duckdb_nullmask_data(duckdb_result *result, idx_t col);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -4584,7 +4636,9 @@ DUCKDB_C_API bool *duckdb_nullmask_data(duckdb_result *result, idx_t col);
  * @return duckdb_data_chunk
  */
 DUCKDB_C_API duckdb_data_chunk duckdb_result_get_chunk(duckdb_result result, idx_t chunk_index);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -4594,7 +4648,9 @@ DUCKDB_C_API duckdb_data_chunk duckdb_result_get_chunk(duckdb_result result, idx
  * @return bool
  */
 DUCKDB_C_API bool duckdb_result_is_streaming(duckdb_result result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -4604,7 +4660,9 @@ DUCKDB_C_API bool duckdb_result_is_streaming(duckdb_result result);
  * @return idx_t
  */
 DUCKDB_C_API idx_t duckdb_result_chunk_count(duckdb_result result);
+#endif
 
+#ifndef DUCKDB_API_NO_DEPRECATED
 /*!
  * **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
  *
@@ -4624,6 +4682,7 @@ DUCKDB_C_API idx_t duckdb_result_chunk_count(duckdb_result result);
  * @return duckdb_data_chunk
  */
 DUCKDB_C_API duckdb_data_chunk duckdb_stream_fetch_chunk(duckdb_result result);
+#endif
 
 /* --- Struct definitions for query --- */
 

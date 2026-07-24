@@ -549,6 +549,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   appender_error:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       appender:

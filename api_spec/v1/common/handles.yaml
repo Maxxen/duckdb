@@ -104,20 +104,24 @@ handles:
     cleanup_with: destroy_arrow_options
   arrow:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An arrow result set. Must be destroyed with duckdb_destroy_arrow."
     cleanup_with: destroy_arrow
   arrow_stream:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An arrow stream wrapper. Must be destroyed with duckdb_destroy_arrow_stream."
     cleanup_with: destroy_arrow_stream
   arrow_schema:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An arrow schema wrapper."
   arrow_array:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     description: "An arrow array wrapper."
   arrow_converted_schema:

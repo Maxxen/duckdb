@@ -647,6 +647,7 @@ functions:
       De-allocates all memory allocated for the extracted statements.
   execute_prepared_streaming:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       prepared_statement:
@@ -671,6 +672,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   pending_prepared_streaming:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       prepared_statement:

@@ -105,6 +105,7 @@ functions:
       Destroys the arrow converted schema and de-allocates all memory allocated for that arrow converted schema.
   query_arrow:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       connection:
@@ -133,6 +134,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   query_arrow_schema:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -152,6 +154,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   prepared_arrow_schema:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       prepared:
@@ -171,6 +174,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   result_arrow_array:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -192,6 +196,7 @@ functions:
       ArrowArray object.
   query_arrow_array:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -214,6 +219,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   arrow_column_count:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -227,6 +233,7 @@ functions:
     return_description: The number of columns present in the result object.
   arrow_row_count:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -240,6 +247,7 @@ functions:
     return_description: The number of rows present in the result object.
   arrow_rows_changed:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -254,6 +262,7 @@ functions:
     return_description: The number of rows changed.
   query_arrow_error:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       result:
@@ -272,6 +281,7 @@ functions:
     return_description: The error of the result.
   destroy_arrow:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     role: destructor
     belongs_to: arrow
@@ -287,6 +297,7 @@ functions:
       Closes the result and de-allocates all memory allocated for the arrow result.
   destroy_arrow_stream:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     role: destructor
     belongs_to: arrow_stream
@@ -302,6 +313,7 @@ functions:
       Releases the arrow array stream and de-allocates its memory.
   execute_prepared_arrow:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       prepared_statement:
@@ -321,6 +333,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   arrow_scan:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       connection:
@@ -342,6 +355,7 @@ functions:
     return_description: '`DuckDBSuccess` on success or `DuckDBError` on failure.'
   arrow_array_scan:
     lifecycle:
+      - ["deprecated", "v1.5.4", "2026-05-19"]
       - ["frozen", "v1.5.4", "2026-05-18"]
     parameters:
       connection:
