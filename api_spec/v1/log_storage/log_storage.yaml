@@ -47,7 +47,7 @@ functions:
         type: opaque
         indirection: 1
         description: The extra data that is passed back into the callbacks.
-      destroy:
+      delete_callback:
         type: delete_callback_t
     return_type: opaque
     description: |

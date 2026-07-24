@@ -68,7 +68,7 @@ functions:
       col:
         type: idx
         description: The column index.
-    return_type: TYPE
+    return_type: type
     description: |
       Returns the column type of the specified column.
 

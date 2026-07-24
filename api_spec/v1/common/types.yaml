@@ -170,7 +170,7 @@ structs:
         type: bool
         pointer: 1
       - name: deprecated_type
-        type: TYPE
+        type: type
       - name: deprecated_name
         type: char
         pointer: 1

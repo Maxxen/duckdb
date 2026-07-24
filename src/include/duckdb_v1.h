@@ -572,7 +572,7 @@ struct duckdb_list_entry {
 struct duckdb_column {
 	void *deprecated_data;
 	bool *deprecated_nullmask;
-	DUCKDB_TYPE deprecated_type;
+	duckdb_type deprecated_type;
 	char *deprecated_name;
 	void *internal_data;
 };
@@ -3343,11 +3343,11 @@ DUCKDB_C_API void duckdb_log_storage_set_write_log_entry(duckdb_log_storage log_
  *
  * @param log_storage The log storage object.
  * @param extra_data The extra data that is passed back into the callbacks.
- * @param destroy
+ * @param delete_callback
  * @return void
  */
 DUCKDB_C_API void duckdb_log_storage_set_extra_data(duckdb_log_storage log_storage, void *extra_data,
-                                                    duckdb_delete_callback_t destroy);
+                                                    duckdb_delete_callback_t delete_callback);
 
 /*!
  * Sets the name of the log storage.
@@ -3395,7 +3395,7 @@ DUCKDB_C_API duckdb_state duckdb_register_log_storage(duckdb_database database, 
  * @param type The primitive type to create.
  * @return duckdb_logical_type
  */
-DUCKDB_C_API duckdb_logical_type duckdb_create_logical_type(DUCKDB_TYPE type);
+DUCKDB_C_API duckdb_logical_type duckdb_create_logical_type(duckdb_type type);
 
 /*!
  * Returns the alias of a duckdb_logical_type, if set, else `nullptr`. The result must be destroyed with `duckdb_free`.
@@ -3488,9 +3488,9 @@ DUCKDB_C_API duckdb_logical_type duckdb_create_decimal_type(uint8_t width, uint8
  * Retrieves the enum `duckdb_type` of a `duckdb_logical_type`.
  *
  * @param type The logical type.
- * @return DUCKDB_TYPE
+ * @return duckdb_type
  */
-DUCKDB_C_API DUCKDB_TYPE duckdb_get_type_id(duckdb_logical_type type);
+DUCKDB_C_API duckdb_type duckdb_get_type_id(duckdb_logical_type type);
 
 /*!
  * Retrieves the width of a decimal type.
@@ -3512,17 +3512,17 @@ DUCKDB_C_API uint8_t duckdb_decimal_scale(duckdb_logical_type type);
  * Retrieves the internal storage type of a decimal type.
  *
  * @param type The logical type object
- * @return DUCKDB_TYPE
+ * @return duckdb_type
  */
-DUCKDB_C_API DUCKDB_TYPE duckdb_decimal_internal_type(duckdb_logical_type type);
+DUCKDB_C_API duckdb_type duckdb_decimal_internal_type(duckdb_logical_type type);
 
 /*!
  * Retrieves the internal storage type of an enum type.
  *
  * @param type The logical type object
- * @return DUCKDB_TYPE
+ * @return duckdb_type
  */
-DUCKDB_C_API DUCKDB_TYPE duckdb_enum_internal_type(duckdb_logical_type type);
+DUCKDB_C_API duckdb_type duckdb_enum_internal_type(duckdb_logical_type type);
 
 /*!
  * Retrieves the dictionary size of the enum type.
@@ -3858,9 +3858,9 @@ DUCKDB_C_API const char *duckdb_parameter_name(duckdb_prepared_statement prepare
  *
  * @param prepared_statement The prepared statement.
  * @param param_idx The parameter index.
- * @return DUCKDB_TYPE
+ * @return duckdb_type
  */
-DUCKDB_C_API DUCKDB_TYPE duckdb_param_type(duckdb_prepared_statement prepared_statement, idx_t param_idx);
+DUCKDB_C_API duckdb_type duckdb_param_type(duckdb_prepared_statement prepared_statement, idx_t param_idx);
 
 /*!
  * Returns the logical type for the parameter at the given index.
@@ -3934,9 +3934,9 @@ duckdb_prepared_statement_column_logical_type(duckdb_prepared_statement prepared
  *
  * @param prepared_statement The prepared statement to fetch the column type from.
  * @param col_idx The column index.
- * @return DUCKDB_TYPE
+ * @return duckdb_type
  */
-DUCKDB_C_API DUCKDB_TYPE duckdb_prepared_statement_column_type(duckdb_prepared_statement prepared_statement,
+DUCKDB_C_API duckdb_type duckdb_prepared_statement_column_type(duckdb_prepared_statement prepared_statement,
                                                                idx_t col_idx);
 
 /*!
@@ -4374,9 +4374,9 @@ DUCKDB_C_API const char *duckdb_column_name(duckdb_result *result, idx_t col);
  *
  * @param result The result object to fetch the column type from.
  * @param col The column index.
- * @return DUCKDB_TYPE
+ * @return duckdb_type
  */
-DUCKDB_C_API DUCKDB_TYPE duckdb_column_type(duckdb_result *result, idx_t col);
+DUCKDB_C_API duckdb_type duckdb_column_type(duckdb_result *result, idx_t col);
 
 /*!
  * Returns the statement type of the statement that was executed

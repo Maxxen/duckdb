@@ -96,7 +96,7 @@ functions:
       param_idx:
         type: idx
         description: The parameter index.
-    return_type: TYPE
+    return_type: type
     description: |
       Returns the parameter type for the parameter at the given index.
 
@@ -197,7 +197,7 @@ functions:
       col_idx:
         type: idx
         description: The column index.
-    return_type: TYPE
+    return_type: type
     description: |
       Returns the column type of the specified column of the result of the prepared_statement.
 

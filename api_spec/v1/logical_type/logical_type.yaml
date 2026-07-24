@@ -7,7 +7,7 @@ functions:
     belongs_to: logical_type
     parameters:
       type:
-        type: TYPE
+        type: type
         description: The primitive type to create.
     return_type: logical_type
     description: |
@@ -168,7 +168,7 @@ functions:
       type:
         type: logical_type
         description: The logical type.
-    return_type: TYPE
+    return_type: type
     description: |
       Retrieves the enum `duckdb_type` of a `duckdb_logical_type`.
     return_description: The `duckdb_type` id.
@@ -201,7 +201,7 @@ functions:
       type:
         type: logical_type
         description: The logical type object
-    return_type: TYPE
+    return_type: type
     description: |
       Retrieves the internal storage type of a decimal type.
     return_description: The internal type of the decimal type
@@ -212,7 +212,7 @@ functions:
       type:
         type: logical_type
         description: The logical type object
-    return_type: TYPE
+    return_type: type
     description: |
       Retrieves the internal storage type of an enum type.
     return_description: The internal type of the enum type
