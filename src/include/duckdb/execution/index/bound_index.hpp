@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/execution/index/unbound_index.hpp"
+#include "duckdb/execution/index/index_scan_info.hpp"
 #include "duckdb/common/enums/index_constraint_type.hpp"
 #include "duckdb/common/types/constraint_conflict_info.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
@@ -26,6 +27,8 @@ class ClientContext;
 class TableIOManager;
 class Transaction;
 class ConflictManager;
+class LogicalGet;
+class SelectionVector;
 
 struct IndexLock;
 struct IndexScanState;
@@ -201,6 +204,37 @@ public:
 	//! Execute the index expressions on an input chunk
 	void ExecuteExpressions(DataChunk &input, DataChunk &result);
 	static string AppendRowError(DataChunk &input, idx_t index);
+
+public:
+	//===--------------------------------------------------------------------===//
+	// Index-based optimization interface
+	//===--------------------------------------------------------------------===//
+	//! Bind callbacks (optimizer-time). Given the current LogicalGet bindings, decide whether this
+	//! index can serve the query, and if so return the match (query params + exactness + cost).
+	//! Return nullptr if not applicable. Core only calls the callback whose capability bit is set
+	//! in the owning IndexType's IndexOptimizerCapabilities. Defaults return nullptr.
+	//! `predicate` is a single filter expression bound against `get`'s column bindings; the index
+	//! rebases its own indexed expression onto `get` and matches it against the predicate.
+	virtual unique_ptr<IndexMatch> TryBindPredicateScan(ClientContext &context, const LogicalGet &get,
+	                                                    const Expression &predicate);
+	virtual unique_ptr<IndexMatch> TryBindOrderScan(ClientContext &context, const LogicalGet &get,
+	                                                IndexOrderKind kind, const Expression &order_expr, idx_t k);
+	virtual unique_ptr<IndexMatch> TryBindPredicateJoin(ClientContext &context, const LogicalGet &inner_get,
+	                                                    const Expression &probe_key_expr);
+	virtual unique_ptr<IndexMatch> TryBindOrderLimitJoin(ClientContext &context, const LogicalGet &inner_get,
+	                                                     const Expression &probe_key_expr, idx_t k);
+
+	//! Execute callbacks (runtime). These produce row-ids only; materializing table columns from
+	//! row-ids is core's job (the shared late-materialization fetch primitive). Defaults throw.
+	virtual unique_ptr<IndexScanState> InitializeScan(const IndexScanInfo &info, ClientContext &context);
+	//! Append matching row-ids (ROW_TYPE) to `row_ids`, returning the number appended. Ordered for
+	//! OrderLimit queries, unordered for Predicate queries. Zero with a scan-exhausted state ends it.
+	virtual idx_t Scan(IndexScanState &state, idx_t max_count, Vector &row_ids);
+	virtual unique_ptr<IndexScanState> InitializeProbe(const IndexScanInfo &info, ClientContext &context);
+	//! For each outer row in `keys`, emit matching inner row-ids into `row_ids` and record the
+	//! outer-row -> match mapping in `match_sel`; `match_count` is the total number of matches.
+	virtual void Probe(IndexScanState &state, DataChunk &keys, Vector &row_ids, SelectionVector &match_sel,
+	                   idx_t &match_count);
 
 	//! Throw a constraint violation exception
 	virtual string GetConstraintViolationMessage(VerifyExistenceType verify_type, idx_t failed_index,

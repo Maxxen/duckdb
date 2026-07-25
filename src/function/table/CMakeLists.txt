@@ -9,6 +9,7 @@ add_library_unity(
   checkpoint.cpp
   direct_file_reader.cpp
   glob.cpp
+  index_scan.cpp
   query_function.cpp
   range.cpp
   repeat.cpp

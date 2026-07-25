@@ -18,6 +18,7 @@
 #include "duckdb/optimizer/expression_heuristics.hpp"
 #include "duckdb/optimizer/filter_pullup.hpp"
 #include "duckdb/optimizer/filter_pushdown.hpp"
+#include "duckdb/optimizer/index_scan_optimizer.hpp"
 #include "duckdb/optimizer/grouping_sets_optimizer.hpp"
 #include "duckdb/optimizer/in_clause_rewriter.hpp"
 #include "duckdb/optimizer/join_elimination.hpp"
@@ -227,6 +228,13 @@ void Optimizer::RunBuiltInOptimizers() {
 		plan = filter_pushdown.Rewrite(std::move(plan));
 	});
 
+	// rewrite predicate-based scans into index scans (RTREE, ...) - after filter pushdown so that the
+	// index cardinality feeds join ordering
+	RunOptimizer(OptimizerType::INDEX_PREDICATE_SCAN, [&]() {
+		IndexScanOptimizer index_scan_optimizer(*this);
+		index_scan_optimizer.OptimizePredicateScan(plan);
+	});
+
 	// derive and push filters into materialized CTEs
 	RunOptimizer(OptimizerType::CTE_FILTER_PUSHER, [&]() {
 		CTEFilterPusher cte_filter_pusher(*this);
@@ -378,6 +386,13 @@ void Optimizer::RunBuiltInOptimizers() {
 	RunOptimizer(OptimizerType::TOP_N, [&]() {
 		TopN topn(context);
 		plan = topn.Optimize(std::move(plan));
+	});
+
+	// rewrite ORDER BY distance(col, const) LIMIT k (a LogicalTopN) into an ordered index scan
+	// (HNSW, ...). After TOP_N so that a LogicalTopN exists to match, before late materialization.
+	RunOptimizer(OptimizerType::INDEX_ORDER_LIMIT_SCAN, [&]() {
+		IndexScanOptimizer index_scan_optimizer(*this);
+		index_scan_optimizer.OptimizeOrderLimitScan(plan);
 	});
 
 	// try to use late materialization

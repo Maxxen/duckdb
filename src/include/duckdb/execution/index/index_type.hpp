@@ -186,6 +186,34 @@ struct PlanIndexInput {
 typedef unique_ptr<BoundIndex> (*index_create_function_t)(CreateIndexInput &input);
 typedef PhysicalOperator &(*index_build_plan_t)(PlanIndexInput &input);
 
+//! The optimizations an index type can serve. Two axes: query kind (Predicate vs OrderLimit)
+//! and drive mode (Scan vs Join). Used as a per-type fast reject so core only enumerates and
+//! binds indexes of types that could possibly serve a given optimization template.
+enum class IndexScanCapability : uint8_t {
+	NONE = 0,
+	PREDICATE_SCAN = 1 << 0,
+	ORDER_LIMIT_SCAN = 1 << 1,
+	PREDICATE_JOIN = 1 << 2,
+	ORDER_LIMIT_JOIN = 1 << 3,
+};
+
+struct IndexOptimizerCapabilities {
+	//! Bitmask of IndexScanCapability values.
+	uint8_t capabilities = 0;
+	//! Coarse-grained fast reject: whether a predicate match is exact (removable) or a coarse
+	//! prefilter requiring a residual recheck. The authoritative answer is per-match
+	//! (IndexMatch::is_exact); this only gates whether core bothers to try.
+	bool predicate_is_exact = true;
+	bool probe_is_exact = true;
+
+	bool Supports(IndexScanCapability capability) const {
+		return (capabilities & static_cast<uint8_t>(capability)) != 0;
+	}
+	void Add(IndexScanCapability capability) {
+		capabilities |= static_cast<uint8_t>(capability);
+	}
+};
+
 //! A index "type"
 class IndexType {
 public:
@@ -206,6 +234,9 @@ public:
 
 	index_build_plan_t create_plan = nullptr;          // escape hatch for creating the physical plan
 	index_create_function_t create_instance = nullptr; // function to create an instance of the index
+
+	//! Which index-based optimizations this type can serve (see the BoundIndex TryBind* callbacks)
+	IndexOptimizerCapabilities optimizer_capabilities;
 };
 
 } // namespace duckdb

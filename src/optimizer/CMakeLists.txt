@@ -28,6 +28,7 @@ add_library_unity(
   filter_combiner.cpp
   filter_pullup.cpp
   filter_pushdown.cpp
+  index_scan_optimizer.cpp
   grouping_sets_optimizer.cpp
   in_clause_rewriter.cpp
   join_filter_pushdown_optimizer.cpp

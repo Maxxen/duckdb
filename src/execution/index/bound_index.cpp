@@ -271,4 +271,45 @@ void BoundIndex::ApplyBufferedReplays(const vector<LogicalType> &table_types, Bu
 	}
 }
 
+//-------------------------------------------------------------------------------
+// Index-based optimization interface (default implementations)
+//-------------------------------------------------------------------------------
+// Bind callbacks default to "not applicable". An index type opts in by overriding the callback
+// whose IndexScanCapability bit it advertises.
+unique_ptr<IndexMatch> BoundIndex::TryBindPredicateScan(ClientContext &, const LogicalGet &, const Expression &) {
+	return nullptr;
+}
+
+unique_ptr<IndexMatch> BoundIndex::TryBindOrderScan(ClientContext &, const LogicalGet &, IndexOrderKind,
+                                                    const Expression &, idx_t) {
+	return nullptr;
+}
+
+unique_ptr<IndexMatch> BoundIndex::TryBindPredicateJoin(ClientContext &, const LogicalGet &, const Expression &) {
+	return nullptr;
+}
+
+unique_ptr<IndexMatch> BoundIndex::TryBindOrderLimitJoin(ClientContext &, const LogicalGet &, const Expression &,
+                                                         idx_t) {
+	return nullptr;
+}
+
+// Execute callbacks default to throwing: they are only reached after a matching TryBind* returned
+// a match, so an index that advertises a capability must implement them.
+unique_ptr<IndexScanState> BoundIndex::InitializeScan(const IndexScanInfo &, ClientContext &) {
+	throw NotImplementedException("Index type \"%s\" does not implement InitializeScan", index_type);
+}
+
+idx_t BoundIndex::Scan(IndexScanState &, idx_t, Vector &) {
+	throw NotImplementedException("Index type \"%s\" does not implement Scan", index_type);
+}
+
+unique_ptr<IndexScanState> BoundIndex::InitializeProbe(const IndexScanInfo &, ClientContext &) {
+	throw NotImplementedException("Index type \"%s\" does not implement InitializeProbe", index_type);
+}
+
+void BoundIndex::Probe(IndexScanState &, DataChunk &, Vector &, SelectionVector &, idx_t &) {
+	throw NotImplementedException("Index type \"%s\" does not implement Probe", index_type);
+}
+
 } // namespace duckdb
