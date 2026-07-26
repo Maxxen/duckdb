@@ -45,6 +45,9 @@ struct Diagnostic {
 	DUCKDB_API string ToJSON() const;
 	//! Parse a diagnostic from a JSON string. Returns false if the input is not a valid diagnostic.
 	DUCKDB_API static bool TryParse(const string &json, Diagnostic &result);
+	//! Render this diagnostic against its source query into a human-readable, multi-line string:
+	//! the headline, then for each label the relevant source line with an underline, then the notes.
+	DUCKDB_API string Render(const string &source) const;
 };
 
 //! Builder for constructing a Diagnostic and throwing it as an exception.

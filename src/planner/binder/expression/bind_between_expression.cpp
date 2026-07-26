@@ -6,6 +6,7 @@
 #include "duckdb/planner/expression/bound_parameter_expression.hpp"
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/common/diagnostic.hpp"
 
 namespace duckdb {
 
@@ -32,15 +33,23 @@ BindResult ExpressionBinder::BindExpression(BetweenExpression &expr, idx_t depth
 	LogicalType input_type;
 	if (!BoundComparisonExpression::TryBindComparison(context, input_sql_type, lower_sql_type, input_type,
 	                                                  expr.GetExpressionType())) {
-		throw BinderException(expr,
-		                      "Cannot mix values of type %s and %s in BETWEEN clause - an explicit cast is required",
-		                      input_sql_type.ToString(), lower_sql_type.ToString());
+		DiagnosticBuilder("Cannot mix values of type " + input_sql_type.ToString() + " and " +
+		                  lower_sql_type.ToString() + " in BETWEEN clause - an explicit cast is required")
+		    .Code("type_mismatch")
+		    .Primary(lower->GetQueryLocation(), "this bound has type " + lower_sql_type.ToString())
+		    .Secondary(input->GetQueryLocation(), "the tested value has type " + input_sql_type.ToString())
+		    .Note("add an explicit cast to unify the types")
+		    .Throw(ExceptionType::BINDER);
 	}
 	if (!BoundComparisonExpression::TryBindComparison(context, input_type, upper_sql_type, input_type,
 	                                                  expr.GetExpressionType())) {
-		throw BinderException(expr,
-		                      "Cannot mix values of type %s and %s in BETWEEN clause - an explicit cast is required",
-		                      input_type.ToString(), upper_sql_type.ToString());
+		DiagnosticBuilder("Cannot mix values of type " + input_type.ToString() + " and " + upper_sql_type.ToString() +
+		                  " in BETWEEN clause - an explicit cast is required")
+		    .Code("type_mismatch")
+		    .Primary(upper->GetQueryLocation(), "this bound has type " + upper_sql_type.ToString())
+		    .Secondary(input->GetQueryLocation(), "the tested value has type " + input_type.ToString())
+		    .Note("add an explicit cast to unify the types")
+		    .Throw(ExceptionType::BINDER);
 	}
 	// add casts (if necessary)
 	input = BoundCastExpression::AddCastToType(context, std::move(input), input_type);

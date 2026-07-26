@@ -347,15 +347,15 @@ public:
 	unique_ptr<ShellRenderer> GetRenderer();
 	unique_ptr<ShellRenderer> GetRenderer(RenderMode mode);
 	vector<string> TableColumnList(const char *zTab);
-	SuccessState ExecuteStatement(unique_ptr<duckdb::SQLStatement> statement);
+	SuccessState ExecuteStatement(unique_ptr<duckdb::SQLStatement> statement, const string &source);
 	static bool UseDescribeRenderMode(const duckdb::SQLStatement &stmt, string &describe_table_name);
 	//! Route EXPLAIN ANALYZE output through the shell's direct-printing renderer when on an interactive console
 	void SetupPrettyExplain(duckdb::SQLStatement &statement);
 	void RenderTableMetadata(vector<ShellTableInfo> &result);
 
 	void PrintDatabaseError(const string &zErr);
-	//! If the error carries a structured diagnostic, print it (primitively) and return true; otherwise false.
-	bool PrintDatabaseDiagnostic(const ErrorData &error);
+	//! If the error carries a structured diagnostic, render it against "source" and return true; otherwise false.
+	bool PrintDatabaseDiagnostic(const ErrorData &error, const string &source);
 	int RunInitialCommand(const char *sql, bool bail);
 	void AddError();
 

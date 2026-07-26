@@ -851,7 +851,7 @@ SuccessState ShellState::RenderQuery(ShellRenderer &renderer, const string &quer
 	auto &con = *conn;
 	auto result = con.SendQuery(query);
 	if (result->HasError()) {
-		if (!PrintDatabaseDiagnostic(result->GetErrorObject())) {
+		if (!PrintDatabaseDiagnostic(result->GetErrorObject(), query)) {
 			PrintDatabaseError(result->GetError());
 		}
 		return SuccessState::FAILURE;
@@ -944,7 +944,7 @@ ShellState &ShellState::Get() {
 	return *GetReference();
 }
 
-SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> statement) {
+SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> statement, const string &source) {
 	if (statement->has_anonymous_parameters) {
 		PrintDatabaseError("Prepared statement parameters cannot be used directly\nTo use prepared "
 		                   "statement parameters, use PREPARE to prepare a statement, followed by EXECUTE");
@@ -965,7 +965,7 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 	}
 	auto &res = *result;
 	if (res.HasError()) {
-		if (!PrintDatabaseDiagnostic(res.GetErrorObject())) {
+		if (!PrintDatabaseDiagnostic(res.GetErrorObject(), source)) {
 			PrintDatabaseError(res.GetError());
 		}
 		return SuccessState::FAILURE;
@@ -1059,7 +1059,7 @@ SuccessState ShellState::ExecuteSQL(const string &zSql) {
 
 			// Reset before bind; the `_` replacement scan sets it to true if it fires.
 			last_result_referenced = false;
-			auto rc = ExecuteStatement(std::move(statement));
+			auto rc = ExecuteStatement(std::move(statement), zSql);
 			if (rc != SuccessState::SUCCESS) {
 				return rc;
 			}
@@ -1566,27 +1566,13 @@ void ShellState::PrintDatabaseError(const string &zErr) {
 	shell_highlight.PrintError(zErr);
 }
 
-bool ShellState::PrintDatabaseDiagnostic(const ErrorData &error) {
+bool ShellState::PrintDatabaseDiagnostic(const ErrorData &error, const string &source) {
 	duckdb::Diagnostic diagnostic;
 	if (!error.TryGetDiagnostic(diagnostic)) {
 		return false;
 	}
-	// Primitive rendering: headline, then each label and note on its own line (no carets/colors yet).
-	PrintF(PrintOutput::STDERR, "%s: %s\n", duckdb::DiagnosticSeverityToString(diagnostic.severity),
-	       diagnostic.message.c_str());
-	for (auto &label : diagnostic.labels) {
-		const char *marker = label.primary ? "-->" : "  -";
-		if (label.span.IsValid()) {
-			PrintF(PrintOutput::STDERR, "  %s %s (bytes %llu..%llu)\n", marker, label.message.c_str(),
-			       static_cast<unsigned long long>(label.span.offset),
-			       static_cast<unsigned long long>(label.span.End()));
-		} else {
-			PrintF(PrintOutput::STDERR, "  %s %s\n", marker, label.message.c_str());
-		}
-	}
-	for (auto &note : diagnostic.notes) {
-		PrintF(PrintOutput::STDERR, "  note: %s\n", note.c_str());
-	}
+	// Render the diagnostic against the source query (source lines + underlines under each label + notes).
+	PrintF(PrintOutput::STDERR, "%s\n", diagnostic.Render(source).c_str());
 	return true;
 }
 

@@ -10,6 +10,7 @@
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/common/diagnostic.hpp"
 
 namespace duckdb {
 
@@ -34,17 +35,25 @@ LogicalType ExpressionBinder::ResolveCoalesceType(OperatorExpression &op, vector
 			// If it's IN/NOT_IN operator, adjust DECIMAL and VARCHAR returned type.
 			if (!BoundComparisonExpression::TryBindComparison(context, max_type, child_return, max_type,
 			                                                  op.GetExpressionType())) {
-				throw BinderException(op,
-				                      "Cannot mix values of type %s and %s in %s clause - an explicit cast is required",
-				                      max_type.ToString(), child_return.ToString(),
-				                      op.GetExpressionType() == ExpressionType::COMPARE_IN ? "IN" : "NOT IN");
+				const char *clause = op.GetExpressionType() == ExpressionType::COMPARE_IN ? "IN" : "NOT IN";
+				DiagnosticBuilder("Cannot mix values of type " + max_type.ToString() + " and " +
+				                  child_return.ToString() + " in " + clause + " clause - an explicit cast is required")
+				    .Code("type_mismatch")
+				    .Primary(children[i]->GetQueryLocation(), "this element has type " + child_return.ToString())
+				    .Secondary(children[0]->GetQueryLocation(), "expected type " + max_type.ToString())
+				    .Note("add an explicit cast to unify the types")
+				    .Throw(ExceptionType::BINDER);
 			}
 		} else {
 			// If it's COALESCE operator, don't do extra adjustment.
 			if (!LogicalType::TryGetMaxLogicalType(context, max_type, child_return, max_type)) {
-				throw BinderException(
-				    op, "Cannot mix values of type %s and %s in COALESCE operator - an explicit cast is required",
-				    max_type.ToString(), child_return.ToString());
+				DiagnosticBuilder("Cannot mix values of type " + max_type.ToString() + " and " +
+				                  child_return.ToString() + " in COALESCE operator - an explicit cast is required")
+				    .Code("type_mismatch")
+				    .Primary(children[i]->GetQueryLocation(), "this argument has type " + child_return.ToString())
+				    .Secondary(children[0]->GetQueryLocation(), "expected type " + max_type.ToString())
+				    .Note("add an explicit cast to unify the types")
+				    .Throw(ExceptionType::BINDER);
 			}
 		}
 	}

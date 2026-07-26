@@ -23,3 +23,15 @@ statement error
 SELECT CASE WHEN 1=1 THEN 42 ELSE DATE '2000-01-01' END
 ----
 this branch has type
+
+# BETWEEN type mismatch also carries a structured diagnostic
+statement error
+SELECT 1 WHERE DATE '2000-01-01' BETWEEN 5 AND 10
+----
+this bound has type
+
+# COALESCE type mismatch also carries a structured diagnostic
+statement error
+SELECT COALESCE(DATE '2000-01-01', INTERVAL '1' DAY)
+----
+this argument has type

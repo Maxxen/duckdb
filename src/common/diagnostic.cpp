@@ -1,6 +1,7 @@
 #include "duckdb/common/diagnostic.hpp"
 
 #include "duckdb/common/json_document.hpp"
+#include "duckdb/common/to_string.hpp"
 #include "duckdb/common/unordered_map.hpp"
 
 namespace duckdb {
@@ -96,6 +97,58 @@ bool Diagnostic::TryParse(const string &json, Diagnostic &result) {
 		});
 	}
 	return true;
+}
+
+//! Render a single label as "LINE n: <source line>" followed by an underline (^ primary, - secondary) and message.
+//! Byte-column based: correct for ASCII source (Unicode-width alignment is left for a later pass).
+static string RenderLabel(const string &source, const DiagnosticLabel &label) {
+	if (!label.span.IsValid() || label.span.offset > source.size()) {
+		return "  " + label.message;
+	}
+	idx_t offset = label.span.offset;
+	// find the start of the line containing the label and the line number
+	idx_t line_start = 0;
+	idx_t line_number = 1;
+	for (idx_t i = 0; i < offset; i++) {
+		if (source[i] == '\n') {
+			line_number++;
+			line_start = i + 1;
+		}
+	}
+	// find the end of the line
+	idx_t line_end = source.size();
+	for (idx_t i = offset; i < source.size(); i++) {
+		if (source[i] == '\n' || source[i] == '\r') {
+			line_end = i;
+			break;
+		}
+	}
+	auto source_line = source.substr(line_start, line_end - line_start);
+	auto gutter = "LINE " + to_string(line_number) + ": ";
+	idx_t column = offset - line_start;
+	idx_t line_length = line_end - line_start;
+	idx_t caret_count = label.span.length > 0 ? label.span.length : 1;
+	if (column + caret_count > line_length) {
+		caret_count = line_length > column ? line_length - column : 1;
+	}
+	char caret = label.primary ? '^' : '-';
+	string result = "  " + gutter + source_line + "\n";
+	result += "  " + string(gutter.size() + column, ' ') + string(caret_count, caret);
+	if (!label.message.empty()) {
+		result += " " + label.message;
+	}
+	return result;
+}
+
+string Diagnostic::Render(const string &source) const {
+	string result = string(DiagnosticSeverityToString(severity)) + ": " + message;
+	for (auto &label : labels) {
+		result += "\n" + RenderLabel(source, label);
+	}
+	for (auto &note : notes) {
+		result += "\n  = note: " + note;
+	}
+	return result;
 }
 
 DiagnosticBuilder::DiagnosticBuilder(string message, DiagnosticSeverity severity) {
