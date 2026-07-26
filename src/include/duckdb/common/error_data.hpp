@@ -14,6 +14,7 @@
 namespace duckdb {
 class ParsedExpression;
 class TableRef;
+struct Diagnostic;
 
 class ErrorData {
 public:
@@ -48,6 +49,8 @@ public:
 	const unordered_map<string, string> &ExtraInfo() const {
 		return extra_info;
 	}
+	//! If this error carries a structured diagnostic (in extra_info), parse it into "result" and return true.
+	DUCKDB_API bool TryGetDiagnostic(Diagnostic &result) const;
 
 	DUCKDB_API void FinalizeError();
 	DUCKDB_API void AddErrorLocation(const string &query);

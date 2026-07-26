@@ -52,6 +52,7 @@
 #include <assert.h>
 
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/diagnostic.hpp"
 #include "duckdb/parser/qualified_name.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/explain_statement.hpp"
@@ -850,7 +851,9 @@ SuccessState ShellState::RenderQuery(ShellRenderer &renderer, const string &quer
 	auto &con = *conn;
 	auto result = con.SendQuery(query);
 	if (result->HasError()) {
-		PrintDatabaseError(result->GetError());
+		if (!PrintDatabaseDiagnostic(result->GetErrorObject())) {
+			PrintDatabaseError(result->GetError());
+		}
 		return SuccessState::FAILURE;
 	}
 	return RenderQueryResult(renderer, *result, pager_overwrite);
@@ -962,7 +965,9 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 	}
 	auto &res = *result;
 	if (res.HasError()) {
-		PrintDatabaseError(res.GetError());
+		if (!PrintDatabaseDiagnostic(res.GetErrorObject())) {
+			PrintDatabaseError(res.GetError());
+		}
 		return SuccessState::FAILURE;
 	}
 	auto &properties = res.properties;
@@ -1559,6 +1564,30 @@ void ShellState::PrintDatabaseError(const string &zErr) {
 	// print the error
 	ShellHighlight shell_highlight(*this);
 	shell_highlight.PrintError(zErr);
+}
+
+bool ShellState::PrintDatabaseDiagnostic(const ErrorData &error) {
+	duckdb::Diagnostic diagnostic;
+	if (!error.TryGetDiagnostic(diagnostic)) {
+		return false;
+	}
+	// Primitive rendering: headline, then each label and note on its own line (no carets/colors yet).
+	PrintF(PrintOutput::STDERR, "%s: %s\n", duckdb::DiagnosticSeverityToString(diagnostic.severity),
+	       diagnostic.message.c_str());
+	for (auto &label : diagnostic.labels) {
+		const char *marker = label.primary ? "-->" : "  -";
+		if (label.span.IsValid()) {
+			PrintF(PrintOutput::STDERR, "  %s %s (bytes %llu..%llu)\n", marker, label.message.c_str(),
+			       static_cast<unsigned long long>(label.span.offset),
+			       static_cast<unsigned long long>(label.span.End()));
+		} else {
+			PrintF(PrintOutput::STDERR, "  %s %s\n", marker, label.message.c_str());
+		}
+	}
+	for (auto &note : diagnostic.notes) {
+		PrintF(PrintOutput::STDERR, "  note: %s\n", note.c_str());
+	}
+	return true;
 }
 
 /*

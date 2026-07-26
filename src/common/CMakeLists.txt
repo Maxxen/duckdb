@@ -44,6 +44,7 @@ add_library_unity(
   compressed_file_system.cpp
   constants.cpp
   checksum.cpp
+  diagnostic.cpp
   encryption_functions.cpp
   encryption_key_manager.cpp
   encryption_state.cpp

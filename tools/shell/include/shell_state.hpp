@@ -354,6 +354,8 @@ public:
 	void RenderTableMetadata(vector<ShellTableInfo> &result);
 
 	void PrintDatabaseError(const string &zErr);
+	//! If the error carries a structured diagnostic, print it (primitively) and return true; otherwise false.
+	bool PrintDatabaseDiagnostic(const ErrorData &error);
 	int RunInitialCommand(const char *sql, bool bail);
 	void AddError();
 

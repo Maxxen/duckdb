@@ -1,0 +1,25 @@
+# name: test/sql/error/diagnostic_case.test
+# description: A CASE type mismatch produces a structured diagnostic (Phase 2)
+# group: [error]
+
+# the headline message stays backwards compatible
+statement error
+SELECT CASE WHEN 1=1 THEN 42 ELSE DATE '2000-01-01' END
+----
+Cannot mix values of type
+
+# in errors_as_json mode the structured diagnostic is emitted inside extra_info
+statement ok
+SET errors_as_json=true
+
+# the diagnostic carries the machine-readable code
+statement error
+SELECT CASE WHEN 1=1 THEN 42 ELSE DATE '2000-01-01' END
+----
+type_mismatch
+
+# the diagnostic carries a label describing the offending branch
+statement error
+SELECT CASE WHEN 1=1 THEN 42 ELSE DATE '2000-01-01' END
+----
+this branch has type

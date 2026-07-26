@@ -3,6 +3,7 @@
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/common/diagnostic.hpp"
 
 namespace duckdb {
 
@@ -25,9 +26,14 @@ BindResult ExpressionBinder::BindExpression(CaseExpression &expr, idx_t depth) {
 		auto &then_expr = BoundExpression::GetExpression(*check.then_expr);
 		auto then_type = ExpressionBinder::GetExpressionReturnType(*then_expr);
 		if (!LogicalType::TryGetMaxLogicalType(context, return_type, then_type, return_type)) {
-			throw BinderException(
-			    expr, "Cannot mix values of type %s and %s in CASE expression - an explicit cast is required",
-			    return_type.ToString(), then_type.ToString());
+			DiagnosticBuilder("Cannot mix values of type " + return_type.ToString() + " and " + then_type.ToString() +
+			                  " in CASE expression - an explicit cast is required")
+			    .Code("type_mismatch")
+			    .Primary(then_expr->GetQueryLocation(), "this branch has type " + then_type.ToString())
+			    .Secondary(else_expr->GetQueryLocation(),
+			               "conflicts with type " + return_type.ToString() + " expected here")
+			    .Note("add an explicit cast to unify the branch types")
+			    .Throw(ExceptionType::BINDER);
 		}
 	}
 

@@ -1,5 +1,6 @@
 #include "duckdb/common/error_data.hpp"
 
+#include "duckdb/common/diagnostic.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/span.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -185,6 +186,14 @@ void ErrorData::AddQueryLocation(const ParsedExpression &ref) {
 
 void ErrorData::AddQueryLocation(const TableRef &ref) {
 	AddQueryLocation(ref.query_location);
+}
+
+bool ErrorData::TryGetDiagnostic(Diagnostic &result) const {
+	auto entry = extra_info.find("diagnostic");
+	if (entry == extra_info.end()) {
+		return false;
+	}
+	return Diagnostic::TryParse(entry->second, result);
 }
 
 } // namespace duckdb
