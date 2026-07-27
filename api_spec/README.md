@@ -24,9 +24,10 @@ Do not edit those files by hand. Edit the YAML here and regenerate.
   header. Its member order is the extension ABI. The generator verifies every
   member against the spec and appends new functions at the marker comments.
   `extension_api.hpp` is derived from it, so both stay in lockstep.
-- `pyproject.toml`: the generation environment. It pins capigen (the
-  generator, https://github.com/duckdb/capigen); the `dev` group adds the
-  formatter and pre-commit tooling. `uv.lock` records the exact resolution.
+- `pyproject.toml`: the generation environment. The `generate` dependency
+  group pins capigen (the generator, https://github.com/duckdb/capigen) and
+  the formatters; the `dev` group adds the formatter runtime and pre-commit
+  tooling. `uv.lock` records the exact resolution.
 
 Design reference and authoring conventions: `C_API_V2.md`.
 
@@ -35,24 +36,26 @@ Design reference and authoring conventions: `C_API_V2.md`.
     ./scripts/capi_v1_regen.sh
     ./scripts/capi_v2_regen.sh
 
-The scripts provision themselves through uv. The pre-commit hooks run them
-automatically when spec files change, and CI fails when the committed
-sources do not match the spec.
+The scripts provision themselves through uv and require Python 3.12 or
+newer. `make generate-files` runs the V1 regeneration as part of the wider
+generated-files flow. The pre-commit hooks run the scripts automatically
+when spec files change, and CI fails when the committed sources do not
+match the spec.
 
 ## Adding a function
 
 Declare it in the module YAML with a `lifecycle` entry naming the DuckDB
 release it ships in. Add that release to `versions` in `metadata.yaml` if it
-is not there yet. Regenerate. The diff in the generated files is part of the
-review.
+is not there yet. Regenerate. A V1 function appears in `duckdb_v1.h` and in
+the unstable section of the extension struct. The diff in the generated
+files is part of the review.
 
 ## Versioning
 
 `schema_version` in `metadata.yaml` must be compatible with the installed
 capigen (same major, spec minor at most the tool minor). To bump capigen:
-adjust the constraint in `pyproject.toml` if the minor moved, run
-`uv lock -P capigen`, regenerate, and commit the lockfile together with any
-generated diffs.
+update the pin in `pyproject.toml`, run `uv lock --project api_spec`,
+regenerate, and commit the lockfile together with any generated diffs.
 
 ## Editor schema validation
 
@@ -65,7 +68,7 @@ vendored or committed, and the schemas move with the pin.
 Resolve the schema directory (machine-specific, do not commit it; re-run
 after changing the pin):
 
-    uv run --project api_spec python -c \
+    uv run --project api_spec --group generate python -c \
         "import importlib.resources as r; print(r.files('capigen') / 'schema')"
 
 Map two schemas in any editor backed by yaml-language-server (VS Code with

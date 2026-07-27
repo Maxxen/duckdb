@@ -312,7 +312,7 @@ TEST_CASE("V2 replacement scan: name getters and decline", "[capi_v2][replacemen
 		// catalog error). Pinned as documentation of engine behavior, not as
 		// a V2 contract.
 		auto failure = ReplScanExpectQueryFailure(fix.conn, "SELECT * FROM nosuch_catalog.nosuch_schema.nosuch_table");
-		REQUIRE(failure.code == DUCKDB_V2_ERROR_QUERY_BINDER);
+		REQUIRE(failure.code == DUCKDB_V2_ERROR_DATABASE_CATALOG);
 		REQUIRE(probe.invocations == 1);
 		REQUIRE(probe.catalog_name == "nosuch_catalog");
 		REQUIRE(probe.schema_name == "nosuch_schema");
