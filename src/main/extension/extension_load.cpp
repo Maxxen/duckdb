@@ -157,6 +157,39 @@ optional_ptr<ExtensionLoader> TryGetExtensionLoaderFromCInfo(void *extension_inf
 	return load_state.extension_loader;
 }
 
+void RunInMemoryCExtensionLoad(DatabaseInstance &db, const string &name, const std::function<void(void *)> &fn) {
+	auto &manager = ExtensionManager::Get(db);
+	ExtensionLoadOptions options = {name};
+	auto load_info = manager.BeginLoad(options);
+	if (!load_info) {
+		throw InvalidInputException("Extension '%s' is already loaded", name);
+	}
+
+	ExtensionInitResult init_result;
+	init_result.filename = name;
+	init_result.filebase = name;
+	// In-memory extensions are always tied to the exact DuckDB version
+	init_result.abi_type = ExtensionABIType::C_STRUCT_UNSTABLE;
+	init_result.lib_hdl = nullptr;
+
+	DuckDBExtensionLoadState load_state(db, init_result);
+	ExtensionLoader extension_loader(*load_info);
+	load_state.extension_loader = extension_loader;
+
+	try {
+		fn(load_state.ToCStruct());
+	} catch (std::exception &ex) {
+		ErrorData error(ex);
+		load_info->LoadFail(error);
+		throw;
+	}
+	extension_loader.FinalizeLoad();
+
+	ExtensionInstallInfo install_info;
+	install_info.mode = ExtensionInstallMode::UNKNOWN;
+	load_info->FinishLoad(install_info);
+}
+
 //===--------------------------------------------------------------------===//
 // Static C API Extension Loading
 //===--------------------------------------------------------------------===//

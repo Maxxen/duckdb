@@ -5601,6 +5601,10 @@ typedef struct _duckdb_v2_query_progress {
 
 /* --- Function pointer typedefs for connection --- */
 
+typedef void (*duckdb_v2_extension_init_callback_fn)(duckdb_v2_extension_handle extension,
+                                                     duckdb_v2_context_handle context, void *user_data,
+                                                     duckdb_v2_error_info_handle *err);
+
 /* --- Functions for connection --- */
 
 /*!
@@ -5702,14 +5706,24 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_option_get_by_index(duckdb_v2_
 /*!
  * Creates and loads an in-memory extension into the connection's database.
  *
+ * Registers `name` as a loaded extension and invokes `callback` once with the new extension's handle and the
+ * connection's context, so the callback can register catalog entries (functions, types, casts) and database-level hooks
+ * under the extension, exactly as a loaded extension's entrypoint would. The load is finalized when the callback
+ * returns without reporting an error; a reported error abandons the creation and is returned. Returns
+ * ERROR_INPUT_INVALID when an extension with the same name is already loaded.
+ *
  * @param conn The connection.
  * @param name The extension name.
+ * @param callback Invoked once with the extension handle, the connection's context, and user_data.
+ * @param user_data Opaque pointer passed through to the callback unchanged. May be null. Borrowed for the duration of
+ * the call; never stored.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_create_extension(duckdb_v2_connection_handle conn,
                                                                    duckdb_v2_identifier_t name,
-                                                                   duckdb_v2_error_info_handle *err);
+                                                                   duckdb_v2_extension_init_callback_fn callback,
+                                                                   void *user_data, duckdb_v2_error_info_handle *err);
 
 /*!
  * Interrupts the query currently executing on the connection.

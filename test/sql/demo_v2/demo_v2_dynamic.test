@@ -1,0 +1,17 @@
+# name: test/sql/demo_v2/demo_v2_dynamic.test
+# description: Dynamically load the demo_v2 extension through the V2 C API entrypoint
+# group: [demo_v2]
+
+require skip_reload
+
+require allow_unsigned_extensions
+
+require notmingw
+
+statement ok
+LOAD '{BUILD_DIRECTORY}/extension/demo_v2/demo_v2.duckdb_extension'
+
+query I
+SELECT add_two(2)
+----
+4

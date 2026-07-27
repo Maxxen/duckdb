@@ -7,6 +7,24 @@ handles:
       Read via the query_progress_get_* accessors; destroy via
       query_progress_destroy.
     cleanup_with: query_progress_destroy
+callbacks:
+  extension_init_callback:
+    return_type: void
+    parameters:
+      extension:
+        type: extension
+        description: "Borrowed handle to the extension being created: the identity under which the callback registers catalog entries and database-level hooks. Valid only for the duration of the callback invocation; must not be stored or destroyed."
+      context:
+        type: context
+        description: "Borrowed context of the creating connection, valid only inside the library-managed scope of the callback invocation; must not be stored."
+      user_data:
+        type: void
+        indirection: 1
+        description: "The user_data pointer passed to connection_create_extension, unchanged."
+      err:
+        type: error_info
+        indirection: 1
+        description: "Error info handle, provided by DuckDB. On success, leave `*err` unchanged. On failure, set an appropriate error code and message; the extension creation is then abandoned and connection_create_extension reports the error. Owned by DuckDB, always valid when the callback is invoked, and must not be stored or destroyed by the callee."
 functions:
   connect:
     description: |
@@ -168,6 +186,15 @@ functions:
   connection_create_extension:
     description: |
       Creates and loads an in-memory extension into the connection's database.
+
+      Registers `name` as a loaded extension and invokes `callback` once with
+      the new extension's handle and the connection's context, so the callback
+      can register catalog entries (functions, types, casts) and
+      database-level hooks under the extension, exactly as a loaded
+      extension's entrypoint would. The load is finalized when the callback
+      returns without reporting an error; a reported error abandons the
+      creation and is returned. Returns ERROR_INPUT_INVALID when an
+      extension with the same name is already loaded.
     role: method
     belongs_to: connection
     parameters:
@@ -177,6 +204,13 @@ functions:
       name:
         type: identifier
         description: "The extension name."
+      callback:
+        type: extension_init_callback
+        description: "Invoked once with the extension handle, the connection's context, and user_data."
+      user_data:
+        type: void
+        indirection: 1
+        description: "Opaque pointer passed through to the callback unchanged. May be null. Borrowed for the duration of the call; never stored."
       err:
         type: error_info
         indirection: 1

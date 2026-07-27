@@ -39,6 +39,8 @@ struct ExtensionLoaderInfo {
 class ExtensionLoader {
 	friend class DuckDB;
 	friend class ExtensionHelper;
+	friend void RunInMemoryCExtensionLoad(DatabaseInstance &db, const string &name,
+	                                      const std::function<void(void *extension_token)> &fn);
 
 public:
 	explicit ExtensionLoader(const ExtensionActiveLoad &load_info);
@@ -149,6 +151,13 @@ private:
 //! Resolves the loader of a C API extension load in progress from the opaque info token passed to the extension
 //! entrypoint. Returns nullptr when the token has no load in progress.
 DUCKDB_API optional_ptr<ExtensionLoader> TryGetExtensionLoaderFromCInfo(void *extension_info);
+
+//! Runs fn under an in-memory C API extension load of `name`: registers the load with the extension manager, creates
+//! its loader, and passes fn the opaque loader token (the extension handle of the load, resolvable through
+//! TryGetExtensionLoaderFromCInfo). The load is finalized when fn returns; a throw from fn fails the load and
+//! propagates. Throws when an extension with the same name is already loaded.
+DUCKDB_API void RunInMemoryCExtensionLoad(DatabaseInstance &db, const string &name,
+                                          const std::function<void(void *extension_token)> &fn);
 
 } // namespace duckdb
 

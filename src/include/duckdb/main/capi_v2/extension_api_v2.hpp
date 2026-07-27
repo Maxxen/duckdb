@@ -577,7 +577,8 @@ typedef struct {
 	(duckdb_v2_connection_handle conn, idx_t index, duckdb_v2_option_handle *out_option,
 	 duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_connection_create_extension)
-	(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name, duckdb_v2_error_info_handle *err);
+	(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name, duckdb_v2_extension_init_callback_fn callback,
+	 void *user_data, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_connection_interrupt)
 	(duckdb_v2_connection_handle conn, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_connection_query_progress)

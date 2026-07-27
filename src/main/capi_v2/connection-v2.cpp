@@ -87,11 +87,11 @@ DUCKDB_V2_ERROR duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_ha
 // ---------------------------------------------------------------------------
 // Extension creation
 // ---------------------------------------------------------------------------
-
 DUCKDB_V2_ERROR duckdb_v2_connection_create_extension(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name,
+                                                      duckdb_v2_extension_init_callback_fn callback, void *user_data,
                                                       duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!conn || (!name.ptr && name.len > 0)) {
+		if (!conn || (!name.ptr && name.len > 0) || !callback) {
 			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_create_extension");
 		}
 
@@ -102,20 +102,14 @@ DUCKDB_V2_ERROR duckdb_v2_connection_create_extension(duckdb_v2_connection_handl
 		auto &client = *duckdb::ToConn(conn)->context;
 		auto extension_name = duckdb::ToString(name);
 
-		auto &manager = duckdb::ExtensionManager::Get(*client.db);
-
-		if (manager.ExtensionIsLoaded(extension_name)) {
-			throw duckdb::InvalidInputException("Extension '%s' is already loaded", extension_name);
-		}
-
-		duckdb::ExtensionLoadOptions options = {extension_name};
-		auto info = manager.BeginLoad(options);
-
-		// TODO: Make a ExtensionLoader equivalent here and pass to callback.
-
-		duckdb::ExtensionInstallInfo install_info;
-		install_info.mode = duckdb::ExtensionInstallMode::UNKNOWN; // TODO: Make CLIENT_PROVIDED
-		info->FinishLoad(install_info);
+		duckdb::RunInMemoryCExtensionLoad(*client.db, extension_name, [&](void *extension_token) {
+			auto extension = reinterpret_cast<duckdb_v2_extension_handle>(extension_token);
+			client.RunFunctionInTransaction([&]() {
+				auto context = reinterpret_cast<duckdb_v2_context_handle>(&client);
+				duckdb::InvokeWithErrorSlot<duckdb::InvalidInputException>(
+				    [&](duckdb_v2_error_info_handle *slot) { callback(extension, context, user_data, slot); });
+			});
+		});
 	});
 }
 
