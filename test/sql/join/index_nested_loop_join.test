@@ -1,0 +1,158 @@
+# name: test/sql/join/index_nested_loop_join.test
+# description: Equi-join with a small outer and a large indexed inner is planned as an index
+#              nested-loop join (probe the inner index per outer key) via the core index optimizer.
+# group: [join]
+
+statement ok
+SET profiling_renderer_settings = MAP {'operator_casing': 'upper'};
+
+statement ok
+CREATE TABLE big (id INT, val INT);
+
+statement ok
+INSERT INTO big SELECT i, i * 2 FROM range(100000) t(i);
+
+statement ok
+CREATE INDEX bidx ON big(id);
+
+statement ok
+CREATE TABLE small (k INT);
+
+statement ok
+INSERT INTO small SELECT i * 1000 FROM range(50) t(i);
+
+# Small outer + large indexed inner -> index nested-loop join.
+query II
+EXPLAIN SELECT count(*) FROM small s, big b WHERE s.k = b.id;
+----
+physical_plan	<REGEX>:.*INDEX_JOIN.*
+
+# Results match a hash join.
+query I
+SELECT count(*) FROM small s, big b WHERE s.k = b.id;
+----
+50
+
+query I
+SELECT sum(b.val) FROM small s, big b WHERE s.k = b.id;
+----
+2450000
+
+# Disabling the optimizer falls back to a hash join with identical results.
+statement ok
+SET disabled_optimizers = 'index_join';
+
+query II
+EXPLAIN SELECT count(*) FROM small s, big b WHERE s.k = b.id;
+----
+physical_plan	<REGEX>:.*HASH_JOIN.*
+
+query I
+SELECT sum(b.val) FROM small s, big b WHERE s.k = b.id;
+----
+2450000
+
+statement ok
+SET disabled_optimizers = '';
+
+# A filter on the inner is handled correctly (whether or not the join stays an index join).
+query I
+SELECT count(*) FROM small s, big b WHERE s.k = b.id AND b.val < 5000;
+----
+3
+
+# Non-unique inner key (unbounded fan-out) and NULL outer keys.
+statement ok
+CREATE TABLE dup (id INT, tag INT);
+
+statement ok
+INSERT INTO dup SELECT i % 100, i FROM range(100000) t(i);
+
+statement ok
+CREATE INDEX didx ON dup(id);
+
+statement ok
+CREATE TABLE probe (k INT);
+
+statement ok
+INSERT INTO probe VALUES (5), (10), (NULL);
+
+# id 5 and id 10 each appear 1000 times; NULL matches nothing.
+query I
+SELECT count(*) FROM probe p, dup d WHERE p.k = d.id;
+----
+2000
+
+query I
+SELECT sum(d.tag) FROM probe p, dup d WHERE p.k = d.id AND d.id = 5;
+----
+49955000
+
+# String keys are excluded (variable-length keys build deep ARTs that lose badly to hash join,
+# especially on persisted databases): the join stays a hash join, still correct.
+statement ok
+CREATE TABLE bigs (id VARCHAR, v INT);
+
+statement ok
+INSERT INTO bigs SELECT 'k' || i, i FROM range(100000) t(i);
+
+statement ok
+CREATE INDEX bsi ON bigs(id);
+
+statement ok
+CREATE TABLE smalls (k VARCHAR);
+
+statement ok
+INSERT INTO smalls SELECT 'k' || (i * 1000) FROM range(50) t(i);
+
+query II
+EXPLAIN SELECT count(*) FROM smalls s, bigs b WHERE s.k = b.id;
+----
+physical_plan	<REGEX>:.*HASH_JOIN.*
+
+query I
+SELECT count(*) FROM smalls s, bigs b WHERE s.k = b.id;
+----
+50
+
+# Range / band join: a small outer with selective bands becomes an index nested-loop join that
+# probes the ordered index per outer row (beats piecewise-merge for this shape).
+statement ok
+CREATE TABLE bands (lo INTEGER, hi INTEGER);
+
+statement ok
+INSERT INTO bands SELECT i * 1000, i * 1000 + 10 FROM range(50) t(i);
+
+query II
+EXPLAIN SELECT count(*) FROM bands s, big b WHERE b.id BETWEEN s.lo AND s.hi;
+----
+physical_plan	<REGEX>:.*INDEX_JOIN.*
+
+# 50 bands x 11 ids each (inclusive [lo, lo+10]).
+query I
+SELECT count(*) FROM bands s, big b WHERE b.id BETWEEN s.lo AND s.hi;
+----
+550
+
+# same result via piecewise-merge
+statement ok
+SET disabled_optimizers = 'index_join';
+
+query I
+SELECT count(*) FROM bands s, big b WHERE b.id BETWEEN s.lo AND s.hi;
+----
+550
+
+statement ok
+SET disabled_optimizers = '';
+
+# single-sided range also uses the index join, exclusive bound.
+query II
+EXPLAIN SELECT count(*) FROM bands s, big b WHERE b.id > s.lo AND b.id < s.hi;
+----
+physical_plan	<REGEX>:.*INDEX_JOIN.*
+
+query I
+SELECT count(*) FROM bands s, big b WHERE b.id > s.lo AND b.id < s.hi;
+----
+450

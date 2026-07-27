@@ -219,8 +219,16 @@ public:
 	                                                    const Expression &predicate);
 	virtual unique_ptr<IndexMatch> TryBindOrderScan(ClientContext &context, const LogicalGet &get,
 	                                                IndexOrderKind kind, const Expression &order_expr, idx_t k);
+	//! Probe join on an (in)equality/predicate. `inner_key` is the join-condition side referencing
+	//! the indexed table; `outer_key` is the probe key from the outer side.
 	virtual unique_ptr<IndexMatch> TryBindPredicateJoin(ClientContext &context, const LogicalGet &inner_get,
-	                                                    const Expression &probe_key_expr);
+	                                                    const Expression &inner_key, const Expression &outer_key);
+	//! Probe join on a range/band condition. `inner_key` is the indexed side; `lo_key`/`hi_key` are
+	//! the outer lower/upper bound expressions (either may be null for an unbounded side).
+	virtual unique_ptr<IndexMatch> TryBindRangeJoin(ClientContext &context, const LogicalGet &inner_get,
+	                                                const Expression &inner_key, optional_ptr<const Expression> lo_key,
+	                                                bool lo_inclusive, optional_ptr<const Expression> hi_key,
+	                                                bool hi_inclusive);
 	virtual unique_ptr<IndexMatch> TryBindOrderLimitJoin(ClientContext &context, const LogicalGet &inner_get,
 	                                                     const Expression &probe_key_expr, idx_t k);
 
@@ -230,11 +238,17 @@ public:
 	//! Append matching row-ids (ROW_TYPE) to `row_ids`, returning the number appended. Ordered for
 	//! OrderLimit queries, unordered for Predicate queries. Zero with a scan-exhausted state ends it.
 	virtual idx_t Scan(IndexScanState &state, idx_t max_count, Vector &row_ids);
+	//! Probe (per-outer-row lookup) join interface. Mirrors an accumulating multi-scan: the core
+	//! PhysicalIndexJoin batches outer rows, calls ResetProbe once per output batch, ProbeRow per
+	//! outer row (appending that row's matched inner row-ids to an internal accumulator, returning
+	//! its match count), then GetProbeResult to fetch the accumulated row-ids.
 	virtual unique_ptr<IndexScanState> InitializeProbe(const IndexScanInfo &info, ClientContext &context);
-	//! For each outer row in `keys`, emit matching inner row-ids into `row_ids` and record the
-	//! outer-row -> match mapping in `match_sel`; `match_count` is the total number of matches.
-	virtual void Probe(IndexScanState &state, DataChunk &keys, Vector &row_ids, SelectionVector &match_sel,
-	                   idx_t &match_count);
+	virtual void ResetProbe(IndexScanState &state);
+	//! Probe the index for outer row `input`[row_idx] (reading its key per `info`), append the
+	//! matched inner row-ids to the accumulator, and return this row's match count (in match order).
+	virtual idx_t ProbeRow(IndexScanState &state, DataChunk &input, idx_t row_idx, const IndexScanInfo &info);
+	//! The accumulated inner row-ids as a ROW_TYPE vector.
+	virtual const Vector &GetProbeResult(IndexScanState &state);
 
 	//! Throw a constraint violation exception
 	virtual string GetConstraintViolationMessage(VerifyExistenceType verify_type, idx_t failed_index,

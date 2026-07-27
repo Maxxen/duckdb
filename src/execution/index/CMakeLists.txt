@@ -6,6 +6,7 @@ add_library_unity(
   fixed_size_buffer.cpp
   unbound_index.cpp
   index_type_set.cpp
+  index_join.cpp
   bound_index.cpp)
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_execution_index>

@@ -11,6 +11,7 @@
 #include "duckdb/common/constants.hpp"
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/unique_ptr.hpp"
+#include "duckdb/planner/column_binding.hpp"
 
 namespace duckdb {
 
@@ -52,6 +53,9 @@ struct IndexMatch {
 	idx_t estimated_cardinality = 0;
 	//! Estimated cost, used to choose among multiple applicable indexes (lower is better).
 	double estimated_cost = 0;
+	//! For probe joins: the outer-input column binding that provides the probe key. Lets the core
+	//! join matcher verify the key originates from the index join's child.
+	ColumnBinding probe_key_binding;
 };
 
 //! What kind of ordering an OrderLimit trigger presents to the index.

@@ -285,7 +285,14 @@ unique_ptr<IndexMatch> BoundIndex::TryBindOrderScan(ClientContext &, const Logic
 	return nullptr;
 }
 
-unique_ptr<IndexMatch> BoundIndex::TryBindPredicateJoin(ClientContext &, const LogicalGet &, const Expression &) {
+unique_ptr<IndexMatch> BoundIndex::TryBindPredicateJoin(ClientContext &, const LogicalGet &, const Expression &,
+                                                        const Expression &) {
+	return nullptr;
+}
+
+unique_ptr<IndexMatch> BoundIndex::TryBindRangeJoin(ClientContext &, const LogicalGet &, const Expression &,
+                                                    optional_ptr<const Expression>, bool,
+                                                    optional_ptr<const Expression>, bool) {
 	return nullptr;
 }
 
@@ -308,8 +315,16 @@ unique_ptr<IndexScanState> BoundIndex::InitializeProbe(const IndexScanInfo &, Cl
 	throw NotImplementedException("Index type \"%s\" does not implement InitializeProbe", index_type);
 }
 
-void BoundIndex::Probe(IndexScanState &, DataChunk &, Vector &, SelectionVector &, idx_t &) {
-	throw NotImplementedException("Index type \"%s\" does not implement Probe", index_type);
+void BoundIndex::ResetProbe(IndexScanState &) {
+	throw NotImplementedException("Index type \"%s\" does not implement ResetProbe", index_type);
+}
+
+idx_t BoundIndex::ProbeRow(IndexScanState &, DataChunk &, idx_t, const IndexScanInfo &) {
+	throw NotImplementedException("Index type \"%s\" does not implement ProbeRow", index_type);
+}
+
+const Vector &BoundIndex::GetProbeResult(IndexScanState &) {
+	throw NotImplementedException("Index type \"%s\" does not implement GetProbeResult", index_type);
 }
 
 } // namespace duckdb

@@ -35,6 +35,36 @@ struct DeleteIndexInfo {
 	optional_ptr<vector<reference<BoundIndex>>> delete_indexes;
 };
 
+class LogicalGet;
+
+//! Index-specific probe parameters for an ART join. Either an equality probe (equality == true,
+//! probe_key_column is the outer key column) or a range/band probe (lo_column and/or hi_column are
+//! the outer bound columns; INVALID_INDEX means that side is unbounded).
+struct ARTJoinInfo final : public IndexScanInfo {
+	static ARTJoinInfo Equality(idx_t key_column) {
+		ARTJoinInfo info;
+		info.equality = true;
+		info.probe_key_column = key_column;
+		return info;
+	}
+	static ARTJoinInfo Range(idx_t lo_column, bool lo_inclusive, idx_t hi_column, bool hi_inclusive) {
+		ARTJoinInfo info;
+		info.equality = false;
+		info.lo_column = lo_column;
+		info.hi_column = hi_column;
+		info.lo_inclusive = lo_inclusive;
+		info.hi_inclusive = hi_inclusive;
+		return info;
+	}
+
+	bool equality = true;
+	idx_t probe_key_column = DConstants::INVALID_INDEX;
+	idx_t lo_column = DConstants::INVALID_INDEX;
+	idx_t hi_column = DConstants::INVALID_INDEX;
+	bool lo_inclusive = true;
+	bool hi_inclusive = true;
+};
+
 class ART : public BoundIndex {
 public:
 	friend class Leaf;
@@ -79,6 +109,19 @@ public:
 	//! Perform a lookup on the ART, fetching up to max_count row IDs.
 	//! If all row IDs were fetched, it return true, else false.
 	bool Scan(IndexScanState &state, idx_t max_count, set<row_t> &row_ids);
+
+	//! Generic index-optimization interface (see BoundIndex). ART serves exact equi-joins by probing
+	//! for each outer key. Its runtime predicate scan path is unchanged (handled in table_scan.cpp).
+	unique_ptr<IndexMatch> TryBindPredicateJoin(ClientContext &context, const LogicalGet &inner_get,
+	                                            const Expression &inner_key, const Expression &outer_key) override;
+	unique_ptr<IndexMatch> TryBindRangeJoin(ClientContext &context, const LogicalGet &inner_get,
+	                                        const Expression &inner_key, optional_ptr<const Expression> lo_key,
+	                                        bool lo_inclusive, optional_ptr<const Expression> hi_key,
+	                                        bool hi_inclusive) override;
+	unique_ptr<IndexScanState> InitializeProbe(const IndexScanInfo &info, ClientContext &context) override;
+	void ResetProbe(IndexScanState &state) override;
+	idx_t ProbeRow(IndexScanState &state, DataChunk &input, idx_t row_idx, const IndexScanInfo &info) override;
+	const Vector &GetProbeResult(IndexScanState &state) override;
 
 	//! Simple merge: scan source ART and delete each (key, rowid) from this ART.
 	// FIXME: replace with structural tree delete merge.
@@ -178,6 +221,10 @@ private:
 	bool SearchLess(ARTKey &upper_bound, bool equal, idx_t max_count, set<row_t> &row_ids);
 	bool SearchCloseRange(ARTKey &lower_bound, ARTKey &upper_bound, bool left_equal, bool right_equal, idx_t max_count,
 	                      set<row_t> &row_ids);
+
+	//! Probe-join helpers (see art_join.cpp).
+	void GenerateProbeKeys(ArenaAllocator &arena, DataChunk &input, idx_t column, unsafe_vector<ARTKey> &keys);
+	bool MatchesIndexExpression(const LogicalGet &inner_get, const Expression &inner_key);
 
 	string GenerateErrorKeyName(DataChunk &input, idx_t row);
 	string GenerateConstraintErrorMessage(VerifyExistenceType verify_type, const string &key_name);

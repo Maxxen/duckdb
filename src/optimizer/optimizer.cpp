@@ -445,6 +445,13 @@ void Optimizer::RunBuiltInOptimizers() {
 		partitioned_execution.Optimize(plan);
 	});
 
+	// rewrite equi-joins with an indexed inner into index nested-loop joins (ART), before join
+	// filter pushdown so the comparison join is still a clean shape
+	RunOptimizer(OptimizerType::INDEX_JOIN, [&]() {
+		IndexScanOptimizer index_scan_optimizer(*this);
+		index_scan_optimizer.OptimizeEquiIndexJoin(plan, plan);
+	});
+
 	// perform join filter pushdown after the dust has settled
 	RunOptimizer(OptimizerType::JOIN_FILTER_PUSHDOWN, [&]() {
 		JoinFilterPushdownOptimizer join_filter_pushdown(*this);
@@ -467,6 +474,13 @@ void Optimizer::RunBuiltInOptimizers() {
 	RunOptimizer(OptimizerType::SCALAR_FN_PUSHDOWN, [&] {
 		ScalarFnPushdown fn_pushdown(context);
 		plan = fn_pushdown.Optimize(std::move(plan));
+	});
+
+	// Rewrite a lateral per-outer-row KNN (delim-join/window subtree) into a core index join.
+	// Runs last, once the delim-join/window subtree is in its final canonical form.
+	RunOptimizer(OptimizerType::INDEX_JOIN, [&]() {
+		IndexScanOptimizer index_scan_optimizer(*this);
+		index_scan_optimizer.OptimizeIndexJoin(plan, plan);
 	});
 }
 

@@ -4,6 +4,7 @@ add_library_unity(
   art_builder.cpp
   art.cpp
   art_index.cpp
+  art_join.cpp
   art_key.cpp
   art_merger.cpp
   base_leaf.cpp

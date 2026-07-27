@@ -178,6 +178,10 @@ IndexType ART::GetARTIndexType() {
 	art_index_type.build_sink = ARTBuildSink;
 	art_index_type.build_combine = ARTBuildCombine;
 	art_index_type.build_finalize = ARTBuildFinalize;
+
+	// ART serves exact equi-joins via the core index-join optimizer (its predicate scan path stays
+	// the runtime decision in table_scan.cpp, unchanged).
+	art_index_type.optimizer_capabilities.Add(IndexScanCapability::PREDICATE_JOIN);
 	return art_index_type;
 }
 
