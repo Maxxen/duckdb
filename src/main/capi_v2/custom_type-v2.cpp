@@ -63,7 +63,9 @@ void duckdb_v2_custom_type_builder_destroy(duckdb_v2_custom_type_builder_handle 
 	});
 }
 
-static void RegisterCustomTypeV2(duckdb::ClientContext &ctx, duckdb::CustomTypeBuilderV2 &b) {
+// Validates the builder and returns the base type carrying the custom type's
+// name as its alias, which is what both registration paths install.
+static duckdb::LogicalType BuildCustomTypeV2(duckdb::CustomTypeBuilderV2 &b) {
 	if (b.name.empty()) {
 		throw duckdb::InvalidInputException("Custom type name cannot be empty.");
 	}
@@ -77,14 +79,18 @@ static void RegisterCustomTypeV2(duckdb::ClientContext &ctx, duckdb::CustomTypeB
 		throw duckdb::InvalidInputException("Custom type base type cannot be ANY.");
 	}
 
-	auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
 	auto base_type = b.base_type;
 	base_type.SetAlias(b.name);
+	return base_type;
+}
+
+static void RegisterCustomTypeV2(duckdb::ClientContext &ctx, duckdb::CustomTypeBuilderV2 &b) {
+	auto base_type = BuildCustomTypeV2(b);
 
 	duckdb::CreateTypeInfo info(base_type.GetAlias(), base_type);
 	info.temporary = true;
 	info.internal = true;
-	catalog.CreateType(ctx, info);
+	duckdb::Catalog::GetSystemCatalog(ctx).CreateType(ctx, info);
 }
 
 DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_connection(duckdb_v2_connection_handle conn,
@@ -103,19 +109,20 @@ DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_connection(duckdb_v2
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_context(duckdb_v2_context_handle context,
-                                                                    duckdb_v2_custom_type_builder_handle builder,
-                                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_extension(duckdb_v2_extension_handle extension,
+                                                                      duckdb_v2_custom_type_builder_handle builder,
+                                                                      duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("null context argument to duckdb_v2_custom_type_builder_register");
+		if (!extension) {
+			throw duckdb::InvalidInputException("null extension argument to duckdb_v2_custom_type_builder_register");
 		}
 		if (!builder) {
 			throw duckdb::InvalidInputException("null builder argument to duckdb_v2_custom_type_builder_register");
 		}
-		auto &ctx = *duckdb::ToContext(context);
+		auto &loader = *duckdb::ToExtension(extension);
 		auto &b = *reinterpret_cast<duckdb::CustomTypeBuilderV2 *>(builder);
-		RegisterCustomTypeV2(ctx, b);
+		auto base_type = BuildCustomTypeV2(b);
+		loader.RegisterType(base_type.GetAlias(), base_type);
 	});
 }
 

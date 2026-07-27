@@ -3,6 +3,7 @@
 #include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/main/capi/extension_api.hpp"
+#include "duckdb/main/capi_v2/extension_api_v2.hpp"
 #include "duckdb/main/extension_helper.hpp"
 
 namespace duckdb {
@@ -63,18 +64,19 @@ string ParsedExtensionMetaData::GetInvalidMetadataError() {
 			result += StringUtil::Format("The file was built for DuckDB C API version '%s', which failed to parse as a "
 			                             "recognized version string",
 			                             duckdb_capi_version, DUCKDB_EXTENSION_API_VERSION_MAJOR);
-		} else if (major != DUCKDB_EXTENSION_API_VERSION_MAJOR) {
+		} else if (major != DUCKDB_EXTENSION_API_VERSION_MAJOR && major != DUCKDB_EXTENSION_API_V2_VERSION_MAJOR) {
 			// Special case where the extension is built for a completely unsupported API
-			result +=
-			    StringUtil::Format("The file was built for DuckDB C API version '%s', but we can only load extensions "
-			                       "built for DuckDB C API 'v%lld.x.y'.",
-			                       duckdb_capi_version, DUCKDB_EXTENSION_API_VERSION_MAJOR);
+			result += StringUtil::Format(
+			    "The file was built for DuckDB C API version '%s', but we can only load extensions "
+			    "built for DuckDB C API 'v%lld.x.y' or 'v%lld.x.y'.",
+			    duckdb_capi_version, DUCKDB_EXTENSION_API_VERSION_MAJOR, DUCKDB_EXTENSION_API_V2_VERSION_MAJOR);
 		} else if (!VersioningUtils::IsSupportedCAPIVersion(major, minor, patch)) {
+			auto max_version = major == DUCKDB_EXTENSION_API_V2_VERSION_MAJOR ? DUCKDB_EXTENSION_API_V2_VERSION_STRING
+			                                                                  : DUCKDB_EXTENSION_API_VERSION_STRING;
 			result +=
 			    StringUtil::Format("The file was built for DuckDB C API version '%s', but we can only load extensions "
-			                       "built for DuckDB C API 'v%lld.%lld.%lld' and lower.",
-			                       duckdb_capi_version, DUCKDB_EXTENSION_API_VERSION_MAJOR,
-			                       DUCKDB_EXTENSION_API_VERSION_MINOR, DUCKDB_EXTENSION_API_VERSION_PATCH);
+			                       "built for DuckDB C API '%s' and lower.",
+			                       duckdb_capi_version, max_version);
 		}
 	} else {
 		throw InternalException("Unknown ABI type for extension: '%s'", extension_abi_metadata);
@@ -107,20 +109,26 @@ bool VersioningUtils::IsReleaseVersion(const string &version_tag) {
 	return !StringUtil::Contains(version_tag, "-dev");
 }
 
-bool VersioningUtils::IsSupportedCAPIVersion(idx_t major, idx_t minor, idx_t patch) {
-	if (major != DUCKDB_EXTENSION_API_VERSION_MAJOR) {
+static bool IsAtMostVersion(idx_t minor, idx_t patch, idx_t max_minor, idx_t max_patch) {
+	if (minor > max_minor) {
 		return false;
 	}
-	if (minor > DUCKDB_EXTENSION_API_VERSION_MINOR) {
-		return false;
-	}
-	if (minor < DUCKDB_EXTENSION_API_VERSION_MINOR) {
+	if (minor < max_minor) {
 		return true;
 	}
-	if (patch > DUCKDB_EXTENSION_API_VERSION_PATCH) {
-		return false;
+	return patch <= max_patch;
+}
+
+bool VersioningUtils::IsSupportedCAPIVersion(idx_t major, idx_t minor, idx_t patch) {
+	// The major selects the API family; each family carries its own version cap
+	if (major == DUCKDB_EXTENSION_API_VERSION_MAJOR) {
+		return IsAtMostVersion(minor, patch, DUCKDB_EXTENSION_API_VERSION_MINOR, DUCKDB_EXTENSION_API_VERSION_PATCH);
 	}
-	return true;
+	if (major == DUCKDB_EXTENSION_API_V2_VERSION_MAJOR) {
+		return IsAtMostVersion(minor, patch, DUCKDB_EXTENSION_API_V2_VERSION_MINOR,
+		                       DUCKDB_EXTENSION_API_V2_VERSION_PATCH);
+	}
+	return false;
 }
 
 bool VersioningUtils::ParseSemver(string &semver, idx_t &major_out, idx_t &minor_out, idx_t &patch_out) {

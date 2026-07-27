@@ -266,7 +266,7 @@ DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_set_user_data(duckdb_v2_scalar
 	});
 }
 
-static void RegisterScalarFunctionV2(duckdb::ClientContext &context, duckdb::ScalarFunctionV2 &builder) {
+static duckdb::ScalarFunction BuildScalarFunctionV2(duckdb::ScalarFunctionV2 &builder) {
 	if (builder.name.empty()) {
 		throw duckdb::InvalidInputException("Function name cannot be empty.");
 	}
@@ -316,8 +316,12 @@ static void RegisterScalarFunctionV2(duckdb::ClientContext &context, duckdb::Sca
 	// Also verify signature so that function parameters make sense
 	function.GetSignature().Verify();
 
+	return function;
+}
+
+static void RegisterScalarFunctionV2(duckdb::ClientContext &context, duckdb::ScalarFunctionV2 &builder) {
 	auto &catalog = duckdb::Catalog::GetSystemCatalog(context);
-	duckdb::CreateScalarFunctionInfo sf_info(function);
+	duckdb::CreateScalarFunctionInfo sf_info(BuildScalarFunctionV2(builder));
 	sf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
 	catalog.CreateFunction(context, sf_info);
 }
@@ -337,19 +341,19 @@ DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_connection(
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_context(duckdb_v2_context_handle ctx,
-                                                                        duckdb_v2_scalar_function_builder_handle func,
-                                                                        duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_extension(duckdb_v2_extension_handle extension,
+                                                                          duckdb_v2_scalar_function_builder_handle func,
+                                                                          duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!ctx) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
+		if (!extension) {
+			throw duckdb::InvalidInputException("Extension pointer cannot be null.");
 		}
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
 		}
-		auto &context = *duckdb::ToContext(ctx);
+		auto &loader = *duckdb::ToExtension(extension);
 		auto &builder = *reinterpret_cast<duckdb::ScalarFunctionV2 *>(func);
-		RegisterScalarFunctionV2(context, builder);
+		loader.RegisterFunction(BuildScalarFunctionV2(builder));
 	});
 }
 

@@ -437,7 +437,7 @@ duckdb_v2_aggregate_function_builder_set_destroy_callback(duckdb_v2_aggregate_fu
 	});
 }
 
-static void RegisterAggregateFunctionV2(duckdb::ClientContext &ctx, duckdb::AggregateFunctionBuilderV2 *agg_builder) {
+static duckdb::AggregateFunction BuildAggregateFunctionV2(duckdb::AggregateFunctionBuilderV2 *agg_builder) {
 	if (agg_builder->name.empty()) {
 		throw duckdb::InvalidInputException("Function name cannot be empty");
 	}
@@ -476,6 +476,7 @@ static void RegisterAggregateFunctionV2(duckdb::ClientContext &ctx, duckdb::Aggr
 	function_info->combine_cb = agg_builder->combine_cb;
 	function_info->finalize_cb = agg_builder->finalize_cb;
 	function_info->destroy_cb = agg_builder->destroy_cb;
+	function_info->user_data = agg_builder->user_data;
 
 	duckdb::AggregateFunction function(
 	    agg_builder->name, {}, return_type, duckdb::AggregateFunctionV2::SizeCallback,
@@ -501,12 +502,14 @@ static void RegisterAggregateFunctionV2(duckdb::ClientContext &ctx, duckdb::Aggr
 	// Verify signature
 	function.GetSignature().Verify();
 
+	return function;
+}
+
+static void RegisterAggregateFunctionV2(duckdb::ClientContext &ctx, duckdb::AggregateFunctionBuilderV2 *agg_builder) {
 	auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
-	duckdb::CreateAggregateFunctionInfo create_info(function);
+	duckdb::CreateAggregateFunctionInfo create_info(BuildAggregateFunctionV2(agg_builder));
 	create_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
 	catalog.CreateFunction(ctx, create_info);
-
-	function_info->user_data = agg_builder->user_data;
 }
 
 DUCKDB_V2_ERROR
@@ -527,19 +530,19 @@ duckdb_v2_aggregate_function_builder_register_with_connection(duckdb_v2_connecti
 }
 
 DUCKDB_V2_ERROR
-duckdb_v2_aggregate_function_builder_register_with_context(duckdb_v2_context_handle context,
-                                                           duckdb_v2_aggregate_function_builder_handle builder,
-                                                           duckdb_v2_error_info_handle *err) {
+duckdb_v2_aggregate_function_builder_register_with_extension(duckdb_v2_extension_handle extension,
+                                                             duckdb_v2_aggregate_function_builder_handle builder,
+                                                             duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("context cannot be null");
+		if (!extension) {
+			throw duckdb::InvalidInputException("extension cannot be null");
 		}
 		if (!builder) {
 			throw duckdb::InvalidInputException("Function builder cannot be null");
 		}
 		auto agg_builder = reinterpret_cast<duckdb::AggregateFunctionBuilderV2 *>(builder);
-		auto &ctx = *duckdb::ToContext(context);
-		RegisterAggregateFunctionV2(ctx, agg_builder);
+		auto &loader = *duckdb::ToExtension(extension);
+		loader.RegisterFunction(BuildAggregateFunctionV2(agg_builder));
 	});
 }
 

@@ -540,7 +540,7 @@ DUCKDB_V2_ERROR duckdb_v2_table_function_builder_set_pushdown_complex_filter_cal
 	});
 }
 
-static void RegisterTableFunctionV2(duckdb::ClientContext &ctx, duckdb::TableFunctionBuilderV2 &b) {
+static duckdb::TableFunction BuildTableFunctionV2(duckdb::TableFunctionBuilderV2 &b) {
 	if (b.name.empty()) {
 		throw duckdb::InvalidInputException("Function name must be set before registration.");
 	}
@@ -620,8 +620,12 @@ static void RegisterTableFunctionV2(duckdb::ClientContext &ctx, duckdb::TableFun
 
 	func.function_info = std::move(info_handle);
 
+	return func;
+}
+
+static void RegisterTableFunctionV2(duckdb::ClientContext &ctx, duckdb::TableFunctionBuilderV2 &b) {
 	auto &catalog = duckdb::Catalog::GetSystemCatalog(ctx);
-	duckdb::CreateTableFunctionInfo tf_info(func);
+	duckdb::CreateTableFunctionInfo tf_info(BuildTableFunctionV2(b));
 	tf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
 	catalog.CreateTableFunction(ctx, tf_info);
 }
@@ -643,19 +647,20 @@ duckdb_v2_table_function_builder_register_with_connection(duckdb_v2_connection_h
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register_with_context(duckdb_v2_context_handle context,
-                                                                       duckdb_v2_table_function_builder_handle builder,
-                                                                       duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR
+duckdb_v2_table_function_builder_register_with_extension(duckdb_v2_extension_handle extension,
+                                                         duckdb_v2_table_function_builder_handle builder,
+                                                         duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
+		if (!extension) {
+			throw duckdb::InvalidInputException("Extension pointer cannot be null.");
 		}
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
 		auto &b = *reinterpret_cast<TableFunctionBuilderV2 *>(builder);
-		auto &ctx = *duckdb::ToContext(context);
-		RegisterTableFunctionV2(ctx, b);
+		auto &loader = *duckdb::ToExtension(extension);
+		loader.RegisterFunction(BuildTableFunctionV2(b));
 	});
 }
 

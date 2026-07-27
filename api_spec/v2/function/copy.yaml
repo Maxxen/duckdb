@@ -221,15 +221,15 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  copy_function_builder_register_with_context:
+  copy_function_builder_register_with_extension:
     description: |
-      Registers the copy function on a context, making the function available for use in SQL queries.
+      Registers the copy function on the extension being loaded, making the function available for use in SQL queries.
 
-      Registers the copy function with the context's database. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.
+      Registers the copy function with the loading extension's database. Use this from an extension-load callback, where an extension handle is in hand; the entry is attributed to the extension and installed on the database's system transaction.
     parameters:
-      context:
-        type: context
-        description: "The DuckDB context in which to register the function."
+      extension:
+        type: extension
+        description: "The extension being loaded, on which to register the function."
       builder:
         type: copy_function_builder
         description: "The copy function builder handle."

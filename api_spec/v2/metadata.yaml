@@ -5,6 +5,12 @@ versions:
   - "v1.4.0"
   - "v1.5.0"
 prefix: "duckdb_v2_"
+lifecycle_states:
+  # Required by the extension_header adapter: spec functions absent from the
+  # frozen template are appended to the extension struct behind this guard.
+  unstable:
+    visibility: opt_in
+    guard: DUCKDB_EXTENSION_API_VERSION_UNSTABLE
 suffixes:
   handles: "_handle"
   callbacks: "_fn"
@@ -41,6 +47,18 @@ primitives:
     underlying: uint64_t
   - name: size
     c_type: size_t
+  # The extension currently being loaded: the identity under which catalog
+  # entries (functions, types, casts) and database-level hooks (replacement
+  # scans, log storages) are installed, and the only way to register those
+  # objects from inside DuckDB. Registrations through it run on the database's
+  # system transaction and are attributed to the extension. Borrowed for the
+  # duration of an extension's load; never destroyed by the caller. The
+  # underlying spells the loader's token type: the handle IS the token passed
+  # to the C extension entrypoint (function types must match exactly at the
+  # loader's indirect call sites under -fsanitize=function).
+  - name: extension
+    c_type: duckdb_v2_extension_handle
+    underlying: struct _duckdb_extension_info *
   # Arrow C Data Interface structs. Declared as primitives so the arrow module
   # can reference them by their upstream names (e.g. `struct ArrowSchema *`).
   # They carry no `underlying`, so no typedef is emitted; the full struct

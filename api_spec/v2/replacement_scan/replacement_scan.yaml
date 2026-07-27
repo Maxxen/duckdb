@@ -89,12 +89,12 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  replacement_scan_register_with_context:
+  replacement_scan_register_with_extension:
     description: |
-      Registers a replacement scan callback on the context's database.
+      Registers a replacement scan callback on the loading extension's database.
 
-      Same as replacement_scan_register_with_database, but resolves the target database from a context. Use this from
-      inside a callback or extension where a context is already in hand.
+      Same as replacement_scan_register_with_database, but resolves the target database from the extension being
+      loaded. Use this from an extension-load callback, where an extension handle is in hand.
 
       Scans are consulted in registration order; the first scan to claim an unresolved name wins. Registered scans
       live until the database closes; there is no unregistration. The user data's destroy callback (if set) runs
@@ -105,9 +105,9 @@ functions:
     role: method
     belongs_to: database
     parameters:
-      context:
-        type: context
-        description: The context whose database to register the scan on.
+      extension:
+        type: extension
+        description: The extension being loaded, on whose database to register the scan.
       callback:
         type: replacement_scan_callback
         description: The replacement scan callback.

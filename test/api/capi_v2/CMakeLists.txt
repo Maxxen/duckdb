@@ -12,6 +12,7 @@ add_library_unity(
   test_capi_v2_data_chunk.cpp
   test_capi_v2_error_info.cpp
   test_capi_v2_expression.cpp
+  test_capi_v2_extension.cpp
   test_capi_v2_function_property.cpp
   test_capi_v2_function_signature.cpp
   test_capi_v2_identifier.cpp

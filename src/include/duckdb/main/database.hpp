@@ -10,6 +10,7 @@
 
 #include "duckdb/common/winapi.hpp"
 #include "duckdb/main/capi/extension_api.hpp"
+#include "duckdb/main/capi_v2/extension_api_v2.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/main/extension.hpp"
 #include "duckdb/main/valid_checker.hpp"
@@ -72,6 +73,7 @@ public:
 	DUCKDB_API ParserCache &GetParserCache();
 
 	DUCKDB_API const duckdb_ext_api_v1 GetExtensionAPIV1();
+	DUCKDB_API const duckdb_ext_api_v2 GetExtensionAPIV2();
 
 	idx_t NumberOfThreads();
 
@@ -114,6 +116,7 @@ private:
 	unique_ptr<ParserCache> parser_cache;
 
 	duckdb_ext_api_v1 (*create_api_v1)();
+	duckdb_ext_api_v2 (*create_api_v2)();
 };
 
 //! The database object. This object holds the catalog and all the

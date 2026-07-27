@@ -415,20 +415,21 @@ functions:
         indirection: 1
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  table_function_builder_register_with_context:
+  table_function_builder_register_with_extension:
     description: |
-      Registers the table function on a context, making it available for use in queries.
+      Registers the table function on the extension being loaded, making it available for use in queries.
 
-      Registers the table function with the context's database. Use this
-      from inside a callback or extension where a context is already in
-      hand; it registers within the context's active transaction. The
-      engine copies the builder's configuration at registration time. The
-      builder can be destroyed or reused after this call. Requires at
-      least a name, bind callback, and exec callback.
+      Registers the table function with the loading extension's database.
+      Use this from an extension-load callback, where an extension handle
+      is in hand; the entry is attributed to the extension and installed
+      on the database's system transaction. The engine copies the
+      builder's configuration at registration time. The builder can be
+      destroyed or reused after this call. Requires at least a name, bind
+      callback, and exec callback.
     parameters:
-      context:
-        type: context
-        description: The DuckDB context.
+      extension:
+        type: extension
+        description: The extension being loaded.
       builder:
         type: table_function_builder
         description: The configured builder.

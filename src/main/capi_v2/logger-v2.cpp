@@ -143,19 +143,19 @@ DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_database(duckdb_v2_d
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_context(duckdb_v2_context_handle context,
-                                                                    duckdb_v2_log_storage_builder_handle builder,
-                                                                    duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_extension(duckdb_v2_extension_handle extension,
+                                                                      duckdb_v2_log_storage_builder_handle builder,
+                                                                      duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
+		if (!extension) {
+			throw duckdb::InvalidInputException("Extension pointer cannot be null.");
 		}
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
-		auto &ctx = *duckdb::ToContext(context);
+		auto &loader = *duckdb::ToExtension(extension);
 		auto &b = *reinterpret_cast<duckdb::LogStorageBuilder *>(builder);
-		RegisterLogStorageV2(*ctx.db, b);
+		RegisterLogStorageV2(loader.GetDatabaseInstance(), b);
 	});
 }
 

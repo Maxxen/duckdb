@@ -5,6 +5,8 @@
 #include "duckdb/common/virtual_file_system.hpp"
 #include "duckdb/main/capi/capi_internal.hpp"
 #include "duckdb/main/capi/extension_api.hpp"
+#include "duckdb/main/capi_v2/extension_api_v2.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/main/error_manager.hpp"
 #include "duckdb/main/extension_helper.hpp"
 #include "duckdb/main/extension_manager.hpp"
@@ -53,9 +55,14 @@ struct DuckDBExtensionLoadState {
 	//! extension does not need to free it.
 	unique_ptr<DatabaseWrapper> database_data;
 
-	//! The function pointer struct passed to the extension. The extension is expected to copy this struct during
-	//! initialization
-	duckdb_ext_api_v1 api_struct;
+	//! The function pointer struct passed to the extension, heap-allocated on request (the structs are large).
+	//! The extension is expected to copy this struct during initialization
+	unique_ptr<duckdb_ext_api_v1> api_struct;
+	//! The V2 counterpart, filled instead when the extension requests a major-2 API version
+	unique_ptr<duckdb_ext_api_v2> api_struct_v2;
+
+	//! The loader under which the extension registers itself, valid for the duration of the load
+	optional_ptr<ExtensionLoader> extension_loader;
 
 	//! Error handling
 	bool has_error = false;
@@ -107,10 +114,10 @@ struct ExtensionAccess {
 		string version_string = version;
 		auto &load_state = DuckDBExtensionLoadState::Get(info);
 
-		if (load_state.init_result.abi_type == ExtensionABIType::C_STRUCT) {
-			idx_t major, minor, patch;
-			auto parsed = VersioningUtils::ParseSemver(version_string, major, minor, patch);
+		idx_t major, minor, patch;
+		auto parsed = VersioningUtils::ParseSemver(version_string, major, minor, patch);
 
+		if (load_state.init_result.abi_type == ExtensionABIType::C_STRUCT) {
 			if (!parsed || !VersioningUtils::IsSupportedCAPIVersion(major, minor, patch)) {
 				load_state.has_error = true;
 				load_state.error_data = ErrorData(
@@ -119,9 +126,9 @@ struct ExtensionAccess {
 				return nullptr;
 			}
 		} else if (load_state.init_result.abi_type == ExtensionABIType::C_STRUCT_UNSTABLE) {
-			// NOTE: we currently don't check anything here: the version of extensions of ABI type C_STRUCT_UNSTABLE is
-			// ignored because C_STRUCT_UNSTABLE extensions are tied 1:1 to duckdb versions meaning they will always
-			// receive the whole function pointer struct
+			// NOTE: the version of extensions of ABI type C_STRUCT_UNSTABLE is otherwise ignored because
+			// C_STRUCT_UNSTABLE extensions are tied 1:1 to duckdb versions meaning they will always receive the whole
+			// function pointer struct; only the major is read (below) to select the API family
 		} else {
 			load_state.has_error = true;
 			load_state.error_data =
@@ -132,10 +139,23 @@ struct ExtensionAccess {
 			return nullptr;
 		}
 
-		load_state.api_struct = load_state.db.GetExtensionAPIV1();
-		return &load_state.api_struct;
+		// The major of the requested version selects the API family
+		if (parsed && major == DUCKDB_EXTENSION_API_V2_VERSION_MAJOR) {
+			load_state.api_struct_v2 = make_uniq<duckdb_ext_api_v2>(load_state.db.GetExtensionAPIV2());
+			return load_state.api_struct_v2.get();
+		}
+		load_state.api_struct = make_uniq<duckdb_ext_api_v1>(load_state.db.GetExtensionAPIV1());
+		return load_state.api_struct.get();
 	}
 };
+
+optional_ptr<ExtensionLoader> TryGetExtensionLoaderFromCInfo(void *extension_info) {
+	if (!extension_info) {
+		return nullptr;
+	}
+	auto &load_state = DuckDBExtensionLoadState::Get(static_cast<duckdb_extension_info>(extension_info));
+	return load_state.extension_loader;
+}
 
 //===--------------------------------------------------------------------===//
 // Static C API Extension Loading
@@ -156,6 +176,8 @@ void DuckDB::LoadStaticCAPIExtension(const string &name, ext_init_c_api_fun_t in
 	init_result.lib_hdl = nullptr;
 
 	DuckDBExtensionLoadState load_state(*instance, init_result);
+	ExtensionLoader extension_loader(*load_info);
+	load_state.extension_loader = extension_loader;
 
 	// For static loading, get_api is null - the extension uses direct DuckDB symbols (no vtable needed)
 	duckdb_extension_access access;
@@ -168,6 +190,7 @@ void DuckDB::LoadStaticCAPIExtension(const string &name, ext_init_c_api_fun_t in
 		load_info->LoadFail(ErrorData(msg));
 		throw IOException("Failed to load static C API extension '%s': %s", name, msg);
 	}
+	extension_loader.FinalizeLoad();
 
 	ExtensionInstallInfo install_info;
 	install_info.mode = ExtensionInstallMode::STATICALLY_LINKED;
@@ -725,6 +748,8 @@ void ExtensionHelper::LoadExternalExtensionInternal(DatabaseInstance &db, FileSy
 		}
 		// Create the load state
 		DuckDBExtensionLoadState load_state(db, extension_init_result);
+		ExtensionLoader extension_loader(info);
+		load_state.extension_loader = extension_loader;
 
 		auto access = ExtensionAccess::CreateAccessStruct();
 		auto result = (*init_fun_capi)(load_state.ToCStruct(), &access);
@@ -745,6 +770,7 @@ void ExtensionHelper::LoadExternalExtensionInternal(DatabaseInstance &db, FileSy
 			    "DuckDB.",
 			    extension);
 		}
+		extension_loader.FinalizeLoad();
 
 		D_ASSERT(extension_init_result.install_info);
 

@@ -1,4 +1,5 @@
 #include "capi_v2_internal.hpp"
+#include "duckdb/main/extension_helper.hpp"
 
 DUCKDB_V2_ERROR duckdb_v2_connect(duckdb_v2_database_handle db, duckdb_v2_connection_handle *out_conn,
                                   duckdb_v2_error_info_handle *err) {
@@ -80,6 +81,41 @@ DUCKDB_V2_ERROR duckdb_v2_connection_option_get_by_index(duckdb_v2_connection_ha
 		auto wrapper = duckdb::make_uniq<duckdb::OptionWrapperV2>();
 		duckdb::BuildOptionByIndex(*wrapper, client, config, index);
 		*out_option = reinterpret_cast<_duckdb_v2_option *>(wrapper.release());
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Extension creation
+// ---------------------------------------------------------------------------
+
+DUCKDB_V2_ERROR duckdb_v2_connection_create_extension(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name,
+                                                      duckdb_v2_error_info_handle *err) {
+	return duckdb::WithErrorHandler(err, [&]() {
+		if (!conn || (!name.ptr && name.len > 0)) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_connection_create_extension");
+		}
+
+#ifdef DUCKDB_DISABLE_EXTENSION_LOAD
+		throw PermissionException("Loading extensions is disabled through a compile time flag");
+#endif
+
+		auto &client = *duckdb::ToConn(conn)->context;
+		auto extension_name = duckdb::ToString(name);
+
+		auto &manager = duckdb::ExtensionManager::Get(*client.db);
+
+		if (manager.ExtensionIsLoaded(extension_name)) {
+			throw duckdb::InvalidInputException("Extension '%s' is already loaded", extension_name);
+		}
+
+		duckdb::ExtensionLoadOptions options = {extension_name};
+		auto info = manager.BeginLoad(options);
+
+		// TODO: Make a ExtensionLoader equivalent here and pass to callback.
+
+		duckdb::ExtensionInstallInfo install_info;
+		install_info.mode = duckdb::ExtensionInstallMode::UNKNOWN; // TODO: Make CLIENT_PROVIDED
+		info->FinishLoad(install_info);
 	});
 }
 

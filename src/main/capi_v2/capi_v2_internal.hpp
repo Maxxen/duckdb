@@ -20,6 +20,7 @@
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_context_state.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/main/parse_iterator.hpp"
 #include "duckdb/main/pending_query_result.hpp"
 #include "duckdb/main/stream_query_result.hpp"
@@ -223,6 +224,18 @@ inline Connection *ToConn(duckdb_v2_connection_handle ptr) {
 // transaction is active. The bridge never owns or destroys it.
 inline ClientContext *ToContext(duckdb_v2_context_handle ptr) {
 	return reinterpret_cast<ClientContext *>(ptr);
+}
+// duckdb_v2_extension_handle IS the loader token passed to the C extension
+// entrypoint (a typedef of the loader's info type), borrowed for the duration
+// of an extension's load; the ExtensionLoader it resolves to runs registrations
+// on the database's system transaction, attributed to the extension. The bridge
+// never owns or destroys it. Throws when no load is in progress for the token.
+inline ExtensionLoader *ToExtension(duckdb_v2_extension_handle ptr) {
+	auto loader = TryGetExtensionLoaderFromCInfo(ptr);
+	if (!loader) {
+		throw InvalidInputException("The extension handle does not belong to an extension load in progress.");
+	}
+	return loader.get();
 }
 inline OptionWrapperV2 *ToOption(duckdb_v2_option_handle ptr) {
 	return reinterpret_cast<OptionWrapperV2 *>(ptr);

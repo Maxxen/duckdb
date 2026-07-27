@@ -2,7 +2,19 @@
 #include "duckdb_cpp.hpp"
 
 #include <cstring>
-#include "duckdb_v2.h"
+
+// The V2 extension header. By default (client library, or extension statically linked into DuckDB) this library binds
+// duckdb_v2_* symbols at link time and only needs the header for the loader-interface types of the extension
+// entrypoint. The loadable flavor (DUCKDB_CPP_API_LOADABLE) instead routes every call through the extension vtable
+// populated by the entrypoint, so a dynamically loaded extension carries no undefined engine symbols. Users of the
+// C++ API never include this header.
+#if !defined(DUCKDB_CPP_API_LOADABLE) && !defined(DUCKDB_BUILD_STATIC_EXTENSION)
+#define DUCKDB_BUILD_STATIC_EXTENSION
+#endif
+#include "duckdb_extension_v2.h"
+
+// The vtable global the redirects reference; expands to nothing outside the loadable flavor
+DUCKDB_EXTENSION_GLOBAL
 
 #include <type_traits>
 
@@ -40,6 +52,10 @@ struct HandleTraits<FileSystem> {
 template <>
 struct HandleTraits<Context> {
 	using handle = duckdb_v2_context_handle;
+};
+template <>
+struct HandleTraits<Extension> {
+	using handle = duckdb_v2_extension_handle;
 };
 template <>
 struct HandleTraits<Connection> {
@@ -632,38 +648,53 @@ Connection Database::Connect() {
 	return detail::Factory::Make<Connection>(conn, true);
 }
 
+namespace {
+
 // Bundles the C++ callback and the caller's user data into the C API's single opaque slot.
 struct ReplacementScanInfo {
 	Database::ReplacementScanCallback callback = nullptr;
 	detail::UserData user_data;
 };
 
-void Database::AddReplacementScanInternal(ReplacementScanCallback callback, void *user_data,
-                                          void (*destructor)(void *)) {
+void ReplacementScanTrampoline(duckdb_v2_replacement_scan_info_handle c_info, duckdb_v2_context_handle ctx,
+                               duckdb_v2_error_info_handle *err) {
+	WithExceptionGuard(err, [&]() {
+		void *raw = nullptr;
+		CheckedAPICall(duckdb_v2_replacement_scan_get_user_data, c_info, &raw);
+		auto &recovered = *static_cast<ReplacementScanInfo *>(raw);
+		auto input = detail::Factory::Make<Database::ReplacementScanInput>(
+		    static_cast<void *>(c_info), static_cast<void *>(ctx), recovered.user_data.get());
+		recovered.callback(input);
+	});
+}
+
+// Bundles callback + user data into the C opaque slot and hands the pair to
+// `install`, which registers it on whichever scope the caller holds (a database
+// from outside, an extension during a load).
+template <class INSTALL>
+void RegisterReplacementScan(Database::ReplacementScanCallback callback, void *user_data, void (*destructor)(void *),
+                             INSTALL install) {
 	auto *payload = new ReplacementScanInfo(); // NOLINT
 	payload->callback = callback;
 	payload->user_data = detail::UserData(user_data, destructor);
 
-	static auto trampoline = [](duckdb_v2_replacement_scan_info_handle c_info, duckdb_v2_context_handle ctx,
-	                            duckdb_v2_error_info_handle *err) {
-		WithExceptionGuard(err, [&]() {
-			void *raw = nullptr;
-			CheckedAPICall(duckdb_v2_replacement_scan_get_user_data, c_info, &raw);
-			auto &recovered = *static_cast<ReplacementScanInfo *>(raw);
-			auto input = detail::Factory::Make<ReplacementScanInput>(
-			    static_cast<void *>(c_info), static_cast<void *>(ctx), recovered.user_data.get());
-			recovered.callback(input);
-		});
-	};
-
 	// The engine owns the payload on success (freed at db close); on failure we still own it.
 	duckdb_v2_opaque opaque {payload, detail::TypedDelete<ReplacementScanInfo>, nullptr};
 	try {
-		CheckedAPICall(duckdb_v2_replacement_scan_register_with_database, handle(), trampoline, opaque);
+		install(opaque);
 	} catch (...) {
 		detail::TypedDelete<ReplacementScanInfo>(payload);
 		throw;
 	}
+}
+
+} // namespace
+
+void Database::AddReplacementScanInternal(ReplacementScanCallback callback, void *user_data,
+                                          void (*destructor)(void *)) {
+	RegisterReplacementScan(callback, user_data, destructor, [&](duckdb_v2_opaque opaque) {
+		CheckedAPICall(duckdb_v2_replacement_scan_register_with_database, handle(), ReplacementScanTrampoline, opaque);
+	});
 }
 
 void Database::AddReplacementScan(ReplacementScanCallback callback) {
@@ -902,6 +933,28 @@ Context::Context(void *impl) : detail::Handle<Context>(impl) {
 
 Context::~Context() {
 	// Context lifetime is managed by DuckDB, so we don't destroy the handle here
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Extension
+//----------------------------------------------------------------------------------------------------------------------
+
+Extension::Extension(void *impl) : detail::Handle<Extension>(impl) {
+}
+
+Extension::~Extension() {
+	// The loader is owned by DuckDB for the duration of the load, so we don't destroy the handle here
+}
+
+void Extension::AddReplacementScanInternal(Database::ReplacementScanCallback callback, void *user_data,
+                                           void (*destructor)(void *)) {
+	RegisterReplacementScan(callback, user_data, destructor, [&](duckdb_v2_opaque opaque) {
+		CheckedAPICall(duckdb_v2_replacement_scan_register_with_extension, handle(), ReplacementScanTrampoline, opaque);
+	});
+}
+
+void Extension::AddReplacementScan(Database::ReplacementScanCallback callback) {
+	AddReplacementScanInternal(callback, nullptr, nullptr);
 }
 
 FileSystem Context::GetFileSystem() const {
@@ -2635,10 +2688,10 @@ auto LogStorage::SetUserDataInternal(void *data, void (*destructor)(void *)) -> 
 	user_data = detail::UserData(data, destructor);
 }
 
-auto LogStorage::Register(const Context &ctx) -> void {
+auto LogStorage::Register(const Extension &extension) -> void {
 	auto info = detail::MakeUserData<LogStorageInfo>(callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_log_storage_builder_set_user_data, handle(), info);
-	CheckedAPICall(duckdb_v2_log_storage_builder_register_with_context, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_log_storage_builder_register_with_extension, extension.handle(), handle());
 }
 
 auto LogStorage::Register(const Database &db) -> void {
@@ -3162,7 +3215,7 @@ auto ScalarFunction::SetUserDataInternal(void *data, void (*destructor)(void *))
 	user_data = detail::UserData(data, destructor);
 }
 
-void ScalarFunction::Register(const Context &ctx) {
+void ScalarFunction::Register(const Extension &extension) {
 	// The callback table rides the C builder user_data slot so the
 	// trampolines can find it; the user's own data (SetUserData, moved out
 	// here) rides inside it.
@@ -3170,7 +3223,7 @@ void ScalarFunction::Register(const Context &ctx) {
 	    detail::MakeUserData<ScalarFunctionInfo>(bind_callback, init_callback, exec_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_scalar_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_scalar_function_builder_register_with_context, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_scalar_function_builder_register_with_extension, extension.handle(), handle());
 }
 
 void ScalarFunction::Register(const Connection &conn) {
@@ -3777,7 +3830,7 @@ auto AggregateFunction::SetUserDataInternal(void *data, void (*destructor)(void 
 	user_data = detail::UserData(data, destructor);
 }
 
-void AggregateFunction::Register(const Context &ctx) {
+void AggregateFunction::Register(const Extension &extension) {
 	// The callback table rides the C builder user_data slot so the
 	// trampolines can find it; the user's own data (SetUserData, moved out
 	// here) rides inside it.
@@ -3786,7 +3839,7 @@ void AggregateFunction::Register(const Context &ctx) {
 	                                                        destroy_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_aggregate_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_aggregate_function_builder_register_with_context, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_aggregate_function_builder_register_with_extension, extension.handle(), handle());
 }
 
 void AggregateFunction::Register(const Connection &conn) {
@@ -4275,7 +4328,7 @@ auto TableFunction::SetProjectionPushdown(bool enable) & -> TableFunction & {
 	return *this;
 }
 
-void TableFunction::Register(const Context &ctx) {
+void TableFunction::Register(const Extension &extension) {
 	// The callback table rides the C builder user_data slot so the
 	// trampolines can find it; the user's own data (SetUserData, moved out
 	// here) rides inside it.
@@ -4283,7 +4336,7 @@ void TableFunction::Register(const Context &ctx) {
 	                                                    exec_callback, pushdown_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_table_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_table_function_builder_register_with_context, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_table_function_builder_register_with_extension, extension.handle(), handle());
 }
 
 void TableFunction::Register(const Connection &conn) {
@@ -4640,7 +4693,7 @@ auto CopyFunction::SetUserDataInternal(void *data, void (*destructor)(void *)) -
 	user_data = detail::UserData(data, destructor);
 }
 
-auto CopyFunction::Register(const Context &ctx) -> void {
+auto CopyFunction::Register(const Extension &extension) -> void {
 	// The callback table rides the C builder user_data slot so the
 	// trampolines can find it; the user's own data (SetUserData, moved out
 	// here) rides inside it.
@@ -4648,7 +4701,7 @@ auto CopyFunction::Register(const Context &ctx) -> void {
 	                                                   finalize_callback, std::move(user_data));
 	CheckedAPICall(duckdb_v2_copy_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_copy_function_builder_register_with_context, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_copy_function_builder_register_with_extension, extension.handle(), handle());
 }
 
 auto CopyFunction::Register(const Connection &conn) -> void {
@@ -4750,13 +4803,13 @@ auto CastFunction::SetExecCallback(ExecCallback callback) & -> CastFunction & {
 	return *this;
 }
 
-void CastFunction::Register(const Context &ctx) {
+void CastFunction::Register(const Extension &extension) {
 	// Stash the callback as the function's user data so the trampoline can recover it via
 	// cast_function_exec_get_user_data.
 	auto info = detail::MakeUserData<CastFunctionInfo>(exec_callback);
 	CheckedAPICall(duckdb_v2_cast_function_builder_set_user_data, handle(), info);
 
-	CheckedAPICall(duckdb_v2_cast_function_builder_register_with_context, ctx.handle(), handle());
+	CheckedAPICall(duckdb_v2_cast_function_builder_register_with_extension, extension.handle(), handle());
 }
 
 void CastFunction::Register(const Connection &conn) {
@@ -4791,12 +4844,42 @@ auto CustomType::SetBaseType(const LogicalType &type) & -> CustomType & {
 	return *this;
 }
 
-void CustomType::Register(const Context &ctx) {
-	CheckedAPICall(duckdb_v2_custom_type_builder_register_with_context, ctx.handle(), handle());
+void CustomType::Register(const Extension &extension) {
+	CheckedAPICall(duckdb_v2_custom_type_builder_register_with_extension, extension.handle(), handle());
 }
 
 void CustomType::Register(const Connection &conn) {
 	CheckedAPICall(duckdb_v2_custom_type_builder_register_with_connection, conn.handle(), handle());
 }
+
+//----------------------------------------------------------------------------------------------------------------------
+// Extension entrypoint
+//----------------------------------------------------------------------------------------------------------------------
+
+namespace detail {
+
+bool ExtensionEntrypoint(void *extension_p, void *access_p, void (*init_cb)(Extension &extension)) {
+	// The extension handle doubles as the loader token taken by the access callbacks (see the loader-interface
+	// section of duckdb_extension_v2.h)
+	const auto extension_handle = static_cast<duckdb_v2_extension_handle>(extension_p);
+	const auto access = static_cast<struct duckdb_v2_extension_access *>(access_p);
+
+	// Loadable flavor: fetch the vtable from the loader; expands to nothing otherwise
+	DUCKDB_EXTENSION_API_INIT(extension_handle, access, DUCKDB_EXTENSION_API_VERSION_STRING);
+
+	try {
+		auto extension = Factory::Make<Extension>(extension_handle);
+		init_cb(extension);
+		return true;
+	} catch (const std::exception &ex) {
+		access->set_error(extension_handle, ex.what());
+		return false;
+	} catch (...) {
+		access->set_error(extension_handle, "Unknown error during extension initialization");
+		return false;
+	}
+}
+
+} // namespace detail
 
 } // namespace duckdb_api

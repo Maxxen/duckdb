@@ -33,7 +33,7 @@ functions:
   #------------------------------------------------------------------------------------------------
   custom_type_builder_create:
     description: |
-      Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_context`.
+      Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_extension`.
       On success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `custom_type_builder_destroy` when no longer needed.
     parameters:
       out_builder:
@@ -81,17 +81,17 @@ functions:
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
-  custom_type_builder_register_with_context:
+  custom_type_builder_register_with_extension:
     description: |
-      Registers a custom type on a context, making the type available for use in queries.
+      Registers a custom type on the extension being loaded, making the type available for use in queries.
 
-      This function registers a fully configured custom type builder with the context's database, making the type available for use in SQL queries (referenced by its name). Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.
+      This function registers a fully configured custom type builder with the loading extension's database, making the type available for use in SQL queries (referenced by its name). Use this from an extension-load callback, where an extension handle is in hand; the entry is attributed to the extension and installed on the database's system transaction.
       The builder must have both its name and base type set before registration; otherwise, registration will fail with an error.
       DuckDB makes an internal copy of the configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered type.
     parameters:
-      context:
-        type: context
-        description: "The context to register the custom type builder with."
+      extension:
+        type: extension
+        description: "The extension being loaded, on which to register the custom type builder."
       builder:
         type: custom_type_builder
         description: "The custom type builder to register."

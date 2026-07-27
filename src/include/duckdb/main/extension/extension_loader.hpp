@@ -146,6 +146,10 @@ private:
 	optional_ptr<ExtensionInfo> extension_info;
 };
 
+//! Resolves the loader of a C API extension load in progress from the opaque info token passed to the extension
+//! entrypoint. Returns nullptr when the token has no load in progress.
+DUCKDB_API optional_ptr<ExtensionLoader> TryGetExtensionLoaderFromCInfo(void *extension_info);
+
 } // namespace duckdb
 
 //! Helper macro to define the entrypoint for a C++ extension

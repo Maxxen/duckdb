@@ -662,6 +662,39 @@ public:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+// Extension
+//----------------------------------------------------------------------------------------------------------------------
+
+// The extension currently being loaded: the identity under which catalog
+// entries (functions, types, casts) and database-level hooks (replacement
+// scans, log storages) are installed from inside DuckDB. Borrowed for the
+// duration of the load and never destroyed here. Registrations through it are
+// attributed to the extension. From outside a load, the same objects register
+// on a Connection (catalog entries) or a Database (database-level hooks).
+class Extension final : public detail::Handle<Extension> {
+	friend detail::Factory;
+
+public:
+	~Extension() override;
+
+	// Registers a replacement scan on the loading extension's database. Same
+	// contract as Database::AddReplacementScan.
+	void AddReplacementScan(Database::ReplacementScanCallback callback);
+
+	// As above, constructing user data of type T in place (freed at db close; read via GetUserData<T>).
+	template <class T, class... ARGS>
+	void AddReplacementScan(Database::ReplacementScanCallback callback, ARGS &&... args) {
+		auto *data = new T(std::forward<ARGS>(args)...);
+		AddReplacementScanInternal(callback, data, detail::TypedDelete<T>);
+	}
+
+private:
+	explicit Extension(void *impl);
+	void AddReplacementScanInternal(Database::ReplacementScanCallback callback, void *user_data,
+	                                void (*destructor)(void *));
+};
+
+//----------------------------------------------------------------------------------------------------------------------
 // Environment
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -2149,7 +2182,7 @@ public:
 
 	auto SetLogCallback(LogCallback cb) & -> LogStorage &;
 	auto SetName(const std::string &name) & -> LogStorage &;
-	auto Register(const Context &ctx) -> void;
+	auto Register(const Extension &extension) -> void;
 	auto Register(const Database &db) -> void;
 
 public:
@@ -2337,7 +2370,7 @@ public:
 	auto SetCollationHandling(FunctionCollationHandling value) & -> ScalarFunction &;
 	auto GetCollationHandling() const -> FunctionCollationHandling;
 
-	void Register(const Context &ctx);
+	void Register(const Extension &extension);
 	void Register(const Connection &conn);
 
 private:
@@ -2578,7 +2611,7 @@ public:
 	auto SetDistinctDependence(DistinctDependence value) & -> AggregateFunction &;
 	auto GetDistinctDependence() const -> DistinctDependence;
 
-	void Register(const Context &ctx);
+	void Register(const Extension &extension);
 	void Register(const Connection &conn);
 
 public:
@@ -2926,7 +2959,7 @@ public:
 	// them.
 	auto SetProjectionPushdown(bool enable) & -> TableFunction &;
 
-	void Register(const Context &ctx);
+	void Register(const Extension &extension);
 	void Register(const Connection &conn);
 
 private:
@@ -3251,7 +3284,7 @@ public:
 	auto SetFlushCallback(FlushCallback callback) & -> CopyFunction &;
 	auto SetFinalizeCallback(FinalizeCallback callback) & -> CopyFunction &;
 
-	auto Register(const Context &ctx) -> void;
+	auto Register(const Extension &extension) -> void;
 	auto Register(const Connection &conn) -> void;
 
 public:
@@ -3504,7 +3537,7 @@ public:
 	auto SetImplicitCastCost(int64_t cost) & -> CastFunction &;
 	auto SetExecCallback(ExecCallback callback) & -> CastFunction &;
 
-	void Register(const Context &ctx);
+	void Register(const Extension &extension);
 	void Register(const Connection &conn);
 
 private:
@@ -3551,8 +3584,56 @@ public:
 	auto SetName(const std::string &name) & -> CustomType &;
 	auto SetBaseType(const LogicalType &type) & -> CustomType &;
 
-	void Register(const Context &ctx);
+	void Register(const Extension &extension);
 	void Register(const Connection &conn);
 };
 
 } // namespace duckdb_api
+
+//----------------------------------------------------------------------------------------------------------------------
+// Extension entrypoint
+//----------------------------------------------------------------------------------------------------------------------
+
+namespace duckdb_api {
+namespace detail {
+// Performs the V2 C API extension-load handshake, invokes init_cb with the loading extension, and reports errors.
+// The `extension` and `access` are the opaque loader arguments of the C entrypoint.
+// The concrete types live in duckdb_extension_v2.h, which only the implementation file includes.
+bool ExtensionEntrypoint(void *extension, void *access, void (*init_cb)(Extension &extension));
+} // namespace detail
+} // namespace duckdb_api
+
+#define DUCKDB_CPP_EXTENSION_GLUE_HELPER(x, y) x##y
+#define DUCKDB_CPP_EXTENSION_GLUE(x, y)        DUCKDB_CPP_EXTENSION_GLUE_HELPER(x, y)
+
+// Opaque forward declarations of the loader's types.
+// The entrypoint below must have exactly the loader's function type, spelled with the same tags.
+// The definitions live in the C headers, which users of this header never include.
+struct _duckdb_extension_info;
+struct duckdb_extension_access;
+
+#ifdef _WIN32
+#define DUCKDB_CPP_ENTRY_VISIBILITY __declspec(dllexport)
+#else
+#define DUCKDB_CPP_ENTRY_VISIBILITY __attribute__((visibility("default")))
+#endif
+
+// Defines the extension entrypoint for a C API extension written against the stable C++ API. Requires
+// DUCKDB_EXTENSION_NAME to be set. The body receives the extension currently being loaded and may throw; exceptions
+// are reported to the loader as an initialization error.
+// Usage:
+//
+//		DUCKDB_CPP_EXTENSION_ENTRYPOINT(extension) {
+//			ScalarFunction function;
+//			...
+//			function.Register(extension);
+//		}
+//
+#define DUCKDB_CPP_EXTENSION_ENTRYPOINT(EXTENSION_PARAM)                                                               \
+	static void DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl)(duckdb_api::Extension &);              \
+	extern "C" DUCKDB_CPP_ENTRY_VISIBILITY bool DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api)(         \
+	    struct _duckdb_extension_info * info, struct duckdb_extension_access * access) {                               \
+		return duckdb_api::detail::ExtensionEntrypoint(                                                                \
+		    info, access, DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl));                            \
+	}                                                                                                                  \
+	static void DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl)(duckdb_api::Extension & EXTENSION_PARAM)

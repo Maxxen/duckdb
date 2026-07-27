@@ -97,16 +97,16 @@ DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_database(duckdb_v2_data
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_context(duckdb_v2_context_handle context,
-                                                                 duckdb_v2_replacement_scan_callback_fn callback,
-                                                                 duckdb_v2_opaque user_data,
-                                                                 duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_extension(duckdb_v2_extension_handle extension,
+                                                                   duckdb_v2_replacement_scan_callback_fn callback,
+                                                                   duckdb_v2_opaque user_data,
+                                                                   duckdb_v2_error_info_handle *err) {
 	duckdb::OpaqueDataHandle owned(user_data.ptr, user_data.destroy, user_data.equals);
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context || !callback) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_register_with_context");
+		if (!extension || !callback) {
+			throw duckdb::InvalidInputException("null argument to duckdb_v2_replacement_scan_register_with_extension");
 		}
-		auto &config = duckdb::DBConfig::GetConfig(*duckdb::ToContext(context));
+		auto &config = duckdb::DBConfig::GetConfig(duckdb::ToExtension(extension)->GetDatabaseInstance());
 		RegisterReplacementScanV2(config, callback, std::move(owned));
 	});
 }

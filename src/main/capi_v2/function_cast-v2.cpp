@@ -147,7 +147,7 @@ DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_set_user_data(duckdb_v2_cast_fun
 	});
 }
 
-static void RegisterCastFunctionV2(duckdb::ClientContext &ctx, duckdb::CastFunctionV2 &builder) {
+static void RegisterCastFunctionV2(duckdb::CastFunctionSet &casts, duckdb::CastFunctionV2 &builder) {
 	if (!builder.source_type) {
 		throw duckdb::InvalidInputException("Source type must be set for the cast function.");
 	}
@@ -174,7 +174,6 @@ static void RegisterCastFunctionV2(duckdb::ClientContext &ctx, duckdb::CastFunct
 	auto bound_data = duckdb::make_uniq<duckdb::CastFunctionBoundDataV2>(builder.exec_cb, builder.user_data);
 	duckdb::BoundCastInfo cast_info(duckdb::CastFunctionExec, std::move(bound_data));
 
-	auto &casts = duckdb::CastFunctionSet::Get(ctx);
 	casts.RegisterCastFunction(source_type, target_type, std::move(cast_info), builder.implicit_cast_cost);
 }
 
@@ -190,23 +189,23 @@ DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_connection(duckdb_
 		}
 		auto &builder = *reinterpret_cast<duckdb::CastFunctionV2 *>(func);
 		auto &ctx = *duckdb::ToConn(conn)->context;
-		ctx.RunFunctionInTransaction([&]() { RegisterCastFunctionV2(ctx, builder); });
+		ctx.RunFunctionInTransaction([&]() { RegisterCastFunctionV2(duckdb::CastFunctionSet::Get(ctx), builder); });
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_context(duckdb_v2_context_handle context,
-                                                                      duckdb_v2_cast_function_builder_handle func,
-                                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_extension(duckdb_v2_extension_handle extension,
+                                                                        duckdb_v2_cast_function_builder_handle func,
+                                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
+		if (!extension) {
+			throw duckdb::InvalidInputException("Extension pointer cannot be null.");
 		}
 		if (!func) {
 			throw duckdb::InvalidInputException("Function pointer cannot be null.");
 		}
 		auto &builder = *reinterpret_cast<duckdb::CastFunctionV2 *>(func);
-		auto &ctx = *duckdb::ToContext(context);
-		RegisterCastFunctionV2(ctx, builder);
+		auto &db = duckdb::ToExtension(extension)->GetDatabaseInstance();
+		RegisterCastFunctionV2(duckdb::CastFunctionSet::Get(db), builder);
 	});
 }
 

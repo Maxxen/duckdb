@@ -164,6 +164,26 @@ functions:
         kind: OUT
         description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
     return_type: ERROR
+  # Extension
+  connection_create_extension:
+    description: |
+      Creates and loads an in-memory extension into the connection's database.
+    role: method
+    belongs_to: connection
+    parameters:
+      conn:
+        type: connection
+        description: "The connection."
+      name:
+        type: identifier
+        description: "The extension name."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: ERROR
+  # Query processing
   connection_interrupt:
     description: |
       Interrupts the query currently executing on the connection.

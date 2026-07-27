@@ -6,3 +6,18 @@ add_library(duckdb_cpp_api STATIC duckdb_cpp.cpp)
 target_include_directories(duckdb_cpp_api PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(duckdb_cpp_api PROPERTIES CXX_VISIBILITY_PRESET hidden
                                                 VISIBILITY_INLINES_HIDDEN ON)
+
+# Loadable-extension flavor: every duckdb_v2_* call is routed through the
+# extension vtable populated by the entrypoint, so a dynamically loaded
+# extension linking this archive carries no undefined engine symbols. The
+# unstable guard exposes the full API surface; the extension is version-pinned.
+add_library(duckdb_cpp_api_loadable STATIC duckdb_cpp.cpp)
+target_include_directories(duckdb_cpp_api_loadable
+                           PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(
+  duckdb_cpp_api_loadable
+  PRIVATE DUCKDB_CPP_API_LOADABLE
+          DUCKDB_EXTENSION_API_VERSION_UNSTABLE=${DUCKDB_NORMALIZED_VERSION})
+set_target_properties(
+  duckdb_cpp_api_loadable PROPERTIES CXX_VISIBILITY_PRESET hidden
+                                     VISIBILITY_INLINES_HIDDEN ON)

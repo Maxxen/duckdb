@@ -1,11 +1,10 @@
-#include "duckdb_extension.h"
-
 // V2 DuckDB extension API
 #include "duckdb_cpp.hpp"
 
 using namespace duckdb_api;
 
-static void RegisterFunction(const Connection &conn) {
+DUCKDB_CPP_EXTENSION_ENTRYPOINT(extension) {
+	// Register a demo function under the extension being loaded
 	ScalarFunction function;
 	function.SetName("add_two")
 	    .SetSignature(FunctionSignature::Create()
@@ -24,22 +23,5 @@ static void RegisterFunction(const Connection &conn) {
 			    out[i] = in[i] + 2;
 		    }
 	    })
-	    .Register(conn);
-}
-
-DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, duckdb_extension_access *access) {
-	// Register a demo function
-
-	// TODO: Add proper V1ToV2 conversion function
-	auto conn = Connection::FromOpaque(connection);
-
-	try {
-		RegisterFunction(conn);
-	} catch (const std::exception &ex) {
-		access->set_error(info, ex.what());
-		return false;
-	}
-
-	// Return true to indicate successful initialization
-	return true;
+	    .Register(extension);
 }

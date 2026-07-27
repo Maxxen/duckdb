@@ -121,6 +121,7 @@ struct ArrowArrayStream {
 #endif
 
 typedef uint64_t idx_t;
+typedef struct _duckdb_extension_info *duckdb_v2_extension_handle;
 
 /* ============================================================================
  * MODULE: common
@@ -554,8 +555,8 @@ typedef void (*duckdb_v2_cast_function_exec_callback_fn)(duckdb_v2_cast_function
 /*!
  * Creates a new cast function builder that can be configured with the various `cast_function_builder_set_*` functions
  * and registered with `cast_function_builder_register_with_connection` or
- * `cast_function_builder_register_with_context`. On success, returns a handle to the new builder. The builder is owned
- * by the caller and must be destroyed with `cast_function_builder_destroy` when no longer needed.
+ * `cast_function_builder_register_with_extension`. On success, returns a handle to the new builder. The builder is
+ * owned by the caller and must be destroyed with `cast_function_builder_destroy` when no longer needed.
  *
  * @param out On success, receives the newly created cast function builder. The caller owns the builder and must destroy
  * it with `cast_function_builder_destroy`.
@@ -663,23 +664,24 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_conne
     duckdb_v2_connection_handle conn, duckdb_v2_cast_function_builder_handle func, duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers a cast function on a context, making the cast available in all subsequent queries to that database.
+ * Registers a cast function on the extension being loaded, making the cast available in all subsequent queries to that
+ * database.
  *
- * This function registers a fully configured cast function builder with the context's database, making the cast
- * available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). Use this from
- * inside a callback or extension where a context is already in hand; it registers within the context's active
- * transaction. The function builder must have its source type, target type, and exec callback set before registration;
- * otherwise, registration will fail with an error. DuckDB makes an internal copy of the configured function and its
- * properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it
- * after registration without affecting the registered cast.
+ * This function registers a fully configured cast function builder with the loading extension's database, making the
+ * cast available for use in SQL queries (and for implicit casting, depending on the implicit cast cost). Use this from
+ * an extension-load callback, where an extension handle is in hand. The function builder must have its source type,
+ * target type, and exec callback set before registration; otherwise, registration will fail with an error. DuckDB makes
+ * an internal copy of the configured function and its properties during registration, so the caller retains ownership
+ * of the builder and can safely destroy or modify it after registration without affecting the registered cast.
  *
- * @param context The DuckDB context in which to register the cast function.
+ * @param extension The extension being loaded, on which to register the cast function.
  * @param func The cast function to register.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_cast_function_builder_handle func, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_cast_function_builder_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_cast_function_builder_handle func,
+    duckdb_v2_error_info_handle *err);
 
 /*!
  * Destroys a cast function builder, releasing its resources.
@@ -1322,7 +1324,7 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_with_alias(duckdb_v2_
 
 /*!
  * Creates a new custom type builder that can be configured with the various `custom_type_builder_set_*` functions and
- * registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_context`. On
+ * registered with `custom_type_builder_register_with_connection` or `custom_type_builder_register_with_extension`. On
  * success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with
  * `custom_type_builder_destroy` when no longer needed.
  *
@@ -1366,22 +1368,24 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_connect
     duckdb_v2_connection_handle conn, duckdb_v2_custom_type_builder_handle builder, duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers a custom type on a context, making the type available for use in queries.
+ * Registers a custom type on the extension being loaded, making the type available for use in queries.
  *
- * This function registers a fully configured custom type builder with the context's database, making the type available
- * for use in SQL queries (referenced by its name). Use this from inside a callback or extension where a context is
- * already in hand; it registers within the context's active transaction. The builder must have both its name and base
- * type set before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the
- * configured type during registration, so the caller retains ownership of the builder and can safely destroy or modify
- * it after registration without affecting the registered type.
+ * This function registers a fully configured custom type builder with the loading extension's database, making the type
+ * available for use in SQL queries (referenced by its name). Use this from an extension-load callback, where an
+ * extension handle is in hand; the entry is attributed to the extension and installed on the database's system
+ * transaction. The builder must have both its name and base type set before registration; otherwise, registration will
+ * fail with an error. DuckDB makes an internal copy of the configured type during registration, so the caller retains
+ * ownership of the builder and can safely destroy or modify it after registration without affecting the registered
+ * type.
  *
- * @param context The context to register the custom type builder with.
+ * @param extension The extension being loaded, on which to register the custom type builder.
  * @param builder The custom type builder to register.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_custom_type_builder_handle builder, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_custom_type_builder_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_custom_type_builder_handle builder,
+    duckdb_v2_error_info_handle *err);
 
 /*!
  * Sets the name of a custom type.
@@ -2675,19 +2679,20 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_databas
     duckdb_v2_database_handle db, duckdb_v2_log_storage_builder_handle builder, duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers the log storage builder with the logging system on a context's database.
+ * Registers the log storage builder with the logging system on the loading extension's database.
  *
- * Finalizes the configuration of the log storage builder and registers it on the context's database so that it can be
- * used by connections or contexts to emit log messages. Use this from inside a callback or extension where a context is
- * already in hand.
+ * Finalizes the configuration of the log storage builder and registers it on the loading extension's database so that
+ * it can be used by connections or contexts to emit log messages. Use this from an extension-load callback, where an
+ * extension handle is in hand.
  *
- * @param context The context whose database to register the log storage builder with.
+ * @param extension The extension being loaded, on whose database to register the log storage builder.
  * @param builder The log storage builder handle to register.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_log_storage_builder_handle builder, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_storage_builder_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_log_storage_builder_handle builder,
+    duckdb_v2_error_info_handle *err);
 
 /*!
  * Destroys a log storage builder.
@@ -3309,10 +3314,10 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_database(
     duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers a replacement scan callback on the context's database.
+ * Registers a replacement scan callback on the loading extension's database.
  *
- * Same as replacement_scan_register_with_database, but resolves the target database from a context. Use this from
- * inside a callback or extension where a context is already in hand.
+ * Same as replacement_scan_register_with_database, but resolves the target database from the extension being loaded.
+ * Use this from an extension-load callback, where an extension handle is in hand.
  *
  * Scans are consulted in registration order; the first scan to claim an unresolved name wins. Registered scans live
  * until the database closes; there is no unregistration. The user data's destroy callback (if set) runs exactly once,
@@ -3321,15 +3326,15 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_database(
  * Registration is not thread-safe with respect to running queries; register before issuing queries on any connection of
  * the database.
  *
- * @param context The context whose database to register the scan on.
+ * @param extension The extension being loaded, on whose database to register the scan.
  * @param callback The replacement scan callback.
  * @param user_data User data accessible from the callback via replacement_scan_get_user_data, bundling the pointer with
  * an optional destroy callback that runs once at database close. The pointer may be NULL.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_replacement_scan_callback_fn callback, duckdb_v2_opaque user_data,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_replacement_scan_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_replacement_scan_callback_fn callback, duckdb_v2_opaque user_data,
     duckdb_v2_error_info_handle *err);
 
 /*!
@@ -4880,20 +4885,20 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register_with_
     duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers the aggregate function being built on a context
+ * Registers the aggregate function being built on the extension being loaded
  *
- * Registers the aggregate function defined by the builder with the context's database, making it available for use in
- * SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the
- * context's active transaction. Registered functions do not support plan serialization; the bind callback runs once per
- * binding of a call site.
+ * Registers the aggregate function defined by the builder with the loading extension's database, making it available
+ * for use in SQL queries. Use this from an extension-load callback, where an extension handle is in hand; the entry is
+ * attributed to the extension and installed on the database's system transaction. Registered functions do not support
+ * plan serialization; the bind callback runs once per binding of a call site.
  *
- * @param context The DuckDB context in which to register the function.
+ * @param extension The extension being loaded, on which to register the function.
  * @param builder The aggregate function builder to register.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_aggregate_function_builder_handle builder,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_aggregate_function_builder_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_aggregate_function_builder_handle builder,
     duckdb_v2_error_info_handle *err);
 
 /*!
@@ -5695,6 +5700,18 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_option_get_by_index(duckdb_v2_
                                                                       duckdb_v2_error_info_handle *err);
 
 /*!
+ * Creates and loads an in-memory extension into the connection's database.
+ *
+ * @param conn The connection.
+ * @param name The extension name.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_create_extension(duckdb_v2_connection_handle conn,
+                                                                   duckdb_v2_identifier_t name,
+                                                                   duckdb_v2_error_info_handle *err);
+
+/*!
  * Interrupts the query currently executing on the connection.
  *
  * Requests cancellation of the connection's active query. This is the cross-thread cancellation entry point for
@@ -5982,18 +5999,20 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_conne
     duckdb_v2_connection_handle conn, duckdb_v2_copy_function_builder_handle builder, duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers the copy function on a context, making the function available for use in SQL queries.
+ * Registers the copy function on the extension being loaded, making the function available for use in SQL queries.
  *
- * Registers the copy function with the context's database. Use this from inside a callback or extension where a context
- * is already in hand; it registers within the context's active transaction.
+ * Registers the copy function with the loading extension's database. Use this from an extension-load callback, where an
+ * extension handle is in hand; the entry is attributed to the extension and installed on the database's system
+ * transaction.
  *
- * @param context The DuckDB context in which to register the function.
+ * @param extension The extension being loaded, on which to register the function.
  * @param builder The copy function builder handle.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_copy_function_builder_handle builder, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_copy_function_builder_handle builder,
+    duckdb_v2_error_info_handle *err);
 
 /*!
  * Destroys a copy function builder handle, freeing any associated resources. After this call, the handle is no longer
@@ -6339,7 +6358,7 @@ typedef void (*duckdb_v2_scalar_function_exec_callback_fn)(duckdb_v2_scalar_func
 /*!
  * Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and
  * registered with `scalar_function_builder_register_with_connection` or
- * `scalar_function_builder_register_with_context`. On success, returns a handle to the new builder. The builder is
+ * `scalar_function_builder_register_with_extension`. On success, returns a handle to the new builder. The builder is
  * owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.
  *
  * @param out On success, receives the newly created scalar function builder. The caller owns the builder and must
@@ -6434,23 +6453,25 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_con
     duckdb_v2_connection_handle conn, duckdb_v2_scalar_function_builder_handle func, duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers a scalar function on a context, making the function available for use in queries.
+ * Registers a scalar function on the extension being loaded, making the function available for use in queries.
  *
- * This function registers a fully configured scalar function builder with the context's database, making the function
- * available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it
- * registers within the context's active transaction. The function builder must have at least its name and exec callback
- * set before registration; otherwise, registration will fail with an error. DuckDB makes an internal copy of the
- * configured function and its properties during registration, so the caller retains ownership of the builder and can
- * safely destroy or modify it after registration without affecting the registered function. Registered functions do not
- * support plan serialization; the bind callback runs once per binding of a call site.
+ * This function registers a fully configured scalar function builder with the loading extension's database, making the
+ * function available for use in SQL queries. Use this from an extension-load callback, where an extension handle is in
+ * hand; the entry is attributed to the extension and installed on the database's system transaction. The function
+ * builder must have at least its name and exec callback set before registration; otherwise, registration will fail with
+ * an error. DuckDB makes an internal copy of the configured function and its properties during registration, so the
+ * caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the
+ * registered function. Registered functions do not support plan serialization; the bind callback runs once per binding
+ * of a call site.
  *
- * @param context The DuckDB context in which to register the function.
+ * @param extension The extension being loaded, on which to register the function.
  * @param func The scalar function to register.
  * @param err Optional. Error info handle to write details to if the call fails.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_scalar_function_builder_handle func, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_builder_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_scalar_function_builder_handle func,
+    duckdb_v2_error_info_handle *err);
 
 /*!
  * Destroys a scalar function, releasing its resources.
@@ -7198,20 +7219,20 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register_with_conn
     duckdb_v2_error_info_handle *err);
 
 /*!
- * Registers the table function on a context, making it available for use in queries.
+ * Registers the table function on the extension being loaded, making it available for use in queries.
  *
- * Registers the table function with the context's database. Use this from inside a callback or extension where a
- * context is already in hand; it registers within the context's active transaction. The engine copies the builder's
- * configuration at registration time. The builder can be destroyed or reused after this call. Requires at least a name,
- * bind callback, and exec callback.
+ * Registers the table function with the loading extension's database. Use this from an extension-load callback, where
+ * an extension handle is in hand; the entry is attributed to the extension and installed on the database's system
+ * transaction. The engine copies the builder's configuration at registration time. The builder can be destroyed or
+ * reused after this call. Requires at least a name, bind callback, and exec callback.
  *
- * @param context The DuckDB context.
+ * @param extension The extension being loaded.
  * @param builder The configured builder.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register_with_context(
-    duckdb_v2_context_handle context, duckdb_v2_table_function_builder_handle builder,
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_table_function_builder_register_with_extension(
+    duckdb_v2_extension_handle extension, duckdb_v2_table_function_builder_handle builder,
     duckdb_v2_error_info_handle *err);
 
 /*!

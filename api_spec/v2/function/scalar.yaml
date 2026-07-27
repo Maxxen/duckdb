@@ -63,7 +63,7 @@ callbacks:
 functions:
   scalar_function_builder_create:
     description: |
-      Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and registered with `scalar_function_builder_register_with_connection` or `scalar_function_builder_register_with_context`.
+      Creates a new scalar function builder that can be configured with the various `scalar_function_set_*` functions and registered with `scalar_function_builder_register_with_connection` or `scalar_function_builder_register_with_extension`.
       On success, returns a handle to the new builder. The builder is owned by the caller and must be destroyed with `scalar_function_builder_destroy` when no longer needed.
     parameters:
       out:
@@ -169,18 +169,18 @@ functions:
         indirection: 1
         description: Optional. Error info handle to write details to if the call fails.
     return_type: ERROR
-  scalar_function_builder_register_with_context:
+  scalar_function_builder_register_with_extension:
     description: |
-      Registers a scalar function on a context, making the function available for use in queries.
+      Registers a scalar function on the extension being loaded, making the function available for use in queries.
 
-      This function registers a fully configured scalar function builder with the context's database, making the function available for use in SQL queries. Use this from inside a callback or extension where a context is already in hand; it registers within the context's active transaction.
+      This function registers a fully configured scalar function builder with the loading extension's database, making the function available for use in SQL queries. Use this from an extension-load callback, where an extension handle is in hand; the entry is attributed to the extension and installed on the database's system transaction.
       The function builder must have at least its name and exec callback set before registration; otherwise, registration will fail with an error.
       DuckDB makes an internal copy of the configured function and its properties during registration, so the caller retains ownership of the builder and can safely destroy or modify it after registration without affecting the registered function.
       Registered functions do not support plan serialization; the bind callback runs once per binding of a call site.
     parameters:
-      context:
-        type: context
-        description: The DuckDB context in which to register the function.
+      extension:
+        type: extension
+        description: The extension being loaded, on which to register the function.
       func:
         type: scalar_function_builder
         description: The scalar function to register.

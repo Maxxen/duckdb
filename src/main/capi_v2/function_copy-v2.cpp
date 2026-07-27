@@ -358,7 +358,7 @@ DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_set_user_data(duckdb_v2_copy_fun
 	});
 }
 
-static void RegisterCopyFunctionV2(duckdb::ClientContext &context_ref, duckdb::CopyFunctionBuilderV2 *builder) {
+static duckdb::CopyFunction BuildCopyFunctionV2(duckdb::CopyFunctionBuilderV2 *builder) {
 	auto &builder_ref = *builder;
 
 	if (builder_ref.name.empty()) {
@@ -398,8 +398,12 @@ static void RegisterCopyFunctionV2(duckdb::ClientContext &context_ref, duckdb::C
 
 	function.function_info = std::move(info);
 
+	return function;
+}
+
+static void RegisterCopyFunctionV2(duckdb::ClientContext &context_ref, duckdb::CopyFunctionBuilderV2 *builder) {
 	auto &catalog = duckdb::Catalog::GetSystemCatalog(context_ref);
-	duckdb::CreateCopyFunctionInfo cf_info(function);
+	duckdb::CreateCopyFunctionInfo cf_info(BuildCopyFunctionV2(builder));
 	cf_info.on_conflict = duckdb::OnCreateConflict::ALTER_ON_CONFLICT;
 	catalog.CreateCopyFunction(context_ref, cf_info);
 }
@@ -421,20 +425,20 @@ DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_connection(duckdb_
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_context(duckdb_v2_context_handle context,
-                                                                      duckdb_v2_copy_function_builder_handle builder,
-                                                                      duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_copy_function_builder_register_with_extension(duckdb_v2_extension_handle extension,
+                                                                        duckdb_v2_copy_function_builder_handle builder,
+                                                                        duckdb_v2_error_info_handle *err) {
 	return duckdb::WithErrorHandler(err, [&]() {
-		if (!context) {
-			throw duckdb::InvalidInputException("Context pointer cannot be null.");
+		if (!extension) {
+			throw duckdb::InvalidInputException("Extension pointer cannot be null.");
 		}
 		if (!builder) {
 			throw duckdb::InvalidInputException("Builder pointer cannot be null.");
 		}
 
 		auto builder_ref = reinterpret_cast<duckdb::CopyFunctionBuilderV2 *>(builder);
-		auto &context_ref = *duckdb::ToContext(context);
-		RegisterCopyFunctionV2(context_ref, builder_ref);
+		auto &loader = *duckdb::ToExtension(extension);
+		loader.RegisterFunction(BuildCopyFunctionV2(builder_ref));
 	});
 }
 
