@@ -22,12 +22,12 @@
 
 namespace {
 
-// Read a transparent duckdb_v2_string slot's bytes (inlined or heap form).
+// Read a transparent duckdb_v2_bytes slot's bytes (inlined or heap form).
 // Mirrors V2StringView in capi_v2_test_helpers.hpp; kept separate because
 // the C++ suite does not include the V1-including C helpers header.
-std::string SlotBytes(const duckdb_v2_string &s) {
+std::string SlotBytes(const duckdb_v2_bytes &s) {
 	uint32_t len = s.value.inlined.length;
-	const char *ptr = len <= DUCKDB_V2_STRING_INLINE_LENGTH ? s.value.inlined.inlined : s.value.pointer.ptr;
+	const char *ptr = len <= DUCKDB_V2_BYTES_INLINE_LENGTH ? s.value.inlined.inlined : s.value.pointer.ptr;
 	return std::string(ptr, len);
 }
 
@@ -53,8 +53,8 @@ TEST_CASE("Stable C++API: Vector AssignString", "[cpp_api]") {
 	vec.AssignString(2, "");       // empty
 
 	// The cpp_api has no VARCHAR read path yet; read the transparent
-	// duckdb_v2_string slots directly to confirm the bytes round-trip.
-	auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+	// duckdb_v2_bytes slots directly to confirm the bytes round-trip.
+	auto *slots = vec.GetDataMutable<duckdb_v2_bytes>();
 	REQUIRE(SlotBytes(slots[0]) == "hi");
 	REQUIRE(SlotBytes(slots[1]) == long_str);
 	REQUIRE(SlotBytes(slots[2]).empty());
@@ -80,7 +80,7 @@ TEST_CASE("Stable C++API: Vector AssignStrings (bulk)", "[cpp_api]") {
 	const std::vector<std::string_view> tail(owned.begin(), owned.end());
 	vec.AssignStrings(1, tail);
 
-	auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+	auto *slots = vec.GetDataMutable<duckdb_v2_bytes>();
 	REQUIRE(SlotBytes(slots[0]) == "head");
 	REQUIRE(SlotBytes(slots[1]) == owned[0]);
 	REQUIRE(SlotBytes(slots[2]) == owned[1]);
@@ -116,7 +116,7 @@ TEST_CASE("Stable C++API: StringHeap primitive (dedup + scatter)", "[cpp_api]") 
 	vec.SetString(3, tokens[0]);
 	vec.SetString(1, tokens[1]);
 
-	auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+	auto *slots = vec.GetDataMutable<duckdb_v2_bytes>();
 	REQUIRE(SlotBytes(slots[0]) == shared_str);
 	REQUIRE(SlotBytes(slots[1]) == owned[1]);
 	REQUIRE(SlotBytes(slots[2]) == shared_str);
@@ -146,7 +146,7 @@ TEST_CASE("Stable C++API: StringHeap::Allocate write-in-place", "[cpp_api]") {
 	auto *bytes = heap.Allocate(len);
 	REQUIRE(bytes != nullptr);
 	std::memset(bytes, 'q', len);
-	auto token = StringLayout::FromHeapData(reinterpret_cast<char *>(bytes), len);
+	auto token = BytesLayout::FromHeapData(reinterpret_cast<char *>(bytes), len);
 	REQUIRE_FALSE(token.IsInlined());
 	REQUIRE(token.Length() == len);
 	REQUIRE(token.Data() == reinterpret_cast<const char *>(bytes));
@@ -159,11 +159,11 @@ TEST_CASE("Stable C++API: StringHeap::Allocate write-in-place", "[cpp_api]") {
 	REQUIRE(std::string(small.Data(), small.Length()) == "tiny");
 	vec.SetString(1, small);
 
-	auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+	auto *slots = vec.GetDataMutable<duckdb_v2_bytes>();
 	REQUIRE(SlotBytes(slots[0]) == std::string(len, 'q'));
 	REQUIRE(SlotBytes(slots[1]) == "tiny");
 }
-TEST_CASE("Stable C++API: StringLayout GetDataWritable + Finalize", "[cpp_api]") {
+TEST_CASE("Stable C++API: BytesLayout GetDataWritable + Finalize", "[cpp_api]") {
 	using namespace duckdb_api;
 
 	Environment env;
@@ -184,7 +184,7 @@ TEST_CASE("Stable C++API: StringLayout GetDataWritable + Finalize", "[cpp_api]")
 	auto *bytes = heap.Allocate(len);
 	REQUIRE(bytes != nullptr);
 
-	StringLayout token {};
+	BytesLayout token {};
 	token.value.pointer.length = len;
 	token.value.pointer.ptr = reinterpret_cast<char *>(bytes);
 	REQUIRE_FALSE(token.IsInlined());
@@ -195,10 +195,10 @@ TEST_CASE("Stable C++API: StringLayout GetDataWritable + Finalize", "[cpp_api]")
 	token.Finalize();
 
 	// Finalize seals the prefix to the first PREFIX_LENGTH bytes.
-	REQUIRE(std::memcmp(token.value.pointer.prefix, payload.data(), StringLayout::PREFIX_LENGTH) == 0);
+	REQUIRE(std::memcmp(token.value.pointer.prefix, payload.data(), BytesLayout::PREFIX_LENGTH) == 0);
 	vec.SetString(0, token);
 
-	auto *slots = vec.GetDataMutable<duckdb_v2_string>();
+	auto *slots = vec.GetDataMutable<duckdb_v2_bytes>();
 	REQUIRE(SlotBytes(slots[0]) == payload);
 }
 TEST_CASE("Stable C++API: AssignString rejects misuse", "[cpp_api]") {
@@ -363,7 +363,7 @@ TEST_CASE("Stable C++API: MakeSequence and MakeConstant round-trip", "[cpp_api]"
 	REQUIRE(cview.count == 3);
 	REQUIRE(cview.Data<int64_t>()[cview.SelAt(2)] == -5);
 }
-TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringLayout", "[cpp_api]") {
+TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via BytesLayout", "[cpp_api]") {
 	using namespace duckdb_api;
 
 	Environment env;
@@ -377,7 +377,7 @@ TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringLayout", "
 
 	auto view = chunk.GetVector(0).GetView();
 	REQUIRE(view.count == 3);
-	auto strings = view.Data<StringLayout>();
+	auto strings = view.Data<BytesLayout>();
 
 	const auto &small = strings[view.SelAt(0)];
 	REQUIRE(view.IsValid(0));
@@ -393,7 +393,7 @@ TEST_CASE("Stable C++API: VectorView VARCHAR and BLOB reads via StringLayout", "
 
 	// BLOB shares the storage layout; the bytes read the same way.
 	auto bview = chunk.GetVector(1).GetView();
-	auto blobs = bview.Data<StringLayout>();
+	auto blobs = bview.Data<BytesLayout>();
 	REQUIRE(blobs[bview.SelAt(0)].AsStringView() == "tiny");
 	REQUIRE(blobs[bview.SelAt(1)].AsStringView() == long_str);
 	REQUIRE_FALSE(bview.IsValid(2));
@@ -410,7 +410,7 @@ TEST_CASE("Stable C++API: Vector DecodeBit and DecodeBignum", "[cpp_api]") {
 		auto result = conn.Execute("SELECT '101'::BIT");
 		auto chunk = result.FetchChunk();
 		auto view = chunk.GetVector(0).GetView();
-		auto *storage = view.Data<StringLayout>();
+		auto *storage = view.Data<BytesLayout>();
 
 		auto bit = Vector::DecodeBit(storage[view.SelAt(0)]);
 		REQUIRE(bit.length == 1);
@@ -431,7 +431,7 @@ TEST_CASE("Stable C++API: Vector DecodeBit and DecodeBignum", "[cpp_api]") {
 		auto result = conn.Execute("SELECT (-256)::BIGNUM");
 		auto chunk = result.FetchChunk();
 		auto view = chunk.GetVector(0).GetView();
-		auto *storage = view.Data<StringLayout>();
+		auto *storage = view.Data<BytesLayout>();
 
 		auto big = Vector::DecodeBignum(storage[view.SelAt(0)]);
 		REQUIRE(big.is_negative);

@@ -133,7 +133,7 @@ typedef struct _duckdb_extension_info *duckdb_v2_extension_handle;
 
 typedef struct duckdb_v2_str duckdb_v2_str;
 
-typedef struct duckdb_v2_string duckdb_v2_string;
+typedef struct duckdb_v2_bytes duckdb_v2_bytes;
 
 typedef struct duckdb_v2_opaque duckdb_v2_opaque;
 
@@ -233,13 +233,14 @@ typedef struct _duckdb_v2_vector {
 } * duckdb_v2_vector_handle;
 
 /*!
- * Borrowed handle to a vector's string heap: the arena owning the out-of-line bytes of non-inlined VARCHAR / BLOB / BIT
- * / BIGNUM values. Obtained via vector_get_string_heap. Do not destroy; valid until the owning vector is flattened,
- * reallocated, or destroyed. Bytes added to it are owned by the vector.
+ * Borrowed handle to a bump allocator owned by another object. Bytes handed out by arena_allocate are owned by that
+ * object and share its lifetime; the arena itself is never destroyed by the caller. Obtained via vector_get_arena,
+ * which yields the arena backing the out-of-line bytes of non-inlined VARCHAR / BLOB / BIT / BIGNUM values and stays
+ * valid until the owning vector is flattened, reallocated, or destroyed.
  */
-typedef struct _duckdb_v2_string_heap {
+typedef struct _duckdb_v2_arena {
 	void *internal_ptr;
-} * duckdb_v2_string_heap_handle;
+} * duckdb_v2_arena_handle;
 
 /*!
  * The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB. TODO - elaborate more, maybe
@@ -252,17 +253,17 @@ typedef struct _duckdb_v2_context {
 //! Selection-vector entry. Mirrors duckdb::sel_t.
 typedef uint32_t duckdb_v2_sel_t;
 
-//! VARCHAR storage. Read the transparent string fields directly.
-typedef duckdb_v2_string duckdb_v2_varchar_t;
+//! VARCHAR storage. Read the transparent bytes fields directly.
+typedef duckdb_v2_bytes duckdb_v2_varchar_t;
 
-//! BLOB storage. Read the transparent string fields directly.
-typedef duckdb_v2_string duckdb_v2_blob_t;
+//! BLOB storage. Read the transparent bytes fields directly.
+typedef duckdb_v2_bytes duckdb_v2_blob_t;
 
 //! BIT storage. Byte 0 is the padding-bit count, bytes 1.. the data.
-typedef duckdb_v2_string duckdb_v2_bit_t;
+typedef duckdb_v2_bytes duckdb_v2_bit_t;
 
 //! BIGNUM storage. Decode via bignum_decode.
-typedef duckdb_v2_string duckdb_v2_bignum_t;
+typedef duckdb_v2_bytes duckdb_v2_bignum_t;
 
 /*!
  * A borrowed name view with the same layout as str, marking a string the engine treats as a SQL identifier: matched
@@ -274,8 +275,8 @@ typedef duckdb_v2_str duckdb_v2_identifier_t;
 
 /* --- Constants for common --- */
 
-//! Inline cutoff for `string` storage: a value of at most this many bytes is stored inline.
-#define DUCKDB_V2_STRING_INLINE_LENGTH 12
+//! Inline cutoff for `bytes` storage: a value of at most this many bytes is stored inline.
+#define DUCKDB_V2_BYTES_INLINE_LENGTH 12
 
 /* --- Function pointer typedefs for common --- */
 
@@ -292,7 +293,7 @@ typedef void (*duckdb_v2_opaque_destroy_fn)(void *data);
  * to be null-terminated and may contain interior null bytes; always honour `len` instead of scanning for a terminator.
  * The view never owns its bytes — lifetime is documented by whichever function produced it (typically "valid until the
  * owning handle is destroyed"). `{NULL, 0}` is the canonical empty view; `ptr` must not be dereferenced when `len` is
- * 0. Not to be confused with `string`, the transparent 16-byte VARCHAR *storage* format.
+ * 0. Not to be confused with `bytes`, the transparent 16-byte *storage* format for a variable-size value in a vector.
  */
 struct duckdb_v2_str {
 	const char *ptr;
@@ -300,12 +301,12 @@ struct duckdb_v2_str {
 };
 
 /*!
- * 16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT / BIGNUM), mirroring duckdb::string_t. Inlined when
- * length <= STRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise value.pointer.ptr holds the bytes and
- * value.pointer.prefix the first 4. Read the fields directly; BIT / BIGNUM additionally carry an encoding. For BIT,
- * byte 0 is the padding-bit count, bytes 1.. are the data; BIGNUM is decoded via bignum_decode.
+ * 16-byte storage for a variable-size, byte-backed value (VARCHAR / BLOB / BIT / BIGNUM), mirroring duckdb::string_t.
+ * Inlined when length <= BYTES_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise value.pointer.ptr holds the
+ * bytes and value.pointer.prefix the first 4. Read the fields directly; BIT / BIGNUM additionally carry an encoding.
+ * For BIT, byte 0 is the padding-bit count, bytes 1.. are the data; BIGNUM is decoded via bignum_decode.
  */
-struct duckdb_v2_string {
+struct duckdb_v2_bytes {
 	union {
 		struct {
 			uint32_t length;
@@ -497,6 +498,41 @@ typedef enum DUCKDB_V2_ERROR {
 /* --- Functions for errors --- */
 
 /* --- Struct definitions for errors --- */
+
+/* ============================================================================
+ * MODULE: arena
+ * ============================================================================ */
+
+/* --- Enums for arena --- */
+
+/* --- Struct forward declarations for arena --- */
+
+/* --- Types for arena --- */
+
+/* --- Constants for arena --- */
+
+/* --- Function pointer typedefs for arena --- */
+
+/* --- Functions for arena --- */
+
+/*!
+ * Reserves byte_len bytes of memory from the arena.
+ *
+ * Raw bump allocation: returns a writable pointer to byte_len uninitialized bytes, valid for the arena's lifetime. No
+ * value semantics and no size gating; byte_len may be 0. The caller writes the bytes and assembles whatever the
+ * borrowing context expects. For a vector arena that is a duckdb_v2_bytes, whose length is a uint32, so bytes backing a
+ * single value must respect that bound; this is the caller's to enforce.
+ *
+ * @param arena
+ * @param byte_len Number of bytes to reserve. May be 0.
+ * @param out_ptr Receives a writable pointer to byte_len arena-owned bytes.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_arena_allocate(duckdb_v2_arena_handle arena, idx_t byte_len, uint8_t **out_ptr,
+                                                      duckdb_v2_error_info_handle *err);
+
+/* --- Struct definitions for arena --- */
 
 /* ============================================================================
  * MODULE: cast
@@ -3775,40 +3811,6 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_function_signature_get_return_type(duckdb
 /* --- Struct definitions for signature --- */
 
 /* ============================================================================
- * MODULE: string_heap
- * ============================================================================ */
-
-/* --- Enums for string_heap --- */
-
-/* --- Struct forward declarations for string_heap --- */
-
-/* --- Types for string_heap --- */
-
-/* --- Constants for string_heap --- */
-
-/* --- Function pointer typedefs for string_heap --- */
-
-/* --- Functions for string_heap --- */
-
-/*!
- * Reserves byte_len bytes of vector-lifetime memory from the heap.
- *
- * Raw arena allocation: returns a writable pointer to byte_len uninitialized bytes. No string semantics and no size
- * gating; byte_len may be 0. The caller writes the bytes and assembles the duckdb_v2_string. A duckdb_v2_string length
- * is a uint32, so bytes backing a single value must respect that bound; this is the caller's to enforce.
- *
- * @param heap
- * @param byte_len Number of bytes to reserve. May be 0.
- * @param out_ptr Receives a writable pointer to byte_len heap-owned bytes.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_string_heap_allocate(duckdb_v2_string_heap_handle heap, idx_t byte_len,
-                                                            uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
-
-/* --- Struct definitions for string_heap --- */
-
-/* ============================================================================
  * MODULE: value
  * ============================================================================ */
 
@@ -4446,20 +4448,20 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vector_constant_set_valid(duckdb_v2_vecto
                                                                  duckdb_v2_error_info_handle *err);
 
 /*!
- * Borrows a string-backed vector's heap for writing.
+ * Borrows a string-backed vector's arena for writing.
  *
- * Allocates the heap on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM vectors; ERROR_INPUT_INVALID otherwise. This
- * is the single string-ness check; the resulting heap's add calls skip it. Borrowed (do not destroy); valid until the
- * vector is flattened, reallocated, or destroyed.
+ * Allocates the arena on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM vectors; ERROR_INPUT_INVALID otherwise.
+ * This is the single string-ness check; the resulting arena's allocate calls skip it. Borrowed (do not destroy); valid
+ * until the vector is flattened, reallocated, or destroyed.
  *
  * @param vector
- * @param out_heap Receives the borrowed string-heap handle.
+ * @param out_arena Receives the borrowed arena handle.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vector_get_string_heap(duckdb_v2_vector_handle vector,
-                                                              duckdb_v2_string_heap_handle *out_heap,
-                                                              duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vector_get_arena(duckdb_v2_vector_handle vector,
+                                                        duckdb_v2_arena_handle *out_arena,
+                                                        duckdb_v2_error_info_handle *err);
 
 /*!
  * Returns the number of child vectors a nested vector exposes.

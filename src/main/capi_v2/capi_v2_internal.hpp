@@ -49,22 +49,22 @@
 #endif
 #endif
 
-// ABI guard: the bridge reinterpret_casts duckdb_v2_string <-> duckdb::string_t,
+// ABI guard: the bridge reinterpret_casts duckdb_v2_bytes <-> duckdb::string_t,
 // so the layouts must match. sizeof/alignof tie them together; the offsetof
-// checks pin duckdb_v2_string's field offsets (string_t's union is private, so
+// checks pin duckdb_v2_bytes's field offsets (string_t's union is private, so
 // offsetof can't reach into it).
-static_assert(sizeof(duckdb_v2_string) == sizeof(duckdb::string_t),
-              "duckdb_v2_string must match the size of duckdb::string_t");
-static_assert(alignof(duckdb_v2_string) == alignof(duckdb::string_t),
-              "duckdb_v2_string must match the alignment of duckdb::string_t");
-static_assert(offsetof(duckdb_v2_string, value.pointer.length) == 0,
-              "duckdb_v2_string value.pointer.length must be at offset 0");
-static_assert(offsetof(duckdb_v2_string, value.pointer.prefix) == 4,
-              "duckdb_v2_string value.pointer.prefix must be at offset 4");
-static_assert(offsetof(duckdb_v2_string, value.pointer.ptr) == 8,
-              "duckdb_v2_string value.pointer.ptr must be at offset 8");
-static_assert(offsetof(duckdb_v2_string, value.inlined.inlined) == 4,
-              "duckdb_v2_string value.inlined.inlined must be at offset 4");
+static_assert(sizeof(duckdb_v2_bytes) == sizeof(duckdb::string_t),
+              "duckdb_v2_bytes must match the size of duckdb::string_t");
+static_assert(alignof(duckdb_v2_bytes) == alignof(duckdb::string_t),
+              "duckdb_v2_bytes must match the alignment of duckdb::string_t");
+static_assert(offsetof(duckdb_v2_bytes, value.pointer.length) == 0,
+              "duckdb_v2_bytes value.pointer.length must be at offset 0");
+static_assert(offsetof(duckdb_v2_bytes, value.pointer.prefix) == 4,
+              "duckdb_v2_bytes value.pointer.prefix must be at offset 4");
+static_assert(offsetof(duckdb_v2_bytes, value.pointer.ptr) == 8,
+              "duckdb_v2_bytes value.pointer.ptr must be at offset 8");
+static_assert(offsetof(duckdb_v2_bytes, value.inlined.inlined) == 4,
+              "duckdb_v2_bytes value.inlined.inlined must be at offset 4");
 
 namespace duckdb {
 
@@ -538,11 +538,11 @@ inline DataChunk *ToDataChunk(duckdb_v2_data_chunk_handle ptr) {
 inline Vector *ToVector(duckdb_v2_vector_handle ptr) {
 	return reinterpret_cast<Vector *>(ptr);
 }
-// duckdb_v2_string_heap_handle is a borrowed duckdb::StringHeap living inside a
+// duckdb_v2_arena_handle is a borrowed duckdb::StringHeap living inside a
 // vector's auxiliary buffer. No wrapper — the handle is the bare StringHeap
-// pointer, obtained via vector_get_string_heap and valid only while the owning
+// pointer, obtained via vector_get_arena and valid only while the owning
 // vector's heap is. The caller never destroys it.
-inline StringHeap *ToStringHeap(duckdb_v2_string_heap_handle ptr) {
+inline StringHeap *ToArena(duckdb_v2_arena_handle ptr) {
 	return reinterpret_cast<StringHeap *>(ptr);
 }
 // duckdb_v2_expression_handle is a borrowed duckdb::Expression living inside the

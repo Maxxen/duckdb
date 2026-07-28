@@ -83,13 +83,14 @@ handles:
       unified-format shape (data + validity + selection) per kind; the
       row count comes from the caller's context (the chunk for top-level
       vectors; parents for nested child vectors).
-  string_heap:
+  arena:
     description: |
-      Borrowed handle to a vector's string heap: the arena owning the
-      out-of-line bytes of non-inlined VARCHAR / BLOB / BIT / BIGNUM values.
-      Obtained via vector_get_string_heap. Do not destroy; valid until the
-      owning vector is flattened, reallocated, or destroyed. Bytes added to it
-      are owned by the vector.
+      Borrowed handle to a bump allocator owned by another object. Bytes handed
+      out by arena_allocate are owned by that object and share its lifetime; the
+      arena itself is never destroyed by the caller. Obtained via
+      vector_get_arena, which yields the arena backing the out-of-line bytes of
+      non-inlined VARCHAR / BLOB / BIT / BIGNUM values and stays valid until the
+      owning vector is flattened, reallocated, or destroyed.
   context:
     description: "The DuckDB \"context\", essentially a \"connection\", but from the \"inside\" \nof DuckDB. TODO - elaborate more, maybe mention UDFs, callbacks, etc.\n"
 structs:
@@ -102,13 +103,13 @@ structs:
       is documented by whichever function produced it (typically "valid
       until the owning handle is destroyed"). `{NULL, 0}` is the canonical
       empty view; `ptr` must not be dereferenced when `len` is 0. Not to be
-      confused with `string`, the transparent 16-byte VARCHAR *storage*
-      format.
+      confused with `bytes`, the transparent 16-byte *storage* format for a
+      variable-size value in a vector.
     fields:
       - {name: ptr, type: char, pointer: 1, const: true}
       - {name: len, type: idx}
-  string:
-    description: "16-byte storage for a byte-backed value (VARCHAR / BLOB / BIT /\nBIGNUM), mirroring duckdb::string_t. Inlined when length <=\nSTRING_INLINE_LENGTH (bytes in value.inlined.inlined); otherwise\nvalue.pointer.ptr holds the bytes and value.pointer.prefix the\nfirst 4. Read the fields directly; BIT / BIGNUM additionally carry\nan encoding. For BIT, byte 0 is the padding-bit count, bytes 1.. \nare the data; BIGNUM is decoded via bignum_decode.\n"
+  bytes:
+    description: "16-byte storage for a variable-size, byte-backed value (VARCHAR /\nBLOB / BIT / BIGNUM), mirroring duckdb::string_t. Inlined when\nlength <= BYTES_INLINE_LENGTH (bytes in value.inlined.inlined);\notherwise value.pointer.ptr holds the bytes and\nvalue.pointer.prefix the first 4. Read the fields directly; BIT /\nBIGNUM additionally carry an encoding. For BIT, byte 0 is the\npadding-bit count, bytes 1.. are the data; BIGNUM is decoded via\nbignum_decode.\n"
     fields:
       - name: value
         union:
@@ -162,16 +163,16 @@ aliases:
     underlying: u32
     description: Selection-vector entry. Mirrors duckdb::sel_t.
   varchar:
-    underlying: string
-    description: VARCHAR storage. Read the transparent string fields directly.
+    underlying: bytes
+    description: VARCHAR storage. Read the transparent bytes fields directly.
   blob:
-    underlying: string
-    description: BLOB storage. Read the transparent string fields directly.
+    underlying: bytes
+    description: BLOB storage. Read the transparent bytes fields directly.
   bit:
-    underlying: string
+    underlying: bytes
     description: BIT storage. Byte 0 is the padding-bit count, bytes 1.. the data.
   bignum:
-    underlying: string
+    underlying: bytes
     description: BIGNUM storage. Decode via bignum_decode.
   identifier:
     underlying: str
@@ -183,6 +184,6 @@ aliases:
       than embedding it raw. Casing is preserved by the catalog; some
       registries (config settings) canonicalize to lowercase.
 constants:
-  STRING_INLINE_LENGTH:
+  BYTES_INLINE_LENGTH:
     value: 12
-    description: "Inline cutoff for `string` storage: a value of at most this many bytes is stored inline."
+    description: "Inline cutoff for `bytes` storage: a value of at most this many bytes is stored inline."

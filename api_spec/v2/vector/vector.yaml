@@ -44,8 +44,8 @@ module: vector
 #     entry; read the dictionary once, not per row). Storage tier by
 #     dictionary size, contract: size <= 255 uint8, <= 65535 uint16,
 #     else uint32 (boundaries inclusive; an empty dictionary is uint8).
-#   - VARCHAR / BLOB / BIT / BIGNUM → const string_t * (typed via the
-#     varchar_t / blob_t / bit_t / bignum_t aliases). string_t is a
+#   - VARCHAR / BLOB / BIT / BIGNUM → const bytes * (typed via the
+#     varchar_t / blob_t / bit_t / bignum_t aliases). bytes is a
 #     transparent union mirroring duckdb::string_t (see common.yaml):
 #     read its fields directly and stride arr[row]. VARCHAR / BLOB
 #     carry no wire encoding, so the field read is the read. BIT and
@@ -103,12 +103,12 @@ module: vector
 # Layout typedefs:
 #   hugeint_t / uhugeint_t / interval_t / list_entry are declared as
 #   plain structs with visible fields — callers read those fields
-#   directly. string_t (declared in common.yaml) is a transparent
+#   directly. bytes (declared in common.yaml) is a transparent
 #   16-byte union mirroring duckdb::string_t: callers read its fields
 #   directly, dispatching inline-vs-pointer on the
-#   STRING_INLINE_LENGTH cutoff, and stride arr[row]. The four kind
+#   BYTES_INLINE_LENGTH cutoff, and stride arr[row]. The four kind
 #   aliases (varchar_t / blob_t / bit_t / bignum_t) are
-#   semantic-marker typedefs of string_t.
+#   semantic-marker typedefs of bytes.
 
 structs:
   vector_view:
@@ -566,27 +566,27 @@ functions:
   # -----------------------------------------------------------------------
   # String writing
   #
-  # vector_get_string_heap borrows the heap; the writes themselves live in the
-  # string_heap module, which documents the two-step write and lifetime.
+  # vector_get_arena borrows the arena; the writes themselves live in the
+  # arena module, which documents the two-step write and lifetime.
   # -----------------------------------------------------------------------
-  vector_get_string_heap:
+  vector_get_arena:
     description: |
-      Borrows a string-backed vector's heap for writing.
+      Borrows a string-backed vector's arena for writing.
 
-      Allocates the heap on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM
+      Allocates the arena on first use. Valid for VARCHAR / BLOB / BIT / BIGNUM
       vectors; ERROR_INPUT_INVALID otherwise. This is the single string-ness
-      check; the resulting heap's add calls skip it. Borrowed (do not destroy);
-      valid until the vector is flattened, reallocated, or destroyed.
+      check; the resulting arena's allocate calls skip it. Borrowed (do not
+      destroy); valid until the vector is flattened, reallocated, or destroyed.
     role: getter
     belongs_to: vector
     parameters:
       vector:
         type: vector
-      out_heap:
-        type: string_heap
+      out_arena:
+        type: arena
         indirection: 1
         kind: OUT_BORROW
-        description: Receives the borrowed string-heap handle.
+        description: Receives the borrowed arena handle.
       err:
         type: error_info
         indirection: 1
@@ -661,7 +661,7 @@ functions:
   # String-backed kind decoders
   #
   # Only BIT and BIGNUM carry a wire encoding on top of the transparent
-  # string_t bytes; VARCHAR / BLOB reads are direct field reads. BIT is a
+  # bytes payloads; VARCHAR / BLOB reads are direct field reads. BIT is a
   # committed, trivial split (byte 0 is the padding-bit count, bytes 1..
   # are the data), so it is decoded client-side with no C entry point.
   # BIGNUM keeps a decoder: it allocates an owned magnitude buffer because

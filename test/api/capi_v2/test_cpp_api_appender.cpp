@@ -41,7 +41,7 @@ std::string ApScalarVarchar(Connection &conn, const std::string &sql) {
 	REQUIRE(chunk);
 	auto view = chunk.GetVector(0).GetView();
 	REQUIRE(view.IsValid(0));
-	auto slot = view.Data<StringLayout>()[view.SelAt(0)];
+	auto slot = view.Data<BytesLayout>()[view.SelAt(0)];
 	std::string out(slot.AsStringView());
 	while (result.FetchChunk()) {
 	}

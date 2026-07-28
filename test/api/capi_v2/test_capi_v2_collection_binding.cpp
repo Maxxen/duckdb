@@ -153,7 +153,7 @@ std::string ResultScalarVarchar(V2Result &r) {
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
 	idx_t row = SelAt(view.sel, 0);
 	REQUIRE(RowValid(view, row));
-	std::string out = V2StrTo(V2StringView(reinterpret_cast<const duckdb_v2_string *>(view.data)[row]));
+	std::string out = V2StrTo(V2StringView(reinterpret_cast<const duckdb_v2_bytes *>(view.data)[row]));
 	duckdb_v2_data_chunk_destroy(&chunk);
 	while (auto c = V2StepChunk(r)) {
 		duckdb_v2_data_chunk_destroy(&c);

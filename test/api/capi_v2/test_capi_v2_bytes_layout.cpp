@@ -6,7 +6,7 @@
 #include <string>
 
 // ---------------------------------------------------------------------------
-// Tests for the transparent duckdb_v2_string layout: read its fields directly
+// Tests for the transparent duckdb_v2_bytes layout: read its fields directly
 // (via the StrInlined / StrLength / StrData helpers below) and cross-validate
 // against the V1 string_t accessors (duckdb_string_is_inlined, _t_length,
 // _t_data) and the V2 wire-codec decoders (bit/bignum_decode).
@@ -16,30 +16,30 @@ namespace {
 
 // Direct field reads on the transparent layout. The length field overlaps in
 // both union members, so it is read through inlined regardless of form.
-bool StrInlined(const duckdb_v2_string *s) {
-	return s->value.inlined.length <= DUCKDB_V2_STRING_INLINE_LENGTH;
+bool StrInlined(const duckdb_v2_bytes *s) {
+	return s->value.inlined.length <= DUCKDB_V2_BYTES_INLINE_LENGTH;
 }
-uint32_t StrLength(const duckdb_v2_string *s) {
+uint32_t StrLength(const duckdb_v2_bytes *s) {
 	return s->value.inlined.length;
 }
-const char *StrData(const duckdb_v2_string *s) {
+const char *StrData(const duckdb_v2_bytes *s) {
 	return StrInlined(s) ? s->value.inlined.inlined : s->value.pointer.ptr;
 }
 
 // BIT wire format: data[0] is the padding-bit count; data[1..] is the payload.
-uint8_t BitPadding(const duckdb_v2_string *s) {
+uint8_t BitPadding(const duckdb_v2_bytes *s) {
 	return StrLength(s) == 0 ? 0 : static_cast<uint8_t>(StrData(s)[0]);
 }
-uint64_t BitCount(const duckdb_v2_string *s) {
+uint64_t BitCount(const duckdb_v2_bytes *s) {
 	uint32_t len = StrLength(s);
 	return len == 0 ? 0 : static_cast<uint64_t>(len - 1) * 8 - static_cast<uint8_t>(StrData(s)[0]);
 }
-const uint8_t *BitGetData(const duckdb_v2_string *s) {
+const uint8_t *BitGetData(const duckdb_v2_bytes *s) {
 	return reinterpret_cast<const uint8_t *>(StrData(s)) + 1;
 }
 
 // BIGNUM sign encoding: MSB of data[0] clear = negative, set = positive.
-bool BignumNegative(const duckdb_v2_string *s) {
+bool BignumNegative(const duckdb_v2_bytes *s) {
 	return StrLength(s) == 0 ? false : (static_cast<uint8_t>(StrData(s)[0]) & 0x80) == 0;
 }
 
@@ -92,14 +92,14 @@ struct InlQueryRows {
 // "short" (5 chars, inlined) and repeat('x', 50) (pointer form).
 // ===========================================================================
 
-TEST_CASE("V2 string layout: direct reads match V1 equivalents", "[capi_v2][string_layout]") {
+TEST_CASE("V2 bytes layout: direct reads match V1 equivalents", "[capi_v2][bytes_layout]") {
 	V2InlineFixture fx;
 	InlQueryRows qr(fx.conn, "SELECT * FROM (VALUES ('short'), (repeat('x', 50))) t(s)", 2);
-	const duckdb_v2_string *arr = qr.as<duckdb_v2_string>();
+	const duckdb_v2_bytes *arr = qr.as<duckdb_v2_bytes>();
 
 	for (idx_t row = 0; row < qr.size; row++) {
 		idx_t phys = SelAt(qr.view.sel, row);
-		const duckdb_v2_string *v2s = &arr[phys];
+		const duckdb_v2_bytes *v2s = &arr[phys];
 		// V1 uses the same binary layout; cast is safe.
 		duckdb_string_t v1s = *reinterpret_cast<const duckdb_string_t *>(v2s);
 
@@ -136,17 +136,17 @@ TEST_CASE("V2 string layout: direct reads match V1 equivalents", "[capi_v2][stri
 //   '101'      → 3 bits, padding=5
 // ===========================================================================
 
-TEST_CASE("V2 string layout: BIT reads via the transparent split", "[capi_v2][string_layout]") {
+TEST_CASE("V2 bytes layout: BIT reads via the transparent split", "[capi_v2][bytes_layout]") {
 	V2InlineFixture fx;
 	InlQueryRows qr(fx.conn, "SELECT * FROM (VALUES ('11111111'::BIT), ('101'::BIT)) t(b)", 2);
 	const duckdb_v2_bit_t *arr = qr.as<duckdb_v2_bit_t>();
 
-	const duckdb_v2_string *r0 = &arr[SelAt(qr.view.sel, 0)];
+	const duckdb_v2_bytes *r0 = &arr[SelAt(qr.view.sel, 0)];
 	REQUIRE(BitPadding(r0) == 0);
 	REQUIRE(BitCount(r0) == 8);
 	REQUIRE(static_cast<uint8_t>(BitGetData(r0)[0]) == 0xFF);
 
-	const duckdb_v2_string *r1 = &arr[SelAt(qr.view.sel, 1)];
+	const duckdb_v2_bytes *r1 = &arr[SelAt(qr.view.sel, 1)];
 	REQUIRE(BitPadding(r1) == 5);
 	REQUIRE(BitCount(r1) == 3);
 }
@@ -157,7 +157,7 @@ TEST_CASE("V2 string layout: BIT reads via the transparent split", "[capi_v2][st
 //   -256       → negative
 // ===========================================================================
 
-TEST_CASE("V2 string layout: BIGNUM sign matches bignum_decode", "[capi_v2][string_layout]") {
+TEST_CASE("V2 bytes layout: BIGNUM sign matches bignum_decode", "[capi_v2][bytes_layout]") {
 	V2InlineFixture fx;
 	InlQueryRows qr(fx.conn,
 	                "SELECT * FROM (VALUES "

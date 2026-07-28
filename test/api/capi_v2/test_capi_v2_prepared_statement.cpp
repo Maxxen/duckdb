@@ -71,12 +71,12 @@ std::string DrainVarcharScalar(duckdb_v2_result_handle r) {
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
-	// duckdb_v2_string is transparent: a short value is inlined, a longer one lives
+	// duckdb_v2_bytes is transparent: a short value is inlined, a longer one lives
 	// behind value.pointer.ptr.
-	auto *strings = reinterpret_cast<const duckdb_v2_string *>(view.data);
+	auto *strings = reinterpret_cast<const duckdb_v2_bytes *>(view.data);
 	const auto &s = strings[0];
 	uint32_t len = s.value.inlined.length;
-	const char *data = len <= DUCKDB_V2_STRING_INLINE_LENGTH ? s.value.inlined.inlined : s.value.pointer.ptr;
+	const char *data = len <= DUCKDB_V2_BYTES_INLINE_LENGTH ? s.value.inlined.inlined : s.value.pointer.ptr;
 	std::string result(data, len);
 	duckdb_v2_data_chunk_destroy(&chunk);
 	auto trailing = V2StepChunk(r);

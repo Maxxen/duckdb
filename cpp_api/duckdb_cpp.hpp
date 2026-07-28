@@ -1366,12 +1366,12 @@ private:
 // String Heap
 //----------------------------------------------------------------------------------------------------------------------
 
-// Transparent mirror of the C ABI's duckdb_v2_string (same layout as
+// Transparent mirror of the C ABI's duckdb_v2_bytes (same layout as
 // duckdb::string_t): 16-byte storage for VARCHAR / BLOB / BIT / BIGNUM, inlined
 // when length <= INLINE_LENGTH. A non-inlined value is valid only in a slot of
 // the vector whose heap produced it. Aggregate, so it writes straight into a
 // slot; layout pinned by static_assert in the .cpp.
-struct StringLayout {
+struct BytesLayout {
 	static constexpr uint32_t INLINE_LENGTH = 12;
 	static constexpr uint32_t PREFIX_LENGTH = 4;
 
@@ -1388,9 +1388,9 @@ struct StringLayout {
 	} value;
 
 	// Inlined token; the bytes live in the value. `len` must fit INLINE_LENGTH.
-	static auto Inlined(const char *data, uint32_t len) -> StringLayout {
+	static auto Inlined(const char *data, uint32_t len) -> BytesLayout {
 		assert(len <= INLINE_LENGTH);
-		StringLayout storage {};
+		BytesLayout storage {};
 		storage.value.inlined.length = len;
 		if (len > 0) {
 			std::memcpy(storage.value.inlined.inlined, data, len);
@@ -1400,9 +1400,9 @@ struct StringLayout {
 
 	// Non-inlined token over `len` bytes at `heap_data` (from Allocate); sets the
 	// prefix. `len` must exceed INLINE_LENGTH, else it would read as inlined.
-	static auto FromHeapData(char *heap_data, uint32_t len) -> StringLayout {
+	static auto FromHeapData(char *heap_data, uint32_t len) -> BytesLayout {
 		assert(len > INLINE_LENGTH);
-		StringLayout storage {};
+		BytesLayout storage {};
 		storage.value.pointer.length = len;
 		storage.value.pointer.ptr = heap_data;
 		std::memcpy(storage.value.pointer.prefix, heap_data, PREFIX_LENGTH);
@@ -1435,7 +1435,7 @@ struct StringLayout {
 };
 
 // Borrowed handle to a vector's string heap. Reserves vector-lifetime bytes and
-// returns StringLayout tokens to place in any order (dedup, scatter). Borrowed;
+// returns BytesLayout tokens to place in any order (dedup, scatter). Borrowed;
 // invalid across a flatten or reallocation of the owning vector.
 class StringHeap final : public detail::Handle<StringHeap> {
 	friend detail::Factory;
@@ -1452,23 +1452,23 @@ public:
 
 	// Interns `data`, returning the token. <= INLINE_LENGTH builds inline (no
 	// allocation, no boundary crossing); larger allocates and copies. Throws if
-	// `data` exceeds the uint32 length a duckdb_v2_string can hold.
-	auto Add(std::string_view data) -> StringLayout {
+	// `data` exceeds the uint32 length a duckdb_v2_bytes can hold.
+	auto Add(std::string_view data) -> BytesLayout {
 		if (data.size() > UINT32_MAX) {
 			ThrowStringTooLong(data.size());
 		}
-		if (data.size() <= StringLayout::INLINE_LENGTH) {
-			return StringLayout::Inlined(data.data(), static_cast<uint32_t>(data.size()));
+		if (data.size() <= BytesLayout::INLINE_LENGTH) {
+			return BytesLayout::Inlined(data.data(), static_cast<uint32_t>(data.size()));
 		}
 		auto len = static_cast<uint32_t>(data.size());
 		auto *bytes = Allocate(len);
 		std::memcpy(bytes, data.data(), len);
-		return StringLayout::FromHeapData(reinterpret_cast<char *>(bytes), len);
+		return BytesLayout::FromHeapData(reinterpret_cast<char *>(bytes), len);
 	}
 
 	// Bulk Add: interns every view, returning the tokens in order.
-	auto AddMany(const std::vector<std::string_view> &data) -> std::vector<StringLayout> {
-		std::vector<StringLayout> out;
+	auto AddMany(const std::vector<std::string_view> &data) -> std::vector<BytesLayout> {
+		std::vector<BytesLayout> out;
 		out.reserve(data.size());
 		for (const auto &view : data) {
 			out.push_back(Add(view));
@@ -1635,17 +1635,17 @@ public:
 	auto MakeSequence(int64_t start, int64_t increment, idx_t count) -> void;
 
 	// Decodes one BIT storage value (a slot of a BIT vector's data array, read
-	// as StringLayout): byte 0 is the padding-bit count, bytes 1.. are the data.
+	// as BytesLayout): byte 0 is the padding-bit count, bytes 1.. are the data.
 	// Borrowed pointers; lifetime = the owning chunk. Inline pointer arithmetic,
 	// no allocation or ABI crossing, so it inlines into a per-row vector loop.
-	static auto DecodeBit(const StringLayout &value) -> DecodedBit {
+	static auto DecodeBit(const BytesLayout &value) -> DecodedBit {
 		const auto len = value.Length();
 		const auto *bytes = reinterpret_cast<const uint8_t *>(value.Data());
 		return DecodedBit {len > 0 ? bytes + 1 : bytes, len > 0 ? len - 1 : 0, len > 0 ? bytes[0] : uint8_t(0)};
 	}
 
 	// Decodes one BIGNUM storage value into an owned magnitude + sign.
-	static auto DecodeBignum(const StringLayout &value) -> DecodedBignum;
+	static auto DecodeBignum(const BytesLayout &value) -> DecodedBignum;
 
 	// Unpacks one TIME_TZ slot (read as uint64) into micros + UTC offset.
 	// Defined inline: a pure-arithmetic decode of the committed layout with no
@@ -1704,7 +1704,7 @@ public:
 
 	// Places an interned storage token into slot `index`. The token must come
 	// from this vector's heap (a non-inlined token from another vector dangles).
-	auto SetString(idx_t index, StringLayout value) -> void;
+	auto SetString(idx_t index, BytesLayout value) -> void;
 
 private:
 	explicit Vector(void *impl);

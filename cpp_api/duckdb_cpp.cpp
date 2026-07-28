@@ -119,7 +119,7 @@ struct HandleTraits<ArrowConversionPlan> {
 };
 template <>
 struct HandleTraits<StringHeap> {
-	using handle = duckdb_v2_string_heap_handle;
+	using handle = duckdb_v2_arena_handle;
 };
 template <>
 struct HandleTraits<DataChunk> {
@@ -1891,17 +1891,17 @@ auto Expression::GetReferenceIndex() const -> idx_t {
 //----------------------------------------------------------------------------------------------------------------------
 // String Heap
 //----------------------------------------------------------------------------------------------------------------------
-// StringLayout mirrors duckdb_v2_string; pin it here (both types visible) so any
+// BytesLayout mirrors duckdb_v2_bytes; pin it here (both types visible) so any
 // layout drift breaks the build rather than the ABI.
-static_assert(sizeof(StringLayout) == sizeof(duckdb_v2_string) && alignof(StringLayout) == alignof(duckdb_v2_string),
-              "StringLayout must mirror the C ABI's duckdb_v2_string");
-static_assert(offsetof(StringLayout, value.pointer.length) == offsetof(duckdb_v2_string, value.pointer.length) &&
-                  offsetof(StringLayout, value.pointer.prefix) == offsetof(duckdb_v2_string, value.pointer.prefix) &&
-                  offsetof(StringLayout, value.pointer.ptr) == offsetof(duckdb_v2_string, value.pointer.ptr) &&
-                  offsetof(StringLayout, value.inlined.inlined) == offsetof(duckdb_v2_string, value.inlined.inlined),
-              "StringLayout field offsets must match duckdb_v2_string");
-static_assert(StringLayout::INLINE_LENGTH == DUCKDB_V2_STRING_INLINE_LENGTH,
-              "StringLayout::INLINE_LENGTH must match DUCKDB_V2_STRING_INLINE_LENGTH");
+static_assert(sizeof(BytesLayout) == sizeof(duckdb_v2_bytes) && alignof(BytesLayout) == alignof(duckdb_v2_bytes),
+              "BytesLayout must mirror the C ABI's duckdb_v2_bytes");
+static_assert(offsetof(BytesLayout, value.pointer.length) == offsetof(duckdb_v2_bytes, value.pointer.length) &&
+                  offsetof(BytesLayout, value.pointer.prefix) == offsetof(duckdb_v2_bytes, value.pointer.prefix) &&
+                  offsetof(BytesLayout, value.pointer.ptr) == offsetof(duckdb_v2_bytes, value.pointer.ptr) &&
+                  offsetof(BytesLayout, value.inlined.inlined) == offsetof(duckdb_v2_bytes, value.inlined.inlined),
+              "BytesLayout field offsets must match duckdb_v2_bytes");
+static_assert(BytesLayout::INLINE_LENGTH == DUCKDB_V2_BYTES_INLINE_LENGTH,
+              "BytesLayout::INLINE_LENGTH must match DUCKDB_V2_BYTES_INLINE_LENGTH");
 
 StringHeap::StringHeap(void *impl) : detail::Handle<StringHeap>(impl) {
 }
@@ -1912,13 +1912,13 @@ StringHeap::~StringHeap() {
 
 auto StringHeap::Allocate(idx_t byte_len) -> uint8_t * {
 	uint8_t *ptr = nullptr;
-	CheckedAPICall(duckdb_v2_string_heap_allocate, handle(), byte_len, &ptr);
+	CheckedAPICall(duckdb_v2_arena_allocate, handle(), byte_len, &ptr);
 	return ptr;
 }
 
 void StringHeap::ThrowStringTooLong(idx_t size) {
 	throw Exception(DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE, "Out of Range Error: string length " + std::to_string(size) +
-	                                                        " exceeds the maximum a duckdb_v2_string can hold");
+	                                                        " exceeds the maximum a duckdb_v2_bytes can hold");
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2019,10 +2019,10 @@ auto Vector::MakeSequence(int64_t start, int64_t increment, idx_t count) -> void
 	CheckedAPICall(duckdb_v2_vector_make_sequence, handle(), start, increment, count);
 }
 
-// The StringLayout <-> duckdb_v2_string casts below are sanctioned by the
+// The BytesLayout <-> duckdb_v2_bytes casts below are sanctioned by the
 // layout static_asserts above.
 
-auto Vector::DecodeBignum(const StringLayout &value) -> DecodedBignum {
+auto Vector::DecodeBignum(const BytesLayout &value) -> DecodedBignum {
 	uint8_t *data = nullptr;
 	idx_t length = 0;
 	bool is_negative = false;
@@ -2060,7 +2060,7 @@ auto Vector::CheckWriteRange(idx_t start, idx_t count) const -> void {
 auto Vector::AssignString(idx_t index, std::string_view data) -> void {
 	CheckWriteRange(index, 1);
 	auto heap = GetStringHeap();
-	GetDataMutable<StringLayout>()[index] = heap.Add(data);
+	GetDataMutable<BytesLayout>()[index] = heap.Add(data);
 }
 
 auto Vector::AssignStrings(idx_t start, const std::vector<std::string_view> &data) -> void {
@@ -2071,20 +2071,20 @@ auto Vector::AssignStrings(idx_t start, const std::vector<std::string_view> &dat
 	auto heap = GetStringHeap();
 	// Intern and place into the data array in one pass. On throw, slots
 	// [start, start+i) are already written; the vector is left partially filled.
-	auto *slots = GetDataMutable<StringLayout>();
+	auto *slots = GetDataMutable<BytesLayout>();
 	for (idx_t i = 0; i < data.size(); i++) {
 		slots[start + i] = heap.Add(data[i]);
 	}
 }
 
 auto Vector::GetStringHeap() -> StringHeap {
-	duckdb_v2_string_heap_handle heap = nullptr;
-	CheckedAPICall(duckdb_v2_vector_get_string_heap, handle(), &heap);
+	duckdb_v2_arena_handle heap = nullptr;
+	CheckedAPICall(duckdb_v2_vector_get_arena, handle(), &heap);
 	return detail::Factory::Make<StringHeap>(heap);
 }
 
-auto Vector::SetString(idx_t index, StringLayout value) -> void {
-	GetDataMutable<StringLayout>()[index] = value;
+auto Vector::SetString(idx_t index, BytesLayout value) -> void {
+	GetDataMutable<BytesLayout>()[index] = value;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

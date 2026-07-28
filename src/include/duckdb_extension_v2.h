@@ -100,6 +100,8 @@ typedef struct {
 #endif
 	// capigen:begin appended
 #ifdef DUCKDB_EXTENSION_API_VERSION_UNSTABLE
+	DUCKDB_V2_ERROR(*duckdb_v2_arena_allocate)
+	(duckdb_v2_arena_handle arena, idx_t byte_len, uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_cast_function_builder_create)
 	(duckdb_v2_cast_function_builder_handle *out, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_cast_function_builder_set_source_type)
@@ -435,8 +437,6 @@ typedef struct {
 	DUCKDB_V2_ERROR(*duckdb_v2_function_signature_get_return_type)
 	(duckdb_v2_function_signature_handle sig, duckdb_v2_logical_type_handle *out_type,
 	 duckdb_v2_error_info_handle *err);
-	DUCKDB_V2_ERROR(*duckdb_v2_string_heap_allocate)
-	(duckdb_v2_string_heap_handle heap, idx_t byte_len, uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR (*duckdb_v2_value_destroy)(duckdb_v2_value_handle *value);
 	DUCKDB_V2_ERROR(*duckdb_v2_value_create_null)
 	(duckdb_v2_logical_type_handle type, duckdb_v2_value_handle *out_value, duckdb_v2_error_info_handle *err);
@@ -505,8 +505,8 @@ typedef struct {
 	(duckdb_v2_vector_handle vector, uint64_t **out_validity, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_vector_constant_set_valid)
 	(duckdb_v2_vector_handle vector, bool validity, duckdb_v2_error_info_handle *err);
-	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_string_heap)
-	(duckdb_v2_vector_handle vector, duckdb_v2_string_heap_handle *out_heap, duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_arena)
+	(duckdb_v2_vector_handle vector, duckdb_v2_arena_handle *out_arena, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_child_count)
 	(duckdb_v2_vector_handle vector, idx_t *out_count, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_child)
@@ -977,6 +977,7 @@ typedef struct {
 #define duckdb_v2_error_info_destroy  duckdb_ext_api.duckdb_v2_error_info_destroy
 
 // capigen:begin appended
+#define duckdb_v2_arena_allocate                        duckdb_ext_api.duckdb_v2_arena_allocate
 #define duckdb_v2_cast_function_builder_create          duckdb_ext_api.duckdb_v2_cast_function_builder_create
 #define duckdb_v2_cast_function_builder_set_source_type duckdb_ext_api.duckdb_v2_cast_function_builder_set_source_type
 #define duckdb_v2_cast_function_builder_set_target_type duckdb_ext_api.duckdb_v2_cast_function_builder_set_target_type
@@ -1147,7 +1148,6 @@ typedef struct {
 #define duckdb_v2_function_signature_get_varargs      duckdb_ext_api.duckdb_v2_function_signature_get_varargs
 #define duckdb_v2_function_signature_has_return_type  duckdb_ext_api.duckdb_v2_function_signature_has_return_type
 #define duckdb_v2_function_signature_get_return_type  duckdb_ext_api.duckdb_v2_function_signature_get_return_type
-#define duckdb_v2_string_heap_allocate                duckdb_ext_api.duckdb_v2_string_heap_allocate
 #define duckdb_v2_value_destroy                       duckdb_ext_api.duckdb_v2_value_destroy
 #define duckdb_v2_value_create_null                   duckdb_ext_api.duckdb_v2_value_create_null
 #define duckdb_v2_value_create_from_data              duckdb_ext_api.duckdb_v2_value_create_from_data
@@ -1180,7 +1180,7 @@ typedef struct {
 #define duckdb_v2_vector_set_null                     duckdb_ext_api.duckdb_v2_vector_set_null
 #define duckdb_v2_vector_flat_get_validity_mutable    duckdb_ext_api.duckdb_v2_vector_flat_get_validity_mutable
 #define duckdb_v2_vector_constant_set_valid           duckdb_ext_api.duckdb_v2_vector_constant_set_valid
-#define duckdb_v2_vector_get_string_heap              duckdb_ext_api.duckdb_v2_vector_get_string_heap
+#define duckdb_v2_vector_get_arena                    duckdb_ext_api.duckdb_v2_vector_get_arena
 #define duckdb_v2_vector_get_child_count              duckdb_ext_api.duckdb_v2_vector_get_child_count
 #define duckdb_v2_vector_get_child                    duckdb_ext_api.duckdb_v2_vector_get_child
 #define duckdb_v2_bignum_decode                       duckdb_ext_api.duckdb_v2_bignum_decode

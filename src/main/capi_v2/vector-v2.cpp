@@ -433,7 +433,7 @@ DUCKDB_V2_ERROR duckdb_v2_vector_set_value(duckdb_v2_vector_handle vector, idx_t
 // ---------------------------------------------------------------------------
 // String-backed kind decoders
 //
-// duckdb_v2_string (and its bit/bignum aliases) is the transparent
+// duckdb_v2_bytes (and its bit/bignum aliases) is the transparent
 // 16-byte public storage type; the static_asserts in
 // capi_v2_internal.hpp pin its layout to duckdb::string_t, so the
 // reinterpret_casts here are guarded. Only BIGNUM keeps a C decoder (it

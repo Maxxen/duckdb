@@ -248,11 +248,11 @@ namespace {
 // VARCHAR -> CELSIUS cast: parses "<digits>C", so success proves the
 // registered cast ran (the default VARCHAR -> INTEGER cast rejects "21C").
 void VarcharToCelsius(duckdb_api::CastFunction::ExecInput &input) {
-	using duckdb_api::StringLayout;
+	using duckdb_api::BytesLayout;
 	auto in_vec = input.GetInput();
 	auto out_vec = input.GetOutput();
 	in_vec.Flatten();
-	const auto *in = in_vec.GetDataMutable<const StringLayout>();
+	const auto *in = in_vec.GetDataMutable<const BytesLayout>();
 	auto *out = out_vec.GetDataMutable<int32_t>();
 	for (duckdb_api::idx_t i = 0; i < input.GetCount(); i++) {
 		const auto &token = in[i];

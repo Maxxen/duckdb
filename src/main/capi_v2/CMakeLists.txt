@@ -1,6 +1,7 @@
 add_library_unity(
   duckdb_main_capi_v2
   OBJECT
+  arena-v2.cpp
   arrow-v2.cpp
   capi_v2_stubs.cpp
   catalog-v2.cpp
@@ -31,7 +32,6 @@ add_library_unity(
   replacement_scan-v2.cpp
   schema-v2.cpp
   sql_statement-v2.cpp
-  string_heap-v2.cpp
   value-v2.cpp
   vector-v2.cpp)
 

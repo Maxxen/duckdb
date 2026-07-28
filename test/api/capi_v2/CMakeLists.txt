@@ -6,7 +6,9 @@ add_library_unity(
   OBJECT
   test_capi_v2.cpp
   test_capi_v2_aggregate_function.cpp
+  test_capi_v2_arena.cpp
   test_capi_v2_arrow.cpp
+  test_capi_v2_bytes_layout.cpp
   test_capi_v2_cast_function.cpp
   test_capi_v2_collection_binding.cpp
   test_capi_v2_data_chunk.cpp
@@ -16,7 +18,6 @@ add_library_unity(
   test_capi_v2_function_property.cpp
   test_capi_v2_function_signature.cpp
   test_capi_v2_identifier.cpp
-  test_capi_v2_string_layout.cpp
   test_capi_v2_logical_type.cpp
   test_capi_v2_option.cpp
   test_capi_v2_scalar_function.cpp
@@ -27,7 +28,6 @@ add_library_unity(
   test_capi_v2_replacement_scan.cpp
   test_capi_v2_sql_statement.cpp
   test_capi_v2_statement_bind.cpp
-  test_capi_v2_string_heap.cpp
   test_capi_v2_table_description.cpp
   test_capi_v2_value.cpp
   test_capi_v2_file_system.cpp

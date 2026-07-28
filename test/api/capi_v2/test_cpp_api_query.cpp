@@ -838,7 +838,7 @@ std::string CbScalarVarchar(duckdb_api::Connection &conn, const std::string &sql
 	REQUIRE(chunk);
 	auto view = chunk.GetVector(0).GetView();
 	REQUIRE(view.IsValid(0));
-	auto slot = view.Data<duckdb_api::StringLayout>()[view.SelAt(0)];
+	auto slot = view.Data<duckdb_api::BytesLayout>()[view.SelAt(0)];
 	std::string out(slot.AsStringView());
 	while (result.FetchChunk()) {
 	}
@@ -911,7 +911,7 @@ TEST_CASE("Stable C++API: AddCollection two-buffer join", "[cpp_api][collection_
 	REQUIRE(chunk);
 	auto view = chunk.GetVector(0).GetView();
 	REQUIRE(view.IsValid(0));
-	auto slot = view.Data<StringLayout>()[view.SelAt(0)];
+	auto slot = view.Data<BytesLayout>()[view.SelAt(0)];
 	REQUIRE(slot.AsStringView() == "y,z");
 }
 

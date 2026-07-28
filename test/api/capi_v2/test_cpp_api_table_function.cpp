@@ -274,7 +274,7 @@ TEST_CASE("Stable C++API: Arrow round-trip through a table function", "[cpp_api]
 		    auto s_validity = out_s.GetValidityMutable();
 		    for (idx_t i = 0; i < rows; i++) {
 			    if (in_s.IsValid(i)) {
-				    out_s.AssignString(i, in_s.Data<StringLayout>()[in_s.SelAt(i)].AsStringView());
+				    out_s.AssignString(i, in_s.Data<BytesLayout>()[in_s.SelAt(i)].AsStringView());
 			    } else {
 				    s_validity.SetInvalid(i);
 			    }
@@ -309,7 +309,7 @@ TEST_CASE("Stable C++API: Arrow round-trip through a table function", "[cpp_api]
 			} else {
 				REQUIRE(vs.IsValid(i));
 				const auto expected = "str_" + std::string(10, static_cast<char>('0' + src));
-				REQUIRE(vs.Data<StringLayout>()[vs.SelAt(i)].AsStringView() == expected);
+				REQUIRE(vs.Data<BytesLayout>()[vs.SelAt(i)].AsStringView() == expected);
 			}
 		}
 	}
@@ -750,7 +750,7 @@ TEST_CASE("Stable C++API: SetCardinality and SetMaxThreads smoke", "[cpp_api]") 
 					continue;
 				}
 				// Strip thousands separators so the match is format-independent.
-				for (char ch : view.Data<StringLayout>()[view.SelAt(i)].AsStringView()) {
+				for (char ch : view.Data<BytesLayout>()[view.SelAt(i)].AsStringView()) {
 					if (ch != ',') {
 						text.push_back(ch);
 					}

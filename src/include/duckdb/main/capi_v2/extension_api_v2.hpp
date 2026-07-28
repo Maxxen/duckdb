@@ -10,6 +10,8 @@ typedef struct {
 	DUCKDB_V2_ERROR (*duckdb_v2_error_info_set_code)(duckdb_v2_error_info_handle info, DUCKDB_V2_ERROR code);
 	DUCKDB_V2_ERROR (*duckdb_v2_error_info_set_text)(duckdb_v2_error_info_handle info, duckdb_v2_str text);
 	DUCKDB_V2_ERROR (*duckdb_v2_error_info_destroy)(duckdb_v2_error_info_handle *info);
+	DUCKDB_V2_ERROR(*duckdb_v2_arena_allocate)
+	(duckdb_v2_arena_handle arena, idx_t byte_len, uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_cast_function_builder_create)
 	(duckdb_v2_cast_function_builder_handle *out, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_cast_function_builder_set_source_type)
@@ -345,8 +347,6 @@ typedef struct {
 	DUCKDB_V2_ERROR(*duckdb_v2_function_signature_get_return_type)
 	(duckdb_v2_function_signature_handle sig, duckdb_v2_logical_type_handle *out_type,
 	 duckdb_v2_error_info_handle *err);
-	DUCKDB_V2_ERROR(*duckdb_v2_string_heap_allocate)
-	(duckdb_v2_string_heap_handle heap, idx_t byte_len, uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR (*duckdb_v2_value_destroy)(duckdb_v2_value_handle *value);
 	DUCKDB_V2_ERROR(*duckdb_v2_value_create_null)
 	(duckdb_v2_logical_type_handle type, duckdb_v2_value_handle *out_value, duckdb_v2_error_info_handle *err);
@@ -415,8 +415,8 @@ typedef struct {
 	(duckdb_v2_vector_handle vector, uint64_t **out_validity, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_vector_constant_set_valid)
 	(duckdb_v2_vector_handle vector, bool validity, duckdb_v2_error_info_handle *err);
-	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_string_heap)
-	(duckdb_v2_vector_handle vector, duckdb_v2_string_heap_handle *out_heap, duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_arena)
+	(duckdb_v2_vector_handle vector, duckdb_v2_arena_handle *out_arena, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_child_count)
 	(duckdb_v2_vector_handle vector, idx_t *out_count, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR(*duckdb_v2_vector_get_child)
@@ -881,6 +881,7 @@ inline duckdb_ext_api_v2 CreateAPIv2(void) {
 	result.duckdb_v2_error_info_set_code = duckdb_v2_error_info_set_code;
 	result.duckdb_v2_error_info_set_text = duckdb_v2_error_info_set_text;
 	result.duckdb_v2_error_info_destroy = duckdb_v2_error_info_destroy;
+	result.duckdb_v2_arena_allocate = duckdb_v2_arena_allocate;
 	result.duckdb_v2_cast_function_builder_create = duckdb_v2_cast_function_builder_create;
 	result.duckdb_v2_cast_function_builder_set_source_type = duckdb_v2_cast_function_builder_set_source_type;
 	result.duckdb_v2_cast_function_builder_set_target_type = duckdb_v2_cast_function_builder_set_target_type;
@@ -1040,7 +1041,6 @@ inline duckdb_ext_api_v2 CreateAPIv2(void) {
 	result.duckdb_v2_function_signature_get_varargs = duckdb_v2_function_signature_get_varargs;
 	result.duckdb_v2_function_signature_has_return_type = duckdb_v2_function_signature_has_return_type;
 	result.duckdb_v2_function_signature_get_return_type = duckdb_v2_function_signature_get_return_type;
-	result.duckdb_v2_string_heap_allocate = duckdb_v2_string_heap_allocate;
 	result.duckdb_v2_value_destroy = duckdb_v2_value_destroy;
 	result.duckdb_v2_value_create_null = duckdb_v2_value_create_null;
 	result.duckdb_v2_value_create_from_data = duckdb_v2_value_create_from_data;
@@ -1073,7 +1073,7 @@ inline duckdb_ext_api_v2 CreateAPIv2(void) {
 	result.duckdb_v2_vector_set_null = duckdb_v2_vector_set_null;
 	result.duckdb_v2_vector_flat_get_validity_mutable = duckdb_v2_vector_flat_get_validity_mutable;
 	result.duckdb_v2_vector_constant_set_valid = duckdb_v2_vector_constant_set_valid;
-	result.duckdb_v2_vector_get_string_heap = duckdb_v2_vector_get_string_heap;
+	result.duckdb_v2_vector_get_arena = duckdb_v2_vector_get_arena;
 	result.duckdb_v2_vector_get_child_count = duckdb_v2_vector_get_child_count;
 	result.duckdb_v2_vector_get_child = duckdb_v2_vector_get_child;
 	result.duckdb_v2_bignum_decode = duckdb_v2_bignum_decode;
