@@ -6,6 +6,7 @@
 #include "duckdb/main/capi/capi_internal.hpp"
 #include "duckdb/main/capi/extension_api.hpp"
 #include "duckdb/main/capi_v2/extension_api_v2.hpp"
+#include "duckdb/main/capi_v2/extension_init_v2.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/main/error_manager.hpp"
 #include "duckdb/main/extension_helper.hpp"
@@ -63,6 +64,9 @@ struct DuckDBExtensionLoadState {
 
 	//! The loader under which the extension registers itself, valid for the duration of the load
 	optional_ptr<ExtensionLoader> extension_loader;
+
+	//! Whether the extension was entered through <name>_init_c_api_v2, which fixes the API family it may request
+	bool is_v2_entrypoint = false;
 
 	//! Error handling
 	bool has_error = false;
@@ -136,6 +140,18 @@ struct ExtensionAccess {
 			              StringUtil::Format("Unknown ABI Type of value '%d' found when loading extension '%s'",
 			                                 static_cast<uint8_t>(load_state.init_result.abi_type),
 			                                 load_state.init_result.filename));
+			return nullptr;
+		}
+
+		// The entrypoint the extension exports declares its API family; the requested version must agree, or the
+		// extension would copy a vtable of the wrong shape
+		if ((parsed && major == DUCKDB_EXTENSION_API_V2_VERSION_MAJOR) != load_state.is_v2_entrypoint) {
+			load_state.has_error = true;
+			load_state.error_data = ErrorData(
+			    ExceptionType::UNKNOWN_TYPE,
+			    StringUtil::Format("C CAPI version '%s' requested during extension initialization does not match the "
+			                       "API family of the extension's entrypoint",
+			                       version));
 			return nullptr;
 		}
 
@@ -222,6 +238,39 @@ void DuckDB::LoadStaticCAPIExtension(const string &name, ext_init_c_api_fun_t in
 		string msg = load_state.has_error ? load_state.error_data.Message() : "unknown error";
 		load_info->LoadFail(ErrorData(msg));
 		throw IOException("Failed to load static C API extension '%s': %s", name, msg);
+	}
+	extension_loader.FinalizeLoad();
+
+	ExtensionInstallInfo install_info;
+	install_info.mode = ExtensionInstallMode::STATICALLY_LINKED;
+	load_info->FinishLoad(install_info);
+}
+
+void DuckDB::LoadStaticCAPIV2Extension(const string &name, duckdb_v2_extension_init_fn init_fun) {
+	auto &manager = ExtensionManager::Get(*instance);
+	auto load_info = manager.BeginLoad({name});
+	if (!load_info) {
+		// already loaded
+		return;
+	}
+
+	ExtensionInitResult init_result;
+	init_result.filename = name;
+	init_result.filebase = name;
+	// Statically compiled extensions are always tied to the exact DuckDB version
+	init_result.abi_type = ExtensionABIType::C_STRUCT_UNSTABLE;
+	init_result.lib_hdl = nullptr;
+
+	DuckDBExtensionLoadState load_state(*instance, init_result);
+	load_state.is_v2_entrypoint = true;
+	ExtensionLoader extension_loader(*load_info);
+	load_state.extension_loader = extension_loader;
+
+	// For static loading, get_api is null - the extension uses direct DuckDB symbols (no vtable needed)
+	string error_message;
+	if (!InvokeCExtensionInitV2(init_fun, load_state.ToCStruct(), nullptr, *instance, error_message)) {
+		load_info->LoadFail(ErrorData(error_message));
+		throw IOException("Failed to load static C API extension '%s': %s", name, error_message);
 	}
 	extension_loader.FinalizeLoad();
 
@@ -766,6 +815,42 @@ void ExtensionHelper::LoadExternalExtensionInternal(DatabaseInstance &db, FileSy
 
 		info.FinishLoad(*extension_init_result.install_info);
 		return;
+	}
+
+	// C ABI, V2 entrypoint. Probed first: the exported symbol is what declares the API family, and a V1 extension
+	// never exports it, so falling through below is always the right answer when it is absent.
+	if (extension_init_result.abi_type == ExtensionABIType::C_STRUCT ||
+	    extension_init_result.abi_type == ExtensionABIType::C_STRUCT_UNSTABLE) {
+		auto init_fun_name_v2 = extension_init_result.filebase + "_init_c_api_v2";
+		auto init_fun_capi_v2 = TryLoadFunctionFromDLL<duckdb_v2_extension_init_fn>(
+		    extension_init_result.lib_hdl, init_fun_name_v2, extension_init_result.filename);
+
+		if (init_fun_capi_v2) {
+			DuckDBExtensionLoadState load_state(db, extension_init_result);
+			load_state.is_v2_entrypoint = true;
+			ExtensionLoader extension_loader(info);
+			load_state.extension_loader = extension_loader;
+
+			string error_message;
+			auto init_ok = InvokeCExtensionInitV2(init_fun_capi_v2, load_state.ToCStruct(), ExtensionAccess::GetAPI, db,
+			                                      error_message);
+
+			// An error signalled through the load state (e.g. by get_api) takes precedence: it carries the error class
+			if (load_state.has_error) {
+				load_state.error_data.Throw("An error was thrown during initialization of the extension '" + extension +
+				                            "': ");
+			}
+			if (!init_ok) {
+				throw InvalidInputException("An error was thrown during initialization of the extension '%s': %s",
+				                            extension, error_message);
+			}
+			extension_loader.FinalizeLoad();
+
+			D_ASSERT(extension_init_result.install_info);
+
+			info.FinishLoad(*extension_init_result.install_info);
+			return;
+		}
 	}
 
 	// C ABI

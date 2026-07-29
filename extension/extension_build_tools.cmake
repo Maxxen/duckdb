@@ -188,7 +188,9 @@ function(build_loadable_extension_directory NAME ABI_TYPE OUTPUT_DIRECTORY EXTEN
         if (${ABI_TYPE} STREQUAL "CPP")
             set(EXPORTED_FUNCTIONS "_${NAME}_duckdb_cpp_init")
         elseif (${ABI_TYPE} STREQUAL "C_STRUCT" OR ${ABI_TYPE} STREQUAL "C_STRUCT_UNSTABLE")
-            set(EXPORTED_FUNCTIONS "_${NAME}_init_c_api")
+            # DUCKDB_EXTENSION_ENTRY_SUFFIX is "_v2" for extensions built against the V2 C API, which export
+            # <name>_init_c_api_v2 instead. Set by the caller; inherited into this function's scope.
+            set(EXPORTED_FUNCTIONS "_${NAME}_init_c_api${DUCKDB_EXTENSION_ENTRY_SUFFIX}")
         endif()
         add_custom_command(
                 TARGET ${TARGET_NAME}
@@ -245,6 +247,16 @@ function(build_loadable_extension_capi_unstable NAME PARAMETERS)
     target_compile_definitions(${NAME}_loadable_extension PRIVATE DUCKDB_EXTENSION_NAME=${NAME})
 endfunction()
 
+function(build_loadable_extension_capi_v2_unstable NAME PARAMETERS)
+    set(FILES "${ARGV}")
+    list(REMOVE_AT FILES 0)
+    # V2 extensions export <name>_init_c_api_v2; the footer ABI type is unchanged, the loader finds the entrypoint
+    set(DUCKDB_EXTENSION_ENTRY_SUFFIX "_v2")
+    build_loadable_extension_capi_internal(${NAME} "" "C_STRUCT_UNSTABLE" ${FILES})
+    target_compile_definitions(${NAME}_loadable_extension PRIVATE DUCKDB_EXTENSION_API_VERSION_UNSTABLE=${DUCKDB_NORMALIZED_VERSION})
+    target_compile_definitions(${NAME}_loadable_extension PRIVATE DUCKDB_EXTENSION_NAME=${NAME})
+endfunction()
+
 function(build_loadable_extension_capi_internal NAME VERSION ABI_TYPE PARAMETERS)
     # all parameters after name
     set(FILES "${ARGV}")
@@ -285,6 +297,18 @@ function(build_static_extension_capi_unstable NAME PARAMETERS)
     target_compile_definitions(${NAME}_extension PRIVATE DUCKDB_EXTENSION_API_VERSION_UNSTABLE=${DUCKDB_NORMALIZED_VERSION})
     target_compile_definitions(${NAME}_extension PRIVATE DUCKDB_EXTENSION_NAME=${NAME})
     set_property(TARGET ${NAME}_extension PROPERTY DUCKDB_EXTENSION_KIND "CAPI")
+endfunction()
+
+function(build_static_extension_capi_v2_unstable NAME PARAMETERS)
+    set(FILES "${ARGV}")
+    list(REMOVE_AT FILES 0)
+    add_library(${NAME}_extension STATIC ${FILES})
+    target_link_libraries(${NAME}_extension duckdb_static)
+    target_compile_definitions(${NAME}_extension PRIVATE DUCKDB_BUILD_STATIC_EXTENSION)
+    target_compile_definitions(${NAME}_extension PRIVATE DUCKDB_EXTENSION_API_VERSION_UNSTABLE=${DUCKDB_NORMALIZED_VERSION})
+    target_compile_definitions(${NAME}_extension PRIVATE DUCKDB_EXTENSION_NAME=${NAME})
+    # The generated static loader has no dlsym to probe with: the kind is what tells it which entrypoint to declare
+    set_property(TARGET ${NAME}_extension PROPERTY DUCKDB_EXTENSION_KIND "CAPI_V2")
 endfunction()
 
 # Internal extension register function

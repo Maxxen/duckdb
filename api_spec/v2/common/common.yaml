@@ -92,7 +92,16 @@ handles:
       non-inlined VARCHAR / BLOB / BIT / BIGNUM values and stays valid until the
       owning vector is flattened, reallocated, or destroyed.
   context:
-    description: "The DuckDB \"context\", essentially a \"connection\", but from the \"inside\" \nof DuckDB. TODO - elaborate more, maybe mention UDFs, callbacks, etc.\n"
+    description: |
+      Borrowed handle to a client context: a connection seen from the inside of
+      DuckDB. Handed out inside library-managed scopes — function bind / init /
+      exec callbacks, replacement scans, and the extension entrypoint — and
+      valid only for the duration of that scope; never destroyed by the caller.
+      A context is the scope for reading (settings, the file system) and for
+      constructing values and types, not for registration: catalog entries and
+      database-level hooks are installed through an extension or a connection.
+      A transaction is always active while a context is handed out, which is
+      what the context-scoped constructors assume.
 structs:
   str:
     description: |

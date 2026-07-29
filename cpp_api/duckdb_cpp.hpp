@@ -3596,21 +3596,20 @@ public:
 
 namespace duckdb_api {
 namespace detail {
-// Performs the V2 C API extension-load handshake, invokes init_cb with the loading extension, and reports errors.
-// The `extension` and `access` are the opaque loader arguments of the C entrypoint.
+// Performs the V2 C API extension-load handshake, invokes init_cb with the loading extension and its context, and
+// reports a thrown exception on the error slot. `input` is the opaque loader argument of the C entrypoint.
 // The concrete types live in duckdb_extension_v2.h, which only the implementation file includes.
-bool ExtensionEntrypoint(void *extension, void *access, void (*init_cb)(Extension &extension));
+void ExtensionEntrypoint(void *input, void (*init_cb)(Extension &extension, Context &context));
 } // namespace detail
 } // namespace duckdb_api
 
 #define DUCKDB_CPP_EXTENSION_GLUE_HELPER(x, y) x##y
 #define DUCKDB_CPP_EXTENSION_GLUE(x, y)        DUCKDB_CPP_EXTENSION_GLUE_HELPER(x, y)
 
-// Opaque forward declarations of the loader's types.
-// The entrypoint below must have exactly the loader's function type, spelled with the same tags.
-// The definitions live in the C headers, which users of this header never include.
-struct _duckdb_extension_info;
-struct duckdb_extension_access;
+// Opaque forward declaration of the loader's input struct.
+// The entrypoint below must have exactly the loader's function type, spelled with the same tag.
+// The definition lives in the C headers, which users of this header never include.
+struct duckdb_v2_extension_input;
 
 #ifdef _WIN32
 #define DUCKDB_CPP_ENTRY_VISIBILITY __declspec(dllexport)
@@ -3619,21 +3618,24 @@ struct duckdb_extension_access;
 #endif
 
 // Defines the extension entrypoint for a C API extension written against the stable C++ API. Requires
-// DUCKDB_EXTENSION_NAME to be set. The body receives the extension currently being loaded and may throw; exceptions
-// are reported to the loader as an initialization error.
+// DUCKDB_EXTENSION_NAME to be set. The body receives the extension currently being loaded and a context of the load's
+// own to read and run queries through, and may throw; exceptions are reported to the loader as an initialization
+// error.
 // Usage:
 //
-//		DUCKDB_CPP_EXTENSION_ENTRYPOINT(extension) {
+//		DUCKDB_CPP_EXTENSION_ENTRYPOINT(extension, context) {
 //			ScalarFunction function;
 //			...
 //			function.Register(extension);
 //		}
 //
-#define DUCKDB_CPP_EXTENSION_ENTRYPOINT(EXTENSION_PARAM)                                                               \
-	static void DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl)(duckdb_api::Extension &);              \
-	extern "C" DUCKDB_CPP_ENTRY_VISIBILITY bool DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api)(         \
-	    struct _duckdb_extension_info * info, struct duckdb_extension_access * access) {                               \
-		return duckdb_api::detail::ExtensionEntrypoint(                                                                \
-		    info, access, DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl));                            \
+#define DUCKDB_CPP_EXTENSION_ENTRYPOINT(EXTENSION_PARAM, CONTEXT_PARAM)                                                \
+	static void DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl)(duckdb_api::Extension &,               \
+	                                                                            duckdb_api::Context &);                \
+	extern "C" DUCKDB_CPP_ENTRY_VISIBILITY void DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api_v2)(      \
+	    struct duckdb_v2_extension_input * input) {                                                                    \
+		duckdb_api::detail::ExtensionEntrypoint(input,                                                                 \
+		                                        DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl));      \
 	}                                                                                                                  \
-	static void DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl)(duckdb_api::Extension & EXTENSION_PARAM)
+	static void DUCKDB_CPP_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _cpp_api_impl)(                                       \
+	    duckdb_api::Extension & EXTENSION_PARAM, duckdb_api::Context & CONTEXT_PARAM)

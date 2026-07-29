@@ -243,8 +243,12 @@ typedef struct _duckdb_v2_arena {
 } * duckdb_v2_arena_handle;
 
 /*!
- * The DuckDB "context", essentially a "connection", but from the "inside" of DuckDB. TODO - elaborate more, maybe
- * mention UDFs, callbacks, etc.
+ * Borrowed handle to a client context: a connection seen from the inside of DuckDB. Handed out inside library-managed
+ * scopes — function bind / init / exec callbacks, replacement scans, and the extension entrypoint — and valid only for
+ * the duration of that scope; never destroyed by the caller. A context is the scope for reading (settings, the file
+ * system) and for constructing values and types, not for registration: catalog entries and database-level hooks are
+ * installed through an extension or a connection. A transaction is always active while a context is handed out, which
+ * is what the context-scoped constructors assume.
  */
 typedef struct _duckdb_v2_context {
 	void *internal_ptr;
@@ -2132,6 +2136,58 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_expression_get_reference_index(duckdb_v2_
                                                                       duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for expression --- */
+
+/* ============================================================================
+ * MODULE: extension
+ * ============================================================================ */
+
+/* --- Enums for extension --- */
+
+/* --- Struct forward declarations for extension --- */
+
+typedef struct duckdb_v2_extension_input duckdb_v2_extension_input;
+
+/* --- Types for extension --- */
+
+/* --- Constants for extension --- */
+
+/* --- Function pointer typedefs for extension --- */
+
+/*!
+ * Retrieves the function pointer table for the requested API version. Returns a borrowed pointer to a table owned by
+ * the library, valid for the duration of the load; the extension is expected to copy it. Returns NULL when the version
+ * is not supported, which fails the load.
+ */
+typedef const void *(*duckdb_v2_extension_get_api_fn)(duckdb_v2_extension_handle extension, const char *version);
+
+/*!
+ * The V2 C extension entrypoint, exported by an extension under the name `<name>_init_c_api_v2`. Invoked once per load.
+ * On success, leave `*input->err` unchanged. On failure, set an appropriate error code and message on it and return;
+ * the load is then abandoned and the error reported. A `get_api` that returns NULL is already recorded by the library,
+ * so the entrypoint may return without touching the slot in that case - which it must, having no usable function table
+ * to set it with.
+ */
+typedef void (*duckdb_v2_extension_init_fn)(duckdb_v2_extension_input *input);
+
+/* --- Functions for extension --- */
+
+/* --- Struct definitions for extension --- */
+
+/*!
+ * Everything the loader hands a V2 C extension at load time. Passed to the `<name>_init_c_api_v2` entrypoint, which
+ * reports failure by setting a code on `err`. Every member is borrowed for the duration of the load and must not be
+ * stored or destroyed.
+ *
+ * `get_api` must be called before any other library function in a dynamically loaded extension: it yields the function
+ * pointer table the extension routes its calls through. It is null for statically linked extensions, which resolve
+ * library symbols directly.
+ */
+struct duckdb_v2_extension_input {
+	duckdb_v2_extension_handle extension;
+	duckdb_v2_context_handle context;
+	duckdb_v2_error_info_handle *err;
+	duckdb_v2_extension_get_api_fn get_api;
+};
 
 /* ============================================================================
  * MODULE: file_system

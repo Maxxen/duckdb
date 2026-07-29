@@ -4858,25 +4858,28 @@ void CustomType::Register(const Connection &conn) {
 
 namespace detail {
 
-bool ExtensionEntrypoint(void *extension_p, void *access_p, void (*init_cb)(Extension &extension)) {
-	// The extension handle doubles as the loader token taken by the access callbacks (see the loader-interface
-	// section of duckdb_extension_v2.h)
-	const auto extension_handle = static_cast<duckdb_v2_extension_handle>(extension_p);
-	const auto access = static_cast<struct duckdb_v2_extension_access *>(access_p);
+// Describes a failed load on the slot the loader provided. Only reachable once the vtable handshake has succeeded,
+// so the error_info calls below are safe in both flavors.
+static void ReportInitFailure(duckdb_v2_error_info_handle *err, const char *message) {
+	auto info = err ? *err : nullptr;
+	duckdb_v2_error_info_set_code(info, DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_error_info_set_text(info, duckdb_v2_str {message, std::strlen(message)});
+}
+
+void ExtensionEntrypoint(void *input_p, void (*init_cb)(Extension &extension, Context &context)) {
+	const auto input = static_cast<struct duckdb_v2_extension_input *>(input_p);
 
 	// Loadable flavor: fetch the vtable from the loader; expands to nothing otherwise
-	DUCKDB_EXTENSION_API_INIT(extension_handle, access, DUCKDB_EXTENSION_API_VERSION_STRING);
+	DUCKDB_EXTENSION_API_INIT(input, DUCKDB_EXTENSION_API_VERSION_STRING);
 
 	try {
-		auto extension = Factory::Make<Extension>(extension_handle);
-		init_cb(extension);
-		return true;
+		auto extension = Factory::Make<Extension>(input->extension);
+		auto context = Factory::Make<Context>(input->context);
+		init_cb(extension, context);
 	} catch (const std::exception &ex) {
-		access->set_error(extension_handle, ex.what());
-		return false;
+		ReportInitFailure(input->err, ex.what());
 	} catch (...) {
-		access->set_error(extension_handle, "Unknown error during extension initialization");
-		return false;
+		ReportInitFailure(input->err, "Unknown error during extension initialization");
 	}
 }
 

@@ -68,27 +68,6 @@
 #endif
 
 //===--------------------------------------------------------------------===//
-// Extension access (loader interface)
-//===--------------------------------------------------------------------===//
-
-//! Opaque forward declarations of the loader's V1-named types (duckdb_v2_extension_handle itself is a typedef of the
-//! loader's token type, declared by duckdb_v2.h). The entrypoint and the access callbacks are called through function
-//! pointers typed against these on the loader side, so the signatures here must spell the same underlying types for
-//! the function types to match exactly (checked under -fsanitize=function).
-struct _duckdb_database;
-struct duckdb_extension_access;
-
-//! Passed to the C API extension entrypoint by the loader. Layout matches the V1 loader interface.
-struct duckdb_v2_extension_access {
-	//! Indicate that an error has occurred.
-	void (*set_error)(duckdb_v2_extension_handle extension, const char *error);
-	//! Fetch the V1 database handle. Unused by V2 extensions; present for loader ABI layout.
-	struct _duckdb_database **(*get_database)(duckdb_v2_extension_handle extension);
-	//! Fetch the API struct pointer for the requested version.
-	const void *(*get_api)(duckdb_v2_extension_handle extension, const char *version);
-};
-
-//===--------------------------------------------------------------------===//
 // Function pointer struct
 //===--------------------------------------------------------------------===//
 typedef struct {
@@ -123,15 +102,17 @@ typedef struct {
 #ifdef DUCKDB_BUILD_STATIC_EXTENSION
 // No vtable global needed for static builds - DuckDB symbols are resolved directly at link time
 #define DUCKDB_EXTENSION_GLOBAL
-#define DUCKDB_EXTENSION_API_INIT(info, access, minimum_api_version)
+#define DUCKDB_EXTENSION_API_INIT(input, minimum_api_version)
 #else
 // This goes in the c/c++ file containing the entrypoint
 #define DUCKDB_EXTENSION_GLOBAL duckdb_ext_api_v2 duckdb_ext_api = {0};
-// Initializes the C Extension API: First thing to call in the extension entrypoint
-#define DUCKDB_EXTENSION_API_INIT(info, access, minimum_api_version)                                                   \
-	duckdb_ext_api_v2 *res = (duckdb_ext_api_v2 *)access->get_api(info, minimum_api_version);                          \
+// Initializes the C Extension API: First thing to call in the extension entrypoint. Nothing else in the API may be
+// called before it succeeds, so a failure returns without touching the error slot: the library has already recorded
+// why get_api refused, and reports that.
+#define DUCKDB_EXTENSION_API_INIT(input, minimum_api_version)                                                          \
+	duckdb_ext_api_v2 *res = (duckdb_ext_api_v2 *)(input)->get_api((input)->extension, minimum_api_version);            \
 	if (!res) {                                                                                                        \
-		return false;                                                                                                  \
+		return;                                                                                                        \
 	};                                                                                                                 \
 	duckdb_ext_api = *res;
 #endif // DUCKDB_BUILD_STATIC_EXTENSION
@@ -153,19 +134,24 @@ typedef struct {
 
 #ifdef DUCKDB_EXTENSION_NAME
 
-// Main entrypoint: receives the extension being loaded for the extension to register its functionality through. The
-// extension handle doubles as the loader token taken by the access callbacks (set_error).
+// Main entrypoint: receives the extension being loaded to register functionality through, a context to read and run
+// queries through, and the error slot to report failure on. Write the body as
+//
+//		DUCKDB_EXTENSION_ENTRYPOINT(duckdb_v2_extension_handle extension, duckdb_v2_context_handle context,
+//		                            duckdb_v2_error_info_handle *err) {
+//			...
+//		}
 #define DUCKDB_EXTENSION_ENTRYPOINT                                                                                    \
-	DUCKDB_EXTENSION_GLOBAL static bool DUCKDB_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api_internal)(            \
-	    duckdb_v2_extension_handle extension, struct duckdb_v2_extension_access * access);                             \
-	DUCKDB_EXTENSION_EXTERN_C_GUARD_OPEN DUCKDB_CAPI_ENTRY_VISIBILITY DUCKDB_EXTENSION_API bool DUCKDB_EXTENSION_GLUE( \
-	    DUCKDB_EXTENSION_NAME,                                                                                         \
-	    _init_c_api)(duckdb_v2_extension_handle extension, struct duckdb_extension_access * access_p) {                \
-		struct duckdb_v2_extension_access *access = (struct duckdb_v2_extension_access *)(void *)access_p;             \
-		DUCKDB_EXTENSION_API_INIT(extension, access, DUCKDB_EXTENSION_API_VERSION_STRING);                             \
-		return DUCKDB_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api_internal)(extension, access);                  \
+	DUCKDB_EXTENSION_GLOBAL static void DUCKDB_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api_v2_internal)(         \
+	    duckdb_v2_extension_handle extension, duckdb_v2_context_handle context, duckdb_v2_error_info_handle * err);    \
+	DUCKDB_EXTENSION_EXTERN_C_GUARD_OPEN DUCKDB_CAPI_ENTRY_VISIBILITY DUCKDB_EXTENSION_API void DUCKDB_EXTENSION_GLUE( \
+	    DUCKDB_EXTENSION_NAME, _init_c_api_v2)(struct duckdb_v2_extension_input * input) {                             \
+		DUCKDB_EXTENSION_API_INIT(input, DUCKDB_EXTENSION_API_VERSION_STRING);                                         \
+		DUCKDB_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api_v2_internal)(input->extension, input->context,        \
+		                                                                      input->err);                             \
 	}                                                                                                                  \
-	DUCKDB_EXTENSION_EXTERN_C_GUARD_CLOSE static bool DUCKDB_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME, _init_c_api_internal)
+	DUCKDB_EXTENSION_EXTERN_C_GUARD_CLOSE static void DUCKDB_EXTENSION_GLUE(DUCKDB_EXTENSION_NAME,                     \
+	                                                                        _init_c_api_v2_internal)
 
 // Custom entrypoint: identical to the main entrypoint
 #define DUCKDB_EXTENSION_ENTRYPOINT_CUSTOM DUCKDB_EXTENSION_ENTRYPOINT

@@ -13,6 +13,7 @@ add_library_unity(
   environment-v2.cpp
   error-v2.cpp
   expression-v2.cpp
+  extension-v2.cpp
   file_system-v2.cpp
   function-v2.cpp
   function_aggregate-v2.cpp

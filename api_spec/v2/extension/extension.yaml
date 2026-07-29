@@ -1,0 +1,58 @@
+module: extension
+# The loader interface of a V2 C extension. The engine dlsym's
+# `<name>_init_c_api_v2` and calls it once with a single extension_input; the
+# types here are what both sides of that call are spelled with, so the function
+# types match exactly at the loader's indirect call site.
+structs:
+  extension_input:
+    description: |
+      Everything the loader hands a V2 C extension at load time. Passed to the
+      `<name>_init_c_api_v2` entrypoint, which reports failure by setting a code
+      on `err`. Every member is borrowed for the duration of the load and must
+      not be stored or destroyed.
+
+      `get_api` must be called before any other library function in a
+      dynamically loaded extension: it yields the function pointer table the
+      extension routes its calls through. It is null for statically linked
+      extensions, which resolve library symbols directly.
+    fields:
+      - {name: extension, type: extension}
+      # Opened on the loading database for this load alone, under a transaction
+      # that commits when the entrypoint returns without reporting an error.
+      - {name: context, type: context}
+      - {name: err, type: error_info, pointer: 1}
+      - {name: get_api, type: extension_get_api}
+callbacks:
+  extension_get_api:
+    description: |
+      Retrieves the function pointer table for the requested API version.
+      Returns a borrowed pointer to a table owned by the library, valid for the
+      duration of the load; the extension is expected to copy it. Returns NULL
+      when the version is not supported, which fails the load.
+    return_type: void
+    return_pointer: 1
+    return_const: true
+    parameters:
+      extension:
+        type: extension
+        description: "The extension being loaded, as handed to the entrypoint."
+      version:
+        type: char
+        indirection: 1
+        const: true
+        description: "Null-terminated API version string in `v{major}.{minor}.{patch}` form. The major selects the API family."
+  extension_init:
+    description: |
+      The V2 C extension entrypoint, exported by an extension under the name
+      `<name>_init_c_api_v2`. Invoked once per load. On success, leave
+      `*input->err` unchanged. On failure, set an appropriate error code and
+      message on it and return; the load is then abandoned and the error
+      reported. A `get_api` that returns NULL is already recorded by the
+      library, so the entrypoint may return without touching the slot in that
+      case - which it must, having no usable function table to set it with.
+    return_type: void
+    parameters:
+      input:
+        type: extension_input
+        indirection: 1
+        description: "The load-time inputs. Owned by DuckDB and valid only for the duration of the call."

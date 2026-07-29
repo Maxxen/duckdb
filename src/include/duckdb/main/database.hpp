@@ -163,6 +163,8 @@ public:
 	typedef bool (*ext_init_c_api_fun_t)(duckdb_extension_info info, duckdb_extension_access *access);
 	// Load a statically compiled C API extension by calling its init function directly (no vtable needed)
 	DUCKDB_API void LoadStaticCAPIExtension(const string &name, ext_init_c_api_fun_t init_fun);
+	// The V2 counterpart, for extensions exporting the <name>_init_c_api_v2 entrypoint
+	DUCKDB_API void LoadStaticCAPIV2Extension(const string &name, duckdb_v2_extension_init_fn init_fun);
 
 	DUCKDB_API FileSystem &GetFileSystem();
 
