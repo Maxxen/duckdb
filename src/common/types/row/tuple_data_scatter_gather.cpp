@@ -53,6 +53,17 @@ inline void TupleDataValueStore(const string_t &source, data_t *__restrict const
 	}
 }
 
+//! A geometry's parts and coordinates go to the heap, and the root node in the row points at them.
+//! The heap pointer is aligned first - see ComputeHeapSizes, which reserves the slack for it.
+template <>
+inline void TupleDataValueStore(const geometry_t &source, data_t *__restrict const &row_location,
+                                const idx_t &offset_in_row, data_ptr_t &heap_location) {
+	const auto heap_size = geometry_t::GetHeapSize(source);
+	const auto aligned_location = AlignPointer<8>(heap_location);
+	Store<geometry_t>(geometry_t::CopyToHeap(source, aligned_location, heap_size), row_location + offset_in_row);
+	heap_location = aligned_location + heap_size;
+}
+
 template <class T>
 static void TupleDataWithinListValueStore(const T &source, const data_ptr_t &location, data_ptr_t &) {
 	Store<T>(source, location);
@@ -82,6 +93,13 @@ inline void TupleDataValueVerify(const LogicalType &type, const string_t &value)
 	if (type.id() == LogicalTypeId::VARCHAR) {
 		value.Verify();
 	}
+#endif
+}
+
+template <>
+inline void TupleDataValueVerify(const LogicalType &, const geometry_t &value) {
+#ifdef D_ASSERT_IS_ENABLED
+	value.Verify();
 #endif
 }
 
@@ -150,12 +168,32 @@ void ComputeStringHeapSizesInternal(idx_t *const heap_sizes, const UnifiedVector
 	}
 }
 
+//! Geometry parts and coordinates must land 8-byte aligned in the heap. Round up whatever earlier
+//! columns contributed before adding ours, so the geometry starts aligned given an aligned heap
+//! base; the scatter then only has to align the running pointer, never move past the reservation.
+void ComputeGeometryHeapSizesInternal(idx_t *const heap_sizes, const UnifiedVectorFormat &source_vector_data,
+                                      const SelectionVector &append_sel, const idx_t append_count) {
+	const auto source_data = UnifiedVectorFormat::GetData<geometry_t>(source_vector_data);
+	const auto &source_sel = *source_vector_data.sel;
+	const auto &source_validity = source_vector_data.validity;
+
+	for (idx_t i = 0; i < append_count; i++) {
+		const auto append_idx = append_sel.IsSet() ? append_sel.get_index_unsafe(i) : i;
+		const auto source_idx = source_sel.IsSet() ? source_sel.get_index_unsafe(append_idx) : append_idx;
+		heap_sizes[i] = AlignValue(heap_sizes[i]);
+		if (source_validity.RowIsValid(source_idx)) {
+			// GetHeapSize is always a multiple of 8, so the next column stays aligned too
+			heap_sizes[i] += geometry_t::GetHeapSize(source_data[source_idx]);
+		}
+	}
+}
+
 void TupleDataCollection::ComputeHeapSizes(Vector &heap_sizes_v, const Vector &source_v,
                                            TupleDataVectorFormat &source_format, const SelectionVector &append_sel,
                                            const idx_t append_count) {
 	const auto type = source_v.GetType().InternalType();
 	if (type != PhysicalType::VARCHAR && type != PhysicalType::STRUCT && type != PhysicalType::LIST &&
-	    type != PhysicalType::ARRAY) {
+	    type != PhysicalType::ARRAY && type != PhysicalType::GEOMETRY) {
 		return;
 	}
 
@@ -167,6 +205,9 @@ void TupleDataCollection::ComputeHeapSizes(Vector &heap_sizes_v, const Vector &s
 	const auto &source_validity = source_vector_data.validity;
 
 	switch (type) {
+	case PhysicalType::GEOMETRY:
+		ComputeGeometryHeapSizesInternal(heap_sizes, source_vector_data, append_sel, append_count);
+		break;
 	case PhysicalType::VARCHAR: {
 		// Only non-inlined strings are stored in the heap
 #if DUCKDB_SMALLER_BINARY(tuple_data_heap_sizes)
@@ -1264,6 +1305,9 @@ TupleDataScatterFunction TupleDataCollection::GetScatterFunction(const LogicalTy
 	case PhysicalType::VARCHAR:
 		result.function = TupleDataGetScatterFunction<string_t>(within_collection);
 		break;
+	case PhysicalType::GEOMETRY:
+		result.function = TupleDataGetScatterFunction<geometry_t>(within_collection);
+		break;
 	case PhysicalType::STRUCT: {
 		result.function = within_collection ? TupleDataStructWithinCollectionScatter : TupleDataStructScatter;
 		for (const auto &child_type : StructType::GetChildTypes(type)) {
@@ -1397,12 +1441,14 @@ static void TupleDataTemplatedGatherInternal(const TupleDataLayout &layout, Vect
 		const auto source_idx = HAS_SCAN_SEL ? scan_sel.get_index_unsafe(i) : i;
 		const auto target_idx = HAS_TARGET_SEL ? target_sel.get_index_unsafe(i) : i;
 		const auto &source_row = source_locations[source_idx];
-		target_data[target_idx] = Load<T>(source_row + offset_in_row);
 		if (!ALL_VALID &&
 		    !ValidityBytes::RowIsValid(ValidityBytes(source_row, column_count).GetValidityEntryUnsafe(entry_idx),
 		                               idx_in_entry)) {
 			target_validity.SetInvalid(target_idx);
 		} else {
+			// Only load on the valid branch: an invalid row's payload is uninitialized, and for
+			// pointer-carrying types like geometry_t verifying that garbage would follow it
+			target_data[target_idx] = Load<T>(source_row + offset_in_row);
 			TupleDataValueVerify<T>(target.GetType(), target_data[target_idx]);
 		}
 	}
@@ -1862,6 +1908,9 @@ static TupleDataGatherFunction TupleDataGetGatherFunctionInternal(const LogicalT
 		break;
 	case PhysicalType::VARCHAR:
 		function = TupleDataGetGatherFunction<string_t>(within_collection);
+		break;
+	case PhysicalType::GEOMETRY:
+		function = TupleDataGetGatherFunction<geometry_t>(within_collection);
 		break;
 	case PhysicalType::STRUCT: {
 		function = within_collection ? TupleDataStructWithinCollectionGather : TupleDataStructGather;

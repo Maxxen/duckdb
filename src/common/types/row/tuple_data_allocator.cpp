@@ -602,6 +602,29 @@ void TupleDataAllocator::RecomputeHeapPointers(Vector &old_heap_ptrs, const Sele
 			VerifyStrings(layout, type.id(), row_locations, col_idx, base_col_offset, col_offset, offset, count);
 			break;
 		}
+		case PhysicalType::GEOMETRY: {
+			for (idx_t i = 0; i < count; i++) {
+				const auto idx = offset + i;
+				const auto &row_location = row_locations[idx] + base_col_offset;
+				const auto valid =
+				    all_valid ||
+				    ValidityBytes::RowIsValid(
+				        ValidityBytes(row_location, column_count).GetValidityEntryUnsafe(entry_idx), idx_in_entry);
+				if (!valid) {
+					continue;
+				}
+
+				const auto &old_heap_ptr = old_heap_locations[old_heap_sel.get_index(idx)];
+				const auto &new_heap_ptr = new_heap_locations[new_heap_sel.get_index(idx)];
+
+				const auto geometry_location = row_location + col_offset;
+				auto geom = Load<geometry_t>(geometry_location);
+				geometry_t::RecomputeHeapPointers(geom, old_heap_ptr, new_heap_ptr);
+				geom.Verify();
+				Store<geometry_t>(geom, geometry_location);
+			}
+			break;
+		}
 		case PhysicalType::LIST:
 		case PhysicalType::ARRAY: {
 			for (idx_t i = 0; i < count; i++) {
@@ -687,6 +710,27 @@ void TupleDataAllocator::FindHeapPointers(TupleDataChunkState &chunk_state, Sele
 #ifndef DUCKDB_DEBUG_NO_INLINE
 				}
 #endif
+				not_found.set_index(next_not_found_count++, idx);
+			}
+			not_found_count = next_not_found_count;
+			break;
+		}
+		case PhysicalType::GEOMETRY: {
+			for (idx_t i = 0; i < not_found_count; i++) {
+				const auto idx = not_found.get_index(i);
+				const auto &row_location = row_locations[idx] + base_col_offset;
+				const auto valid =
+				    all_valid ||
+				    ValidityBytes::RowIsValid(
+				        ValidityBytes(row_location, column_count).GetValidityEntryUnsafe(entry_idx), idx_in_entry);
+				if (valid) {
+					// An empty or NULL geometry owns nothing, so it cannot tell us where the heap is
+					const auto geom = Load<geometry_t>(row_location + col_offset);
+					if (!geom.IsEmpty()) {
+						heap_locations[idx] = geom.GetDataPointer();
+						continue;
+					}
+				}
 				not_found.set_index(next_not_found_count++, idx);
 			}
 			not_found_count = next_not_found_count;
