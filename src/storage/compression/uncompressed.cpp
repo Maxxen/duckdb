@@ -25,6 +25,8 @@ CompressionFunction UncompressedFun::GetFunction(PhysicalType type) {
 		return ValidityUncompressed::GetFunction(type);
 	case PhysicalType::VARCHAR:
 		return StringUncompressed::GetFunction(type);
+	case PhysicalType::GEOMETRY:
+		return GeometryUncompressed::GetFunction(type);
 	default:
 		throw InternalException("Unsupported type for Uncompressed");
 	}
@@ -49,6 +51,7 @@ bool UncompressedFun::TypeIsSupported(const PhysicalType type) {
 	case PhysicalType::INTERVAL:
 	case PhysicalType::BIT:
 	case PhysicalType::VARCHAR:
+	case PhysicalType::GEOMETRY:
 		return true;
 	default:
 		return false;

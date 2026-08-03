@@ -11,6 +11,7 @@ add_library_unity(
   fixed_size_uncompressed.cpp
   rle.cpp
   dictionary_compression.cpp
+  geometry_uncompressed.cpp
   string_uncompressed.cpp
   uncompressed.cpp
   validity_uncompressed.cpp

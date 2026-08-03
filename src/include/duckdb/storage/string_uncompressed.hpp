@@ -35,6 +35,9 @@ struct StringScanState : public SegmentScanState {
 	BufferHandle handle;
 };
 
+//! Prefetches the segment block plus any overflow blocks it references
+void UncompressedStringInitPrefetch(ColumnSegment &segment, PrefetchState &prefetch_state);
+
 //===--------------------------------------------------------------------===//
 // Append
 //===--------------------------------------------------------------------===//

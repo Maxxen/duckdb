@@ -45,6 +45,12 @@ public:
 	static const validity_t UPPER_MASKS[65];
 };
 
+//! Uncompressed GEOMETRY storage. Currently an adapter over StringUncompressed that stores WKB,
+//! so the on-disk bytes are unchanged from v1.5; the aligned native layout replaces it later.
+struct GeometryUncompressed {
+	static CompressionFunction GetFunction(PhysicalType data_type);
+};
+
 struct StringUncompressed {
 public:
 	static CompressionFunction GetFunction(PhysicalType data_type);
