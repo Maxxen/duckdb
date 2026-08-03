@@ -20,20 +20,79 @@ Working notes for the `geometry-physical-type` branch. Plan lives at
   before the PR** — expect churn, especially in `test/common/test_geometry_type.cpp` where the WKT
   corpus array is space-aligned.
 
+## How to verify this work
+
+`build/reldebug` compiles with `-DNDEBUG`, so `D_ASSERT` is a no-op there and
+**`geometry_t::Verify()` compiles to nothing**. A green `[geometry_type]` run in `build/reldebug`
+proves the codecs round-trip and says *nothing* about the alignment invariant, which is the whole
+reason the type exists.
+
+Use `build/relassert` for anything alignment-related — `make relassert` gives you
+`-DDUCKDB_FORCE_ASSERT` **plus ASan and UBSan**:
+
+```
+ninja -C build/relassert unittest && build/relassert/test/unittest "[geometry_type]"
+```
+
+(Watch out: `make ... | tail` reports *tail's* exit code, so a failed build can look like success.
+Grep the output for `error:` instead. Also redirect stdin — `unittest` backgrounded without
+`</dev/null` blocks on the terminal and sits at 0% CPU forever, which looks like a hang.)
+
+### Full-suite baseline in this checkout
+
+`build/reldebug/test/unittest` at Part 3: **5245 passed, 18 failed, 418 skipped**.
+
+All 18 failures are `test/extension/*` and `test/sql/extensions/*` trying to `LOAD` the
+loadable-demo extensions, which are not built in this configuration
+(`build/reldebug/test/extension/*.duckdb_extension` does not exist). They are environmental and
+unrelated to this branch — but they mean "18 failed" is the **green** baseline here, so don't read
+it as a regression. All 28 `test/sql/types/geo/` tests pass.
+
+## Where this got to
+
+Parts 1-4 of the plan are done and committed, one commit each (plus a small fixup). Part 5 is
+**partially** done - see below.
+
+| Part | State |
+| --- | --- |
+| 1. `geometry_t` + byte codecs | done |
+| 2. `PhysicalType::GEOMETRY`, dormant | done |
+| 3. `VectorGeometryBuffer` | done |
+| 4. Uncompressed GEOMETRY storage, dormant | done |
+| 5. Row layout / containers / sort+ART keys | **tuple-data only**, see below |
+| 6. The flip | not started |
+
+### Part 5: what is done and what is left
+
+Done (tuple data):
+- `tuple_data_layout.cpp` - GEOMETRY gets a fixed 16-byte row slot plus heap
+- `tuple_data_scatter_gather.cpp` - `TupleDataValueStore<geometry_t>`, `TupleDataValueVerify<geometry_t>`,
+  `ComputeGeometryHeapSizesInternal` and its dispatch, scatter/gather function cases
+- `tuple_data_allocator.cpp` - `RecomputeHeapPointers` and `FindHeapPointers` cases
+- **A generic change worth reviewing carefully:** `TupleDataTemplatedGatherInternal` now does its
+  `Load<T>` *inside* the valid branch instead of unconditionally. An invalid row's payload is
+  uninitialized, and for a pointer-carrying type like `geometry_t` we would then `Verify()` a garbage
+  pointer. This affects **every** type, not just geometry, which is why the full suite matters here.
+
+Still to do in Part 5:
+- `ColumnDataCollection` - `GeometryValueCopy` for the in-memory allocators, the buffer-manager
+  swizzle path (needs `+7` slack and an `AlignPointer<8>` on the heap base - the old prototype
+  ignored alignment here entirely), and the `ReadVector` case in `column_data_collection_segment.cpp`
+- `vector_hash.cpp`, `vector_copy.cpp`, `comparison_operators.cpp`,
+  `value_operations/comparison_operations.cpp`, `row_matcher.cpp`
+- `list_segment.cpp`
+- `create_sort_key.cpp` - `SortKeyGeometryOperator` wrapping the native codec
+- `art.cpp` / `art_key.cpp` - keep ART keys on WKB
+
+### Not started: Part 6 (the flip)
+
+`src/common/types.cpp:169` still returns `PhysicalType::VARCHAR` for GEOMETRY. Everything above is
+additive and unreachable until that line changes. The plan's Part 6 checklist has the full ordering;
+the landmines section below lists the specific bugs to fix while doing it.
+
 ## Open / needs your call
 
-### 1. Verify assertion coverage on every future change  (Part 1)
-
-Because `-DNDEBUG` is set in `build/reldebug`, `D_ASSERT` is a no-op there and
-**`geometry_t::Verify()` compiles to nothing**. Everything this design leans on for safety —
-recursive `Verify()`, the `PointerIsAligned` checks in `SetVertices` / `SetParts` / `CopyToHeap`,
-the `flags == 0` check — is dead code in that build.
-
-So a green `[geometry_type]` run in `build/reldebug` proves the codecs round-trip and nothing about
-the alignment invariant, which is the entire reason the type exists. Always re-run
-`build/relassert/test/unittest "[geometry_type]"` before believing an alignment-related change.
-
-### 2. Behaviour changes that will show up in tests
+### 1. Behaviour changes that will show up in tests
 
 - **Deeply nested WKB is now rejected.** `AnalyzeWKB` (geometry.cpp:900) walks the blob with a flat
   `while (!reader.IsAtEnd())` loop, so it has never seen nesting depth at all — `st_geomfromwkb`
@@ -44,7 +103,7 @@ the alignment invariant, which is the entire reason the type exists. Always re-r
 - `"POLYGON (EMPTY)"` is **not** accepted by the WKT parser (a ring cannot be `EMPTY`), so it is not
   in the test corpus. `MULTIPOINT (EMPTY)` and `MULTILINESTRING (EMPTY)` are.
 
-### 3. Deferred within Part 1
+### 2. Deferred within Part 1
 
 Vector-arena overloads (`Deserialize(string_t, Vector&)`, and all vectorized
 `Serialize`/`Deserialize`/`SerializeWKB`/`DeserializeWKB` over `Vector`) are **not declared yet** —
