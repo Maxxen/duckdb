@@ -13,7 +13,7 @@ static_assert(alignof(geometry_t) == 8, "geometry_t must be 8-byte aligned");
 //----------------------------------------------------------------------------------------------------------------------
 // Verify
 //----------------------------------------------------------------------------------------------------------------------
-#ifdef DEBUG
+#ifdef D_ASSERT_IS_ENABLED
 static void VerifyInternal(const geometry_t &geom, idx_t depth) {
 	if (depth > geometry_t::MAX_RECURSION_DEPTH) {
 		throw InternalException("geometry_t nested deeper than MAX_RECURSION_DEPTH");
@@ -78,7 +78,7 @@ static void VerifyInternal(const geometry_t &geom, idx_t depth) {
 #endif
 
 void geometry_t::Verify() const {
-#ifdef DEBUG
+#ifdef D_ASSERT_IS_ENABLED
 	D_ASSERT(flags == 0);
 	VerifyInternal(*this, 0);
 #endif
