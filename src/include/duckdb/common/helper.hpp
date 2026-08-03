@@ -199,6 +199,12 @@ inline T *AlignPointer(T *addr) {
 	return reinterpret_cast<T *>((reinterpret_cast<uintptr_t>(addr) + alignment - 1) & ~(alignment - 1));
 }
 
+//! Is the pointer suitably aligned to hold a T?
+template <class T>
+inline bool PointerIsAligned(const_data_ptr_t ptr) {
+	return (reinterpret_cast<uintptr_t>(ptr) % alignof(T)) == 0;
+}
+
 template<class T, T val=8>
 constexpr inline T AlignValueFloor(T n) {
 	return (n / val) * val;

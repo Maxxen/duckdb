@@ -2438,4 +2438,359 @@ bool Geometry::IsSpatialGeometryType(const LogicalType &type) {
 	return type.id() == LogicalTypeId::BLOB && type.HasAlias() && type.GetAlias() == "GEOMETRY";
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// geometry_t codecs
+//----------------------------------------------------------------------------------------------------------------------
+namespace {
+
+//! Bulk coordinate copy. On little-endian hosts the on-disk order matches ours, so this is a memcpy.
+void WriteCoords(FixedSizeBlobWriter &writer, const double *coords, idx_t coord_count) {
+#if DUCKDB_IS_BIG_ENDIAN
+	for (idx_t i = 0; i < coord_count; i++) {
+		writer.Write<double>(coords[i]);
+	}
+#else
+	writer.Write(reinterpret_cast<const char *>(coords), coord_count * sizeof(double));
+#endif
+}
+
+void ReadCoords(BlobReader &reader, double *coords, idx_t coord_count) {
+#if DUCKDB_IS_BIG_ENDIAN
+	for (idx_t i = 0; i < coord_count; i++) {
+		coords[i] = reader.Read<double>();
+	}
+#else
+	memcpy(coords, reader.Reserve(coord_count * sizeof(double)), coord_count * sizeof(double));
+#endif
+}
+
+//===--------------------------------------------------------------------===//
+// WKB
+//===--------------------------------------------------------------------===//
+constexpr idx_t WKB_HEADER_SIZE = sizeof(uint8_t) + sizeof(uint32_t);
+
+idx_t GetWKBSizeInternal(const geometry_t &geom) {
+	const auto dims = geom.GetDims();
+	switch (geom.GetGeometryType()) {
+	case GeometryType::POINT:
+		// A point always carries a full vertex - an empty point is encoded as NaN coordinates
+		return WKB_HEADER_SIZE + dims * sizeof(double);
+	case GeometryType::LINESTRING:
+		return WKB_HEADER_SIZE + sizeof(uint32_t) + geom.GetVertexCount() * dims * sizeof(double);
+	case GeometryType::POLYGON: {
+		// Rings do not get a header of their own in WKB, just a vertex count
+		idx_t size = WKB_HEADER_SIZE + sizeof(uint32_t);
+		const auto ring_count = geom.GetPartCount();
+		for (idx_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
+			size += sizeof(uint32_t) + geom.GetPart(ring_idx).GetVertexCount() * dims * sizeof(double);
+		}
+		return size;
+	}
+	case GeometryType::MULTIPOINT:
+	case GeometryType::MULTILINESTRING:
+	case GeometryType::MULTIPOLYGON:
+	case GeometryType::GEOMETRYCOLLECTION: {
+		idx_t size = WKB_HEADER_SIZE + sizeof(uint32_t);
+		const auto part_count = geom.GetPartCount();
+		for (idx_t part_idx = 0; part_idx < part_count; part_idx++) {
+			size += GetWKBSizeInternal(geom.GetPart(part_idx));
+		}
+		return size;
+	}
+	default:
+		throw InternalException("Cannot compute the WKB size of an invalid geometry");
+	}
+}
+
+void WriteWKB(const geometry_t &geom, FixedSizeBlobWriter &writer) {
+	const auto type = geom.GetGeometryType();
+	const auto dims = geom.GetDims();
+
+	writer.Write<uint8_t>(1); // Always little-endian
+	writer.Write<uint32_t>(static_cast<uint32_t>(type) + (1000 * geom.HasZ()) + (2000 * geom.HasM()));
+
+	switch (type) {
+	case GeometryType::POINT: {
+		if (geom.IsEmpty()) {
+			for (idx_t d_idx = 0; d_idx < dims; d_idx++) {
+				writer.Write<double>(std::numeric_limits<double>::quiet_NaN());
+			}
+		} else {
+			WriteCoords(writer, geom.GetVertexData(), dims);
+		}
+	} break;
+	case GeometryType::LINESTRING: {
+		const auto vert_count = geom.GetVertexCount();
+		writer.Write<uint32_t>(vert_count);
+		WriteCoords(writer, geom.GetVertexData(), vert_count * dims);
+	} break;
+	case GeometryType::POLYGON: {
+		const auto ring_count = geom.GetPartCount();
+		writer.Write<uint32_t>(ring_count);
+		for (idx_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
+			auto &ring = geom.GetPart(ring_idx);
+			const auto vert_count = ring.GetVertexCount();
+			writer.Write<uint32_t>(vert_count);
+			WriteCoords(writer, ring.GetVertexData(), vert_count * dims);
+		}
+	} break;
+	case GeometryType::MULTIPOINT:
+	case GeometryType::MULTILINESTRING:
+	case GeometryType::MULTIPOLYGON:
+	case GeometryType::GEOMETRYCOLLECTION: {
+		const auto part_count = geom.GetPartCount();
+		writer.Write<uint32_t>(part_count);
+		for (idx_t part_idx = 0; part_idx < part_count; part_idx++) {
+			WriteWKB(geom.GetPart(part_idx), writer);
+		}
+	} break;
+	default:
+		throw InternalException("Cannot write an invalid geometry to WKB");
+	}
+}
+
+geometry_t ReadWKBLeaf(BlobReader &reader, GeometryType type, VertexType vert_type, uint32_t vert_count,
+                       ArenaAllocator &arena) {
+	if (vert_count == 0) {
+		return geometry_t::CreateEmpty(type, vert_type);
+	}
+	const idx_t dims = geometry_t::CreateEmpty(type, vert_type).GetDims();
+	const auto verts = geometry_t::AllocateVerts(arena, vert_count, dims);
+	ReadCoords(reader, verts, static_cast<idx_t>(vert_count) * dims);
+	return geometry_t::CreateLeaf(type, vert_type, verts, vert_count);
+}
+
+//! A point is always written with a full vertex - all-NaN is how normalized WKB spells POINT EMPTY.
+//! Read into a scratch buffer first so an empty point costs no arena space.
+geometry_t ReadWKBPoint(BlobReader &reader, VertexType vert_type, ArenaAllocator &arena) {
+	const idx_t dims = geometry_t::CreateEmpty(GeometryType::POINT, vert_type).GetDims();
+
+	double coords[4];
+	ReadCoords(reader, coords, dims);
+
+	auto all_nan = true;
+	for (idx_t d_idx = 0; d_idx < dims && all_nan; d_idx++) {
+		all_nan = std::isnan(coords[d_idx]);
+	}
+	if (all_nan) {
+		return geometry_t::CreateEmpty(GeometryType::POINT, vert_type);
+	}
+
+	const auto verts = geometry_t::AllocateVerts(arena, 1, dims);
+	memcpy(verts, coords, dims * sizeof(double));
+	return geometry_t::CreateLeaf(GeometryType::POINT, vert_type, verts, 1);
+}
+
+geometry_t ReadWKB(BlobReader &reader, ArenaAllocator &arena, idx_t depth) {
+	if (depth > geometry_t::MAX_RECURSION_DEPTH) {
+		// AnalyzeWKB walks the blob with a flat loop and so never sees the nesting, but every
+		// geometry_t operation recurses - reject before we build something we cannot walk.
+		throw InvalidInputException("Geometry is nested too deeply (maximum is %llu)",
+		                            static_cast<uint64_t>(geometry_t::MAX_RECURSION_DEPTH));
+	}
+
+	const auto le = reader.Read<uint8_t>() == 1;
+	if (!le) {
+		throw InternalException("geometry_t::DeserializeWKB expects normalized (little-endian) WKB");
+	}
+	const auto meta = reader.Read<uint32_t>();
+	const auto type_id = (meta & 0x0000FFFF) % 1000;
+	const auto flag_id = (meta & 0x0000FFFF) / 1000;
+	const auto has_z = (flag_id & 0x01) != 0;
+	const auto has_m = (flag_id & 0x02) != 0;
+
+	const auto type = static_cast<GeometryType>(type_id);
+	const auto vert_type =
+	    has_z ? (has_m ? VertexType::XYZM : VertexType::XYZ) : (has_m ? VertexType::XYM : VertexType::XY);
+
+	switch (type) {
+	case GeometryType::POINT:
+		return ReadWKBPoint(reader, vert_type, arena);
+	case GeometryType::LINESTRING: {
+		const auto vert_count = reader.Read<uint32_t>();
+		return ReadWKBLeaf(reader, type, vert_type, vert_count, arena);
+	}
+	case GeometryType::POLYGON: {
+		const auto ring_count = reader.Read<uint32_t>();
+		const auto rings = geometry_t::AllocateParts(arena, ring_count);
+		for (idx_t ring_idx = 0; ring_idx < ring_count; ring_idx++) {
+			const auto vert_count = reader.Read<uint32_t>();
+			rings[ring_idx] = ReadWKBLeaf(reader, GeometryType::LINESTRING, vert_type, vert_count, arena);
+		}
+		return geometry_t::CreateContainer(type, vert_type, rings, ring_count);
+	}
+	case GeometryType::MULTIPOINT:
+	case GeometryType::MULTILINESTRING:
+	case GeometryType::MULTIPOLYGON:
+	case GeometryType::GEOMETRYCOLLECTION: {
+		const auto part_count = reader.Read<uint32_t>();
+		const auto parts = geometry_t::AllocateParts(arena, part_count);
+		for (idx_t part_idx = 0; part_idx < part_count; part_idx++) {
+			parts[part_idx] = ReadWKB(reader, arena, depth + 1);
+		}
+		return geometry_t::CreateContainer(type, vert_type, parts, part_count);
+	}
+	default:
+		throw InvalidInputException("Unsupported geometry type %d in WKB", static_cast<int>(type_id));
+	}
+}
+
+//===--------------------------------------------------------------------===//
+// Native
+//===--------------------------------------------------------------------===//
+// Depth-first, with an 8-byte node header followed immediately by the payload.
+constexpr idx_t NATIVE_HEADER_SIZE = 8;
+
+idx_t GetSerializedSizeInternal(const geometry_t &geom) {
+	if (geom.IsNull()) {
+		return NATIVE_HEADER_SIZE;
+	}
+	if (geom.IsLeaf()) {
+		return NATIVE_HEADER_SIZE + geom.GetVertexCount() * geom.GetVertexWidth();
+	}
+	idx_t size = NATIVE_HEADER_SIZE;
+	const auto part_count = geom.GetPartCount();
+	for (idx_t part_idx = 0; part_idx < part_count; part_idx++) {
+		size += GetSerializedSizeInternal(geom.GetPart(part_idx));
+	}
+	return size;
+}
+
+void WriteNative(const geometry_t &geom, FixedSizeBlobWriter &writer) {
+	writer.Write<uint8_t>(static_cast<uint8_t>(geom.GetGeometryType()));
+	writer.Write<uint8_t>(static_cast<uint8_t>(geom.GetVertexType()));
+	writer.Write<uint16_t>(0); // Reserved
+	writer.Write<uint32_t>(geom.IsNull() ? 0 : (geom.IsLeaf() ? geom.GetVertexCount() : geom.GetPartCount()));
+
+	if (geom.IsNull() || geom.IsEmpty()) {
+		return;
+	}
+	if (geom.IsLeaf()) {
+		WriteCoords(writer, geom.GetVertexData(), geom.GetVertexCount() * geom.GetDims());
+		return;
+	}
+	const auto part_count = geom.GetPartCount();
+	for (idx_t part_idx = 0; part_idx < part_count; part_idx++) {
+		WriteNative(geom.GetPart(part_idx), writer);
+	}
+}
+
+geometry_t ReadNative(BlobReader &reader, ArenaAllocator &arena, idx_t depth) {
+	if (depth > geometry_t::MAX_RECURSION_DEPTH) {
+		throw InvalidInputException("Geometry is nested too deeply (maximum is %llu)",
+		                            static_cast<uint64_t>(geometry_t::MAX_RECURSION_DEPTH));
+	}
+	const auto type = static_cast<GeometryType>(reader.Read<uint8_t>());
+	const auto vert_type = static_cast<VertexType>(reader.Read<uint8_t>());
+	const auto reserved = reader.Read<uint16_t>();
+	if (reserved != 0) {
+		throw InvalidInputException("Unsupported geometry flags in serialized geometry");
+	}
+	const auto item_count = reader.Read<uint32_t>();
+
+	switch (type) {
+	case GeometryType::INVALID:
+		return geometry_t::CreateNull();
+	case GeometryType::POINT:
+	case GeometryType::LINESTRING: {
+		if (item_count == 0) {
+			return geometry_t::CreateEmpty(type, vert_type);
+		}
+		const idx_t dims = geometry_t::CreateEmpty(type, vert_type).GetDims();
+		const auto verts = geometry_t::AllocateVerts(arena, item_count, dims);
+		ReadCoords(reader, verts, static_cast<idx_t>(item_count) * dims);
+		return geometry_t::CreateLeaf(type, vert_type, verts, item_count);
+	}
+	case GeometryType::POLYGON:
+	case GeometryType::MULTIPOINT:
+	case GeometryType::MULTILINESTRING:
+	case GeometryType::MULTIPOLYGON:
+	case GeometryType::GEOMETRYCOLLECTION: {
+		const auto parts = geometry_t::AllocateParts(arena, item_count);
+		for (idx_t part_idx = 0; part_idx < item_count; part_idx++) {
+			parts[part_idx] = ReadNative(reader, arena, depth + 1);
+		}
+		return geometry_t::CreateContainer(type, vert_type, parts, item_count);
+	}
+	default:
+		throw InvalidInputException("Unsupported geometry type %d in serialized geometry",
+		                            static_cast<int>(type));
+	}
+}
+
+} // namespace
+
+//===--------------------------------------------------------------------===//
+// WKB entry points
+//===--------------------------------------------------------------------===//
+idx_t geometry_t::GetWKBSize(const geometry_t &geom) {
+	return GetWKBSizeInternal(geom);
+}
+
+idx_t geometry_t::SerializeWKB(const geometry_t &geom, data_ptr_t target) {
+	const auto size = GetWKBSizeInternal(geom);
+	FixedSizeBlobWriter writer(char_ptr_cast(target), NumericCast<uint32_t>(size));
+	WriteWKB(geom, writer);
+	D_ASSERT(writer.GetPosition() == size);
+	return size;
+}
+
+string_t geometry_t::SerializeWKB(const geometry_t &geom, Vector &result) {
+	const auto size = GetWKBSizeInternal(geom);
+	auto target = StringVector::EmptyString(result, size);
+	SerializeWKB(geom, data_ptr_cast(target.GetDataWriteable()));
+	target.Finalize();
+	return target;
+}
+
+string_t geometry_t::SerializeWKB(const geometry_t &geom, StringHeap &heap) {
+	const auto size = GetWKBSizeInternal(geom);
+	auto target = heap.EmptyString(size);
+	SerializeWKB(geom, data_ptr_cast(target.GetDataWriteable()));
+	target.Finalize();
+	return target;
+}
+
+void geometry_t::SerializeWKB(const geometry_t &geom, string &result) {
+	result.resize(GetWKBSizeInternal(geom));
+	SerializeWKB(geom, data_ptr_cast(&result[0]));
+}
+
+geometry_t geometry_t::DeserializeWKB(const string_t &wkb, ArenaAllocator &arena) {
+	BlobReader reader(wkb.GetData(), NumericCast<uint32_t>(wkb.GetSize()));
+	auto result = ReadWKB(reader, arena, 0);
+	result.Verify();
+	return result;
+}
+
+//===--------------------------------------------------------------------===//
+// Native entry points
+//===--------------------------------------------------------------------===//
+idx_t geometry_t::GetSerializedSize(const geometry_t &geom) {
+	return GetSerializedSizeInternal(geom);
+}
+
+idx_t geometry_t::Serialize(const geometry_t &geom, data_ptr_t target) {
+	const auto size = GetSerializedSizeInternal(geom);
+	FixedSizeBlobWriter writer(char_ptr_cast(target), NumericCast<uint32_t>(size));
+	WriteNative(geom, writer);
+	D_ASSERT(writer.GetPosition() == size);
+	return size;
+}
+
+string_t geometry_t::Serialize(const geometry_t &geom, Vector &result) {
+	const auto size = GetSerializedSizeInternal(geom);
+	auto target = StringVector::EmptyString(result, size);
+	Serialize(geom, data_ptr_cast(target.GetDataWriteable()));
+	target.Finalize();
+	return target;
+}
+
+geometry_t geometry_t::Deserialize(const string_t &blob, ArenaAllocator &arena) {
+	BlobReader reader(blob.GetData(), NumericCast<uint32_t>(blob.GetSize()));
+	auto result = ReadNative(reader, arena, 0);
+	result.Verify();
+	return result;
+}
+
 } // namespace duckdb

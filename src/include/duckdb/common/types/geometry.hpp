@@ -10,6 +10,7 @@
 
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/pair.hpp"
 #include "duckdb/common/query_location.hpp"
 #include "duckdb/storage/storage_info.hpp"
@@ -20,19 +21,6 @@ namespace duckdb {
 
 struct GeometryStatsData;
 class StringHeap;
-
-enum class GeometryType : uint8_t {
-	INVALID = 0,
-	POINT = 1,
-	LINESTRING = 2,
-	POLYGON = 3,
-	MULTIPOINT = 4,
-	MULTILINESTRING = 5,
-	MULTIPOLYGON = 6,
-	GEOMETRYCOLLECTION = 7,
-};
-
-enum class VertexType : uint8_t { XY = 0, XYZ = 1, XYM = 2, XYZM = 3 };
 
 struct VertexXY {
 	static constexpr auto TYPE = VertexType::XY;
