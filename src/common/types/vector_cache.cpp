@@ -3,6 +3,7 @@
 #include "duckdb/common/allocator.hpp"
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/vector/array_vector.hpp"
+#include "duckdb/common/vector/geometry_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
 #include "duckdb/common/vector/string_vector.hpp"
 #include "duckdb/common/vector/struct_vector.hpp"
@@ -41,6 +42,9 @@ public:
 		}
 		case PhysicalType::VARCHAR:
 			buffer = make_buffer<VectorStringBuffer>(allocator, capacity);
+			break;
+		case PhysicalType::GEOMETRY:
+			buffer = make_buffer<VectorGeometryBuffer>(allocator, capacity);
 			break;
 		default:
 			buffer = make_buffer<StandardVectorBuffer>(allocator, capacity, GetTypeIdSize(internal_type));

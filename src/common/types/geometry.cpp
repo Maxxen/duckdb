@@ -1,4 +1,5 @@
 #include "duckdb/common/vector/flat_vector.hpp"
+#include "duckdb/common/vector/geometry_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
 #include "duckdb/common/vector/map_vector.hpp"
 #include "duckdb/common/vector/string_vector.hpp"
@@ -2791,6 +2792,99 @@ geometry_t geometry_t::Deserialize(const string_t &blob, ArenaAllocator &arena) 
 	auto result = ReadNative(reader, arena, 0);
 	result.Verify();
 	return result;
+}
+
+geometry_t geometry_t::Deserialize(const string_t &blob, Vector &result) {
+	return Deserialize(blob, GeometryVector::GetArena(result));
+}
+
+geometry_t geometry_t::DeserializeWKB(const string_t &wkb, Vector &result) {
+	return DeserializeWKB(wkb, GeometryVector::GetArena(result));
+}
+
+//===--------------------------------------------------------------------===//
+// Vectorized entry points
+//===--------------------------------------------------------------------===//
+namespace {
+
+//! GEOMETRY -> BLOB, parameterized over which codec to use
+template <class OP>
+void SerializeVectorInternal(const Vector &source, Vector &result, idx_t count) {
+	UnifiedVectorFormat source_data;
+	source.ToUnifiedFormat(source_data);
+	const auto geoms = UnifiedVectorFormat::GetData<geometry_t>(source_data);
+
+	result.SetVectorType(VectorType::FLAT_VECTOR);
+	const auto result_data = FlatVector::GetDataMutable<string_t>(result);
+	auto &result_validity = FlatVector::ValidityMutable(result);
+
+	for (idx_t i = 0; i < count; i++) {
+		const auto source_idx = source_data.sel->get_index(i);
+		if (!source_data.validity.RowIsValid(source_idx)) {
+			result_validity.SetInvalid(i);
+			continue;
+		}
+		result_data[i] = OP::Serialize(geoms[source_idx], result);
+	}
+}
+
+//! BLOB -> GEOMETRY, parameterized over which codec to use
+template <class OP>
+void DeserializeVectorInternal(const Vector &source, Vector &result, idx_t count, idx_t result_offset) {
+	UnifiedVectorFormat source_data;
+	source.ToUnifiedFormat(source_data);
+	const auto blobs = UnifiedVectorFormat::GetData<string_t>(source_data);
+
+	const auto result_data = FlatVector::GetDataMutable<geometry_t>(result);
+	auto &result_validity = FlatVector::ValidityMutable(result);
+	auto &arena = GeometryVector::GetArena(result);
+
+	for (idx_t i = 0; i < count; i++) {
+		const auto source_idx = source_data.sel->get_index(i);
+		const auto target_idx = result_offset + i;
+		if (!source_data.validity.RowIsValid(source_idx)) {
+			result_validity.SetInvalid(target_idx);
+			result_data[target_idx] = geometry_t::CreateNull();
+			continue;
+		}
+		result_data[target_idx] = OP::Deserialize(blobs[source_idx], arena);
+	}
+}
+
+struct NativeCodec {
+	static string_t Serialize(const geometry_t &geom, Vector &result) {
+		return geometry_t::Serialize(geom, result);
+	}
+	static geometry_t Deserialize(const string_t &blob, ArenaAllocator &arena) {
+		return geometry_t::Deserialize(blob, arena);
+	}
+};
+
+struct WKBCodec {
+	static string_t Serialize(const geometry_t &geom, Vector &result) {
+		return geometry_t::SerializeWKB(geom, result);
+	}
+	static geometry_t Deserialize(const string_t &blob, ArenaAllocator &arena) {
+		return geometry_t::DeserializeWKB(blob, arena);
+	}
+};
+
+} // namespace
+
+void geometry_t::Serialize(const Vector &source, Vector &result, idx_t count) {
+	SerializeVectorInternal<NativeCodec>(source, result, count);
+}
+
+void geometry_t::Deserialize(const Vector &source, Vector &result, idx_t count, idx_t result_offset) {
+	DeserializeVectorInternal<NativeCodec>(source, result, count, result_offset);
+}
+
+void geometry_t::SerializeWKB(const Vector &source, Vector &result, idx_t count) {
+	SerializeVectorInternal<WKBCodec>(source, result, count);
+}
+
+void geometry_t::DeserializeWKB(const Vector &source, Vector &result, idx_t count, idx_t result_offset) {
+	DeserializeVectorInternal<WKBCodec>(source, result, count, result_offset);
 }
 
 } // namespace duckdb

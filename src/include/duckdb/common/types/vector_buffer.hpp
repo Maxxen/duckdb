@@ -30,6 +30,7 @@ struct SelCache;
 enum class VectorBufferType : uint8_t {
 	STANDARD_BUFFER,   // VectorType::FLAT/CONSTANT - Fixed-Size Type - Holds a single array of data
 	STRING_BUFFER,     // VectorType::FLAT/CONSTANT - String          - Holds string_t array and StringHeap
+	GEOMETRY_BUFFER,   // VectorType::FLAT/CONSTANT - Geometry        - Holds geometry_t array and an ArenaAllocator
 	STRUCT_BUFFER,     // VectorType::FLAT/CONSTANT - Struct          - Holds struct child vectors
 	LIST_BUFFER,       // VectorType::FLAT/CONSTANT - List            - Holds list_entry_t array and list child vector
 	ARRAY_BUFFER,      // VectorType::FLAT/CONSTANT - Array           - Holds array child vector

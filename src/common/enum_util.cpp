@@ -6548,6 +6548,7 @@ const StringUtil::EnumStringLiteral *GetVectorBufferTypeValues() {
 	static constexpr StringUtil::EnumStringLiteral values[] {
 		{ static_cast<uint32_t>(VectorBufferType::STANDARD_BUFFER), "STANDARD_BUFFER" },
 		{ static_cast<uint32_t>(VectorBufferType::STRING_BUFFER), "STRING_BUFFER" },
+		{ static_cast<uint32_t>(VectorBufferType::GEOMETRY_BUFFER), "GEOMETRY_BUFFER" },
 		{ static_cast<uint32_t>(VectorBufferType::STRUCT_BUFFER), "STRUCT_BUFFER" },
 		{ static_cast<uint32_t>(VectorBufferType::LIST_BUFFER), "LIST_BUFFER" },
 		{ static_cast<uint32_t>(VectorBufferType::ARRAY_BUFFER), "ARRAY_BUFFER" },
@@ -6561,12 +6562,12 @@ const StringUtil::EnumStringLiteral *GetVectorBufferTypeValues() {
 
 template<>
 const char* EnumUtil::ToChars<VectorBufferType>(VectorBufferType value) {
-	return StringUtil::EnumToString(GetVectorBufferTypeValues(), 9, "VectorBufferType", static_cast<uint32_t>(value));
+	return StringUtil::EnumToString(GetVectorBufferTypeValues(), 10, "VectorBufferType", static_cast<uint32_t>(value));
 }
 
 template<>
 VectorBufferType EnumUtil::FromString<VectorBufferType>(const char *value) {
-	return static_cast<VectorBufferType>(StringUtil::StringToEnum(GetVectorBufferTypeValues(), 9, "VectorBufferType", value));
+	return static_cast<VectorBufferType>(StringUtil::StringToEnum(GetVectorBufferTypeValues(), 10, "VectorBufferType", value));
 }
 
 const StringUtil::EnumStringLiteral *GetVectorTypeValues() {

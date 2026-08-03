@@ -219,6 +219,12 @@ public:
 	//! Writes into `result`'s string heap - `result` is a BLOB vector, not a GEOMETRY one
 	static string_t Serialize(const geometry_t &geom, Vector &result);
 	static geometry_t Deserialize(const string_t &blob, ArenaAllocator &arena);
+	//! Allocates in `result`'s arena - `result` is a GEOMETRY vector
+	static geometry_t Deserialize(const string_t &blob, Vector &result);
+	//! Vectorized GEOMETRY -> BLOB
+	static void Serialize(const Vector &source, Vector &result, idx_t count);
+	//! Vectorized BLOB -> GEOMETRY
+	static void Deserialize(const Vector &source, Vector &result, idx_t count, idx_t result_offset = 0);
 
 	//===------------------------------------------------------------------===//
 	// WKB format: on-disk (until the native storage format lands), ART keys, interop
@@ -232,9 +238,16 @@ public:
 	static string_t SerializeWKB(const geometry_t &geom, StringHeap &heap);
 	static void SerializeWKB(const geometry_t &geom, string &result);
 
+	//! Vectorized GEOMETRY -> BLOB
+	static void SerializeWKB(const Vector &source, Vector &result, idx_t count);
+
 	//! Parse *already normalized* WKB - our own SerializeWKB output, or bytes read back from
 	//! storage. Use Geometry::FromBinary for arbitrary user WKB, which may be big-endian or EWKB.
 	static geometry_t DeserializeWKB(const string_t &wkb, ArenaAllocator &arena);
+	//! Allocates in `result`'s arena - `result` is a GEOMETRY vector
+	static geometry_t DeserializeWKB(const string_t &wkb, Vector &result);
+	//! Vectorized BLOB -> GEOMETRY
+	static void DeserializeWKB(const Vector &source, Vector &result, idx_t count, idx_t result_offset = 0);
 
 private:
 	geometry_t(GeometryType part_type_p, VertexType vert_type_p) : part_type(part_type_p), vert_type(vert_type_p) {

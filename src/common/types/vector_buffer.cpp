@@ -2,6 +2,7 @@
 #include "duckdb/common/vector/constant_vector.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/common/vector/fsst_vector.hpp"
+#include "duckdb/common/vector/geometry_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
 #include "duckdb/common/vector/map_vector.hpp"
 #include "duckdb/common/vector/shredded_vector.hpp"
@@ -22,6 +23,9 @@ buffer_ptr<VectorBuffer> VectorBuffer::CreateStandardVector(PhysicalType type, c
 	}
 	if (type == PhysicalType::VARCHAR) {
 		return make_buffer<VectorStringBuffer>(capacity);
+	}
+	if (type == PhysicalType::GEOMETRY) {
+		return make_buffer<VectorGeometryBuffer>(capacity);
 	}
 	return make_buffer<StandardVectorBuffer>(capacity, GetTypeIdSize(type));
 }
