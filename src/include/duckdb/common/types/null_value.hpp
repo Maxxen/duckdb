@@ -11,6 +11,7 @@
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/types/string_type.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/types/interval.hpp"
 #include "duckdb/common/limits.hpp"
 #include "duckdb/common/windows_undefs.hpp"
@@ -49,6 +50,12 @@ inline char *NullValue() {
 template <>
 inline string NullValue() {
 	return string(NullValue<const char *>());
+}
+
+//! The NULL geometry owns no memory, so scattering it into a row layout heap is a no-op
+template <>
+inline geometry_t NullValue() {
+	return geometry_t::CreateNull();
 }
 
 template <>

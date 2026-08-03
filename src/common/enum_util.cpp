@@ -107,6 +107,7 @@
 #include "duckdb/common/types/date.hpp"
 #include "duckdb/common/types/geometry.hpp"
 #include "duckdb/common/types/geometry_crs.hpp"
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/types/hyperloglog.hpp"
 #include "duckdb/common/types/row/block_iterator.hpp"
 #include "duckdb/common/types/row/partitioned_tuple_data.hpp"
@@ -4400,6 +4401,7 @@ const StringUtil::EnumStringLiteral *GetPhysicalTypeValues() {
 		{ static_cast<uint32_t>(PhysicalType::INT128), "INT128" },
 		{ static_cast<uint32_t>(PhysicalType::UNKNOWN), "UNKNOWN" },
 		{ static_cast<uint32_t>(PhysicalType::BIT), "BIT" },
+		{ static_cast<uint32_t>(PhysicalType::GEOMETRY), "GEOMETRY" },
 		{ static_cast<uint32_t>(PhysicalType::INVALID), "INVALID" }
 	};
 	return values;
@@ -4407,12 +4409,12 @@ const StringUtil::EnumStringLiteral *GetPhysicalTypeValues() {
 
 template<>
 const char* EnumUtil::ToChars<PhysicalType>(PhysicalType value) {
-	return StringUtil::EnumToString(GetPhysicalTypeValues(), 21, "PhysicalType", static_cast<uint32_t>(value));
+	return StringUtil::EnumToString(GetPhysicalTypeValues(), 22, "PhysicalType", static_cast<uint32_t>(value));
 }
 
 template<>
 PhysicalType EnumUtil::FromString<PhysicalType>(const char *value) {
-	return static_cast<PhysicalType>(StringUtil::StringToEnum(GetPhysicalTypeValues(), 21, "PhysicalType", value));
+	return static_cast<PhysicalType>(StringUtil::StringToEnum(GetPhysicalTypeValues(), 22, "PhysicalType", value));
 }
 
 const StringUtil::EnumStringLiteral *GetPipelineBroadcastExchangeConsumerModeValues() {

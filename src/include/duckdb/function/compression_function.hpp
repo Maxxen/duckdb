@@ -315,7 +315,7 @@ public:
 //! The set of compression functions
 struct CompressionFunctionSet {
 	static constexpr idx_t COMPRESSION_TYPE_COUNT = 16;
-	static constexpr idx_t PHYSICAL_TYPE_COUNT = 19;
+	static constexpr idx_t PHYSICAL_TYPE_COUNT = 20;
 
 public:
 	CompressionFunctionSet();

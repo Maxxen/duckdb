@@ -11,6 +11,7 @@
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/types/date.hpp"
 #include "duckdb/common/types/datetime.hpp"
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/common/types/interval.hpp"
 #include "duckdb/common/uhugeint.hpp"
@@ -91,6 +92,8 @@ PhysicalType GetTypeId() {
 		return PhysicalType::INTERVAL;
 	} else if (std::is_same<TYPE, list_entry_t>()) {
 		return PhysicalType::LIST;
+	} else if (std::is_same<TYPE, geometry_t>()) {
+		return PhysicalType::GEOMETRY;
 	} else if (std::is_pointer<TYPE>() || std::is_same<TYPE, uintptr_t>()) {
 		if (sizeof(uintptr_t) == sizeof(uint32_t)) {
 			return PhysicalType::UINT32;

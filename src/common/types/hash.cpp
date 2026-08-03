@@ -1,6 +1,7 @@
 #include "duckdb/common/types/hash.hpp"
 
 #include "duckdb/common/helper.hpp"
+#include "duckdb/common/types/geometry_type.hpp"
 #include "duckdb/common/types/string_type.hpp"
 #include "duckdb/common/types/interval.hpp"
 #include "duckdb/common/types/uhugeint.hpp"
@@ -62,6 +63,29 @@ hash_t Hash(interval_t val) {
 	int64_t months, days, micros;
 	val.Normalize(months, days, micros);
 	return Hash(days) ^ Hash(months) ^ Hash(micros);
+}
+
+//! Structural hash, matching geometry_t::operator==
+template <>
+hash_t Hash(geometry_t val) {
+	if (val.IsNull()) {
+		return 0;
+	}
+	auto result = CombineHash(Hash(static_cast<uint8_t>(val.GetGeometryType())),
+	                          Hash(static_cast<uint8_t>(val.GetVertexType())));
+	if (val.IsEmpty()) {
+		return result;
+	}
+	if (val.IsLeaf()) {
+		const auto vert_count = val.GetVertexCount();
+		return CombineHash(result, Hash(const_char_ptr_cast(val.GetVertexData()),
+		                                vert_count * val.GetVertexWidth()));
+	}
+	const auto part_count = val.GetPartCount();
+	for (idx_t part_idx = 0; part_idx < part_count; part_idx++) {
+		result = CombineHash(result, Hash(val.GetPart(part_idx)));
+	}
+	return result;
 }
 
 template <>

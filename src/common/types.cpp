@@ -310,6 +310,8 @@ string TypeIdToString(PhysicalType type) {
 		return "LIST";
 	case PhysicalType::ARRAY:
 		return "ARRAY";
+	case PhysicalType::GEOMETRY:
+		return "GEOMETRY";
 	case PhysicalType::INVALID:
 		return "INVALID";
 	case PhysicalType::BIT:
@@ -352,6 +354,8 @@ idx_t GetTypeIdSize(PhysicalType type) {
 		return sizeof(double);
 	case PhysicalType::VARCHAR:
 		return sizeof(string_t);
+	case PhysicalType::GEOMETRY:
+		return sizeof(geometry_t);
 	case PhysicalType::INTERVAL:
 		return sizeof(interval_t);
 	case PhysicalType::STRUCT:

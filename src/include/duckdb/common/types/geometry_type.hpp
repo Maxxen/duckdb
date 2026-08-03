@@ -253,3 +253,12 @@ private:
 };
 
 } // namespace duckdb
+
+namespace std {
+template <>
+struct hash<duckdb::geometry_t> {
+	size_t operator()(const duckdb::geometry_t &val) const {
+		return duckdb::Hash(val);
+	}
+};
+} // namespace std
