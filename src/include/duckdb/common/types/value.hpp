@@ -231,6 +231,10 @@ public:
 	template <class T>
 	T GetValueUnsafe() const;
 
+	//! Pointer to the inline-stored payload bytes. Only valid for constant-size physical types; the
+	//! pointer borrows the Value's storage and is valid until the Value is destroyed.
+	DUCKDB_API const_data_ptr_t GetPointerToData() const;
+
 	//! Return a copy of this value
 	Value Copy() const {
 		return Value(*this);

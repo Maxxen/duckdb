@@ -1,0 +1,564 @@
+module: value
+#
+# Value construction + reading + NULL + composition + descent + cast.
+#
+# Mirrors duckdb::Value. A value carries a logical type plus a typed payload.
+# Internal storage:
+#   - primitives: inline union (bool, integer widths, float/double, hugeint,
+#     interval, all date/time/timestamp variants).
+#   - varchar/blob/bit/bignum/geometry: StringValueInfo (a managed std::string).
+#   - type: StringValueInfo holding the serialized logical type
+#     (value_create_type / value_get_type wrap and unwrap it).
+#   - composites (list/struct/tuple/map/array/union): NestedValueInfo (a vector
+#     of child Values). Built via value_create (LIST/ARRAY/STRUCT/TUPLE/MAP) or
+#     value_cast (UNION from a member value, ENUM from VARCHAR); read via
+#     value_get_child_count / value_get_child.
+#
+# Leaf payloads cross the boundary through one generic codec pair:
+# value_create_from_data / value_get_data speak each kind's committed
+# physical layout (the vector view layout table plus the DECIMAL / ENUM
+# storage tier tables). There are no per-kind leaf constructors or
+# getters. BIGNUM goes through that same pair: its storage bytes are
+# opaque here (negatives are stored bit-inverted behind a header), so the
+# vector module's bignum_encode / bignum_decode translate between those
+# bytes and a magnitude + sign flag on either side of the codec.
+#
+# All constructors copy their input. Getters return owned outputs
+# (caller-destroyed) or borrowed pointers (valid until the value handle is
+# destroyed); the contract is documented per function.
+#
+# NULL handling: the payload readers (value_get_data,
+# value_get_type, value_get_variant) return ERROR_INPUT_INVALID when the value is NULL: a
+# NULL has no typed payload to hand back. Use value_is_null first (or
+# value_get_logical_type / value_to_string, which both accept NULL
+# values).
+
+functions:
+  # -----------------------------------------------------------------------
+  # Lifecycle + NULL
+  # -----------------------------------------------------------------------
+  value_destroy:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Destroys a value handle.
+
+      Null-safe: passing nullptr or a slot already set to nullptr is a
+      no-op. On success the slot is set to nullptr.
+    role: destructor
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+        indirection: 1
+        description: The value to destroy.
+    return_type: ERROR
+  value_create_null:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a NULL value of the given logical type.
+
+      The input logical type is borrowed; the value internally copies the
+      type so the caller can destroy the logical type independently.
+    role: constructor
+    belongs_to: value
+    parameters:
+      type:
+        type: logical_type
+        description: The borrowed logical type to attach to the NULL value.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new NULL value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  # -----------------------------------------------------------------------
+  # Leaf payload codec
+  # -----------------------------------------------------------------------
+  value_create_from_data:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a leaf value of the given type from its committed physical layout.
+
+      The generic leaf constructor: data holds the payload in exactly the
+      committed physical layout of the type, the same bytes a vector view
+      exposes. Fixed-size kinds (BOOLEAN, the integer and float widths,
+      DATE, all TIME and TIMESTAMP variants including the packed TIME_TZ
+      form, INTERVAL, HUGEINT and UHUGEINT, UUID in its internal hugeint
+      form, DECIMAL as the scaled integer of its width tier, ENUM as a
+      dictionary index of its size tier) require len equal to the layout
+      size; any other len returns ERROR_INPUT_INVALID. Variable-length
+      kinds take their wire bytes: VARCHAR (byte string; the engine
+      rejects invalid UTF-8 at construction), BLOB (any bytes), BIT (the
+      mandatory padding header byte plus data bytes, so len >= 1), BIGNUM
+      (opaque storage bytes, produced by bignum_encode from a magnitude
+      and a sign flag; its header plus at least one magnitude byte means
+      len >= 4).
+
+      Layout-raw: beyond the length and layout gates above, semantic
+      invariants are NOT validated, the same stance as the data plane;
+      validation is value_cast's job. Two exceptions: the ENUM dictionary
+      index is bounds-checked (an out-of-range index is not addressable
+      storage), and VARCHAR rejects invalid UTF-8 (the engine enforces it
+      at construction).
+
+      Every other type id returns ERROR_INPUT_INVALID: TYPE values are
+      built via value_create_type, composites via value_create; GEOMETRY
+      has no committed layout. The type is borrowed; the payload is copied
+      in.
+    role: constructor
+    belongs_to: value
+    parameters:
+      type:
+        type: logical_type
+        description: The borrowed leaf logical type to instantiate.
+      data:
+        type: void
+        indirection: 1
+        const: true
+        description: Pointer to the payload in the type's committed physical layout. May be null only when len is 0 (empty VARCHAR / BLOB).
+      len:
+        type: idx
+        description: Payload size in bytes. Must equal the layout size for fixed-size kinds.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new leaf value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_get_data:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Borrows a leaf value's payload in its committed physical layout.
+
+      The inverse of value_create_from_data: a borrowed view of the
+      payload in the same committed layout, valid until the value is
+      destroyed. Fixed-size kinds report the layout size; VARCHAR, BLOB,
+      BIT, and BIGNUM report their wire bytes. A BIGNUM's bytes are opaque
+      storage; pass them to bignum_decode for a magnitude and a sign flag.
+      Returns ERROR_INPUT_INVALID for NULL values (a NULL has no payload
+      to hand back; use value_is_null first) and for the kinds
+      value_create_from_data rejects.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_data:
+        type: void
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Receives a borrowed pointer to the payload bytes.
+      out_len:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the payload size in bytes.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  # -----------------------------------------------------------------------
+  # VARIANT codec (wire encoding not committed; unwrap is the read path)
+  # -----------------------------------------------------------------------
+  value_get_variant:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Unwraps a VARIANT value into the plain value it carries.
+
+      Decodes the variant payload engine-side and returns the carried
+      value with its real logical type, so per-row inner-type discovery
+      needs no prior knowledge: inspect the result via
+      value_get_logical_type and descend or read it like any other value.
+      Returns ERROR_INPUT_INVALID unless the input is a non-NULL VARIANT
+      value. The returned value is caller-owned; destroy via
+      value_destroy.
+
+      Decoding is faithful to the variant encoding, not to the original
+      SQL type: homogeneous arrays come back as typed LISTs, variant
+      objects as STRUCTs with field names, MAPs as their key-value-array
+      form (LIST of STRUCT(key, value)), and heterogeneous arrays as
+      LIST(VARIANT) whose elements unwrap individually.
+
+      The variant wire encoding itself is not committed contract:
+      vector_get_value hands out the boxed VARIANT cell and this unwrap
+      decodes it, mirroring how the BIGNUM codec pair owns that kind's
+      uncommitted encoding.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned unwrapped value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  # -----------------------------------------------------------------------
+  # TYPE values (a logical type carried as a value)
+  # -----------------------------------------------------------------------
+  value_create_type:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a TYPE value wrapping a logical type.
+
+      The input logical type is borrowed; the value stores its own copy
+      (serialized form), so the caller can destroy the logical type
+      independently. TYPE values carry types where a value is expected,
+      e.g. as type parameters.
+    role: constructor
+    belongs_to: value
+    parameters:
+      type:
+        type: logical_type
+        description: The borrowed logical type to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new TYPE value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_get_type:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Unwraps the logical type carried by a TYPE value.
+
+      Returns ERROR_INPUT_INVALID unless the value is a non-NULL TYPE
+      value. The returned logical type is caller-owned and must be
+      destroyed via logical_type_destroy.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the owned logical type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  # -----------------------------------------------------------------------
+  # Composite construction + descent + cast
+  # -----------------------------------------------------------------------
+  value_create:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a composite value from a type plus child values.
+
+      The generic composite constructor. Per type kind:
+      LIST, children are the elements, any count including 0;
+      ARRAY, count must equal the declared array size;
+      STRUCT and TUPLE, positional per declared field order, count =
+      field count;
+      MAP, alternating key, value, so count is even and 2 x the entry
+      count. Every other type id returns ERROR_INPUT_INVALID: UNION and
+      ENUM values are built via value_cast (a member value to the union
+      type, a VARCHAR to the enum type), primitives via their typed
+      constructors.
+
+      The type and children are borrowed (copied in). The engine casts
+      each child to the declared child or field type (non-strict default
+      cast); cast failures surface. NULL children become typed NULLs.
+      MAP keys must be non-NULL and unique; violations surface.
+      LIST, ARRAY, and MAP rebuild the outer type from its components, so
+      an alias on the outer type is not preserved; STRUCT and TUPLE keep
+      their declared type, alias included. value_cast is the
+      alias-preserving construction path.
+    role: constructor
+    belongs_to: value
+    parameters:
+      type:
+        type: logical_type
+        description: The borrowed composite logical type to instantiate.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of child_count child values. Borrowed (copied in). Pass NULL when child_count is 0.
+      child_count:
+        type: idx
+        description: The number of child values.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_get_child_count:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Returns the number of child values of a value.
+
+      Per type kind: LIST and ARRAY, the element count; STRUCT and TUPLE,
+      the field count; MAP, 2 x the entry count (children alternate key,
+      value);
+      UNION, 2 (tag plus active member). Everything else, including NULL
+      values of any nested type, reports 0.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_count:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the number of children.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_get_child:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Returns one child of a composite value as an owned copy.
+
+      LIST and ARRAY children are the elements; STRUCT and TUPLE children
+      are the fields in declared order (STRUCT field names come from the
+      type, e.g. logical_type_get_param); MAP children alternate key, value,
+      symmetric with value_create. UNION children are [0] the tag as a
+      UTINYINT value and [1] the active member: a union VALUE holds only
+      its active member. LOUD divergence for generic-descent authors: the
+      vector module's vector_get_child uses [0] = tag, [1..N] = ALL
+      members (structural descent); see that module's index convention
+      before writing code generic over both. Out-of-range index (including
+      any index on a non-composite or NULL value) returns
+      ERROR_INPUT_INVALID. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      index:
+        type: idx
+        description: The child index, in [0, child_count).
+      out_child:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned child value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_cast_with_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Casts a value to a target type through the engine's cast machinery, using a connection.
+
+      Same as value_cast_with_context, but supplies the cast machinery
+      from a connection: the cast runs in its own transaction on the
+      connection's context. Use this from outside DuckDB, where a
+      connection — but no context — is in hand.
+
+      The SQL-faithful conversion (non-strict), registered custom casts
+      included. Cast failures surface from the call. With a VARCHAR built
+      through value_create_from_data this constructs any value from text,
+      extension values included; casting a member value to a union type
+      or a VARCHAR to an enum type is the sanctioned way to build UNION
+      and ENUM values.
+
+      The input value and target type are borrowed. The returned value is
+      caller-owned; destroy via value_destroy.
+    role: method
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection whose context supplies the cast function set.
+      value:
+        type: value
+        description: The borrowed value to cast.
+      target_type:
+        type: logical_type
+        description: The borrowed target logical type.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned cast result.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_cast_with_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Casts a value to a target type through the engine's cast machinery, using a context.
+
+      The SQL-faithful conversion (non-strict), registered custom casts
+      included. Cast failures surface from the call. With a VARCHAR built
+      through value_create_from_data this constructs any value from text,
+      extension values included; casting a member value to a union type
+      or a VARCHAR to an enum type is the sanctioned way to build UNION
+      and ENUM values.
+
+      Runs in the caller's context scope (see
+      logical_type_create_from_text): reach it from a bind-phase callback
+      or another context-holding scope, not an exec-phase worker
+      callback. From outside DuckDB use value_cast_with_connection.
+
+      The input value and target type are borrowed. The returned value is
+      caller-owned; destroy via value_destroy.
+    role: method
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context supplying the cast function set.
+      value:
+        type: value
+        description: The borrowed value to cast.
+      target_type:
+        type: logical_type
+        description: The borrowed target logical type.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the owned cast result.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  # -----------------------------------------------------------------------
+  # Common introspection
+  # -----------------------------------------------------------------------
+  value_is_null:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: Returns whether the value is NULL.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_is_null:
+        type: bool
+        indirection: 1
+        kind: OUT
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_get_logical_type:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Returns the logical type of the value.
+
+      The returned logical type is caller-owned (must be destroyed via
+      logical_type_destroy).
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the owned logical type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_to_string:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Renders the value as a human-readable string. Diagnostic only.
+
+      Mirrors duckdb::Value::ToString(). Writes into a caller-supplied
+      buffer; the library never allocates and hands back nothing to free.
+
+      Pass out_string = NULL to size the buffer without rendering the text
+      into it: out_length then receives the length, and out_capacity is
+      ignored. With out_string != NULL, out_capacity must be at least
+      out_length + 1 or the call returns ERROR_INPUT_OBJECT_SIZE with
+      out_length set to the required length and out_string left untouched.
+
+      out_length never counts the terminator, but a successful write always
+      appends one, so the buffer is usable as a C string.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_string:
+        type: char
+        indirection: 1
+        kind: OUT
+        description: Caller-owned buffer receiving the text plus a null terminator, or NULL to only report the required length in out_length.
+      out_capacity:
+        type: idx
+        description: Bytes available in out_string, terminator included. Ignored when out_string is NULL.
+      out_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the text length excluding the null terminator — written on success and on ERROR_INPUT_OBJECT_SIZE.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
