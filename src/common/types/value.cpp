@@ -1692,6 +1692,14 @@ interval_t Value::GetValueUnsafe() const {
 }
 
 //===--------------------------------------------------------------------===//
+// GetPointerToData
+//===--------------------------------------------------------------------===//
+const_data_ptr_t Value::GetPointerToData() const {
+	D_ASSERT(TypeIsConstantSize(type_.InternalType()));
+	return const_data_ptr_cast(&value_);
+}
+
+//===--------------------------------------------------------------------===//
 // Hash
 //===--------------------------------------------------------------------===//
 hash_t Value::Hash() const {
