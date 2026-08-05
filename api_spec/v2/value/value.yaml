@@ -446,7 +446,7 @@ functions:
       and ENUM values.
 
       Runs in the caller's context scope (see
-      logical_type_create_from_text): reach it from a bind-phase callback
+      create_type_from_text): reach it from a bind-phase callback
       or another context-holding scope, not an exec-phase worker
       callback. From outside DuckDB use value_cast_with_connection.
 

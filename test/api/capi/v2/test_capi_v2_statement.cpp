@@ -282,8 +282,8 @@ TEST_CASE("V2: statement_execute binds positional parameters", "[capi_v2][sql_st
 
 	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
 
-	auto make_int = [](int64_t v) {
-		return MakeInt64Value(v);
+	auto make_int = [&](int64_t v) {
+		return MakeInt64Value(fx.conn, v);
 	};
 
 	// First execution: 10 + 20 = 30.
@@ -314,8 +314,8 @@ TEST_CASE("V2: bound parameter values may be destroyed before the result is cons
 	EnvFixture fx;
 
 	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
-	duckdb_v2_value_handle a = MakeInt64Value(10);
-	duckdb_v2_value_handle b = MakeInt64Value(20);
+	duckdb_v2_value_handle a = MakeInt64Value(fx.conn, 10);
+	duckdb_v2_value_handle b = MakeInt64Value(fx.conn, 20);
 	duckdb_v2_value_handle params[2] = {a, b};
 
 	duckdb_v2_result_handle r = nullptr;
@@ -339,7 +339,7 @@ TEST_CASE("V2: statement_execute rejects parameters on a statement that expands"
 	// A volatile DEFAULT makes ALTER ADD COLUMN expand into BEGIN/.../COMMIT; the
 	// parameter would bind against the injected BEGIN, so the call is refused.
 	auto stmt = StmtParseOne(fx.conn, "ALTER TABLE et ADD COLUMN c INTEGER DEFAULT ((random() * 0)::INTEGER + $1)");
-	duckdb_v2_value_handle v = MakeInt64Value(40);
+	duckdb_v2_value_handle v = MakeInt64Value(fx.conn, 40);
 	duckdb_v2_value_handle params[1] = {v};
 
 	duckdb_v2_result_handle r = nullptr;
@@ -368,8 +368,8 @@ TEST_CASE("V2: statement_execute binds named parameters", "[capi_v2][sql_stateme
 	EnvFixture fx;
 	auto stmt = StmtParseOne(fx.conn, "SELECT $a + $b");
 
-	duckdb_v2_value_handle va = MakeInt64Value(10);
-	duckdb_v2_value_handle vb = MakeInt64Value(20);
+	duckdb_v2_value_handle va = MakeInt64Value(fx.conn, 10);
+	duckdb_v2_value_handle vb = MakeInt64Value(fx.conn, 20);
 
 	// Bind by name: order of the arrays is irrelevant, only the name matches.
 	duckdb_v2_str names[2] = {Convert("a"), Convert("b")};
@@ -382,8 +382,8 @@ TEST_CASE("V2: statement_execute binds named parameters", "[capi_v2][sql_stateme
 	// Same statement, names and values reordered together: keying is by name, so the
 	// result is unchanged (a - b would differ; a + b proves order independence via
 	// the swap below with distinct values).
-	duckdb_v2_value_handle vx = MakeInt64Value(100);
-	duckdb_v2_value_handle vy = MakeInt64Value(1);
+	duckdb_v2_value_handle vx = MakeInt64Value(fx.conn, 100);
+	duckdb_v2_value_handle vy = MakeInt64Value(fx.conn, 1);
 	duckdb_v2_str swapped[2] = {Convert("b"), Convert("a")};
 	duckdb_v2_value_handle swapped_values[2] = {vy, vx}; // b=1, a=100
 	REQUIRE(duckdb_v2_statement_execute(fx.conn, stmt, swapped, swapped_values, 2, &r, nullptr) ==
@@ -403,7 +403,7 @@ TEST_CASE("V2: statement_execute matches named parameters case-insensitively", "
 	// $Name in the SQL, bound with the differently-cased key "name": Identifier keys
 	// compare case-insensitively, so the bind succeeds.
 	auto stmt = StmtParseOne(fx.conn, "SELECT $Name");
-	duckdb_v2_value_handle v = MakeInt64Value(42);
+	duckdb_v2_value_handle v = MakeInt64Value(fx.conn, 42);
 	duckdb_v2_str names[1] = {Convert("name")};
 	duckdb_v2_value_handle values[1] = {v};
 	duckdb_v2_result_handle r = nullptr;
@@ -421,7 +421,7 @@ TEST_CASE("V2: statement_execute rejects positional binding of a named parameter
 	// binding it positionally (names == NULL) fails the key-set check below, which is
 	// what proves $val is named.
 	auto stmt = StmtParseOne(fx.conn, "SELECT $val");
-	duckdb_v2_value_handle v = MakeInt64Value(7);
+	duckdb_v2_value_handle v = MakeInt64Value(fx.conn, 7);
 	duckdb_v2_str names[1] = {Convert("val")};
 	duckdb_v2_value_handle values[1] = {v};
 	duckdb_v2_result_handle r = nullptr;
@@ -441,8 +441,8 @@ TEST_CASE("V2: statement_execute rejects positional binding of a named parameter
 
 TEST_CASE("V2: statement_execute rejects a wrong parameter key set", "[capi_v2][sql_statement]") {
 	EnvFixture fx;
-	duckdb_v2_value_handle v1 = MakeInt64Value(1);
-	duckdb_v2_value_handle v2 = MakeInt64Value(2);
+	duckdb_v2_value_handle v1 = MakeInt64Value(fx.conn, 1);
+	duckdb_v2_value_handle v2 = MakeInt64Value(fx.conn, 2);
 
 	SECTION("names supplied for a positional statement") {
 		auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
@@ -482,7 +482,7 @@ TEST_CASE("V2: statement_execute rejects a wrong parameter key set", "[capi_v2][
 TEST_CASE("V2: statement_execute rejects a malformed parameter name", "[capi_v2][sql_statement]") {
 	EnvFixture fx;
 	auto stmt = StmtParseOne(fx.conn, "SELECT $a");
-	duckdb_v2_value_handle v = MakeInt64Value(1);
+	duckdb_v2_value_handle v = MakeInt64Value(fx.conn, 1);
 	// {NULL, len > 0} is malformed per the duckdb_v2_str contract.
 	duckdb_v2_str names[1] = {duckdb_v2_str {nullptr, 5}};
 	duckdb_v2_value_handle values[1] = {v};
@@ -497,8 +497,8 @@ TEST_CASE("V2: statement_execute rejects a malformed parameter name", "[capi_v2]
 TEST_CASE("V2: statement_execute treats empty name entries as positional", "[capi_v2][sql_statement]") {
 	EnvFixture fx;
 	auto stmt = StmtParseOne(fx.conn, "SELECT $1 + $2");
-	duckdb_v2_value_handle va = MakeInt64Value(10);
-	duckdb_v2_value_handle vb = MakeInt64Value(20);
+	duckdb_v2_value_handle va = MakeInt64Value(fx.conn, 10);
+	duckdb_v2_value_handle vb = MakeInt64Value(fx.conn, 20);
 	duckdb_v2_value_handle values[2] = {va, vb};
 
 	SECTION("a non-NULL array of empty views binds positionally") {
@@ -558,8 +558,8 @@ TEST_CASE("V2: statement_bind parameter names are the statement_execute keys", "
 	duckdb_v2_schema_destroy(&params);
 
 	// ... and those exact names are the execute keys.
-	duckdb_v2_value_handle va = MakeInt64Value(3);
-	duckdb_v2_value_handle vb = MakeInt64Value(4);
+	duckdb_v2_value_handle va = MakeInt64Value(fx.conn, 3);
+	duckdb_v2_value_handle vb = MakeInt64Value(fx.conn, 4);
 	duckdb_v2_str names[2] = {Convert("a"), Convert("b")};
 	duckdb_v2_value_handle values[2] = {va, vb};
 	duckdb_v2_result_handle r = nullptr;

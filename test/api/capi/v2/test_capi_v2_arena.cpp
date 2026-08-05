@@ -15,11 +15,13 @@ namespace {
 
 // Build a single-column chunk of the given type and borrow its vector.
 struct StringChunk {
+	// Logical types are created through a connection, so carry one.
+	EnvFixture env;
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	duckdb_v2_vector_handle vec = nullptr;
 
 	explicit StringChunk(DUCKDB_V2_LOGICAL_TYPE_ID id) {
-		auto t = MakeType(id);
+		auto t = MakeType(env.conn, id);
 		duckdb_v2_logical_type_handle types[1] = {t};
 		auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
 		duckdb_v2_logical_type_destroy(&t);
@@ -242,9 +244,10 @@ TEST_CASE("V2: BLOB with embedded nulls (inline + heap)", "[capi_v2][arena]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: arena write on constant vector", "[capi_v2][arena]") {
+	EnvFixture fx;
 	StringChunk fixture(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 
-	duckdb_v2_value_handle value = MakeVarcharValue("init");
+	duckdb_v2_value_handle value = MakeVarcharValue(fx.conn, "init");
 	REQUIRE(duckdb_v2_vector_make_constant(fixture.vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 

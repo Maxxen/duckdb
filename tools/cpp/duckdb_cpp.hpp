@@ -51,6 +51,8 @@ class QueryResult;
 struct TypeParam;
 struct NamedParam;
 
+enum class LogicalTypeId : uint32_t;
+
 //----------------------------------------------------------------------------------------------------------------------
 // Internal Implementation Details
 //----------------------------------------------------------------------------------------------------------------------
@@ -242,7 +244,10 @@ public:
 	// mirroring how SQL binds a type expression; registered extension types
 	// construct through the same call. A TypeParam with an empty name is
 	// positional. Connection::CreateType is the sugar.
-	auto CreateType(const std::string &name, const std::vector<TypeParam> &params) const -> LogicalType;
+	auto CreateType(std::string_view name, const std::vector<TypeParam> &params = {}) const -> LogicalType;
+	// The id-keyed twin: with no params this instantiates a primitive
+	// directly; with params the id binds like its canonical name does.
+	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
 
 private:
 	explicit Context(void *impl);
@@ -363,7 +368,10 @@ public:
 
 	// Connection-level counterpart to Context::CreateType: resolves directly
 	// from the connection (its own transaction), no context scope needed.
-	auto CreateType(const std::string &name, const std::vector<TypeParam> &params) -> LogicalType;
+	auto CreateType(const std::string &name, const std::vector<TypeParam> &params = {}) -> LogicalType;
+	// The id-keyed twin: with no params this instantiates a primitive
+	// directly; with params the id binds like its canonical name does.
+	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
 
 	// Requests cancellation of the active query. Safe to call from any
 	// thread; a no-op when no query is active.
@@ -457,7 +465,7 @@ auto LibraryVersion() -> std::string;
 // Logical type identifier. Mirrors the C API's LOGICAL_TYPE_ID (and thereby
 // duckdb::LogicalTypeId) numerically; parity pinned by static_asserts in the
 // implementation.
-enum class TypeId : uint32_t {
+enum class LogicalTypeId : uint32_t {
 	INVALID = 0,
 	SQLNULL = 1,
 	UNKNOWN = 2,
@@ -515,15 +523,11 @@ public:
 
 	~LogicalType() override;
 
-	static auto VARCHAR() -> LogicalType;
-	static auto INTEGER() -> LogicalType;
-	static auto BIGINT() -> LogicalType;
-	// The function-signature wildcard. Constructible so it can be passed to a
-	// function's AddParameter (a fixed-arity wildcard) or SetVarArgs (a
-	// heterogeneous variadic tail); data-creating surfaces reject it.
-	static auto ANY() -> LogicalType;
+	// Create a new aliased LogicalType from a context
+	auto WithAlias(Context &context, std::string_view alias) const -> LogicalType;
 
-	auto WithAlias(std::string_view alias) const -> LogicalType;
+	// Create a new aliased LogicalType from a connection
+	auto WithAlias(Connection &connection, std::string_view alias) const -> LogicalType;
 
 	// The type's name: the alias when set, otherwise the canonical fixed
 	// name of the type id. Never empty; exactly the vocabulary CreateType
@@ -534,7 +538,7 @@ public:
 		return !(*this == other);
 	}
 
-	auto GetId() const -> TypeId;
+	auto GetId() const -> LogicalTypeId;
 
 	// Renders as SQL text (an aliased type renders as its alias). The inverse
 	// of Context::ParseType for every constructible kind.
@@ -574,15 +578,15 @@ public:
 	// width / dictionary-size tables (see the vector module's view
 	// docstring); no extra boundary crossings. Gate on the type kind like
 	// the other sugars.
-	auto GetDecimalInternalTypeId() const -> TypeId;
-	auto GetEnumInternalTypeId() const -> TypeId;
+	auto GetDecimalInternalTypeId() const -> LogicalTypeId;
+	auto GetEnumInternalTypeId() const -> LogicalTypeId;
 
 private:
 	explicit LogicalType(void *impl);
 
 	// Shared gate for the per-kind sugar: throws INVALID_INPUT unless this
 	// type's id is `expected`.
-	auto RequireKind(TypeId expected, const char *what) const -> void;
+	auto RequireKind(LogicalTypeId expected, const char *what) const -> void;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -670,17 +674,9 @@ public:
 	Value(Value &&) noexcept = default;
 	Value &operator=(Value &&) noexcept = default;
 
-	// Construct an owned value. The library copies the input.
-	static auto Bigint(int64_t value) -> Value;
-	static auto Varchar(const std::string &value) -> Value;
 
 	// A NULL value of the given logical type (borrowed; copied in).
 	static auto Null(const LogicalType &type) -> Value;
-
-	// A BIGNUM value from big-endian magnitude bytes plus a sign flag. The
-	// value zero is a single 0x00 byte with is_negative false; length 0 is
-	// invalid. Unwrap via AsBignum.
-	static auto Bignum(const uint8_t *data, idx_t length, bool is_negative) -> Value;
 
 	// Wraps a borrowed logical type as a TYPE value (a type carried as a
 	// value, e.g. a type parameter). Unwrap via AsType.
@@ -764,20 +760,6 @@ public:
 		std::memcpy(&out, raw.first, sizeof(T));
 		return out;
 	}
-
-	// Gated conveniences over GetData/FromData for the everyday types. Temporal
-	// payloads use the type's native unit; getters throw on a type mismatch.
-	static auto Boolean(bool value) -> Value;
-	static auto Ubigint(uint64_t value) -> Value;
-	static auto Double(double value) -> Value;
-	static auto Blob(const void *data, idx_t length) -> Value;
-	static auto Date(int32_t days) -> Value;
-	static auto Time(int64_t micros) -> Value;
-	static auto Timestamp(int64_t micros) -> Value;
-	static auto TimestampTz(int64_t micros) -> Value;
-	static auto Interval(IntervalLayout value) -> Value;
-	static auto Hugeint(HugeintLayout value) -> Value;
-	static auto Uhugeint(UhugeintLayout value) -> Value;
 
 	auto AsBlob() const -> std::pair<const void *, idx_t>; // borrowed view
 	auto AsDate() const -> int32_t;                        // days since epoch

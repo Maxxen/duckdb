@@ -482,9 +482,10 @@ inline DUCKDB_V2_ERROR V2VectorAssignString(duckdb_v2_vector_handle vec, idx_t i
 // Value Helpers
 //----------------------------------------------------------------------------------------------------------------------
 
-inline duckdb_v2_value_handle MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID id, const void *data, idx_t len) {
+inline duckdb_v2_value_handle MakeValue(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id,
+                                        const void *data, idx_t len) {
 	duckdb_v2_logical_type_handle type = nullptr;
-	duckdb_v2_logical_type_create_from_id(id, &type, nullptr);
+	duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &type, nullptr);
 	duckdb_v2_value_handle value = nullptr;
 	auto rc = duckdb_v2_value_create_from_data(type, data, len, &value, nullptr);
 	duckdb_v2_logical_type_destroy(&type);
@@ -494,17 +495,17 @@ inline duckdb_v2_value_handle MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID id, const void
 }
 
 template <class T>
-inline duckdb_v2_value_handle MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID id, T payload) {
-	return MakeValue(id, &payload, sizeof(T));
+inline duckdb_v2_value_handle MakeValue(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id, T payload) {
+	return MakeValue(conn, id, &payload, sizeof(T));
 }
-inline duckdb_v2_value_handle MakeInt32Value(int32_t payload) {
-	return MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, payload);
+inline duckdb_v2_value_handle MakeInt32Value(duckdb_v2_connection_handle conn, int32_t payload) {
+	return MakeValue(conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, payload);
 }
-inline duckdb_v2_value_handle MakeInt64Value(int64_t payload) {
-	return MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, payload);
+inline duckdb_v2_value_handle MakeInt64Value(duckdb_v2_connection_handle conn, int64_t payload) {
+	return MakeValue(conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, payload);
 }
-inline duckdb_v2_value_handle MakeVarcharValue(const char *s) {
-	return MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, s, s ? std::strlen(s) : 0);
+inline duckdb_v2_value_handle MakeVarcharValue(duckdb_v2_connection_handle conn, const char *s) {
+	return MakeValue(conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, s, s ? std::strlen(s) : 0);
 }
 
 // Consuming forms: read, destroy the owned value, then assert, so a failing REQUIRE cannot leak it.
@@ -541,15 +542,16 @@ inline std::string ConsumeValue(duckdb_v2_value_handle &value) {
 // Type Helpers
 //----------------------------------------------------------------------------------------------------------------------
 
-inline duckdb_v2_logical_type_handle MakeType(DUCKDB_V2_LOGICAL_TYPE_ID id) {
+inline duckdb_v2_logical_type_handle MakeType(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id) {
 	duckdb_v2_logical_type_handle t = nullptr;
-	REQUIRE(duckdb_v2_logical_type_create_from_id(id, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &t, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	return t;
 }
 
-inline duckdb_v2_value_handle MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID id) {
+inline duckdb_v2_value_handle MakeTypeValue(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id) {
 	duckdb_v2_logical_type_handle t = nullptr;
-	duckdb_v2_logical_type_create_from_id(id, &t, nullptr);
+	duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &t, nullptr);
 	duckdb_v2_value_handle v = nullptr;
 	auto rc = duckdb_v2_value_create_type(t, &v, nullptr);
 	duckdb_v2_logical_type_destroy(&t);
@@ -573,9 +575,9 @@ inline duckdb_v2_logical_type_handle MakeType(duckdb_v2_connection_handle conn, 
 		}
 	}
 	duckdb_v2_logical_type_handle t = nullptr;
-	DUCKDB_V2_ERROR rc =
-	    duckdb_v2_logical_type_get_from_args(conn, Convert(name), names ? name_views.data() : nullptr,
-	                                         values.empty() ? nullptr : values.data(), values.size(), &t, nullptr);
+	DUCKDB_V2_ERROR rc = duckdb_v2_connection_create_type_from_name(
+	    conn, Convert(name), names ? name_views.data() : nullptr, values.empty() ? nullptr : values.data(),
+	    values.size(), &t, nullptr);
 	for (auto &v : values) {
 		duckdb_v2_value_destroy(&v);
 	}
@@ -585,11 +587,11 @@ inline duckdb_v2_logical_type_handle MakeType(duckdb_v2_connection_handle conn, 
 }
 
 inline duckdb_v2_logical_type_handle MakeListType(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID elem) {
-	return MakeType(conn, "list", nullptr, {MakeTypeValue(elem)});
+	return MakeType(conn, "list", nullptr, {MakeTypeValue(conn, elem)});
 }
 inline duckdb_v2_logical_type_handle MakeMapType(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID key,
                                                  DUCKDB_V2_LOGICAL_TYPE_ID value) {
-	return MakeType(conn, "map", nullptr, {MakeTypeValue(key), MakeTypeValue(value)});
+	return MakeType(conn, "map", nullptr, {MakeTypeValue(conn, key), MakeTypeValue(conn, value)});
 }
 
 inline duckdb_v2_logical_type_handle MakeStructType(duckdb_v2_connection_handle conn,
@@ -597,7 +599,7 @@ inline duckdb_v2_logical_type_handle MakeStructType(duckdb_v2_connection_handle 
                                                     const std::vector<DUCKDB_V2_LOGICAL_TYPE_ID> &ids) {
 	std::vector<duckdb_v2_value_handle> values;
 	for (auto id : ids) {
-		values.push_back(MakeTypeValue(id));
+		values.push_back(MakeTypeValue(conn, id));
 	}
 	return MakeType(conn, "struct", &names, std::move(values));
 }

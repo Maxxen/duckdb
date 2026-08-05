@@ -16,15 +16,16 @@
 namespace duckdb::capiv2 {
 namespace {
 
-// The set of LogicalTypeIds accepted by duckdb_v2_logical_type_create_from_id.
-// Includes ANY, the function-signature wildcard: it is constructible so it can
-// be passed to function parameter / varargs setters, while data-creating
-// surfaces reject it. Excludes:
+// The set of LogicalTypeIds a parameterless duckdb_v2_*_create_type_from_id
+// instantiates directly, without touching the catalog. Includes ANY, the
+// function-signature wildcard: it is constructible so it can be passed to
+// function parameter / varargs setters, while data-creating surfaces reject
+// it. Excludes:
 //  - INVALID (sentinel),
 //  - the remaining bind-time-only ids (SQLNULL, UNKNOWN) which only exist
 //    inside the planner / UDF binding paths,
 //  - parameterised types (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION,
-//    ENUM, VARIANT, GEOMETRY).
+//    ENUM, VARIANT, GEOMETRY), which need parameters to bind.
 bool IsPrimitiveCreatable(LogicalTypeId id) {
 	switch (id) {
 	case LogicalTypeId::ANY:
@@ -57,6 +58,21 @@ bool IsPrimitiveCreatable(LogicalTypeId id) {
 	case LogicalTypeId::BIT:
 	case LogicalTypeId::BIGNUM:
 	case LogicalTypeId::UUID:
+		return true;
+	default:
+		return false;
+	}
+}
+
+// Ids that never name a constructible type, with or without parameters:
+// the zero sentinel plus the ids that only exist inside the planner / UDF
+// binding paths. TYPE is reachable only through create_type_from_text.
+bool IsNonConstructible(LogicalTypeId id) {
+	switch (id) {
+	case LogicalTypeId::INVALID:
+	case LogicalTypeId::SQLNULL:
+	case LogicalTypeId::UNKNOWN:
+	case LogicalTypeId::TYPE:
 		return true;
 	default:
 		return false;
@@ -177,21 +193,81 @@ Value TypeParamValue(const LogicalType &type, idx_t index, duckdb_v2_identifier_
 
 using namespace duckdb::capiv2;
 
-DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID type_id,
+// Collects the parallel (name, value) arrays into bind arguments. An absent
+// or {NULL, 0} name makes that parameter positional.
+static duckdb::vector<duckdb::TypeArgument> CollectTypeArgsV2(const duckdb_v2_identifier_t *param_names,
+                                                              const duckdb_v2_value_handle *param_values,
+                                                              idx_t param_count, const char *fn) {
+	duckdb::vector<duckdb::TypeArgument> args;
+	args.reserve(param_count);
+	for (idx_t i = 0; i < param_count; i++) {
+		auto param_name = param_names ? param_names[i] : duckdb_v2_str {nullptr, 0};
+		if ((!param_name.ptr && param_name.len > 0) || !param_values[i]) {
+			throw duckdb::InvalidInputException("null parameter in %s", fn);
+		}
+		args.emplace_back(duckdb::string(Convert(param_name)), *Convert(param_values[i]));
+	}
+	return args;
+}
+
+// A parameterless call instantiates the primitive directly; with parameters
+// the id resolves to its canonical name and binds through the same path as
+// create_type_from_name.
+static void CreateLogicalTypeFromIdV2(duckdb::ClientContext &context, DUCKDB_V2_LOGICAL_TYPE_ID type_id,
+                                      const duckdb_v2_identifier_t *param_names,
+                                      const duckdb_v2_value_handle *param_values, idx_t param_count,
+                                      duckdb_v2_logical_type_handle *out_type, const char *fn) {
+	if (!out_type || (param_count > 0 && !param_values)) {
+		throw duckdb::InvalidInputException("null argument to %s", fn);
+	}
+	*out_type = nullptr;
+	auto id = static_cast<duckdb::LogicalTypeId>(type_id);
+	if (IsNonConstructible(id)) {
+		throw duckdb::InvalidInputException("%s does not accept this type id", fn);
+	}
+	if (param_count == 0) {
+		if (!IsPrimitiveCreatable(id)) {
+			throw duckdb::InvalidInputException("%s requires type parameters for this type id", fn);
+		}
+		*out_type = Convert(new duckdb::LogicalType(id));
+		return;
+	}
+	// Bind errors propagate.
+	auto args = CollectTypeArgsV2(param_names, param_values, param_count, fn);
+	auto bound = BindTypeByNameV2(context, duckdb::EnumUtil::ToString(id), args);
+	*out_type = Convert(new duckdb::LogicalType(std::move(bound)));
+}
+
+DUCKDB_V2_ERROR duckdb_v2_context_create_type_from_id(duckdb_v2_context_handle ctx, DUCKDB_V2_LOGICAL_TYPE_ID type_id,
+                                                      const duckdb_v2_identifier_t *param_names,
+                                                      const duckdb_v2_value_handle *param_values, idx_t param_count,
                                                       duckdb_v2_logical_type_handle *out_type,
                                                       duckdb_v2_error_info_handle *err) {
+	static const char *fn = "duckdb_v2_context_create_type_from_id";
 	return WithErrorHandler(err, [&]() {
-		if (!out_type) {
-			throw duckdb::InvalidInputException("null out_type in duckdb_v2_logical_type_create_from_id");
+		if (!ctx) {
+			throw duckdb::InvalidInputException("null argument to %s", fn);
 		}
-		*out_type = nullptr;
-		auto id = static_cast<duckdb::LogicalTypeId>(type_id);
-		if (!IsPrimitiveCreatable(id)) {
-			throw duckdb::InvalidInputException(
-			    "duckdb_v2_logical_type_create_from_id only accepts primitive type ids");
+		// A context arrives with the lock held and a transaction active.
+		CreateLogicalTypeFromIdV2(*Convert(ctx), type_id, param_names, param_values, param_count, out_type, fn);
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_connection_create_type_from_id(duckdb_v2_connection_handle conn,
+                                                         DUCKDB_V2_LOGICAL_TYPE_ID type_id,
+                                                         const duckdb_v2_identifier_t *param_names,
+                                                         const duckdb_v2_value_handle *param_values, idx_t param_count,
+                                                         duckdb_v2_logical_type_handle *out_type,
+                                                         duckdb_v2_error_info_handle *err) {
+	static const char *fn = "duckdb_v2_connection_create_type_from_id";
+	return WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
 		}
-		auto *lt = new duckdb::LogicalType(id);
-		*out_type = Convert(lt);
+		auto &context = *Convert(conn)->context;
+		context.RunFunctionInTransaction([&]() {
+			CreateLogicalTypeFromIdV2(context, type_id, param_names, param_values, param_count, out_type, fn);
+		});
 	});
 }
 
@@ -207,7 +283,7 @@ static void CreateLogicalTypeFromTextV2(duckdb::ClientContext &context, duckdb_v
 	*out_type = Convert(new duckdb::LogicalType(std::move(parsed)));
 }
 
-DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
+DUCKDB_V2_ERROR duckdb_v2_context_create_type_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
                                                         duckdb_v2_logical_type_handle *out_type,
                                                         duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
@@ -219,9 +295,9 @@ DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_text(duckdb_v2_connection_handle conn, duckdb_v2_str text,
-                                                     duckdb_v2_logical_type_handle *out_type,
-                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_create_type_from_text(duckdb_v2_connection_handle conn, duckdb_v2_str text,
+                                                           duckdb_v2_logical_type_handle *out_type,
+                                                           duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!conn) {
 			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
@@ -234,52 +310,48 @@ DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_text(duckdb_v2_connection_handle
 static void CreateLogicalTypeFromArgsV2(duckdb::ClientContext &context, duckdb_v2_identifier_t name,
                                         const duckdb_v2_identifier_t *param_names,
                                         const duckdb_v2_value_handle *param_values, idx_t param_count,
-                                        duckdb_v2_logical_type_handle *out_type) {
+                                        duckdb_v2_logical_type_handle *out_type, const char *fn) {
 	if (!out_type || (!name.ptr && name.len > 0) || (param_count > 0 && !param_values)) {
-		throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create_from_args");
+		throw duckdb::InvalidInputException("null argument to %s", fn);
 	}
 	*out_type = nullptr;
-	duckdb::vector<duckdb::TypeArgument> args;
-	args.reserve(param_count);
-	for (idx_t i = 0; i < param_count; i++) {
-		auto param_name = param_names ? param_names[i] : duckdb_v2_str {nullptr, 0};
-		if ((!param_name.ptr && param_name.len > 0) || !param_values[i]) {
-			throw duckdb::InvalidInputException("null parameter in duckdb_v2_logical_type_create_from_args");
-		}
-		args.emplace_back(duckdb::string(Convert(param_name)), *Convert(param_values[i]));
-	}
+	auto args = CollectTypeArgsV2(param_names, param_values, param_count, fn);
 	// Bind errors propagate.
 	auto str = duckdb::string(Convert(name));
 	auto bound = BindTypeByNameV2(context, str, args);
 	*out_type = Convert(new duckdb::LogicalType(std::move(bound)));
 }
 
-DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_args(duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name,
+DUCKDB_V2_ERROR duckdb_v2_context_create_type_from_name(duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name,
                                                         const duckdb_v2_identifier_t *param_names,
                                                         const duckdb_v2_value_handle *param_values, idx_t param_count,
                                                         duckdb_v2_logical_type_handle *out_type,
                                                         duckdb_v2_error_info_handle *err) {
+	static const char *fn = "duckdb_v2_context_create_type_from_name";
 	return WithErrorHandler(err, [&]() {
 		if (!ctx) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create_from_args");
+			throw duckdb::InvalidInputException("null argument to %s", fn);
 		}
 		// A context arrives with the lock held and a transaction active.
-		CreateLogicalTypeFromArgsV2(*Convert(ctx), name, param_names, param_values, param_count, out_type);
+		CreateLogicalTypeFromArgsV2(*Convert(ctx), name, param_names, param_values, param_count, out_type, fn);
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_args(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name,
-                                                     const duckdb_v2_identifier_t *param_names,
-                                                     const duckdb_v2_value_handle *param_values, idx_t param_count,
-                                                     duckdb_v2_logical_type_handle *out_type,
-                                                     duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_connection_create_type_from_name(duckdb_v2_connection_handle conn,
+                                                           duckdb_v2_identifier_t name,
+                                                           const duckdb_v2_identifier_t *param_names,
+                                                           const duckdb_v2_value_handle *param_values,
+                                                           idx_t param_count, duckdb_v2_logical_type_handle *out_type,
+                                                           duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
 		if (!conn) {
 			throw duckdb::InvalidInputException("Connection pointer cannot be null.");
 		}
 		auto &context = *Convert(conn)->context;
-		context.RunFunctionInTransaction(
-		    [&]() { CreateLogicalTypeFromArgsV2(context, name, param_names, param_values, param_count, out_type); });
+		context.RunFunctionInTransaction([&]() {
+			CreateLogicalTypeFromArgsV2(context, name, param_names, param_values, param_count, out_type,
+			                            "duckdb_v2_connection_create_type_from_name");
+		});
 	});
 }
 

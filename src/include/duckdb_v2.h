@@ -233,7 +233,7 @@ typedef struct _duckdb_v2_error_info {
 /*!
  * An opaque, owned handle to a logical type. Carries a type id plus any kind-specific metadata (decimal width/scale,
  * enum dictionary, list / array / struct / map / union child types, alias). Read-only from the C side: instances arrive
- * either from a query result schema or from logical_type_create_from_id for primitives. Always destroy via
+ * either from a query result schema or from create_type_from_id for primitives. Always destroy via
  * logical_type_destroy. Borrowed strings returned by getters are valid until destroy.
  */
 typedef struct _duckdb_v2_logical_type {
@@ -1367,86 +1367,44 @@ typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 /* --- Functions for logical_type --- */
 
 /*!
- * Creates a logical type from a primitive type id.
+ * Creates a logical type from a type id plus value parameters.
  *
- * Accepts primitive type ids (no kind-specific parameters): BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT,
- * UHUGEINT, FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL, VARCHAR, BLOB, BIT, BIGNUM, UUID. Also
- * accepts ANY.
+ * The id-keyed twin of context_create_type_from_name: the type id names the kind, the parameters bind it. With
+ * param_count 0 this instantiates a primitive directly, without touching the catalog: BOOLEAN, TINYINT..BIGINT,
+ * UTINYINT..UBIGINT, HUGEINT, UHUGEINT, FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL, VARCHAR, BLOB,
+ * BIT, BIGNUM, UUID. Also accepts ANY.
  *
  * ANY is a function-signature wildcard, constructible here so it can be passed to function parameter and varargs
  * setters (a fixed-arity ANY parameter, or an ANY varargs type). Data-creating surfaces reject it: value and data_chunk
  * creation, scalar and aggregate return types, table function result columns, cast source and target types, and custom
  * type registration.
  *
- * Returns ERROR_INPUT_INVALID for parameterised type ids (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM,
- * VARIANT, GEOMETRY), for the remaining bind-time-only ids (SQLNULL, UNKNOWN), for TYPE (construct it via
- * logical_type_create_from_text), and for INVALID. Composite construction is not part of this surface yet.
+ * With parameters, the id resolves to its canonical type name and binds through the same path as
+ * context_create_type_from_name, so the parameterised kinds construct here too: decimal(width, scale); list(T);
+ * array(T, size); map(K, V); struct(fields); union(members); enum(entries); varchar with a named "collation" parameter.
+ * Parameters are (name, value) pairs in two parallel arrays, exactly as for context_create_type_from_name.
  *
- * history:
- * - stable: v2.0.0
- *
- * @param type_id The primitive type id to instantiate.
- * @param out_type Receives the new logical type handle.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID type_id,
-                                                                   duckdb_v2_logical_type_handle *out_type,
-                                                                   duckdb_v2_error_info_handle *err);
-
-/*!
- * Creates a logical type by parsing SQL text.
- *
- * Parses a SQL type expression in the given context and returns the bound logical type: primitives ("INTEGER"),
- * parameterized kinds ("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)", "MAP(VARCHAR, INTEGER)",
- * "INTEGER[3]", "UNION(i INTEGER, s VARCHAR)", "ENUM('a', 'b')"), and catalog-registered type names (user-defined and
- * extension types). A catalog type name binds to its structural type; the name is not preserved as an alias. Names are
- * case-insensitive. Parse and bind errors surface from the call.
- *
- * Runs in the caller's context scope: a context handle arrives with the context lock held and a transaction active
- * (function bind callbacks, custom type registration). External callers with only a connection use
- * logical_type_get_from_text. Catalog-touching context calls belong in bind-phase callbacks and with-context scopes,
- * not exec-phase worker callbacks.
- *
- * The returned logical type is caller-owned and must be destroyed via logical_type_destroy. A type resolved from the
- * catalog shares database-owned storage (e.g. an ENUM dictionary): destroy it before closing the database. Inverse of
- * logical_type_to_text for every constructible kind.
+ * Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP,
+ * ARRAY, UNION, ENUM, VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN), for TYPE (construct it via
+ * context_create_type_from_text), and for INVALID.
  *
  * history:
  * - stable: v2.0.0
  *
  * @param ctx The context supplying the catalog and active transaction.
- * @param text View of the SQL type expression to parse.
+ * @param type_id The type id to instantiate.
+ * @param param_names Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for
+ * all-positional parameters.
+ * @param param_values An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+ * @param param_count The number of parameters. 0 instantiates a parameterless primitive.
  * @param out_type Receives the new logical type handle.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
-                                                                     duckdb_v2_logical_type_handle *out_type,
-                                                                     duckdb_v2_error_info_handle *err);
-
-/*!
- * Gets a logical type by parsing SQL text, using a connection.
- *
- * Same as logical_type_create_from_text, but supplies the catalog and transaction from a connection: the parse and bind
- * run in their own transaction on the connection's context. Use this from outside DuckDB, where a connection — but no
- * context — is in hand.
- *
- * The returned logical type is caller-owned and must be destroyed via logical_type_destroy. A type resolved from the
- * catalog shares database-owned storage (e.g. an ENUM dictionary): destroy it before closing the database.
- *
- * history:
- * - stable: v2.0.0
- *
- * @param conn The connection supplying the catalog and active transaction.
- * @param text View of the SQL type expression to parse.
- * @param out_type Receives the new logical type handle.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_text(duckdb_v2_connection_handle conn, duckdb_v2_str text,
-                                                                  duckdb_v2_logical_type_handle *out_type,
-                                                                  duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_context_create_type_from_id(
+    duckdb_v2_context_handle ctx, DUCKDB_V2_LOGICAL_TYPE_ID type_id, const duckdb_v2_identifier_t *param_names,
+    const duckdb_v2_value_handle *param_values, idx_t param_count, duckdb_v2_logical_type_handle *out_type,
+    duckdb_v2_error_info_handle *err);
 
 /*!
  * Creates a logical type from a type name plus value parameters.
@@ -1464,9 +1422,9 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_text(duckdb_v2_conn
  * A name that resolves to a type without a bind function takes no parameters: passing any fails. Bind errors (unknown
  * name, wrong parameter count or types) surface from the call.
  *
- * Runs in the caller's context scope (see logical_type_create_from_text): reach it from a bind-phase callback or
- * another context-holding scope, not an exec-phase worker callback. External callers with only a connection use
- * logical_type_get_from_args.
+ * Runs in the caller's context scope (see create_type_from_text): reach it from a bind-phase callback or another
+ * context-holding scope, not an exec-phase worker callback. External callers with only a connection use
+ * connection_create_type_from_name.
  *
  * The returned logical type is caller-owned and must be destroyed via logical_type_destroy. A type resolved from the
  * catalog shares database-owned storage (e.g. an ENUM dictionary): destroy it before closing the database. Inverse of
@@ -1485,19 +1443,90 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_text(duckdb_v2_conn
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_args(
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_context_create_type_from_name(
     duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name, const duckdb_v2_identifier_t *param_names,
+    const duckdb_v2_value_handle *param_values, idx_t param_count, duckdb_v2_logical_type_handle *out_type,
+    duckdb_v2_error_info_handle *err);
+
+/*!
+ * Creates a logical type by parsing SQL text.
+ *
+ * Parses a SQL type expression in the given context and returns the bound logical type: primitives ("INTEGER"),
+ * parameterized kinds ("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)", "MAP(VARCHAR, INTEGER)",
+ * "INTEGER[3]", "UNION(i INTEGER, s VARCHAR)", "ENUM('a', 'b')"), and catalog-registered type names (user-defined and
+ * extension types). A catalog type name binds to its structural type; the name is not preserved as an alias. Names are
+ * case-insensitive. Parse and bind errors surface from the call.
+ *
+ * Runs in the caller's context scope: a context handle arrives with the context lock held and a transaction active
+ * (function bind callbacks, custom type registration). External callers with only a connection use
+ * connection_create_type_from_text. Catalog-touching context calls belong in bind-phase callbacks and with-context
+ * scopes, not exec-phase worker callbacks.
+ *
+ * The returned logical type is caller-owned and must be destroyed via logical_type_destroy. A type resolved from the
+ * catalog shares database-owned storage (e.g. an ENUM dictionary): destroy it before closing the database. Inverse of
+ * logical_type_to_text for every constructible kind.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param ctx The context supplying the catalog and active transaction.
+ * @param text View of the SQL type expression to parse.
+ * @param out_type Receives the new logical type handle.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_context_create_type_from_text(duckdb_v2_context_handle ctx, duckdb_v2_str text,
+                                                                     duckdb_v2_logical_type_handle *out_type,
+                                                                     duckdb_v2_error_info_handle *err);
+
+/*!
+ * Creates a logical type from a type id plus value parameters.
+ *
+ * The id-keyed twin of connection_create_type_from_name: the type id names the kind, the parameters bind it. With
+ * param_count 0 this instantiates a primitive directly, without touching the catalog: BOOLEAN, TINYINT..BIGINT,
+ * UTINYINT..UBIGINT, HUGEINT, UHUGEINT, FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL, VARCHAR, BLOB,
+ * BIT, BIGNUM, UUID. Also accepts ANY.
+ *
+ * ANY is a function-signature wildcard, constructible here so it can be passed to function parameter and varargs
+ * setters (a fixed-arity ANY parameter, or an ANY varargs type). Data-creating surfaces reject it: value and data_chunk
+ * creation, scalar and aggregate return types, table function result columns, cast source and target types, and custom
+ * type registration.
+ *
+ * With parameters, the id resolves to its canonical type name and binds through the same path as
+ * connection_create_type_from_name, so the parameterised kinds construct here too: decimal(width, scale); list(T);
+ * array(T, size); map(K, V); struct(fields); union(members); enum(entries); varchar with a named "collation" parameter.
+ * Parameters are (name, value) pairs in two parallel arrays, exactly as for connection_create_type_from_name.
+ *
+ * Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP,
+ * ARRAY, UNION, ENUM, VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN), for TYPE (construct it via
+ * connection_create_type_from_text), and for INVALID.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param conn The connection supplying the catalog and active transaction.
+ * @param type_id The type id to instantiate.
+ * @param param_names Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for
+ * all-positional parameters.
+ * @param param_values An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+ * @param param_count The number of parameters. 0 instantiates a parameterless primitive.
+ * @param out_type Receives the new logical type handle.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_create_type_from_id(
+    duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID type_id, const duckdb_v2_identifier_t *param_names,
     const duckdb_v2_value_handle *param_values, idx_t param_count, duckdb_v2_logical_type_handle *out_type,
     duckdb_v2_error_info_handle *err);
 
 /*!
  * Gets a logical type from a type name plus value parameters, using a connection.
  *
- * Same as logical_type_create_from_args, but supplies the catalog and transaction from a connection: the bind runs in
- * its own transaction on the connection's context. Use this from outside DuckDB, where a connection — but no context —
- * is in hand.
+ * Same as create_type_from_name, but supplies the catalog and transaction from a connection: the bind runs in its own
+ * transaction on the connection's context. Use this from outside DuckDB, where a connection — but no context — is in
+ * hand.
  *
- * Parameters are (name, value) pairs in two parallel arrays, exactly as for logical_type_create_from_args.
+ * Parameters are (name, value) pairs in two parallel arrays, exactly as for create_type_from_name.
  *
  * The returned logical type is caller-owned and must be destroyed via logical_type_destroy. A type resolved from the
  * catalog shares database-owned storage (e.g. an ENUM dictionary): destroy it before closing the database.
@@ -1515,10 +1544,34 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_from_args(
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_from_args(
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_create_type_from_name(
     duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name, const duckdb_v2_identifier_t *param_names,
     const duckdb_v2_value_handle *param_values, idx_t param_count, duckdb_v2_logical_type_handle *out_type,
     duckdb_v2_error_info_handle *err);
+
+/*!
+ * Gets a logical type by parsing SQL text, using a connection.
+ *
+ * Same as create_type_from_text, but supplies the catalog and transaction from a connection: the parse and bind run in
+ * their own transaction on the connection's context. Use this from outside DuckDB, where a connection — but no context
+ * — is in hand.
+ *
+ * The returned logical type is caller-owned and must be destroyed via logical_type_destroy. A type resolved from the
+ * catalog shares database-owned storage (e.g. an ENUM dictionary): destroy it before closing the database.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param conn The connection supplying the catalog and active transaction.
+ * @param text View of the SQL type expression to parse.
+ * @param out_type Receives the new logical type handle.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_create_type_from_text(duckdb_v2_connection_handle conn,
+                                                                        duckdb_v2_str text,
+                                                                        duckdb_v2_logical_type_handle *out_type,
+                                                                        duckdb_v2_error_info_handle *err);
 
 /*!
  * Creates a copy of a logical type
@@ -1590,8 +1643,8 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_id(duckdb_v2_logical_typ
  *
  * The alias when one is set (an extension or user-defined name, e.g. "POINT_2D"), otherwise the canonical fixed name of
  * the type id (e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the empty view. This is exactly the name
- * vocabulary logical_type_create_from_args consumes. The view is valid until the logical type is destroyed (the
- * canonical-name arm points at static storage).
+ * vocabulary create_type_from_name consumes. The view is valid until the logical type is destroyed (the canonical-name
+ * arm points at static storage).
  *
  * history:
  * - stable: v2.0.0
@@ -1608,14 +1661,14 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_name(duckdb_v2_logical_t
 /*!
  * Renders a logical type as SQL text.
  *
- * Mirrors duckdb::LogicalType::ToString(). An aliased type renders as its alias; logical_type_create_from_text resolves
- * that spelling only when the name is registered in the connection's catalog. Round-trips through
- * logical_type_create_from_text for every constructible kind, with one exception: ANY renders as "ANY", but from_text
- * cannot parse it back (ANY is a signature wildcard, not a parseable SQL type). Writes into a caller-supplied buffer;
- * the library never allocates and hands back nothing to free. Pass out_text = NULL to size the buffer without rendering
- * the text into it: out_length then receives the length, and out_capacity is ignored. With out_text != NULL,
- * out_capacity must be at least out_length + 1 or the call returns ERROR_INPUT_OBJECT_SIZE with out_length set to the
- * required length and out_text left untouched.
+ * Mirrors duckdb::LogicalType::ToString(). An aliased type renders as its alias; create_type_from_text resolves that
+ * spelling only when the name is registered in the connection's catalog. Round-trips through create_type_from_text for
+ * every constructible kind, with one exception: ANY renders as "ANY", but from_text cannot parse it back (ANY is a
+ * signature wildcard, not a parseable SQL type). Writes into a caller-supplied buffer; the library never allocates and
+ * hands back nothing to free. Pass out_text = NULL to size the buffer without rendering the text into it: out_length
+ * then receives the length, and out_capacity is ignored. With out_text != NULL, out_capacity must be at least
+ * out_length + 1 or the call returns ERROR_INPUT_OBJECT_SIZE with out_length set to the required length and out_text
+ * left untouched.
  *
  * out_length never counts the terminator, but a successful write always appends one, so the buffer is usable as a C
  * string.
@@ -1639,10 +1692,10 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_to_text(duckdb_v2_logical_ty
 /*!
  * Returns the number of value parameters of a logical type.
  *
- * The inspection dual of logical_type_create_from_args: the parameters that reconstruct the type through it. Per kind:
- * DECIMAL 2 (width, scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2 (key type, value type); STRUCT
- * and TUPLE one per field; UNION one per member; ENUM one per dictionary entry; VARCHAR 1 when a collation is set, else
- * 0; GEOMETRY 1 when a coordinate system is set, else 0; everything else 0. A bound type reports what it carries:
+ * The inspection dual of create_type_from_name: the parameters that reconstruct the type through it. Per kind: DECIMAL
+ * 2 (width, scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2 (key type, value type); STRUCT and TUPLE
+ * one per field; UNION one per member; ENUM one per dictionary entry; VARCHAR 1 when a collation is set, else 0;
+ * GEOMETRY 1 when a coordinate system is set, else 0; everything else 0. A bound type reports what it carries:
  * bind-time modifiers the engine does not retain (e.g. an ignored VARCHAR length) do not reappear.
  *
  * history:
@@ -2059,8 +2112,8 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_value_cast_with_connection(duckdb_v2_conn
  * casting a member value to a union type or a VARCHAR to an enum type is the sanctioned way to build UNION and ENUM
  * values.
  *
- * Runs in the caller's context scope (see logical_type_create_from_text): reach it from a bind-phase callback or
- * another context-holding scope, not an exec-phase worker callback. From outside DuckDB use value_cast_with_connection.
+ * Runs in the caller's context scope (see create_type_from_text): reach it from a bind-phase callback or another
+ * context-holding scope, not an exec-phase worker callback. From outside DuckDB use value_cast_with_connection.
  *
  * The input value and target type are borrowed. The returned value is caller-owned; destroy via value_destroy.
  *

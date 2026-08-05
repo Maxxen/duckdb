@@ -22,8 +22,9 @@
 namespace test_capi_v2 {
 
 TEST_CASE("V2: data_chunk_create basic", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	auto varchar_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto varchar_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
 	duckdb_v2_logical_type_handle types[2] = {int_type, varchar_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -59,6 +60,7 @@ TEST_CASE("V2: data_chunk_create basic", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: data_chunk_create null args", "[capi_v2][vector_write]") {
+	EnvFixture fx;
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 
 	// Null types array — out_chunk should be zeroed.
@@ -66,7 +68,7 @@ TEST_CASE("V2: data_chunk_create null args", "[capi_v2][vector_write]") {
 	REQUIRE(chunk == nullptr);
 
 	// Null out_chunk.
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 	auto rc = duckdb_v2_data_chunk_create(types, 1, nullptr, nullptr);
 	duckdb_v2_logical_type_destroy(&int_type);
@@ -74,7 +76,8 @@ TEST_CASE("V2: data_chunk_create null args", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: data_chunk_create with null element in types", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[2] = {int_type, nullptr};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -93,8 +96,9 @@ TEST_CASE("V2: vector_set_size null arg", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: per-column sizing", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	auto double_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto double_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
 	duckdb_v2_logical_type_handle types[2] = {int_type, double_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -117,7 +121,8 @@ TEST_CASE("V2: per-column sizing", "[capi_v2][vector_write]") {
 
 // vector_set_size beyond the default capacity must auto-reserve.
 TEST_CASE("V2: vector_set_size auto-reserves", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -146,7 +151,8 @@ TEST_CASE("V2: vector_set_size auto-reserves", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_make_constant from value", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -157,7 +163,7 @@ TEST_CASE("V2: vector_make_constant from value", "[capi_v2][vector_write]") {
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_value_handle value = MakeInt32Value(42);
+	duckdb_v2_value_handle value = MakeInt32Value(fx.conn, 42);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 5, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
@@ -178,7 +184,8 @@ TEST_CASE("V2: vector_make_constant from value", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector_flatten resets constant", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -189,7 +196,7 @@ TEST_CASE("V2: vector_flatten resets constant", "[capi_v2][vector_write]") {
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_value_handle value = MakeInt32Value(7);
+	duckdb_v2_value_handle value = MakeInt32Value(fx.conn, 7);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
@@ -211,7 +218,8 @@ TEST_CASE("V2: vector_flatten resets constant", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector_make_sequence", "[capi_v2][vector_write]") {
-	auto bigint_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	EnvFixture fx;
+	auto bigint_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 	duckdb_v2_logical_type_handle types[1] = {bigint_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -246,7 +254,8 @@ TEST_CASE("V2: vector_make_* null args", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector_make_constant null value", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -268,7 +277,8 @@ TEST_CASE("V2: vector_make_constant null value", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_flat_get_validity_mutable + set nulls", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -314,7 +324,8 @@ TEST_CASE("V2: vector_flat_get_validity_mutable null args", "[capi_v2][vector_wr
 }
 
 TEST_CASE("V2: vector_flat_get_validity_mutable rejects SEQUENCE vector", "[capi_v2][vector_write]") {
-	auto i64_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	EnvFixture fx;
+	auto i64_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 	duckdb_v2_logical_type_handle types[1] = {i64_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -337,7 +348,8 @@ TEST_CASE("V2: vector_flat_get_validity_mutable rejects SEQUENCE vector", "[capi
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_constant_set_valid toggles validity", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -348,7 +360,7 @@ TEST_CASE("V2: vector_constant_set_valid toggles validity", "[capi_v2][vector_wr
 	duckdb_v2_vector_handle vec = nullptr;
 	REQUIRE(duckdb_v2_data_chunk_get_vector(chunk, 0, &vec, nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	duckdb_v2_value_handle value = MakeInt32Value(77);
+	duckdb_v2_value_handle value = MakeInt32Value(fx.conn, 77);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, value, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_destroy(&value) == DUCKDB_V2_ERROR_NONE);
 
@@ -371,7 +383,8 @@ TEST_CASE("V2: vector_constant_set_valid toggles validity", "[capi_v2][vector_wr
 }
 
 TEST_CASE("V2: vector_constant_set_valid rejects FLAT vector", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -394,7 +407,8 @@ TEST_CASE("V2: vector_constant_set_valid rejects FLAT vector", "[capi_v2][vector
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: vector_set_null on a primitive vector", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -478,8 +492,8 @@ TEST_CASE("V2: vector_set_null recurses into STRUCT fields", "[capi_v2][vector_w
 
 TEST_CASE("V2: vector_set_null strides ARRAY elements", "[capi_v2][vector_write]") {
 	EnvFixture fx;
-	auto array_type =
-	    MakeType(fx.conn, "array", nullptr, {MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), MakeInt32Value(3)});
+	auto array_type = MakeType(fx.conn, "array", nullptr,
+	                           {MakeTypeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), MakeInt32Value(fx.conn, 3)});
 	duckdb_v2_logical_type_handle types[1] = {array_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -603,9 +617,10 @@ TEST_CASE("V2: vector_set_null leaves LIST children untouched", "[capi_v2][vecto
 }
 
 TEST_CASE("V2: vector_set_null argument validation", "[capi_v2][vector_write]") {
+	EnvFixture fx;
 	REQUIRE(duckdb_v2_vector_set_null(nullptr, 0, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -774,7 +789,8 @@ TEST_CASE("V2: struct vector write via children", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: flat integer write + read round-trip", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -810,7 +826,8 @@ TEST_CASE("V2: flat integer write + read round-trip", "[capi_v2][vector_write]")
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: chunk outlives type handles", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -852,7 +869,8 @@ TEST_CASE("V2: data_chunk_create zero columns", "[capi_v2][vector_write]") {
 }
 
 TEST_CASE("V2: vector with zero rows", "[capi_v2][vector_write]") {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	EnvFixture fx;
+	auto int_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -1021,12 +1039,13 @@ TEST_CASE("V2: MAP write via child vectors", "[capi_v2][vector_write]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("V2: write multiple primitive types", "[capi_v2][vector_write]") {
-	auto bool_t = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN);
-	auto i8_t = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT);
-	auto i16_t = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT);
-	auto i64_t = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
-	auto f32_t = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT);
-	auto f64_t = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
+	EnvFixture fx;
+	auto bool_t = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN);
+	auto i8_t = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT);
+	auto i16_t = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT);
+	auto i64_t = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	auto f32_t = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT);
+	auto f64_t = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE);
 	duckdb_v2_logical_type_handle types[6] = {bool_t, i8_t, i16_t, i64_t, f32_t, f64_t};
 
 	duckdb_v2_data_chunk_handle chunk = nullptr;
@@ -1069,8 +1088,8 @@ TEST_CASE("V2: write multiple primitive types", "[capi_v2][vector_write]") {
 namespace {
 
 // Owned INTEGER chunk with one column; caller destroys.
-duckdb_v2_data_chunk_handle MakeIntChunk(duckdb_v2_vector_handle *out_vec) {
-	auto int_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+duckdb_v2_data_chunk_handle MakeIntChunk(duckdb_v2_connection_handle conn, duckdb_v2_vector_handle *out_vec) {
+	auto int_type = MakeType(conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle types[1] = {int_type};
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
@@ -1093,8 +1112,9 @@ int32_t V2CellI32(duckdb_v2_vector_handle vec, idx_t row) {
 } // namespace
 
 TEST_CASE("V2: vector_get_value reads FLAT and CONSTANT rows", "[capi_v2][vector_write][cell]") {
+	EnvFixture fx;
 	duckdb_v2_vector_handle vec = nullptr;
-	auto chunk = MakeIntChunk(&vec);
+	auto chunk = MakeIntChunk(fx.conn, &vec);
 	REQUIRE(duckdb_v2_vector_set_size(vec, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 	void *raw = nullptr;
 	REQUIRE(duckdb_v2_vector_get_data_mutable(vec, &raw, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1115,7 +1135,7 @@ TEST_CASE("V2: vector_get_value reads FLAT and CONSTANT rows", "[capi_v2][vector
 	duckdb_v2_error_info_destroy(&err);
 
 	// CONSTANT: every logical row reads the single value.
-	duckdb_v2_value_handle forty_two = MakeInt32Value(42);
+	duckdb_v2_value_handle forty_two = MakeInt32Value(fx.conn, 42);
 	REQUIRE(duckdb_v2_vector_make_constant(vec, forty_two, 5, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&forty_two);
 	REQUIRE(V2CellI32(vec, 0) == 42);
@@ -1179,7 +1199,8 @@ TEST_CASE("V2: vector_get_value is the VARIANT cell path", "[capi_v2][vector_wri
 }
 
 TEST_CASE("V2: vector_set_value writes FLAT cells with casts and NULLs", "[capi_v2][vector_write][cell]") {
-	auto bigint_type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
+	EnvFixture fx;
+	auto bigint_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 	duckdb_v2_logical_type_handle types[1] = {bigint_type};
 	duckdb_v2_data_chunk_handle chunk = nullptr;
 	auto rc = duckdb_v2_data_chunk_create(types, 1, &chunk, nullptr);
@@ -1190,13 +1211,14 @@ TEST_CASE("V2: vector_set_value writes FLAT cells with casts and NULLs", "[capi_
 	REQUIRE(duckdb_v2_vector_set_size(vec, 3, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	// An INTEGER value is cast to the vector's BIGINT on write.
-	duckdb_v2_value_handle small = MakeInt32Value(7);
+	duckdb_v2_value_handle small = MakeInt32Value(fx.conn, 7);
 	REQUIRE(duckdb_v2_vector_set_value(vec, 0, small, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&small);
 
 	// A NULL value clears the row's validity.
 	duckdb_v2_logical_type_handle bigint_v2 = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_v2, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, nullptr, nullptr, 0, &bigint_v2,
+	                                         nullptr);
 	duckdb_v2_value_handle null_value = nullptr;
 	REQUIRE(duckdb_v2_value_create_null(bigint_v2, &null_value, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&bigint_v2);
@@ -1214,7 +1236,7 @@ TEST_CASE("V2: vector_set_value writes FLAT cells with casts and NULLs", "[capi_
 	duckdb_v2_value_destroy(&cell);
 
 	// An uncastable value surfaces the conversion error.
-	duckdb_v2_value_handle bad = MakeVarcharValue("abc");
+	duckdb_v2_value_handle bad = MakeVarcharValue(fx.conn, "abc");
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_vector_set_value(vec, 2, bad, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
@@ -1225,10 +1247,11 @@ TEST_CASE("V2: vector_set_value writes FLAT cells with casts and NULLs", "[capi_
 }
 
 TEST_CASE("V2: vector_set_value refuses non-FLAT vectors and bad rows", "[capi_v2][vector_write][cell]") {
+	EnvFixture fx;
 	duckdb_v2_vector_handle vec = nullptr;
-	auto chunk = MakeIntChunk(&vec);
+	auto chunk = MakeIntChunk(fx.conn, &vec);
 
-	duckdb_v2_value_handle value = MakeInt32Value(1);
+	duckdb_v2_value_handle value = MakeInt32Value(fx.conn, 1);
 
 	// Out-of-range row on a FLAT vector.
 	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -1267,8 +1290,8 @@ TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip",
 
 	// Build the LIST value [1, 2] and make the vector constant over it.
 	duckdb_v2_value_handle elems[2] = {nullptr, nullptr};
-	elems[0] = MakeInt32Value(1);
-	elems[1] = MakeInt32Value(2);
+	elems[0] = MakeInt32Value(fx.conn, 1);
+	elems[1] = MakeInt32Value(fx.conn, 2);
 	duckdb_v2_value_handle list_value = nullptr;
 	rc = duckdb_v2_value_create(list_type, elems, 2, &list_value, nullptr);
 	duckdb_v2_value_destroy(&elems[0]);
@@ -1293,7 +1316,7 @@ TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip",
 	duckdb_v2_value_destroy(&cell);
 
 	// The type-mismatch hardening: an INTEGER value cannot constant a LIST vector.
-	duckdb_v2_value_handle wrong = MakeInt32Value(9);
+	duckdb_v2_value_handle wrong = MakeInt32Value(fx.conn, 9);
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_vector_make_constant(vec, wrong, 3, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(err != nullptr);
@@ -1317,8 +1340,8 @@ TEST_CASE("V2: nested cells round trip through set_value / get_value", "[capi_v2
 	REQUIRE(duckdb_v2_vector_set_size(vec, 2, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_value_handle elems[2] = {nullptr, nullptr};
-	elems[0] = MakeInt32Value(5);
-	elems[1] = MakeInt32Value(6);
+	elems[0] = MakeInt32Value(fx.conn, 5);
+	elems[1] = MakeInt32Value(fx.conn, 6);
 	duckdb_v2_value_handle full = nullptr;
 	rc = duckdb_v2_value_create(list_type, elems, 2, &full, nullptr);
 	duckdb_v2_value_destroy(&elems[0]);

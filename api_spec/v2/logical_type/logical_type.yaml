@@ -1,16 +1,16 @@
 module: logical_type
 #
-# Introspection plus three construction paths: primitive ids
-# (logical_type_create_from_id, context-free), SQL text
-# (logical_type_create_from_text), and generic (name, params)
-# construction (logical_type_create_from_args), all covering built-in and
-# catalog-registered types alike. The two catalog-aware constructors take
-# a context (from a callback); external callers with only a connection use
-# logical_type_get_from_text / logical_type_get_from_args.
+# Introspection plus three construction paths: type ids
+# (create_type_from_id), SQL text (create_type_from_text), and generic
+# (name, params) construction (create_type_from_name), all covering
+# built-in and catalog-registered types alike. Every constructor comes in
+# two flavours: a context_* form for callbacks holding a context, and a
+# connection_* form for external callers holding only a connection.
 # logical_type_to_text renders back to SQL text.
 #
 # Inspection is generic: logical_type_get_param_count /
-# logical_type_get_param are the exact dual of logical_type_create_from_args.
+# logical_type_get_param are the exact dual of the (name, params) and
+# (id, params) constructors.
 # There are no per-kind getters. DECIMAL and ENUM physical storage tiers
 # are committed contract text in the vector module's view docstring
 # (derivable from width / dictionary size), not getters.
@@ -142,13 +142,15 @@ functions:
   # -----------------------------------------------------------------------
   # Lifecycle
   # -----------------------------------------------------------------------
-  logical_type_create_from_id:
+  context_create_type_from_id:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Creates a logical type from a primitive type id.
+      Creates a logical type from a type id plus value parameters.
 
-      Accepts primitive type ids (no kind-specific parameters):
+      The id-keyed twin of context_create_type_from_name: the type id names the
+      kind, the parameters bind it. With param_count 0 this instantiates
+      a primitive directly, without touching the catalog:
       BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
       FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
       VARCHAR, BLOB, BIT, BIGNUM, UUID. Also accepts ANY.
@@ -160,66 +162,40 @@ functions:
       return types, table function result columns, cast source and
       target types, and custom type registration.
 
-      Returns ERROR_INPUT_INVALID for parameterised type ids
-      (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM, VARIANT, GEOMETRY),
-      for the remaining bind-time-only ids (SQLNULL, UNKNOWN), for TYPE
-      (construct it via logical_type_create_from_text), and for INVALID.
-      Composite construction is not part of this surface yet.
+      With parameters, the id resolves to its canonical type name and
+      binds through the same path as context_create_type_from_name, so the
+      parameterised kinds construct here too: decimal(width, scale);
+      list(T); array(T, size); map(K, V); struct(fields); union(members);
+      enum(entries); varchar with a named "collation" parameter. Parameters
+      are (name, value) pairs in two parallel arrays, exactly as for
+      context_create_type_from_name.
+
+      Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs
+      parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM,
+      VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN),
+      for TYPE (construct it via context_create_type_from_text), and for INVALID.
     role: constructor
-    belongs_to: logical_type
-    parameters:
-      type_id:
-        type: LOGICAL_TYPE_ID
-        description: The primitive type id to instantiate.
-      out_type:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the new logical type handle.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-
-  logical_type_create_from_text:
-    lifecycle:
-      - [ "stable", "v2.0.0", "2026-08-04" ]
-    description: |
-      Creates a logical type by parsing SQL text.
-
-      Parses a SQL type expression in the given context and returns the
-      bound logical type: primitives ("INTEGER"), parameterized kinds
-      ("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)",
-      "MAP(VARCHAR, INTEGER)", "INTEGER[3]", "UNION(i INTEGER, s VARCHAR)",
-      "ENUM('a', 'b')"), and catalog-registered type names (user-defined
-      and extension types). A catalog type name binds to its structural
-      type; the name is not preserved as an alias. Names are
-      case-insensitive. Parse and bind errors surface from the call.
-
-      Runs in the caller's context scope: a context handle arrives with
-      the context lock held and a transaction active (function bind
-      callbacks, custom type registration). External callers with only a
-      connection use logical_type_get_from_text. Catalog-touching context
-      calls belong in bind-phase callbacks and with-context scopes, not
-      exec-phase
-      worker callbacks.
-
-      The returned logical type is caller-owned and must be destroyed via
-      logical_type_destroy. A type resolved from the catalog shares
-      database-owned storage (e.g. an ENUM dictionary): destroy it before
-      closing the database. Inverse of logical_type_to_text for every
-      constructible kind.
-    role: constructor
-    belongs_to: logical_type
+    belongs_to: context
     parameters:
       ctx:
         type: context
         description: The context supplying the catalog and active transaction.
-      text:
-        type: str
-        description: View of the SQL type expression to parse.
+      type_id:
+        type: LOGICAL_TYPE_ID
+        description: The type id to instantiate.
+      param_names:
+        type: identifier
+        indirection: 1
+        const: true
+        description: Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for all-positional parameters.
+      param_values:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+      param_count:
+        type: idx
+        description: The number of parameters. 0 instantiates a parameterless primitive.
       out_type:
         type: logical_type
         indirection: 1
@@ -232,43 +208,7 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
 
-  logical_type_get_from_text:
-    lifecycle:
-      - [ "stable", "v2.0.0", "2026-08-04" ]
-    description: |
-      Gets a logical type by parsing SQL text, using a connection.
-
-      Same as logical_type_create_from_text, but supplies the catalog and
-      transaction from a connection: the parse and bind run in their own
-      transaction on the connection's context. Use this from outside
-      DuckDB, where a connection — but no context — is in hand.
-
-      The returned logical type is caller-owned and must be destroyed via
-      logical_type_destroy. A type resolved from the catalog shares
-      database-owned storage (e.g. an ENUM dictionary): destroy it before
-      closing the database.
-    role: constructor
-    belongs_to: logical_type
-    parameters:
-      conn:
-        type: connection
-        description: The connection supplying the catalog and active transaction.
-      text:
-        type: str
-        description: View of the SQL type expression to parse.
-      out_type:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the new logical type handle.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-
-  logical_type_create_from_args:
+  context_create_type_from_name:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
@@ -294,10 +234,10 @@ functions:
       parameter count or types) surface from the call.
 
       Runs in the caller's context scope (see
-      logical_type_create_from_text): reach it from a bind-phase callback
+      create_type_from_text): reach it from a bind-phase callback
       or another context-holding scope, not an exec-phase worker
       callback. External callers with only a connection use
-      logical_type_get_from_args.
+      connection_create_type_from_name.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
@@ -305,7 +245,7 @@ functions:
       closing the database. Inverse of logical_type_get_param_count /
       logical_type_get_param.
     role: constructor
-    belongs_to: logical_type
+    belongs_to: context
     parameters:
       ctx:
         type: context
@@ -338,26 +278,141 @@ functions:
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
 
-  logical_type_get_from_args:
+  context_create_type_from_text:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a logical type by parsing SQL text.
+
+      Parses a SQL type expression in the given context and returns the
+      bound logical type: primitives ("INTEGER"), parameterized kinds
+      ("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)",
+      "MAP(VARCHAR, INTEGER)", "INTEGER[3]", "UNION(i INTEGER, s VARCHAR)",
+      "ENUM('a', 'b')"), and catalog-registered type names (user-defined
+      and extension types). A catalog type name binds to its structural
+      type; the name is not preserved as an alias. Names are
+      case-insensitive. Parse and bind errors surface from the call.
+
+      Runs in the caller's context scope: a context handle arrives with
+      the context lock held and a transaction active (function bind
+      callbacks, custom type registration). External callers with only a
+      connection use connection_create_type_from_text. Catalog-touching context
+      calls belong in bind-phase callbacks and with-context scopes, not
+      exec-phase
+      worker callbacks.
+
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy. A type resolved from the catalog shares
+      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      closing the database. Inverse of logical_type_to_text for every
+      constructible kind.
+    role: constructor
+    belongs_to: context
+    parameters:
+      ctx:
+        type: context
+        description: The context supplying the catalog and active transaction.
+      text:
+        type: str
+        description: View of the SQL type expression to parse.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  connection_create_type_from_id:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a logical type from a type id plus value parameters.
+
+      The id-keyed twin of connection_create_type_from_name: the type id names the
+      kind, the parameters bind it. With param_count 0 this instantiates
+      a primitive directly, without touching the catalog:
+      BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
+      FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
+      VARCHAR, BLOB, BIT, BIGNUM, UUID. Also accepts ANY.
+
+      ANY is a function-signature wildcard, constructible here so it can
+      be passed to function parameter and varargs setters (a fixed-arity
+      ANY parameter, or an ANY varargs type). Data-creating surfaces
+      reject it: value and data_chunk creation, scalar and aggregate
+      return types, table function result columns, cast source and
+      target types, and custom type registration.
+
+      With parameters, the id resolves to its canonical type name and
+      binds through the same path as connection_create_type_from_name, so the
+      parameterised kinds construct here too: decimal(width, scale);
+      list(T); array(T, size); map(K, V); struct(fields); union(members);
+      enum(entries); varchar with a named "collation" parameter. Parameters
+      are (name, value) pairs in two parallel arrays, exactly as for
+      connection_create_type_from_name.
+
+      Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs
+      parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM,
+      VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN),
+      for TYPE (construct it via connection_create_type_from_text), and for INVALID.
+    role: constructor
+    belongs_to: connection
+    parameters:
+      conn:
+        type: connection
+        description: The connection supplying the catalog and active transaction.
+      type_id:
+        type: LOGICAL_TYPE_ID
+        description: The type id to instantiate.
+      param_names:
+        type: identifier
+        indirection: 1
+        const: true
+        description: Optional. An array of param_count parameter names; a {NULL, 0} entry is positional. Pass NULL for all-positional parameters.
+      param_values:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of param_count parameter values. Borrowed (copied in). Pass NULL when param_count is 0.
+      param_count:
+        type: idx
+        description: The number of parameters. 0 instantiates a parameterless primitive.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  connection_create_type_from_name:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
       Gets a logical type from a type name plus value parameters, using a connection.
 
-      Same as logical_type_create_from_args, but supplies the catalog and
+      Same as create_type_from_name, but supplies the catalog and
       transaction from a connection: the bind runs in its own transaction
       on the connection's context. Use this from outside DuckDB, where a
       connection — but no context — is in hand.
 
       Parameters are (name, value) pairs in two parallel arrays, exactly
-      as for logical_type_create_from_args.
+      as for create_type_from_name.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
       database-owned storage (e.g. an ENUM dictionary): destroy it before
       closing the database.
     role: constructor
-    belongs_to: logical_type
+    belongs_to: connection
     parameters:
       conn:
         type: connection
@@ -378,6 +433,42 @@ functions:
       param_count:
         type: idx
         description: The number of parameters.
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the new logical type handle.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  connection_create_type_from_text:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Gets a logical type by parsing SQL text, using a connection.
+
+      Same as create_type_from_text, but supplies the catalog and
+      transaction from a connection: the parse and bind run in their own
+      transaction on the connection's context. Use this from outside
+      DuckDB, where a connection — but no context — is in hand.
+
+      The returned logical type is caller-owned and must be destroyed via
+      logical_type_destroy. A type resolved from the catalog shares
+      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      closing the database.
+    role: constructor
+    belongs_to: connection
+    parameters:
+      conn:
+        type: connection
+        description: The connection supplying the catalog and active transaction.
+      text:
+        type: str
+        description: View of the SQL type expression to parse.
       out_type:
         type: logical_type
         indirection: 1
@@ -496,7 +587,7 @@ functions:
       The alias when one is set (an extension or user-defined name, e.g.
       "POINT_2D"), otherwise the canonical fixed name of the type id
       (e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the
-      empty view. This is exactly the name vocabulary logical_type_create_from_args
+      empty view. This is exactly the name vocabulary create_type_from_name
       consumes. The view is valid until the logical type is destroyed
       (the canonical-name arm points at static storage).
     role: getter
@@ -524,9 +615,9 @@ functions:
       Renders a logical type as SQL text.
 
       Mirrors duckdb::LogicalType::ToString(). An aliased type renders as
-      its alias; logical_type_create_from_text resolves that spelling only
+      its alias; create_type_from_text resolves that spelling only
       when the name is registered in the connection's catalog. Round-trips
-      through logical_type_create_from_text for every constructible kind,
+      through create_type_from_text for every constructible kind,
       with one exception: ANY renders as "ANY", but from_text cannot parse
       it back (ANY is a signature wildcard, not a parseable SQL type).
       Writes into a caller-supplied buffer; the library never allocates and
@@ -573,7 +664,7 @@ functions:
     description: |
       Returns the number of value parameters of a logical type.
 
-      The inspection dual of logical_type_create_from_args: the parameters that
+      The inspection dual of create_type_from_name: the parameters that
       reconstruct the type through it. Per kind: DECIMAL 2 (width,
       scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
       (key type, value type); STRUCT and TUPLE one per field; UNION one per

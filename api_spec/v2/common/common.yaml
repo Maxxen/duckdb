@@ -46,7 +46,7 @@ handles:
       kind-specific metadata (decimal width/scale, enum dictionary, list /
       array / struct / map / union child types, alias). Read-only from the C
       side: instances arrive either from a query result schema or from
-      logical_type_create_from_id for primitives. Always destroy via
+      create_type_from_id for primitives. Always destroy via
       logical_type_destroy. Borrowed strings returned by getters
       are valid until destroy.
     cleanup_with: logical_type_destroy

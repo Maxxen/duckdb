@@ -43,9 +43,10 @@ TEST_CASE("V2: value destroy is null-safe", "[capi_v2][value][lifecycle]") {
 // ===========================================================================
 
 TEST_CASE("V2: value_create_null carries the borrowed type", "[capi_v2][value][null]") {
+	EnvFixture fx;
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0,
+	                                                 &int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_value_handle v = nullptr;
 	REQUIRE(duckdb_v2_value_create_null(int_type, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -71,19 +72,22 @@ TEST_CASE("V2: value_create_null carries the borrowed type", "[capi_v2][value][n
 }
 
 TEST_CASE("V2: value_create_null rejects null type / null out", "[capi_v2][value][null]") {
+	EnvFixture fx;
 	duckdb_v2_value_handle v = nullptr;
 	REQUIRE(duckdb_v2_value_create_null(nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &int_type,
+	                                         nullptr);
 	REQUIRE(duckdb_v2_value_create_null(int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&int_type);
 }
 
 TEST_CASE("V2: value_is_null distinguishes NULL from non-NULL", "[capi_v2][value][null]") {
+	EnvFixture fx;
 	duckdb_v2_value_handle v = nullptr;
-	v = MakeInt32Value(7);
+	v = MakeInt32Value(fx.conn, 7);
 	bool is_null = true;
 	REQUIRE(duckdb_v2_value_is_null(v, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(!is_null);
@@ -91,6 +95,7 @@ TEST_CASE("V2: value_is_null distinguishes NULL from non-NULL", "[capi_v2][value
 }
 
 TEST_CASE("V2: value_is_null / value_get_logical_type / value_destroy null guards", "[capi_v2][value][null]") {
+	EnvFixture fx;
 	bool b = false;
 	REQUIRE(duckdb_v2_value_is_null(nullptr, &b, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
@@ -99,7 +104,7 @@ TEST_CASE("V2: value_is_null / value_get_logical_type / value_destroy null guard
 	REQUIRE(lt == nullptr);
 
 	duckdb_v2_value_handle v = nullptr;
-	v = MakeInt32Value(1);
+	v = MakeInt32Value(fx.conn, 1);
 	REQUIRE(duckdb_v2_value_is_null(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_value_get_logical_type(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_value_destroy(&v);
@@ -121,9 +126,9 @@ duckdb_v2_value_handle LeafOfType(duckdb_v2_logical_type_handle type, const void
 }
 
 // Round-trips a payload through the codec, optionally pinning the rendering.
-void RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID id, const void *payload, idx_t len,
-                          const char *expected_text = nullptr) {
-	auto v = MakeValue(id, payload, len);
+void RequireLeafRoundTrip(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id, const void *payload,
+                          idx_t len, const char *expected_text = nullptr) {
+	auto v = MakeValue(conn, id, payload, len);
 	// Read everything, destroy the owned fixtures, then assert: a failing
 	// REQUIRE in between would leak them.
 	const void *out = nullptr;
@@ -154,64 +159,66 @@ void RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID id, const void *payload, idx
 } // namespace
 
 TEST_CASE("V2: leaf payloads round-trip across the fixed-size kinds", "[capi_v2][value][leaf]") {
+	EnvFixture fx;
 	bool b = true;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN, &b, 1, "true");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN, &b, 1, "true");
 	int8_t i8 = -5;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT, &i8, 1, "-5");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TINYINT, &i8, 1, "-5");
 	int16_t i16 = -1234;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT, &i16, 2, "-1234");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT, &i16, 2, "-1234");
 	int32_t i32 = -123456;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &i32, 4, "-123456");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &i32, 4, "-123456");
 	int64_t i64 = -1234567890123;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &i64, 8, "-1234567890123");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &i64, 8, "-1234567890123");
 	uint8_t u8 = 200;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT, &u8, 1, "200");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_UTINYINT, &u8, 1, "200");
 	uint16_t u16 = 60000;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_USMALLINT, &u16, 2, "60000");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_USMALLINT, &u16, 2, "60000");
 	uint32_t u32 = 4000000000u;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_UINTEGER, &u32, 4, "4000000000");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_UINTEGER, &u32, 4, "4000000000");
 	uint64_t u64 = 18000000000000000000ull;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_UBIGINT, &u64, 8, "18000000000000000000");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_UBIGINT, &u64, 8, "18000000000000000000");
 	float f = 1.5f;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT, &f, 4, "1.5");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_FLOAT, &f, 4, "1.5");
 	double d = -2.25;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE, &d, 8, "-2.25");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE, &d, 8, "-2.25");
 
 	// DATE is int32 days since the epoch; 19797 = 2024-03-15.
 	int32_t days = 19797;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_DATE, &days, 4, "2024-03-15");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_DATE, &days, 4, "2024-03-15");
 
 	// The time and timestamp kinds carry int64 offsets in their unit; the
 	// packed TIME_TZ form round-trips as bytes.
 	int64_t micros = ((12 * 60 + 34) * 60 + 56) * 1000000ll;
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIME, &micros, 8, "12:34:56");
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIME_NS, &micros, 8);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIME_TZ, &micros, 8);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP, &micros, 8);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_SEC, &micros, 8);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_MS, &micros, 8);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_NS, &micros, 8);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ, &micros, 8);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ_NS, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIME, &micros, 8, "12:34:56");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIME_NS, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIME_TZ, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_SEC, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_MS, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_NS, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ, &micros, 8);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ_NS, &micros, 8);
 
 	// INTERVAL is the (months, days, micros) triple.
 	duckdb_v2_interval_t iv {1, 2, 3000000};
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_INTERVAL, &iv, sizeof(iv), "1 month 2 days 00:00:03");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTERVAL, &iv, sizeof(iv), "1 month 2 days 00:00:03");
 }
 
 TEST_CASE("V2: hugeint and uuid payloads use the committed 128-bit layout", "[capi_v2][value][leaf]") {
+	EnvFixture fx;
 	duckdb_v2_hugeint_t pos {42, 0};
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT, &pos, sizeof(pos), "42");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT, &pos, sizeof(pos), "42");
 	duckdb_v2_hugeint_t neg {0xFFFFFFFFFFFFFFFFull, -1};
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT, &neg, sizeof(neg), "-1");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_HUGEINT, &neg, sizeof(neg), "-1");
 	duckdb_v2_uhugeint_t upos {7, 1};
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_UHUGEINT, &upos, sizeof(upos), "18446744073709551623");
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_UHUGEINT, &upos, sizeof(upos), "18446744073709551623");
 
 	// UUID crosses in its internal hugeint form, exactly the bytes a vector
 	// view exposes (not the RFC textual order); to_string still renders the
 	// canonical 36-char form.
 	duckdb_v2_hugeint_t raw {0x1234, 0x5678};
-	auto v = MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID_UUID, &raw, sizeof(raw));
+	auto v = MakeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_UUID, &raw, sizeof(raw));
 	const void *out = nullptr;
 	idx_t out_len = 0;
 	REQUIRE(duckdb_v2_value_get_data(v, &out, &out_len, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -236,7 +243,8 @@ TEST_CASE("V2: DECIMAL payloads are the scaled integer of the width tier", "[cap
 	    {18, 6, 123456789012345678, 8, "123456789012.345678"},
 	};
 	for (auto &c : cases) {
-		auto t = MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(c.width), MakeInt32Value(c.scale)});
+		auto t =
+		    MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(fx.conn, c.width), MakeInt32Value(fx.conn, c.scale)});
 		// Assemble the tier-sized little payload from the low bytes.
 		auto v = LeafOfType(t, &c.scaled, c.len);
 		const void *out = nullptr;
@@ -251,7 +259,7 @@ TEST_CASE("V2: DECIMAL payloads are the scaled integer of the width tier", "[cap
 	}
 
 	// Width 38 sits in the int128 tier.
-	auto wide = MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(38), MakeInt32Value(10)});
+	auto wide = MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(fx.conn, 38), MakeInt32Value(fx.conn, 10)});
 	duckdb_v2_hugeint_t scaled {123456789012345ull, 0};
 	auto v = LeafOfType(wide, &scaled, sizeof(scaled));
 	REQUIRE(ConsumeValue<duckdb_v2_hugeint_t>(v).lower == scaled.lower);
@@ -259,7 +267,7 @@ TEST_CASE("V2: DECIMAL payloads are the scaled integer of the width tier", "[cap
 
 	// The tier table is load-bearing: a mismatched payload size is refused.
 	int32_t wrong = 1234;
-	auto narrow = MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(4), MakeInt32Value(2)});
+	auto narrow = MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(fx.conn, 4), MakeInt32Value(fx.conn, 2)});
 	duckdb_v2_value_handle bad = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_value_create_from_data(narrow, &wrong, sizeof(wrong), &bad, &err) ==
@@ -281,8 +289,9 @@ TEST_CASE("V2: DECIMAL payloads are the scaled integer of the width tier", "[cap
 
 TEST_CASE("V2: ENUM payloads are bounds-checked dictionary indices", "[capi_v2][value][leaf][enum]") {
 	EnvFixture fx;
-	auto t = MakeType(fx.conn, "enum", nullptr,
-	                  {MakeVarcharValue("sad"), MakeVarcharValue("ok"), MakeVarcharValue("happy")});
+	auto t = MakeType(
+	    fx.conn, "enum", nullptr,
+	    {MakeVarcharValue(fx.conn, "sad"), MakeVarcharValue(fx.conn, "ok"), MakeVarcharValue(fx.conn, "happy")});
 
 	uint8_t index = 2;
 	auto v = LeafOfType(t, &index, 1);
@@ -302,9 +311,10 @@ TEST_CASE("V2: ENUM payloads are bounds-checked dictionary indices", "[capi_v2][
 }
 
 TEST_CASE("V2: wire-bytes kinds round-trip verbatim", "[capi_v2][value][leaf][borrow]") {
+	EnvFixture fx;
 	// VARCHAR with an embedded NUL; the borrow is stable until destroy.
 	const char raw[4] = {'a', '\0', 'b', 'c'};
-	auto v = MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, raw, 4);
+	auto v = MakeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, raw, 4);
 	const void *first = nullptr;
 	idx_t first_len = 0;
 	REQUIRE(duckdb_v2_value_get_data(v, &first, &first_len, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -317,7 +327,7 @@ TEST_CASE("V2: wire-bytes kinds round-trip verbatim", "[capi_v2][value][leaf][bo
 	duckdb_v2_value_destroy(&v);
 
 	// Empty VARCHAR: a null pointer is valid when len is 0.
-	auto empty = MakeValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, nullptr, 0);
+	auto empty = MakeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, nullptr, 0);
 	REQUIRE(ConsumeValue<std::string>(empty).empty());
 	duckdb_v2_value_destroy(&empty);
 
@@ -325,7 +335,7 @@ TEST_CASE("V2: wire-bytes kinds round-trip verbatim", "[capi_v2][value][leaf][bo
 	const unsigned char bad_utf8[2] = {0xC0, 0x00};
 	auto varchar_type = DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR;
 	duckdb_v2_logical_type_handle vt = nullptr;
-	duckdb_v2_logical_type_create_from_id(varchar_type, &vt, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, varchar_type, nullptr, nullptr, 0, &vt, nullptr);
 	duckdb_v2_value_handle bad = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_value_create_from_data(vt, bad_utf8, 2, &bad, &err) != DUCKDB_V2_ERROR_NONE);
@@ -335,14 +345,15 @@ TEST_CASE("V2: wire-bytes kinds round-trip verbatim", "[capi_v2][value][leaf][bo
 
 	// BLOB takes any bytes.
 	const uint8_t blob_bytes[5] = {0x00, 0xFF, 0x10, 0x00, 0x7F};
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_BLOB, blob_bytes, 5);
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_BLOB, nullptr, 0);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BLOB, blob_bytes, 5);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BLOB, nullptr, 0);
 
 	// BIT wire form: the mandatory padding header byte plus data bytes.
 	const uint8_t bit_bytes[3] = {3, 0xA8, 0xF0};
-	RequireLeafRoundTrip(DUCKDB_V2_LOGICAL_TYPE_ID_BIT, bit_bytes, 3);
+	RequireLeafRoundTrip(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIT, bit_bytes, 3);
 	duckdb_v2_logical_type_handle bit_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIT, &bit_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIT, nullptr, nullptr, 0, &bit_type,
+	                                         nullptr);
 	REQUIRE(duckdb_v2_value_create_from_data(bit_type, nullptr, 0, &bad, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(bad == nullptr);
 	duckdb_v2_error_info_destroy(&err);
@@ -366,7 +377,8 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 	EnvFixture fx;
 	// TYPE: use value_create_type / value_get_type.
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &int_type,
+	                                         nullptr);
 	duckdb_v2_value_handle type_value = nullptr;
 	REQUIRE(duckdb_v2_value_create_type(int_type, &type_value, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_handle type_type = nullptr;
@@ -387,7 +399,8 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 	// BIGNUM is leaf-addressable, but its storage form needs a header plus at
 	// least one magnitude byte; anything shorter is not addressable storage.
 	duckdb_v2_logical_type_handle bignum_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM, &bignum_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM, nullptr, nullptr, 0,
+	                                         &bignum_type, nullptr);
 	REQUIRE(duckdb_v2_value_create_from_data(bignum_type, &dummy, 3, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&bignum_type);
 
@@ -410,7 +423,7 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 	REQUIRE(duckdb_v2_value_create_from_data(int_type, nullptr, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_value_create_from_data(nullptr, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_value_create_from_data(int_type, &dummy, 4, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	auto probe = MakeInt32Value(1);
+	auto probe = MakeInt32Value(fx.conn, 1);
 	REQUIRE(duckdb_v2_value_get_data(nullptr, &data, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_value_get_data(probe, nullptr, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_value_get_data(probe, &data, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -422,7 +435,7 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 	// from_text (create_from_id rejects VARIANT).
 	EnvFixture f;
 	duckdb_v2_logical_type_handle variant_type = nullptr;
-	REQUIRE(duckdb_v2_logical_type_get_from_text(f.conn, Convert("VARIANT"), &variant_type, nullptr) ==
+	REQUIRE(duckdb_v2_connection_create_type_from_text(f.conn, Convert("VARIANT"), &variant_type, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_value_create_from_data(variant_type, &dummy, 4, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
@@ -430,11 +443,12 @@ TEST_CASE("V2: leaf codec refuses kinds without a committed layout", "[capi_v2][
 }
 
 TEST_CASE("V2: value_to_string null handle / short buffer", "[capi_v2][value][to_string]") {
+	EnvFixture fx;
 	char buf[64] = {};
 	idx_t len = 0;
 	REQUIRE(duckdb_v2_value_to_string(nullptr, buf, sizeof(buf), &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	auto v = MakeInt32Value(7);
+	auto v = MakeInt32Value(fx.conn, 7);
 	// out_length carries the answer, so it is mandatory in both modes.
 	REQUIRE(duckdb_v2_value_to_string(v, buf, sizeof(buf), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
@@ -457,7 +471,8 @@ namespace {
 
 // Builds a BIGNUM value the way the API intends: encode the magnitude into
 // storage bytes, then hand those to the generic leaf constructor.
-duckdb_v2_value_handle BignumValue(const uint8_t *magnitude, idx_t length, bool is_negative) {
+duckdb_v2_value_handle BignumValue(duckdb_v2_connection_handle conn, const uint8_t *magnitude, idx_t length,
+                                   bool is_negative) {
 	idx_t storage_len = 0;
 	REQUIRE(duckdb_v2_bignum_encode(magnitude, length, is_negative, nullptr, 0, &storage_len, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
@@ -465,7 +480,7 @@ duckdb_v2_value_handle BignumValue(const uint8_t *magnitude, idx_t length, bool 
 	REQUIRE(duckdb_v2_bignum_encode(magnitude, length, is_negative, storage.data(), storage.size(), &storage_len,
 	                                nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	auto type = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM);
+	auto type = MakeType(conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM);
 	duckdb_v2_value_handle v = nullptr;
 	auto rc = duckdb_v2_value_create_from_data(type, storage.data(), storage.size(), &v, nullptr);
 	duckdb_v2_logical_type_destroy(&type);
@@ -493,9 +508,10 @@ std::vector<uint8_t> BignumMagnitude(duckdb_v2_value_handle v, bool &out_is_nega
 } // namespace
 
 TEST_CASE("V2: bignum positive round-trip (magnitude bytes match)", "[capi_v2][value][bignum]") {
+	EnvFixture fx;
 	// 0x010203 = 66051, positive.
 	const uint8_t magnitude[] = {0x01, 0x02, 0x03};
-	auto v = BignumValue(magnitude, 3, false);
+	auto v = BignumValue(fx.conn, magnitude, 3, false);
 
 	bool is_negative = true;
 	auto out = BignumMagnitude(v, is_negative);
@@ -506,10 +522,11 @@ TEST_CASE("V2: bignum positive round-trip (magnitude bytes match)", "[capi_v2][v
 }
 
 TEST_CASE("V2: bignum negative round-trip (magnitude bytes match, sign flag set)", "[capi_v2][value][bignum]") {
+	EnvFixture fx;
 	// Magnitude 0x010203, is_negative = true: V2 must round-trip the same
 	// magnitude bytes despite core's internal bit-inversion.
 	const uint8_t magnitude[] = {0x01, 0x02, 0x03};
-	auto v = BignumValue(magnitude, 3, true);
+	auto v = BignumValue(fx.conn, magnitude, 3, true);
 
 	bool is_negative = false;
 	auto out = BignumMagnitude(v, is_negative);
@@ -520,12 +537,13 @@ TEST_CASE("V2: bignum negative round-trip (magnitude bytes match, sign flag set)
 }
 
 TEST_CASE("V2: bignum multi-byte negative round-trip (high-bit + trailing zero)", "[capi_v2][value][bignum]") {
+	EnvFixture fx;
 	// Magnitude {0x80, 0x00} forces the encoder to bit-invert into {0x7f, 0xff}
 	// internally, while still reporting the original magnitude on read. A
 	// reader naively assuming "stored bytes == magnitude" would see 0x7fff
 	// (32767, positive) instead of -32768.
 	const uint8_t magnitude[] = {0x80, 0x00};
-	auto v = BignumValue(magnitude, 2, true);
+	auto v = BignumValue(fx.conn, magnitude, 2, true);
 
 	bool is_negative = false;
 	auto out = BignumMagnitude(v, is_negative);
@@ -537,10 +555,11 @@ TEST_CASE("V2: bignum multi-byte negative round-trip (high-bit + trailing zero)"
 }
 
 TEST_CASE("V2: bignum zero is one 0x00 byte (explicit form)", "[capi_v2][value][bignum]") {
+	EnvFixture fx;
 	// Core's BIGNUM encoding requires at least one data byte. The canonical
 	// representation of zero is a single 0x00 magnitude byte.
 	const uint8_t zero[] = {0x00};
-	auto v = BignumValue(zero, 1, false);
+	auto v = BignumValue(fx.conn, zero, 1, false);
 
 	bool is_negative = true;
 	auto out = BignumMagnitude(v, is_negative);
@@ -551,8 +570,9 @@ TEST_CASE("V2: bignum zero is one 0x00 byte (explicit form)", "[capi_v2][value][
 }
 
 TEST_CASE("V2: value_get_data refuses a NULL BIGNUM", "[capi_v2][value][bignum]") {
+	EnvFixture fx;
 	// BIGNUM is leaf-addressable, but a NULL has no payload to hand back.
-	auto bn_lt = MakeType(DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM);
+	auto bn_lt = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGNUM);
 	duckdb_v2_value_handle nv = nullptr;
 	duckdb_v2_value_create_null(bn_lt, &nv, nullptr);
 
@@ -569,8 +589,10 @@ TEST_CASE("V2: value_get_data refuses a NULL BIGNUM", "[capi_v2][value][bignum]"
 // ===========================================================================
 
 TEST_CASE("V2: failure path populates error info", "[capi_v2][value][error]") {
+	EnvFixture fx;
 	duckdb_v2_logical_type_handle varchar_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, nullptr, nullptr, 0,
+	                                         &varchar_type, nullptr);
 	duckdb_v2_value_handle v = nullptr;
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_value_create_from_data(varchar_type, nullptr, 4, &v, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -587,9 +609,10 @@ TEST_CASE("V2: failure path populates error info", "[capi_v2][value][error]") {
 // ===========================================================================
 
 TEST_CASE("V2: TYPE value wraps and unwraps a logical type", "[capi_v2][value][type_value]") {
+	EnvFixture fx;
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	REQUIRE(duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0,
+	                                                 &int_type, nullptr) == DUCKDB_V2_ERROR_NONE);
 
 	duckdb_v2_value_handle v = nullptr;
 	REQUIRE(duckdb_v2_value_create_type(int_type, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -614,7 +637,8 @@ TEST_CASE("V2: TYPE value wraps and unwraps a logical type", "[capi_v2][value][t
 	REQUIRE(duckdb_v2_value_get_type(v, &unwrapped, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(unwrapped != nullptr);
 	duckdb_v2_logical_type_handle expected = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &expected, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &expected,
+	                                         nullptr);
 	bool equal = false;
 	REQUIRE(duckdb_v2_logical_type_is_equal(unwrapped, expected, &equal, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(equal);
@@ -637,7 +661,7 @@ TEST_CASE("V2: TYPE value round-trips a composite type", "[capi_v2][value][type_
 	auto list_type = MakeListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	std::vector<const char *> names = {"a", "b"};
 	auto t = MakeType(fx.conn, "struct", &names,
-	                  {MakeTypeValue(list_type), MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
+	                  {MakeTypeValue(list_type), MakeTypeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
 	duckdb_v2_logical_type_destroy(&list_type);
 
 	duckdb_v2_value_handle v = nullptr;
@@ -656,7 +680,7 @@ TEST_CASE("V2: TYPE value round-trips a composite type", "[capi_v2][value][type_
 
 TEST_CASE("V2: TYPE value to_string renders the type text", "[capi_v2][value][type_value][to_string]") {
 	EnvFixture fx;
-	auto t = MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(18), MakeInt32Value(3)});
+	auto t = MakeType(fx.conn, "decimal", nullptr, {MakeInt32Value(fx.conn, 18), MakeInt32Value(fx.conn, 3)});
 	duckdb_v2_value_handle v = nullptr;
 	REQUIRE(duckdb_v2_value_create_type(t, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&t);
@@ -667,8 +691,9 @@ TEST_CASE("V2: TYPE value to_string renders the type text", "[capi_v2][value][ty
 }
 
 TEST_CASE("V2: value_get_type rejects non-TYPE and NULL TYPE values", "[capi_v2][value][type_value]") {
+	EnvFixture fx;
 	// Wrong kind: an INTEGER value is not a TYPE value.
-	duckdb_v2_value_handle int_value = MakeInt32Value(42);
+	duckdb_v2_value_handle int_value = MakeInt32Value(fx.conn, 42);
 	duckdb_v2_logical_type_handle out = reinterpret_cast<duckdb_v2_logical_type_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_value_get_type(int_value, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -680,7 +705,8 @@ TEST_CASE("V2: value_get_type rejects non-TYPE and NULL TYPE values", "[capi_v2]
 	// NULL TYPE value: no payload to unwrap. The TYPE logical type is taken
 	// from a TYPE value's own type (create_from_id does not construct it).
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &int_type,
+	                                         nullptr);
 	duckdb_v2_value_handle type_value = nullptr;
 	REQUIRE(duckdb_v2_value_create_type(int_type, &type_value, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&int_type);
@@ -703,12 +729,14 @@ TEST_CASE("V2: value_get_type rejects non-TYPE and NULL TYPE values", "[capi_v2]
 }
 
 TEST_CASE("V2: value_create_type / value_get_type null-arg refusals", "[capi_v2][value][type_value]") {
+	EnvFixture fx;
 	duckdb_v2_value_handle v = nullptr;
 	REQUIRE(duckdb_v2_value_create_type(nullptr, &v, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(v == nullptr);
 
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &int_type,
+	                                         nullptr);
 	REQUIRE(duckdb_v2_value_create_type(int_type, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
 	duckdb_v2_logical_type_handle out = nullptr;
@@ -726,17 +754,17 @@ TEST_CASE("V2: value_create_type / value_get_type null-arg refusals", "[capi_v2]
 
 namespace {
 
-duckdb_v2_value_handle V2I32(int32_t x) {
-	return MakeInt32Value(x);
+duckdb_v2_value_handle V2I32(duckdb_v2_connection_handle conn, int32_t x) {
+	return MakeInt32Value(conn, x);
 }
 
-duckdb_v2_value_handle V2Varchar(const char *s) {
-	return MakeVarcharValue(s);
+duckdb_v2_value_handle V2Varchar(duckdb_v2_connection_handle conn, const char *s) {
+	return MakeVarcharValue(conn, s);
 }
 
-duckdb_v2_value_handle V2NullOf(DUCKDB_V2_LOGICAL_TYPE_ID id) {
+duckdb_v2_value_handle V2NullOf(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id) {
 	duckdb_v2_logical_type_handle t = nullptr;
-	duckdb_v2_logical_type_create_from_id(id, &t, nullptr);
+	duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &t, nullptr);
 	duckdb_v2_value_handle v = nullptr;
 	auto rc = duckdb_v2_value_create_null(t, &v, nullptr);
 	duckdb_v2_logical_type_destroy(&t);
@@ -800,7 +828,8 @@ TEST_CASE("V2: value_create LIST round-trips elements, NULLs, and empty", "[capi
 	EnvFixture fx;
 	auto list_type = MakeListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-	auto list = V2Composite(list_type, {V2I32(1), V2NullOf(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), V2I32(3)});
+	auto list = V2Composite(
+	    list_type, {V2I32(fx.conn, 1), V2NullOf(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), V2I32(fx.conn, 3)});
 	REQUIRE(V2ChildCount(list) == 3);
 	REQUIRE(V2ChildText(list, 0) == "1");
 	REQUIRE(V2ChildText(list, 2) == "3");
@@ -827,7 +856,7 @@ TEST_CASE("V2: value_create casts children to the declared child type", "[capi_v
 	auto list_type = MakeListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT);
 
 	// An INTEGER child comes back as BIGINT.
-	auto list = V2Composite(list_type, {V2I32(7)});
+	auto list = V2Composite(list_type, {V2I32(fx.conn, 7)});
 	auto child = V2Child(list, 0);
 	duckdb_v2_logical_type_handle child_type = nullptr;
 	REQUIRE(duckdb_v2_value_get_logical_type(child, &child_type, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -843,16 +872,16 @@ TEST_CASE("V2: value_create casts children to the declared child type", "[capi_v
 	// An uncastable child surfaces the conversion error.
 	auto int_list_type = MakeListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	// The engine's value-cast failure path throws InvalidInputException.
-	REQUIRE(V2CompositeErr(int_list_type, {V2Varchar("abc")}) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2CompositeErr(int_list_type, {V2Varchar(fx.conn, "abc")}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&int_list_type);
 }
 
 TEST_CASE("V2: value_create ARRAY enforces the declared size", "[capi_v2][value][composite]") {
 	EnvFixture fx;
-	auto array_type =
-	    MakeType(fx.conn, "array", nullptr, {MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), MakeInt32Value(3)});
+	auto array_type = MakeType(fx.conn, "array", nullptr,
+	                           {MakeTypeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), MakeInt32Value(fx.conn, 3)});
 
-	auto arr = V2Composite(array_type, {V2I32(1), V2I32(2), V2I32(3)});
+	auto arr = V2Composite(array_type, {V2I32(fx.conn, 1), V2I32(fx.conn, 2), V2I32(fx.conn, 3)});
 	REQUIRE(V2ChildCount(arr) == 3);
 	REQUIRE(V2ChildText(arr, 1) == "2");
 	duckdb_v2_logical_type_handle arr_type = nullptr;
@@ -863,7 +892,7 @@ TEST_CASE("V2: value_create ARRAY enforces the declared size", "[capi_v2][value]
 	duckdb_v2_logical_type_destroy(&arr_type);
 	duckdb_v2_value_destroy(&arr);
 
-	REQUIRE(V2CompositeErr(array_type, {V2I32(1), V2I32(2)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2CompositeErr(array_type, {V2I32(fx.conn, 1), V2I32(fx.conn, 2)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&array_type);
 }
 
@@ -880,7 +909,7 @@ TEST_CASE("V2: value_create STRUCT takes positional fields", "[capi_v2][value][c
 	EnvFixture fx;
 	auto struct_type = MakeValueTestStruct(fx.conn);
 
-	auto s = V2Composite(struct_type, {V2I32(42), V2Varchar("joe")});
+	auto s = V2Composite(struct_type, {V2I32(fx.conn, 42), V2Varchar(fx.conn, "joe")});
 	REQUIRE(V2ChildCount(s) == 2);
 	auto id_child = V2Child(s, 0);
 	REQUIRE(ConsumeValue<int32_t>(id_child) == 42);
@@ -889,7 +918,8 @@ TEST_CASE("V2: value_create STRUCT takes positional fields", "[capi_v2][value][c
 	duckdb_v2_value_destroy(&s);
 
 	// A NULL field is a typed NULL.
-	auto with_null = V2Composite(struct_type, {V2I32(1), V2NullOf(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
+	auto with_null =
+	    V2Composite(struct_type, {V2I32(fx.conn, 1), V2NullOf(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
 	auto null_field = V2Child(with_null, 1);
 	bool is_null = false;
 	REQUIRE(duckdb_v2_value_is_null(null_field, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -898,17 +928,17 @@ TEST_CASE("V2: value_create STRUCT takes positional fields", "[capi_v2][value][c
 	duckdb_v2_value_destroy(&with_null);
 
 	// Field count is enforced.
-	REQUIRE(V2CompositeErr(struct_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2CompositeErr(struct_type, {V2I32(fx.conn, 1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&struct_type);
 }
 
 TEST_CASE("V2: value_create TUPLE takes positional fields", "[capi_v2][value][composite]") {
 	EnvFixture fx;
 	duckdb_v2_logical_type_handle tuple_type = nullptr;
-	REQUIRE(duckdb_v2_logical_type_get_from_text(fx.conn, Convert("TUPLE(INTEGER, VARCHAR)"), &tuple_type, nullptr) ==
-	        DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_connection_create_type_from_text(fx.conn, Convert("TUPLE(INTEGER, VARCHAR)"), &tuple_type,
+	                                                   nullptr) == DUCKDB_V2_ERROR_NONE);
 
-	auto t = V2Composite(tuple_type, {V2I32(42), V2Varchar("joe")});
+	auto t = V2Composite(tuple_type, {V2I32(fx.conn, 42), V2Varchar(fx.conn, "joe")});
 	REQUIRE(V2ChildCount(t) == 2);
 	auto first = V2Child(t, 0);
 	REQUIRE(ConsumeValue<int32_t>(first) == 42);
@@ -917,7 +947,7 @@ TEST_CASE("V2: value_create TUPLE takes positional fields", "[capi_v2][value][co
 	duckdb_v2_value_destroy(&t);
 
 	// Field count is enforced.
-	REQUIRE(V2CompositeErr(tuple_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2CompositeErr(tuple_type, {V2I32(fx.conn, 1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&tuple_type);
 }
 
@@ -925,7 +955,8 @@ TEST_CASE("V2: value_create MAP alternates keys and values", "[capi_v2][value][c
 	EnvFixture fx;
 	auto map_type = MakeMapType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
-	auto map = V2Composite(map_type, {V2Varchar("a"), V2I32(1), V2Varchar("b"), V2I32(2)});
+	auto map =
+	    V2Composite(map_type, {V2Varchar(fx.conn, "a"), V2I32(fx.conn, 1), V2Varchar(fx.conn, "b"), V2I32(fx.conn, 2)});
 	REQUIRE(V2ChildCount(map) == 4);
 	REQUIRE(V2ChildText(map, 0) == "a");
 	REQUIRE(V2ChildText(map, 1) == "1");
@@ -936,8 +967,8 @@ TEST_CASE("V2: value_create MAP alternates keys and values", "[capi_v2][value][c
 	// MAP values are cast to the declared value type too (one level down,
 	// through the internal STRUCT entry): a BIGINT value into
 	// MAP(VARCHAR, INTEGER) descends as INTEGER.
-	duckdb_v2_value_handle mixed_key = V2Varchar("k");
-	duckdb_v2_value_handle big = MakeInt64Value(9);
+	duckdb_v2_value_handle mixed_key = V2Varchar(fx.conn, "k");
+	duckdb_v2_value_handle big = MakeInt64Value(fx.conn, 9);
 	const duckdb_v2_value_handle mixed[2] = {mixed_key, big};
 	duckdb_v2_value_handle cast_map = nullptr;
 	auto cast_rc = duckdb_v2_value_create(map_type, mixed, 2, &cast_map, nullptr);
@@ -956,25 +987,28 @@ TEST_CASE("V2: value_create MAP alternates keys and values", "[capi_v2][value][c
 	duckdb_v2_value_destroy(&cast_map);
 
 	// Odd child counts, duplicate keys, and NULL keys are rejected.
-	REQUIRE(V2CompositeErr(map_type, {V2Varchar("a")}) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(V2CompositeErr(map_type, {V2Varchar("a"), V2I32(1), V2Varchar("a"), V2I32(2)}) != DUCKDB_V2_ERROR_NONE);
-	REQUIRE(V2CompositeErr(map_type, {V2NullOf(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), V2I32(1)}) != DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2CompositeErr(map_type, {V2Varchar(fx.conn, "a")}) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2CompositeErr(map_type, {V2Varchar(fx.conn, "a"), V2I32(fx.conn, 1), V2Varchar(fx.conn, "a"),
+	                                  V2I32(fx.conn, 2)}) != DUCKDB_V2_ERROR_NONE);
+	REQUIRE(V2CompositeErr(map_type, {V2NullOf(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), V2I32(fx.conn, 1)}) !=
+	        DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&map_type);
 }
 
 TEST_CASE("V2: value_create rejects non-composite and UNION types", "[capi_v2][value][composite]") {
 	EnvFixture fx;
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
-	REQUIRE(V2CompositeErr(int_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &int_type,
+	                                         nullptr);
+	REQUIRE(V2CompositeErr(int_type, {V2I32(fx.conn, 1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&int_type);
 
 	std::vector<const char *> names = {"i", "s"};
-	auto union_type =
-	    MakeType(fx.conn, "union", &names,
-	             {MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
+	auto union_type = MakeType(fx.conn, "union", &names,
+	                           {MakeTypeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER),
+	                            MakeTypeValue(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
 	// UNION values are built via value_cast, not value_create.
-	REQUIRE(V2CompositeErr(union_type, {V2I32(1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(V2CompositeErr(union_type, {V2I32(fx.conn, 1)}) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	duckdb_v2_logical_type_destroy(&union_type);
 }
 
@@ -997,7 +1031,7 @@ TEST_CASE("V2: value_create null-arg refusals", "[capi_v2][value][composite]") {
 
 TEST_CASE("V2: value_get_child_count is 0 for primitives and NULL composites", "[capi_v2][value][composite]") {
 	EnvFixture fx;
-	auto primitive = V2I32(42);
+	auto primitive = V2I32(fx.conn, 42);
 	REQUIRE(V2ChildCount(primitive) == 0);
 	duckdb_v2_value_handle child = nullptr;
 	REQUIRE(duckdb_v2_value_get_child(primitive, 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -1015,7 +1049,7 @@ TEST_CASE("V2: value_get_child_count is 0 for primitives and NULL composites", "
 	// Null-arg refusals.
 	idx_t count = 0;
 	REQUIRE(duckdb_v2_value_get_child_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	auto v = V2I32(1);
+	auto v = V2I32(fx.conn, 1);
 	REQUIRE(duckdb_v2_value_get_child_count(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_value_get_child(nullptr, 0, &child, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_value_get_child(v, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -1044,9 +1078,10 @@ TEST_CASE("V2: value_cast converts across types and from text", "[capi_v2][value
 	EnvFixture f;
 
 	// Widening numeric cast.
-	auto small = V2I32(42);
+	auto small = V2I32(f.conn, 42);
 	duckdb_v2_logical_type_handle bigint_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, &bigint_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, nullptr, nullptr, 0,
+	                                         &bigint_type, nullptr);
 	auto widened = V2CastValue(f.conn, small, bigint_type);
 	REQUIRE(ConsumeValue<int64_t>(widened) == 42);
 	duckdb_v2_value_destroy(&widened);
@@ -1054,9 +1089,10 @@ TEST_CASE("V2: value_cast converts across types and from text", "[capi_v2][value
 	duckdb_v2_logical_type_destroy(&bigint_type);
 
 	// Text to DATE.
-	auto date_text = V2Varchar("2024-03-15");
+	auto date_text = V2Varchar(f.conn, "2024-03-15");
 	duckdb_v2_logical_type_handle date_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_DATE, &date_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_DATE, nullptr, nullptr, 0, &date_type,
+	                                         nullptr);
 	auto date = V2CastValue(f.conn, date_text, date_type);
 	auto rendered = Render(date);
 	REQUIRE(rendered == "2024-03-15");
@@ -1066,7 +1102,7 @@ TEST_CASE("V2: value_cast converts across types and from text", "[capi_v2][value
 
 	// Text to a composite: with a VARCHAR built through the leaf codec this
 	// constructs any value from text.
-	auto list_text = V2Varchar("[1, 2, 3]");
+	auto list_text = V2Varchar(f.conn, "[1, 2, 3]");
 	auto list_type = MakeListType(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	auto list = V2CastValue(f.conn, list_text, list_type);
 	REQUIRE(V2ChildCount(list) == 3);
@@ -1076,9 +1112,10 @@ TEST_CASE("V2: value_cast converts across types and from text", "[capi_v2][value
 	duckdb_v2_logical_type_destroy(&list_type);
 
 	// A failing cast surfaces the conversion error and nulls the out param.
-	auto bad = V2Varchar("abc");
+	auto bad = V2Varchar(f.conn, "abc");
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &int_type,
+	                                         nullptr);
 	auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, bad, int_type, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -1092,12 +1129,12 @@ TEST_CASE("V2: value_cast converts across types and from text", "[capi_v2][value
 TEST_CASE("V2: UNION values build via value_cast and descend as tag + member", "[capi_v2][value][cast][union]") {
 	EnvFixture f;
 	std::vector<const char *> names = {"i", "s"};
-	auto union_type =
-	    MakeType(f.conn, "union", &names,
-	             {MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER), MakeTypeValue(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
+	auto union_type = MakeType(f.conn, "union", &names,
+	                           {MakeTypeValue(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER),
+	                            MakeTypeValue(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR)});
 
 	// Member to union: the engine selects the matching member.
-	auto int_member = V2I32(42);
+	auto int_member = V2I32(f.conn, 42);
 	auto u = V2CastValue(f.conn, int_member, union_type);
 	duckdb_v2_value_destroy(&int_member);
 	REQUIRE(V2ChildCount(u) == 2);
@@ -1114,7 +1151,7 @@ TEST_CASE("V2: UNION values build via value_cast and descend as tag + member", "
 	duckdb_v2_value_destroy(&u);
 
 	// The other member selects tag 1.
-	auto str_member = V2Varchar("x");
+	auto str_member = V2Varchar(f.conn, "x");
 	auto u2 = V2CastValue(f.conn, str_member, union_type);
 	duckdb_v2_value_destroy(&str_member);
 	tag = V2Child(u2, 0);
@@ -1128,9 +1165,10 @@ TEST_CASE("V2: UNION values build via value_cast and descend as tag + member", "
 TEST_CASE("V2: ENUM values build via value_cast from VARCHAR", "[capi_v2][value][cast][enum]") {
 	EnvFixture f;
 	auto enum_type =
-	    MakeType(f.conn, "enum", nullptr, {MakeVarcharValue("sad"), MakeVarcharValue("ok"), MakeVarcharValue("happy")});
+	    MakeType(f.conn, "enum", nullptr,
+	             {MakeVarcharValue(f.conn, "sad"), MakeVarcharValue(f.conn, "ok"), MakeVarcharValue(f.conn, "happy")});
 
-	auto text = V2Varchar("happy");
+	auto text = V2Varchar(f.conn, "happy");
 	auto e = V2CastValue(f.conn, text, enum_type);
 	duckdb_v2_value_destroy(&text);
 	duckdb_v2_logical_type_handle vt = nullptr;
@@ -1144,7 +1182,8 @@ TEST_CASE("V2: ENUM values build via value_cast from VARCHAR", "[capi_v2][value]
 
 	// And back to text through the cast machinery.
 	duckdb_v2_logical_type_handle varchar_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, &varchar_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, nullptr, nullptr, 0,
+	                                         &varchar_type, nullptr);
 	auto back = V2CastValue(f.conn, e, varchar_type);
 	REQUIRE(ConsumeValue<std::string>(back) == "happy");
 	duckdb_v2_value_destroy(&back);
@@ -1152,7 +1191,7 @@ TEST_CASE("V2: ENUM values build via value_cast from VARCHAR", "[capi_v2][value]
 	duckdb_v2_value_destroy(&e);
 
 	// A string outside the dictionary fails the cast.
-	auto bad = V2Varchar("angry");
+	auto bad = V2Varchar(f.conn, "angry");
 	auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
 	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, bad, enum_type, &out, &err) != DUCKDB_V2_ERROR_NONE);
@@ -1166,9 +1205,10 @@ TEST_CASE("V2: ENUM values build via value_cast from VARCHAR", "[capi_v2][value]
 TEST_CASE("V2: value_cast null-arg refusals", "[capi_v2][value][cast]") {
 	EnvFixture f;
 	duckdb_v2_value_handle out = nullptr;
-	auto v = V2I32(1);
+	auto v = V2I32(f.conn, 1);
 	duckdb_v2_logical_type_handle int_type = nullptr;
-	duckdb_v2_logical_type_create_from_id(DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, &int_type, nullptr);
+	duckdb_v2_connection_create_type_from_id(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &int_type,
+	                                         nullptr);
 
 	// A null connection is refused without any scope.
 	REQUIRE(duckdb_v2_value_cast_with_connection(nullptr, v, int_type, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
@@ -1224,7 +1264,7 @@ TEST_CASE("V2: value_get_variant unwraps the boxed cell and gates its edges", "[
 	duckdb_v2_error_info_destroy(&err);
 
 	// Non-VARIANT values and null args are refused.
-	auto plain = MakeInt32Value(1);
+	auto plain = MakeInt32Value(f.conn, 1);
 	REQUIRE(duckdb_v2_value_get_variant(plain, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(out == nullptr);
 	REQUIRE(duckdb_v2_value_get_variant(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
