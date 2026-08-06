@@ -440,7 +440,7 @@ auto Connection::ParseType(std::string_view text) -> LogicalType {
 	return detail::Factory::Make<LogicalType>(type);
 }
 
-auto Connection::CreateType(const std::string &name, const std::vector<TypeParam> &params) -> LogicalType {
+auto Connection::CreateType(std::string_view name, const std::vector<TypeParam> &params) -> LogicalType {
 	TypeParamArrays split(params);
 	duckdb_v2_logical_type_handle type = nullptr;
 	CheckedAPICall(duckdb_v2_connection_create_type_from_name, handle(), ToStr(name), split.names(), split.values(),
@@ -621,15 +621,9 @@ auto LogicalType::GetName() const -> std::string_view {
 	return FromStr(name);
 }
 
-auto LogicalType::WithAlias(Context &context, std::string_view alias) const -> LogicalType {
+auto LogicalType::WithAlias(std::string_view alias) const -> LogicalType {
 	duckdb_v2_logical_type_handle new_type = nullptr;
-	CheckedAPICall(duckdb_v2_logical_type_create_with_alias, handle(), ToStr(std::string(alias)), &new_type);
-	return detail::Factory::Make<LogicalType>(new_type);
-}
-
-auto LogicalType::WithAlias(Connection &connection, std::string_view alias) const -> LogicalType {
-	duckdb_v2_logical_type_handle new_type = nullptr;
-	CheckedAPICall(duckdb_v2_logical_type_create_with_alias, handle(), ToStr(std::string(alias)), &new_type);
+	CheckedAPICall(duckdb_v2_logical_type_create_with_alias, handle(), ToStr(alias), &new_type);
 	return detail::Factory::Make<LogicalType>(new_type);
 }
 
@@ -871,9 +865,9 @@ Value::~Value() {
 	duckdb_v2_value_destroy(&_h);
 }
 
-// Leaf codec plumbing: the per-kind C value functions are gone; primitive
+// Leaf codec plumbing: there are no per-kind C value functions. Primitive
 // payloads cross through value_create_from_data / value_get_data in each
-// kind's committed physical layout.
+// kind's committed physical layout, gated on the type id.
 namespace {
 
 auto LeafTypeId(duckdb_v2_value_handle value) -> DUCKDB_V2_LOGICAL_TYPE_ID {
@@ -1104,7 +1098,7 @@ auto Value::UnwrapVariant() const -> Value {
 	return detail::Factory::Make<Value>(unwrapped);
 }
 
-auto Value::Create(const LogicalType &type, const std::vector<Value> &children) -> Value {
+auto Value::Create(const LogicalType &type, std::vector<Value> children) -> Value {
 	std::vector<duckdb_v2_value_handle> handles;
 	handles.reserve(children.size());
 	for (const auto &child : children) {
@@ -1138,6 +1132,203 @@ auto Value::GetChild(idx_t index) const -> Value {
 	duckdb_v2_value_handle child = nullptr;
 	CheckedAPICall(duckdb_v2_value_get_child, handle(), index, &child);
 	return detail::Factory::Make<Value>(child);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Value Factory
+//----------------------------------------------------------------------------------------------------------------------
+
+ValueFactory::ValueFactory(const Context &context) : context(&context) {
+}
+
+ValueFactory::ValueFactory(Connection &connection) : connection(&connection) {
+}
+
+// Qualified: inside these classes the member function name hides the type.
+auto Context::ValueFactory() const -> cxx::ValueFactory {
+	return cxx::ValueFactory(*this);
+}
+
+auto Connection::ValueFactory() -> cxx::ValueFactory {
+	return cxx::ValueFactory(*this);
+}
+
+auto ValueFactory::GetType(LogicalTypeId id) const -> LogicalType {
+	return context ? context->CreateType(id) : connection->CreateType(id);
+}
+
+auto ValueFactory::GetDecimalType(uint8_t width, uint8_t scale) const -> LogicalType {
+	// Mirrors duckdb::Decimal::IsValid: width in [1, MAX_WIDTH_DECIMAL] and
+	// scale not exceeding width. Checked here rather than left to the binder so
+	// both spellings refuse the same inputs, with the engine's own wording.
+	// Scale needs no separate upper bound: it cannot exceed a width that is
+	// already capped.
+	constexpr uint8_t MAX_WIDTH_DECIMAL = 38;
+	if (width < 1 || width > MAX_WIDTH_DECIMAL) {
+		throw InvalidInputException("DECIMAL type width must be between 1 and 38, got " + std::to_string(width));
+	}
+	if (scale > width) {
+		throw InvalidInputException("DECIMAL type scale cannot be greater than width, got scale " +
+		                            std::to_string(scale) + " for width " + std::to_string(width));
+	}
+	// Width and scale cross as positional type parameters, the same shape SQL's
+	// DECIMAL(w, s) binds to.
+	std::vector<TypeParam> params;
+	params.reserve(2);
+	params.push_back(TypeParam {"", CreateUTinyInt(width)});
+	params.push_back(TypeParam {"", CreateUTinyInt(scale)});
+	return context ? context->CreateType(LogicalTypeId::DECIMAL, params)
+	               : connection->CreateType(LogicalTypeId::DECIMAL, params);
+}
+
+auto ValueFactory::Leaf(LogicalTypeId id, const void *data, idx_t length) const -> Value {
+	return Value::FromData(GetType(id), data, length);
+}
+
+auto ValueFactory::Cast(const Value &value, const LogicalType &target) const -> Value {
+	return context ? value.Cast(*context, target) : value.Cast(*connection, target);
+}
+
+auto ValueFactory::CreateFromData(const LogicalType &type, const void *data, idx_t length) const -> Value {
+	return Value::FromData(type, data, length);
+}
+
+auto ValueFactory::CreateNull(const LogicalType &type) const -> Value {
+	return Value::Null(type);
+}
+
+auto ValueFactory::CreateTypeValue(const LogicalType &type) const -> Value {
+	return Value::Type(type);
+}
+
+auto ValueFactory::Create(const LogicalType &type, std::vector<Value> children) const -> Value {
+	return Value::Create(type, std::move(children));
+}
+
+auto ValueFactory::CreateStruct(const LogicalType &type, std::vector<Value> fields) const -> Value {
+	if (type.GetId() != LogicalTypeId::STRUCT) {
+		throw InvalidInputException("CreateStruct: the type must be a STRUCT");
+	}
+	if (fields.size() != type.GetStructChildCount()) {
+		throw InvalidInputException("CreateStruct: field count does not match the struct type");
+	}
+	return Create(type, std::move(fields));
+}
+
+auto ValueFactory::CreateTuple(const LogicalType &type, std::vector<Value> fields) const -> Value {
+	if (type.GetId() != LogicalTypeId::TUPLE) {
+		throw InvalidInputException("CreateTuple: the type must be a TUPLE");
+	}
+	// GetStructChildCount gates on STRUCT, so a TUPLE counts its fields through
+	// the generic parameter accessor instead.
+	if (fields.size() != type.GetParamCount()) {
+		throw InvalidInputException("CreateTuple: field count does not match the tuple type");
+	}
+	return Create(type, std::move(fields));
+}
+
+auto ValueFactory::CreateList(const LogicalType &type, std::vector<Value> elements) const -> Value {
+	if (type.GetId() != LogicalTypeId::LIST) {
+		throw InvalidInputException("CreateList: the type must be a LIST");
+	}
+	return Create(type, std::move(elements));
+}
+
+auto ValueFactory::CreateArray(const LogicalType &type, std::vector<Value> elements) const -> Value {
+	if (type.GetId() != LogicalTypeId::ARRAY) {
+		throw InvalidInputException("CreateArray: the type must be an ARRAY");
+	}
+	if (elements.size() != type.GetArraySize()) {
+		throw InvalidInputException("CreateArray: element count does not match the declared array size");
+	}
+	return Create(type, std::move(elements));
+}
+
+auto ValueFactory::CreateMap(const LogicalType &type, std::vector<Value> keys, std::vector<Value> values) const
+    -> Value {
+	if (type.GetId() != LogicalTypeId::MAP) {
+		throw InvalidInputException("CreateMap: the type must be a MAP");
+	}
+	if (keys.size() != values.size()) {
+		throw InvalidInputException("CreateMap: the key and value counts differ");
+	}
+	// The generic form takes one flat child list, alternating key and value.
+	std::vector<Value> children;
+	children.reserve(keys.size() * 2);
+	for (idx_t i = 0; i < keys.size(); i++) {
+		children.push_back(std::move(keys[i]));
+		children.push_back(std::move(values[i]));
+	}
+	return Create(type, std::move(children));
+}
+
+auto ValueFactory::CreateBoolean(bool value) const -> Value {
+	const uint8_t byte = value ? 1 : 0;
+	return Leaf(LogicalTypeId::BOOLEAN, &byte, sizeof(byte));
+}
+
+// The fixed-width kinds are all the same two lines: name the type, hand over
+// the payload in its committed layout.
+#define DUCKDB_CPP_LEAF_FACTORY(method, param, type_id)                                                                \
+	auto ValueFactory::method(param value) const->Value {                                                              \
+		return Leaf(LogicalTypeId::type_id, &value, sizeof(value));                                                    \
+	}
+
+DUCKDB_CPP_LEAF_FACTORY(CreateTinyInt, int8_t, TINYINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateSmallInt, int16_t, SMALLINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateInteger, int32_t, INTEGER)
+DUCKDB_CPP_LEAF_FACTORY(CreateBigInt, int64_t, BIGINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateHugeInt, HugeintLayout, HUGEINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateUTinyInt, uint8_t, UTINYINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateUSmallInt, uint16_t, USMALLINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateUInteger, uint32_t, UINTEGER)
+DUCKDB_CPP_LEAF_FACTORY(CreateUBigInt, uint64_t, UBIGINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateUHugeInt, UhugeintLayout, UHUGEINT)
+DUCKDB_CPP_LEAF_FACTORY(CreateFloat, float, FLOAT)
+DUCKDB_CPP_LEAF_FACTORY(CreateDouble, double, DOUBLE)
+DUCKDB_CPP_LEAF_FACTORY(CreateDate, int32_t, DATE)
+DUCKDB_CPP_LEAF_FACTORY(CreateTime, int64_t, TIME)
+DUCKDB_CPP_LEAF_FACTORY(CreateTimeNs, int64_t, TIME_NS)
+DUCKDB_CPP_LEAF_FACTORY(CreateTimestampSec, int64_t, TIMESTAMP_SEC)
+DUCKDB_CPP_LEAF_FACTORY(CreateTimestampMs, int64_t, TIMESTAMP_MS)
+DUCKDB_CPP_LEAF_FACTORY(CreateTimestamp, int64_t, TIMESTAMP)
+DUCKDB_CPP_LEAF_FACTORY(CreateTimestampNs, int64_t, TIMESTAMP_NS)
+DUCKDB_CPP_LEAF_FACTORY(CreateTimestampTz, int64_t, TIMESTAMP_TZ)
+DUCKDB_CPP_LEAF_FACTORY(CreateTimestampTzNs, int64_t, TIMESTAMP_TZ_NS)
+DUCKDB_CPP_LEAF_FACTORY(CreateInterval, IntervalLayout, INTERVAL)
+#undef DUCKDB_CPP_LEAF_FACTORY
+
+auto ValueFactory::CreateVarchar(std::string_view value) const -> Value {
+	return Leaf(LogicalTypeId::VARCHAR, value.data(), value.size());
+}
+
+auto ValueFactory::CreateBlob(const void *data, idx_t length) const -> Value {
+	return Leaf(LogicalTypeId::BLOB, data, length);
+}
+
+auto ValueFactory::CreateBit(const void *data, idx_t length, uint8_t padding_bits) const -> Value {
+	// The storage form is the padding count followed by the data bytes.
+	std::vector<uint8_t> storage;
+	storage.reserve(length + 1);
+	storage.push_back(padding_bits);
+	const auto *begin = static_cast<const uint8_t *>(data);
+	storage.insert(storage.end(), begin, begin + length);
+	return Leaf(LogicalTypeId::BIT, storage.data(), storage.size());
+}
+
+auto ValueFactory::CreateUuid(DecodedUuid value) const -> Value {
+	const auto internal = Vector::EncodeUuid(value);
+	return Leaf(LogicalTypeId::UUID, &internal, sizeof(internal));
+}
+
+auto ValueFactory::CreateTimeTz(DecodedTimeTz value) const -> Value {
+	const auto packed = Vector::EncodeTimeTz(value);
+	return Leaf(LogicalTypeId::TIME_TZ, &packed, sizeof(packed));
+}
+
+auto ValueFactory::CreateBignum(const DecodedBignum &value) const -> Value {
+	const auto storage = Vector::EncodeBignum(value);
+	return Leaf(LogicalTypeId::BIGNUM, storage.data(), storage.size());
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1278,6 +1469,17 @@ auto Vector::DecodeBignum(const BytesLayout &value) -> DecodedBignum {
 	// The decoder takes plain storage bytes, so the payload is resolved here the
 	// same way as VARCHAR / BLOB.
 	return DecodeBignumBytes(reinterpret_cast<const uint8_t *>(value.Data()), value.Length());
+}
+
+auto Vector::EncodeBignum(const DecodedBignum &value) -> std::vector<uint8_t> {
+	// Sizes through the same two-call protocol DecodeBignumBytes uses.
+	idx_t storage_length = 0;
+	CheckedAPICall(duckdb_v2_bignum_encode, value.magnitude.data(), value.magnitude.size(), value.is_negative,
+	               static_cast<uint8_t *>(nullptr), static_cast<idx_t>(0), &storage_length);
+	std::vector<uint8_t> storage(storage_length);
+	CheckedAPICall(duckdb_v2_bignum_encode, value.magnitude.data(), value.magnitude.size(), value.is_negative,
+	               storage.data(), storage.size(), &storage_length);
+	return storage;
 }
 
 // --- Single-cell value bridge (owned by the types-values worktree) ---

@@ -15,6 +15,7 @@
 #include <utility>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 #include <optional>
 #include <stdexcept>
@@ -43,6 +44,7 @@ class Schema;
 class Signature;
 class LogicalType;
 class Value;
+class ValueFactory;
 class Vector;
 class StringHeap;
 class DataChunk;
@@ -249,6 +251,10 @@ public:
 	// directly; with params the id binds like its canonical name does.
 	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
 
+	// Creates values of the built-in types through this context. Stateless and
+	// returned by value, so calling it inline costs nothing over binding it.
+	auto ValueFactory() const -> class ValueFactory;
+
 private:
 	explicit Context(void *impl);
 };
@@ -368,10 +374,14 @@ public:
 
 	// Connection-level counterpart to Context::CreateType: resolves directly
 	// from the connection (its own transaction), no context scope needed.
-	auto CreateType(const std::string &name, const std::vector<TypeParam> &params = {}) -> LogicalType;
+	auto CreateType(std::string_view name, const std::vector<TypeParam> &params = {}) -> LogicalType;
 	// The id-keyed twin: with no params this instantiates a primitive
 	// directly; with params the id binds like its canonical name does.
 	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
+
+	// Connection-level counterpart to Context::ValueFactory: casts run in the
+	// connection's own transaction, no context scope needed.
+	auto ValueFactory() -> class ValueFactory;
 
 	// Requests cancellation of the active query. Safe to call from any
 	// thread; a no-op when no query is active.
@@ -523,11 +533,9 @@ public:
 
 	~LogicalType() override;
 
-	// Create a new aliased LogicalType from a context
-	auto WithAlias(Context &context, std::string_view alias) const -> LogicalType;
-
-	// Create a new aliased LogicalType from a connection
-	auto WithAlias(Connection &connection, std::string_view alias) const -> LogicalType;
+	// A copy of this type carrying `alias` as its name. Relabels only: no
+	// catalog lookup, so no context is involved.
+	auto WithAlias(std::string_view alias) const -> LogicalType;
 
 	// The type's name: the alias when set, otherwise the canonical fixed
 	// name of the type id. Never empty; exactly the vocabulary CreateType
@@ -665,8 +673,35 @@ struct UhugeintLayout {
 	uint64_t upper;
 };
 
+// The committed backing integer of a DECIMAL of the given width: width <= 4
+// int16, <= 9 int32, <= 18 int64, <= 38 int128 (boundaries inclusive). The
+// compile-time dual of LogicalType::GetDecimalInternalTypeId, and what
+// ValueFactory::CreateDecimal takes as its payload.
+//
+// Written as a struct rather than a bare alias so the width check fires here,
+// when the alias is instantiated. As a plain alias an out-of-range width picks
+// the widest tier and the error surfaces as a mismatched argument type instead.
+template <uint8_t WIDTH>
+struct DecimalStorageTraits {
+	// The same bounds as duckdb::Decimal::IsValid; 38 is MAX_WIDTH_DECIMAL.
+	static_assert(WIDTH >= 1 && WIDTH <= 38, "DECIMAL type width must be between 1 and 38");
+
+	using type = typename std::conditional<
+	    (WIDTH <= 4), int16_t,
+	    typename std::conditional<(WIDTH <= 9), int32_t,
+	                              typename std::conditional<(WIDTH <= 18), int64_t, HugeintLayout>::type>::type>::type;
+};
+
+template <uint8_t WIDTH>
+using DecimalStorage = typename DecimalStorageTraits<WIDTH>::type;
+
+// Values are read here and created through ValueFactory: the constructors are
+// private because a value needs a LogicalType, and a logical type needs the
+// catalog behind a Context or Connection. Reach them through
+// Context::ValueFactory / Connection::ValueFactory.
 class Value final : public detail::Handle<Value> {
 	friend detail::Factory;
+	friend class ValueFactory;
 
 public:
 	~Value() override;
@@ -674,28 +709,12 @@ public:
 	Value(Value &&) noexcept = default;
 	Value &operator=(Value &&) noexcept = default;
 
-
-	// A NULL value of the given logical type (borrowed; copied in).
-	static auto Null(const LogicalType &type) -> Value;
-
-	// Wraps a borrowed logical type as a TYPE value (a type carried as a
-	// value, e.g. a type parameter). Unwrap via AsType.
-	static auto Type(const LogicalType &type) -> Value;
-
-	// Builds a composite value from a borrowed type plus borrowed children
-	// (copied in, cast to the declared child/field types). LIST: elements,
-	// any count; ARRAY: count = declared size; STRUCT: positional fields;
-	// MAP: alternating key, value. UNION and ENUM values are built via Cast
-	// (member value to union type, VARCHAR to enum type).
-	static auto Create(const LogicalType &type, const std::vector<Value> &children) -> Value;
-
 	auto IsNull() const -> bool;
 	auto GetLogicalType() const -> LogicalType;
 	auto ToString() const -> std::string;
 
-	// Casts through the engine's cast machinery (non-strict; registered
-	// custom casts included). The primary form takes a live Context; the
-	// Connection overload is sugar that runs a with-context scope.
+
+	// Cast a value to another type
 	auto Cast(const Context &ctx, const LogicalType &target) const -> Value;
 	auto Cast(Connection &conn, const LogicalType &target) const -> Value;
 
@@ -738,15 +757,14 @@ public:
 	auto UnwrapVariant() const -> Value;
 
 	// Generic committed-layout payload access, the single-cell analog of
-	// VectorView. GetData borrows the payload in exactly the committed physical
-	// layout (fixed layout for fixed kinds; decoded wire bytes for VARCHAR /
-	// BLOB / BIT / BIGNUM); dispatch on GetLogicalType and cast, e.g. a DECIMAL
-	// reads its backing integer plus GetDecimalScale. FromData builds a value of
-	// any type from that layout. Both throw INVALID_INPUT on a NULL value or a
-	// length that does not match the type. This is the complete path; the As* /
-	// From* below are gated conveniences over it for the everyday types.
+	// VectorView. Borrows the payload in exactly the committed physical layout
+	// (fixed layout for fixed kinds; decoded wire bytes for VARCHAR / BLOB /
+	// BIT / BIGNUM); dispatch on GetLogicalType and cast, e.g. a DECIMAL reads
+	// its backing integer plus GetDecimalScale. Throws INVALID_INPUT on a NULL
+	// value. This is the complete read path; the As* below are gated
+	// conveniences over it for the everyday types, and
+	// ValueFactory::CreateFromData is its inverse.
 	auto GetData() const -> std::pair<const void *, idx_t>; // borrowed, lifetime = this value
-	static auto FromData(const LogicalType &type, const void *data, idx_t length) -> Value;
 
 	// Size-checked typed copy of GetData for a fixed-layout kind. T must match
 	// the value's committed layout width (dispatch on GetLogicalType first).
@@ -778,6 +796,153 @@ public:
 
 private:
 	explicit Value(void *impl);
+
+	// The construction surface, reached through ValueFactory. See the matching
+	// CreateNull / CreateTypeValue / Create / CreateFromData there.
+	static auto Null(const LogicalType &type) -> Value;
+	static auto Type(const LogicalType &type) -> Value;
+	static auto Create(const LogicalType &type, std::vector<Value> children) -> Value;
+	static auto FromData(const LogicalType &type, const void *data, idx_t length) -> Value;
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Value Factory
+//----------------------------------------------------------------------------------------------------------------------
+
+// Creates values of the built-in types, bound to whichever of Context /
+// Connection supplies the catalog.
+//
+// A C++ type cannot name a logical type: int64_t backs BIGINT, every TIME and
+// TIMESTAMP variant, and more; bytes back VARCHAR, BLOB, BIT and BIGNUM. So
+// the method name carries the type, not the argument -- Bigint, Timestamp and
+// TimeNs are three functions over one int64_t payload. Payloads are in each
+// kind's committed physical layout, making these the exact duals of the
+// matching Value::As* getters.
+//
+// Deliberately a closed set over the built-ins: the logical type space is open
+// (extensions register their own), so no fixed list can ever cover it. Anything
+// outside this set -- extension types, UNION, ENUM, VARIANT -- is reached
+// through Cast, which is the engine's own construction path for those kinds:
+// build the nearest built-in, usually a CreateVarchar, and cast it.
+class ValueFactory {
+public:
+	// The primary form takes a live Context (function bind callbacks); the
+	// Connection form is for outside, and runs its casts in the connection's
+	// own transaction.
+	explicit ValueFactory(const Context &context);
+	explicit ValueFactory(Connection &connection);
+
+	auto CreateBoolean(bool value) const -> Value;
+
+	auto CreateTinyInt(int8_t value) const -> Value;
+	auto CreateSmallInt(int16_t value) const -> Value;
+	auto CreateInteger(int32_t value) const -> Value;
+	auto CreateBigInt(int64_t value) const -> Value;
+	auto CreateHugeInt(HugeintLayout value) const -> Value;
+
+	auto CreateUTinyInt(uint8_t value) const -> Value;
+	auto CreateUSmallInt(uint16_t value) const -> Value;
+	auto CreateUInteger(uint32_t value) const -> Value;
+	auto CreateUBigInt(uint64_t value) const -> Value;
+	auto CreateUHugeInt(UhugeintLayout value) const -> Value;
+
+	auto CreateFloat(float value) const -> Value;
+	auto CreateDouble(double value) const -> Value;
+
+	// Temporal payloads are storage units, matching the As* getters: days for
+	// DATE, and each type's native unit for the rest.
+	auto CreateDate(int32_t days) const -> Value;
+	auto CreateTime(int64_t micros) const -> Value;
+	auto CreateTimeNs(int64_t nanos) const -> Value;
+	auto CreateTimeTz(DecodedTimeTz value) const -> Value;
+	auto CreateTimestampSec(int64_t seconds) const -> Value;
+	auto CreateTimestampMs(int64_t millis) const -> Value;
+	auto CreateTimestamp(int64_t micros) const -> Value;
+	auto CreateTimestampNs(int64_t nanos) const -> Value;
+	auto CreateTimestampTz(int64_t micros) const -> Value;
+	auto CreateTimestampTzNs(int64_t nanos) const -> Value;
+	auto CreateInterval(IntervalLayout value) const -> Value;
+
+	auto CreateVarchar(std::string_view value) const -> Value;
+	auto CreateBlob(const void *data, idx_t length) const -> Value;
+	// BIT from its data bytes plus the count of leading bits in the first byte
+	// that are not part of the bit string; the storage header is assembled here.
+	auto CreateBit(const void *data, idx_t length, uint8_t padding_bits) const -> Value;
+	// Canonical UUID bytes; the storage's sort-order bit flip is applied here.
+	auto CreateUuid(DecodedUuid value) const -> Value;
+	// Big-endian magnitude plus a sign flag, encoded to BIGNUM storage.
+	auto CreateBignum(const DecodedBignum &value) const -> Value;
+
+	// A DECIMAL of the given width and scale, from its backing integer: the
+	// value scaled by 10^SCALE, so CreateDecimal<18, 3>(18500) is 18.500.
+	//
+	// The payload type follows from WIDTH alone -- int16, int32, int64 or
+	// HugeintLayout per the storage tiers -- so the payload is always the width
+	// the type expects, and a bad width or scale is a compile error. The value
+	// itself is not range-checked against the width: like the rest of the
+	// layout-raw surface, that is a cast's job.
+	//
+	// Only the scale is asserted here. The width is checked by
+	// DecimalStorageTraits, which the parameter type instantiates, so an
+	// out-of-range width fails before this body is ever reached; repeating it
+	// here would be unreachable. Together they are duckdb::Decimal::IsValid.
+	template <uint8_t WIDTH, uint8_t SCALE>
+	auto CreateDecimal(DecimalStorage<WIDTH> value) const -> Value {
+		static_assert(SCALE <= WIDTH, "DECIMAL type scale cannot be greater than width");
+		return CreateFromData(GetDecimalType(WIDTH, SCALE), &value, sizeof(value));
+	}
+
+	// The generic leaf constructor, and the inverse of Value::GetData: `data`
+	// holds the payload in exactly the target type's committed physical layout.
+	// The complete path out of the named helpers above, and the way to reach a
+	// kind they do not cover -- a DECIMAL's scaled integer, an ENUM's dictionary
+	// index -- without going through a cast.
+	auto CreateFromData(const LogicalType &type, const void *data, idx_t length) const -> Value;
+
+	// A NULL of any type, built-in or not.
+	auto CreateNull(const LogicalType &type) const -> Value;
+	// A type carried as a value, e.g. a TypeParam's payload. Named for what it
+	// produces: Context::CreateType makes a LogicalType, this makes a Value.
+	auto CreateTypeValue(const LogicalType &type) const -> Value;
+
+	// Composite construction. Each takes the composite type itself, not its
+	// child type, so an aliased or extension-registered composite keeps its
+	// identity. Children are cast to the declared child or field types, and
+	// arity is checked here rather than surfacing from the engine.
+	auto CreateStruct(const LogicalType &type, std::vector<Value> fields) const -> Value;
+	// TUPLE is the unnamed struct: same positional children, distinct type id.
+	auto CreateTuple(const LogicalType &type, std::vector<Value> fields) const -> Value;
+	auto CreateList(const LogicalType &type, std::vector<Value> elements) const -> Value;
+	auto CreateArray(const LogicalType &type, std::vector<Value> elements) const -> Value;
+	// Keys and values as parallel vectors; the flat alternating child list the
+	// engine wants is assembled here.
+	auto CreateMap(const LogicalType &type, std::vector<Value> keys, std::vector<Value> values) const -> Value;
+
+	// The unchecked generic form the four above are built on. See Value::Create
+	// for the per-kind child layout.
+	auto Create(const LogicalType &type, std::vector<Value> children) const -> Value;
+
+	// The general path out of the built-in set. Non-strict, and registered
+	// custom casts apply, so this reaches extension types, and is how UNION,
+	// ENUM and VARIANT values are built.
+	auto Cast(const Value &value, const LogicalType &target) const -> Value;
+
+	// The logical type behind a built-in kind, for the surfaces that want the
+	// type rather than a value. Owned, so it costs a round trip per call; the
+	// engine is where any reuse of the built-in types belongs.
+	auto GetType(LogicalTypeId id) const -> LogicalType;
+	// DECIMAL takes its width and scale as type parameters, so it needs its own
+	// accessor. The runtime counterpart to CreateDecimal's template arguments,
+	// for when the width and scale are not known until run time.
+	auto GetDecimalType(uint8_t width, uint8_t scale) const -> LogicalType;
+
+private:
+	// Exactly one is set, from whichever constructor ran. The factory holds no
+	// other state, which is what makes it free to construct inline.
+	const Context *context = nullptr;
+	Connection *connection = nullptr;
+
+	auto Leaf(LogicalTypeId id, const void *data, idx_t length) const -> Value;
 };
 
 // One type parameter: the unit of Context::CreateType and
@@ -1084,17 +1249,16 @@ public:
 	// Defined inline: a pure-arithmetic decode of the committed layout with no
 	// allocation and no ABI crossing, so it inlines into a per-row vector loop.
 	static auto DecodeTimeTz(uint64_t packed) -> DecodedTimeTz {
-		constexpr uint64_t OFFSET_MASK = ~uint64_t(0) >> 40;
 		constexpr int32_t MAX_OFFSET = 16 * 60 * 60 - 1;
 		return DecodedTimeTz {static_cast<int64_t>(packed >> 24),
-		                      MAX_OFFSET - static_cast<int32_t>(packed & OFFSET_MASK)};
+		                      MAX_OFFSET - static_cast<int32_t>(packed & TIME_TZ_OFFSET_MASK)};
 	}
 
 	// Undoes the sort-order high-bit flip on one UUID slot (read as
 	// HugeintLayout) and returns the canonical 16 big-endian bytes. Inline for
 	// the same reason as DecodeTimeTz.
 	static auto DecodeUuid(HugeintLayout internal) -> DecodedUuid {
-		const uint64_t upper = static_cast<uint64_t>(internal.upper) ^ (uint64_t(1) << 63);
+		const uint64_t upper = static_cast<uint64_t>(internal.upper) ^ UUID_SORT_BIT;
 		DecodedUuid out {};
 		for (int i = 0; i < 8; i++) {
 			out.bytes[i] = static_cast<uint8_t>((upper >> (56 - 8 * i)) & 0xFF);
@@ -1104,6 +1268,34 @@ public:
 	}
 
 	// ---- End vector read surface ----
+
+	// ---- Vector write surface: the encoders the decoders above undo ----
+
+	// Packs micros + UTC offset into one TIME_TZ slot. Inverse of DecodeTimeTz.
+	static auto EncodeTimeTz(DecodedTimeTz value) -> uint64_t {
+		constexpr int32_t MAX_OFFSET = 16 * 60 * 60 - 1;
+		return (static_cast<uint64_t>(value.micros) << 24) |
+		       (static_cast<uint64_t>(MAX_OFFSET - value.offset_seconds) & TIME_TZ_OFFSET_MASK);
+	}
+
+	// Applies the sort-order high-bit flip to canonical UUID bytes, producing
+	// the internal storage form. Inverse of DecodeUuid.
+	static auto EncodeUuid(DecodedUuid value) -> HugeintLayout {
+		uint64_t upper = 0;
+		uint64_t lower = 0;
+		for (int i = 0; i < 8; i++) {
+			upper = (upper << 8) | value.bytes[i];
+			lower = (lower << 8) | value.bytes[8 + i];
+		}
+		return HugeintLayout {lower, static_cast<int64_t>(upper ^ UUID_SORT_BIT)};
+	}
+
+	// Encodes a magnitude + sign into BIGNUM storage bytes. Inverse of
+	// DecodeBignum; the magnitude must be canonical (at least one byte, no
+	// leading zeroes; zero is a single 0x00 with is_negative false).
+	static auto EncodeBignum(const DecodedBignum &value) -> std::vector<uint8_t>;
+
+	// ---- End vector write surface ----
 
 	// --- Single-cell value bridge (owned by the types-values worktree) ---
 	// Total fallback reader: any representation (constant, dictionary,
@@ -1145,6 +1337,12 @@ private:
 	// Throws INVALID_INPUT if [start, start+count) is not writable: a CONSTANT
 	// vector's data array holds a single slot, so only index 0 may be written.
 	auto CheckWriteRange(idx_t start, idx_t count) const -> void;
+
+	// Committed layout constants, shared by each Decode / Encode pair: TIME_TZ
+	// packs its offset into the low 24 bits, UUID flips the sign bit so the
+	// signed storage sorts like the unsigned value.
+	static constexpr uint64_t TIME_TZ_OFFSET_MASK = ~uint64_t(0) >> 40;
+	static constexpr uint64_t UUID_SORT_BIT = uint64_t(1) << 63;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
