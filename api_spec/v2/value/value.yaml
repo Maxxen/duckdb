@@ -1892,50 +1892,6 @@ functions:
     return_type: ERROR
 
   # -----------------------------------------------------------------------
-  # VARIANT codec (wire encoding not committed; unwrap is the read path)
-  # -----------------------------------------------------------------------
-  value_get_variant:
-    lifecycle:
-      - [ "stable", "v2.0.0", "2026-08-04" ]
-    description: |
-      Unwraps a VARIANT value into the plain value it carries.
-
-      Decodes the variant payload engine-side and returns the carried
-      value with its real logical type, so per-row inner-type discovery
-      needs no prior knowledge: inspect the result via
-      value_get_logical_type and descend or read it like any other value.
-      Returns ERROR_INPUT_INVALID unless the input is a non-NULL VARIANT
-      value. The returned value is caller-owned; destroy via
-      value_destroy.
-
-      Decoding is faithful to the variant encoding, not to the original
-      SQL type: homogeneous arrays come back as typed LISTs, variant
-      objects as STRUCTs with field names, MAPs as their key-value-array
-      form (LIST of STRUCT(key, value)), and heterogeneous arrays as
-      LIST(VARIANT) whose elements unwrap individually.
-
-      The variant wire encoding itself is not committed contract:
-      vector_get_value hands out the boxed VARIANT cell and this unwrap
-      decodes it, mirroring how the BIGNUM codec pair owns that kind's
-      uncommitted encoding.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-        description: Receives the owned unwrapped value.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-
-  # -----------------------------------------------------------------------
   # Composite construction + descent + cast
   # -----------------------------------------------------------------------
   value_create_date_with_context:

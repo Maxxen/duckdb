@@ -384,24 +384,6 @@ DUCKDB_V2_ERROR duckdb_v2_value_get_blob(duckdb_v2_value_handle value, duckdb_v2
 }
 
 // ---------------------------------------------------------------------------
-// VARIANT codec (wire encoding not committed; unwrap is the read path)
-// ---------------------------------------------------------------------------
-
-DUCKDB_V2_ERROR duckdb_v2_value_get_variant(duckdb_v2_value_handle value, duckdb_v2_value_handle *out_value,
-                                            duckdb_v2_error_info_handle *err) {
-	return WithErrorHandler(err, [&]() {
-		if (!out_value) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_value_get_variant");
-		}
-		*out_value = nullptr;
-		RequireTypedValue(value, duckdb::LogicalTypeId::VARIANT);
-		// Engine-side decode of the uncommitted variant wire encoding.
-		auto unwrapped = duckdb::VariantValue::GetValue(*Convert(value));
-		*out_value = Convert(new duckdb::Value(std::move(unwrapped)));
-	});
-}
-
-// ---------------------------------------------------------------------------
 // TYPE values (a logical type carried as a value)
 // ---------------------------------------------------------------------------
 

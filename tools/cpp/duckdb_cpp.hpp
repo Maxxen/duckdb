@@ -40,7 +40,7 @@ class Signature;
 class LogicalType;
 class Value;
 class Vector;
-class StringHeap;
+class Arena;
 class DataChunk;
 class QueryResult;
 
@@ -1260,14 +1260,14 @@ struct NamedParam {
 // Borrowed handle to a vector's string heap. Reserves vector-lifetime bytes and
 // returns BytesLayout tokens to place in any order (dedup, scatter). Borrowed;
 // invalid across a flatten or reallocation of the owning vector.
-class StringHeap final : public detail::Handle<StringHeap> {
+class Arena final : public detail::Handle<Arena> {
 	friend detail::Factory;
 
 public:
-	StringHeap(StringHeap &&) noexcept = default;
-	StringHeap &operator=(StringHeap &&) noexcept = default;
+	Arena(Arena &&) noexcept = default;
+	Arena &operator=(Arena &&) noexcept = default;
 
-	~StringHeap() override;
+	~Arena() override;
 
 	// Reserves `byte_len` vector-lifetime bytes; raw arena allocation, no gating.
 	// Write-in-place: Allocate -> write -> FromHeapData -> Vector::SetString.
@@ -1276,7 +1276,21 @@ public:
 	// Interns `data`, returning the token. <= INLINE_LENGTH builds inline (no
 	// allocation, no boundary crossing); larger allocates and copies. Throws if
 	// `data` exceeds the uint32 length a duckdb_v2_bytes can hold.
-	auto Add(std::string_view data) -> blob_t {
+	auto AddString(std::string_view data) -> varchar_t {
+		// TODO: UTF8-validate
+		if (data.size() > std::numeric_limits<uint32_t>::max()) {
+			ThrowStringTooLong(data.size());
+		}
+		const auto size = static_cast<uint32_t>(data.size());
+		if (size <= varchar_t::INLINE_LENGTH) {
+			return varchar_t(data.data(), size);
+		}
+		auto *bytes = Allocate(size);
+		std::memcpy(bytes, data.data(), size);
+		return varchar_t(reinterpret_cast<char *>(bytes), size);
+	}
+
+	auto AddBlob(std::string_view data) -> blob_t {
 		if (data.size() > std::numeric_limits<uint32_t>::max()) {
 			ThrowStringTooLong(data.size());
 		}
@@ -1289,18 +1303,8 @@ public:
 		return blob_t(reinterpret_cast<char *>(bytes), size);
 	}
 
-	// Bulk Add: interns every view, returning the tokens in order.
-	auto AddMany(const std::vector<std::string_view> &data) -> std::vector<blob_t> {
-		std::vector<blob_t> out;
-		out.reserve(data.size());
-		for (const auto &view : data) {
-			out.push_back(Add(view));
-		}
-		return out;
-	}
-
 private:
-	explicit StringHeap(void *impl);
+	explicit Arena(void *impl);
 
 	// Throws OUT_OF_RANGE when an interned value exceeds the uint32 length bound.
 	[[noreturn]] static void ThrowStringTooLong(idx_t size);
@@ -1458,23 +1462,17 @@ public:
 	auto SetValue(idx_t row, const Value &value) -> void;
 	// --- end single-cell value bridge ---
 
+	// Borrows this vector's string heap to intern strings/blobs whose placement is
+	// decided separately (dedup, scatter, reorder). For simple in-order fills
+	// prefer AssignString / AssignStrings. The vector must be a string-backed
+	// kind (VARCHAR / BLOB / BIT / BIGNUM).
+	auto GetHeap() -> Arena;
+
 	// Copies `data` into the vector's string heap and places the resulting
 	// storage value into slot `index`. The vector must be a string-backed kind
 	// (VARCHAR / BLOB / BIT / BIGNUM); FLAT accepts any in-bounds index, CONSTANT
 	// only index 0. Resolves the heap per call, so flattening between calls is safe.
 	auto AssignString(idx_t index, std::string_view data) -> void;
-
-	// Bulk form of AssignString: copies each view in `data` into the heap and
-	// places the results into consecutive slots starting at `start`. Resolves the
-	// heap once and writes straight into the data array in one pass, amortizing
-	// the per-value boundary crossing. CONSTANT requires start 0 and one value.
-	auto AssignStrings(idx_t start, const std::vector<std::string_view> &data) -> void;
-
-	// Borrows this vector's string heap to intern strings whose placement is
-	// decided separately (dedup, scatter, reorder). For simple in-order fills
-	// prefer AssignString / AssignStrings. The vector must be a string-backed
-	// kind (VARCHAR / BLOB / BIT / BIGNUM).
-	auto GetStringHeap() -> StringHeap;
 
 	// Places an interned storage token into slot `index`. The token must come
 	// from this vector's heap (a non-inlined token from another vector dangles).

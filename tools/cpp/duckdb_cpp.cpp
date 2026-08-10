@@ -79,7 +79,7 @@ struct HandleTraits<Vector> {
 	using handle = duckdb_v2_vector_handle;
 };
 template <>
-struct HandleTraits<StringHeap> {
+struct HandleTraits<Arena> {
 	using handle = duckdb_v2_arena_handle;
 };
 template <>
@@ -1622,20 +1622,20 @@ static_assert(offsetof(blob_t, value.pointer.length) == offsetof(duckdb_v2_bytes
 static_assert(blob_t::INLINE_LENGTH == DUCKDB_V2_BYTES_INLINE_LENGTH,
               "blob_t::INLINE_LENGTH must match DUCKDB_V2_BYTES_INLINE_LENGTH");
 
-StringHeap::StringHeap(void *impl) : detail::Handle<StringHeap>(impl) {
+Arena::Arena(void *impl) : detail::Handle<Arena>(impl) {
 }
 
-StringHeap::~StringHeap() {
+Arena::~Arena() {
 	/* String heaps are always borrowed, so we don't destroy the handle here */
 }
 
-auto StringHeap::Allocate(idx_t byte_len) -> uint8_t * {
+auto Arena::Allocate(idx_t byte_len) -> uint8_t * {
 	uint8_t *ptr = nullptr;
 	CheckedAPICall(duckdb_v2_arena_allocate, handle(), byte_len, &ptr);
 	return ptr;
 }
 
-auto StringHeap::ThrowStringTooLong(idx_t size) -> void {
+auto Arena::ThrowStringTooLong(idx_t size) -> void {
 	throw Exception(DUCKDB_V2_ERROR_INPUT_OUT_OF_RANGE, "Out of Range Error: string length " + std::to_string(size) +
 	                                                        " exceeds the maximum a duckdb_v2_bytes can hold");
 }
@@ -1756,28 +1756,14 @@ auto Vector::CheckWriteRange(idx_t start, idx_t count) const -> void {
 
 auto Vector::AssignString(idx_t index, std::string_view data) -> void {
 	CheckWriteRange(index, 1);
-	auto heap = GetStringHeap();
-	GetDataMutable<blob_t>()[index] = heap.Add(data);
+	auto heap = GetHeap();
+	GetDataMutable<blob_t>()[index] = heap.AddString(data);
 }
 
-auto Vector::AssignStrings(idx_t start, const std::vector<std::string_view> &data) -> void {
-	if (data.empty()) {
-		return;
-	}
-	CheckWriteRange(start, data.size());
-	auto heap = GetStringHeap();
-	// Intern and place into the data array in one pass. On throw, slots
-	// [start, start+i) are already written; the vector is left partially filled.
-	auto *slots = GetDataMutable<blob_t>();
-	for (idx_t i = 0; i < data.size(); i++) {
-		slots[start + i] = heap.Add(data[i]);
-	}
-}
-
-auto Vector::GetStringHeap() -> StringHeap {
+auto Vector::GetHeap() -> Arena {
 	duckdb_v2_arena_handle heap = nullptr;
 	CheckedAPICall(duckdb_v2_vector_get_arena, handle(), &heap);
-	return detail::Factory::Make<StringHeap>(heap);
+	return detail::Factory::Make<Arena>(heap);
 }
 
 auto Vector::SetString(idx_t index, varchar_t value) -> void {
