@@ -555,8 +555,8 @@ functions:
       the row-producing fragment). Never empty: a non-SELECT reports a single status
       column (a BIGINT changed-rows count, or a BOOLEAN success).
 
-      The same types are reachable per chunk via vector_get_logical_type. The vector
-      is authoritative; this result-level schema is a convenience.
+      This schema is the authoritative source for the column types of the chunks
+      the result produces; vectors do not carry their type.
 
       *out_schema is set to NULL on failure.
     role: getter

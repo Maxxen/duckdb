@@ -161,29 +161,6 @@ functions:
   # -----------------------------------------------------------------------
   # Vector-level introspection
   # -----------------------------------------------------------------------
-  vector_get_logical_type:
-    lifecycle:
-      - [ "stable", "v2.0.0", "2026-08-04" ]
-    description: |
-      Returns the logical type of a vector.
-
-      The returned logical type is caller-owned and must be destroyed via
-      logical_type_destroy.
-    role: getter
-    belongs_to: vector
-    parameters:
-      vector:
-        type: vector
-      out_type:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
   vector_get_vector_type:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
@@ -711,11 +688,10 @@ functions:
   # makes them the single BIGNUM codec for both planes and both
   # directions. Reading: resolve a vector's bignum payload the same way as
   # VARCHAR / BLOB (inlined vs pointer field read on the transparent bytes
-  # type), or read a value's payload with value_get_data, then decode.
-  # Writing: encode the magnitude, then either hand the storage bytes to
-  # value_create_from_data, or write a BIGNUM vector exactly like a
-  # VARCHAR / BLOB one — size the buffer, allocate it out of the vector's
-  # arena, encode into it, and assemble the bytes payload.
+  # type), or read a BIGNUM value's storage with value_get_blob, then
+  # decode. Writing: encode the magnitude, then write a BIGNUM vector
+  # exactly like a VARCHAR / BLOB one — size the buffer, allocate it out of
+  # the vector's arena, encode into it, and assemble the bytes payload.
   # -----------------------------------------------------------------------
   bignum_decode:
     lifecycle:
@@ -724,7 +700,7 @@ functions:
       Decodes BIGNUM storage bytes into a caller-supplied magnitude buffer + sign flag.
 
       data/length are the value's raw storage bytes, exactly as they sit
-      in a vector's bignum payload or as value_get_data reports them for a
+      in a vector's bignum payload or as value_get_blob reports them for a
       BIGNUM value. Those bytes are opaque: the on-disk encoding is not a
       committed part of this API, and this function is the only thing that
       interprets them.
@@ -794,7 +770,7 @@ functions:
       The inverse of bignum_decode. data/length are the big-endian
       magnitude bytes and is_negative the sign; out_data receives the raw
       storage bytes for that integer, in the form a BIGNUM vector payload
-      or value_create_from_data expects. Those bytes are opaque: the
+      expects. Those bytes are opaque: the
       on-disk encoding is not a committed part of this API.
 
       Pass out_data = NULL to size the buffer without encoding: out_length

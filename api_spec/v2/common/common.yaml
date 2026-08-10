@@ -53,9 +53,9 @@ handles:
   value:
     description: |
       An opaque, owned handle to a single SQL value. Carries a logical type
-      plus a typed payload. Always destroy via value_destroy. The payload
-      pointer returned by value_get_data is borrowed and valid until the
-      value is destroyed. That holds for BIGNUM too: what it borrows is the
+      plus a typed payload. Always destroy via value_destroy. The string
+      returned by value_get_varchar / value_get_blob is borrowed and valid
+      until the value is destroyed. That holds for BIGNUM too: what it borrows is the
       opaque storage form, which bignum_decode then translates into a
       magnitude and a sign flag, writing into a buffer the caller supplies.
     cleanup_with: value_destroy

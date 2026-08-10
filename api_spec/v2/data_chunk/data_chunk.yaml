@@ -3,9 +3,9 @@ module: data_chunk
 # Construct and inspect data chunks.
 #
 # Mirrors duckdb::DataChunk: a set of vectors of equal logical length plus
-# a row-count cardinality. Each vector carries its own logical type (see
-# vector_get_logical_type in the vector module). The chunk does
-# not store types separately; they live on the vectors.
+# a row-count cardinality. The chunk does not carry types; the column types
+# of a streamed chunk come from the producing result's schema (see
+# result_get_schema in the query_result module).
 #
 # Chunks produced by a streaming result (result_step /
 # result_fetch_chunk in the query_result module) are caller-owned and

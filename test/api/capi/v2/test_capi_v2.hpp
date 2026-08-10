@@ -482,57 +482,126 @@ inline DUCKDB_V2_ERROR V2VectorAssignString(duckdb_v2_vector_handle vec, idx_t i
 // Value Helpers
 //----------------------------------------------------------------------------------------------------------------------
 
-inline duckdb_v2_value_handle MakeValue(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id,
-                                        const void *data, idx_t len) {
-	duckdb_v2_logical_type_handle type = nullptr;
-	duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &type, nullptr);
+// The typed constructors, in their connection form: the tests hold a
+// connection, not a live context.
+inline duckdb_v2_value_handle MakeBoolValue(duckdb_v2_connection_handle conn, bool payload) {
 	duckdb_v2_value_handle value = nullptr;
-	auto rc = duckdb_v2_value_create_from_data(type, data, len, &value, nullptr);
-	duckdb_v2_logical_type_destroy(&type);
+	REQUIRE(duckdb_v2_value_create_bool_from_connection(conn, payload, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return value;
+}
+inline duckdb_v2_value_handle MakeInt32Value(duckdb_v2_connection_handle conn, int32_t payload) {
+	duckdb_v2_value_handle value = nullptr;
+	REQUIRE(duckdb_v2_value_create_int_from_connection(conn, payload, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return value;
+}
+inline duckdb_v2_value_handle MakeInt64Value(duckdb_v2_connection_handle conn, int64_t payload) {
+	duckdb_v2_value_handle value = nullptr;
+	REQUIRE(duckdb_v2_value_create_bigint_from_connection(conn, payload, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return value;
+}
+inline duckdb_v2_value_handle MakeVarcharValue(duckdb_v2_connection_handle conn, const char *s) {
+	duckdb_v2_value_handle value = nullptr;
+	REQUIRE(duckdb_v2_value_create_varchar_from_connection(conn, Convert(s), &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return value;
+}
+inline duckdb_v2_value_handle MakeBlobValue(duckdb_v2_connection_handle conn, const void *data, idx_t len) {
+	duckdb_v2_value_handle value = nullptr;
+	duckdb_v2_str bytes = {static_cast<const char *>(data), len};
+	REQUIRE(duckdb_v2_value_create_blob_from_connection(conn, bytes, &value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	return value;
+}
+
+// The kinds outside the typed set — DATE, the TIME / TIMESTAMP variants,
+// INTERVAL, UUID, DECIMAL, ENUM — are built the way the API intends: a VARCHAR
+// through the cast machinery.
+inline duckdb_v2_value_handle MakeValueFromText(duckdb_v2_connection_handle conn, duckdb_v2_logical_type_handle type,
+                                                const char *text) {
+	auto varchar = MakeVarcharValue(conn, text);
+	duckdb_v2_value_handle value = nullptr;
+	auto rc = duckdb_v2_value_cast_with_connection(conn, varchar, type, &value, nullptr);
+	duckdb_v2_value_destroy(&varchar);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(value != nullptr);
 	return value;
 }
 
-template <class T>
-inline duckdb_v2_value_handle MakeValue(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id, T payload) {
-	return MakeValue(conn, id, &payload, sizeof(T));
+inline duckdb_v2_value_handle MakeValueFromText(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id,
+                                                const char *text) {
+	duckdb_v2_logical_type_handle type = nullptr;
+	REQUIRE(duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	auto value = MakeValueFromText(conn, type, text);
+	duckdb_v2_logical_type_destroy(&type);
+	return value;
 }
-inline duckdb_v2_value_handle MakeInt32Value(duckdb_v2_connection_handle conn, int32_t payload) {
-	return MakeValue(conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, payload);
+
+// One overload per typed getter; the out-param type picks which one runs.
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, bool *out) {
+	return duckdb_v2_value_get_bool(v, out, nullptr);
 }
-inline duckdb_v2_value_handle MakeInt64Value(duckdb_v2_connection_handle conn, int64_t payload) {
-	return MakeValue(conn, DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT, payload);
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, int8_t *out) {
+	return duckdb_v2_value_get_tinyint(v, out, nullptr);
 }
-inline duckdb_v2_value_handle MakeVarcharValue(duckdb_v2_connection_handle conn, const char *s) {
-	return MakeValue(conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR, s, s ? std::strlen(s) : 0);
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, int16_t *out) {
+	return duckdb_v2_value_get_smallint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, int32_t *out) {
+	return duckdb_v2_value_get_int(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, int64_t *out) {
+	return duckdb_v2_value_get_bigint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, duckdb_v2_hugeint_t *out) {
+	return duckdb_v2_value_get_hugeint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, uint8_t *out) {
+	return duckdb_v2_value_get_utinyint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, uint16_t *out) {
+	return duckdb_v2_value_get_usmallint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, uint32_t *out) {
+	return duckdb_v2_value_get_uint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, uint64_t *out) {
+	return duckdb_v2_value_get_ubigint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, duckdb_v2_uhugeint_t *out) {
+	return duckdb_v2_value_get_uhugeint(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, float *out) {
+	return duckdb_v2_value_get_float(v, out, nullptr);
+}
+inline DUCKDB_V2_ERROR GetTypedValue(duckdb_v2_value_handle v, double *out) {
+	return duckdb_v2_value_get_double(v, out, nullptr);
 }
 
 // Consuming forms: read, destroy the owned value, then assert, so a failing REQUIRE cannot leak it.
 template <class T>
 inline T ConsumeValue(duckdb_v2_value_handle &value) {
-	const void *data = nullptr;
-	idx_t len = 0;
-	auto rc = duckdb_v2_value_get_data(value, &data, &len, nullptr);
 	T out {};
-	const bool size_ok = (len == sizeof(T));
-	if (rc == DUCKDB_V2_ERROR_NONE && size_ok) {
-		std::memcpy(&out, data, sizeof(T));
-	}
+	auto rc = GetTypedValue(value, &out);
 	duckdb_v2_value_destroy(&value);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(size_ok);
 	return out;
 }
 
-// Specialization for string
+// VARCHAR: the borrowed string is copied out before the value goes away.
 template <>
 inline std::string ConsumeValue(duckdb_v2_value_handle &value) {
-	const void *data = nullptr;
-	idx_t len = 0;
-	auto rc = duckdb_v2_value_get_data(value, &data, &len, nullptr);
-	std::string out =
-	    (rc == DUCKDB_V2_ERROR_NONE && len) ? std::string(static_cast<const char *>(data), len) : std::string();
+	duckdb_v2_str str = {nullptr, 0};
+	auto rc = duckdb_v2_value_get_varchar(value, &str, nullptr);
+	std::string out = rc == DUCKDB_V2_ERROR_NONE ? Convert(str) : std::string();
+	duckdb_v2_value_destroy(&value);
+	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	return out;
+}
+
+// Same, through the byte-string getter: BLOB, BIT and BIGNUM storage.
+inline std::string ConsumeBlob(duckdb_v2_value_handle &value) {
+	duckdb_v2_str str = {nullptr, 0};
+	auto rc = duckdb_v2_value_get_blob(value, &str, nullptr);
+	std::string out = rc == DUCKDB_V2_ERROR_NONE ? Convert(str) : std::string();
 	duckdb_v2_value_destroy(&value);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	return out;
@@ -549,19 +618,17 @@ inline duckdb_v2_logical_type_handle MakeType(duckdb_v2_connection_handle conn, 
 	return t;
 }
 
-inline duckdb_v2_value_handle MakeTypeValue(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id) {
-	duckdb_v2_logical_type_handle t = nullptr;
-	duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &t, nullptr);
+inline duckdb_v2_value_handle MakeTypeValue(duckdb_v2_connection_handle conn, duckdb_v2_logical_type_handle t) {
 	duckdb_v2_value_handle v = nullptr;
-	auto rc = duckdb_v2_value_create_type(t, &v, nullptr);
-	duckdb_v2_logical_type_destroy(&t);
-	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_value_create_type_from_connection(conn, t, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
 	return v;
 }
 
-inline duckdb_v2_value_handle MakeTypeValue(duckdb_v2_logical_type_handle t) {
-	duckdb_v2_value_handle v = nullptr;
-	REQUIRE(duckdb_v2_value_create_type(t, &v, nullptr) == DUCKDB_V2_ERROR_NONE);
+inline duckdb_v2_value_handle MakeTypeValue(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID id) {
+	duckdb_v2_logical_type_handle t = nullptr;
+	duckdb_v2_connection_create_type_from_id(conn, id, nullptr, nullptr, 0, &t, nullptr);
+	auto v = MakeTypeValue(conn, t);
+	duckdb_v2_logical_type_destroy(&t);
 	return v;
 }
 

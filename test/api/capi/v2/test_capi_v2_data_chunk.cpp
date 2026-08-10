@@ -34,12 +34,8 @@ TEST_CASE("V2: chunk + view round-trip on SELECT 1", "[capi_v2][data_chunk]") {
 	REQUIRE(duckdb_v2_vector_get_vector_type(vec, &vt, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(vt != DUCKDB_V2_VECTOR_TYPE_OTHER);
 
-	duckdb_v2_logical_type_handle lt = nullptr;
-	REQUIRE(duckdb_v2_vector_get_logical_type(vec, &lt, nullptr) == DUCKDB_V2_ERROR_NONE);
-	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-	duckdb_v2_logical_type_get_id(lt, &id, nullptr);
-	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	duckdb_v2_logical_type_destroy(&lt);
+	// Types are read from the result schema, not from the vector.
+	RequireColumn(r, 0, "i", DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
 	duckdb_v2_vector_view view {};
 	REQUIRE(duckdb_v2_vector_get_view(vec, &view, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -566,12 +562,7 @@ TEST_CASE("V2: TUPLE(INTEGER, VARCHAR) via get_child", "[capi_v2][data_chunk]") 
 	duckdb_v2_vector_handle tvec = nullptr;
 	duckdb_v2_data_chunk_get_vector(chunk, 0, &tvec, nullptr);
 
-	duckdb_v2_logical_type_handle t = nullptr;
-	REQUIRE(duckdb_v2_vector_get_logical_type(tvec, &t, nullptr) == DUCKDB_V2_ERROR_NONE);
-	DUCKDB_V2_LOGICAL_TYPE_ID id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-	REQUIRE(duckdb_v2_logical_type_get_id(t, &id, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(id == DUCKDB_V2_LOGICAL_TYPE_ID_TUPLE);
-	duckdb_v2_logical_type_destroy(&t);
+	RequireColumn(r, 0, "s", DUCKDB_V2_LOGICAL_TYPE_ID_TUPLE);
 
 	idx_t field_count = 0;
 	REQUIRE(duckdb_v2_vector_get_child_count(tvec, &field_count, nullptr) == DUCKDB_V2_ERROR_NONE);

@@ -1034,7 +1034,7 @@ TEST_CASE("V2: DECIMAL params are width and scale as UTINYINT", "[capi_v2][logic
 TEST_CASE("V2: LIST and ARRAY params carry the element type as a TYPE value", "[capi_v2][logical_type][param]") {
 	EnvFixture fx;
 	auto inner_list = MakeListType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	auto nested = MakeType(fx.conn, "list", nullptr, {MakeTypeValue(inner_list)}); // INTEGER[][]
+	auto nested = MakeType(fx.conn, "list", nullptr, {MakeTypeValue(fx.conn, inner_list)}); // INTEGER[][]
 
 	REQUIRE(V2ParamCount(nested) == 1);
 	auto inner = V2ParamType(nested, 0, nullptr);
@@ -1045,8 +1045,8 @@ TEST_CASE("V2: LIST and ARRAY params carry the element type as a TYPE value", "[
 	duckdb_v2_logical_type_destroy(&inner);
 	duckdb_v2_logical_type_destroy(&nested);
 
-	auto arr =
-	    MakeType(fx.conn, "array", nullptr, {MakeTypeValue(inner_list), MakeInt32Value(fx.conn, 7)}); // INTEGER[][7]
+	auto arr = MakeType(fx.conn, "array", nullptr,
+	                    {MakeTypeValue(fx.conn, inner_list), MakeInt32Value(fx.conn, 7)}); // INTEGER[][7]
 	duckdb_v2_logical_type_destroy(&inner_list);
 	REQUIRE(V2ParamCount(arr) == 2);
 	auto elem = V2ParamType(arr, 0, nullptr);
@@ -1213,10 +1213,10 @@ TEST_CASE("V2: logical_type_create nests through TYPE values", "[capi_v2][logica
 	auto int_list = MakeType(f.conn, "list", nullptr, {MakeTypeValue(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER)});
 	auto dec = MakeType(f.conn, "decimal", nullptr, {MakeInt32Value(f.conn, 10), MakeInt32Value(f.conn, 2)});
 	auto map = MakeType(f.conn, "map", nullptr,
-	                    {MakeTypeValue(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), MakeTypeValue(dec)});
+	                    {MakeTypeValue(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR), MakeTypeValue(f.conn, dec)});
 	std::vector<const char *> field_names = {"a", "m"};
-	auto s = MakeType(f.conn, "struct", &field_names, {MakeTypeValue(int_list), MakeTypeValue(map)});
-	auto deep = MakeType(f.conn, "list", nullptr, {MakeTypeValue(s)});
+	auto s = MakeType(f.conn, "struct", &field_names, {MakeTypeValue(f.conn, int_list), MakeTypeValue(f.conn, map)});
+	auto deep = MakeType(f.conn, "list", nullptr, {MakeTypeValue(f.conn, s)});
 	duckdb_v2_logical_type_destroy(&int_list);
 	duckdb_v2_logical_type_destroy(&dec);
 	duckdb_v2_logical_type_destroy(&map);
@@ -1345,7 +1345,8 @@ TEST_CASE("V2: logical_type get_from_text / get_from_args", "[capi_v2][logical_t
 	REQUIRE(duckdb_v2_connection_create_type_from_id(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0,
 	                                                 &child, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_handle child_type_value = nullptr;
-	REQUIRE(duckdb_v2_value_create_type(child, &child_type_value, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_value_create_type_from_connection(f.conn, child, &child_type_value, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	const duckdb_v2_value_handle params[1] = {child_type_value};
 	duckdb_v2_logical_type_handle list = nullptr;
 	REQUIRE(duckdb_v2_connection_create_type_from_name(f.conn, Convert("list"), nullptr, params, 1, &list, nullptr) ==
@@ -1598,10 +1599,9 @@ TEST_CASE("V2 bench: 100k-entry enum inspection cost", "[.][capi_v2_bench]") {
 		duckdb_v2_str name = {nullptr, 0};
 		duckdb_v2_value_handle v = nullptr;
 		failures += (duckdb_v2_logical_type_get_param(t, i, &name, &v, nullptr) != DUCKDB_V2_ERROR_NONE);
-		const void *bytes = nullptr;
-		idx_t bytes_len = 0;
-		failures += (duckdb_v2_value_get_data(v, &bytes, &bytes_len, nullptr) != DUCKDB_V2_ERROR_NONE);
-		generic_bytes += bytes_len;
+		duckdb_v2_str bytes = {nullptr, 0};
+		failures += (duckdb_v2_value_get_varchar(v, &bytes, nullptr) != DUCKDB_V2_ERROR_NONE);
+		generic_bytes += bytes.len;
 		duckdb_v2_value_destroy(&v);
 	}
 	auto generic_us = std::chrono::duration_cast<std::chrono::microseconds>(bench_clock::now() - start).count();

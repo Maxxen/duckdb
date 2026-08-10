@@ -8,27 +8,36 @@ module: value
 #     interval, all date/time/timestamp variants).
 #   - varchar/blob/bit/bignum/geometry: StringValueInfo (a managed std::string).
 #   - type: StringValueInfo holding the serialized logical type
-#     (value_create_type / value_get_type wrap and unwrap it).
+#     (value_create_type_from_context / _from_connection and value_get_type
+#     wrap and unwrap it).
 #   - composites (list/struct/tuple/map/array/union): NestedValueInfo (a vector
 #     of child Values). Built via value_create (LIST/ARRAY/STRUCT/TUPLE/MAP) or
 #     value_cast (UNION from a member value, ENUM from VARCHAR); read via
 #     value_get_child_count / value_get_child.
 #
-# Leaf payloads cross the boundary through one generic codec pair:
-# value_create_from_data / value_get_data speak each kind's committed
-# physical layout (the vector view layout table plus the DECIMAL / ENUM
-# storage tier tables). There are no per-kind leaf constructors or
-# getters. BIGNUM goes through that same pair: its storage bytes are
-# opaque here (negatives are stored bit-inverted behind a header), so the
-# vector module's bignum_encode / bignum_decode translate between those
-# bytes and a magnitude + sign flag on either side of the codec.
+# Leaf payloads cross the boundary through the per-kind typed pairs:
+# value_create_<kind>_from_context / _from_connection build one, and
+# value_get_<kind> reads one back. The constructors take a context or a
+# connection because a value's construction is scoped to a catalog; the
+# getters need no scope. A getter is not a cast, so it reads exactly its
+# own type id and refuses anything else.
+#
+# The typed set covers the built-ins whose payload is a plain C scalar or
+# byte string. Every other kind -- DATE, the TIME and TIMESTAMP variants,
+# INTERVAL, UUID, DECIMAL, ENUM, UNION, extension types -- is reached
+# through value_cast, which is the engine's own construction path for
+# them: build the nearest typed value, usually a VARCHAR, and cast it.
+# BIGNUM reads back through value_get_blob, whose bytes are opaque storage
+# (negatives are stored bit-inverted behind a header); the vector module's
+# bignum_encode / bignum_decode translate between those bytes and a
+# magnitude + sign flag.
 #
 # All constructors copy their input. Getters return owned outputs
 # (caller-destroyed) or borrowed pointers (valid until the value handle is
 # destroyed); the contract is documented per function.
 #
-# NULL handling: the payload readers (value_get_data,
-# value_get_type, value_get_variant) return ERROR_INPUT_INVALID when the value is NULL: a
+# NULL handling: the payload readers (value_get_<kind>, value_get_type,
+# value_get_variant) return ERROR_INPUT_INVALID when the value is NULL: a
 # NULL has no typed payload to hand back. Use value_is_null first (or
 # value_get_logical_type / value_to_string, which both accept NULL
 # values).
@@ -78,102 +87,1357 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  # -----------------------------------------------------------------------
-  # Leaf payload codec
-  # -----------------------------------------------------------------------
-  value_create_from_data:
+  # --------------------------------------------------------------------------------------------------------------------
+  # Accessors
+  # --------------------------------------------------------------------------------------------------------------------
+  value_get_bool:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Creates a leaf value of the given type from its committed physical layout.
-
-      The generic leaf constructor: data holds the payload in exactly the
-      committed physical layout of the type, the same bytes a vector view
-      exposes. Fixed-size kinds (BOOLEAN, the integer and float widths,
-      DATE, all TIME and TIMESTAMP variants including the packed TIME_TZ
-      form, INTERVAL, HUGEINT and UHUGEINT, UUID in its internal hugeint
-      form, DECIMAL as the scaled integer of its width tier, ENUM as a
-      dictionary index of its size tier) require len equal to the layout
-      size; any other len returns ERROR_INPUT_INVALID. Variable-length
-      kinds take their wire bytes: VARCHAR (byte string; the engine
-      rejects invalid UTF-8 at construction), BLOB (any bytes), BIT (the
-      mandatory padding header byte plus data bytes, so len >= 1), BIGNUM
-      (opaque storage bytes, produced by bignum_encode from a magnitude
-      and a sign flag; its header plus at least one magnitude byte means
-      len >= 4).
-
-      Layout-raw: beyond the length and layout gates above, semantic
-      invariants are NOT validated, the same stance as the data plane;
-      validation is value_cast's job. Two exceptions: the ENUM dictionary
-      index is bounds-checked (an out-of-range index is not addressable
-      storage), and VARCHAR rejects invalid UTF-8 (the engine enforces it
-      at construction).
-
-      Every other type id returns ERROR_INPUT_INVALID: TYPE values are
-      built via value_create_type, composites via value_create; GEOMETRY
-      has no committed layout. The type is borrowed; the payload is copied
-      in.
-    role: constructor
-    belongs_to: value
-    parameters:
-      type:
-        type: logical_type
-        description: The borrowed leaf logical type to instantiate.
-      data:
-        type: void
-        indirection: 1
-        const: true
-        description: Pointer to the payload in the type's committed physical layout. May be null only when len is 0 (empty VARCHAR / BLOB).
-      len:
-        type: idx
-        description: Payload size in bytes. Must equal the layout size for fixed-size kinds.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-        description: Receives the new leaf value.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-  value_get_data:
-    lifecycle:
-      - [ "stable", "v2.0.0", "2026-08-04" ]
-    description: |
-      Borrows a leaf value's payload in its committed physical layout.
-
-      The inverse of value_create_from_data: a borrowed view of the
-      payload in the same committed layout, valid until the value is
-      destroyed. Fixed-size kinds report the layout size; VARCHAR, BLOB,
-      BIT, and BIGNUM report their wire bytes. A BIGNUM's bytes are opaque
-      storage; pass them to bignum_decode for a magnitude and a sign flag.
-      Returns ERROR_INPUT_INVALID for NULL values (a NULL has no payload
-      to hand back; use value_is_null first) and for the kinds
-      value_create_from_data rejects.
+      returns the values as a BOOLEAN
     role: getter
     belongs_to: value
     parameters:
       value:
         type: value
-      out_data:
-        type: void
-        indirection: 2
-        const: true
-        kind: OUT_BORROW
-        description: Receives a borrowed pointer to the payload bytes.
-      out_len:
-        type: idx
+      out:
+        type: bool
         indirection: 1
         kind: OUT
-        description: Receives the payload size in bytes.
+        description: Receives the payload as a bool.
       err:
         type: error_info
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
+
+  value_get_utinyint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a UTINYINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: u8
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a uint8_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_usmallint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a USMALLINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_uint16:
+        type: u16
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a uint16_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_uint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a UINTEGER
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: u32
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a uint32_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_ubigint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a UBIGINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: u64
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a uint64_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_uhugeint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a UHUGEINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: uhugeint_t
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a uint128_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_tinyint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a TINYINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: i8
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a int8_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_smallint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a SMALLINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: i16
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a int16_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_int:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a INTEGER
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: i32
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a int32_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_bigint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a BIGINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: i64
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a int64_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_hugeint:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a HUGEINT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: hugeint_t
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a int128_t.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_varchar:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a string
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: str
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a UTF-8 string. The returned string is borrowed and valid until the value handle is destroyed.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_blob:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a bytes
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: str
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a byte string. The returned string is borrowed and valid until the value handle is destroyed.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_float:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a FLOAT
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: f32
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a float.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_double:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      returns the values as a DOUBLE
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out:
+        type: f64
+        indirection: 1
+        kind: OUT
+        description: Receives the payload as a double.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_get_type:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Unwraps the logical type carried by a TYPE value.
+
+      Returns ERROR_INPUT_INVALID unless the value is a non-NULL TYPE
+      value. The returned logical type is caller-owned and must be
+      destroyed via logical_type_destroy.
+    role: getter
+    belongs_to: value
+    parameters:
+      value:
+        type: value
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: Receives the owned logical type.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Constructors (Context)
+  # --------------------------------------------------------------------------------------------------------------------
+  value_create_null_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a NULL value of the given logical type.
+
+      The input logical type is borrowed; the value internally copies the
+      type so the caller can destroy the logical type independently.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      type:
+        type: logical_type
+        description: The borrowed logical type to attach to the NULL value.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new NULL value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_bool_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a BOOLEAN value from a bool.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: bool
+        description: The bool to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new BOOLEAN value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_utinyint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UTINYINT value from a uint8_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: u8
+        description: The uint8_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UTINYINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_usmallint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a USMALLINT value from a uint16_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: u16
+        description: The uint16_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new USMALLINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_uint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UINTEGER value from a uint32_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: u32
+        description: The uint32_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UINTEGER value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_ubigint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UBIGINT value from a uint64_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: u64
+        description: The uint64_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UBIGINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_uhugeint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UHUGEINT value from a uint128_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: uhugeint_t
+        description: The uint128_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UHUGEINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_tinyint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a TINYINT value from an int8_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: i8
+        description: The int8_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new TINYINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_smallint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a SMALLINT value from an int16_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: i16
+        description: The int16_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new SMALLINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_int_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates an INTEGER value from an int32_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: i32
+        description: The int32_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new INTEGER value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_bigint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a BIGINT value from an int64_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: i64
+        description: The int64_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new BIGINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_hugeint_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a HUGEINT value from an int128_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: hugeint_t
+        description: The int128_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new HUGEINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_varchar_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a VARCHAR value from a UTF-8 string.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: str
+        description: The UTF-8 string to wrap. May be null only when len is 0 (empty string).
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new VARCHAR value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_blob_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a BLOB value from a byte string.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: str
+        description: The byte string to wrap. May be null only when len is 0 (empty string).
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new BLOB value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_float_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a FLOAT value from a float.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: f32
+        description: The float to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new FLOAT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_double_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a DOUBLE value from a double.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_value:
+        type: f64
+        description: The double to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new DOUBLE value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_type_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a TYPE value from a logical type.
+
+      The input logical type is borrowed; the value internally copies the
+      type so the caller can destroy the logical type independently.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      in_type:
+        type: logical_type
+        description: The borrowed logical type to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new TYPE value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Constructors (Connection)
+  # --------------------------------------------------------------------------------------------------------------------
+  value_create_null_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a NULL value of the given logical type.
+
+      The input logical type is borrowed; the value internally copies the
+      type so the caller can destroy the logical type independently.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      type:
+        type: logical_type
+        description: The borrowed logical type to attach to the NULL value.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new NULL value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_bool_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a BOOLEAN value from a bool.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: bool
+        description: The bool to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new BOOLEAN value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_utinyint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UTINYINT value from a uint8_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: u8
+        description: The uint8_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UTINYINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_usmallint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a USMALLINT value from a uint16_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: u16
+        description: The uint16_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new USMALLINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_uint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UINTEGER value from a uint32_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: u32
+        description: The uint32_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UINTEGER value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_ubigint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UBIGINT value from a uint64_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: u64
+        description: The uint64_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UBIGINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_uhugeint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a UHUGEINT value from a uint128_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: uhugeint_t
+        description: The uint128_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new UHUGEINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_tinyint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a TINYINT value from an int8_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: i8
+        description: The int8_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new TINYINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_smallint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a SMALLINT value from an int16_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: i16
+        description: The int16_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new SMALLINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_int_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates an INTEGER value from an int32_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: i32
+        description: The int32_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new INTEGER value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_bigint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a BIGINT value from an int64_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: i64
+        description: The int64_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new BIGINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_hugeint_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a HUGEINT value from an int128_t.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: hugeint_t
+        description: The int128_t to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new HUGEINT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_varchar_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a VARCHAR value from a UTF-8 string.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: str
+        description: The UTF-8 string to wrap. May be null only when len is 0 (empty string).
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new VARCHAR value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_blob_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a BLOB value from a byte string.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: str
+        description: The byte string to wrap. May be null only when len is 0 (empty string).
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new BLOB value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_float_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a FLOAT value from a float.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: f32
+        description: The float to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new FLOAT value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_double_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a DOUBLE value from a double.
+
+      The input is copied in. The returned value is caller-owned; destroy
+      via value_destroy.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      in_value:
+        type: f64
+        description: The double to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new DOUBLE value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  value_create_type_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a TYPE value wrapping the given logical type.
+
+      The input logical type is borrowed; the value internally copies the
+      type so the caller can destroy the logical type independently.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      type:
+        type: logical_type
+        description: The borrowed logical type to wrap.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
   # -----------------------------------------------------------------------
   # VARIANT codec (wire encoding not committed; unwrap is the read path)
   # -----------------------------------------------------------------------
@@ -217,103 +1481,434 @@ functions:
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
     return_type: ERROR
-  # -----------------------------------------------------------------------
-  # TYPE values (a logical type carried as a value)
-  # -----------------------------------------------------------------------
-  value_create_type:
-    lifecycle:
-      - [ "stable", "v2.0.0", "2026-08-04" ]
-    description: |
-      Creates a TYPE value wrapping a logical type.
 
-      The input logical type is borrowed; the value stores its own copy
-      (serialized form), so the caller can destroy the logical type
-      independently. TYPE values carry types where a value is expected,
-      e.g. as type parameters.
-    role: constructor
-    belongs_to: value
-    parameters:
-      type:
-        type: logical_type
-        description: The borrowed logical type to wrap.
-      out_value:
-        type: value
-        indirection: 1
-        kind: OUT
-        description: Receives the new TYPE value.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
-  value_get_type:
-    lifecycle:
-      - [ "stable", "v2.0.0", "2026-08-04" ]
-    description: |
-      Unwraps the logical type carried by a TYPE value.
-
-      Returns ERROR_INPUT_INVALID unless the value is a non-NULL TYPE
-      value. The returned logical type is caller-owned and must be
-      destroyed via logical_type_destroy.
-    role: getter
-    belongs_to: value
-    parameters:
-      value:
-        type: value
-      out_type:
-        type: logical_type
-        indirection: 1
-        kind: OUT
-        description: Receives the owned logical type.
-      err:
-        type: error_info
-        indirection: 1
-        kind: OUT
-        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
-    return_type: ERROR
   # -----------------------------------------------------------------------
   # Composite construction + descent + cast
   # -----------------------------------------------------------------------
-  value_create:
+  # -----------------------------------------------------------------------
+  # Composite constructors
+  # -----------------------------------------------------------------------
+  value_create_list_from_context:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Creates a composite value from a type plus child values.
+      Creates a LIST value from its elements.
 
-      The generic composite constructor. Per type kind:
-      LIST, children are the elements, any count including 0;
-      ARRAY, count must equal the declared array size;
-      STRUCT and TUPLE, positional per declared field order, count =
-      field count;
-      MAP, alternating key, value, so count is even and 2 x the entry
-      count. Every other type id returns ERROR_INPUT_INVALID: UNION and
-      ENUM values are built via value_cast (a member value to the union
-      type, a VARCHAR to the enum type), primitives via their typed
-      constructors.
+      The child type is the common type of the elements, resolved through
+      the same rule the engine uses for a list literal, and every element
+      is cast to it; a set with no common type surfaces the cast error.
+      Pass child_type to name it instead, which is also how an empty list
+      is built: with child_type NULL, an empty element array has no type
+      to resolve and returns ERROR_INPUT_INVALID.
 
-      The type and children are borrowed (copied in). The engine casts
-      each child to the declared child or field type (non-strict default
-      cast); cast failures surface. NULL children become typed NULLs.
-      MAP keys must be non-NULL and unique; violations surface.
-      LIST, ARRAY, and MAP rebuild the outer type from its components, so
-      an alias on the outer type is not preserved; STRUCT and TUPLE keep
-      their declared type, alias included. value_cast is the
-      alias-preserving construction path.
+      The elements are borrowed (copied in). NULL elements become typed
+      NULLs. The type is rebuilt from its child, so an alias on the outer
+      LIST type is not preserved; value_cast is the alias-preserving path.
     role: constructor
     belongs_to: value
     parameters:
-      type:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      child_type:
         type: logical_type
-        description: The borrowed composite logical type to instantiate.
+        description: Optional. The element type. Pass NULL to resolve it from the elements.
       children:
         type: value
         indirection: 1
         const: true
-        description: An array of child_count child values. Borrowed (copied in). Pass NULL when child_count is 0.
+        description: An array of child_count elements. Borrowed (copied in). Pass NULL when child_count is 0.
       child_count:
         type: idx
-        description: The number of child values.
+        description: The number of elements.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_list_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a LIST value from its elements.
+
+      The child type is the common type of the elements, resolved through
+      the same rule the engine uses for a list literal, and every element
+      is cast to it; a set with no common type surfaces the cast error.
+      Pass child_type to name it instead, which is also how an empty list
+      is built: with child_type NULL, an empty element array has no type
+      to resolve and returns ERROR_INPUT_INVALID.
+
+      The elements are borrowed (copied in). NULL elements become typed
+      NULLs. The type is rebuilt from its child, so an alias on the outer
+      LIST type is not preserved; value_cast is the alias-preserving path.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      child_type:
+        type: logical_type
+        description: Optional. The element type. Pass NULL to resolve it from the elements.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of child_count elements. Borrowed (copied in). Pass NULL when child_count is 0.
+      child_count:
+        type: idx
+        description: The number of elements.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_array_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates an ARRAY value from its elements, sized by their count.
+
+      The child type is resolved exactly as for value_create_list, and
+      child_type names it explicitly the same way. The engine's minimum
+      array size is 1, so an empty element array returns
+      ERROR_INPUT_INVALID whether or not child_type is given.
+
+      The elements are borrowed (copied in). NULL elements become typed
+      NULLs.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      child_type:
+        type: logical_type
+        description: Optional. The element type. Pass NULL to resolve it from the elements.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of child_count elements. Borrowed (copied in). Pass NULL when child_count is 0.
+      child_count:
+        type: idx
+        description: The number of elements.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_array_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates an ARRAY value from its elements, sized by their count.
+
+      The child type is resolved exactly as for value_create_list, and
+      child_type names it explicitly the same way. The engine's minimum
+      array size is 1, so an empty element array returns
+      ERROR_INPUT_INVALID whether or not child_type is given.
+
+      The elements are borrowed (copied in). NULL elements become typed
+      NULLs.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      child_type:
+        type: logical_type
+        description: Optional. The element type. Pass NULL to resolve it from the elements.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of child_count elements. Borrowed (copied in). Pass NULL when child_count is 0.
+      child_count:
+        type: idx
+        description: The number of elements.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_struct_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a STRUCT value from named fields, in order.
+
+      Each field keeps its own child's type, so there is nothing to
+      resolve across them; names and children are parallel arrays of
+      field_count entries. An empty field list builds the empty struct,
+      which is a real type.
+
+      The names and children are borrowed (copied in). NULL children
+      become typed NULLs. Duplicate field names surface from the engine.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      names:
+        type: identifier
+        indirection: 1
+        const: true
+        description: An array of field_count field names. Pass NULL when field_count is 0.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of field_count field values. Borrowed (copied in). Pass NULL when field_count is 0.
+      field_count:
+        type: idx
+        description: The number of fields.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_struct_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a STRUCT value from named fields, in order.
+
+      Each field keeps its own child's type, so there is nothing to
+      resolve across them; names and children are parallel arrays of
+      field_count entries. An empty field list builds the empty struct,
+      which is a real type.
+
+      The names and children are borrowed (copied in). NULL children
+      become typed NULLs. Duplicate field names surface from the engine.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      names:
+        type: identifier
+        indirection: 1
+        const: true
+        description: An array of field_count field names. Pass NULL when field_count is 0.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of field_count field values. Borrowed (copied in). Pass NULL when field_count is 0.
+      field_count:
+        type: idx
+        description: The number of fields.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_tuple_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a TUPLE value from positional fields.
+
+      TUPLE is the unnamed struct: the same positional children as
+      value_create_struct, a distinct type id, and no names. Each field
+      keeps its own child's type. An empty field list builds the empty
+      tuple, which is a real type.
+
+      The children are borrowed (copied in). NULL children become typed
+      NULLs.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of field_count field values. Borrowed (copied in). Pass NULL when field_count is 0.
+      field_count:
+        type: idx
+        description: The number of fields.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_tuple_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a TUPLE value from positional fields.
+
+      TUPLE is the unnamed struct: the same positional children as
+      value_create_struct, a distinct type id, and no names. Each field
+      keeps its own child's type. An empty field list builds the empty
+      tuple, which is a real type.
+
+      The children are borrowed (copied in). NULL children become typed
+      NULLs.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      children:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of field_count field values. Borrowed (copied in). Pass NULL when field_count is 0.
+      field_count:
+        type: idx
+        description: The number of fields.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_map_from_context:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a MAP value from parallel key and value arrays.
+
+      The key and value types are the common types of the keys and of the
+      values, resolved as for value_create_list, and every entry is cast
+      to them. Pass key_type and value_type to name them instead, which is
+      also how an empty map is built: with them NULL, empty key and value
+      arrays have no types to resolve and return ERROR_INPUT_INVALID.
+
+      Keys and values are borrowed (copied in) and must be the same
+      count. Keys must be non-NULL and unique; the engine enforces both.
+    role: constructor
+    belongs_to: value
+    parameters:
+      ctx:
+        type: context
+        description: The context to use for the construction.
+      key_type:
+        type: logical_type
+        description: Optional. The key type. Pass NULL to resolve it from the keys.
+      value_type:
+        type: logical_type
+        description: Optional. The value type. Pass NULL to resolve it from the values.
+      keys:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of entry_count keys. Borrowed (copied in). Pass NULL when entry_count is 0.
+      values:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of entry_count values, parallel to keys. Borrowed (copied in). Pass NULL when entry_count is 0.
+      entry_count:
+        type: idx
+        description: The number of entries.
+      out_value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the new composite value.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+  value_create_map_from_connection:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a MAP value from parallel key and value arrays.
+
+      The key and value types are the common types of the keys and of the
+      values, resolved as for value_create_list, and every entry is cast
+      to them. Pass key_type and value_type to name them instead, which is
+      also how an empty map is built: with them NULL, empty key and value
+      arrays have no types to resolve and return ERROR_INPUT_INVALID.
+
+      Keys and values are borrowed (copied in) and must be the same
+      count. Keys must be non-NULL and unique; the engine enforces both.
+    role: constructor
+    belongs_to: value
+    parameters:
+      conn:
+        type: connection
+        description: The connection to use for the construction.
+      key_type:
+        type: logical_type
+        description: Optional. The key type. Pass NULL to resolve it from the keys.
+      value_type:
+        type: logical_type
+        description: Optional. The value type. Pass NULL to resolve it from the values.
+      keys:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of entry_count keys. Borrowed (copied in). Pass NULL when entry_count is 0.
+      values:
+        type: value
+        indirection: 1
+        const: true
+        description: An array of entry_count values, parallel to keys. Borrowed (copied in). Pass NULL when entry_count is 0.
+      entry_count:
+        type: idx
+        description: The number of entries.
       out_value:
         type: value
         indirection: 1
@@ -402,10 +1997,10 @@ functions:
 
       The SQL-faithful conversion (non-strict), registered custom casts
       included. Cast failures surface from the call. With a VARCHAR built
-      through value_create_from_data this constructs any value from text,
-      extension values included; casting a member value to a union type
-      or a VARCHAR to an enum type is the sanctioned way to build UNION
-      and ENUM values.
+      through value_create_varchar_from_context / _from_connection this
+      constructs any value from text, extension values included; casting a
+      member value to a union type or a VARCHAR to an enum type is the
+      sanctioned way to build UNION and ENUM values.
 
       The input value and target type are borrowed. The returned value is
       caller-owned; destroy via value_destroy.
@@ -440,10 +2035,10 @@ functions:
 
       The SQL-faithful conversion (non-strict), registered custom casts
       included. Cast failures surface from the call. With a VARCHAR built
-      through value_create_from_data this constructs any value from text,
-      extension values included; casting a member value to a union type
-      or a VARCHAR to an enum type is the sanctioned way to build UNION
-      and ENUM values.
+      through value_create_varchar_from_context / _from_connection this
+      constructs any value from text, extension values included; casting a
+      member value to a union type or a VARCHAR to an enum type is the
+      sanctioned way to build UNION and ENUM values.
 
       Runs in the caller's context scope (see
       create_type_from_text): reach it from a bind-phase callback
