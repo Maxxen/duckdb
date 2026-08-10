@@ -49,6 +49,9 @@ struct NamedParam;
 
 enum class LogicalTypeId : uint32_t;
 
+template <class CTX>
+class TypeBuilder;
+
 //----------------------------------------------------------------------------------------------------------------------
 // Internal Implementation Details
 //----------------------------------------------------------------------------------------------------------------------
@@ -122,6 +125,9 @@ struct Factory {
 		return t.release();
 	}
 };
+
+template <class T>
+struct always_false : std::false_type {};
 
 } // namespace detail
 
@@ -244,6 +250,12 @@ public:
 	// The id-keyed twin: with no params this instantiates a primitive
 	// directly; with params the id binds like its canonical name does.
 	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
+	// A builder over this context, for composing a type without
+	// assembling the parameter vector by hand.
+	auto CreateType() -> TypeBuilder<Context>;
+
+	template <class T>
+	auto CreateValue(T &&value) -> Value;
 
 private:
 	explicit Context(void *impl);
@@ -366,6 +378,12 @@ public:
 	// The id-keyed twin: with no params this instantiates a primitive
 	// directly; with params the id binds like its canonical name does.
 	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
+	// A builder over this connection, for composing a type without
+	// assembling the parameter vector by hand.
+	auto CreateType() -> TypeBuilder<Connection>;
+
+	template <class T>
+	auto CreateValue(T &&value) -> Value;
 
 	// Requests cancellation of the active query. Safe to call from any
 	// thread; a no-op when no query is active.
@@ -514,7 +532,11 @@ public:
 
 	// A copy of this type carrying `alias` as its name. Relabels only: no
 	// catalog lookup, so no context is involved.
-	auto WithAlias(std::string_view alias) const -> LogicalType;
+	// An alias of this type: same internal representation, distinct identity.
+	// Scoped like the rest of type creation, so the alias resolves against the
+	// catalog the context or connection reaches.
+	auto WithAlias(const Context &ctx, std::string_view alias) const -> LogicalType;
+	auto WithAlias(const Connection &conn, std::string_view alias) const -> LogicalType;
 
 	// The type's name: the alias when set, otherwise the canonical fixed
 	// name of the type id. Never empty; exactly the vocabulary CreateType
@@ -877,7 +899,7 @@ public:
 
 	// Cast a value to another type
 	auto Cast(const Context &ctx, const LogicalType &target) const -> Value;
-	auto Cast(Connection &conn, const LogicalType &target) const -> Value;
+	auto Cast(const Connection &conn, const LogicalType &target) const -> Value;
 
 	//! Accessors
 	template <class T>
@@ -988,10 +1010,11 @@ public:
 	//
 	// Each comes in both scope forms, like Create and CreateNull: the Context
 	// one for a live bind / execution context, the Connection one for outside.
-	using ValueRef = std::reference_wrapper<const Value>;
-	using ValueList = const std::vector<ValueRef> &;
-	using NamedValueList = const std::vector<std::pair<std::string_view, ValueRef>> &;
-	using KeyValueList = const std::vector<std::pair<ValueRef, ValueRef>> &;
+	// Composite children are owned, like a type's parameters: the caller moves
+	// them in, so nothing here can outlive what it points at.
+	using ValueList = const std::vector<Value> &;
+	using NamedValueList = const std::vector<std::pair<std::string, Value>> &;
+	using KeyValueList = const std::vector<std::pair<Value, Value>> &;
 
 	// A LIST of the elements. The child type is the first element's; the rest are cast to it, so a set that does not
 	// share a type surfaces the engine's cast error rather than widening silently.
@@ -1121,11 +1144,105 @@ auto Value::Get() const -> uuid_t;
 template <>
 auto Value::Get() const -> LogicalType;
 
-// One type parameter: the unit of Context::CreateType and
-// LogicalType::GetParam. An empty name means positional.
+template <class T>
+auto Connection::CreateValue(T &&value) -> Value {
+	return Value::Create(*this, std::forward<T>(value));
+}
+
+template <class T>
+auto Context::CreateValue(T &&value) -> Value {
+	return Value::Create(*this, std::forward<T>(value));
+}
+
+// A type parameter. The name is optional for positional parameters
 struct TypeParam {
+	TypeParam(std::string_view name, Value value) : name(name), value(std::move(value)) {
+	}
+
+	explicit TypeParam(Value value) : name(""), value(std::move(value)) {
+	}
+
 	std::string name;
 	Value value;
+};
+
+// The TypeBuilder makes it easier to construct nested types incrementally
+template <class CTX>
+class TypeBuilder {
+public:
+	explicit TypeBuilder(CTX &context) : ctx(context) {
+	}
+
+	auto SetTypeId(LogicalTypeId type_id_p) -> TypeBuilder & {
+		type_id = type_id_p;
+		return *this;
+	}
+	auto SetName(std::string_view name_p) -> TypeBuilder & {
+		name = name_p;
+		return *this;
+	}
+	auto AddParam(const LogicalType &type) -> TypeBuilder & {
+		params.emplace_back("", ctx.CreateValue(type));
+		return *this;
+	}
+
+	auto AddParam(std::string_view name_p, const LogicalType &type) -> TypeBuilder & {
+		params.emplace_back(name_p, ctx.CreateValue(type));
+		return *this;
+	}
+
+	template <class T, class = std::enable_if_t<!std::is_invocable_v<T &, TypeBuilder &>>>
+	auto AddParam(std::string_view name_p, const T &value) -> TypeBuilder & {
+		params.emplace_back(name_p, ctx.CreateValue(value));
+		return *this;
+	}
+
+	template <class T, class = std::enable_if_t<!std::is_invocable_v<T &, TypeBuilder &>>>
+	auto AddParam(const T &value) -> TypeBuilder & {
+		params.emplace_back("", ctx.CreateValue(value));
+		return *this;
+	}
+
+	template <class F, class = std::enable_if_t<std::is_invocable_v<F &, TypeBuilder &>>>
+	auto AddParam(std::string_view name_p, F &&builder) -> TypeBuilder & {
+		TypeBuilder nested_builder(ctx);
+		builder(nested_builder);
+		params.emplace_back(name_p, ctx.CreateValue(nested_builder.Build()));
+		return *this;
+	}
+
+	template <class F, class = std::enable_if_t<std::is_invocable_v<F &, TypeBuilder &>>>
+	auto AddParam(F &&builder) -> TypeBuilder & {
+		TypeBuilder nested_builder(ctx);
+		builder(nested_builder);
+		params.emplace_back("", ctx.CreateValue(nested_builder.Build()));
+		return *this;
+	}
+
+	auto Build() -> LogicalType {
+		if constexpr (std::is_same_v<CTX, Connection>) {
+			if (type_id != LogicalTypeId::INVALID) {
+				return ctx.CreateType(type_id, params);
+			} else {
+				return ctx.CreateType(name, params);
+			}
+		} else if constexpr (std::is_same_v<CTX, Context>) {
+			if (type_id != LogicalTypeId::INVALID) {
+				return ctx.CreateType(type_id, params);
+			} else {
+				return ctx.CreateType(name, params);
+			}
+		} else {
+			static_assert(detail::always_false<CTX>::value, "TypeBuilder can only be used with Connection or Context");
+			return ctx.CreateType(name, params);
+		}
+	}
+
+private:
+	LogicalTypeId type_id = LogicalTypeId::INVALID;
+	std::string name;
+	std::vector<TypeParam> params;
+	CTX &ctx;
 };
 
 // One statement parameter binding for the named-parameter Execute overloads. An
@@ -1519,8 +1636,14 @@ private:
 	explicit QueryResult(void *impl);
 };
 
-// Defined here (not in-class) now that Value and QueryResult are complete: the
-// inline std::vector forwarder keeps std::vector off the compiled boundary.
+inline auto Context::CreateType() -> TypeBuilder<Context> {
+	return TypeBuilder<Context>(*this);
+}
+
+inline auto Connection::CreateType() -> TypeBuilder<Connection> {
+	return TypeBuilder<Connection>(*this);
+}
+
 inline auto Connection::Execute(const SqlStatement &statement, const std::vector<Value> &parameters) -> QueryResult {
 	return Execute(statement, parameters.data(), parameters.size());
 }

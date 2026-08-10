@@ -733,14 +733,63 @@ functions:
     return_type: ERROR
 
   # TODO: This function should be moved/removed/changed
-  logical_type_create_with_alias:
+  context_create_type_with_alias:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Constructs a logical type that is an alias of another logical type.
+      Creates a logical type that is an alias of another logical type.
 
-      This is intended for use in custom type bind callbacks to create logical type instances that are aliases of the base type. The resulting logical type will have the same internal representation as the base type, but with a different name and potentially different metadata. This allows custom types to be created that are logically distinct from their base type but do not require custom handling in the execution engine.
+      The alias keeps the base type's internal representation, so the execution
+      engine needs no custom handling for it, while making the type logically
+      distinct from its base. Intended for custom type bind callbacks, where the
+      base type and the name both come from the bind info.
+
+      Scoped like the rest of the create_type family: the alias is resolved
+      against the catalog reachable from the context. An empty alias name
+      returns ERROR_INPUT_INVALID.
+    role: constructor
+    belongs_to: logical_type
     parameters:
+      ctx:
+        type: context
+        description: "The context to resolve the alias against."
+      base_type:
+        type: logical_type
+        description: "The logical type to create an alias of. This is typically the base type provided in the custom type bind info."
+      alias_name:
+        type: identifier
+        description: "The name to give the resulting alias logical type. This should typically be the name of the custom type being constructed, which can be obtained from the custom type bind info."
+      out_type:
+        type: logical_type
+        indirection: 1
+        kind: OUT
+        description: "The resulting alias logical type. This logical type will have the same internal representation as the base type but with the provided alias name."
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy."
+    return_type: ERROR
+  connection_create_type_with_alias:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-08-04" ]
+    description: |
+      Creates a logical type that is an alias of another logical type.
+
+      The alias keeps the base type's internal representation, so the execution
+      engine needs no custom handling for it, while making the type logically
+      distinct from its base. Intended for custom type bind callbacks, where the
+      base type and the name both come from the bind info.
+
+      Scoped like the rest of the create_type family: the alias is resolved
+      against the catalog reachable from the connection. An empty alias name
+      returns ERROR_INPUT_INVALID.
+    role: constructor
+    belongs_to: logical_type
+    parameters:
+      conn:
+        type: connection
+        description: "The connection to resolve the alias against."
       base_type:
         type: logical_type
         description: "The logical type to create an alias of. This is typically the base type provided in the custom type bind info."

@@ -15,6 +15,7 @@ typedef struct {
 	DUCKDB_V2_ERROR (*duckdb_v2_connection_create_type_from_id)(duckdb_v2_connection_handle conn, DUCKDB_V2_LOGICAL_TYPE_ID type_id, const duckdb_v2_identifier_t* param_names, const duckdb_v2_value_handle* param_values, idx_t param_count, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_connection_create_type_from_name)(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name, const duckdb_v2_identifier_t* param_names, const duckdb_v2_value_handle* param_values, idx_t param_count, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_connection_create_type_from_text)(duckdb_v2_connection_handle conn, duckdb_v2_str text, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
+	DUCKDB_V2_ERROR (*duckdb_v2_connection_create_type_with_alias)(duckdb_v2_connection_handle conn, duckdb_v2_logical_type_handle base_type, duckdb_v2_identifier_t alias_name, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_connection_interrupt)(duckdb_v2_connection_handle conn, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_connection_option_get)(duckdb_v2_connection_handle conn, duckdb_v2_identifier_t name, duckdb_v2_option_handle* out_option, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_connection_option_get_by_index)(duckdb_v2_connection_handle conn, idx_t index, duckdb_v2_option_handle* out_option, duckdb_v2_error_info_handle* err);
@@ -24,6 +25,7 @@ typedef struct {
 	DUCKDB_V2_ERROR (*duckdb_v2_context_create_type_from_id)(duckdb_v2_context_handle ctx, DUCKDB_V2_LOGICAL_TYPE_ID type_id, const duckdb_v2_identifier_t* param_names, const duckdb_v2_value_handle* param_values, idx_t param_count, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_context_create_type_from_name)(duckdb_v2_context_handle ctx, duckdb_v2_identifier_t name, const duckdb_v2_identifier_t* param_names, const duckdb_v2_value_handle* param_values, idx_t param_count, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_context_create_type_from_text)(duckdb_v2_context_handle ctx, duckdb_v2_str text, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
+	DUCKDB_V2_ERROR (*duckdb_v2_context_create_type_with_alias)(duckdb_v2_context_handle ctx, duckdb_v2_logical_type_handle base_type, duckdb_v2_identifier_t alias_name, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_create_environment)(duckdb_v2_environment_handle* out_env, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_data_chunk_create)(const duckdb_v2_logical_type_handle* types, idx_t column_count, duckdb_v2_data_chunk_handle* out_chunk, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_data_chunk_destroy)(duckdb_v2_data_chunk_handle* chunk);
@@ -45,7 +47,6 @@ typedef struct {
 	DUCKDB_V2_ERROR (*duckdb_v2_error_info_set_text)(duckdb_v2_error_info_handle info, duckdb_v2_str text);
 	DUCKDB_V2_ERROR (*duckdb_v2_library_version)(duckdb_v2_str* out_version, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_logical_type_copy)(duckdb_v2_logical_type_handle type, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
-	DUCKDB_V2_ERROR (*duckdb_v2_logical_type_create_with_alias)(duckdb_v2_logical_type_handle base_type, duckdb_v2_identifier_t alias_name, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_logical_type_destroy)(duckdb_v2_logical_type_handle* type);
 	DUCKDB_V2_ERROR (*duckdb_v2_logical_type_get_id)(duckdb_v2_logical_type_handle type, DUCKDB_V2_LOGICAL_TYPE_ID* out_id, duckdb_v2_error_info_handle* err);
 	DUCKDB_V2_ERROR (*duckdb_v2_logical_type_get_name)(duckdb_v2_logical_type_handle type, duckdb_v2_identifier_t* out_name, duckdb_v2_error_info_handle* err);
@@ -230,6 +231,7 @@ inline duckdb_ext_api_v2 CreateAPIv2(void) {
 	result.duckdb_v2_connection_create_type_from_id = duckdb_v2_connection_create_type_from_id;
 	result.duckdb_v2_connection_create_type_from_name = duckdb_v2_connection_create_type_from_name;
 	result.duckdb_v2_connection_create_type_from_text = duckdb_v2_connection_create_type_from_text;
+	result.duckdb_v2_connection_create_type_with_alias = duckdb_v2_connection_create_type_with_alias;
 	result.duckdb_v2_connection_interrupt = duckdb_v2_connection_interrupt;
 	result.duckdb_v2_connection_option_get = duckdb_v2_connection_option_get;
 	result.duckdb_v2_connection_option_get_by_index = duckdb_v2_connection_option_get_by_index;
@@ -239,6 +241,7 @@ inline duckdb_ext_api_v2 CreateAPIv2(void) {
 	result.duckdb_v2_context_create_type_from_id = duckdb_v2_context_create_type_from_id;
 	result.duckdb_v2_context_create_type_from_name = duckdb_v2_context_create_type_from_name;
 	result.duckdb_v2_context_create_type_from_text = duckdb_v2_context_create_type_from_text;
+	result.duckdb_v2_context_create_type_with_alias = duckdb_v2_context_create_type_with_alias;
 	result.duckdb_v2_create_environment = duckdb_v2_create_environment;
 	result.duckdb_v2_data_chunk_create = duckdb_v2_data_chunk_create;
 	result.duckdb_v2_data_chunk_destroy = duckdb_v2_data_chunk_destroy;
@@ -260,7 +263,6 @@ inline duckdb_ext_api_v2 CreateAPIv2(void) {
 	result.duckdb_v2_error_info_set_text = duckdb_v2_error_info_set_text;
 	result.duckdb_v2_library_version = duckdb_v2_library_version;
 	result.duckdb_v2_logical_type_copy = duckdb_v2_logical_type_copy;
-	result.duckdb_v2_logical_type_create_with_alias = duckdb_v2_logical_type_create_with_alias;
 	result.duckdb_v2_logical_type_destroy = duckdb_v2_logical_type_destroy;
 	result.duckdb_v2_logical_type_get_id = duckdb_v2_logical_type_get_id;
 	result.duckdb_v2_logical_type_get_name = duckdb_v2_logical_type_get_name;

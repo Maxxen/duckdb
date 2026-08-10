@@ -303,7 +303,7 @@ TEST_CASE("V2: logical_type get_name prefers the alias when set", "[capi_v2][log
 	EnvFixture fx;
 	auto base = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle t = nullptr;
-	auto alias_rc = duckdb_v2_logical_type_create_with_alias(base, Convert("my_int"), &t, nullptr);
+	auto alias_rc = duckdb_v2_connection_create_type_with_alias(fx.conn, base, Convert("my_int"), &t, nullptr);
 	duckdb_v2_logical_type_destroy(&base);
 	REQUIRE(alias_rc == DUCKDB_V2_ERROR_NONE);
 
@@ -327,7 +327,7 @@ TEST_CASE("V2: logical_type get_name reads an alias set on a STRUCT", "[capi_v2]
 	auto base =
 	    MakeStructType(fx.conn, {"x", "y"}, {DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE, DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE});
 	duckdb_v2_logical_type_handle t = nullptr;
-	auto alias_rc = duckdb_v2_logical_type_create_with_alias(base, Convert("POINT_2D"), &t, nullptr);
+	auto alias_rc = duckdb_v2_connection_create_type_with_alias(fx.conn, base, Convert("POINT_2D"), &t, nullptr);
 	duckdb_v2_logical_type_destroy(&base);
 	REQUIRE(alias_rc == DUCKDB_V2_ERROR_NONE);
 
@@ -647,7 +647,7 @@ TEST_CASE("V2: logical_type to_text renders an aliased type as its alias", "[cap
 	EnvFixture fx;
 	auto base = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	duckdb_v2_logical_type_handle t = nullptr;
-	auto alias_rc = duckdb_v2_logical_type_create_with_alias(base, Convert("my_int"), &t, nullptr);
+	auto alias_rc = duckdb_v2_connection_create_type_with_alias(fx.conn, base, Convert("my_int"), &t, nullptr);
 	duckdb_v2_logical_type_destroy(&base);
 	REQUIRE(alias_rc == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(V2TypeText(t) == "my_int");

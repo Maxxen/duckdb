@@ -1546,20 +1546,42 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_param_count(duckdb_v2_lo
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle type, idx_t index, duckdb_v2_identifier_t* out_name, duckdb_v2_value_handle* out_value, duckdb_v2_error_info_handle* err);
 
 /*!
- * Constructs a logical type that is an alias of another logical type.
+ * Creates a logical type that is an alias of another logical type.
  *
- * This is intended for use in custom type bind callbacks to create logical type instances that are aliases of the base type. The resulting logical type will have the same internal representation as the base type, but with a different name and potentially different metadata. This allows custom types to be created that are logically distinct from their base type but do not require custom handling in the execution engine.
+ * The alias keeps the base type's internal representation, so the execution engine needs no custom handling for it, while making the type logically distinct from its base. Intended for custom type bind callbacks, where the base type and the name both come from the bind info.
+ *
+ * Scoped like the rest of the create_type family: the alias is resolved against the catalog reachable from the context. An empty alias name returns ERROR_INPUT_INVALID.
  *
  * history:
  * - stable: v2.0.0
  *
+ * @param ctx The context to resolve the alias against.
  * @param base_type The logical type to create an alias of. This is typically the base type provided in the custom type bind info.
  * @param alias_name The name to give the resulting alias logical type. This should typically be the name of the custom type being constructed, which can be obtained from the custom type bind info.
  * @param out_type The resulting alias logical type. This logical type will have the same internal representation as the base type but with the provided alias name.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_logical_type_create_with_alias(duckdb_v2_logical_type_handle base_type, duckdb_v2_identifier_t alias_name, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_context_create_type_with_alias(duckdb_v2_context_handle ctx, duckdb_v2_logical_type_handle base_type, duckdb_v2_identifier_t alias_name, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
+
+/*!
+ * Creates a logical type that is an alias of another logical type.
+ *
+ * The alias keeps the base type's internal representation, so the execution engine needs no custom handling for it, while making the type logically distinct from its base. Intended for custom type bind callbacks, where the base type and the name both come from the bind info.
+ *
+ * Scoped like the rest of the create_type family: the alias is resolved against the catalog reachable from the connection. An empty alias name returns ERROR_INPUT_INVALID.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param conn The connection to resolve the alias against.
+ * @param base_type The logical type to create an alias of. This is typically the base type provided in the custom type bind info.
+ * @param alias_name The name to give the resulting alias logical type. This should typically be the name of the custom type being constructed, which can be obtained from the custom type bind info.
+ * @param out_type The resulting alias logical type. This logical type will have the same internal representation as the base type but with the provided alias name.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_create_type_with_alias(duckdb_v2_connection_handle conn, duckdb_v2_logical_type_handle base_type, duckdb_v2_identifier_t alias_name, duckdb_v2_logical_type_handle* out_type, duckdb_v2_error_info_handle* err);
 
 /* --- Struct definitions for logical_type --- */
 

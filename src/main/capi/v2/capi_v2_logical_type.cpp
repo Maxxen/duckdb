@@ -471,22 +471,48 @@ DUCKDB_V2_ERROR duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle t
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_logical_type_create_with_alias(duckdb_v2_logical_type_handle base_type,
+namespace {
+
+// The alias keeps the base type's internal representation; only the name and
+// its catalog identity change.
+duckdb::LogicalType AliasOf(duckdb_v2_logical_type_handle base_type, duckdb_v2_identifier_t alias_name,
+                            duckdb_v2_logical_type_handle *out_type) {
+	if (!base_type || (!alias_name.ptr && alias_name.len > 0) || !out_type) {
+		throw duckdb::InvalidInputException("base type, alias name and out_type cannot be null");
+	}
+	*out_type = nullptr;
+	if (alias_name.len == 0) {
+		throw duckdb::InvalidInputException("alias name cannot be empty");
+	}
+	auto copy = *Convert(base_type);
+	copy.SetAlias(std::string(Convert(alias_name)));
+	return copy;
+}
+
+} // namespace
+
+DUCKDB_V2_ERROR duckdb_v2_context_create_type_with_alias(duckdb_v2_context_handle ctx,
+                                                         duckdb_v2_logical_type_handle base_type,
                                                          duckdb_v2_identifier_t alias_name,
                                                          duckdb_v2_logical_type_handle *out_type,
                                                          duckdb_v2_error_info_handle *err) {
 	return WithErrorHandler(err, [&]() {
-		if (!base_type || (!alias_name.ptr && alias_name.len > 0) || !out_type) {
-			throw duckdb::InvalidInputException("null argument to duckdb_v2_logical_type_create_with_alias");
+		if (!ctx) {
+			throw duckdb::InvalidInputException("context pointer cannot be null");
 		}
-		if (alias_name.len == 0) {
-			throw duckdb::InvalidInputException(
-			    "Alias name cannot be empty in duckdb_v2_logical_type_create_with_alias");
+		*out_type = Convert(new duckdb::LogicalType(AliasOf(base_type, alias_name, out_type)));
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_connection_create_type_with_alias(duckdb_v2_connection_handle conn,
+                                                            duckdb_v2_logical_type_handle base_type,
+                                                            duckdb_v2_identifier_t alias_name,
+                                                            duckdb_v2_logical_type_handle *out_type,
+                                                            duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		if (!conn) {
+			throw duckdb::InvalidInputException("connection pointer cannot be null");
 		}
-		auto copy = *Convert(base_type);
-
-		copy.SetAlias(std::string(Convert(alias_name)));
-
-		*out_type = Convert(new duckdb::LogicalType(std::move(copy)));
+		*out_type = Convert(new duckdb::LogicalType(AliasOf(base_type, alias_name, out_type)));
 	});
 }

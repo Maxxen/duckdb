@@ -627,9 +627,15 @@ auto LogicalType::GetName() const -> std::string_view {
 	return FromStr(name);
 }
 
-auto LogicalType::WithAlias(std::string_view alias) const -> LogicalType {
+auto LogicalType::WithAlias(const Context &ctx, std::string_view alias) const -> LogicalType {
 	duckdb_v2_logical_type_handle new_type = nullptr;
-	CheckedAPICall(duckdb_v2_logical_type_create_with_alias, handle(), ToStr(alias), &new_type);
+	CheckedAPICall(duckdb_v2_context_create_type_with_alias, ctx.handle(), handle(), ToStr(alias), &new_type);
+	return detail::Factory::Make<LogicalType>(new_type);
+}
+
+auto LogicalType::WithAlias(const Connection &conn, std::string_view alias) const -> LogicalType {
+	duckdb_v2_logical_type_handle new_type = nullptr;
+	CheckedAPICall(duckdb_v2_connection_create_type_with_alias, conn.handle(), handle(), ToStr(alias), &new_type);
 	return detail::Factory::Make<LogicalType>(new_type);
 }
 
@@ -866,7 +872,7 @@ auto Value::Cast(const Context &ctx, const LogicalType &target) const -> Value {
 	return detail::Factory::Make<Value>(value);
 }
 
-auto Value::Cast(Connection &conn, const LogicalType &target) const -> Value {
+auto Value::Cast(const Connection &conn, const LogicalType &target) const -> Value {
 	duckdb_v2_value_handle value = nullptr;
 	CheckedAPICall(duckdb_v2_value_cast_with_connection, conn.handle(), handle(), target.handle(), &value);
 	return detail::Factory::Make<Value>(value);
@@ -1436,11 +1442,11 @@ auto Value::Create(Context &ctx, uuid_t value) -> Value {
 // borrowed children into handle arrays.
 namespace {
 
-auto ChildHandles(const std::vector<Value::ValueRef> &values) -> std::vector<duckdb_v2_value_handle> {
+auto ChildHandles(const std::vector<Value> &values) -> std::vector<duckdb_v2_value_handle> {
 	std::vector<duckdb_v2_value_handle> handles;
 	handles.reserve(values.size());
 	for (const auto &value : values) {
-		handles.push_back(value.get().handle());
+		handles.push_back(value.handle());
 	}
 	return handles;
 }
@@ -1457,7 +1463,7 @@ auto FromHandle(duckdb_v2_value_handle value) -> Value {
 
 } // namespace
 
-auto Value::CreateList(Connection &conn, const std::vector<ValueRef> &values) -> Value {
+auto Value::CreateList(Connection &conn, ValueList values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_list_with_connection, conn.handle(), nullptr, DataOrNull(children),
@@ -1465,7 +1471,7 @@ auto Value::CreateList(Connection &conn, const std::vector<ValueRef> &values) ->
 	return FromHandle(out);
 }
 
-auto Value::CreateList(Context &ctx, const std::vector<ValueRef> &values) -> Value {
+auto Value::CreateList(Context &ctx, ValueList values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_list_with_context, ctx.handle(), nullptr, DataOrNull(children),
@@ -1487,7 +1493,7 @@ auto Value::CreateList(Context &ctx, const LogicalType &child_type) -> Value {
 	return FromHandle(out);
 }
 
-auto Value::CreateArray(Connection &conn, const std::vector<ValueRef> &values) -> Value {
+auto Value::CreateArray(Connection &conn, ValueList values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_array_with_connection, conn.handle(), nullptr, DataOrNull(children),
@@ -1495,7 +1501,7 @@ auto Value::CreateArray(Connection &conn, const std::vector<ValueRef> &values) -
 	return FromHandle(out);
 }
 
-auto Value::CreateArray(Context &ctx, const std::vector<ValueRef> &values) -> Value {
+auto Value::CreateArray(Context &ctx, ValueList values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_array_with_context, ctx.handle(), nullptr, DataOrNull(children),
@@ -1507,12 +1513,12 @@ namespace {
 
 // STRUCT crosses as parallel name and child arrays.
 struct StructArrays {
-	explicit StructArrays(const std::vector<std::pair<std::string_view, Value::ValueRef>> &values) {
+	explicit StructArrays(const std::vector<std::pair<std::string, Value>> &values) {
 		names.reserve(values.size());
 		children.reserve(values.size());
 		for (const auto &field : values) {
 			names.push_back(ToStr(field.first));
-			children.push_back(field.second.get().handle());
+			children.push_back(field.second.handle());
 		}
 	}
 	std::vector<duckdb_v2_identifier_t> names;
@@ -1521,7 +1527,7 @@ struct StructArrays {
 
 } // namespace
 
-auto Value::CreateStruct(Connection &conn, const std::vector<std::pair<std::string_view, ValueRef>> &values) -> Value {
+auto Value::CreateStruct(Connection &conn, NamedValueList values) -> Value {
 	StructArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_struct_with_connection, conn.handle(), DataOrNull(split.names),
@@ -1529,7 +1535,7 @@ auto Value::CreateStruct(Connection &conn, const std::vector<std::pair<std::stri
 	return FromHandle(out);
 }
 
-auto Value::CreateStruct(Context &ctx, const std::vector<std::pair<std::string_view, ValueRef>> &values) -> Value {
+auto Value::CreateStruct(Context &ctx, NamedValueList values) -> Value {
 	StructArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_struct_with_context, ctx.handle(), DataOrNull(split.names),
@@ -1537,7 +1543,7 @@ auto Value::CreateStruct(Context &ctx, const std::vector<std::pair<std::string_v
 	return FromHandle(out);
 }
 
-auto Value::CreateTuple(Connection &conn, const std::vector<ValueRef> &values) -> Value {
+auto Value::CreateTuple(Connection &conn, ValueList values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_tuple_with_connection, conn.handle(), DataOrNull(children),
@@ -1545,7 +1551,7 @@ auto Value::CreateTuple(Connection &conn, const std::vector<ValueRef> &values) -
 	return FromHandle(out);
 }
 
-auto Value::CreateTuple(Context &ctx, const std::vector<ValueRef> &values) -> Value {
+auto Value::CreateTuple(Context &ctx, ValueList values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_tuple_with_context, ctx.handle(), DataOrNull(children),
@@ -1557,12 +1563,12 @@ namespace {
 
 // MAP crosses as parallel key and value arrays.
 struct MapArrays {
-	explicit MapArrays(const std::vector<std::pair<Value::ValueRef, Value::ValueRef>> &values) {
+	explicit MapArrays(const std::vector<std::pair<Value, Value>> &values) {
 		keys.reserve(values.size());
 		entries.reserve(values.size());
 		for (const auto &entry : values) {
-			keys.push_back(entry.first.get().handle());
-			entries.push_back(entry.second.get().handle());
+			keys.push_back(entry.first.handle());
+			entries.push_back(entry.second.handle());
 		}
 	}
 	std::vector<duckdb_v2_value_handle> keys;
@@ -1571,7 +1577,7 @@ struct MapArrays {
 
 } // namespace
 
-auto Value::CreateMap(Connection &conn, const std::vector<std::pair<ValueRef, ValueRef>> &values) -> Value {
+auto Value::CreateMap(Connection &conn, KeyValueList values) -> Value {
 	MapArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_map_with_connection, conn.handle(), nullptr, nullptr, DataOrNull(split.keys),
@@ -1579,7 +1585,7 @@ auto Value::CreateMap(Connection &conn, const std::vector<std::pair<ValueRef, Va
 	return FromHandle(out);
 }
 
-auto Value::CreateMap(Context &ctx, const std::vector<std::pair<ValueRef, ValueRef>> &values) -> Value {
+auto Value::CreateMap(Context &ctx, KeyValueList values) -> Value {
 	MapArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
 	CheckedAPICall(duckdb_v2_value_create_map_with_context, ctx.handle(), nullptr, nullptr, DataOrNull(split.keys),
