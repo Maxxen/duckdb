@@ -83,18 +83,6 @@ T ReadAs(duckdb_v2_value_handle value, LogicalTypeId expected) {
 	return converted.GetValueUnsafe<T>();
 }
 
-// A borrowed byte range as a std::string. A null pointer is only valid when
-// the range is empty; the unchecked Convert would walk it.
-std::string ToString(duckdb_v2_str str) {
-	if (!str.ptr) {
-		if (str.len > 0) {
-			throw InvalidInputException("byte range cannot be null unless it is empty");
-		}
-		return std::string();
-	}
-	return std::string(str.ptr, str.len);
-}
-
 // Hands a freshly built value to the caller.
 duckdb_v2_value_handle Emit(Value value) {
 	return Convert(new Value(std::move(value)));
@@ -168,7 +156,7 @@ Value BuildDecimal(duckdb_v2_hugeint_t in_value, uint8_t width, uint8_t scale) {
 // BIT carries a mandatory padding-header byte, BIGNUM a header plus at least
 // one magnitude byte; anything shorter is not addressable storage.
 Value BuildBit(duckdb_v2_str in_value) {
-	auto bytes = ToString(in_value);
+	auto bytes = Convert(in_value);
 	if (bytes.empty()) {
 		throw InvalidInputException("the BIT wire form carries a mandatory padding header byte");
 	}
@@ -176,7 +164,7 @@ Value BuildBit(duckdb_v2_str in_value) {
 }
 
 Value BuildBignum(duckdb_v2_str in_value) {
-	auto bytes = ToString(in_value);
+	auto bytes = Convert(in_value);
 	if (bytes.size() <= Bignum::BIGNUM_HEADER_SIZE) {
 		throw InvalidInputException("the BIGNUM storage form requires more than " +
 		                            std::to_string(Bignum::BIGNUM_HEADER_SIZE) + " bytes");
@@ -428,6 +416,17 @@ DUCKDB_V2_ERROR duckdb_v2_value_get_type(duckdb_v2_value_handle value, duckdb_v2
 		// TypeValue::GetType deserializes the stored type into a fresh copy.
 		auto *lt = new duckdb::LogicalType(duckdb::TypeValue::GetType(*Convert(value)));
 		*out_type = Convert(lt);
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_value_get_uuid(duckdb_v2_value_handle value, duckdb_v2_hugeint_t *out,
+                                         duckdb_v2_error_info_handle *err) {
+	return WithErrorHandler(err, [&]() {
+		RequireOut(out);
+		// UUID shares HUGEINT's storage but not its meaning, so it is read
+		// exactly rather than through the converting path.
+		RequireTypedValue(value, duckdb::LogicalTypeId::UUID);
+		*out = Convert(Convert(value)->GetValueUnsafe<duckdb::hugeint_t>());
 	});
 }
 
@@ -831,7 +830,7 @@ DUCKDB_V2_ERROR duckdb_v2_value_create_varchar_with_context(duckdb_v2_context_ha
 	return WithErrorHandler(err, [&]() {
 		RequireScope(ctx);
 		RequireOutValue(out_value);
-		*out_value = Emit(duckdb::Value(ToString(in_value)));
+		*out_value = Emit(duckdb::Value(Convert(in_value)));
 	});
 }
 
@@ -841,7 +840,7 @@ DUCKDB_V2_ERROR duckdb_v2_value_create_varchar_with_connection(duckdb_v2_connect
 	return WithErrorHandler(err, [&]() {
 		RequireScope(conn);
 		RequireOutValue(out_value);
-		*out_value = Emit(duckdb::Value(ToString(in_value)));
+		*out_value = Emit(duckdb::Value(Convert(in_value)));
 	});
 }
 
@@ -851,7 +850,7 @@ DUCKDB_V2_ERROR duckdb_v2_value_create_blob_with_context(duckdb_v2_context_handl
 	return WithErrorHandler(err, [&]() {
 		RequireScope(ctx);
 		RequireOutValue(out_value);
-		*out_value = Emit(duckdb::Value::BLOB_RAW(ToString(in_value)));
+		*out_value = Emit(duckdb::Value::BLOB_RAW(std::string(Convert(in_value))));
 	});
 }
 
@@ -861,7 +860,7 @@ DUCKDB_V2_ERROR duckdb_v2_value_create_blob_with_connection(duckdb_v2_connection
 	return WithErrorHandler(err, [&]() {
 		RequireScope(conn);
 		RequireOutValue(out_value);
-		*out_value = Emit(duckdb::Value::BLOB_RAW(ToString(in_value)));
+		*out_value = Emit(duckdb::Value::BLOB_RAW(std::string(Convert(in_value))));
 	});
 }
 

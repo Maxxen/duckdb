@@ -13,14 +13,11 @@
 
 #include <functional>
 #include <utility>
-#include <tuple>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
-#include <optional>
 #include <stdexcept>
-#include <memory>
 
 namespace duckdb {
 namespace cxx {
@@ -255,8 +252,6 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // SQL statements
 //----------------------------------------------------------------------------------------------------------------------
-
-class ColumnDataCollection;
 
 // An owned, parsed SQL statement, yielded by StatementIterator::Next and
 // consumed by Connection::Query.
@@ -611,21 +606,8 @@ public:
 };
 
 //----------------------------------------------------------------------------------------------------------------------
-// Base types
+// Primitive data types
 //----------------------------------------------------------------------------------------------------------------------
-
-// A decoded BIGNUM: big-endian magnitude bytes plus a sign flag. The integer
-// is (-1)**is_negative * unsigned_big_endian(magnitude). Owned bytes.
-struct DecodedBignum {
-	std::vector<uint8_t> magnitude;
-	bool is_negative;
-};
-
-// A decoded UUID: the canonical 16 big-endian bytes. The storage is an int128
-// with its high bit flipped for sort order; this is the real value.
-struct DecodedUuid {
-	uint8_t bytes[16];
-};
 
 struct int128_t {
 	uint64_t lower;
@@ -752,48 +734,128 @@ struct blob_t {
 	blob_t(std::string_view str) : blob_t(str.data(), static_cast<uint32_t>(str.size())) {
 	}
 
-	blob_t(const char *heap_data, uint32_t len) {
-		if (len <= INLINE_LENGTH) {
+	blob_t(const char *data, uint32_t size) {
+		if (size <= INLINE_LENGTH) {
 			memset(&value, 0, sizeof(value));
-			value.inlined.length = len;
-			std::memcpy(value.inlined.inlined, heap_data, len);
+			value.inlined.length = size;
+			std::memcpy(value.inlined.inlined, data, size);
 		} else {
 			memset(&value, 0, sizeof(value));
-			value.pointer.length = len;
-			value.pointer.ptr = const_cast<char *>(heap_data); // NOLINT
-			std::memcpy(value.pointer.prefix, heap_data, PREFIX_LENGTH);
+			value.pointer.length = size;
+			value.pointer.ptr = const_cast<char *>(data); // NOLINT
+			std::memcpy(value.pointer.prefix, data, PREFIX_LENGTH);
 		}
 	}
 
 	explicit operator std::string_view() const {
-		return std::string_view(Data(), Length());
+		return std::string_view(data(), size());
 	}
 
 	explicit operator std::string() const {
-		return std::string(Data(), Length());
+		return std::string(data(), size());
 	}
 
-	// length shares offset 0 across both arms, so these read either representation.
-	auto IsInlined() const -> bool {
+	auto is_inlined() const -> bool {
 		return value.inlined.length <= INLINE_LENGTH;
 	}
-	auto Length() const -> uint32_t {
+	auto size() const -> uint32_t {
 		return value.inlined.length;
 	}
-	auto Data() const -> const char * {
-		return IsInlined() ? value.inlined.inlined : value.pointer.ptr;
+	auto data() const -> const char * {
+		return is_inlined() ? value.inlined.inlined : value.pointer.ptr;
 	}
-	// The bytes as one view: {Data(), Length()}.
-	auto AsStringView() const -> std::string_view {
-		return std::string_view(Data(), Length());
+	auto data_mut() -> char * {
+		return is_inlined() ? value.inlined.inlined : value.pointer.ptr;
 	}
-	auto GetDataWritable() -> char * {
-		return IsInlined() ? value.inlined.inlined : value.pointer.ptr;
+	auto view() const -> std::string_view {
+		return std::string_view(data(), size());
 	}
 };
 
 struct varchar_t : blob_t {
 	using blob_t::blob_t;
+};
+
+// BIT's storage is a padding-header byte followed by the data bytes; the
+// header counts the leading bits of the first data byte that are not part of
+// the bit string. A lens over those bytes, so BIT can name itself in an
+// overload the way varchar_t does.
+struct bit_t : blob_t {
+	using blob_t::blob_t;
+
+	auto GetPaddingBits() const -> uint8_t {
+		return size() > 0 ? static_cast<uint8_t>(data()[0]) : 0;
+	}
+	// The data bytes, past the header.
+	auto GetBits() const -> const char * {
+		return size() > 0 ? data() + 1 : data();
+	}
+	auto GetBitsSize() const -> uint32_t {
+		return size() > 0 ? size() - 1 : 0;
+	}
+	// How many bits the string actually holds.
+	auto GetBitCount() const -> uint64_t {
+		return GetBitsSize() == 0 ? 0 : static_cast<uint64_t>(GetBitsSize()) * 8 - GetPaddingBits();
+	}
+};
+
+// BIGNUM's storage is opaque: negatives are bit-inverted behind a header, so
+// the bytes are not the magnitude. Only the codec translates them.
+struct bignum_t : blob_t {
+	using blob_t::blob_t;
+
+	// A decoded BIGNUM: big-endian magnitude bytes plus a sign flag. The integer
+	// is (-1)**is_negative * unsigned_big_endian(magnitude). Owned bytes.
+	struct Decoded {
+		std::vector<uint8_t> magnitude;
+		bool is_negative;
+	};
+
+	// The magnitude and sign the storage stands for.
+	auto Decode() const -> Decoded;
+	// The inverse: storage bytes for a magnitude + sign, to build a value from.
+	// The magnitude must be canonical -- at least one byte, no leading zeroes,
+	// zero being a single 0x00 with is_negative false.
+	static auto Encode(const Decoded &value) -> std::vector<uint8_t>;
+};
+
+// UUID's storage is an int128 with its high bit flipped so the integer sorts,
+// so the canonical bytes only come out through Decode. Distinct from int128_t,
+// which names HUGEINT.
+struct uuid_t {
+	int128_t value {};
+
+	uuid_t() = default;
+	explicit uuid_t(int128_t storage) : value(storage) {
+	}
+
+	// A decoded UUID: the canonical 16 big-endian bytes. The storage is an int128
+	// with its high bit flipped for sort order; this is the real value.
+	struct Decoded {
+		uint8_t bytes[16];
+	};
+
+	// The canonical 16 big-endian bytes.
+	auto Decode() const -> Decoded {
+		const uint64_t upper = static_cast<uint64_t>(value.upper) ^ (static_cast<uint64_t>(1) << 63);
+		Decoded out {};
+		for (int i = 0; i < 8; i++) {
+			out.bytes[i] = static_cast<uint8_t>((upper >> (56 - 8 * i)) & 0xFF);
+			out.bytes[8 + i] = static_cast<uint8_t>((value.lower >> (56 - 8 * i)) & 0xFF);
+		}
+		return out;
+	}
+
+	// The inverse: canonical bytes into the sort-ordered storage form.
+	static auto Encode(const Decoded &bytes) -> uuid_t {
+		uint64_t upper = 0;
+		uint64_t lower = 0;
+		for (int i = 0; i < 8; i++) {
+			upper = (upper << 8) | bytes.bytes[i];
+			lower = (lower << 8) | bytes.bytes[8 + i];
+		}
+		return uuid_t(int128_t {lower, static_cast<int64_t>(upper ^ (static_cast<uint64_t>(1) << 63))});
+	}
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -871,6 +933,9 @@ public:
 		return CreateDecimal(conn, WidenDecimal(value.value), WIDTH, SCALE);
 	}
 
+	static auto Create(Connection &conn, bit_t value) -> Value;
+	static auto Create(Connection &conn, bignum_t value) -> Value;
+	static auto Create(Connection &conn, uuid_t value) -> Value;
 	template <class T>
 	static auto Create(Connection &conn, T value) -> Value = delete;
 
@@ -907,6 +972,9 @@ public:
 		return CreateDecimal(ctx, WidenDecimal(value.value), WIDTH, SCALE);
 	}
 
+	static auto Create(Context &ctx, bit_t value) -> Value;
+	static auto Create(Context &ctx, bignum_t value) -> Value;
+	static auto Create(Context &ctx, uuid_t value) -> Value;
 	template <class T>
 	static auto Create(Context &ctx, T value) -> Value = delete;
 
@@ -1045,6 +1113,12 @@ auto Value::Get() const -> timestamp_tz_ns_t;
 template <>
 auto Value::Get() const -> interval_t;
 template <>
+auto Value::Get() const -> bit_t;
+template <>
+auto Value::Get() const -> bignum_t;
+template <>
+auto Value::Get() const -> uuid_t;
+template <>
 auto Value::Get() const -> LogicalType;
 
 // One type parameter: the unit of Context::CreateType and
@@ -1157,16 +1231,6 @@ struct VectorView {
 	auto IsValid(idx_t i) const -> bool {
 		return RowIsValid(SelAt(i));
 	}
-};
-
-// A decoded BIT: borrowed data bytes (lifetime = the owning vector's chunk)
-// plus the count of leading bits of the first byte that are not part of the
-// bit string. Bit n (0-indexed, leftmost first) is read as
-// (data[(n + padding_bits) / 8] >> (7 - ((n + padding_bits) % 8))) & 1.
-struct DecodedBit {
-	const uint8_t *data;
-	idx_t length; // data bytes
-	uint8_t padding_bits;
 };
 
 // Writer over a FLAT vector's validity mask (from Vector::GetValidityMutable).
@@ -1305,12 +1369,6 @@ private:
 	// Throws INVALID_INPUT if [start, start+count) is not writable: a CONSTANT
 	// vector's data array holds a single slot, so only index 0 may be written.
 	auto CheckWriteRange(idx_t start, idx_t count) const -> void;
-
-	// Committed layout constants, shared by each Decode / Encode pair: TIME_TZ
-	// packs its offset into the low 24 bits, UUID flips the sign bit so the
-	// signed storage sorts like the unsigned value.
-	static constexpr uint64_t TIME_TZ_OFFSET_MASK = ~uint64_t(0) >> 40;
-	static constexpr uint64_t UUID_SORT_BIT = uint64_t(1) << 63;
 };
 
 //----------------------------------------------------------------------------------------------------------------------

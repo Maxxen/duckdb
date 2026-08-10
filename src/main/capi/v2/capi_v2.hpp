@@ -51,7 +51,18 @@ namespace capiv2 {
 //----------------------------------------------------------------------------------------------------------------------
 // Conversion Helpers
 //----------------------------------------------------------------------------------------------------------------------
+// The one place a caller-supplied byte range enters the engine, so the range
+// is validated here rather than at each call site: a null pointer is only
+// meaningful when the range is empty, and viewing it with a non-zero length
+// would walk address zero. Every entry point converts inside its
+// WithErrorHandler scope, so this surfaces as ERROR_INPUT_INVALID.
 inline auto Convert(duckdb_v2_str str) -> std::string_view {
+	if (!str.ptr) {
+		if (str.len > 0) {
+			throw InvalidInputException("byte range cannot be null unless it is empty");
+		}
+		return std::string_view();
+	}
 	return std::string_view(str.ptr, str.len);
 }
 inline auto Convert(std::string_view str) -> duckdb_v2_str {

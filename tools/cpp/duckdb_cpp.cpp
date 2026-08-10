@@ -139,7 +139,7 @@ auto ToStr(std::string_view s) -> duckdb_v2_str {
 }
 // Borrow a storage token's bytes. Covers varchar_t through its blob_t base.
 auto ToStr(const blob_t &bytes) -> duckdb_v2_str {
-	return duckdb_v2_str {bytes.Data(), bytes.Length()};
+	return duckdb_v2_str {bytes.data(), bytes.size()};
 }
 
 // The 128-bit mirrors carry the same halves as their C counterparts, converted
@@ -198,19 +198,6 @@ auto RenderText(F &&func, ARGS &&... args) -> std::string {
 	out.resize(length);
 	// resize() guarantees length + 1 writable bytes, the last being the terminator.
 	CheckedAPICall(func, args..., &out[0], length + 1, &length);
-	return out;
-}
-
-// Decodes BIGNUM storage bytes into an owned magnitude + sign, sizing the
-// buffer through the same two-call protocol.
-auto DecodeBignumBytes(const uint8_t *data, idx_t length) -> DecodedBignum {
-	idx_t magnitude_length = 0;
-	bool is_negative = false;
-	CheckedAPICall(duckdb_v2_bignum_decode, data, length, static_cast<uint8_t *>(nullptr), static_cast<idx_t>(0),
-	               &magnitude_length, &is_negative);
-	DecodedBignum out {std::vector<uint8_t>(magnitude_length), is_negative};
-	CheckedAPICall(duckdb_v2_bignum_decode, data, length, out.magnitude.data(), out.magnitude.size(), &magnitude_length,
-	               &is_negative);
 	return out;
 }
 
@@ -1366,6 +1353,81 @@ auto Value::CreateDecimal(Context &ctx, int128_t value, uint8_t width, uint8_t s
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+// BIT, BIGNUM and UUID
+//----------------------------------------------------------------------------------------------------------------------
+
+// Each is a lens over a payload that already has a C representation, so the
+// constructors and getters reuse those entry points; what the types add is a
+// distinct name for overload resolution and the decode the storage needs.
+
+auto bignum_t::Decode() const -> Decoded {
+	const auto *bytes = reinterpret_cast<const uint8_t *>(data());
+	Decoded out {};
+	idx_t length = 0;
+	CheckedAPICall(duckdb_v2_bignum_decode, bytes, static_cast<idx_t>(size()), nullptr, static_cast<idx_t>(0), &length,
+	               &out.is_negative);
+	out.magnitude.resize(length);
+	CheckedAPICall(duckdb_v2_bignum_decode, bytes, static_cast<idx_t>(size()), out.magnitude.data(),
+	               static_cast<idx_t>(out.magnitude.size()), &length, &out.is_negative);
+	return out;
+}
+
+auto bignum_t::Encode(const Decoded &value) -> std::vector<uint8_t> {
+	idx_t length = 0;
+	CheckedAPICall(duckdb_v2_bignum_encode, value.magnitude.data(), static_cast<idx_t>(value.magnitude.size()),
+	               value.is_negative, nullptr, static_cast<idx_t>(0), &length);
+	std::vector<uint8_t> storage(length);
+	CheckedAPICall(duckdb_v2_bignum_encode, value.magnitude.data(), static_cast<idx_t>(value.magnitude.size()),
+	               value.is_negative, storage.data(), static_cast<idx_t>(storage.size()), &length);
+	return storage;
+}
+
+template <>
+auto Value::Get() const -> bit_t {
+	duckdb_v2_str payload;
+	CheckedAPICall(duckdb_v2_value_get_blob, handle(), &payload);
+	return bit_t(payload.ptr, static_cast<uint32_t>(payload.len));
+}
+
+template <>
+auto Value::Get() const -> bignum_t {
+	duckdb_v2_str payload;
+	CheckedAPICall(duckdb_v2_value_get_blob, handle(), &payload);
+	return bignum_t(payload.ptr, static_cast<uint32_t>(payload.len));
+}
+
+template <>
+auto Value::Get() const -> uuid_t {
+	duckdb_v2_hugeint_t payload {};
+	CheckedAPICall(duckdb_v2_value_get_uuid, handle(), &payload);
+	return uuid_t(FromC(payload));
+}
+
+auto Value::Create(Connection &conn, bit_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_bit_with_connection, ToStr(value))
+}
+
+auto Value::Create(Context &ctx, bit_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_bit_with_context, ToStr(value))
+}
+
+auto Value::Create(Connection &conn, bignum_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_bignum_with_connection, ToStr(value))
+}
+
+auto Value::Create(Context &ctx, bignum_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_bignum_with_context, ToStr(value))
+}
+
+auto Value::Create(Connection &conn, uuid_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_uuid_with_connection, ToC(value.value))
+}
+
+auto Value::Create(Context &ctx, uuid_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_uuid_with_context, ToC(value.value))
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 // Composite Value Constructors
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -1663,30 +1725,6 @@ auto Vector::MakeConstant(const Value &value, idx_t count) -> void {
 auto Vector::MakeSequence(int64_t start, int64_t increment, idx_t count) -> void {
 	CheckedAPICall(duckdb_v2_vector_make_sequence, handle(), start, increment, count);
 }
-
-// The blob_t <-> duckdb_v2_bytes casts below are sanctioned by the
-// layout static_asserts above.
-
-/*
-auto Vector::DecodeBignum(const blob_t &value) -> DecodedBignum {
-    // The decoder takes plain storage bytes, so the payload is resolved here the
-    // same way as VARCHAR / BLOB.
-    return DecodeBignumBytes(reinterpret_cast<const uint8_t *>(value.Data()), value.Length());
-}
-*/
-//
-// auto Vector::EncodeBignum(const DecodedBignum &value) -> std::vector<uint8_t> {
-// 	// Sizes through the same two-call protocol DecodeBignumBytes uses.
-// 	idx_t storage_length = 0;
-// 	CheckedAPICall(duckdb_v2_bignum_encode, value.magnitude.data(), value.magnitude.size(), value.is_negative,
-// 	               static_cast<uint8_t *>(nullptr), static_cast<idx_t>(0), &storage_length);
-// 	std::vector<uint8_t> storage(storage_length);
-// 	CheckedAPICall(duckdb_v2_bignum_encode, value.magnitude.data(), value.magnitude.size(), value.is_negative,
-// 	               storage.data(), storage.size(), &storage_length);
-// 	return storage;
-// }
-
-// --- Single-cell value bridge (owned by the types-values worktree) ---
 
 auto Vector::GetValue(idx_t row) const -> Value {
 	duckdb_v2_value_handle value = nullptr;
