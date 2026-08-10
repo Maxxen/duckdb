@@ -1293,7 +1293,7 @@ TEST_CASE("V2: constant LIST vector via make_constant + single-cell round trip",
 	elems[0] = MakeInt32Value(fx.conn, 1);
 	elems[1] = MakeInt32Value(fx.conn, 2);
 	duckdb_v2_value_handle list_value = nullptr;
-	rc = duckdb_v2_value_create_list_from_connection(fx.conn, nullptr, elems, 2, &list_value, nullptr);
+	rc = duckdb_v2_value_create_list_with_connection(fx.conn, nullptr, elems, 2, &list_value, nullptr);
 	duckdb_v2_value_destroy(&elems[0]);
 	duckdb_v2_value_destroy(&elems[1]);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
@@ -1343,13 +1343,13 @@ TEST_CASE("V2: nested cells round trip through set_value / get_value", "[capi_v2
 	elems[0] = MakeInt32Value(fx.conn, 5);
 	elems[1] = MakeInt32Value(fx.conn, 6);
 	duckdb_v2_value_handle full = nullptr;
-	rc = duckdb_v2_value_create_list_from_connection(fx.conn, nullptr, elems, 2, &full, nullptr);
+	rc = duckdb_v2_value_create_list_with_connection(fx.conn, nullptr, elems, 2, &full, nullptr);
 	duckdb_v2_value_destroy(&elems[0]);
 	duckdb_v2_value_destroy(&elems[1]);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_handle empty = nullptr;
 	auto elem_type = MakeType(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	REQUIRE(duckdb_v2_value_create_list_from_connection(fx.conn, elem_type, nullptr, 0, &empty, nullptr) ==
+	REQUIRE(duckdb_v2_value_create_list_with_connection(fx.conn, elem_type, nullptr, 0, &empty, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&elem_type);
 	duckdb_v2_logical_type_destroy(&list_type);

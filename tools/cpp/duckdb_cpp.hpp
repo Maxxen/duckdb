@@ -20,9 +20,6 @@
 #include <vector>
 #include <optional>
 #include <stdexcept>
-#include <cstdint>
-#include <cstring>
-#include <cassert>
 #include <memory>
 
 namespace duckdb {
@@ -181,24 +178,24 @@ public:
 // that have not yet been resolved through a database get.
 enum class OptionTargetScope : uint8_t {
 	/* Target scope is not known. */
-	Unknown = 0,
+	UNKNOWN = 0,
 	/* May only be written at GLOBAL (database) scope. */
-	GlobalOnly = 1,
+	GLOBAL_ONLY = 1,
 	/* May only be written at LOCAL (session) scope. */
-	LocalOnly = 2,
+	LOCAL_ONLY = 2,
 	/* May be written at either scope; defaults to GLOBAL when unspecified. */
-	GlobalDefault = 3,
+	GLOBAL_DEFAULT = 3,
 	/* May be written at either scope; defaults to LOCAL when unspecified. */
-	LocalDefault = 4,
+	LOCAL_DEFAULT = 4,
 };
 
 // Scope of a connection-level option write. Mirrors DUCKDB_V2_SETTING_SCOPE
 // numerically (parity pinned in the .cpp). Automatic resolves from the
 // option's declared target scope, exactly like SQL `SET name = value`.
 enum class SettingScope : uint8_t {
-	Automatic = 0,
-	Global = 1,
-	Local = 2,
+	AUTOMATIC = 0,
+	GLOBAL = 1,
+	LOCAL = 2,
 };
 
 class DatabaseOption final : public detail::Handle<DatabaseOption> {
@@ -464,15 +461,11 @@ auto LibraryVersion() -> std::string;
 // Logical Type
 //----------------------------------------------------------------------------------------------------------------------
 
-// Logical type identifier. Mirrors the C API's LOGICAL_TYPE_ID (and thereby
-// duckdb::LogicalTypeId) numerically; parity pinned by static_asserts in the
-// implementation.
 enum class LogicalTypeId : uint32_t {
 	INVALID = 0,
 	SQLNULL = 1,
 	UNKNOWN = 2,
 	ANY = 3,
-	// A type carried as a value (type parameters); see Value::Type.
 	TYPE = 6,
 	BOOLEAN = 10,
 	TINYINT = 11,
@@ -512,7 +505,6 @@ enum class LogicalTypeId : uint32_t {
 	UNION = 107,
 	ARRAY = 108,
 	VARIANT = 109,
-	// Unnamed struct; shares the physical representation of STRUCT.
 	TUPLE = 110,
 };
 
@@ -610,10 +602,6 @@ private:
 	explicit Schema(void *impl);
 };
 
-//----------------------------------------------------------------------------------------------------------------------
-// Base types
-//----------------------------------------------------------------------------------------------------------------------
-
 // A bound statement's signature: its output schema (result columns) and input schema (parameter types).
 // Returned by Connection::Bind.
 class Signature {
@@ -621,6 +609,10 @@ public:
 	Schema output;
 	Schema parameters;
 };
+
+//----------------------------------------------------------------------------------------------------------------------
+// Base types
+//----------------------------------------------------------------------------------------------------------------------
 
 // A decoded BIGNUM: big-endian magnitude bytes plus a sign flag. The integer
 // is (-1)**is_negative * unsigned_big_endian(magnitude). Owned bytes.
@@ -633,12 +625,6 @@ struct DecodedBignum {
 // with its high bit flipped for sort order; this is the real value.
 struct DecodedUuid {
 	uint8_t bytes[16];
-};
-
-struct interval_t {
-	int32_t months;
-	int32_t days;
-	int64_t micros;
 };
 
 struct int128_t {
@@ -655,21 +641,41 @@ struct date_t {
 	int32_t days = 0;
 };
 
-struct time_t {
+struct dtime_t {
 	int64_t micros = 0;
 };
 
-struct time_ns_t {
+struct dtime_ns_t {
 	int64_t nanos = 0;
 };
 
-struct time_tz {
-	time_tz() = default;
-	auto GetMicros() const -> uint64_t {
-		return bits & 0xFFFFFFFFFF;
+// TIME_TZ packs the time-of-day into the high 40 bits and a biased UTC offset
+// into the low 24 -- the committed layout, so the packed integer sorts. The
+// offset is stored reverse-ordered (MAX_OFFSET - seconds), which is why it
+// cannot be read out with a plain shift.
+struct dtime_tz_t {
+	static constexpr int OFFSET_BITS = 24;
+	static constexpr uint64_t OFFSET_MASK = (uint64_t(1) << OFFSET_BITS) - 1;
+	static constexpr int32_t MAX_OFFSET = 16 * 60 * 60 - 1; // +/-15:59:59
+
+	dtime_tz_t() = default;
+	// The packed form, as a vector slot holds it.
+	explicit dtime_tz_t(uint64_t bits) : bits(bits) {
 	}
-	auto GetOffset() const -> uint32_t {
-		return (bits >> 40) & 0xFFFFFF;
+	// Micros since midnight plus the UTC offset in seconds, positive east.
+	dtime_tz_t(int64_t micros, int32_t offset_seconds)
+	    : bits((static_cast<uint64_t>(micros) << OFFSET_BITS) |
+	           (static_cast<uint64_t>(MAX_OFFSET - offset_seconds) & OFFSET_MASK)) {
+	}
+
+	auto GetMicros() const -> int64_t {
+		return static_cast<int64_t>(bits >> OFFSET_BITS);
+	}
+	auto GetOffset() const -> int32_t {
+		return MAX_OFFSET - static_cast<int32_t>(bits & OFFSET_MASK);
+	}
+	auto GetBits() const -> uint64_t {
+		return bits;
 	}
 
 private:
@@ -680,7 +686,7 @@ struct timestamp_t {
 	int64_t micros = 0;
 };
 
-struct timestamp_s {
+struct timestamp_s_t {
 	int64_t seconds = 0;
 };
 
@@ -688,8 +694,22 @@ struct timestamp_ms_t {
 	int64_t millis = 0;
 };
 
-struct timestamp_ns {
+struct timestamp_ns_t {
 	int64_t nanos = 0;
+};
+
+struct timestamp_tz_t {
+	int64_t micros = 0;
+};
+
+struct timestamp_tz_ns_t {
+	int64_t nanos = 0;
+};
+
+struct interval_t {
+	int32_t months;
+	int32_t days;
+	int64_t micros;
 };
 
 struct list_entry_t {
@@ -697,26 +717,13 @@ struct list_entry_t {
 	uint64_t length = 0;
 };
 
-namespace detail {
-
-template <uint8_t WIDTH>
-struct DecimalStorageTraits {
-	// The same bounds as duckdb::Decimal::IsValid; 38 is MAX_WIDTH_DECIMAL.
-	static_assert(WIDTH >= 1 && WIDTH <= 38, "DECIMAL type width must be between 1 and 38");
-
-	using type = typename std::conditional<
-	    (WIDTH <= 4), int16_t,
-	    typename std::conditional<(WIDTH <= 9), int32_t,
-	                              typename std::conditional<(WIDTH <= 18), int64_t, int128_t>::type>::type>::type;
-};
-
-} // namespace detail
-
-template <uint8_t SCALE, uint8_t WIDTH>
+template <int8_t WIDTH, uint8_t SCALE>
 struct decimal_t {
 	static_assert(SCALE <= WIDTH, "DECIMAL scale must be less than or equal to width");
 	static_assert(WIDTH >= 1 && WIDTH <= 38, "DECIMAL type width must be between 1 and 38");
-	using storage_type = typename detail::DecimalStorageTraits<WIDTH>::type;
+	using storage_type = std::conditional_t<
+	    (WIDTH <= 4), int16_t,
+	    std::conditional_t<(WIDTH <= 9), int32_t, std::conditional_t<(WIDTH <= 18), int64_t, int128_t>>>;
 
 	storage_type value;
 };
@@ -814,6 +821,18 @@ public:
 	template <class T>
 	auto Get() const -> T = delete;
 
+	// DECIMAL cannot join the set above: Get<T> is a function template, and a
+	// function template cannot be partially specialized, so decimal_t<W, S>
+	// has no way in. This is the same spelling keyed on the parameters
+	// instead -- value.Get<18, 3>() -- and it checks them against the value's
+	// own type rather than reinterpreting the payload.
+	template <int8_t WIDTH, uint8_t SCALE>
+	auto Get() const -> decimal_t<WIDTH, SCALE> {
+		int128_t value {};
+		GetDecimal(value, WIDTH, SCALE);
+		return decimal_t<WIDTH, SCALE> {static_cast<typename decimal_t<WIDTH, SCALE>::storage_type>(value.lower)};
+	}
+
 	//! Null Constructors
 	static auto CreateNull(Connection &conn, const LogicalType &type) -> Value;
 	static auto CreateNull(Context &conn, const LogicalType &type) -> Value;
@@ -835,6 +854,23 @@ public:
 	static auto Create(Connection &conn, varchar_t value) -> Value;
 	static auto Create(Connection &conn, blob_t value) -> Value;
 	static auto Create(Connection &conn, const LogicalType &type) -> Value;
+	static auto Create(Connection &conn, date_t value) -> Value;
+	static auto Create(Connection &conn, dtime_t value) -> Value;
+	static auto Create(Connection &conn, dtime_ns_t value) -> Value;
+	static auto Create(Connection &conn, dtime_tz_t value) -> Value;
+	static auto Create(Connection &conn, timestamp_t value) -> Value;
+	static auto Create(Connection &conn, timestamp_s_t value) -> Value;
+	static auto Create(Connection &conn, timestamp_ms_t value) -> Value;
+	static auto Create(Connection &conn, timestamp_ns_t value) -> Value;
+	static auto Create(Connection &conn, timestamp_tz_t value) -> Value;
+	static auto Create(Connection &conn, timestamp_tz_ns_t value) -> Value;
+	static auto Create(Connection &conn, interval_t value) -> Value;
+
+	template <int8_t WIDTH, uint8_t SCALE>
+	static auto Create(Connection &conn, decimal_t<WIDTH, SCALE> value) -> Value {
+		return CreateDecimal(conn, WidenDecimal(value.value), WIDTH, SCALE);
+	}
+
 	template <class T>
 	static auto Create(Connection &conn, T value) -> Value = delete;
 
@@ -854,6 +890,22 @@ public:
 	static auto Create(Context &ctx, varchar_t value) -> Value;
 	static auto Create(Context &ctx, blob_t value) -> Value;
 	static auto Create(Context &ctx, const LogicalType &type) -> Value;
+	static auto Create(Context &ctx, date_t value) -> Value;
+	static auto Create(Context &ctx, dtime_t value) -> Value;
+	static auto Create(Context &ctx, dtime_ns_t value) -> Value;
+	static auto Create(Context &ctx, dtime_tz_t value) -> Value;
+	static auto Create(Context &ctx, timestamp_t value) -> Value;
+	static auto Create(Context &ctx, timestamp_s_t value) -> Value;
+	static auto Create(Context &ctx, timestamp_ms_t value) -> Value;
+	static auto Create(Context &ctx, timestamp_ns_t value) -> Value;
+	static auto Create(Context &ctx, timestamp_tz_t value) -> Value;
+	static auto Create(Context &ctx, timestamp_tz_ns_t value) -> Value;
+	static auto Create(Context &ctx, interval_t value) -> Value;
+
+	template <int8_t WIDTH, uint8_t SCALE>
+	static auto Create(Context &ctx, decimal_t<WIDTH, SCALE> value) -> Value {
+		return CreateDecimal(ctx, WidenDecimal(value.value), WIDTH, SCALE);
+	}
 
 	template <class T>
 	static auto Create(Context &ctx, T value) -> Value = delete;
@@ -869,9 +921,9 @@ public:
 	// Each comes in both scope forms, like Create and CreateNull: the Context
 	// one for a live bind / execution context, the Connection one for outside.
 	using ValueRef = std::reference_wrapper<const Value>;
-	using ValueList = const std::vector<ValueRef>&;
-	using NamedValueList = const std::vector<std::pair<std::string_view, ValueRef>>&;
-	using KeyValueList = const std::vector<std::pair<ValueRef, ValueRef>>&;
+	using ValueList = const std::vector<ValueRef> &;
+	using NamedValueList = const std::vector<std::pair<std::string_view, ValueRef>> &;
+	using KeyValueList = const std::vector<std::pair<ValueRef, ValueRef>> &;
 
 	// A LIST of the elements. The child type is the first element's; the rest are cast to it, so a set that does not
 	// share a type surfaces the engine's cast error rather than widening silently.
@@ -917,6 +969,26 @@ public:
 	}
 
 private:
+	// Reads the backing integer, and throws unless the value's own width and
+	// scale are the ones asked for: a DECIMAL(9, 2) is not a DECIMAL(18, 3),
+	// and the payloads are not interchangeable across storage tiers.
+	void GetDecimal(int128_t &out, uint8_t width, uint8_t scale) const;
+
+	// The runtime forwarder behind the templated DECIMAL constructors; keeping
+	// it here is what lets those be defined in the header without naming a C
+	// type.
+	static auto CreateDecimal(Connection &conn, int128_t value, uint8_t width, uint8_t scale) -> Value;
+	static auto CreateDecimal(Context &ctx, int128_t value, uint8_t width, uint8_t scale) -> Value;
+
+	// Sign-extends a DECIMAL's backing integer to the widest storage tier, so one
+	// entry point can carry every tier without the header naming a C type per tier.
+	static auto WidenDecimal(int64_t value) -> int128_t {
+		return int128_t {static_cast<uint64_t>(value), value < 0 ? -1 : 0};
+	}
+	static auto WidenDecimal(int128_t value) -> int128_t {
+		return value;
+	}
+
 	explicit Value(void *impl);
 };
 
@@ -950,6 +1022,28 @@ template <>
 auto Value::Get() const -> varchar_t;
 template <>
 auto Value::Get() const -> blob_t;
+template <>
+auto Value::Get() const -> date_t;
+template <>
+auto Value::Get() const -> dtime_t;
+template <>
+auto Value::Get() const -> dtime_ns_t;
+template <>
+auto Value::Get() const -> dtime_tz_t;
+template <>
+auto Value::Get() const -> timestamp_t;
+template <>
+auto Value::Get() const -> timestamp_s_t;
+template <>
+auto Value::Get() const -> timestamp_ms_t;
+template <>
+auto Value::Get() const -> timestamp_ns_t;
+template <>
+auto Value::Get() const -> timestamp_tz_t;
+template <>
+auto Value::Get() const -> timestamp_tz_ns_t;
+template <>
+auto Value::Get() const -> interval_t;
 template <>
 auto Value::Get() const -> LogicalType;
 
@@ -1029,10 +1123,10 @@ private:
 // (static_assert in the .cpp). Other is the zero value and covers FSST /
 // SEQUENCE / SHREDDED; Flatten() before reading such a vector via GetView().
 enum class VectorType : uint8_t {
-	Other = 0,
-	Flat = 1,
-	Constant = 2,
-	Dictionary = 3,
+	OTHER = 0,
+	FLAT = 1,
+	CONSTANT = 2,
+	DICTIONARY = 3,
 };
 
 // Read view over a vector, mirroring the C ABI's duckdb_v2_vector_view: data +
@@ -1138,7 +1232,7 @@ public:
 	// ---- Vector read surface ----
 
 	// Reads the vector as a VectorView in one boundary crossing. Throws
-	// INVALID_INPUT on VectorType::Other; Flatten() first. On DICTIONARY
+	// INVALID_INPUT on VectorType::OTHER; Flatten() first. On DICTIONARY
 	// vectors the underlying child may be flattened in place, invalidating
 	// pointers previously borrowed into it.
 	auto GetView() const -> VectorView;
@@ -1167,7 +1261,7 @@ public:
 	auto MakeConstant(const Value &value, idx_t count) -> void;
 
 	// Turns the vector into the arithmetic sequence start, start+increment,
-	// ... for `count` rows. Reads as VectorType::Other; Flatten() before
+	// ... for `count` rows. Reads as VectorType::OTHER; Flatten() before
 	// reading via GetView().
 	auto MakeSequence(int64_t start, int64_t increment, idx_t count) -> void;
 

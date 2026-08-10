@@ -45,7 +45,7 @@ enums:
         description: ANY — used for functions that accept any type.
       LOGICAL_TYPE_ID_TYPE:
         value: 6
-        description: A type carried as a value (type parameters). Values of this type are built via value_create_type_from_context / _from_connection.
+        description: A type carried as a value (type parameters). Values of this type are built via value_create_type_with_context / _with_connection.
       LOGICAL_TYPE_ID_BOOLEAN:
         value: 10
       LOGICAL_TYPE_ID_TINYINT:
@@ -223,7 +223,7 @@ functions:
       Parameters are (name, value) pairs in two parallel arrays.
       param_names may be NULL (all positional); a {NULL, 0} entry makes
       that one parameter positional. Child types cross as TYPE values
-      (value_create_type_from_context / _from_connection). Built-in shapes: decimal(width, scale);
+      (value_create_type_with_context / _with_connection). Built-in shapes: decimal(width, scale);
       list(T); array(T, size); map(K, V); struct(fields as named or all
       positional TYPE values); union(members as named TYPE values);
       enum(entries as VARCHAR values); varchar with a named "collation"

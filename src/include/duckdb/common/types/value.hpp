@@ -64,6 +64,8 @@ public:
 	DUCKDB_API Value(string val); // NOLINT: Allow implicit conversion from `string`
 	//! Create a VARCHAR value
 	DUCKDB_API Value(String val); // NOLINT: Allow implicit conversion from `string`
+	//! Create a VARCHAR value
+	DUCKDB_API Value(std::string_view val);
 	//! Copy constructor
 	DUCKDB_API Value(const Value &other);
 	//! Move constructor
@@ -201,6 +203,9 @@ public:
 	DUCKDB_API static Value BLOB(const_data_ptr_t data, idx_t len);
 	static Value BLOB_RAW(const string &data) { // NOLINT
 		return Value::BLOB(const_data_ptr_cast(data.c_str()), data.size());
+	}
+	static Value BLOB_RAW(std::string_view data) {
+		return Value::BLOB(const_data_ptr_cast(data.data()), data.size());
 	}
 	//! Creates a blob by casting a specified string to a blob (i.e. interpreting \x characters)
 	DUCKDB_API static Value BLOB(const string &data);

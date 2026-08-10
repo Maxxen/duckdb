@@ -63,6 +63,28 @@ inline auto Convert(const string &str) -> duckdb_v2_str {
 inline auto Convert(const Identifier &ident) -> duckdb_v2_identifier_t {
 	return duckdb_v2_identifier_t {ident.c_str(), ident.size()};
 }
+inline auto Convert(duckdb_v2_hugeint_t value) -> hugeint_t {
+	return hugeint_t(value.upper, value.lower);
+}
+inline auto Convert(duckdb_v2_uhugeint_t value) -> uhugeint_t {
+	return uhugeint_t(value.upper, value.lower);
+}
+inline auto Convert(hugeint_t value) -> duckdb_v2_hugeint_t {
+	return duckdb_v2_hugeint_t {value.lower, value.upper};
+}
+inline auto Convert(uhugeint_t value) -> duckdb_v2_uhugeint_t {
+	return duckdb_v2_uhugeint_t {value.lower, value.upper};
+}
+inline auto Convert(interval_t value) -> duckdb_v2_interval_t {
+	return duckdb_v2_interval_t {value.months, value.days, value.micros};
+}
+inline auto Convert(duckdb_v2_interval_t value) -> interval_t {
+	interval_t out;
+	out.months = value.months;
+	out.days = value.days;
+	out.micros = value.micros;
+	return out;
+}
 
 //----------------------------------------------------------------------------------------------------------------------
 // Handle Types

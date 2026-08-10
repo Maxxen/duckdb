@@ -344,15 +344,15 @@ auto DatabaseOption::GetAliasByIndex(size_t index) const -> std::string_view {
 }
 
 // OptionTargetScope mirrors DUCKDB_V2_OPTION_TARGET_SCOPE numerically; every member is pinned.
-static_assert(static_cast<uint8_t>(OptionTargetScope::Unknown) == DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN,
+static_assert(static_cast<uint8_t>(OptionTargetScope::UNKNOWN) == DUCKDB_V2_OPTION_TARGET_SCOPE_UNKNOWN,
               "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
-static_assert(static_cast<uint8_t>(OptionTargetScope::GlobalOnly) == DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_ONLY,
+static_assert(static_cast<uint8_t>(OptionTargetScope::GLOBAL_ONLY) == DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_ONLY,
               "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
-static_assert(static_cast<uint8_t>(OptionTargetScope::LocalOnly) == DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_ONLY,
+static_assert(static_cast<uint8_t>(OptionTargetScope::LOCAL_ONLY) == DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_ONLY,
               "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
-static_assert(static_cast<uint8_t>(OptionTargetScope::GlobalDefault) == DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_DEFAULT,
+static_assert(static_cast<uint8_t>(OptionTargetScope::GLOBAL_DEFAULT) == DUCKDB_V2_OPTION_TARGET_SCOPE_GLOBAL_DEFAULT,
               "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
-static_assert(static_cast<uint8_t>(OptionTargetScope::LocalDefault) == DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_DEFAULT,
+static_assert(static_cast<uint8_t>(OptionTargetScope::LOCAL_DEFAULT) == DUCKDB_V2_OPTION_TARGET_SCOPE_LOCAL_DEFAULT,
               "OptionTargetScope must mirror DUCKDB_V2_OPTION_TARGET_SCOPE");
 
 auto DatabaseOption::GetTargetScope() const -> OptionTargetScope {
@@ -440,13 +440,13 @@ auto Connection::GetOption(std::string_view name) const -> DatabaseOption {
 }
 
 auto Connection::SetOption(const DatabaseOption &option) -> void {
-	SetOption(option, SettingScope::Automatic);
+	SetOption(option, SettingScope::AUTOMATIC);
 }
 
 auto Connection::SetOption(const DatabaseOption &option, SettingScope scope) -> void {
-	static_assert(static_cast<int>(SettingScope::Automatic) == DUCKDB_V2_SETTING_SCOPE_AUTOMATIC &&
-	                  static_cast<int>(SettingScope::Global) == DUCKDB_V2_SETTING_SCOPE_GLOBAL &&
-	                  static_cast<int>(SettingScope::Local) == DUCKDB_V2_SETTING_SCOPE_LOCAL,
+	static_assert(static_cast<int>(SettingScope::AUTOMATIC) == DUCKDB_V2_SETTING_SCOPE_AUTOMATIC &&
+	                  static_cast<int>(SettingScope::GLOBAL) == DUCKDB_V2_SETTING_SCOPE_GLOBAL &&
+	                  static_cast<int>(SettingScope::LOCAL) == DUCKDB_V2_SETTING_SCOPE_LOCAL,
 	              "SettingScope must mirror DUCKDB_V2_SETTING_SCOPE");
 	CheckedAPICall(duckdb_v2_connection_option_set, handle(), option.handle(),
 	               static_cast<DUCKDB_V2_SETTING_SCOPE>(scope));
@@ -1028,139 +1028,341 @@ auto Value::Get() const -> LogicalType {
 // Connection
 auto Value::CreateNull(Connection &conn, const LogicalType &type) -> Value {
 	duckdb_v2_value_handle value = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_null_from_connection, conn.handle(), type.handle(), &value);
+	CheckedAPICall(duckdb_v2_value_create_null_with_connection, conn.handle(), type.handle(), &value);
 	return detail::Factory::Make<Value>(value);
 }
 
 auto Value::Create(Connection &conn, bool value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_bool_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_bool_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, uint8_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_utinyint_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_utinyint_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, uint16_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_usmallint_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_usmallint_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, uint32_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_uint_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_uint_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, uint64_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_ubigint_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_ubigint_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, uint128_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_uhugeint_from_connection, ToC(value))
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_uhugeint_with_connection, ToC(value))
 }
 
 auto Value::Create(Connection &conn, int8_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_tinyint_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_tinyint_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, int16_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_smallint_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_smallint_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, int32_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_int_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_int_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, int64_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_bigint_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_bigint_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, int128_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_hugeint_from_connection, ToC(value))
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_hugeint_with_connection, ToC(value))
 }
 
 auto Value::Create(Connection &conn, float value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_float_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_float_with_connection, value)
 }
 
 auto Value::Create(Connection &conn, double value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_double_from_connection, value)
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_double_with_connection, value)
 }
 auto Value::Create(Connection &conn, blob_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_blob_from_connection, ToStr(value))
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_blob_with_connection, ToStr(value))
 }
 auto Value::Create(Connection &conn, varchar_t value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_varchar_from_connection, ToStr(value))
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_varchar_with_connection, ToStr(value))
 }
 auto Value::Create(Connection &conn, const LogicalType &value) -> Value {
-	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_type_from_connection, value.handle())
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_type_with_connection, value.handle())
 }
 
 // Context
 auto Value::CreateNull(Context &ctx, const LogicalType &type) -> Value {
 	duckdb_v2_value_handle value = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_null_from_context, ctx.handle(), type.handle(), &value);
+	CheckedAPICall(duckdb_v2_value_create_null_with_context, ctx.handle(), type.handle(), &value);
 	return detail::Factory::Make<Value>(value);
 }
 auto Value::Create(Context &ctx, bool value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_bool_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_bool_with_context, value)
 }
 
 auto Value::Create(Context &ctx, uint8_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_utinyint_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_utinyint_with_context, value)
 }
 
 auto Value::Create(Context &ctx, uint16_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_usmallint_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_usmallint_with_context, value)
 }
 
 auto Value::Create(Context &ctx, uint32_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_uint_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_uint_with_context, value)
 }
 
 auto Value::Create(Context &ctx, uint64_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_ubigint_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_ubigint_with_context, value)
 }
 
 auto Value::Create(Context &ctx, uint128_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_uhugeint_from_context, ToC(value))
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_uhugeint_with_context, ToC(value))
 }
 
 auto Value::Create(Context &ctx, int8_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_tinyint_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_tinyint_with_context, value)
 }
 
 auto Value::Create(Context &ctx, int16_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_smallint_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_smallint_with_context, value)
 }
 
 auto Value::Create(Context &ctx, int32_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_int_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_int_with_context, value)
 }
 
 auto Value::Create(Context &ctx, int64_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_bigint_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_bigint_with_context, value)
 }
 
 auto Value::Create(Context &ctx, int128_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_hugeint_from_context, ToC(value))
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_hugeint_with_context, ToC(value))
 }
 
 auto Value::Create(Context &ctx, float value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_float_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_float_with_context, value)
 }
 
 auto Value::Create(Context &ctx, double value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_double_from_context, value)
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_double_with_context, value)
 }
 
 auto Value::Create(Context &ctx, blob_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_blob_from_context, ToStr(value))
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_blob_with_context, ToStr(value))
 }
 
 auto Value::Create(Context &ctx, varchar_t value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_varchar_from_context, ToStr(value))
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_varchar_with_context, ToStr(value))
 }
 
 auto Value::Create(Context &ctx, const LogicalType &value) -> Value {
-	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_type_from_context, value.handle())
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_type_with_context, value.handle())
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Temporal Values
+//----------------------------------------------------------------------------------------------------------------------
+
+// The wrapper types exist to name a SQL type that a plain integer cannot:
+// TIMESTAMP, TIMESTAMP_S and TIMESTAMP_NS are all one int64. They carry the
+// type's own unit, so nothing is converted here.
+
+template <>
+auto Value::Get() const -> date_t {
+	int32_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_date, handle(), &payload);
+	return date_t {payload};
+}
+
+auto Value::Create(Connection &conn, date_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_date_with_connection, value.days)
+}
+
+auto Value::Create(Context &ctx, date_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_date_with_context, value.days)
+}
+
+template <>
+auto Value::Get() const -> dtime_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_time, handle(), &payload);
+	return dtime_t {payload};
+}
+
+auto Value::Create(Connection &conn, dtime_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_time_with_connection, value.micros)
+}
+
+auto Value::Create(Context &ctx, dtime_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_time_with_context, value.micros)
+}
+
+template <>
+auto Value::Get() const -> dtime_ns_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_time_ns, handle(), &payload);
+	return dtime_ns_t {payload};
+}
+
+auto Value::Create(Connection &conn, dtime_ns_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_time_ns_with_connection, value.nanos)
+}
+
+auto Value::Create(Context &ctx, dtime_ns_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_time_ns_with_context, value.nanos)
+}
+
+template <>
+auto Value::Get() const -> dtime_tz_t {
+	uint64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_time_tz, handle(), &payload);
+	return dtime_tz_t(payload);
+}
+
+auto Value::Create(Connection &conn, dtime_tz_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_time_tz_with_connection, value.GetBits())
+}
+
+auto Value::Create(Context &ctx, dtime_tz_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_time_tz_with_context, value.GetBits())
+}
+
+template <>
+auto Value::Get() const -> timestamp_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_timestamp, handle(), &payload);
+	return timestamp_t {payload};
+}
+
+auto Value::Create(Connection &conn, timestamp_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_timestamp_with_connection, value.micros)
+}
+
+auto Value::Create(Context &ctx, timestamp_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_timestamp_with_context, value.micros)
+}
+
+template <>
+auto Value::Get() const -> timestamp_s_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_timestamp_sec, handle(), &payload);
+	return timestamp_s_t {payload};
+}
+
+auto Value::Create(Connection &conn, timestamp_s_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_timestamp_sec_with_connection, value.seconds)
+}
+
+auto Value::Create(Context &ctx, timestamp_s_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_timestamp_sec_with_context, value.seconds)
+}
+
+template <>
+auto Value::Get() const -> timestamp_ms_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_timestamp_ms, handle(), &payload);
+	return timestamp_ms_t {payload};
+}
+
+auto Value::Create(Connection &conn, timestamp_ms_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_timestamp_ms_with_connection, value.millis)
+}
+
+auto Value::Create(Context &ctx, timestamp_ms_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_timestamp_ms_with_context, value.millis)
+}
+
+template <>
+auto Value::Get() const -> timestamp_ns_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_timestamp_ns, handle(), &payload);
+	return timestamp_ns_t {payload};
+}
+
+auto Value::Create(Connection &conn, timestamp_ns_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_timestamp_ns_with_connection, value.nanos)
+}
+
+auto Value::Create(Context &ctx, timestamp_ns_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_timestamp_ns_with_context, value.nanos)
+}
+
+template <>
+auto Value::Get() const -> timestamp_tz_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_timestamp_tz, handle(), &payload);
+	return timestamp_tz_t {payload};
+}
+
+auto Value::Create(Connection &conn, timestamp_tz_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_timestamp_tz_with_connection, value.micros)
+}
+
+auto Value::Create(Context &ctx, timestamp_tz_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_timestamp_tz_with_context, value.micros)
+}
+
+template <>
+auto Value::Get() const -> timestamp_tz_ns_t {
+	int64_t payload = 0;
+	CheckedAPICall(duckdb_v2_value_get_timestamp_tz_ns, handle(), &payload);
+	return timestamp_tz_ns_t {payload};
+}
+
+auto Value::Create(Connection &conn, timestamp_tz_ns_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_timestamp_tz_ns_with_connection, value.nanos)
+}
+
+auto Value::Create(Context &ctx, timestamp_tz_ns_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_timestamp_tz_ns_with_context, value.nanos)
+}
+
+auto ToC(interval_t value) -> duckdb_v2_interval_t {
+	return duckdb_v2_interval_t {value.months, value.days, value.micros};
+}
+
+template <>
+auto Value::Get() const -> interval_t {
+	duckdb_v2_interval_t payload {};
+	CheckedAPICall(duckdb_v2_value_get_interval, handle(), &payload);
+	return interval_t {payload.months, payload.days, payload.micros};
+}
+
+auto Value::Create(Connection &conn, interval_t value) -> Value {
+	MAKE_VALUE_IMPL(conn, duckdb_v2_value_create_interval_with_connection, ToC(value))
+}
+
+auto Value::Create(Context &ctx, interval_t value) -> Value {
+	MAKE_VALUE_IMPL(ctx, duckdb_v2_value_create_interval_with_context, ToC(value))
+}
+
+void Value::GetDecimal(int128_t &out, uint8_t width, uint8_t scale) const {
+	duckdb_v2_hugeint_t payload {};
+	uint8_t actual_width = 0;
+	uint8_t actual_scale = 0;
+	CheckedAPICall(duckdb_v2_value_get_decimal, handle(), &payload, &actual_width, &actual_scale);
+	if (actual_width != width || actual_scale != scale) {
+		throw InvalidInputException("Get<width, scale>: value is DECIMAL(" + std::to_string(actual_width) + ", " +
+		                            std::to_string(actual_scale) + "), not DECIMAL(" + std::to_string(width) + ", " +
+		                            std::to_string(scale) + ")");
+	}
+	out = FromC(payload);
+}
+
+auto Value::CreateDecimal(Connection &conn, int128_t value, uint8_t width, uint8_t scale) -> Value {
+	duckdb_v2_value_handle out = nullptr;
+	CheckedAPICall(duckdb_v2_value_create_decimal_with_connection, conn.handle(), ToC(value), width, scale, &out);
+	return detail::Factory::Make<Value>(out);
+}
+
+auto Value::CreateDecimal(Context &ctx, int128_t value, uint8_t width, uint8_t scale) -> Value {
+	duckdb_v2_value_handle out = nullptr;
+	CheckedAPICall(duckdb_v2_value_create_decimal_with_context, ctx.handle(), ToC(value), width, scale, &out);
+	return detail::Factory::Make<Value>(out);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1196,7 +1398,7 @@ auto FromHandle(duckdb_v2_value_handle value) -> Value {
 auto Value::CreateList(Connection &conn, const std::vector<ValueRef> &values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_list_from_connection, conn.handle(), nullptr, DataOrNull(children),
+	CheckedAPICall(duckdb_v2_value_create_list_with_connection, conn.handle(), nullptr, DataOrNull(children),
 	               static_cast<idx_t>(children.size()), &out);
 	return FromHandle(out);
 }
@@ -1204,21 +1406,21 @@ auto Value::CreateList(Connection &conn, const std::vector<ValueRef> &values) ->
 auto Value::CreateList(Context &ctx, const std::vector<ValueRef> &values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_list_from_context, ctx.handle(), nullptr, DataOrNull(children),
+	CheckedAPICall(duckdb_v2_value_create_list_with_context, ctx.handle(), nullptr, DataOrNull(children),
 	               static_cast<idx_t>(children.size()), &out);
 	return FromHandle(out);
 }
 
 auto Value::CreateList(Connection &conn, const LogicalType &child_type) -> Value {
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_list_from_connection, conn.handle(), child_type.handle(), nullptr,
+	CheckedAPICall(duckdb_v2_value_create_list_with_connection, conn.handle(), child_type.handle(), nullptr,
 	               static_cast<idx_t>(0), &out);
 	return FromHandle(out);
 }
 
 auto Value::CreateList(Context &ctx, const LogicalType &child_type) -> Value {
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_list_from_context, ctx.handle(), child_type.handle(), nullptr,
+	CheckedAPICall(duckdb_v2_value_create_list_with_context, ctx.handle(), child_type.handle(), nullptr,
 	               static_cast<idx_t>(0), &out);
 	return FromHandle(out);
 }
@@ -1226,7 +1428,7 @@ auto Value::CreateList(Context &ctx, const LogicalType &child_type) -> Value {
 auto Value::CreateArray(Connection &conn, const std::vector<ValueRef> &values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_array_from_connection, conn.handle(), nullptr, DataOrNull(children),
+	CheckedAPICall(duckdb_v2_value_create_array_with_connection, conn.handle(), nullptr, DataOrNull(children),
 	               static_cast<idx_t>(children.size()), &out);
 	return FromHandle(out);
 }
@@ -1234,7 +1436,7 @@ auto Value::CreateArray(Connection &conn, const std::vector<ValueRef> &values) -
 auto Value::CreateArray(Context &ctx, const std::vector<ValueRef> &values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_array_from_context, ctx.handle(), nullptr, DataOrNull(children),
+	CheckedAPICall(duckdb_v2_value_create_array_with_context, ctx.handle(), nullptr, DataOrNull(children),
 	               static_cast<idx_t>(children.size()), &out);
 	return FromHandle(out);
 }
@@ -1260,7 +1462,7 @@ struct StructArrays {
 auto Value::CreateStruct(Connection &conn, const std::vector<std::pair<std::string_view, ValueRef>> &values) -> Value {
 	StructArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_struct_from_connection, conn.handle(), DataOrNull(split.names),
+	CheckedAPICall(duckdb_v2_value_create_struct_with_connection, conn.handle(), DataOrNull(split.names),
 	               DataOrNull(split.children), static_cast<idx_t>(values.size()), &out);
 	return FromHandle(out);
 }
@@ -1268,7 +1470,7 @@ auto Value::CreateStruct(Connection &conn, const std::vector<std::pair<std::stri
 auto Value::CreateStruct(Context &ctx, const std::vector<std::pair<std::string_view, ValueRef>> &values) -> Value {
 	StructArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_struct_from_context, ctx.handle(), DataOrNull(split.names),
+	CheckedAPICall(duckdb_v2_value_create_struct_with_context, ctx.handle(), DataOrNull(split.names),
 	               DataOrNull(split.children), static_cast<idx_t>(values.size()), &out);
 	return FromHandle(out);
 }
@@ -1276,7 +1478,7 @@ auto Value::CreateStruct(Context &ctx, const std::vector<std::pair<std::string_v
 auto Value::CreateTuple(Connection &conn, const std::vector<ValueRef> &values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_tuple_from_connection, conn.handle(), DataOrNull(children),
+	CheckedAPICall(duckdb_v2_value_create_tuple_with_connection, conn.handle(), DataOrNull(children),
 	               static_cast<idx_t>(children.size()), &out);
 	return FromHandle(out);
 }
@@ -1284,7 +1486,7 @@ auto Value::CreateTuple(Connection &conn, const std::vector<ValueRef> &values) -
 auto Value::CreateTuple(Context &ctx, const std::vector<ValueRef> &values) -> Value {
 	auto children = ChildHandles(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_tuple_from_context, ctx.handle(), DataOrNull(children),
+	CheckedAPICall(duckdb_v2_value_create_tuple_with_context, ctx.handle(), DataOrNull(children),
 	               static_cast<idx_t>(children.size()), &out);
 	return FromHandle(out);
 }
@@ -1310,29 +1512,29 @@ struct MapArrays {
 auto Value::CreateMap(Connection &conn, const std::vector<std::pair<ValueRef, ValueRef>> &values) -> Value {
 	MapArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_map_from_connection, conn.handle(), nullptr, nullptr,
-	               DataOrNull(split.keys), DataOrNull(split.entries), static_cast<idx_t>(values.size()), &out);
+	CheckedAPICall(duckdb_v2_value_create_map_with_connection, conn.handle(), nullptr, nullptr, DataOrNull(split.keys),
+	               DataOrNull(split.entries), static_cast<idx_t>(values.size()), &out);
 	return FromHandle(out);
 }
 
 auto Value::CreateMap(Context &ctx, const std::vector<std::pair<ValueRef, ValueRef>> &values) -> Value {
 	MapArrays split(values);
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_map_from_context, ctx.handle(), nullptr, nullptr, DataOrNull(split.keys),
+	CheckedAPICall(duckdb_v2_value_create_map_with_context, ctx.handle(), nullptr, nullptr, DataOrNull(split.keys),
 	               DataOrNull(split.entries), static_cast<idx_t>(values.size()), &out);
 	return FromHandle(out);
 }
 
 auto Value::CreateMap(Connection &conn, const LogicalType &key_type, const LogicalType &value_type) -> Value {
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_map_from_connection, conn.handle(), key_type.handle(), value_type.handle(),
+	CheckedAPICall(duckdb_v2_value_create_map_with_connection, conn.handle(), key_type.handle(), value_type.handle(),
 	               nullptr, nullptr, static_cast<idx_t>(0), &out);
 	return FromHandle(out);
 }
 
 auto Value::CreateMap(Context &ctx, const LogicalType &key_type, const LogicalType &value_type) -> Value {
 	duckdb_v2_value_handle out = nullptr;
-	CheckedAPICall(duckdb_v2_value_create_map_from_context, ctx.handle(), key_type.handle(), value_type.handle(),
+	CheckedAPICall(duckdb_v2_value_create_map_with_context, ctx.handle(), key_type.handle(), value_type.handle(),
 	               nullptr, nullptr, static_cast<idx_t>(0), &out);
 	return FromHandle(out);
 }
@@ -1375,13 +1577,13 @@ auto StringHeap::ThrowStringTooLong(idx_t size) -> void {
 //----------------------------------------------------------------------------------------------------------------------
 // VectorType mirrors DUCKDB_V2_VECTOR_TYPE numerically; trip here if either
 // side is renumbered.
-static_assert(static_cast<uint8_t>(VectorType::Other) == DUCKDB_V2_VECTOR_TYPE_OTHER,
+static_assert(static_cast<uint8_t>(VectorType::OTHER) == DUCKDB_V2_VECTOR_TYPE_OTHER,
               "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
-static_assert(static_cast<uint8_t>(VectorType::Flat) == DUCKDB_V2_VECTOR_TYPE_FLAT,
+static_assert(static_cast<uint8_t>(VectorType::FLAT) == DUCKDB_V2_VECTOR_TYPE_FLAT,
               "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
-static_assert(static_cast<uint8_t>(VectorType::Constant) == DUCKDB_V2_VECTOR_TYPE_CONSTANT,
+static_assert(static_cast<uint8_t>(VectorType::CONSTANT) == DUCKDB_V2_VECTOR_TYPE_CONSTANT,
               "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
-static_assert(static_cast<uint8_t>(VectorType::Dictionary) == DUCKDB_V2_VECTOR_TYPE_DICTIONARY,
+static_assert(static_cast<uint8_t>(VectorType::DICTIONARY) == DUCKDB_V2_VECTOR_TYPE_DICTIONARY,
               "VectorType must mirror DUCKDB_V2_VECTOR_TYPE");
 
 // VectorView mirrors duckdb_v2_vector_view. GetView copies it field-for-field,
@@ -1503,7 +1705,7 @@ auto Vector::CheckWriteRange(idx_t start, idx_t count) const -> void {
 		return;
 	}
 	// A CONSTANT vector's data array holds a single slot; only index 0 is writable.
-	if (GetVectorType() == VectorType::Constant && (start != 0 || count > 1)) {
+	if (GetVectorType() == VectorType::CONSTANT && (start != 0 || count > 1)) {
 		throw InvalidInputException("Invalid Input Error: cannot assign a string to a CONSTANT vector at index != 0");
 	}
 }

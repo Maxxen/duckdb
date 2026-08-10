@@ -1345,7 +1345,7 @@ TEST_CASE("V2: logical_type get_from_text / get_from_args", "[capi_v2][logical_t
 	REQUIRE(duckdb_v2_connection_create_type_from_id(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0,
 	                                                 &child, nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_handle child_type_value = nullptr;
-	REQUIRE(duckdb_v2_value_create_type_from_connection(f.conn, child, &child_type_value, nullptr) ==
+	REQUIRE(duckdb_v2_value_create_type_with_connection(f.conn, child, &child_type_value, nullptr) ==
 	        DUCKDB_V2_ERROR_NONE);
 	const duckdb_v2_value_handle params[1] = {child_type_value};
 	duckdb_v2_logical_type_handle list = nullptr;
