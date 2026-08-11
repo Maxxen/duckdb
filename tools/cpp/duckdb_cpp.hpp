@@ -11,7 +11,22 @@
 // 8888888P"   "Y88888  "Y8888P 888  888 8888888P"  8888888P"       d88P     888 888       8888888
 //----------------------------------------------------------------------------------------------------------------------
 
-#include <functional>
+/// @file duckdb_cpp.hpp
+/// The DuckDB C++ API.
+///
+/// Most classes here are handles: move-only, never copied and never reference-counted. A handle is either owning,
+/// releasing its resource when destroyed, or borrowed, in which case its documentation says what it borrows from and
+/// how long it stays valid. Whether a handle currently holds a resource is reported by its `explicit operator bool`.
+/// The remaining types (`Exception`, `Signature`, the primitive value types, and the like) are ordinary copyable
+/// values.
+///
+/// Errors are reported by throwing; no function returns an error code. Everything thrown derives from `Exception`.
+/// Failures that are part of a function's contract are documented with `\@throws`; any other failure surfaces as a
+/// plain `Exception`.
+///
+/// The usual path through the API: an `Environment` opens a `Database`, a `Database` hands out `Connection`s, and a
+/// `Connection` parses and executes SQL into a streaming `QueryResult` that yields `DataChunk`s of `Vector`s.
+
 #include <utility>
 #include <string>
 #include <string_view>
@@ -26,6 +41,7 @@ namespace cxx {
 // Common Typedefs and forward declarations
 //----------------------------------------------------------------------------------------------------------------------
 
+/// Row indices, offsets, counts and sizes throughout the API.
 typedef uint64_t idx_t;
 
 class Exception;
@@ -56,14 +72,19 @@ class TypeBuilder;
 // Internal Implementation Details
 //----------------------------------------------------------------------------------------------------------------------
 
+/// @internal
+/// Everything in `duckdb::cxx::detail` is an implementation detail: not part of the public API, and subject to change
+/// without notice.
 namespace detail {
 
-//! Maps a C++ wrapper type to its underlying C-API handle type. The primary template is intentionally left undefined.
-//! Each wrapper is specialized in the .cpp, so the handle symbols never need to appear in this header.
+/// @internal
+/// Maps a C++ wrapper type to its underlying C-API handle type. The primary template is intentionally left undefined:
+/// each wrapper specializes it in the .cpp, so C handle types never have to appear in this header.
 template <class T>
 struct HandleTraits;
 
-//! A "Handle" is the base class for all C++ wrapper objects in this API.
+/// @internal
+/// Base class of every wrapper in this API: move-only custody of a single opaque handle.
 template <class TYPE>
 class Handle {
 public:
@@ -83,13 +104,13 @@ public:
 
 	virtual ~Handle() noexcept = default;
 
-	// Returns the underlying C-API handle, indirectly typed via HandleTraits<TYPE>.
+	/// @internal The underlying C-API handle, typed indirectly through HandleTraits<TYPE>.
 	template <class TR = HandleTraits<TYPE>>
 	auto handle() const -> typename TR::handle {
 		return static_cast<typename TR::handle>(impl);
 	}
 
-	// True when this wrapper holds a live handle.
+	/// True while this wrapper holds a handle; false once it has been moved from.
 	explicit operator bool() const noexcept {
 		return impl != nullptr;
 	}
@@ -100,9 +121,7 @@ private:
 	explicit Handle(void *impl) : impl(impl) {
 	}
 
-	// Detaches and returns the underlying handle, leaving the wrapper
-	// empty; for transfer-semantics calls where the C API consumes the
-	// handle.
+	/// @internal Detaches the handle and leaves this wrapper empty, for calls where the C API takes ownership.
 	auto release() noexcept -> void * {
 		auto *detached = impl;
 		impl = nullptr;
@@ -111,7 +130,8 @@ private:
 	void *impl;
 };
 
-// Helper "friend" class to construct/release handles without making their constructors public
+/// @internal
+/// Grants the .cpp access to the wrappers' private constructors and to `release`, without making either public.
 struct Factory {
 	template <class T, class... ARGS>
 	static auto Make(ARGS &&... args) -> T {
@@ -119,7 +139,7 @@ struct Factory {
 	}
 
 	template <class T>
-	static auto Release(T &t) -> void {
+	static auto Release(T &t) -> void * {
 		return t.release();
 	}
 };
@@ -132,22 +152,28 @@ struct always_false : std::false_type {};
 //----------------------------------------------------------------------------------------------------------------------
 // Exceptions
 //----------------------------------------------------------------------------------------------------------------------
+// Every failure in this API is reported by throwing. Catch `Exception` to handle any of them; the subclasses single
+// out the cases worth reacting to on their own.
 // TODO: add more exception types!
 
-//! Base Exception class for errors thrown by DuckDB
+/// Base class of all errors thrown by DuckDB. For errors raised by the database engine, `what()` carries the fully
+/// formatted message, prefix included, e.g. "Parser Error: ...".
 class Exception : public std::runtime_error {
 public:
-
+	/// @param code The numeric error code.
+	/// @param message The full message, as later returned by `what()`.
+	/// @param raw_message The message body without the error-type prefix, when available.
 	Exception(const int code, const std::string &message, std::string raw_message = {})
 	    : std::runtime_error(message), code(code), raw_message(std::move(raw_message)) {
 	}
 
-	//! The exception-type error code, not ment for public consumption.
+	/// The numeric error code identifying the kind of error. Prefer catching a typed subclass where one exists.
 	auto GetCode() const -> int {
 		return code;
 	}
 
-	//! The raw message body, without the "Catalog Error:" / "Parser Error:" / etc. prefix that `what()` carries.
+	/// The message body alone, without the "Catalog Error:" / "Parser Error:" / ... prefix that `what()` carries.
+	/// Empty when no raw message is available.
 	auto GetRawMessage() const -> const std::string & {
 		return raw_message;
 	}
@@ -157,65 +183,91 @@ private:
 	std::string raw_message;
 };
 
-//! Typed exception for invalid input, e.g. a bad argument to a function or an invalid SQL statement.
+/// Invalid input: a malformed SQL string, an argument of the wrong kind, a misused handle, and the like.
 class InvalidInputException : public Exception {
 public:
-	explicit InvalidInputException(const std::string &message);
+	explicit InvalidInputException(const std::string &message, std::string raw_message = {});
 };
 
-//! Typed exception for an interrupt signal.
+/// A running query was canceled, e.g. by `Connection::Interrupt`.
 class InterruptException : public Exception {
 public:
-	explicit InterruptException(const std::string &message);
+	explicit InterruptException(const std::string &message, std::string raw_message = {});
 };
 
 //----------------------------------------------------------------------------------------------------------------------
 // Database Option
 //----------------------------------------------------------------------------------------------------------------------
+// Configuration settings, as name/value pairs.
+// Construct a `DatabaseOption` to write a setting, or read one back from an existing `Database` or `Connection` to
+// inspect its current value, default value, description or aliases.
+// Settings that can only be chosen up front must be passed to `Environment::Open`.
 
-// Who may write an option. Mirrors DUCKDB_V2_OPTION_TARGET_SCOPE numerically
-// (parity pinned in the .cpp). Unknown covers options whose declaration
-// carries no explicit scope target, and options created via the constructor
-// that have not yet been resolved through a database get.
+/// At which scope a setting may be written.
 enum class OptionTargetScope : uint8_t {
-	/* Target scope is not known. */
+	/// Unknown: the setting declares no target scope, or the option was constructed here and has not been resolved
+	/// against a database yet.
 	UNKNOWN = 0,
-	/* May only be written at GLOBAL (database) scope. */
+	/// Writable only at GLOBAL (database) scope.
 	GLOBAL_ONLY = 1,
-	/* May only be written at LOCAL (session) scope. */
+	/// Writable only at LOCAL (session) scope.
 	LOCAL_ONLY = 2,
-	/* May be written at either scope; defaults to GLOBAL when unspecified. */
+	/// Writable at either scope, GLOBAL when unspecified.
 	GLOBAL_DEFAULT = 3,
-	/* May be written at either scope; defaults to LOCAL when unspecified. */
+	/// Writable at either scope, LOCAL when unspecified.
 	LOCAL_DEFAULT = 4,
 };
 
-// Scope of a connection-level option write. Mirrors DUCKDB_V2_SETTING_SCOPE
-// numerically (parity pinned in the .cpp). Automatic resolves from the
-// option's declared target scope, exactly like SQL `SET name = value`.
+/// Which scope a connection-level write applies to.
 enum class SettingScope : uint8_t {
+	/// Resolve from the setting's own target scope, exactly like SQL `SET name = value`.
 	AUTOMATIC = 0,
+	/// Apply to the whole database.
 	GLOBAL = 1,
+	/// Apply to this session only.
 	LOCAL = 2,
 };
 
+/// A single configuration setting
+/// This holds the value of the setting plus the metadata DuckDB declares for it.
+/// The string accessors return views borrowed from this option, valid until it is destroyed.
 class DatabaseOption final : public detail::Handle<DatabaseOption> {
 	friend detail::Factory;
 
 public:
+	/// An option setting `name` to `value`, to hand to `Environment::Open` or to a `SetOption`. The value is parsed
+	/// when the option is applied, so an unknown name or an ill-typed value throws there rather than here.
+	/// @param name The setting to write, either its canonical name or one of its aliases.
+	/// @param value The new value, in the same textual form SQL's `SET` accepts.
 	DatabaseOption(const std::string &name, const std::string &value);
 
 	DatabaseOption(DatabaseOption &&) noexcept = default;
 	DatabaseOption &operator=(DatabaseOption &&) noexcept = default;
 
+	/// The setting's name.
 	auto GetName() const -> std::string_view;
+
+	/// The value this option carries, as text.
 	auto GetValue() const -> std::string_view;
+
+	/// The value the setting falls back to when it is not set. Empty until the option has been read back from a
+	/// database or connection.
 	auto GetDefaultValue() const -> std::string_view;
+
+	/// A human-readable description of the setting. Empty until the option has been read back from a database or
+	/// connection.
 	auto GetDescription() const -> std::string_view;
 
+	/// At which scope this setting may be written. UNKNOWN until the option has been read back from a database or
+	/// connection.
 	auto GetTargetScope() const -> OptionTargetScope;
 
+	/// How many alternative names resolve to this setting. 0 until the option has been read back from a database or
+	/// connection.
 	auto GetAliasCount() const -> size_t;
+
+	/// One of the setting's aliases.
+	/// @param index Alias index in [0, GetAliasCount()).
 	auto GetAliasByIndex(size_t index) const -> std::string_view;
 
 	~DatabaseOption() override;
@@ -227,31 +279,42 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Context
 //----------------------------------------------------------------------------------------------------------------------
+// The client context of an operation in flight, handed to code that DuckDB calls back into.
+// It is more or less equivalent to a `Connection`, but viewed from the "inside" of the system.
 
+/// A borrowed handle to the client context of a running operation.
+/// Only valid for the duration of the callback it was handed to, it is generally not safe to store.
 class Context final : public detail::Handle<Context> {
 	friend detail::Factory;
 
 public:
 	~Context() override;
 
-	// Parses a SQL type expression into an owned logical type: primitives,
-	// parameterized kinds, and catalog-registered names alike. Usable
-	// wherever a Context is live (function bind callbacks). From outside,
-	// Connection::ParseType resolves the same directly from the connection.
+	/// Parses a SQL type expression into an owned type: primitives, parameterized kinds, and extension types alike.
+	/// @param text A type as SQL spells it, e.g. "DECIMAL(18, 3)" or "STRUCT(a INTEGER, b VARCHAR)".
+	/// @return The parsed type.
+	/// @throws Exception When the text does not name a type.
 	auto ParseType(std::string_view text) const -> LogicalType;
 
-	// Builds a logical type from a catalog type name plus value parameters,
-	// mirroring how SQL binds a type expression; registered extension types
-	// construct through the same call. A TypeParam with an empty name is
-	// positional. Connection::CreateType is the sugar.
+	/// Builds a type from a type name plus parameters. Like a structured version of `ParseType`
+	/// @param name The type's unqualified name, e.g. "LIST" or "DECIMAL".
+	/// @param params The type's parameters, in the order SQL takes them. A `TypeParam` with an empty name is considered
+	/// a positional parameter.
 	auto CreateType(std::string_view name, const std::vector<TypeParam> &params = {}) const -> LogicalType;
-	// The id-keyed twin: with no params this instantiates a primitive
-	// directly; with params the id binds like its canonical name does.
+
+	/// The id-keyed twin of `CreateType`: the id resolves to its canonical name and binds like it.
+	/// @param id The type's id. Without parameters, only ids that name a complete type on their own are accepted;
+	/// parameterized kinds such as LIST or DECIMAL require parameters.
+	/// @param params The type's parameters, as in the name-keyed overload.
 	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
-	// A builder over this context, for composing a type without
-	// assembling the parameter vector by hand.
+
+	/// Starts composing a type step by step.
+	/// @return A `TypeBuilder` over this context, for composing a nested type without assembling the parameter vector
+	/// by hand.
 	auto CreateType() -> TypeBuilder<Context>;
 
+	/// Creates a `Value` in this context; see `Value::Create` for the accepted C++ types.
+	/// @param value The C++ value to convert.
 	template <class T>
 	auto CreateValue(T &&value) -> Value;
 
@@ -262,9 +325,12 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // SQL statements
 //----------------------------------------------------------------------------------------------------------------------
+// A SQL string is parsed once into statements, which can then be bound or executed repeatedly. Parsing is purely
+// syntactic: it touches no catalog and opens no transaction, so unknown tables and type errors surface at bind or
+// execution time instead.
 
-// An owned, parsed SQL statement, yielded by StatementIterator::Next and
-// consumed by Connection::Query.
+/// An owned, parsed SQL statement, produced by `StatementIterator::Next` and executed by `Connection::Execute`.
+/// Executing borrows the statement, so the same one can be executed any number of times.
 class SqlStatement final : public detail::Handle<SqlStatement> {
 	friend detail::Factory;
 
@@ -278,9 +344,8 @@ private:
 	explicit SqlStatement(void *impl);
 };
 
-// An owned iterator over the statements of a SQL string, produced by
-// Connection::ParseSQL. Parsing only: no binding, no catalog access, no
-// transaction. Statements already yielded outlive the iterator.
+/// An owned iterator over the statements in a SQL string, produced by `Connection::ParseSQL`.
+/// Statements it has already yielded are independent of it and stay valid after the iterator is destroyed.
 class StatementIterator final : public detail::Handle<StatementIterator> {
 	friend detail::Factory;
 
@@ -290,8 +355,9 @@ public:
 
 	~StatementIterator() override;
 
-	// Yields the next owned statement; empty when the iterator is
-	// exhausted (idempotently).
+	/// The next statement, or an empty handle once the string is exhausted; calling it again then keeps returning
+	/// empty.
+	/// @throws Exception When the next statement does not parse; the iterator is exhausted afterwards.
 	auto Next() -> SqlStatement;
 
 private:
@@ -301,7 +367,13 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Connection
 //----------------------------------------------------------------------------------------------------------------------
+// A session on a `Database`: the handle that parses, binds and executes SQL, creates types and values outside of a
+// callback, and carries session-scoped settings. A connection is not thread-safe -- give each thread its own, via
+// `Database::Connect` -- with the deliberate exception of `Interrupt` and `GetQueryProgress`, which exist to be called
+// while another thread runs a query.
 
+/// A connection to a database.
+/// It must not outlive the `Database` it was opened on, and only one result may be live on it at a time.
 class Connection final : public detail::Handle<Connection> {
 	friend detail::Factory;
 
@@ -317,79 +389,119 @@ public:
 		return *this;
 	}
 
-	// Snapshot of the active query's execution progress. The engine
-	// publishes progress only when enable_progress_bar is set; a
-	// percentage of -1 (with both row counts 0) means no information is
-	// available.
+	/// A snapshot of the running query's progress. Progress is only tracked while the `enable_progress_bar` setting is
+	/// on; a percentage of -1 with both row counts at 0 means no information is available.
 	struct QueryProgress {
+		/// Completion in [0, 100], or -1 when unknown.
 		double percentage;
+		/// Rows processed so far.
 		uint64_t rows_processed;
+		/// Rows the query expects to process in total.
 		uint64_t total_rows_to_process;
 	};
 
 	~Connection() override;
 
+	/// How many settings this connection exposes.
 	auto GetOptionCount() const -> size_t;
+
+	/// One setting with its current value on this connection.
+	/// @param index Setting index in [0, GetOptionCount()).
 	auto GetOptionByIndex(size_t index) const -> DatabaseOption;
+
+	/// One setting with its current value on this connection.
+	/// @param name The setting's name or one of its aliases.
+	/// @return The setting.
+	/// @throws InvalidInputException When no setting goes by that name.
 	auto GetOption(std::string_view name) const -> DatabaseOption;
+
+	/// Writes a setting at the scope it declares for itself, like SQL `SET name = value`.
+	/// @param option The name/value pair to apply.
 	auto SetOption(const DatabaseOption &option) -> void;
+
+	/// Writes a setting at an explicit scope.
+	/// @param option The name/value pair to apply.
+	/// @param scope GLOBAL to write it database-wide, LOCAL for this session only.
+	/// @throws Exception When the setting does not allow the requested scope.
 	auto SetOption(const DatabaseOption &option, SettingScope scope) -> void;
 
-	// Parses a SQL string into an iterator over its statements. Parsing
-	// only: no binding, no catalog access, no transaction.
+	/// Parses a SQL string into an iterator over its statements, without binding or executing any of them.
+	/// Parsing happens statement by statement as the iterator advances, so a syntax error surfaces from
+	/// `StatementIterator::Next` rather than from this call.
+	/// @param sql One or more semicolon-separated SQL statements.
 	auto ParseSQL(const char *sql) -> StatementIterator;
-	// Inline forwarder: keeps std::string out of the compiled interface.
+
+	/// `std::string` overload of `ParseSQL`.
 	auto ParseSQL(const std::string &sql) -> StatementIterator {
 		return ParseSQL(sql.c_str());
 	}
 
-	// Executes a parsed statement, returning a lazy streaming result; nothing runs
-	// until the result is stepped. Borrowed (executed via a copy), not consumed, so
-	// re-executable. parameters bind positionally ($1 = parameters[0]). Throws
-	// RESOURCE_IN_USE while a live result exists.
+	/// Executes a statement, borrowing it rather than consuming it, so the same statement can be executed again.
+	/// @param statement The statement to execute.
+	/// @param parameters Values for the statement's parameters, bound positionally ($1 = parameters[0]).
+	/// @param parameter_count How many values `parameters` points at.
+	/// @return A streaming result. Execution is deferred until the result is read; binding errors throw here.
+	/// @throws Exception While an earlier result on this connection is still live.
 	auto Execute(const SqlStatement &statement, const Value *parameters, idx_t parameter_count) -> QueryResult;
-	// No-parameter convenience.
+
+	/// Executes a statement that takes no parameters.
 	auto Execute(const SqlStatement &statement) -> QueryResult;
-	// std::vector convenience (defined inline below, once Value is complete, to keep
-	// std::vector off the compiled boundary).
+
+	/// `std::vector` overload of the positional-parameter `Execute`.
 	auto Execute(const SqlStatement &statement, const std::vector<Value> &parameters) -> QueryResult;
-	// Named-parameter convenience: each NamedParam binds its value to the named
-	// parameter, or positionally when its name is empty.
+
+	/// Executes a statement with named parameters.
+	/// @param statement The statement to execute.
+	/// @param parameters One binding per parameter; each binds to $name, or positionally when its name is empty. A
+	/// statement cannot mix named and positional parameters.
 	auto Execute(const SqlStatement &statement, const std::vector<NamedParam> &parameters) -> QueryResult;
 
-	// Single-statement SQL convenience over ParseSQL + Execute: throws INVALID_INPUT
-	// unless the input contains exactly one statement.
+	/// Parses and executes a single SQL statement in one call.
+	/// @param sql Exactly one SQL statement. Use `ParseSQL` for multi-statement input.
+	/// @throws InvalidInputException When `sql` does not hold exactly one statement.
 	auto Execute(const std::string &sql) -> QueryResult;
 
-	// Binds a parsed statement without executing, returning its signature (output
-	// schema of result columns, input schema of parameter types). Borrowed, not
-	// consumed.
+	/// Binds a statement without executing it, borrowing it rather than consuming it.
+	/// @param statement The statement to bind.
+	/// @return Its signature: the columns it will produce and the parameters it expects.
 	auto Bind(const SqlStatement &statement) const -> Signature;
 
-	// Connection-level counterpart to Context::ParseType: resolves the type
-	// directly from the connection (its own transaction), no context scope needed.
+	/// `Context::ParseType` outside a callback.
+	/// @param text A type as SQL spells it, e.g. "DECIMAL(18, 3)" or "STRUCT(a INTEGER, b VARCHAR)".
 	auto ParseType(std::string_view text) -> LogicalType;
 
-	// Connection-level counterpart to Context::CreateType: resolves directly
-	// from the connection (its own transaction), no context scope needed.
+	/// `Context::CreateType` outside a callback.
+	/// @param name The type's unqualified name, e.g. "LIST" or "DECIMAL".
+	/// @param params The type's parameters, in the order SQL takes them. A `TypeParam` with an empty name is
+	/// positional.
 	auto CreateType(std::string_view name, const std::vector<TypeParam> &params = {}) -> LogicalType;
-	// The id-keyed twin: with no params this instantiates a primitive
-	// directly; with params the id binds like its canonical name does.
-	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) const -> LogicalType;
-	// A builder over this connection, for composing a type without
-	// assembling the parameter vector by hand.
+
+	/// The id-keyed twin of `CreateType`: the id resolves to its canonical name and binds like it.
+	/// @param id The type's id. Without parameters, only ids that name a complete type on their own are accepted;
+	/// parameterized kinds such as LIST or DECIMAL require parameters.
+	/// @param params The type's parameters, as in the name-keyed overload.
+	auto CreateType(LogicalTypeId id, const std::vector<TypeParam> &params = {}) -> LogicalType;
+
+	/// Starts composing a type step by step.
+	/// @return A `TypeBuilder` over this connection, for composing a nested type without assembling the parameter
+	/// vector by hand.
 	auto CreateType() -> TypeBuilder<Connection>;
 
+	/// Creates a `Value` on this connection; see `Value::Create` for the accepted C++ types.
+	/// @param value The C++ value to convert.
 	template <class T>
 	auto CreateValue(T &&value) -> Value;
 
-	// Requests cancellation of the active query. Safe to call from any
-	// thread; a no-op when no query is active.
+	/// Asks the running query to stop. `QueryResult::Step` then reports CANCELLED, and `FetchChunk` / `Drain` throw
+	/// `InterruptException`. Callable from any thread, and a no-op when no query is running.
 	auto Interrupt() -> void;
 
-	// Reads the active query's progress. Safe to call from any thread.
+	/// Reads how far the running query has come. Callable from any thread.
 	auto GetQueryProgress() const -> QueryProgress;
 
+	/// Wraps a connection handle owned by someone else.
+	/// @param opaque The borrowed handle; must be a connection handle of the DuckDB C API.
+	/// @return A non-owning `Connection`: it must not outlive the handle, and it will not disconnect on destruction.
 	static auto FromOpaque(void *opaque) -> Connection {
 		return Connection(opaque, false);
 	}
@@ -402,7 +514,10 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Database
 //----------------------------------------------------------------------------------------------------------------------
+// An open database: the catalog, the storage behind it, and the settings shared by every session on it. Databases are
+// opened through an `Environment` and worked with through the `Connection`s they hand out.
 
+/// An open database. It must outlive every `Connection` opened on it.
 class Database final : public detail::Handle<Database> {
 	friend detail::Factory;
 
@@ -411,13 +526,25 @@ public:
 	Database(Database &&) noexcept = default;
 	Database &operator=(Database &&) noexcept = default;
 
+	/// How many settings this database exposes.
 	auto GetOptionCount() const -> size_t;
+
+	/// One setting with its current global value.
+	/// @param index Setting index in [0, GetOptionCount()).
 	auto GetOptionByIndex(size_t index) const -> DatabaseOption;
-	// By-name get: an alias resolves to its canonical option. Throws
-	// INVALID_INPUT for an unknown name.
+
+	/// One setting with its current global value.
+	/// @param name The setting's name or one of its aliases; an alias resolves to the canonical setting.
+	/// @return The setting.
+	/// @throws InvalidInputException When no setting goes by that name.
 	auto GetOption(std::string_view name) const -> DatabaseOption;
+
+	/// Writes a setting globally, for this database and every session on it.
+	/// @param option The name/value pair to apply.
 	auto SetOption(const DatabaseOption &option) -> void;
 
+	/// Opens a new session on this database.
+	/// @return An owning `Connection`, which disconnects when destroyed. Open one per thread.
 	auto Connect() -> Connection;
 
 private:
@@ -427,13 +554,12 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Extension
 //----------------------------------------------------------------------------------------------------------------------
+// Loading an extension is how catalog entries (functions, types, casts) and database-level hooks get installed under
+// the extension's identity, so DuckDB can attribute them to the extension that provided them. Outside a load, the same
+// objects are registered on a `Connection` or a `Database` instead.
 
-// The extension currently being loaded: the identity under which catalog
-// entries (functions, types, casts) and database-level hooks (replacement
-// scans, log storages) are installed from inside DuckDB. Borrowed for the
-// duration of the load and never destroyed here. Registrations through it are
-// attributed to the extension. From outside a load, the same objects register
-// on a Connection (catalog entries) or a Database (database-level hooks).
+/// The extension being loaded, handed to its load entry point.
+/// Borrowed for the duration of the load: never store or outlive one.
 class Extension final : public detail::Handle<Extension> {
 	friend detail::Factory;
 
@@ -447,7 +573,11 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Environment
 //----------------------------------------------------------------------------------------------------------------------
+// The entry point to the API: an `Environment` opens databases and tracks the ones it has opened. Create one, keep it
+// for as long as any database is open, and open databases through it.
 
+/// The environment databases are opened in. It must outlive every `Database` opened through it; destroying it while
+/// databases are still open leaks them.
 class Environment final : public detail::Handle<Environment> {
 	friend detail::Factory;
 
@@ -457,21 +587,34 @@ public:
 	Environment(Environment &&) noexcept = default;
 	Environment &operator=(Environment &&) noexcept = default;
 
+	/// How many databases are currently open in this environment.
 	auto GetOpenDatabaseCount() const -> size_t;
 
+	/// Opens a database with default settings.
+	/// @param path The database file, or ":memory:" / the empty string for an in-memory database.
 	auto Open(const std::string &path) -> Database;
-	// Open with pre-open DBConfig options (access_mode, memory_limit, storage
-	// options, ...). Options are borrowed; the engine copies what it needs.
+
+	/// Opens a database, configuring it up front. Settings such as access_mode and the storage options can only be
+	/// chosen here, before the database exists.
+	/// @param path The database file, or ":memory:" / the empty string for an in-memory database.
+	/// @param options The settings to open with. Borrowed for the call only; the caller keeps them.
 	auto Open(const std::string &path, const std::vector<DatabaseOption> &options) -> Database;
 };
 
-// The version string of the linked DuckDB engine.
+/// The version of the DuckDB library this program is linked against, e.g. "v1.5.0", with a suffix such as
+/// "v1.5.0-dev123" on development builds.
 auto LibraryVersion() -> std::string;
 
 //----------------------------------------------------------------------------------------------------------------------
 // Logical Type
 //----------------------------------------------------------------------------------------------------------------------
+// The SQL type of a column, value or parameter. Types are built through a `Context` or `Connection`: by parsing SQL
+// text, by name and parameters, or with a `TypeBuilder`. Once built, a `LogicalType` is an owned, self-contained value
+// that can be inspected without any scope.
 
+/// The "id" of a built-in SQL type.
+/// Parameterized kinds such as LIST and DECIMAL are represented by their id plus parameters, the id alone does not name
+/// a complete type.
 enum class LogicalTypeId : uint32_t {
 	INVALID = 0,
 	SQLNULL = 1,
@@ -519,6 +662,8 @@ enum class LogicalTypeId : uint32_t {
 	TUPLE = 110,
 };
 
+/// An owned SQL type: a kind plus its parameters, e.g. DECIMAL(18, 3) or STRUCT(a INTEGER, b VARCHAR), and in the case
+/// of extension-defined types, its "alias"
 class LogicalType final : public detail::Handle<LogicalType> {
 	friend detail::Factory;
 
@@ -528,62 +673,112 @@ public:
 
 	~LogicalType() override;
 
-	// A copy of this type carrying `alias` as its name. Relabels only: no
-	// catalog lookup, so no context is involved.
-	// An alias of this type: same internal representation, distinct identity.
-	// Scoped like the rest of type creation, so the alias resolves against the
-	// catalog the context or connection reaches.
+	/// A copy of this type carrying `alias` as its name: the same representation under a distinct identity.
+	/// The alias is by default not registered anywhere; parsing or creating a type with this name does not resolve to
+	/// this type, unless it is explicitly registered in the catalog separately.
+	/// @param ctx The context to create the copy in.
+	/// @param alias The name the copy carries. Must not be empty.
 	auto WithAlias(const Context &ctx, std::string_view alias) const -> LogicalType;
+
+	/// `WithAlias` outside a callback.
 	auto WithAlias(const Connection &conn, std::string_view alias) const -> LogicalType;
 
-	// The type's name: the alias when set, otherwise the canonical fixed
-	// name of the type id. Never empty; exactly the vocabulary CreateType
-	// consumes. Borrowed; valid until this LogicalType is destroyed.
+	/// The kind of this type, e.g. `LogicalTypeId::DECIMAL` for any DECIMAL regardless of its parameters.
+	auto GetTypeId() const -> LogicalTypeId;
+
+	/// The type's name: its alias when it has one, otherwise the fixed name of its kind. Never empty.
+	/// @return A view borrowed from this type, valid until it is destroyed.
 	auto GetName() const -> std::string_view;
+
+	/// Whether both types are the same type, parameters and alias included.
 	bool operator==(const LogicalType &other) const;
+
 	bool operator!=(const LogicalType &other) const {
 		return !(*this == other);
 	}
 
-	// Renders as SQL text (an aliased type renders as its alias). The inverse
-	// of Context::ParseType for every constructible kind.
+	/// Renders the type as SQL text. An aliased type is rendered as its alias.
 	auto ToText() const -> std::string;
 
-	// Generic parameter inspection: the exact dual of Context::CreateType.
-	// DECIMAL 2 (width, scale); LIST 1 (element type); ARRAY 2 (element
-	// type, size); MAP 2 (key, value types); STRUCT one per field; UNION one
-	// per member; ENUM one per dictionary entry; VARCHAR 1 when a collation
-	// is set; GEOMETRY 1 when a coordinate system is set; else 0.
+	/// How many parameters the type carries:
+	/// - DECIMAL 2 (width, scale)
+	/// - LIST 1 (element type)
+	/// - ARRAY 2 (element type, size)
+	/// - MAP 2 (key, value types)
+	/// - STRUCT and TUPLE one per field
+	/// - UNION one per member
+	/// - ENUM one per dictionary entry;
+	/// - VARCHAR 1 when a collation is set;
+	/// - GEOMETRY 1 when a coordinate system is set;
+	/// anything else 0.
 	auto GetParamCount() const -> idx_t;
-	// One parameter: owned name (empty = positional) plus owned value. Child
-	// types come back as TYPE values (unwrap via Value::AsType).
+
+	/// Get one of the type's parameters. The parameter's name is empty when it is positional, otherwise it is the name
+	/// of the field or member it describes.
+	/// @param index Parameter index in [0, GetParamCount()).
+	/// @return An owned name and an owned value. Child types arrive as TYPE values.
 	auto GetParam(idx_t index) const -> TypeParam;
 
-	// Per-kind sugar over GetParam / GetParamCount. Each throws
-	// INVALID_INPUT when this type is not the matching kind. Names and
-	// dictionary entries return owned strings: the backing values are owned
-	// per call, so views would dangle.
+	// Per-kind shorthands over `GetParam` / `GetParamCount`. They do not verify the type's kind: on a type of another
+	// kind they misread that type's parameters or throw, so check the kind first. Names and dictionary entries come
+	// back as owned strings.
+
+	/// The total number of digits a DECIMAL holds.
 	auto GetDecimalWidth() const -> uint8_t;
+
+	/// The number of digits a DECIMAL keeps after the point.
 	auto GetDecimalScale() const -> uint8_t;
+
+	/// How many entries an ENUM's dictionary holds.
 	auto GetEnumSize() const -> idx_t;
+
+	/// One ENUM dictionary entry.
+	/// @param index Entry index in [0, GetEnumSize()).
 	auto GetEnumValue(idx_t index) const -> std::string;
+
+	/// The element type of a LIST.
 	auto GetListChildType() const -> LogicalType;
+
+	/// The element type of an ARRAY.
 	auto GetArrayChildType() const -> LogicalType;
+
+	/// How many elements every row of an ARRAY holds.
 	auto GetArraySize() const -> idx_t;
+
+	/// The key type of a MAP.
 	auto GetMapKeyType() const -> LogicalType;
+
+	/// The value type of a MAP.
 	auto GetMapValueType() const -> LogicalType;
+
+	/// How many fields a STRUCT has.
 	auto GetStructChildCount() const -> idx_t;
+
+	/// The name of one STRUCT field, empty for the fields of an unnamed STRUCT.
+	/// @param index Field index in [0, GetStructChildCount()).
 	auto GetStructChildName(idx_t index) const -> std::string;
+
+	/// The type of one STRUCT field.
+	/// @param index Field index in [0, GetStructChildCount()).
 	auto GetStructChildType(idx_t index) const -> LogicalType;
+
+	/// How many members a UNION has.
 	auto GetUnionMemberCount() const -> idx_t;
+
+	/// The tag of one UNION member.
+	/// @param index Member index in [0, GetUnionMemberCount()).
 	auto GetUnionMemberName(idx_t index) const -> std::string;
+
+	/// The type of one UNION member.
+	/// @param index Member index in [0, GetUnionMemberCount()).
 	auto GetUnionMemberType(idx_t index) const -> LogicalType;
 
-	// Storage-tier conveniences, computed locally from the committed
-	// width / dictionary-size tables (see the vector module's view
-	// docstring); no extra boundary crossings. Gate on the type kind like
-	// the other sugars.
+	/// The integer type a DECIMAL's digits are stored in, which is what its vector elements are; determined by the
+	/// width.
 	auto GetDecimalInternalTypeId() const -> LogicalTypeId;
+
+	/// The unsigned integer type an ENUM's dictionary indices are stored in, which is what its vector elements are;
+	/// determined by the dictionary size.
 	auto GetEnumInternalTypeId() const -> LogicalTypeId;
 
 private:
@@ -593,10 +788,10 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
 // Schema
 //----------------------------------------------------------------------------------------------------------------------
+// The shape of a row: which fields it has, in order, and of what type. Used both for what a statement produces and
+// for what it expects.
 
-// An ordered (name, type) row schema: a statement's input (parameters) or output
-// (result columns), or a result's columns. Field names may repeat or be empty,
-// and the list may be empty.
+/// An ordered list of (name, type) fields. Names may repeat, and a schema may have no fields at all.
 class Schema final : public detail::Handle<Schema> {
 	friend detail::Factory;
 
@@ -606,76 +801,107 @@ public:
 
 	~Schema() override;
 
-	// Number of fields.
+	/// How many fields the schema has.
 	auto GetFieldCount() const -> idx_t;
-	// Borrowed field name, valid for this Schema's lifetime; empty for an absent name.
+
+	/// The name of one field.
+	/// @param index Field index in [0, GetFieldCount()).
+	/// @return A view borrowed from this schema, valid until it is destroyed.
 	auto GetFieldName(idx_t index) const -> std::string_view;
-	// An owned copy of the field type.
+
+	/// An owned copy of one field's type.
+	/// @param index Field index in [0, GetFieldCount()).
 	auto GetFieldType(idx_t index) const -> LogicalType;
 
 private:
 	explicit Schema(void *impl);
 };
 
-// A bound statement's signature: its output schema (result columns) and input schema (parameter types).
-// Returned by Connection::Bind.
+/// What `Connection::Bind` learns about a statement without running it.
 class Signature {
 public:
+	/// The columns the statement will produce.
 	Schema output;
+	/// The statement's parameters, ordered by binding key. A field's name is the key: "1", "2", ... for positional
+	/// parameters, the name for named ones.
 	Schema parameters;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
 // Primitive data types
 //----------------------------------------------------------------------------------------------------------------------
+// One C++ type per SQL type, laid out exactly as it appears as an element of a vector. These are what
+// `VectorView::Data<T>` reads arrays of, and what `Value::Get<T>` and `Value::Create` are keyed on, so the type picked
+// here also selects the SQL type read or written.
+//
+// A few of them store their value in an encoded form. Those carry `Decode` / `Encode` or named accessors, and the raw
+// field is not the value you want.
+//
+// DATE and the TIMESTAMP types reserve their most extreme values as +/- infinity sentinels.
 
+/// HUGEINT: a 128-bit signed integer, in two halves.
 struct int128_t {
+	/// The low 64 bits.
 	uint64_t lower;
+	/// The high 64 bits, carrying the sign.
 	int64_t upper;
 };
 
+/// UHUGEINT: a 128-bit unsigned integer, in two halves.
 struct uint128_t {
+	/// The low 64 bits.
 	uint64_t lower;
+	/// The high 64 bits.
 	uint64_t upper;
 };
 
+/// DATE: days since 1970-01-01.
 struct date_t {
 	int32_t days = 0;
 };
 
+/// TIME: microseconds since midnight.
 struct dtime_t {
 	int64_t micros = 0;
 };
 
+/// TIME_NS: nanoseconds since midnight.
 struct dtime_ns_t {
 	int64_t nanos = 0;
 };
 
-// TIME_TZ packs the time-of-day into the high 40 bits and a biased UTC offset
-// into the low 24 -- the committed layout, so the packed integer sorts. The
-// offset is stored reverse-ordered (MAX_OFFSET - seconds), which is why it
-// cannot be read out with a plain shift.
+/// TIME_TZ: a time of day together with its UTC offset, packed into one integer -- time in the high 40 bits, the
+/// offset reverse-ordered in the low 24. Read it through the accessors; a plain shift gives neither.
 struct dtime_tz_t {
 	static constexpr int OFFSET_BITS = 24;
 	static constexpr uint64_t OFFSET_MASK = (uint64_t(1) << OFFSET_BITS) - 1;
 	static constexpr int32_t MAX_OFFSET = 16 * 60 * 60 - 1; // +/-15:59:59
 
 	dtime_tz_t() = default;
-	// The packed form, as a vector slot holds it.
+
+	/// Wraps the packed form, as it appears as a vector element.
 	explicit dtime_tz_t(uint64_t bits) : bits(bits) {
 	}
-	// Micros since midnight plus the UTC offset in seconds, positive east.
+
+	/// Packs a time and an offset.
+	/// @param micros Microseconds since midnight.
+	/// @param offset_seconds The UTC offset in seconds, positive east, in [-MAX_OFFSET, MAX_OFFSET].
 	dtime_tz_t(int64_t micros, int32_t offset_seconds)
 	    : bits((static_cast<uint64_t>(micros) << OFFSET_BITS) |
 	           (static_cast<uint64_t>(MAX_OFFSET - offset_seconds) & OFFSET_MASK)) {
 	}
 
+	/// Microseconds since midnight.
 	auto GetMicros() const -> int64_t {
 		return static_cast<int64_t>(bits >> OFFSET_BITS);
 	}
+
+	/// The UTC offset in seconds, positive east.
 	auto GetOffset() const -> int32_t {
 		return MAX_OFFSET - static_cast<int32_t>(bits & OFFSET_MASK);
 	}
+
+	/// The packed form, as it appears as a vector element.
 	auto GetBits() const -> uint64_t {
 		return bits;
 	}
@@ -684,45 +910,59 @@ private:
 	uint64_t bits = 0;
 };
 
+/// TIMESTAMP: microseconds since 1970-01-01 00:00:00.
 struct timestamp_t {
 	int64_t micros = 0;
 };
 
+/// TIMESTAMP_SEC: seconds since 1970-01-01 00:00:00.
 struct timestamp_s_t {
 	int64_t seconds = 0;
 };
 
+/// TIMESTAMP_MS: milliseconds since 1970-01-01 00:00:00.
 struct timestamp_ms_t {
 	int64_t millis = 0;
 };
 
+/// TIMESTAMP_NS: nanoseconds since 1970-01-01 00:00:00.
 struct timestamp_ns_t {
 	int64_t nanos = 0;
 };
 
+/// TIMESTAMP_TZ: microseconds since the epoch, in UTC. The display time zone is a session setting, not part of the
+/// value.
 struct timestamp_tz_t {
 	int64_t micros = 0;
 };
 
+/// TIMESTAMP_TZ_NS: nanoseconds since the epoch, in UTC.
 struct timestamp_tz_ns_t {
 	int64_t nanos = 0;
 };
 
+/// INTERVAL: a span of time, kept in three separate units because months and days are not fixed lengths of time.
 struct interval_t {
 	int32_t months;
 	int32_t days;
 	int64_t micros;
 };
 
+/// The element of a LIST vector: where a row's elements are in the child vector, rather than the elements themselves.
 struct list_entry_t {
+	/// Index of the row's first element in the child vector.
 	uint64_t offset = 0;
+	/// How many elements the row has.
 	uint64_t length = 0;
 };
 
+/// DECIMAL(WIDTH, SCALE): an exact number, kept as an integer of WIDTH digits with the point SCALE digits from the
+/// right. The width picks the storage integer, so DECIMAL(9, 2) and DECIMAL(18, 2) are different C++ types and their
+/// payloads are not interchangeable.
 template <int8_t WIDTH, uint8_t SCALE>
 struct decimal_t {
-	static_assert(SCALE <= WIDTH, "DECIMAL scale must be less than or equal to width");
 	static_assert(WIDTH >= 1 && WIDTH <= 38, "DECIMAL type width must be between 1 and 38");
+	static_assert(SCALE <= WIDTH, "DECIMAL scale must be less than or equal to width");
 	using storage_type = std::conditional_t<
 	    (WIDTH <= 4), int16_t,
 	    std::conditional_t<(WIDTH <= 9), int32_t, std::conditional_t<(WIDTH <= 18), int64_t, int128_t>>>;
@@ -730,8 +970,16 @@ struct decimal_t {
 	storage_type value;
 };
 
+/// BLOB: a string of bytes, in the form it takes as a vector element. Up to INLINE_LENGTH bytes live in the element
+/// itself; longer ones live elsewhere and the element only points at them.
+///
+/// A blob never owns its bytes. Constructing one from a `std::string_view` borrows that memory rather than copying it,
+/// so a long blob is only valid while whatever holds the bytes is: use `Arena::AddString` / `Vector::AssignString` to
+/// put bytes somewhere that lives as long as the vector.
 struct blob_t {
+	/// The longest byte string that fits in a vector element without being stored elsewhere.
 	static constexpr uint32_t INLINE_LENGTH = 12;
+	/// How many leading bytes a non-inlined blob keeps alongside the pointer, for comparisons.
 	static constexpr uint32_t PREFIX_LENGTH = 4;
 
 	union {
@@ -746,14 +994,17 @@ struct blob_t {
 		} inlined;
 	} value;
 
+	/// An empty blob.
 	blob_t() {
 		memset(&value, 0, sizeof(value));
 	}
 
+	/// Borrows the bytes of `str`, which must outlive the blob unless they fit inline.
 	// NOLINTNEXTLINE
 	blob_t(std::string_view str) : blob_t(str.data(), static_cast<uint32_t>(str.size())) {
 	}
 
+	/// Borrows `size` bytes at `data`, which must outlive the blob unless they fit inline.
 	blob_t(const char *data, uint32_t size) {
 		if (size <= INLINE_LENGTH) {
 			memset(&value, 0, sizeof(value));
@@ -775,87 +1026,106 @@ struct blob_t {
 		return std::string(data(), size());
 	}
 
+	/// Whether the bytes live in the value itself rather than behind the pointer.
 	auto is_inlined() const -> bool {
 		return value.inlined.length <= INLINE_LENGTH;
 	}
+
+	/// The number of bytes.
 	auto size() const -> uint32_t {
 		return value.inlined.length;
 	}
+
+	/// The bytes, wherever they live. Not null-terminated.
 	auto data() const -> const char * {
 		return is_inlined() ? value.inlined.inlined : value.pointer.ptr;
 	}
+
+	/// Mutable access to the bytes. Editing a non-inlined blob's bytes leaves its cached prefix stale, so prefer
+	/// building a new value over patching one in place.
 	auto data_mut() -> char * {
 		return is_inlined() ? value.inlined.inlined : value.pointer.ptr;
 	}
+
+	/// The bytes as a view, valid as long as the blob and whatever holds its bytes are.
 	auto view() const -> std::string_view {
 		return std::string_view(data(), size());
 	}
 };
 
+/// VARCHAR: like `blob_t`, but naming a string of UTF-8 text rather than of arbitrary bytes.
 struct varchar_t : blob_t {
 	using blob_t::blob_t;
 };
 
-// BIT's storage is a padding-header byte followed by the data bytes; the
-// header counts the leading bits of the first data byte that are not part of
-// the bit string. A lens over those bytes, so BIT can name itself in an
-// overload the way varchar_t does.
+/// BIT: a string of bits, stored as a padding-count byte followed by the data bytes. The count says how many leading
+/// bits of the first data byte are not part of the bit string, and those padding bits are set to 1. The raw bytes are
+/// not the bits: read them through the accessors, and note that the constructors inherited from `blob_t` take these
+/// encoded bytes, not a bit string.
 struct bit_t : blob_t {
 	using blob_t::blob_t;
 
+	/// How many leading bits of the first data byte are padding.
 	auto GetPaddingBits() const -> uint8_t {
 		return size() > 0 ? static_cast<uint8_t>(data()[0]) : 0;
 	}
-	// The data bytes, past the header.
+
+	/// The data bytes, past the padding-count byte.
 	auto GetBits() const -> const char * {
 		return size() > 0 ? data() + 1 : data();
 	}
+
+	/// How many data bytes there are.
 	auto GetBitsSize() const -> uint32_t {
 		return size() > 0 ? size() - 1 : 0;
 	}
-	// How many bits the string actually holds.
+
+	/// How many bits the string actually holds, padding excluded.
 	auto GetBitCount() const -> uint64_t {
 		return GetBitsSize() == 0 ? 0 : static_cast<uint64_t>(GetBitsSize()) * 8 - GetPaddingBits();
 	}
 };
 
-// BIGNUM's storage is opaque: negatives are bit-inverted behind a header, so
-// the bytes are not the magnitude. Only the codec translates them.
+/// BIGNUM: an arbitrary-precision integer. Its bytes are encoded so that comparing them matches numeric order, which
+/// among other things bit-inverts negative values, so they are not the magnitude. `Decode` and `Encode` translate; the
+/// constructors inherited from `blob_t` take the encoded bytes.
 struct bignum_t : blob_t {
 	using blob_t::blob_t;
 
-	// A decoded BIGNUM: big-endian magnitude bytes plus a sign flag. The integer
-	// is (-1)**is_negative * unsigned_big_endian(magnitude). Owned bytes.
+	/// A BIGNUM as a number: the integer is (-1)^is_negative * unsigned_big_endian(magnitude). Owns its bytes.
 	struct Decoded {
+		/// The magnitude, big-endian, without leading zeroes; zero is a single 0x00.
 		std::vector<uint8_t> magnitude;
+		/// Whether the integer is negative.
 		bool is_negative;
 	};
 
-	// The magnitude and sign the storage stands for.
+	/// The magnitude and sign this value stands for.
 	auto Decode() const -> Decoded;
-	// The inverse: storage bytes for a magnitude + sign, to build a value from.
-	// The magnitude must be canonical -- at least one byte, no leading zeroes,
-	// zero being a single 0x00 with is_negative false.
+
+	/// The inverse: the bytes to build a BIGNUM value from.
+	/// @param value The magnitude and sign, with the magnitude canonical: at least one byte, no leading zeroes, and
+	/// zero written as a single 0x00 with `is_negative` false.
 	static auto Encode(const Decoded &value) -> std::vector<uint8_t>;
 };
 
-// UUID's storage is an int128 with its high bit flipped so the integer sorts,
-// so the canonical bytes only come out through Decode. Distinct from int128_t,
-// which names HUGEINT.
+/// UUID: a 128-bit identifier, stored as an integer with its high bit flipped so that comparing the integers matches
+/// UUID order. The canonical bytes only come out through `Decode`. Distinct from `int128_t`, which names HUGEINT.
 struct uuid_t {
 	int128_t value {};
 
 	uuid_t() = default;
+
+	/// Wraps the stored form, as it appears as a vector element.
 	explicit uuid_t(int128_t storage) : value(storage) {
 	}
 
-	// A decoded UUID: the canonical 16 big-endian bytes. The storage is an int128
-	// with its high bit flipped for sort order; this is the real value.
+	/// A UUID as its canonical 16 big-endian bytes.
 	struct Decoded {
 		uint8_t bytes[16];
 	};
 
-	// The canonical 16 big-endian bytes.
+	/// The canonical 16 big-endian bytes.
 	auto Decode() const -> Decoded {
 		const uint64_t upper = static_cast<uint64_t>(value.upper) ^ (static_cast<uint64_t>(1) << 63);
 		Decoded out {};
@@ -866,7 +1136,8 @@ struct uuid_t {
 		return out;
 	}
 
-	// The inverse: canonical bytes into the sort-ordered storage form.
+	/// The inverse: the stored form for a set of canonical bytes.
+	/// @param bytes The UUID's 16 big-endian bytes.
 	static auto Encode(const Decoded &bytes) -> uuid_t {
 		uint64_t upper = 0;
 		uint64_t lower = 0;
@@ -881,7 +1152,13 @@ struct uuid_t {
 //----------------------------------------------------------------------------------------------------------------------
 // Value
 //----------------------------------------------------------------------------------------------------------------------
+// A single SQL value, type included: what a statement parameter binds to, what a type parameter carries, and the way
+// to read or write one cell of a vector without caring how it is represented. Values are owned and self-contained;
+// creating one is scoped to a `Context` or `Connection`.
+//
+// For bulk data, go through `Vector` instead: a value costs an allocation, so it is the wrong tool per row.
 
+/// An owned SQL value.
 class Value final : public detail::Handle<Value> {
 	friend detail::Factory;
 
@@ -891,35 +1168,62 @@ public:
 	Value(Value &&) noexcept = default;
 	Value &operator=(Value &&) noexcept = default;
 
+	/// Whether this is SQL NULL. A NULL value still has a type.
 	auto IsNull() const -> bool;
+
+	/// An owned copy of the value's type.
 	auto GetLogicalType() const -> LogicalType;
+
+	/// The value rendered the way DuckDB prints it, e.g. in query output.
 	auto ToText() const -> std::string;
 
-	// Cast a value to another type
+	/// Casts the value to another type, following the same rules as a SQL cast.
+	/// @param ctx The context to cast in.
+	/// @param target The type to cast to.
+	/// @return The converted value. Throws when the cast is not allowed or the value does not fit.
 	auto Cast(const Context &ctx, const LogicalType &target) const -> Value;
+
+	/// `Cast` outside a callback.
 	auto Cast(const Connection &conn, const LogicalType &target) const -> Value;
 
-	//! Accessors
+	/// Reads the value as `T`, where `T` is one of the primitive types above, or `LogicalType` for a TYPE value.
+	/// Numeric, temporal and boolean values of another type are converted, following cast rules; the remaining `T`s
+	/// require a value of the matching type. Types with no specialization here do not compile.
+	/// @return The value. For `varchar_t` / `blob_t` / `bit_t` / `bignum_t` the bytes are borrowed from this value and
+	/// stay valid only as long as it does.
+	/// @throws Exception When the value is NULL, or when it cannot be read as `T`.
 	template <class T>
 	auto Get() const -> T = delete;
 
-	// DECIMAL cannot join the set above: Get<T> is a function template, and a
-	// function template cannot be partially specialized, so decimal_t<W, S>
-	// has no way in. This is the same spelling keyed on the parameters
-	// instead -- value.Get<18, 3>() -- and it checks them against the value's
-	// own type rather than reinterpreting the payload.
+	/// Reads the value as a DECIMAL, e.g. `value.Get<18, 3>()`, spelled with the width and scale instead of a type.
+	/// @return The value.
+	/// @throws InvalidInputException Unless the value is a DECIMAL of exactly this width and scale; payloads are not
+	/// interchangeable between widths.
 	template <int8_t WIDTH, uint8_t SCALE>
 	auto Get() const -> decimal_t<WIDTH, SCALE> {
 		int128_t value {};
 		GetDecimal(value, WIDTH, SCALE);
-		return decimal_t<WIDTH, SCALE> {static_cast<typename decimal_t<WIDTH, SCALE>::storage_type>(value.lower)};
+		if constexpr (std::is_same_v<typename decimal_t<WIDTH, SCALE>::storage_type, int128_t>) {
+			return decimal_t<WIDTH, SCALE> {value};
+		} else {
+			return decimal_t<WIDTH, SCALE> {static_cast<typename decimal_t<WIDTH, SCALE>::storage_type>(value.lower)};
+		}
 	}
 
-	//! Null Constructors
+	/// A NULL of the given type.
+	/// @param conn The connection to create the value on.
+	/// @param type The type the NULL carries.
 	static auto CreateNull(Connection &conn, const LogicalType &type) -> Value;
-	static auto CreateNull(Context &conn, const LogicalType &type) -> Value;
 
-	//! Types Constructors
+	/// `CreateNull` inside a callback.
+	static auto CreateNull(Context &ctx, const LogicalType &type) -> Value;
+
+	/// Creates a value from a C++ value. The overload picked decides the SQL type, so `dtime_t` yields TIME and
+	/// `dtime_ns_t` yields TIME_NS; a `LogicalType` yields a TYPE value. Types with no overload here do not compile --
+	/// cast or build them through the composite constructors instead. Byte strings are copied in, so the value does not
+	/// borrow from the `varchar_t` / `blob_t` handed to it.
+	/// @param conn The connection to create the value on.
+	/// @param value The C++ value to convert.
 	static auto Create(Connection &conn, bool value) -> Value;
 	static auto Create(Connection &conn, uint8_t value) -> Value;
 	static auto Create(Connection &conn, uint16_t value) -> Value;
@@ -959,6 +1263,9 @@ public:
 	template <class T>
 	static auto Create(Connection &conn, T value) -> Value = delete;
 
+	/// `Create` inside a callback.
+	/// @param ctx The context to create the value in.
+	/// @param value The C++ value to convert.
 	static auto Create(Context &ctx, bool value) -> Value;
 	static auto Create(Context &ctx, uint8_t value) -> Value;
 	static auto Create(Context &ctx, uint16_t value) -> Value;
@@ -998,79 +1305,104 @@ public:
 	template <class T>
 	static auto Create(Context &ctx, T value) -> Value = delete;
 
-	// Composite construction. Each infers the composite type from its children,
-	// so the built-in composites are the whole reach here: an aliased or
-	// extension-registered composite is built through Cast, which is the
-	// engine's own construction path for those kinds.
+	// Composite construction. Each constructor infers the composite's type from the children it is given, which is why
+	// only the built-in composites are reachable this way: build an aliased or extension-registered composite by
+	// casting one of these to it.
 	//
-	// Children are borrowed for the duration of the call. The composite holds
-	// its own copies, so the inputs stay owned by the caller.
-	//
-	// Each comes in both scope forms, like Create and CreateNull: the Context
-	// one for a live bind / execution context, the Connection one for outside.
-	// Composite children are owned, like a type's parameters: the caller moves
-	// them in, so nothing here can outlive what it points at.
+	// Children are borrowed for the duration of the call and copied into the result, so the caller keeps its inputs
+	// and nothing in the result points back at them. Each comes in both scope forms, like `Create` and `CreateNull`.
 	using ValueList = const std::vector<Value> &;
 	using NamedValueList = const std::vector<std::pair<std::string, Value>> &;
 	using KeyValueList = const std::vector<std::pair<Value, Value>> &;
 
-	// A LIST of the elements. The child type is the first element's; the rest are cast to it, so a set that does not
-	// share a type surfaces the engine's cast error rather than widening silently.
-	// An empty element list has no child type to infer and throws; build an empty LIST through the child-type overload
-	// instead.
+	/// A LIST of the given elements.
+	/// @param conn The connection to create the value on.
+	/// @param values The elements. The element type is the common type of all of them and each is cast to it, so
+	/// mixing INTEGER and VARCHAR yields VARCHAR elements. Must not be empty: with no element there is no type to
+	/// infer, so use the child-type overload for an empty LIST.
+	/// @throws Exception When the elements have no common type.
 	static auto CreateList(Connection &conn, ValueList values) -> Value;
+
+	/// `CreateList` inside a callback.
 	static auto CreateList(Context &ctx, ValueList values) -> Value;
 
-	// An empty LIST of `child_type`. Takes the element type, not the LIST type.
+	/// An empty LIST.
+	/// @param conn The connection to create the value on.
+	/// @param child_type The element type, not the LIST type.
 	static auto CreateList(Connection &conn, const LogicalType &child_type) -> Value;
+
+	/// `CreateList` inside a callback.
 	static auto CreateList(Context &ctx, const LogicalType &child_type) -> Value;
 
-	// An ARRAY of the elements, sized by how many there are, with the same first-element child type as CreateList.
-	// The engine's minimum array size is 1, so there is no empty ARRAY to build and an empty element list throws.
+	/// An ARRAY of the given elements, its size being how many there are.
+	/// @param conn The connection to create the value on.
+	/// @param values The elements, typed as in `CreateList`. Must not be empty: the smallest ARRAY holds one element.
 	static auto CreateArray(Connection &conn, ValueList values) -> Value;
+
+	/// `CreateArray` inside a callback.
 	static auto CreateArray(Context &ctx, ValueList values) -> Value;
 
-	// A TUPLE is an unnamed struct. The empty tuple is a real type too, so an empty field list is valid.
+	/// A TUPLE, i.e. a struct whose fields have no names.
+	/// @param conn The connection to create the value on.
+	/// @param values The fields, in order. May be empty: the empty tuple is a type of its own.
 	static auto CreateTuple(Connection &conn, ValueList values = {}) -> Value;
+
+	/// `CreateTuple` inside a callback.
 	static auto CreateTuple(Context &ctx, ValueList values = {}) -> Value;
 
-	// A STRUCT of the named fields, in order. The empty struct is a real type, so an empty field list is valid.
-	static auto CreateStruct(Connection &conn, NamedValueList = {}) -> Value;
+	/// A STRUCT of the given fields.
+	/// @param conn The connection to create the value on.
+	/// @param values The (name, value) fields, in order. Names should be unique and either all set or all empty; this
+	/// is not validated. May be empty: the empty struct is a type of its own.
+	static auto CreateStruct(Connection &conn, NamedValueList values = {}) -> Value;
+
+	/// `CreateStruct` inside a callback.
 	static auto CreateStruct(Context &ctx, NamedValueList values = {}) -> Value;
 
-	// A MAP of the key, value pairs, keyed and valued by the first pair's types, with the rest cast to them.
-	// Keys must be unique and non-NULL, the engine enforces both.
-	// An empty pair list has no types to infer and throws.
-	// Build an empty MAP through the key/value-type overload instead.
+	/// A MAP of the given entries.
+	/// @param conn The connection to create the value on.
+	/// @param values The (key, value) entries. The key and value types are the common types over all entries, and each
+	/// entry is cast to them, as in `CreateList`. Keys must be unique and not NULL. Must not be empty: with no entry
+	/// there are no types to infer, so use the key/value-type overload for an empty MAP.
 	static auto CreateMap(Connection &conn, KeyValueList values) -> Value;
+
+	/// `CreateMap` inside a callback.
 	static auto CreateMap(Context &ctx, KeyValueList values) -> Value;
 
-	// An empty MAP of `key_type` and `value_type`. Takes the key and value types, not the MAP type.
+	/// An empty MAP.
+	/// @param conn The connection to create the value on.
+	/// @param key_type The key type, not the MAP type.
+	/// @param value_type The value type, not the MAP type.
 	static auto CreateMap(Connection &conn, const LogicalType &key_type, const LogicalType &value_type) -> Value;
+
+	/// `CreateMap` inside a callback.
 	static auto CreateMap(Context &ctx, const LogicalType &key_type, const LogicalType &value_type) -> Value;
 
-	//! Composite values
+	/// How many children a composite value has: elements for LIST and ARRAY, fields for STRUCT and TUPLE, two per
+	/// entry for MAP, 2 for UNION, and 0 for anything else. A NULL value has no children.
 	auto GetChildCount() const -> idx_t;
+
+	/// An owned copy of one child. A MAP's children alternate key and value, so entry `i` is children 2*i and 2*i+1; a
+	/// UNION's children are its tag, then its active member.
+	/// @param index Child index in [0, GetChildCount()).
 	auto GetChild(idx_t index) const -> Value;
 
+	/// Shorthand for `GetChild`.
 	auto operator[](idx_t index) const -> Value {
 		return GetChild(index);
 	}
 
 private:
-	// Reads the backing integer, and throws unless the value's own width and
-	// scale are the ones asked for: a DECIMAL(9, 2) is not a DECIMAL(18, 3),
-	// and the payloads are not interchangeable across storage tiers.
+	/// @internal Reads the backing integer, throwing unless the value's own width and scale are the ones asked for.
 	void GetDecimal(int128_t &out, uint8_t width, uint8_t scale) const;
 
-	// The runtime forwarder behind the templated DECIMAL constructors; keeping
-	// it here is what lets those be defined in the header without naming a C
-	// type.
+	/// @internal The runtime forwarder behind the templated DECIMAL constructors, so those can be defined in the header
+	/// without naming a C type.
 	static auto CreateDecimal(Connection &conn, int128_t value, uint8_t width, uint8_t scale) -> Value;
 	static auto CreateDecimal(Context &ctx, int128_t value, uint8_t width, uint8_t scale) -> Value;
 
-	// Sign-extends a DECIMAL's backing integer to the widest storage tier, so one
-	// entry point can carry every tier without the header naming a C type per tier.
+	/// @internal Sign-extends a DECIMAL's backing integer to the widest storage tier, so one entry point can carry
+	/// every tier.
 	static auto WidenDecimal(int64_t value) -> int128_t {
 		return int128_t {static_cast<uint64_t>(value), value < 0 ? -1 : 0};
 	}
@@ -1152,58 +1484,90 @@ auto Context::CreateValue(T &&value) -> Value {
 	return Value::Create(*this, std::forward<T>(value));
 }
 
-// A type parameter. The name is optional for positional parameters
+/// One parameter of a type: a value, plus a name when the parameter is a named one. A parameter with an empty name is
+/// positional.
 struct TypeParam {
+	/// A named parameter.
+	/// @param name The parameter's name.
+	/// @param value The parameter's value; moved in.
 	TypeParam(std::string_view name, Value value) : name(name), value(std::move(value)) {
 	}
 
+	/// A positional parameter.
+	/// @param value The parameter's value; moved in.
 	explicit TypeParam(Value value) : name(""), value(std::move(value)) {
 	}
-	auto GetName() const -> const std::string & { return name; }
-	auto GetValue() const -> const Value& { return value; }
-	auto GetValue() -> Value& { return value; }
+
+	/// The parameter's name, empty when it is positional.
+	auto GetName() const -> const std::string & {
+		return name;
+	}
+
+	/// The parameter's value.
+	auto GetValue() const -> const Value & {
+		return value;
+	}
+
+	/// The parameter's value, mutably.
+	auto GetValue() -> Value & {
+		return value;
+	}
+
 private:
 	std::string name;
 	Value value;
 };
 
-// The TypeBuilder makes it easier to construct nested types incrementally
+/// Builds a type a piece at a time, without assembling a parameter vector by hand. Start one from
+/// `Context::CreateType()` or `Connection::CreateType()`, chain the setters, and call `Build`.
+/// Nested types are added by passing a callback that fills in a builder of its own.
 template <class CTX>
 class TypeBuilder {
 public:
 	explicit TypeBuilder(CTX &context) : ctx(context) {
 	}
 
+	/// Identifies the type to build by its id. Takes precedence over `SetName`.
 	auto SetTypeId(LogicalTypeId type_id_p) -> TypeBuilder & {
 		type_id = type_id_p;
 		return *this;
 	}
+
+	/// Identifies the type to build by name, which is how extension-registered types are reached.
 	auto SetName(std::string_view name_p) -> TypeBuilder & {
 		name = name_p;
 		return *this;
 	}
+
+	/// Appends a positional type parameter.
 	auto AddParam(const LogicalType &type) -> TypeBuilder & {
 		params.emplace_back("", ctx.CreateValue(type));
 		return *this;
 	}
 
+	/// Appends a named type parameter, e.g. a STRUCT field.
 	auto AddParam(std::string_view name_p, const LogicalType &type) -> TypeBuilder & {
 		params.emplace_back(name_p, ctx.CreateValue(type));
 		return *this;
 	}
 
+	/// Appends a named value parameter, e.g. a VARCHAR's collation.
 	template <class T, class = std::enable_if_t<!std::is_invocable_v<T &, TypeBuilder &>>>
 	auto AddParam(std::string_view name_p, const T &value) -> TypeBuilder & {
 		params.emplace_back(name_p, ctx.CreateValue(value));
 		return *this;
 	}
 
+	/// Appends a positional value parameter, e.g. a DECIMAL's width.
 	template <class T, class = std::enable_if_t<!std::is_invocable_v<T &, TypeBuilder &>>>
 	auto AddParam(const T &value) -> TypeBuilder & {
 		params.emplace_back("", ctx.CreateValue(value));
 		return *this;
 	}
 
+	/// Appends a named parameter holding a nested type.
+	/// @param name_p The parameter's name.
+	/// @param builder Called with a fresh builder; whatever it composes becomes the parameter.
 	template <class F, class = std::enable_if_t<std::is_invocable_v<F &, TypeBuilder &>>>
 	auto AddParam(std::string_view name_p, F &&builder) -> TypeBuilder & {
 		TypeBuilder nested_builder(ctx);
@@ -1212,6 +1576,8 @@ public:
 		return *this;
 	}
 
+	/// Appends a positional parameter holding a nested type.
+	/// @param builder Called with a fresh builder; whatever it composes becomes the parameter.
 	template <class F, class = std::enable_if_t<std::is_invocable_v<F &, TypeBuilder &>>>
 	auto AddParam(F &&builder) -> TypeBuilder & {
 		TypeBuilder nested_builder(ctx);
@@ -1220,6 +1586,8 @@ public:
 		return *this;
 	}
 
+	/// Builds the type, by id when one was set and by name otherwise. The builder keeps its name, id and parameters, so
+	/// a later `Build` repeats the same type.
 	auto Build() -> LogicalType {
 		if constexpr (std::is_same_v<CTX, Connection>) {
 			if (type_id != LogicalTypeId::INVALID) {
@@ -1246,21 +1614,27 @@ private:
 	CTX &ctx;
 };
 
-// One statement parameter binding for the named-parameter Execute overloads. An
-// empty name binds positionally ($1 = the first NamedParam); a non-empty name binds
-// by name (case-insensitive), matching $name.
+/// One parameter binding for the named-parameter `Connection::Execute` overload.
 struct NamedParam {
+	/// The parameter to bind, matching $name case-insensitively. When empty, the binding is positional instead: the
+	/// first `NamedParam` binds $1, the second $2, and so on. A statement cannot mix named and positional parameters.
 	std::string name;
+	/// The value to bind.
 	Value value;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
-// String Heap
+// Arena
 //----------------------------------------------------------------------------------------------------------------------
+// Vectors of variable-length types like strings, blobs, bits, bignums and geometries contain an auxiliary arena
+// allocator called the "String Heap", which lives for as long as the vector itself lives. This is used to store the
+// actual bytes e.g. a `blob_t` references in the non-inlined case. Writing a string or a blob to a vector is
+// therefore usually done in two steps: allocate the bytes in the arena (heap), then place the resulting blob_t in the
+// vector, referencing the bytes. `Vector::AssignString` does both at once and is what most fills want. Go through the
+// heap directly when the bytes and their placement are decided separately, e.g. to write one copy of a value that
+// several rows point at.
 
-// Borrowed handle to a vector's string heap. Reserves vector-lifetime bytes and
-// returns BytesLayout tokens to place in any order (dedup, scatter). Borrowed;
-// invalid across a flatten or reallocation of the owning vector.
+/// A borrowed handle to a vector's string heap, valid until that vector is destroyed or reshaped, e.g. by a `Flatten`.
 class Arena final : public detail::Handle<Arena> {
 	friend detail::Factory;
 
@@ -1270,13 +1644,17 @@ public:
 
 	~Arena() override;
 
-	// Reserves `byte_len` vector-lifetime bytes; raw arena allocation, no gating.
-	// Write-in-place: Allocate -> write -> FromHeapData -> Vector::SetString.
+	/// Reserves uninitialized bytes in the heap, to build a value in place rather than copy one in.
+	/// @param byte_len How many bytes to reserve.
+	/// @return The reserved memory, valid as long as the heap is. Write it, wrap it in a `varchar_t` / `blob_t`, and
+	/// place that with `Vector::SetString`.
 	auto Allocate(idx_t byte_len) -> uint8_t *;
 
-	// Interns `data`, returning the token. <= INLINE_LENGTH builds inline (no
-	// allocation, no boundary crossing); larger allocates and copies. Throws if
-	// `data` exceeds the uint32 length a duckdb_v2_bytes can hold.
+	/// Copies a string into the heap.
+	/// @param data The bytes to copy. Anything up to `varchar_t::INLINE_LENGTH` is kept in the token itself and never
+	/// reaches the heap.
+	/// @return A token to place with `Vector::SetString`, valid as long as the heap is.
+	/// @throws Exception When the data exceeds the 4 GiB an element can describe.
 	auto AddString(std::string_view data) -> varchar_t {
 		// TODO: UTF8-validate
 		if (data.size() > std::numeric_limits<uint32_t>::max()) {
@@ -1291,6 +1669,7 @@ public:
 		return varchar_t(reinterpret_cast<char *>(bytes), size);
 	}
 
+	/// `AddString` for arbitrary bytes rather than text.
 	auto AddBlob(std::string_view data) -> blob_t {
 		if (data.size() > std::numeric_limits<uint32_t>::max()) {
 			ThrowStringTooLong(data.size());
@@ -1307,84 +1686,142 @@ public:
 private:
 	explicit Arena(void *impl);
 
-	// Throws OUT_OF_RANGE when an interned value exceeds the uint32 length bound.
+	/// @internal Throws when a value exceeds the maximum byte string length.
 	[[noreturn]] static void ThrowStringTooLong(idx_t size);
 };
 
 //----------------------------------------------------------------------------------------------------------------------
 // Vector
 //----------------------------------------------------------------------------------------------------------------------
+// A column of values: one array of a primitive type, a validity mask saying which rows are NULL, and child vectors
+// for the nested types. This is the preferred way to write/read data in and out of DuckDB. One call to
+// `Vector::GetView` or `Vector::GetDataMutable` and the per-row work is plain array indexing -- as opposed to `Value`,
+// which handles one cell at a time, and cost a lot in e.g. allocation overhead.
+//
+// The same column can be laid out in more than one way: a vector whose rows all share a value is stored once, and one
+// that selects from another is stored as a selection over it. Reading through `VectorView` handles all of those.
+// When writing you will generally produce a FLAT vector, but you can also call `Flatten` to force any vector into the
+// basic contiguous data layout.
 
-// A vector's internal representation. Mirrors DUCKDB_V2_VECTOR_TYPE
-// (static_assert in the .cpp). Other is the zero value and covers FSST /
-// SEQUENCE / SHREDDED; Flatten() before reading such a vector via GetView().
+/// How a vector is laid out.
 enum class VectorType : uint8_t {
+	/// A layout with no direct read support here, such as a compressed or shredded one. `Flatten` first.
 	OTHER = 0,
+	/// One element per row.
 	FLAT = 1,
+	/// A single element standing for every row.
 	CONSTANT = 2,
+	/// A selection over another vector's elements.
 	DICTIONARY = 3,
 };
 
-// Read view over a vector, mirroring the C ABI's duckdb_v2_vector_view: data +
-// validity + sel + count from one Vector::GetView() crossing; all per-row work
-// is inline. Pointers are borrowed and valid until the owning chunk is
-// destroyed. sel == nullptr means identity (FLAT); CONSTANT carries the zero
-// singleton, DICTIONARY its own sel. Validity follows sel, not the loop
-// counter: IsValid takes the logical index and resolves sel internally.
+/// A read view over a vector: its data, validity, selection and row count, fetched in a single call so that everything
+/// below is plain inline arithmetic.
+///
+/// The pointers are borrowed from the vector and stay valid until the chunk that owns it is destroyed -- or until the
+/// vector is reshaped, e.g. by `Flatten` or `SetSize`, so re-take the view after any such call.
 struct VectorView {
+	/// The buffer holding the elements, to be read as an array of the primitive type matching the vector's type.
 	const void *data;
+	/// The validity mask, or `nullptr` when every row is valid.
 	const uint64_t *validity;
-	const uint32_t *sel; // mirrors duckdb_v2_sel_t (static_assert in the .cpp)
+	/// The selection: which element each row reads, or nullptr when row `i` reads element `i`.
+	const uint32_t *sel;
+	/// How many rows the view covers.
 	idx_t count;
 
+	/// The buffer, typed.
 	template <class T>
 	auto Data() const -> const T * {
 		return static_cast<const T *>(data);
 	}
-	// Physical row index for logical index `i`: sel ? sel[i] : i.
+
+	/// The element row `i` reads. A CONSTANT vector sends every row to element 0.
 	auto SelAt(idx_t i) const -> idx_t {
 		return sel ? static_cast<idx_t>(sel[i]) : i;
 	}
-	// Validity at a physical (post-sel) row index; nullptr means all valid.
+
+	/// Whether an element is a value rather than NULL.
+	/// @param row An element index, i.e. one already put through `SelAt`.
 	auto RowIsValid(idx_t row) const -> bool {
-		return !validity || (validity[row >> 6] & (uint64_t(1) << (row & 63))) != 0;
+		return !validity || (validity[row >> 6] & (static_cast<uint64_t>(1) << (row & 63))) != 0;
 	}
-	// Validity at a logical index: RowIsValid(SelAt(i)).
+
+	/// Whether a row holds a value rather than NULL. Validity follows the selection, so this is the one to use with a
+	/// loop counter.
+	/// @param i A row index in [0, count).
 	auto IsValid(idx_t i) const -> bool {
 		return RowIsValid(SelAt(i));
 	}
+
+	/// Whether every row in [0, count) holds a value rather than NULL.
+	auto AllValid() const -> bool {
+		if (!validity) {
+			return true;
+		}
+		if (sel) {
+			for (idx_t i = 0; i < count; i++) {
+				if (!IsValid(i)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		// Compare whole words, masking out the bits past `count` in the last one
+		const auto whole_words = count / 64;
+		for (idx_t i = 0; i < whole_words; i++) {
+			if (validity[i] != ~static_cast<uint64_t>(0)) {
+				return false;
+			}
+		}
+		const auto tail_bits = count % 64;
+		if (tail_bits != 0) {
+			const auto tail_mask = (static_cast<uint64_t>(1) << tail_bits) - 1;
+			if ((validity[whole_words] & tail_mask) != tail_mask) {
+				return false;
+			}
+		}
+		return true;
+	}
 };
 
-// Writer over a FLAT vector's validity mask (from Vector::GetValidityMutable).
-// Word W bit N covers row W*64+N; a set bit means valid (not NULL).
-// Writes mark only this vector's rows. The engine requires every descendant
-// slot of a NULL STRUCT / ARRAY row to be NULL as well, and SetInvalid on a
-// parent row does not touch descendants: set nested rows NULL via
-// Vector::SetNull. When writing nested masks raw, SetAllInvalid the child
-// masks up front and SetValid slots as values are written.
+/// A writer over a FLAT vector's validity mask, from `Vector::GetValidityMutable`. Word W bit N covers row W*64+N, and
+/// a set bit means the row holds a value rather than NULL.
+///
+/// Writes here touch one vector's mask and nothing else. Since a NULL STRUCT or ARRAY row requires its descendant
+/// elements to be NULL as well, use `Vector::SetNull` (which will set the validity of child vectors recursively) for
+/// those rather than clearing the parent's bit. When filling nested masks by hand, use `SetAllInvalid` to clear the
+/// child masks up front and then set the individual bits as values are written.
 struct ValidityMask {
-	uint64_t *words; // public: the raw mask remains reachable
+	/// The raw mask words, for writes this struct does not cover.
+	uint64_t *words;
 
+	/// Marks a row as holding a value.
 	auto SetValid(idx_t row) -> void {
 		words[row >> 6] |= uint64_t(1) << (row & 63);
 	}
+
+	/// Marks a row as NULL.
 	auto SetInvalid(idx_t row) -> void {
 		words[row >> 6] &= ~(uint64_t(1) << (row & 63));
 	}
+
+	/// Whether a row holds a value rather than NULL.
 	auto RowIsValid(idx_t row) const -> bool {
 		return (words[row >> 6] & (uint64_t(1) << (row & 63))) != 0;
 	}
-	// Marks rows [0, count) invalid. Clears whole words, so trailing bits of
-	// the last word beyond count read invalid too (matches the engine).
+
+	/// Marks rows [0, count) NULL. Writes whole words, so bits past `count` in the last word are cleared too, which
+	/// only matters if the vector grows afterwards.
 	auto SetAllInvalid(idx_t count) -> void {
 		for (idx_t i = 0; i < (count + 63) / 64; i++) {
 			words[i] = 0;
 		}
 	}
-	// Marks rows [0, count) valid: the reset half of SetAllInvalid. After a fill
-	// that wrote some nulls, restore all-valid to refill without the born-invalid
-	// per-write SetValid. Sets whole words, so trailing bits beyond count read
-	// valid too; harmless since reads stop at count.
+
+	/// Marks rows [0, count) as holding values: the counterpart of `SetAllInvalid`, to reset a mask before refilling
+	/// rather than setting each bit as it is written. Writes whole words, so bits past `count` in the last word are
+	/// set too, which only matters if the vector grows afterwards.
 	auto SetAllValid(idx_t count) -> void {
 		for (idx_t i = 0; i < (count + 63) / 64; i++) {
 			words[i] = ~uint64_t(0);
@@ -1392,6 +1829,8 @@ struct ValidityMask {
 	}
 };
 
+/// A borrowed handle to one column of a chunk, or to one child of another vector. Valid for as long as the chunk or
+/// parent vector it belongs to is valid.
 class Vector final : public detail::Handle<Vector> {
 	friend detail::Factory;
 
@@ -1401,99 +1840,129 @@ public:
 
 	~Vector() override;
 
+	/// The buffer for writing, typed. The vector must be FLAT or CONSTANT, and `T` must match its type.
 	template <class T>
 	auto GetDataMutable() -> T * {
 		return static_cast<T *>(GetDataMutable());
 	}
+
+	/// The buffer for writing, untyped.
+	/// @throws InvalidInputException Unless the vector is FLAT or CONSTANT.
 	auto GetDataMutable() -> void *;
 
+	/// How many child vectors this one has: 1 for LIST and ARRAY, one per field for STRUCT and TUPLE, 2 for MAP (the
+	/// keys and the values), one per member plus the leading tag for UNION, and 0 for anything else.
 	auto GetChildCount() const -> idx_t;
+
+	/// One child vector, e.g. a LIST's elements or a STRUCT's field. A LIST's child is sized to its capacity, not to
+	/// the parent's row count.
+	/// @param index Child index in [0, GetChildCount()).
+	/// @return A borrowed handle, valid until this vector is destroyed or reshaped.
 	auto GetChild(idx_t index) const -> Vector;
 
+	/// Rewrites the vector as a FLAT one, materializing one element per row. Pointers and views taken from it
+	/// beforehand do not survive this.
 	auto Flatten() const -> void;
 
+	/// How many rows the vector holds.
 	auto GetSize() const -> idx_t;
+
+	/// Sets how many rows the vector holds, reallocating if needed, which invalidates views and pointers taken
+	/// earlier. A chunk derives its row count from its vectors, so this is also how a hand-filled chunk gets its
+	/// cardinality: size every column alike.
 	auto SetSize(idx_t size) -> void;
 
-	// ---- Vector read surface ----
-
-	// Reads the vector as a VectorView in one boundary crossing. Throws
-	// INVALID_INPUT on VectorType::OTHER; Flatten() first. On DICTIONARY
-	// vectors the underlying child may be flattened in place, invalidating
-	// pointers previously borrowed into it.
+	/// Reads the vector in a single call, so that the per-row work afterwards is inline.
+	/// @return A view borrowed from the vector. Taking the view of a DICTIONARY vector may flatten the vector it
+	/// selects from, which invalidates views taken from that one earlier.
+	/// @throws InvalidInputException On `VectorType::OTHER`; `Flatten` first.
 	auto GetView() const -> VectorView;
 
-	// The internal representation kind.
+	/// How the vector is laid out.
 	auto GetVectorType() const -> VectorType;
 
-	// Mutable validity of a FLAT vector, lazily allocating the mask.
-	// Throws INVALID_INPUT on non-FLAT vectors.
+	/// The validity mask for writing, allocating it if the vector does not have one yet.
+	/// @throws InvalidInputException Unless the vector is FLAT.
 	auto GetValidityMutable() -> ValidityMask;
 
-	// Sets a row NULL, recursively nulling descendant slots of STRUCT and
-	// ARRAY rows (LIST children are exempt; consumers gate on the list's own
-	// validity). The write path that maintains the engine's nested NULL
-	// invariant; prefer it over raw mask writes for any nested type. Throws
-	// INVALID_INPUT on non-FLAT vectors and out-of-range rows.
+	/// Sets a row NULL, including the descendant elements of a STRUCT or ARRAY row. LIST (and MAP) children are left
+	/// alone, since a NULL list has no elements to speak of. Use this rather than clearing mask bits for any nested
+	/// type.
+	/// @param row A row index within the vector's size.
+	/// @throws InvalidInputException On a non-FLAT vector or an out-of-range row.
 	auto SetNull(idx_t row) -> void;
 
-	// Sets a CONSTANT vector's single validity bit. Throws INVALID_INPUT on
-	// non-CONSTANT vectors. Setting valid true does not write a value; slot 0
-	// holds whatever was last written.
+	/// Sets the single validity bit of a CONSTANT vector. Setting it valid writes no value: element 0 keeps whatever
+	/// was last written to it.
+	/// @param valid Whether the vector holds a value rather than NULL.
+	/// @throws InvalidInputException Unless the vector is CONSTANT.
 	auto SetConstantValid(bool valid) -> void;
 
-	// Turns the vector into a CONSTANT vector holding `value` for `count`
-	// logical rows. The value's type must match the vector's.
+	/// Rewrites the vector as a CONSTANT one: a single value standing for every row.
+	/// @param value The value every row takes.
+	/// @param count How many rows the vector then holds.
+	/// @throws InvalidInputException When the value's type does not match the vector's.
 	auto MakeConstant(const Value &value, idx_t count) -> void;
 
-	// Turns the vector into the arithmetic sequence start, start+increment,
-	// ... for `count` rows. Reads as VectorType::OTHER; Flatten() before
-	// reading via GetView().
+	/// Rewrites the vector as the arithmetic sequence start, start + increment, ... The result reads as
+	/// `VectorType::OTHER`, so `Flatten` before reading it through `GetView`.
+	/// @param start The first row's value.
+	/// @param increment The step between rows.
+	/// @param count How many rows the vector then holds.
 	auto MakeSequence(int64_t start, int64_t increment, idx_t count) -> void;
 
-	// --- Single-cell value bridge (owned by the types-values worktree) ---
-	// Total fallback reader: any representation (constant, dictionary,
-	// compressed) without flattening, any type kind including those without
-	// a committed view layout (VARIANT, GEOMETRY). One owned Value per call;
-	// not for per-row loops.
+	/// Reads one cell as a `Value`, whatever the layout and whatever the type -- including the types without a view
+	/// layout, such as VARIANT -- and without flattening. Costs an owned value per call, so read bulk data through
+	/// `GetView` instead.
+	/// @param row A row index within the vector's size.
 	auto GetValue(idx_t row) const -> Value;
-	// Total fallback writer over every type kind; FLAT vectors only
-	// (flatten first). The value is copied in and cast to the vector's
-	// type. One engine value write per call; not for per-row loops.
-	auto SetValue(idx_t row, const Value &value) -> void;
-	// --- end single-cell value bridge ---
 
-	// Borrows this vector's string heap to intern strings/blobs whose placement is
-	// decided separately (dedup, scatter, reorder). For simple in-order fills
-	// prefer AssignString / AssignStrings. The vector must be a string-backed
-	// kind (VARCHAR / BLOB / BIT / BIGNUM).
+	/// Writes one cell from a `Value`, whatever the type. The value is copied in and cast to the vector's type. Costs
+	/// a value write per call, so fill bulk data through `GetDataMutable` instead.
+	/// @param row A row index within the vector's size.
+	/// @param value The value to write.
+	/// @throws InvalidInputException On a non-FLAT vector or an out-of-range row; flatten first.
+	auto SetValue(idx_t row, const Value &value) -> void;
+
+	/// Borrows this vector's string heap, to write bytes whose placement is decided separately -- deduplicating,
+	/// scattering, reordering. For a straightforward fill prefer `AssignString`.
+	/// @return The heap. The vector must be of a string-backed type such as VARCHAR, BLOB, BIT or BIGNUM.
 	auto GetHeap() -> Arena;
 
-	// Copies `data` into the vector's string heap and places the resulting
-	// storage value into slot `index`. The vector must be a string-backed kind
-	// (VARCHAR / BLOB / BIT / BIGNUM); FLAT accepts any in-bounds index, CONSTANT
-	// only index 0. Resolves the heap per call, so flattening between calls is safe.
+	/// Copies a string into the vector's heap and writes the resulting element in one step. Looks the heap up per call,
+	/// so flattening in between is safe.
+	/// @param index The element to write: any index within the size of a FLAT vector, only 0 for a CONSTANT one.
+	/// @param data The bytes to copy. The vector must be of a string-backed type such as VARCHAR, BLOB, BIT or BIGNUM.
 	auto AssignString(idx_t index, std::string_view data) -> void;
 
-	// Places an interned storage token into slot `index`. The token must come
-	// from this vector's heap (a non-inlined token from another vector dangles).
+	/// Writes an element that was written into the heap beforehand.
+	/// @param index The element to write: any index within the size of a FLAT vector, only 0 for a CONSTANT one.
+	/// @param value A token from this vector's own heap. A non-inlined token from another vector dangles.
 	auto SetString(idx_t index, varchar_t value) -> void;
 
 private:
 	explicit Vector(void *impl);
 
-	// Throws INVALID_INPUT if [start, start+count) is not writable: a CONSTANT
-	// vector's data array holds a single slot, so only index 0 may be written.
+	/// @internal Throws `InvalidInputException` if [start, start + count) is not writable: a CONSTANT vector has a
+	/// single element, so only index 0 may be written.
 	auto CheckWriteRange(idx_t start, idx_t count) const -> void;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
 // DataChunk
 //----------------------------------------------------------------------------------------------------------------------
+// A batch of rows: one `Vector` per column, all of the same length.
+// Chunks are the main "unit of execution" in DuckDB, and usually contain a couple of thousand rows at a time.
+
+/// A batch of rows, column by column. A chunk owns its vectors, so it must outlive any `Vector`, `VectorView` or
+/// pointer taken from it.
 class DataChunk final : public detail::Handle<DataChunk> {
 	friend detail::Factory;
 
 public:
+	/// An empty chunk with a column per type, ready to be filled: write the columns' data and give every column its
+	/// row count with `Vector::SetSize`.
+	/// @param types One type per column. Types containing ANY are rejected.
 	explicit DataChunk(const std::vector<LogicalType> &types);
 
 	DataChunk(DataChunk &&other) noexcept {
@@ -1508,52 +1977,70 @@ public:
 
 	~DataChunk() override;
 
+	/// How many columns the chunk has.
 	auto GetVectorCount() const -> idx_t;
+
+	/// How many rows the chunk holds.
 	auto GetRowCount() const -> idx_t;
+
+	/// One column.
+	/// @param index Column index in [0, GetVectorCount()).
+	/// @return A borrowed handle, valid for as long as this chunk is.
 	auto GetVector(idx_t index) const -> Vector;
 
 private:
 	explicit DataChunk(void *impl, bool owned);
-	bool owned = false; // UGLY, this should probably be done c++-side.
+	bool owned = false; // TODO: This should be fixed C++ side
 };
 
 //----------------------------------------------------------------------------------------------------------------------
 // Result
 //----------------------------------------------------------------------------------------------------------------------
+// A `QueryResult` is a lazily executed stream of chunks, produced by a query.
+// Execution is deferred until the result is asked for its first chunk, and only one result may be live on a connection
+// at a time, so read a result to the end (or destroy it) before executing again.
+//
+// There are two ways to consume a result, synchronously or asynchronously
+// - `FetchChunk` blocks until the next chunk is ready, and is what most callers probably want.
+// - `Step` performs a bounded amount of work and reports what came of it, which allows an async runtime to drive a
+// query without necessarily occupying a thread indefinitely.
+
+/// A streaming query result.
 class QueryResult final : public detail::Handle<QueryResult> {
 	friend detail::Factory;
 
 public:
-	// Mirrors DUCKDB_V2_RESULT_STEP_STATUS, including WAITING as the
-	// zero value.
+	/// The status of one `Step`.
 	enum class StepStatus : uint8_t {
+		/// No chunk was produced by this step; call `Wait`, or come back later.
 		WAITING = 0,
+		/// A chunk was produced.
 		CHUNK = 1,
+		/// The result is exhausted. Sticky.
 		FINISHED = 2,
+		/// The query was canceled. Sticky.
 		CANCELLED = 3,
 	};
 
-	// Outcome of one step: the status, plus the produced chunk. The chunk
-	// is non-empty iff the status is CHUNK.
+	/// The outcome of one `Step`.
 	struct StepResult {
+		/// What the step accomplished.
 		StepStatus status;
+		/// The chunk produced, empty unless `status` is CHUNK.
 		DataChunk chunk;
 	};
 
-	// Shape of the result. Mirrors DUCKDB_V2_RESULT_TYPE numerically
-	// (parity pinned in the .cpp).
+	/// The shape of a result.
 	enum class ResultType : uint8_t {
-		/* Produces rows (SELECT, RETURNING, EXPLAIN). */
+		/// Produces rows: SELECT, EXPLAIN, RETURNING, and other row-producing statements.
 		QUERY_RESULT = 0,
-		/* Carries an affected-row count (INSERT/UPDATE/DELETE without RETURNING). */
+		/// Carries a count of affected rows: INSERT / UPDATE / DELETE and the like, without RETURNING.
 		CHANGED_ROWS = 1,
-		/* No row output (DDL and other statements). */
+		/// Produces no rows: most DDL and utility statements.
 		NOTHING = 2,
 	};
 
-	// The SQL statement type that produced the result. Mirrors
-	// DUCKDB_V2_STATEMENT_TYPE / duckdb::StatementType numerically (parity
-	// pinned in the .cpp).
+	/// The kind of SQL statement a result came from.
 	enum class StatementType : uint8_t {
 		INVALID = 0,
 		SELECT = 1,
@@ -1593,41 +2080,47 @@ public:
 
 	~QueryResult() override;
 
-	// The result's output schema (its column names and types) as one owned Schema.
+	/// The result's columns, their names and types, as one owned `Schema`.
+	/// @throws InvalidInputException When the schema is not available yet; step the result first.
 	auto GetSchema() const -> Schema;
 
-	// The shape of the result: prepare-time metadata, so callers decide
-	// between consuming rows and draining without inspecting the SQL.
+	/// The shape of the result, so a caller can decide between consuming rows and draining without inspecting the SQL.
+	/// @throws InvalidInputException When the shape is not available yet; step the result first.
 	auto GetResultType() const -> ResultType;
 
-	// The SQL statement type that produced the result (prepare-time metadata).
+	/// The kind of SQL statement this result came from.
+	/// @throws InvalidInputException When the kind is not available yet; step the result first.
 	auto GetStatementType() const -> StatementType;
 
-	// The streaming primitive, built for async runtimes: runs a bounded
-	// unit of execution work and returns without blocking. Execution
-	// errors throw; FINISHED / CANCELLED are sticky statuses.
+	/// Does a bounded amount of work and returns without blocking.
+	/// @return What the step accomplished, and the chunk if it produced one.
+	/// @throws Exception On an execution error; the error is sticky, and later `Step`s rethrow it.
 	auto Step() -> StepResult;
 
-	// Blocks until Step can make progress; a no-op on a terminal
-	// result.
+	/// Blocks until `Step` may be able to make progress, returning immediately once the result is finished or
+	/// canceled. May not block at all.
+	/// @throws Exception On an execution error.
 	auto Wait() -> void;
 
-	// Fetches the next chunk of the streaming result, blocking until it is
-	// available. Empty at end-of-stream (idempotently). Cancellation
-	// throws RUNTIME_INTERRUPT.
+	/// The next chunk, blocking until it is ready.
+	/// @return The chunk, or an empty one at the end of the stream; calling it again then keeps returning empty.
+	/// @throws InterruptException When the query was canceled.
 	auto FetchChunk() -> DataChunk;
 
-	// Runs the result to completion, applying all side effects and
-	// discarding rows; returns the affected row count for CHANGED_ROWS
-	// results, 0 otherwise. Cancellation throws RUNTIME_INTERRUPT.
+	/// Runs the result to the end, applying its side effects and discarding any rows.
+	/// @return The number of rows affected for a CHANGED_ROWS result, 0 otherwise.
+	/// @throws InterruptException When the query was canceled.
 	auto Drain() -> idx_t;
 
-	// Renders the result as the engine's box table (the CLI renderer),
-	// consuming this result; the remainder materializes in memory first.
-	// Zero selects the renderer default per sizing knob; an empty null_value
-	// renders NULL cells as "NULL". render_mode: 0 rows, 1 columns. limit is
-	// the query-side LIMIT the caller applied (0 for none): when the result
-	// fills it the footer renders "? rows" rather than an exact count.
+	/// Renders the result as the boxed table the CLI prints, consuming it. Whatever has not been read yet is
+	/// materialized in memory first.
+	/// @param max_rows How many rows to print before eliding the middle, 0 for the default.
+	/// @param max_width How wide the table may be, 0 for the default.
+	/// @param max_col_width How wide a single column may be, 0 for the default.
+	/// @param null_value What to print for a NULL cell; empty prints "NULL".
+	/// @param render_mode 0 to lay the result out in rows, 1 in columns; anything else throws.
+	/// @param limit The LIMIT the query itself applied, 0 for none. When the result fills it exactly, the footer reads
+	/// "? rows", since there may have been more.
 	auto RenderBox(idx_t max_rows = 0, idx_t max_width = 0, idx_t max_col_width = 0, const std::string &null_value = "",
 	               idx_t render_mode = 0, idx_t limit = 0) -> std::string;
 

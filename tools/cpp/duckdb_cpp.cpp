@@ -97,12 +97,12 @@ struct HandleTraits<QueryResult> {
 // Exceptions
 //----------------------------------------------------------------------------------------------------------------------
 
-InvalidInputException::InvalidInputException(const std::string &message)
-    : Exception(DUCKDB_V2_ERROR_INPUT_INVALID, message) {
+InvalidInputException::InvalidInputException(const std::string &message, std::string raw_message)
+    : Exception(DUCKDB_V2_ERROR_INPUT_INVALID, message, std::move(raw_message)) {
 }
 
-InterruptException::InterruptException(const std::string &message)
-    : Exception(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT, message) {
+InterruptException::InterruptException(const std::string &message, std::string raw_message)
+    : Exception(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT, message, std::move(raw_message)) {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -126,7 +126,15 @@ auto CheckedAPICall(F &&func, ARGS &&... args) -> void {
 		std::string message = message_view.ptr ? std::string(message_view.ptr, message_view.len) : "unknown error";
 		std::string raw = raw_view.ptr ? std::string(raw_view.ptr, raw_view.len) : "";
 		duckdb_v2_error_info_destroy(&err);
-		throw Exception(code, std::move(message), std::move(raw));
+		// Map error codes with a dedicated exception type to that type so callers can catch it directly.
+		switch (code) {
+		case DUCKDB_V2_ERROR_INPUT_INVALID:
+			throw InvalidInputException(message, std::move(raw));
+		case DUCKDB_V2_ERROR_RUNTIME_INTERRUPT:
+			throw InterruptException(message, std::move(raw));
+		default:
+			throw Exception(code, std::move(message), std::move(raw));
+		}
 	}
 }
 
@@ -170,7 +178,8 @@ public:
 		name_views.reserve(params.size());
 		value_handles.reserve(params.size());
 		for (const auto &param : params) {
-			name_views.push_back(param.GetName().empty() ? duckdb_v2_identifier_t {nullptr, 0} : ToStr(param.GetName()));
+			name_views.push_back(param.GetName().empty() ? duckdb_v2_identifier_t {nullptr, 0}
+			                                             : ToStr(param.GetName()));
 			value_handles.push_back(param.GetValue().handle());
 		}
 	}
@@ -454,7 +463,7 @@ auto Connection::CreateType(std::string_view name, const std::vector<TypeParam> 
 	return detail::Factory::Make<LogicalType>(type);
 }
 
-auto Connection::CreateType(LogicalTypeId id, const std::vector<TypeParam> &params) const -> LogicalType {
+auto Connection::CreateType(LogicalTypeId id, const std::vector<TypeParam> &params) -> LogicalType {
 	TypeParamArrays split(params);
 	duckdb_v2_logical_type_handle type = nullptr;
 	CheckedAPICall(duckdb_v2_connection_create_type_from_id, handle(), static_cast<DUCKDB_V2_LOGICAL_TYPE_ID>(id),
@@ -619,6 +628,12 @@ bool LogicalType::operator==(const LogicalType &other) const {
 	bool result = false;
 	CheckedAPICall(duckdb_v2_logical_type_is_equal, handle(), other.handle(), &result);
 	return result;
+}
+
+auto LogicalType::GetTypeId() const -> LogicalTypeId {
+	auto id = static_cast<DUCKDB_V2_LOGICAL_TYPE_ID>(0);
+	CheckedAPICall(duckdb_v2_logical_type_get_id, handle(), &id);
+	return static_cast<LogicalTypeId>(id);
 }
 
 auto LogicalType::GetName() const -> std::string_view {
@@ -965,13 +980,6 @@ auto Value::Get() const -> int128_t {
 	duckdb_v2_hugeint_t value {};
 	CheckedAPICall(duckdb_v2_value_get_hugeint, handle(), &value);
 	return FromC(value);
-}
-
-template <>
-auto Value::Get() const -> std::string_view {
-	duckdb_v2_str value;
-	CheckedAPICall(duckdb_v2_value_get_blob, handle(), &value);
-	return FromStr(value);
 }
 
 template <>
@@ -1767,6 +1775,7 @@ auto Vector::GetHeap() -> Arena {
 }
 
 auto Vector::SetString(idx_t index, varchar_t value) -> void {
+	CheckWriteRange(index, 1);
 	GetDataMutable<varchar_t>()[index] = value;
 }
 
