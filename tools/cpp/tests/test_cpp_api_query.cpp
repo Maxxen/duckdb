@@ -276,7 +276,7 @@ TEST_CASE("Stable C++API: prepared statements", "[cpp_api][prepared_statement]")
 		REQUIRE(sig.output.GetFieldType(0) == conn.ParseType("INTEGER"));
 		REQUIRE(sig.output.GetFieldName(1) == "score");
 		REQUIRE(sig.parameters.GetFieldCount() == 1);
-		REQUIRE(sig.parameters.GetFieldName(0) == "1");                    // $1 -> "1"
+		REQUIRE(sig.parameters.GetFieldName(0) == "1");                       // $1 -> "1"
 		REQUIRE(sig.parameters.GetFieldType(0) == conn.ParseType("INTEGER")); // inferred from score >= $1
 
 		// Execute with one value, then another: different results, same statement, no
