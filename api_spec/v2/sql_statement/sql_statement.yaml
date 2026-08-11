@@ -1,41 +1,39 @@
 module: sql_statement
 #
-# Turn a SQL string into individual statements. parse_sql() parses only:
-# no binding, no catalog access, and no transaction is involved. The
-# connection supplies the parser state (options and parser extensions
-# loaded on it); statements parsed on one connection should be executed
-# on that connection. Statements are raw parser output: statement-level
-# rewrites (pragma reparsing, statement expansion, transaction wrapping)
-# happen inside statement_execute, so one user statement is always one
-# handle.
+# Turn a SQL string into individual statements. parse_sql parses and nothing
+# more: no binding, no catalog access, no transaction. The connection supplies
+# the parser state — its options and the parser extensions loaded on it — so a
+# statement parsed on one connection should be executed on that connection.
+# Statements are raw parser output; statement-level rewrites (pragma
+# reparsing, statement expansion, transaction wrapping) happen inside
+# statement_execute, so one user statement is always one handle.
 #
-# The iterator yields one owned statement per statement_iterator_next
-# call. A statement is executed by passing it to statement_execute, which
-# is non-consuming (it runs a copy): the same statement can be executed
-# again, possibly with a different parameter value set, and the caller
-# destroys it via sql_statement_destroy. The statement handle is fully
-# opaque: execution-relevant introspection (result type, statement type,
+# The iterator yields one owned statement per statement_iterator_next call.
+# Passing a statement to statement_execute does not consume it — a copy is
+# what runs — so the same statement can be executed again, possibly with a
+# different set of parameter values, and the caller always destroys it via
+# sql_statement_destroy. The statement handle is fully opaque; the
+# introspection that matters for execution (result type, statement type,
 # column schema) lives on the result handle.
 #
-# A parse error surfaces either from parse_sql (an implementation that
-# parses eagerly reports it up front and yields no statements) or from
-# the statement_iterator_next call that reaches the failing statement
-# (an incremental implementation yields the statements before it).
+# A parse error surfaces either from parse_sql, when the implementation parses
+# eagerly and so reports it up front and yields no statements, or from the
+# statement_iterator_next call that reaches the failing statement, when the
+# implementation is incremental and so yields the statements before it.
 # Callers must handle both, by checking every return code.
 
 handles:
   sql_statement:
     description: |
-      An opaque, owned handle to a single parsed SQL statement, produced
-      by statement_iterator_next. statement_execute runs it without
-      consuming it; the caller always destroys it via sql_statement_destroy.
+      An opaque, owned handle to a single parsed SQL statement, produced by
+      statement_iterator_next. statement_execute runs it without consuming it;
+      the caller always destroys it via sql_statement_destroy.
     cleanup_with: sql_statement_destroy
   statement_iterator:
     description: |
-      An opaque, owned handle to an iterator over the statements of a
-      SQL string, produced by parse_sql. Destroy via
-      statement_iterator_destroy; statements already yielded are
-      independently owned and unaffected.
+      An opaque, owned handle to an iterator over the statements of a SQL
+      string, produced by parse_sql. Destroy it via statement_iterator_destroy;
+      statements it already yielded are independently owned and unaffected.
     cleanup_with: statement_iterator_destroy
 functions:
   parse_sql:
@@ -44,13 +42,13 @@ functions:
     description: |
       Parses a SQL string into an iterator over its statements.
 
-      Parses only: no binding, no catalog access, and no transaction.
-      The connection supplies the parser options and parser extensions;
-      it is not otherwise touched. Statements are raw parser output;
-      statement-level rewrites happen inside statement_execute. The SQL
-      string is copied; the caller may free it after this call. An input
-      with no statements (empty, whitespace, or separators only) yields
-      an iterator that is immediately exhausted.
+      Parses and nothing more: no binding, no catalog access, no transaction.
+      The connection supplies the parser options and parser extensions, and is
+      not otherwise touched. Statements are raw parser output; statement-level
+      rewrites happen inside statement_execute. The SQL string is copied, so
+      the caller may free it once this call returns. An input with no
+      statements — empty, whitespace, or separators only — yields an iterator
+      that is immediately exhausted.
     role: constructor
     belongs_to: statement_iterator
     parameters:
@@ -80,12 +78,13 @@ functions:
     description: |
       Yields the next statement, or NULL when exhausted.
 
-      On success *out_statement receives the next owned statement, or
-      NULL when the iterator is exhausted (idempotently). A parse error
-      within the input surfaces no later than the call that reaches the
-      failing statement; see the module commentary for the eager and
-      incremental reporting variants. On failure *out_statement is set
-      to NULL.
+      On success *out_statement receives the next owned statement, or NULL once
+      the iterator is exhausted — repeatedly, so calling again is harmless. A
+      parse error within the input surfaces no later than the call that reaches
+      the failing statement: an implementation that parses eagerly reports it
+      from parse_sql instead and yields no statements at all, while an
+      incremental one yields the statements ahead of the failure first. On
+      failure *out_statement is set to NULL.
     role: method
     belongs_to: statement_iterator
     parameters:
@@ -111,21 +110,24 @@ functions:
       Binds a parsed statement without executing, yielding its schema signature.
 
       Preprocesses and binds the statement exactly as execution would, but runs
-      nothing: returns its signature as two schemas, no result. Borrowed, not
-      consumed: bind it as often as you like and execute it later. out_schema
-      receives the output schema (result columns), never empty since a non-SELECT
-      reports a single status column (a BIGINT changed-rows count, or a BOOLEAN
-      success). out_parameters, when non-NULL, receives the input schema (parameter
-      types, ordered by binding index). Both are owned; destroy via schema_destroy.
+      nothing: the result is the statement's signature as two schemas, not a
+      query result. The statement is borrowed, not consumed, so it can be bound
+      as often as you like and executed later. out_schema receives the output
+      schema (result columns) and is never empty, since a non-SELECT reports a
+      single status column: a BIGINT changed-rows count, or a BOOLEAN success.
+      out_parameters, when non-NULL, receives the input schema (parameter
+      types, ordered by binding index). Both are owned; destroy them via
+      schema_destroy.
 
-      Binding is read-only and does not disturb a live result: it begins no query,
-      claims no cursor, reuses an active transaction read-only, and runs alongside a
-      paused stream. Single-consumer like the stepping functions, so for concurrent
-      binding open a second connection. Prepare-time errors (binder, catalog,
-      preprocessing) surface here. A statement that preprocessing expands into a
-      group (a dynamic PIVOT, or statement-expanding DDL such as ALTER ADD COLUMN
-      with a non-constant DEFAULT) is not bindable and is rejected with
-      ERROR_INPUT_INVALID; execute it instead.
+      Binding is read-only and does not disturb a live result: it begins no
+      query, claims no cursor, reuses an active transaction read-only, and runs
+      alongside a paused stream. It is single-consumer like the stepping
+      functions, so bind concurrently only on a second connection.
+      Prepare-time errors — binder, catalog, preprocessing — surface here. A
+      statement that preprocessing expands into a group (a dynamic PIVOT, or
+      statement-expanding DDL such as ALTER ADD COLUMN with a non-constant
+      DEFAULT) cannot be bound and is rejected with ERROR_INPUT_INVALID;
+      execute it instead.
 
       *out_schema and *out_parameters are set to NULL on failure.
     role: method
@@ -218,9 +220,10 @@ functions:
     description: |
       Destroys a statement handle.
 
-      Null-safe: passing nullptr or a slot already set to nullptr is a
-      no-op. statement_execute is non-consuming, so every statement is
-      destroyed here once done with it. On success the slot is set to nullptr.
+      Null-safe: passing nullptr or a slot already set to nullptr is a no-op.
+      statement_execute does not consume a statement, so every statement is
+      destroyed here once it is no longer needed. On success the slot is set to
+      nullptr.
     role: destructor
     belongs_to: sql_statement
     parameters:
@@ -236,9 +239,9 @@ functions:
     description: |
       Destroys a statement iterator handle.
 
-      Null-safe: passing nullptr or a slot already set to nullptr is a
-      no-op. Statements already yielded are independently owned and stay
-      valid. On success the slot is set to nullptr.
+      Null-safe: passing nullptr or a slot already set to nullptr is a no-op.
+      Statements already yielded are independently owned and stay valid. On
+      success the slot is set to nullptr.
     role: destructor
     belongs_to: statement_iterator
     parameters:

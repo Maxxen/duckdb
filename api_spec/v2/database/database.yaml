@@ -7,24 +7,23 @@ functions:
       Opens a database under the environment.
 
       `path` semantics:
-        - `nullptr`, ":memory:", or any ":memory:..." path: opens a fresh
+        - `nullptr`, ":memory:", or any ":memory:..." path opens a fresh
           in-memory database. In-memory databases are never deduplicated
           across calls.
-        - any other path: opens the file as a database. Returns
-          ERROR_RESOURCE_IN_USE if the file is already open
-          under the same environment.
+        - any other path opens that file as a database, and returns
+          ERROR_RESOURCE_IN_USE if the file is already open under the same
+          environment.
 
       `options` is an optional array of pre-created config option handles
-      applied at construction time. The library reads name and setting
-      from each handle; remaining fields are ignored. Options may include
-      pre-open DBConfig settings (e.g. access_mode, memory_limit) and
-      ATTACH-style storage options (e.g. BLOCK_SIZE, ENCRYPTION_KEY).
-      Unknown names are accepted into DBConfig.unrecognized_options for
-      later extension consumption. Pass `options=nullptr` and
-      `option_count=0` to open with defaults.
+      applied at construction time. Only the name and setting of each handle
+      are read; the remaining fields are ignored. Options may include pre-open
+      database settings (e.g. access_mode, memory_limit) and ATTACH-style
+      storage options (e.g. BLOCK_SIZE, ENCRYPTION_KEY). Unknown names are
+      accepted and kept for a later extension to consume. Pass
+      `options=nullptr` and `option_count=0` to open with defaults.
 
-      LOCAL_ONLY options are rejected at this scope (matches
-      database_option_set).
+      LOCAL_ONLY options are rejected at this scope, as they are by
+      database_option_set.
     role: constructor
     belongs_to: database
     parameters:
@@ -58,10 +57,10 @@ functions:
     description: |
       Closes the database.
 
-      Always succeeds. The underlying database instance remains alive as
-      long as any connection still holds a reference; when the last
-      reference drops, the instance is destroyed and its path becomes
-      available for reopen. On success, the handle is set to null.
+      Always succeeds. The underlying database instance stays alive for as long
+      as any connection still references it; when the last reference drops, the
+      instance is destroyed and its path becomes available to reopen. On
+      success the handle is set to null.
     role: destructor
     belongs_to: database
     parameters:
@@ -76,13 +75,11 @@ functions:
     description: |
       Sets a config option on the database (GLOBAL scope).
 
-      Reads name and setting from the option; other fields ignored.
-      Equivalent to SQL `SET GLOBAL name = setting`. Returns
-      ERROR_INPUT_INVALID if the option is declared LOCAL_ONLY,
-      or for legacy options without a global setter (DUCKDB_LOCAL).
-      Unknown names are accepted and stashed in
-      DBConfig.unrecognized_options for later extension consumption
-      (mirrors DBConfig::SetOptionByName).
+      Only the name and setting of the option are read; the remaining fields
+      are ignored. Equivalent to SQL `SET GLOBAL name = setting`. Returns
+      ERROR_INPUT_INVALID for an option declared LOCAL_ONLY, and for a legacy
+      option with no global setter. Unknown names are accepted and kept for a
+      later extension to consume.
     role: setter
     belongs_to: database
     parameters:
@@ -104,12 +101,11 @@ functions:
     description: |
       Reads a config option from the database (GLOBAL scope) by name.
 
-      Allocates a fully-populated option (canonical name, current GLOBAL
-      setting, default setting, description, target scope, aliases).
-      Aliases resolve transparently — passing an alias returns the
-      canonical option with the alias listed in its alias array. Unknown
-      names return ERROR_INPUT_INVALID. Caller destroys the
-      returned option.
+      Allocates a fully populated option: canonical name, current GLOBAL
+      setting, default setting, description, target scope, and aliases. Aliases
+      resolve transparently — passing an alias returns the canonical option,
+      with the alias listed in its alias array. An unknown name returns
+      ERROR_INPUT_INVALID. The caller destroys the returned option.
     role: getter
     belongs_to: database
     parameters:
@@ -134,10 +130,10 @@ functions:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Returns the count of config options registered on the database.
+      Returns the number of config options registered on the database.
 
-      Counts core options + extension options registered on the database.
-      Aliases are NOT counted separately — each alias is reachable
+      Counts core options plus the extension options registered on this
+      database. Aliases are NOT counted separately; each one is reachable
       through its canonical option's alias array.
     role: getter
     belongs_to: database
@@ -162,10 +158,10 @@ functions:
     description: |
       Reads the config option at the given index from the database.
 
-      Index space: [0, core_count) addresses core options;
-      [core_count, total) addresses extension options. Stable for the
-      database while no extensions register new options. Out-of-range
-      index returns ERROR_INPUT_INVALID. Caller destroys.
+      Index space: [0, core_count) addresses core options, [core_count, total)
+      extension options. The mapping is stable for as long as no extension
+      registers new options. An out-of-range index returns ERROR_INPUT_INVALID.
+      The caller destroys the returned option.
     role: getter
     belongs_to: database
     parameters:

@@ -1,35 +1,34 @@
 module: logical_type
 #
-# Introspection plus three construction paths: type ids
-# (create_type_from_id), SQL text (create_type_from_text), and generic
-# (name, params) construction (create_type_from_name), all covering
-# built-in and catalog-registered types alike. Every constructor comes in
-# two flavours: a context_* form for callbacks holding a context, and a
-# connection_* form for external callers holding only a connection.
-# logical_type_to_text renders back to SQL text.
+# Introspection, plus three construction paths: from a type id
+# (create_type_from_id), from SQL text (create_type_from_text), and from a
+# generic (name, params) pair (create_type_from_name). All three cover
+# built-in and catalog-registered types alike. Every constructor comes in two
+# forms: a context_* one for callbacks holding a context, and a connection_*
+# one for external callers holding only a connection. logical_type_to_text
+# renders a type back to SQL text.
 #
-# Inspection is generic: logical_type_get_param_count /
+# Inspection is generic. logical_type_get_param_count and
 # logical_type_get_param are the exact dual of the (name, params) and
-# (id, params) constructors.
-# There are no per-kind getters. DECIMAL and ENUM physical storage tiers
-# are committed contract text in the vector module's view docstring
-# (derivable from width / dictionary size), not getters.
+# (id, params) constructors, and there are no per-kind getters. The DECIMAL
+# and ENUM physical storage tiers follow from the width and the dictionary
+# size respectively; both mappings are committed contract text on
+# vector_get_view rather than getters.
 #
-# Borrowed views returned by *_get_name and *_get_param (the name) are
-# valid until the owning logical_type handle is destroyed. Values
-# returned by *_get_param are owned by the caller.
+# Borrowed views returned by *_get_name, and the name returned by
+# *_get_param, are valid until the owning logical_type handle is destroyed.
+# The values returned by *_get_param are owned by the caller.
 #
-# The LOGICAL_TYPE_ID enum values mirror duckdb::LogicalTypeId
-# integer values exactly, so the numeric round-trip matches what's stored
-# internally.
+# The LOGICAL_TYPE_ID values are the same integers DuckDB uses internally, so
+# the numeric round-trip is lossless.
 
 enums:
   LOGICAL_TYPE_ID:
     description: |
-      Logical type identifier. Mirrors duckdb::LogicalTypeId. Values are
-      kept numerically identical to the internal enum so round-tripping is
-      lossless. Bind/UDF-only ids (UNKNOWN, ANY, TEMPLATE) appear here for
-      completeness; they don't show up in result column types in practice.
+      Logical type identifier. The values are the same integers DuckDB uses
+      internally, so round-tripping is lossless. The bind- and UDF-only ids
+      (UNKNOWN, ANY, TEMPLATE) appear here for completeness; they do not show
+      up in result column types in practice.
     values:
       LOGICAL_TYPE_ID_INVALID:
         value: 0
@@ -149,31 +148,30 @@ functions:
       Creates a logical type from a type id plus value parameters.
 
       The id-keyed twin of context_create_type_from_name: the type id names the
-      kind, the parameters bind it. With param_count 0 this instantiates
-      a primitive directly, without touching the catalog:
-      BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
-      FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
-      VARCHAR, BLOB, BIT, BIGNUM, UUID. Also accepts ANY.
+      kind, and the parameters bind it. With param_count 0 it instantiates a
+      primitive directly, without touching the catalog: BOOLEAN,
+      TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT, FLOAT, DOUBLE,
+      DATE, every TIME and TIMESTAMP variant, INTERVAL, VARCHAR, BLOB, BIT,
+      BIGNUM, and UUID. ANY is accepted as well.
 
-      ANY is a function-signature wildcard, constructible here so it can
-      be passed to function parameter and varargs setters (a fixed-arity
-      ANY parameter, or an ANY varargs type). Data-creating surfaces
-      reject it: value and data_chunk creation, scalar and aggregate
-      return types, table function result columns, cast source and
-      target types, and custom type registration.
+      ANY is a function-signature wildcard, constructible here so it can be
+      passed to the function parameter and varargs setters, as a fixed-arity
+      ANY parameter or an ANY varargs type. Data-creating surfaces reject it:
+      value and data chunk creation, scalar and aggregate return types, table
+      function result columns, cast source and target types, and custom type
+      registration.
 
-      With parameters, the id resolves to its canonical type name and
-      binds through the same path as context_create_type_from_name, so the
-      parameterised kinds construct here too: decimal(width, scale);
-      list(T); array(T, size); map(K, V); struct(fields); union(members);
-      enum(entries); varchar with a named "collation" parameter. Parameters
-      are (name, value) pairs in two parallel arrays, exactly as for
-      context_create_type_from_name.
+      With parameters, the id resolves to its canonical type name and binds
+      through the same path as context_create_type_from_name, so the parameterized
+      kinds construct here too: decimal(width, scale); list(T); array(T, size);
+      map(K, V); struct(fields); union(members); enum(entries); and varchar
+      with a named "collation" parameter. Parameters are (name, value) pairs in
+      two parallel arrays, exactly as for context_create_type_from_name.
 
       Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs
       parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM,
-      VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN),
-      for TYPE (construct it via context_create_type_from_text), and for INVALID.
+      VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN), for
+      TYPE — construct that via context_create_type_from_text — and for INVALID.
     role: constructor
     belongs_to: context
     parameters:
@@ -214,36 +212,35 @@ functions:
     description: |
       Creates a logical type from a type name plus value parameters.
 
-      The generic constructor: resolves the name in the context's catalog
-      (search path first, then the system catalog) and binds it with the
-      given parameters, mirroring how SQL binds a type expression.
-      Built-in parameterized kinds and registered extension types
-      construct through the same call.
+      The generic constructor: resolves the name in the context's catalog —
+      search path first, then the system catalog — and binds it with the given
+      parameters, exactly as SQL binds a type expression. Built-in
+      parameterized kinds and registered extension types construct through this
+      same call.
 
-      Parameters are (name, value) pairs in two parallel arrays.
-      param_names may be NULL (all positional); a {NULL, 0} entry makes
-      that one parameter positional. Child types cross as TYPE values
-      (value_create_type_with_context / _with_connection). Built-in shapes: decimal(width, scale);
-      list(T); array(T, size); map(K, V); struct(fields as named or all
-      positional TYPE values); union(members as named TYPE values);
-      enum(entries as VARCHAR values); varchar with a named "collation"
-      VARCHAR parameter.
+      Parameters are (name, value) pairs in two parallel arrays. param_names
+      may be NULL to make every parameter positional, and a {NULL, 0} entry
+      makes that one parameter positional. Child types cross as TYPE values,
+      built with value_create_type_with_context / _with_connection. The
+      built-in shapes are: decimal(width, scale); list(T); array(T, size);
+      map(K, V); struct(fields, as named or all-positional TYPE values);
+      union(members, as named TYPE values); enum(entries, as VARCHAR values);
+      and varchar with a named "collation" VARCHAR parameter.
 
-      A name that resolves to a type without a bind function takes no
-      parameters: passing any fails. Bind errors (unknown name, wrong
-      parameter count or types) surface from the call.
+      A name that resolves to a type with no bind function takes no parameters,
+      and passing any fails. Bind errors — unknown name, wrong parameter count
+      or types — surface from the call.
 
-      Runs in the caller's context scope (see
-      create_type_from_text): reach it from a bind-phase callback
-      or another context-holding scope, not an exec-phase worker
-      callback. External callers with only a connection use
-      connection_create_type_from_name.
+      Runs in the caller's context scope, as create_type_from_text does: reach
+      it from a bind-phase callback or another context-holding scope, not from
+      an exec-phase worker callback. External callers holding only a connection
+      use connection_create_type_from_name instead.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
-      database-owned storage (e.g. an ENUM dictionary): destroy it before
-      closing the database. Inverse of logical_type_get_param_count /
-      logical_type_get_param.
+      database-owned storage, such as an ENUM dictionary, so destroy it before
+      closing the database. This is the inverse of
+      logical_type_get_param_count / logical_type_get_param.
     role: constructor
     belongs_to: context
     parameters:
@@ -284,28 +281,27 @@ functions:
     description: |
       Creates a logical type by parsing SQL text.
 
-      Parses a SQL type expression in the given context and returns the
-      bound logical type: primitives ("INTEGER"), parameterized kinds
+      Parses a SQL type expression in the given context and returns the bound
+      logical type. It accepts primitives ("INTEGER"), parameterized kinds
       ("DECIMAL(18,3)", "INTEGER[]", "STRUCT(a INTEGER, b VARCHAR)",
       "MAP(VARCHAR, INTEGER)", "INTEGER[3]", "UNION(i INTEGER, s VARCHAR)",
-      "ENUM('a', 'b')"), and catalog-registered type names (user-defined
-      and extension types). A catalog type name binds to its structural
-      type; the name is not preserved as an alias. Names are
-      case-insensitive. Parse and bind errors surface from the call.
+      "ENUM('a', 'b')"), and catalog-registered type names, both user-defined
+      and from extensions. A catalog type name binds to its structural type,
+      and the name is not preserved as an alias. Names are case-insensitive.
+      Parse and bind errors surface from the call.
 
-      Runs in the caller's context scope: a context handle arrives with
-      the context lock held and a transaction active (function bind
-      callbacks, custom type registration). External callers with only a
-      connection use connection_create_type_from_text. Catalog-touching context
-      calls belong in bind-phase callbacks and with-context scopes, not
-      exec-phase
-      worker callbacks.
+      Runs in the caller's context scope: a context handle arrives with the
+      context lock held and a transaction active, as in a function bind
+      callback or custom type registration. Catalog-touching context calls
+      belong in bind-phase callbacks and other context-holding scopes, not in
+      exec-phase worker callbacks. External callers holding only a connection
+      use connection_create_type_from_text instead.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
-      database-owned storage (e.g. an ENUM dictionary): destroy it before
-      closing the database. Inverse of logical_type_to_text for every
-      constructible kind.
+      database-owned storage, such as an ENUM dictionary, so destroy it before
+      closing the database. This is the inverse of logical_type_to_text for
+      every constructible kind.
     role: constructor
     belongs_to: context
     parameters:
@@ -334,31 +330,30 @@ functions:
       Creates a logical type from a type id plus value parameters.
 
       The id-keyed twin of connection_create_type_from_name: the type id names the
-      kind, the parameters bind it. With param_count 0 this instantiates
-      a primitive directly, without touching the catalog:
-      BOOLEAN, TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT,
-      FLOAT, DOUBLE, DATE, all TIME and TIMESTAMP variants, INTERVAL,
-      VARCHAR, BLOB, BIT, BIGNUM, UUID. Also accepts ANY.
+      kind, and the parameters bind it. With param_count 0 it instantiates a
+      primitive directly, without touching the catalog: BOOLEAN,
+      TINYINT..BIGINT, UTINYINT..UBIGINT, HUGEINT, UHUGEINT, FLOAT, DOUBLE,
+      DATE, every TIME and TIMESTAMP variant, INTERVAL, VARCHAR, BLOB, BIT,
+      BIGNUM, and UUID. ANY is accepted as well.
 
-      ANY is a function-signature wildcard, constructible here so it can
-      be passed to function parameter and varargs setters (a fixed-arity
-      ANY parameter, or an ANY varargs type). Data-creating surfaces
-      reject it: value and data_chunk creation, scalar and aggregate
-      return types, table function result columns, cast source and
-      target types, and custom type registration.
+      ANY is a function-signature wildcard, constructible here so it can be
+      passed to the function parameter and varargs setters, as a fixed-arity
+      ANY parameter or an ANY varargs type. Data-creating surfaces reject it:
+      value and data chunk creation, scalar and aggregate return types, table
+      function result columns, cast source and target types, and custom type
+      registration.
 
-      With parameters, the id resolves to its canonical type name and
-      binds through the same path as connection_create_type_from_name, so the
-      parameterised kinds construct here too: decimal(width, scale);
-      list(T); array(T, size); map(K, V); struct(fields); union(members);
-      enum(entries); varchar with a named "collation" parameter. Parameters
-      are (name, value) pairs in two parallel arrays, exactly as for
-      connection_create_type_from_name.
+      With parameters, the id resolves to its canonical type name and binds
+      through the same path as connection_create_type_from_name, so the parameterized
+      kinds construct here too: decimal(width, scale); list(T); array(T, size);
+      map(K, V); struct(fields); union(members); enum(entries); and varchar
+      with a named "collation" parameter. Parameters are (name, value) pairs in
+      two parallel arrays, exactly as for connection_create_type_from_name.
 
       Returns ERROR_INPUT_INVALID when param_count is 0 and the id needs
       parameters (DECIMAL, LIST, STRUCT, TUPLE, MAP, ARRAY, UNION, ENUM,
-      VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN),
-      for TYPE (construct it via connection_create_type_from_text), and for INVALID.
+      VARIANT, GEOMETRY), for the bind-time-only ids (SQLNULL, UNKNOWN), for
+      TYPE — construct that via connection_create_type_from_text — and for INVALID.
     role: constructor
     belongs_to: connection
     parameters:
@@ -397,19 +392,19 @@ functions:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Gets a logical type from a type name plus value parameters, using a connection.
+      Creates a logical type from a type name plus value parameters, using a connection.
 
-      Same as create_type_from_name, but supplies the catalog and
-      transaction from a connection: the bind runs in its own transaction
-      on the connection's context. Use this from outside DuckDB, where a
+      The same as context_create_type_from_name, except that the catalog and
+      transaction come from a connection: the bind runs in its own transaction
+      on that connection's context. Use it from outside DuckDB, where a
       connection — but no context — is in hand.
 
-      Parameters are (name, value) pairs in two parallel arrays, exactly
-      as for create_type_from_name.
+      Parameters are (name, value) pairs in two parallel arrays, exactly as for
+      context_create_type_from_name.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
-      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      database-owned storage, such as an ENUM dictionary, so destroy it before
       closing the database.
     role: constructor
     belongs_to: connection
@@ -449,16 +444,16 @@ functions:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Gets a logical type by parsing SQL text, using a connection.
+      Creates a logical type by parsing SQL text, using a connection.
 
-      Same as create_type_from_text, but supplies the catalog and
-      transaction from a connection: the parse and bind run in their own
-      transaction on the connection's context. Use this from outside
-      DuckDB, where a connection — but no context — is in hand.
+      The same as context_create_type_from_text, except that the catalog and
+      transaction come from a connection: the parse and bind run in their own
+      transaction on that connection's context. Use it from outside DuckDB,
+      where a connection — but no context — is in hand.
 
       The returned logical type is caller-owned and must be destroyed via
       logical_type_destroy. A type resolved from the catalog shares
-      database-owned storage (e.g. an ENUM dictionary): destroy it before
+      database-owned storage, such as an ENUM dictionary, so destroy it before
       closing the database.
     role: constructor
     belongs_to: connection
@@ -485,9 +480,10 @@ functions:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Creates a copy of a logical type
+      Creates a copy of a logical type.
 
-      On success, writes the new handle into *out_type.
+      On success, writes the new caller-owned handle into *out_type; destroy it
+      via logical_type_destroy.
     role: constructor
     belongs_to: logical_type
     parameters:
@@ -531,11 +527,10 @@ functions:
     description: |
       Compares two logical types for deep equality.
 
-      Returns true if the types are identical in kind and all parameters,
-      recursively. For example, two DECIMAL(10, 2) types are equal, but
-      DECIMAL(10, 2) is not equal to DECIMAL(10, 3) or to FLOAT. Two
-      STRUCTs with the same field names in the same order and equal field
-      types are equal, but if the field types differ they are not equal.
+      Two types are equal when they agree in kind and in every parameter,
+      recursively. DECIMAL(10, 2) equals DECIMAL(10, 2), but not DECIMAL(10, 3)
+      and not FLOAT; two STRUCTs are equal when they have the same field names
+      in the same order and equal field types.
     belongs_to: logical_type
     parameters:
       left:
@@ -584,12 +579,12 @@ functions:
     description: |
       Borrows the logical type's name.
 
-      The alias when one is set (an extension or user-defined name, e.g.
-      "POINT_2D"), otherwise the canonical fixed name of the type id
-      (e.g. "INTEGER", "DECIMAL", "TIMESTAMP WITH TIME ZONE"). Never the
-      empty view. This is exactly the name vocabulary create_type_from_name
-      consumes. The view is valid until the logical type is destroyed
-      (the canonical-name arm points at static storage).
+      The alias when one is set — an extension or user-defined name such as
+      "POINT_2D" — otherwise the canonical name of the type id, such as
+      "INTEGER", "DECIMAL", or "TIMESTAMP WITH TIME ZONE". Never the empty
+      view. This is exactly the name vocabulary create_type_from_name accepts.
+      The view is valid until the logical type is destroyed; a canonical name
+      points at static storage.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -614,17 +609,18 @@ functions:
     description: |
       Renders a logical type as SQL text.
 
-      Mirrors duckdb::LogicalType::ToString(). An aliased type renders as
-      its alias; create_type_from_text resolves that spelling only
-      when the name is registered in the connection's catalog. Round-trips
-      through create_type_from_text for every constructible kind,
-      with one exception: ANY renders as "ANY", but from_text cannot parse
-      it back (ANY is a signature wildcard, not a parseable SQL type).
-      Writes into a caller-supplied buffer; the library never allocates and
-      hands back nothing to free. Pass out_text = NULL to size the buffer
-      without rendering the text into it: out_length then receives the
-      length, and out_capacity is ignored. With out_text != NULL,
-      out_capacity must be at least out_length + 1 or the call returns
+      An aliased type renders as its alias, and create_type_from_text resolves
+      that spelling only when the name is registered in the connection's
+      catalog. The text round-trips through create_type_from_text for every
+      constructible kind, with one exception: ANY renders as "ANY", but
+      create_type_from_text cannot parse it back, since ANY is a signature
+      wildcard rather than a parseable SQL type.
+
+      Writes into a caller-supplied buffer, so nothing is allocated on the
+      caller's behalf and nothing has to be freed. Pass out_text = NULL to size
+      the buffer without rendering into it: out_length then receives the
+      length, and out_capacity is ignored. With out_text != NULL, out_capacity
+      must be at least out_length + 1, or the call returns
       ERROR_INPUT_OBJECT_SIZE with out_length set to the required length and
       out_text left untouched.
 
@@ -664,15 +660,15 @@ functions:
     description: |
       Returns the number of value parameters of a logical type.
 
-      The inspection dual of create_type_from_name: the parameters that
-      reconstruct the type through it. Per kind: DECIMAL 2 (width,
-      scale); LIST 1 (element type); ARRAY 2 (element type, size); MAP 2
-      (key type, value type); STRUCT and TUPLE one per field; UNION one per
-      member; ENUM one per dictionary entry; VARCHAR 1 when a collation
-      is set, else 0; GEOMETRY 1 when a coordinate system is set, else
-      0; everything else 0. A bound type reports what it carries:
-      bind-time modifiers the engine does not retain (e.g. an ignored
-      VARCHAR length) do not reappear.
+      The inspection dual of create_type_from_name: these are the parameters
+      that reconstruct the type through it. Per kind: DECIMAL 2 (width, scale);
+      LIST 1 (element type); ARRAY 2 (element type, size); MAP 2 (key type,
+      value type); STRUCT and TUPLE one per field; UNION one per member; ENUM
+      one per dictionary entry; VARCHAR 1 when a collation is set, else 0;
+      GEOMETRY 1 when a coordinate system is set, else 0; everything else 0. A
+      bound type reports only what it actually carries, so a bind-time modifier
+      that is not retained — an ignored VARCHAR length, say — does not
+      reappear.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -697,15 +693,15 @@ functions:
     description: |
       Returns one value parameter of a logical type.
 
-      out_name receives a borrowed view of the parameter name (a STRUCT
-      field name, a UNION member name, "collation"), or the empty view
-      {NULL, 0} for a positional parameter; a non-empty view is valid
-      until the logical type is destroyed. out_value receives an owned
-      value the caller destroys via value_destroy: child types come back
-      as TYPE values (unwrap via value_get_type), DECIMAL width and
-      scale as UTINYINT, ARRAY size as BIGINT, ENUM dictionary entries
-      and collations as VARCHAR. Out-of-range index returns
-      ERROR_INPUT_INVALID. One owned value allocation per call.
+      out_name receives a borrowed view of the parameter name — a STRUCT field
+      name, a UNION member name, "collation" — or the empty view {NULL, 0} for
+      a positional parameter. A non-empty view is valid until the logical type
+      is destroyed. out_value receives an owned value, destroyed via
+      value_destroy: child types come back as TYPE values (unwrap them with
+      value_get_type), DECIMAL width and scale as UTINYINT, ARRAY size as
+      BIGINT, and ENUM dictionary entries and collations as VARCHAR. An
+      out-of-range index returns ERROR_INPUT_INVALID. Each call allocates one
+      owned value.
     role: getter
     belongs_to: logical_type
     parameters:
@@ -739,14 +735,14 @@ functions:
     description: |
       Creates a logical type that is an alias of another logical type.
 
-      The alias keeps the base type's internal representation, so the execution
-      engine needs no custom handling for it, while making the type logically
-      distinct from its base. Intended for custom type bind callbacks, where the
-      base type and the name both come from the bind info.
+      The alias keeps the base type's internal representation, so executing
+      against it needs no special handling, while remaining logically distinct
+      from the base type. Intended for custom type bind callbacks, where both
+      the base type and the name come from the bind info.
 
       Scoped like the rest of the create_type family: the alias is resolved
-      against the catalog reachable from the context. An empty alias name
-      returns ERROR_INPUT_INVALID.
+      against the catalog reachable from the context. An empty alias name returns
+      ERROR_INPUT_INVALID.
     role: constructor
     belongs_to: logical_type
     parameters:
@@ -755,15 +751,15 @@ functions:
         description: "The context to resolve the alias against."
       base_type:
         type: logical_type
-        description: "The logical type to create an alias of. This is typically the base type provided in the custom type bind info."
+        description: "The logical type to alias. Typically the base type supplied in the custom type bind info."
       alias_name:
         type: identifier
-        description: "The name to give the resulting alias logical type. This should typically be the name of the custom type being constructed, which can be obtained from the custom type bind info."
+        description: "The name for the resulting type. Typically the name of the custom type being constructed, also available from the bind info."
       out_type:
         type: logical_type
         indirection: 1
         kind: OUT
-        description: "The resulting alias logical type. This logical type will have the same internal representation as the base type but with the provided alias name."
+        description: "Receives the new type: the base type's internal representation under the given alias name."
       err:
         type: error_info
         indirection: 1
@@ -776,14 +772,14 @@ functions:
     description: |
       Creates a logical type that is an alias of another logical type.
 
-      The alias keeps the base type's internal representation, so the execution
-      engine needs no custom handling for it, while making the type logically
-      distinct from its base. Intended for custom type bind callbacks, where the
-      base type and the name both come from the bind info.
+      The alias keeps the base type's internal representation, so executing
+      against it needs no special handling, while remaining logically distinct
+      from the base type. Intended for custom type bind callbacks, where both
+      the base type and the name come from the bind info.
 
       Scoped like the rest of the create_type family: the alias is resolved
-      against the catalog reachable from the connection. An empty alias name
-      returns ERROR_INPUT_INVALID.
+      against the catalog reachable from the connection. An empty alias name returns
+      ERROR_INPUT_INVALID.
     role: constructor
     belongs_to: logical_type
     parameters:
@@ -792,15 +788,15 @@ functions:
         description: "The connection to resolve the alias against."
       base_type:
         type: logical_type
-        description: "The logical type to create an alias of. This is typically the base type provided in the custom type bind info."
+        description: "The logical type to alias. Typically the base type supplied in the custom type bind info."
       alias_name:
         type: identifier
-        description: "The name to give the resulting alias logical type. This should typically be the name of the custom type being constructed, which can be obtained from the custom type bind info."
+        description: "The name for the resulting type. Typically the name of the custom type being constructed, also available from the bind info."
       out_type:
         type: logical_type
         indirection: 1
         kind: OUT
-        description: "The resulting alias logical type. This logical type will have the same internal representation as the base type but with the provided alias name."
+        description: "Receives the new type: the base type's internal representation under the given alias name."
       err:
         type: error_info
         indirection: 1

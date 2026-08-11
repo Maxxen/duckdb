@@ -1,11 +1,12 @@
 module: schema
-# An ordered list of (name, type) fields: a row schema. The single schema type
-# across the V2 API: a bound statement's output (result columns) and input
-# (parameters), a result's columns, Arrow conversion. Field names may repeat or
-# be empty, and the list may be empty.
+# An ordered list of (name, type) fields: a row schema. This is the one schema
+# type across the V2 API, describing a bound statement's output (result
+# columns) and input (parameters), a result's columns, and Arrow conversion.
+# Field names may repeat or be empty, and the list itself may be empty.
 #
-# Lifetime: get_field borrows the field name and type, valid only until the schema
-# is destroyed. The bind verbs produce one the caller owns and destroys.
+# Lifetime: schema_get_field borrows the field name and type, both valid only
+# until the schema is destroyed. The bind verbs produce a schema the caller
+# owns and destroys.
 handles:
   schema:
     description: |
@@ -39,11 +40,11 @@ functions:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
     description: |
-      Borrows the name and type of the field at index.
+      Borrows the name and type of the field at the given index.
 
-      Borrows the field at index. out_name and out_type are valid only until the
-      schema is destroyed, and out_type must not be destroyed. An out-of-range
-      index is rejected with INVALID_INPUT.
+      out_name and out_type are valid only until the schema is destroyed, and
+      out_type must not be destroyed. An out-of-range index is rejected with
+      ERROR_INPUT_INVALID.
     role: getter
     belongs_to: schema
     parameters:
@@ -75,8 +76,8 @@ functions:
     description: |
       Destroys a schema handle.
 
-      Frees the handle and all owned names and types. On success the slot is set
-      to null. Safe to call on an already-null slot.
+      Frees the handle along with the names and types it owns. On success the
+      slot is set to null. Safe to call on an already-null slot.
     role: destructor
     belongs_to: schema
     parameters:

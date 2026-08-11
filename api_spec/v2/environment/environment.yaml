@@ -1,9 +1,8 @@
 module: environment
-# The environment is the required root for opening databases. Create at
-# program start; destroy at program end. Destroy refuses while any
-# database opened through it is still alive — this is the only handle in
-# V2 with strict refuse-on-destroy semantics, kept as a footgun guard
-# for the program-lifetime root.
+# The environment is the required root for opening databases. Create one at
+# program start; destroy it at program end. Destroying it refuses while any
+# database opened through it is still alive — the only handle in V2 with
+# refuse-on-destroy semantics, kept as a guard for the program-lifetime root.
 functions:
 
   # Create Environment
@@ -33,8 +32,9 @@ functions:
     description: |
       Destroys the environment.
 
-      Refuses with ERROR_RESOURCE_IN_USE if any database opened through this environment is still alive. 
-      Close outstanding databases first, then retry. On success, the environment handle is set to null.
+      Refuses with ERROR_RESOURCE_IN_USE while any database opened through this
+      environment is still alive; close those databases first, then retry. On
+      success the handle is set to null.
     role: destructor
     belongs_to: environment
     parameters:
@@ -51,8 +51,9 @@ functions:
     description: |
       Returns the number of databases currently open under the environment.
 
-      Diagnostic accessor for debugging leaked database handles when destroy_environment returns ERROR_RESOURCE_IN_USE.
-      The value is a snapshot; it may change between this call and any subsequent operation.
+      A diagnostic accessor, for tracking down leaked database handles when
+      destroy_environment returns ERROR_RESOURCE_IN_USE. The count is a
+      snapshot and may change before the next call.
     role: getter
     belongs_to: environment
     parameters:

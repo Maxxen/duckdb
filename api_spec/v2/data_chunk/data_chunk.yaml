@@ -2,19 +2,18 @@ module: data_chunk
 #
 # Construct and inspect data chunks.
 #
-# Mirrors duckdb::DataChunk: a set of vectors of equal logical length plus
-# a row-count cardinality. The chunk does not carry types; the column types
-# of a streamed chunk come from the producing result's schema (see
-# result_get_schema in the query_result module).
+# A chunk is a set of vectors of equal logical length plus a row-count
+# cardinality. It does not carry types: the column types of a streamed chunk
+# come from the producing result's schema (result_get_schema, in the
+# query_result module).
 #
-# Chunks produced by a streaming result (result_step /
-# result_fetch_chunk in the query_result module) are caller-owned and
-# must be destroyed via data_chunk_destroy. Vectors borrowed via
-# data_chunk_get_vector are valid for the lifetime of the chunk
-# and are read via vector_get_view. The row count for top-level
-# vectors is data_chunk_get_size; it lives on the chunk, not on
-# the view. (Nested children get their row count from parent
-# geometry; see the vector module's docstring.)
+# Chunks produced by a streaming result (result_step / result_fetch_chunk, in
+# the query_result module) are caller-owned and must be destroyed via
+# data_chunk_destroy. Vectors borrowed with data_chunk_get_vector stay valid
+# for the lifetime of the chunk and are read via vector_get_view. The row count
+# for top-level vectors is data_chunk_get_size; it lives on the chunk, not on
+# the view. Nested children take their row count from the parent's geometry
+# instead; see vector.yaml.
 
 functions:
   # -----------------------------------------------------------------------
@@ -26,10 +25,10 @@ functions:
     description: |
       Creates an empty data chunk with the given column types.
 
-      Allocates a new DataChunk with one FLAT vector per element of the
-      types array, each initialized to default capacity. Each vector's
-      size starts at 0; set it via vector_set_size after populating the
-      vector. Caller owns the result and must destroy it via data_chunk_destroy.
+      Allocates one FLAT vector per element of the types array, each at default
+      capacity. Every vector starts at size 0; set it with vector_set_size once
+      the vector is populated. The chunk is caller-owned and must be destroyed
+      via data_chunk_destroy.
     role: constructor
     belongs_to: data_chunk
     parameters:
@@ -61,14 +60,16 @@ functions:
     description: |
       Destroys a data chunk handle.
 
-      Null-safe. On success the slot is set to nullptr. Any vectors
-      previously borrowed from this chunk become invalid.
+      Null-safe: passing nullptr or a slot already set to nullptr is a no-op.
+      On success the slot is set to nullptr. Any vector previously borrowed
+      from this chunk becomes invalid.
     role: destructor
     belongs_to: data_chunk
     parameters:
       chunk:
         type: data_chunk
         indirection: 1
+        description: The chunk to destroy.
     return_type: ERROR
 
   data_chunk_get_size:
@@ -80,10 +81,12 @@ functions:
     parameters:
       chunk:
         type: data_chunk
+        description: The chunk.
       out_size:
         type: idx
         indirection: 1
         kind: OUT
+        description: Receives the row count.
       err:
         type: error_info
         indirection: 1
@@ -103,10 +106,12 @@ functions:
     parameters:
       chunk:
         type: data_chunk
+        description: The chunk.
       out_count:
         type: idx
         indirection: 1
         kind: OUT
+        description: Receives the vector count.
       err:
         type: error_info
         indirection: 1
@@ -120,14 +125,14 @@ functions:
     description: |
       Borrows the vector at the given index in a data chunk.
 
-      Returns a borrowed vector handle valid until the chunk is destroyed.
-      Do not call destroy_* on it. Out-of-range index returns
-      ERROR_INPUT_INVALID.
+      The returned handle is borrowed and valid until the chunk is destroyed;
+      do not destroy it. An out-of-range index returns ERROR_INPUT_INVALID.
     role: getter
     belongs_to: data_chunk
     parameters:
       chunk:
         type: data_chunk
+        description: The chunk.
       index:
         type: idx
         description: The vector index, in [0, vector_count).
