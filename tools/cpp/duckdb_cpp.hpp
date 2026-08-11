@@ -58,11 +58,12 @@ class TypeBuilder;
 
 namespace detail {
 
-// Maps a C++ wrapper type to its underlying C-API handle type. The primary template is intentionally left undefined.
-// Each wrapper is specialized in the .cpp, so the handle types never need to appear in this header.
+//! Maps a C++ wrapper type to its underlying C-API handle type. The primary template is intentionally left undefined.
+//! Each wrapper is specialized in the .cpp, so the handle symbols never need to appear in this header.
 template <class T>
 struct HandleTraits;
 
+//! A "Handle" is the base class for all C++ wrapper objects in this API.
 template <class TYPE>
 class Handle {
 public:
@@ -83,16 +84,12 @@ public:
 	virtual ~Handle() noexcept = default;
 
 	// Returns the underlying C-API handle, indirectly typed via HandleTraits<TYPE>.
-	// This is a member template so it is only instantiated where it is called
-	// (in the .cpp, after the matching HandleTraits specialization is visible).
-	// This keeps handle types out of this header.
 	template <class TR = HandleTraits<TYPE>>
 	auto handle() const -> typename TR::handle {
 		return static_cast<typename TR::handle>(impl);
 	}
 
-	// True when this wrapper holds a live handle. Moved-from wrappers and
-	// "no value" results (e.g. end-of-stream chunks) are empty.
+	// True when this wrapper holds a live handle.
 	explicit operator bool() const noexcept {
 		return impl != nullptr;
 	}
@@ -114,6 +111,7 @@ private:
 	void *impl;
 };
 
+// Helper "friend" class to construct/release handles without making their constructors public
 struct Factory {
 	template <class T, class... ARGS>
 	static auto Make(ARGS &&... args) -> T {
@@ -134,21 +132,22 @@ struct always_false : std::false_type {};
 //----------------------------------------------------------------------------------------------------------------------
 // Exceptions
 //----------------------------------------------------------------------------------------------------------------------
+// TODO: add more exception types!
 
+//! Base Exception class for errors thrown by DuckDB
 class Exception : public std::runtime_error {
 public:
-	// TODO: add more exception types!
-	Exception(int code, const std::string &message, std::string raw_message = {})
+
+	Exception(const int code, const std::string &message, std::string raw_message = {})
 	    : std::runtime_error(message), code(code), raw_message(std::move(raw_message)) {
 	}
 
+	//! The exception-type error code, not ment for public consumption.
 	auto GetCode() const -> int {
 		return code;
 	}
 
-	// The message body with what()'s "<Type> Error: " prefix stripped, or empty.
-	// Not derivable from what() (no type name here to rebuild the prefix); in the
-	// engine's rendered form (location block, or JSON under errors_as_json).
+	//! The raw message body, without the "Catalog Error:" / "Parser Error:" / etc. prefix that `what()` carries.
 	auto GetRawMessage() const -> const std::string & {
 		return raw_message;
 	}
@@ -158,17 +157,16 @@ private:
 	std::string raw_message;
 };
 
-// Typed exceptions for callback implementors (UDF / table-function /
-// replacement-scan trampolines). Throwing one names an error class; its code
-// lives only in the implementation.
+//! Typed exception for invalid input, e.g. a bad argument to a function or an invalid SQL statement.
 class InvalidInputException : public Exception {
 public:
-	explicit InvalidInputException(std::string message);
+	explicit InvalidInputException(const std::string &message);
 };
 
+//! Typed exception for an interrupt signal.
 class InterruptException : public Exception {
 public:
-	explicit InterruptException(std::string message);
+	explicit InterruptException(const std::string &message);
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1161,7 +1159,10 @@ struct TypeParam {
 
 	explicit TypeParam(Value value) : name(""), value(std::move(value)) {
 	}
-
+	auto GetName() const -> const std::string & { return name; }
+	auto GetValue() const -> const Value& { return value; }
+	auto GetValue() -> Value& { return value; }
+private:
 	std::string name;
 	Value value;
 };
@@ -1635,11 +1636,11 @@ private:
 };
 
 inline auto Context::CreateType() -> TypeBuilder<Context> {
-	return TypeBuilder<Context>(*this);
+	return TypeBuilder(*this);
 }
 
 inline auto Connection::CreateType() -> TypeBuilder<Connection> {
-	return TypeBuilder<Connection>(*this);
+	return TypeBuilder(*this);
 }
 
 inline auto Connection::Execute(const SqlStatement &statement, const std::vector<Value> &parameters) -> QueryResult {

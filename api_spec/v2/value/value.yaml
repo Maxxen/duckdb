@@ -27,10 +27,12 @@ module: value
 # a converted number.
 #
 # The typed set covers the built-ins whose payload is a plain C scalar or
-# byte string. Every other kind -- DATE, the TIME and TIMESTAMP variants,
-# INTERVAL, UUID, DECIMAL, ENUM, UNION, extension types -- is reached
-# through value_cast, which is the engine's own construction path for
-# them: build the nearest typed value, usually a VARCHAR, and cast it.
+# byte string. Every other kind -- ENUM, UNION, VARIANT, extension types --
+# is reached through value_cast, which is the engine's own construction path
+# for them: build the nearest typed value, usually a VARCHAR, and cast it.
+# VARIANT casts both ways, so a boxed cell is read by casting it to the type
+# it carries (or to VARCHAR, which always works) and built by casting into
+# it; there is no unwrapping getter.
 # BIGNUM reads back through value_get_blob, whose bytes are opaque storage
 # (negatives are stored bit-inverted behind a header); the vector module's
 # bignum_encode / bignum_decode translate between those bytes and a
@@ -40,9 +42,9 @@ module: value
 # (caller-destroyed) or borrowed pointers (valid until the value handle is
 # destroyed); the contract is documented per function.
 #
-# NULL handling: the payload readers (value_get_<kind>, value_get_type,
-# value_get_variant) return ERROR_INPUT_INVALID when the value is NULL: a
-# NULL has no typed payload to hand back. Use value_is_null first (or
+# NULL handling: the payload readers (value_get_<kind>, value_get_type)
+# return ERROR_INPUT_INVALID when the value is NULL: a NULL has no typed
+# payload to hand back. Use value_is_null first (or
 # value_get_logical_type / value_to_string, which both accept NULL
 # values).
 

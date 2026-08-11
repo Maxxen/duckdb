@@ -97,12 +97,12 @@ struct HandleTraits<QueryResult> {
 // Exceptions
 //----------------------------------------------------------------------------------------------------------------------
 
-InvalidInputException::InvalidInputException(std::string message)
-    : Exception(DUCKDB_V2_ERROR_INPUT_INVALID, std::move(message)) {
+InvalidInputException::InvalidInputException(const std::string &message)
+    : Exception(DUCKDB_V2_ERROR_INPUT_INVALID, message) {
 }
 
-InterruptException::InterruptException(std::string message)
-    : Exception(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT, std::move(message)) {
+InterruptException::InterruptException(const std::string &message)
+    : Exception(DUCKDB_V2_ERROR_RUNTIME_INTERRUPT, message) {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -170,8 +170,8 @@ public:
 		name_views.reserve(params.size());
 		value_handles.reserve(params.size());
 		for (const auto &param : params) {
-			name_views.push_back(param.name.empty() ? duckdb_v2_identifier_t {nullptr, 0} : ToStr(param.name));
-			value_handles.push_back(param.value.handle());
+			name_views.push_back(param.GetName().empty() ? duckdb_v2_identifier_t {nullptr, 0} : ToStr(param.GetName()));
+			value_handles.push_back(param.GetValue().handle());
 		}
 	}
 
@@ -712,11 +712,11 @@ auto LogicalType::GetParam(idx_t index) const -> TypeParam {
 }
 
 auto LogicalType::GetDecimalWidth() const -> uint8_t {
-	return GetParam(0).value.Get<uint8_t>();
+	return GetParam(0).GetValue().Get<uint8_t>();
 }
 
 auto LogicalType::GetDecimalScale() const -> uint8_t {
-	return GetParam(1).value.Get<uint8_t>();
+	return GetParam(1).GetValue().Get<uint8_t>();
 }
 
 auto LogicalType::GetEnumSize() const -> idx_t {
@@ -725,27 +725,27 @@ auto LogicalType::GetEnumSize() const -> idx_t {
 
 auto LogicalType::GetEnumValue(idx_t index) const -> std::string {
 	// Owned string: the backing Value is owned per call, a view would dangle.
-	return std::string(GetParam(index).value.Get<varchar_t>());
+	return std::string(GetParam(index).GetValue().Get<varchar_t>());
 }
 
 auto LogicalType::GetListChildType() const -> LogicalType {
-	return GetParam(0).value.Get<LogicalType>();
+	return GetParam(0).GetValue().Get<LogicalType>();
 }
 
 auto LogicalType::GetArrayChildType() const -> LogicalType {
-	return GetParam(0).value.Get<LogicalType>();
+	return GetParam(0).GetValue().Get<LogicalType>();
 }
 
 auto LogicalType::GetArraySize() const -> idx_t {
-	return GetParam(1).value.Get<idx_t>();
+	return GetParam(1).GetValue().Get<idx_t>();
 }
 
 auto LogicalType::GetMapKeyType() const -> LogicalType {
-	return GetParam(0).value.Get<LogicalType>();
+	return GetParam(0).GetValue().Get<LogicalType>();
 }
 
 auto LogicalType::GetMapValueType() const -> LogicalType {
-	return GetParam(1).value.Get<LogicalType>();
+	return GetParam(1).GetValue().Get<LogicalType>();
 }
 
 auto LogicalType::GetStructChildCount() const -> idx_t {
@@ -753,11 +753,11 @@ auto LogicalType::GetStructChildCount() const -> idx_t {
 }
 
 auto LogicalType::GetStructChildName(idx_t index) const -> std::string {
-	return GetParam(index).name;
+	return GetParam(index).GetName();
 }
 
 auto LogicalType::GetStructChildType(idx_t index) const -> LogicalType {
-	return GetParam(index).value.Get<LogicalType>();
+	return GetParam(index).GetValue().Get<LogicalType>();
 }
 
 auto LogicalType::GetUnionMemberCount() const -> idx_t {
@@ -765,11 +765,11 @@ auto LogicalType::GetUnionMemberCount() const -> idx_t {
 }
 
 auto LogicalType::GetUnionMemberName(idx_t index) const -> std::string {
-	return GetParam(index).name;
+	return GetParam(index).GetName();
 }
 
 auto LogicalType::GetUnionMemberType(idx_t index) const -> LogicalType {
-	return GetParam(index).value.Get<LogicalType>();
+	return GetParam(index).GetValue().Get<LogicalType>();
 }
 
 auto LogicalType::GetDecimalInternalTypeId() const -> LogicalTypeId {

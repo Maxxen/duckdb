@@ -1576,10 +1576,11 @@ TEST_CASE("V2: value_cast null-arg refusals", "[capi_v2][value][cast]") {
 	duckdb_v2_value_destroy(&v);
 }
 // ===========================================================================
-// VARIANT codec: value_get_variant
+// VARIANT: reached through value_cast, in both directions. There is no
+// unwrapping getter -- the cast machinery is the whole access path.
 // ===========================================================================
 
-TEST_CASE("V2: value_get_variant unwraps the boxed cell and gates its edges", "[capi_v2][value][variant]") {
+TEST_CASE("V2: VARIANT cells are read by casting them", "[capi_v2][value][variant]") {
 	EnvFixture f;
 	QueryResult r;
 
@@ -1593,40 +1594,87 @@ TEST_CASE("V2: value_get_variant unwraps the boxed cell and gates its edges", "[
 
 	duckdb_v2_value_handle box = nullptr;
 	REQUIRE(duckdb_v2_vector_get_value(value_vec, 0, &box, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_value_handle inner = nullptr;
-	REQUIRE(duckdb_v2_value_get_variant(box, &inner, nullptr) == DUCKDB_V2_ERROR_NONE);
-	duckdb_v2_logical_type_handle inner_type = nullptr;
-	REQUIRE(duckdb_v2_value_get_logical_type(inner, &inner_type, nullptr) == DUCKDB_V2_ERROR_NONE);
-	DUCKDB_V2_LOGICAL_TYPE_ID inner_id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-	REQUIRE(duckdb_v2_logical_type_get_id(inner_type, &inner_id, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(inner_id == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
-	REQUIRE(ConsumeValue<int32_t>(inner) == 42);
-	duckdb_v2_logical_type_destroy(&inner_type);
-	duckdb_v2_value_destroy(&inner);
+	duckdb_v2_logical_type_handle box_type = nullptr;
+	REQUIRE(duckdb_v2_value_get_logical_type(box, &box_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	DUCKDB_V2_LOGICAL_TYPE_ID box_id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+	REQUIRE(duckdb_v2_logical_type_get_id(box_type, &box_id, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(box_id == DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT);
+	duckdb_v2_logical_type_destroy(&box_type);
 
-	// A NULL variant cell has nothing to unwrap.
+	// Cast to the type the cell actually carries.
+	auto int_type = MakeType(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_value_handle as_int = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, box, int_type, &as_int, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(ConsumeValue<int32_t>(as_int) == 42);
+
+	// Or to text, which works whatever the cell holds.
+	auto varchar_type = MakeType(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR);
+	duckdb_v2_value_handle as_text = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, box, varchar_type, &as_text, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(ConsumeValue<std::string>(as_text) == "42");
+
+	// A NULL cell casts to a NULL of the target type rather than failing.
 	duckdb_v2_value_handle null_box = nullptr;
 	REQUIRE(duckdb_v2_vector_get_value(null_vec, 0, &null_box, nullptr) == DUCKDB_V2_ERROR_NONE);
 	bool is_null = false;
 	REQUIRE(duckdb_v2_value_is_null(null_box, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(is_null);
+	duckdb_v2_value_handle null_int = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, null_box, int_type, &null_int, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	is_null = false;
+	REQUIRE(duckdb_v2_value_is_null(null_int, &is_null, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(is_null);
+	duckdb_v2_value_destroy(&null_int);
+
+	duckdb_v2_logical_type_destroy(&int_type);
+	duckdb_v2_logical_type_destroy(&varchar_type);
+	duckdb_v2_value_destroy(&null_box);
+	duckdb_v2_value_destroy(&box);
+	duckdb_v2_data_chunk_destroy(&chunk);
+}
+
+TEST_CASE("V2: VARIANT values are built by casting into them", "[capi_v2][value][variant]") {
+	EnvFixture f;
+	duckdb_v2_logical_type_handle variant_type = nullptr;
+	REQUIRE(duckdb_v2_connection_create_type_from_text(f.conn, Convert("VARIANT"), &variant_type, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+
+	// In: any value casts to VARIANT. Out: back to the same type.
+	auto original = MakeInt32Value(f.conn, 42);
+	duckdb_v2_value_handle boxed = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, original, variant_type, &boxed, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_logical_type_handle boxed_type = nullptr;
+	REQUIRE(duckdb_v2_value_get_logical_type(boxed, &boxed_type, nullptr) == DUCKDB_V2_ERROR_NONE);
+	DUCKDB_V2_LOGICAL_TYPE_ID boxed_id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+	REQUIRE(duckdb_v2_logical_type_get_id(boxed_type, &boxed_id, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(boxed_id == DUCKDB_V2_LOGICAL_TYPE_ID_VARIANT);
+	duckdb_v2_logical_type_destroy(&boxed_type);
+
+	auto int_type = MakeType(f.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
+	duckdb_v2_value_handle unboxed = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, boxed, int_type, &unboxed, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(ConsumeValue<int32_t>(unboxed) == 42);
+
+	// A cell holding text does not become a number just because it is asked to.
+	auto text = MakeVarcharValue(f.conn, "abc");
+	duckdb_v2_value_handle text_box = nullptr;
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, text, variant_type, &text_box, nullptr) ==
+	        DUCKDB_V2_ERROR_NONE);
 	auto out = reinterpret_cast<duckdb_v2_value_handle>(0x1);
 	duckdb_v2_error_info_handle err = nullptr;
-	REQUIRE(duckdb_v2_value_get_variant(null_box, &out, &err) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_value_cast_with_connection(f.conn, text_box, int_type, &out, &err) != DUCKDB_V2_ERROR_NONE);
 	REQUIRE(out == nullptr);
 	REQUIRE(err != nullptr);
 	duckdb_v2_error_info_destroy(&err);
 
-	// Non-VARIANT values and null args are refused.
-	auto plain = MakeInt32Value(f.conn, 1);
-	REQUIRE(duckdb_v2_value_get_variant(plain, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(out == nullptr);
-	REQUIRE(duckdb_v2_value_get_variant(nullptr, &out, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(duckdb_v2_value_get_variant(box, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	duckdb_v2_value_destroy(&plain);
-	duckdb_v2_value_destroy(&null_box);
-	duckdb_v2_value_destroy(&box);
-	duckdb_v2_data_chunk_destroy(&chunk);
+	duckdb_v2_value_destroy(&text_box);
+	duckdb_v2_value_destroy(&text);
+	duckdb_v2_value_destroy(&boxed);
+	duckdb_v2_value_destroy(&original);
+	duckdb_v2_logical_type_destroy(&int_type);
+	duckdb_v2_logical_type_destroy(&variant_type);
 }
 
 } // namespace test_capi_v2
