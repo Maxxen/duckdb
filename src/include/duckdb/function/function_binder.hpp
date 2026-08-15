@@ -91,13 +91,28 @@ public:
 		return BindFunctionFromArguments(name, functions, regular_args, {}, error);
 	}
 
-	//! Bind a table function: select the overload, then check the named arguments against it and cast both the
-	//! positional and the named argument values to the chosen signature. Mirrors the pragma overload below.
-	//! Returns the chosen overload, or nullptr with error set if none matches.
+	//! Bind a table function: select the overload for these arguments, place them into their parameter slots, fold
+	//! them to constants and split the result into the positional values and the named options that the bind
+	//! callback expects. Returns the chosen overload, or nullptr with error set if none matches.
 	DUCKDB_API optional_ptr<const TableFunction>
 	BindTableFunction(const Identifier &name, const TableFunctionSet &functions, const vector<LogicalType> &arguments,
-	                  const vector<pair<Identifier, LogicalType>> &named_argument_types, vector<Value> &parameters,
+	                  vector<unique_ptr<Expression>> &positional_arguments,
+	                  vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments, vector<Value> &parameters,
 	                  named_parameter_map_t &named_parameters, ErrorData &error);
+
+	//! Select a table function overload for these argument types only. Used for table in-out functions, whose
+	//! arguments are the columns of an input table rather than constants, so there is nothing to place or fold.
+	DUCKDB_API optional_ptr<const TableFunction> BindTableInOutFunction(const Identifier &name,
+	                                                                    const TableFunctionSet &functions,
+	                                                                    const vector<LogicalType> &arguments,
+	                                                                    ErrorData &error);
+
+	//! Place arguments into their parameter slots: positional arguments fill the parameters that accept them in
+	//! order, named arguments go to the parameter of that name, missing parameters take their default, and the
+	//! remainder become varargs (positional first, then named). Returns the parameter name of each slot.
+	DUCKDB_API static vector<Identifier>
+	ResolveArguments(const SimpleFunction &function, vector<unique_ptr<Expression>> &arguments,
+	                 vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments);
 
 	//! Bind a pragma function from the set of functions and input arguments
 	DUCKDB_API optional_idx BindFunction(const Identifier &name, const PragmaFunctionSet &functions,

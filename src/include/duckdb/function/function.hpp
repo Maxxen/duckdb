@@ -117,6 +117,23 @@ struct FunctionParameters {
 	named_parameter_map_t named_parameters;
 };
 
+//! How a parameter may be supplied at the call site, mirroring Python's inspect.Parameter.kind.
+//! Only POSITIONAL_OR_KEYWORD and KEYWORD_ONLY are produced today; the VAR_* kinds are reserved for
+//! when the signature's trailing varargs field becomes a parameter of its own.
+enum class FunctionParameterKind : uint8_t {
+	//! May only be supplied positionally
+	POSITIONAL_ONLY = 0,
+	//! May be supplied positionally or by name - the default, and what every parameter was before
+	POSITIONAL_OR_KEYWORD = 1,
+	//! Collects the remaining positional arguments (*args)
+	VAR_POSITIONAL = 2,
+	//! May only be supplied by name. Table and pragma function options are these: the varargs that
+	//! follow them would otherwise claim every trailing position.
+	KEYWORD_ONLY = 3,
+	//! Collects the remaining named arguments (**kwargs)
+	VAR_KEYWORD = 4,
+};
+
 class FunctionParameter {
 public:
 	FunctionParameter(Identifier name, LogicalType type)
@@ -125,6 +142,11 @@ public:
 
 	FunctionParameter(Identifier name, LogicalType type, Value value)
 	    : name(std::move(name)), type(std::move(type)), default_value(make_shared_ptr<Value>(std::move(value))) {
+	}
+
+	FunctionParameter(Identifier name, LogicalType type, Value value, FunctionParameterKind kind)
+	    : name(std::move(name)), type(std::move(type)), default_value(make_shared_ptr<Value>(std::move(value))),
+	      kind(kind) {
 	}
 
 	string ToString() const;
@@ -156,10 +178,26 @@ public:
 		return default_value != nullptr;
 	}
 
+	auto GetKind() const -> FunctionParameterKind {
+		return kind;
+	}
+	auto SetKind(FunctionParameterKind kind_p) -> void {
+		kind = kind_p;
+	}
+	//! Whether this parameter can be filled by a positional argument
+	auto AcceptsPositional() const -> bool {
+		return kind == FunctionParameterKind::POSITIONAL_ONLY || kind == FunctionParameterKind::POSITIONAL_OR_KEYWORD;
+	}
+	//! Whether this parameter can be supplied by name
+	auto AcceptsKeyword() const -> bool {
+		return kind == FunctionParameterKind::POSITIONAL_OR_KEYWORD || kind == FunctionParameterKind::KEYWORD_ONLY;
+	}
+
 private:
 	Identifier name;
 	LogicalType type;
 	shared_ptr<Value> default_value;
+	FunctionParameterKind kind = FunctionParameterKind::POSITIONAL_OR_KEYWORD;
 };
 
 class FunctionSignature {
@@ -203,22 +241,20 @@ public:
 		return parameters.size();
 	}
 
-	//! How many declared parameters can be filled positionally.
-	//! A signature is effectively (params..., *args, **kwargs): varargs always trail the declared parameters, so
-	//! once a function has them they claim every position past the required parameters and an optional parameter
-	//! can only be supplied by name. Without varargs every parameter is positionally callable, as usual.
-	auto GetPositionalParameterCount() const -> idx_t {
-		if (!HasVarArgs()) {
-			return parameters.size();
-		}
-		idx_t result = 0;
-		for (const auto &param : parameters) {
-			if (param.HasDefaultValue()) {
-				break;
+	//! The parameter that the positional argument at `argument_index` fills, or an invalid index when it spills
+	//! past the declared parameters into the varargs. Keyword-only parameters are skipped over.
+	auto GetPositionalParameter(idx_t argument_index) const -> optional_idx {
+		idx_t seen = 0;
+		for (idx_t i = 0; i < parameters.size(); i++) {
+			if (!parameters[i].AcceptsPositional()) {
+				continue;
 			}
-			result++;
+			if (seen == argument_index) {
+				return i;
+			}
+			seen++;
 		}
-		return result;
+		return optional_idx();
 	}
 
 	//! The types of the parameters that must be supplied positionally, in order.
@@ -262,7 +298,8 @@ public:
 			return *this;
 		}
 		Value null_default(type);
-		parameters.emplace_back(std::move(name), std::move(type), std::move(null_default));
+		parameters.emplace_back(std::move(name), std::move(type), std::move(null_default),
+		                        FunctionParameterKind::KEYWORD_ONLY);
 		return *this;
 	}
 

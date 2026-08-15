@@ -565,10 +565,9 @@ private:
 
 	bool BindTableFunctionParameters(TableFunctionCatalogEntry &table_function,
 	                                 vector<unique_ptr<ParsedExpression>> &expressions, vector<LogicalType> &arguments,
-	                                 vector<Value> &parameters,
-	                                 vector<pair<Identifier, LogicalType>> &named_argument_types,
-	                                 named_parameter_map_t &named_parameters, BoundStatement &subquery,
-	                                 ErrorData &error);
+	                                 vector<unique_ptr<Expression>> &positional_arguments,
+	                                 vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments,
+	                                 BoundStatement &subquery, bool &table_in_out, ErrorData &error);
 	void BindTableInTableOutFunction(vector<unique_ptr<ParsedExpression>> &expressions, BoundStatement &subquery);
 	BoundStatement BindTableFunction(TableFunction &function, vector<Value> parameters);
 	BoundStatement BindTableFunctionInternal(TableFunction &table_function, const TableFunctionRef &ref,
