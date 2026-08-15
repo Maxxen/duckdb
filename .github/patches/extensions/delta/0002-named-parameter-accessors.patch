@@ -1,0 +1,18 @@
+diff --git a/src/functions/delta_scan/delta_scan.cpp b/src/functions/delta_scan/delta_scan.cpp
+index a26b9d8..58cc16a 100644
+--- a/src/functions/delta_scan/delta_scan.cpp
++++ b/src/functions/delta_scan/delta_scan.cpp
+@@ -107,10 +107,10 @@ TableFunctionSet DeltaFunctions::GetDeltaScanFunction(ExtensionLoader &loader) {
+ 		function.to_string = DeltaFunctionToString;
+ 
+ 		// Schema param is just confusing here
+-		function.named_parameters.erase("schema");
++		function.RemoveNamedParameter("schema");
+ 
+-		function.named_parameters["pushdown_partition_info"] = LogicalType::BOOLEAN;
+-		function.named_parameters["pushdown_filters"] = LogicalType::VARCHAR;
++		function.AddNamedParameter("pushdown_partition_info", LogicalType::BOOLEAN);
++		function.AddNamedParameter("pushdown_filters", LogicalType::VARCHAR);
+ 
+ 		function.name = "delta_scan";
+ 	}

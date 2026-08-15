@@ -86,12 +86,12 @@ Value MultiFileReader::CreateValueFromFileList(const vector<string> &file_list) 
 }
 
 void MultiFileReader::AddParameters(TableFunction &table_function) {
-	table_function.named_parameters["filename"] = LogicalType::ANY;
-	table_function.named_parameters["hive_partitioning"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["union_by_name"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["hive_types"] = LogicalType::ANY;
-	table_function.named_parameters["hive_types_autocast"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["allow_empty"] = LogicalType::BOOLEAN;
+	table_function.AddNamedParameter("filename", LogicalType::ANY);
+	table_function.AddNamedParameter("hive_partitioning", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("union_by_name", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("hive_types", LogicalType::ANY);
+	table_function.AddNamedParameter("hive_types_autocast", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("allow_empty", LogicalType::BOOLEAN);
 }
 
 vector<string> MultiFileReader::ParsePaths(const Value &input) {
@@ -542,8 +542,9 @@ TablePartitionInfo MultiFileReader::GetPartitionInfo(ClientContext &context, con
 TableFunctionSet MultiFileReader::CreateFunctionSet(TableFunction table_function) {
 	TableFunctionSet function_set {table_function.name};
 	function_set.AddFunction(table_function);
-	D_ASSERT(!table_function.GetArguments().empty() && table_function.GetArguments()[0] == LogicalType::VARCHAR);
-	table_function.GetArguments()[0] = LogicalType::LIST(LogicalType::VARCHAR);
+	auto &signature = table_function.GetSignature();
+	D_ASSERT(signature.GetParameterCount() > 0 && signature.GetParameter(0).GetType() == LogicalType::VARCHAR);
+	signature.GetParameter(0).SetType(LogicalType::LIST(LogicalType::VARCHAR));
 	function_set.AddFunction(std::move(table_function));
 	return function_set;
 }

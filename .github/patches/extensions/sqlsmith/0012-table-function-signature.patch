@@ -1,0 +1,13 @@
+diff --git a/src/statement_generator.cpp b/src/statement_generator.cpp
+index 2b38556..1a962b7 100644
+--- a/src/statement_generator.cpp
++++ b/src/statement_generator.cpp
+@@ -566,7 +566,7 @@ unique_ptr<TableRef> StatementGenerator::GenerateTableFunctionRef() {
+ 
+ 	auto result = make_uniq<TableFunctionRef>();
+ 	vector<unique_ptr<ParsedExpression>> children;
+-	for (idx_t i = 0; i < table_function.GetArguments().size(); i++) {
++	for (idx_t i = 0; i < table_function.GetSignature().GetParameterCount(); i++) {
+ 		children.push_back(GenerateConstant());
+ 	}
+ 	vector<string> names;

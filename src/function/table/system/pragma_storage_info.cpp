@@ -237,8 +237,8 @@ void PragmaStorageInfo::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction storage_info("pragma_storage_info", {LogicalType::VARCHAR}, PragmaStorageInfoFunction,
 	                           PragmaStorageInfoBind, PragmaStorageInfoInitGlobal, PragmaStorageInfoInitLocal);
 	storage_info.get_partition_data = PragmaStorageInfoGetPartitionData;
-	storage_info.named_parameters["include_segment_info"] = LogicalType::BOOLEAN;
-	storage_info.named_parameters["loaded_segments_only"] = LogicalType::BOOLEAN;
+	storage_info.AddNamedParameter("include_segment_info", LogicalType::BOOLEAN);
+	storage_info.AddNamedParameter("loaded_segments_only", LogicalType::BOOLEAN);
 	set.AddFunction(std::move(storage_info));
 }
 

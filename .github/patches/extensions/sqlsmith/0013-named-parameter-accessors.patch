@@ -1,0 +1,72 @@
+diff --git a/src/sqlsmith_extension.cpp b/src/sqlsmith_extension.cpp
+index 1542369..1f21a7a 100644
+--- a/src/sqlsmith_extension.cpp
++++ b/src/sqlsmith_extension.cpp
+@@ -177,33 +177,33 @@ static void FuzzAllFunctions(ClientContext &context, TableFunctionInput &data_p,
+ static void LoadInternal(ExtensionLoader &loader) {
+ 
+ 	TableFunction sqlsmith_func("sqlsmith", {}, SQLSmithFunction, SQLSmithBind);
+-	sqlsmith_func.named_parameters["seed"] = LogicalType::INTEGER;
+-	sqlsmith_func.named_parameters["max_queries"] = LogicalType::UBIGINT;
+-	sqlsmith_func.named_parameters["max_query_length"] = LogicalType::UBIGINT;
+-	sqlsmith_func.named_parameters["exclude_catalog"] = LogicalType::BOOLEAN;
+-	sqlsmith_func.named_parameters["dump_all_queries"] = LogicalType::BOOLEAN;
+-	sqlsmith_func.named_parameters["dump_all_graphs"] = LogicalType::BOOLEAN;
+-	sqlsmith_func.named_parameters["verbose_output"] = LogicalType::BOOLEAN;
+-	sqlsmith_func.named_parameters["complete_log"] = LogicalType::VARCHAR;
+-	sqlsmith_func.named_parameters["log"] = LogicalType::VARCHAR;
++	sqlsmith_func.AddNamedParameter("seed", LogicalType::INTEGER);
++	sqlsmith_func.AddNamedParameter("max_queries", LogicalType::UBIGINT);
++	sqlsmith_func.AddNamedParameter("max_query_length", LogicalType::UBIGINT);
++	sqlsmith_func.AddNamedParameter("exclude_catalog", LogicalType::BOOLEAN);
++	sqlsmith_func.AddNamedParameter("dump_all_queries", LogicalType::BOOLEAN);
++	sqlsmith_func.AddNamedParameter("dump_all_graphs", LogicalType::BOOLEAN);
++	sqlsmith_func.AddNamedParameter("verbose_output", LogicalType::BOOLEAN);
++	sqlsmith_func.AddNamedParameter("complete_log", LogicalType::VARCHAR);
++	sqlsmith_func.AddNamedParameter("log", LogicalType::VARCHAR);
+ 	loader.RegisterFunction(sqlsmith_func);
+ 
+ 	TableFunction fuzzy_duck_fun("fuzzyduck", {}, FuzzyDuckFunction, FuzzyDuckBind);
+-	fuzzy_duck_fun.named_parameters["seed"] = LogicalType::INTEGER;
+-	fuzzy_duck_fun.named_parameters["max_queries"] = LogicalType::UBIGINT;
+-	fuzzy_duck_fun.named_parameters["max_query_length"] = LogicalType::UBIGINT;
+-	fuzzy_duck_fun.named_parameters["log"] = LogicalType::VARCHAR;
+-	fuzzy_duck_fun.named_parameters["complete_log"] = LogicalType::VARCHAR;
+-	fuzzy_duck_fun.named_parameters["verbose_output"] = LogicalType::BOOLEAN;
+-	fuzzy_duck_fun.named_parameters["enable_verification"] = LogicalType::BOOLEAN;
++	fuzzy_duck_fun.AddNamedParameter("seed", LogicalType::INTEGER);
++	fuzzy_duck_fun.AddNamedParameter("max_queries", LogicalType::UBIGINT);
++	fuzzy_duck_fun.AddNamedParameter("max_query_length", LogicalType::UBIGINT);
++	fuzzy_duck_fun.AddNamedParameter("log", LogicalType::VARCHAR);
++	fuzzy_duck_fun.AddNamedParameter("complete_log", LogicalType::VARCHAR);
++	fuzzy_duck_fun.AddNamedParameter("verbose_output", LogicalType::BOOLEAN);
++	fuzzy_duck_fun.AddNamedParameter("enable_verification", LogicalType::BOOLEAN);
+ 	loader.RegisterFunction(fuzzy_duck_fun);
+ 
+ 	TableFunction fuzz_all_functions("fuzz_all_functions", {}, FuzzAllFunctions, FuzzyDuckBind);
+-	fuzz_all_functions.named_parameters["seed"] = LogicalType::INTEGER;
+-	fuzz_all_functions.named_parameters["max_query_length"] = LogicalType::UBIGINT;
+-	fuzz_all_functions.named_parameters["log"] = LogicalType::VARCHAR;
+-	fuzz_all_functions.named_parameters["complete_log"] = LogicalType::VARCHAR;
+-	fuzz_all_functions.named_parameters["verbose_output"] = LogicalType::BOOLEAN;
++	fuzz_all_functions.AddNamedParameter("seed", LogicalType::INTEGER);
++	fuzz_all_functions.AddNamedParameter("max_query_length", LogicalType::UBIGINT);
++	fuzz_all_functions.AddNamedParameter("log", LogicalType::VARCHAR);
++	fuzz_all_functions.AddNamedParameter("complete_log", LogicalType::VARCHAR);
++	fuzz_all_functions.AddNamedParameter("verbose_output", LogicalType::BOOLEAN);
+ 	loader.RegisterFunction(fuzz_all_functions);
+ 
+ 	TableFunction reduce_sql_function("reduce_sql_statement", {LogicalType::VARCHAR}, ReduceSQLFunction, ReduceSQLBind);
+diff --git a/src/statement_generator.cpp b/src/statement_generator.cpp
+index 2b38556..e1b3c09 100644
+--- a/src/statement_generator.cpp
++++ b/src/statement_generator.cpp
+@@ -570,7 +570,7 @@ unique_ptr<TableRef> StatementGenerator::GenerateTableFunctionRef() {
+ 		children.push_back(GenerateConstant());
+ 	}
+ 	vector<string> names;
+-	for (auto &e : table_function.named_parameters) {
++	for (auto &e : table_function.GetNamedParameters()) {
+ 		names.push_back(e.first);
+ 	}
+ 	while (!names.empty() && RandomPercentage(50)) {

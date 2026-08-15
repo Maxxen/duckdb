@@ -1,0 +1,27 @@
+diff --git a/src/excel/xlsx/read_xlsx.cpp b/src/excel/xlsx/read_xlsx.cpp
+index 4273aed..b6f86a0 100644
+--- a/src/excel/xlsx/read_xlsx.cpp
++++ b/src/excel/xlsx/read_xlsx.cpp
+@@ -758,14 +758,14 @@ TableFunction ReadXLSX::GetFunction() {
+ 	read_xlsx.table_scan_progress = Progress;
+ 
+ 	// Parameters
+-	read_xlsx.named_parameters["header"] = LogicalType::BOOLEAN;
+-	read_xlsx.named_parameters["all_varchar"] = LogicalType::BOOLEAN;
+-	read_xlsx.named_parameters["ignore_errors"] = LogicalType::BOOLEAN;
+-	read_xlsx.named_parameters["range"] = LogicalType::VARCHAR;
+-	read_xlsx.named_parameters["sheet"] = LogicalType::VARCHAR;
+-	read_xlsx.named_parameters["stop_at_empty"] = LogicalType::BOOLEAN;
+-	read_xlsx.named_parameters["empty_as_varchar"] = LogicalType::BOOLEAN;
+-	read_xlsx.named_parameters["normalize_names"] = LogicalType::BOOLEAN;
++	read_xlsx.AddNamedParameter("header", LogicalType::BOOLEAN);
++	read_xlsx.AddNamedParameter("all_varchar", LogicalType::BOOLEAN);
++	read_xlsx.AddNamedParameter("ignore_errors", LogicalType::BOOLEAN);
++	read_xlsx.AddNamedParameter("range", LogicalType::VARCHAR);
++	read_xlsx.AddNamedParameter("sheet", LogicalType::VARCHAR);
++	read_xlsx.AddNamedParameter("stop_at_empty", LogicalType::BOOLEAN);
++	read_xlsx.AddNamedParameter("empty_as_varchar", LogicalType::BOOLEAN);
++	read_xlsx.AddNamedParameter("normalize_names", LogicalType::BOOLEAN);
+ 
+ 	return read_xlsx;
+ }

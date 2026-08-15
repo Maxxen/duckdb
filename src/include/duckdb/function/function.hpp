@@ -203,6 +203,87 @@ public:
 		return parameters.size();
 	}
 
+	//! How many declared parameters can be filled positionally.
+	//! A signature is effectively (params..., *args, **kwargs): varargs always trail the declared parameters, so
+	//! once a function has them they claim every position past the required parameters and an optional parameter
+	//! can only be supplied by name. Without varargs every parameter is positionally callable, as usual.
+	auto GetPositionalParameterCount() const -> idx_t {
+		if (!HasVarArgs()) {
+			return parameters.size();
+		}
+		idx_t result = 0;
+		for (const auto &param : parameters) {
+			if (param.HasDefaultValue()) {
+				break;
+			}
+			result++;
+		}
+		return result;
+	}
+
+	//! The types of the parameters that must be supplied positionally, in order.
+	//! Optional parameters (those with a default) are excluded - for table and pragma functions these are the
+	//! named options, and they are not part of the function's serialized argument list.
+	auto GetArgumentTypes() const -> vector<LogicalType> {
+		vector<LogicalType> result;
+		for (auto &param : parameters) {
+			if (param.HasDefaultValue()) {
+				continue;
+			}
+			result.push_back(param.GetType());
+		}
+		return result;
+	}
+
+	//! Replace the required parameters with these types, naming them col0, col1, ...
+	//! Optional parameters are preserved.
+	auto SetArgumentTypes(vector<LogicalType> types) -> void {
+		vector<FunctionParameter> optional;
+		for (auto &param : parameters) {
+			if (param.HasDefaultValue()) {
+				optional.push_back(param);
+			}
+		}
+		parameters.clear();
+		for (auto &type : types) {
+			AddParameter(std::move(type));
+		}
+		for (auto &param : optional) {
+			parameters.push_back(std::move(param));
+		}
+	}
+
+	//! Add an optional parameter defaulting to NULL. Table and pragma functions declare their named options this
+	//! way: a parameter is "supplied" exactly when its resolved value is not NULL.
+	auto AddNamedParameter(Identifier name, LogicalType type) -> FunctionSignature & {
+		auto existing = GetParameterIndexByName(name);
+		if (existing.IsValid()) {
+			parameters[existing.GetIndex()].SetType(std::move(type));
+			return *this;
+		}
+		Value null_default(type);
+		parameters.emplace_back(std::move(name), std::move(type), std::move(null_default));
+		return *this;
+	}
+
+	auto RemoveNamedParameter(const Identifier &name) -> void {
+		auto index = GetParameterIndexByName(name);
+		if (index.IsValid()) {
+			parameters.erase(parameters.begin() + NumericCast<int64_t>(index.GetIndex()));
+		}
+	}
+
+	//! The optional (named) parameters and their types
+	auto GetNamedParameters() const -> named_parameter_type_map_t {
+		named_parameter_type_map_t result;
+		for (auto &param : parameters) {
+			if (param.HasDefaultValue()) {
+				result[param.GetName()] = param.GetType();
+			}
+		}
+		return result;
+	}
+
 	auto GetReturnType() const -> const LogicalType & {
 		return return_type;
 	}
@@ -355,7 +436,7 @@ protected:
 	FunctionSignature signature;
 
 public:
-	DUCKDB_API string ToString() const;
+	DUCKDB_API virtual string ToString() const;
 	DUCKDB_API hash_t Hash() const;
 
 	FunctionSignature &GetSignature() {
@@ -363,6 +444,39 @@ public:
 	}
 	const FunctionSignature &GetSignature() const {
 		return signature;
+	}
+
+	//! The types of the parameters, in order
+	vector<LogicalType> GetArgumentTypes() const {
+		return signature.GetArgumentTypes();
+	}
+
+	//! Replace the required parameters with these types, naming them col0, col1, ...
+	void SetArgumentTypes(vector<LogicalType> types) {
+		signature.SetArgumentTypes(std::move(types));
+	}
+
+	//! Named parameters are ordinary optional parameters defaulting to NULL
+	void AddNamedParameter(Identifier name, LogicalType type) {
+		signature.AddNamedParameter(std::move(name), std::move(type));
+	}
+	void RemoveNamedParameter(const Identifier &name) {
+		signature.RemoveNamedParameter(name);
+	}
+	bool HasNamedParameter(const Identifier &name) const {
+		return signature.GetParameterIndexByName(name).IsValid();
+	}
+	bool HasNamedParameters() const {
+		return signature.GetRequiredParameterCount() != signature.GetParameterCount();
+	}
+	named_parameter_type_map_t GetNamedParameters() const {
+		return signature.GetNamedParameters();
+	}
+
+	//! Unbound functions never erase arguments - Function::EraseArgument operates on bound functions.
+	//! Defined so that FunctionSerializer can treat bound and unbound functions uniformly.
+	vector<LogicalType> GetOriginalArgumentTypes() const { // NOLINT: matches BoundSimpleFunction
+		return vector<LogicalType>();
 	}
 
 	const LogicalType &GetVarArgs() const {
@@ -382,57 +496,6 @@ public:
 	}
 	const LogicalType &GetReturnType() const {
 		return signature.GetReturnType();
-	}
-};
-
-class SimpleNamedParameterFunction : public Function {
-public:
-	DUCKDB_API SimpleNamedParameterFunction(Identifier name, vector<LogicalType> arguments,
-	                                        LogicalType varargs = LogicalType(LogicalTypeId::INVALID));
-	DUCKDB_API ~SimpleNamedParameterFunction() override;
-
-	//! The set of arguments of the function
-	vector<LogicalType> arguments;
-	//! The set of original arguments of the function - only set if Function::EraseArgument is called
-	//! Used for (de)serialization purposes
-	vector<LogicalType> original_arguments;
-	//! The type of varargs to support, or LogicalTypeId::INVALID if the function does not accept variable length
-	//! arguments
-	LogicalType varargs;
-
-	//! The named parameters of the function
-	named_parameter_type_map_t named_parameters;
-
-public:
-	DUCKDB_API virtual string ToString() const;
-	DUCKDB_API bool HasNamedParameters() const;
-
-	vector<LogicalType> &GetArguments() {
-		return arguments;
-	}
-	const vector<LogicalType> &GetArguments() const {
-		return arguments;
-	}
-
-	vector<LogicalType> &GetOriginalArguments() {
-		return original_arguments;
-	}
-	const vector<LogicalType> &GetOriginalArguments() const {
-		return original_arguments;
-	}
-
-	const LogicalType &GetVarArgs() const {
-		return varargs;
-	}
-	LogicalType &GetVarArgs() {
-		return varargs;
-	}
-	// TODO: Dont expose mutable accessor
-	void SetVarArgs(LogicalType varargs_p) {
-		varargs = std::move(varargs_p);
-	}
-	bool HasVarArgs() const {
-		return varargs.id() != LogicalTypeId::INVALID;
 	}
 };
 
@@ -546,6 +609,17 @@ public:
 		return original_arguments;
 	}
 	auto GetOriginalArguments() -> vector<LogicalType> & {
+		return original_arguments;
+	}
+
+	//! Mirrors SimpleFunction, so that FunctionSerializer can treat bound and unbound functions uniformly
+	auto GetArgumentTypes() const -> const vector<LogicalType> & {
+		return arguments;
+	}
+	auto SetArgumentTypes(vector<LogicalType> types) -> void {
+		arguments = std::move(types);
+	}
+	auto GetOriginalArgumentTypes() const -> const vector<LogicalType> & {
 		return original_arguments;
 	}
 

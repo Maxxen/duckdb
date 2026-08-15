@@ -236,15 +236,15 @@ TableFunction JSONFunctions::GetReadJSONTableFunction(shared_ptr<JSONScanInfo> f
 	MultiFileFunction<JSONMultiFileInfo> table_function("read_json");
 
 	JSONScan::TableFunctionDefaults(table_function);
-	table_function.named_parameters["columns"] = LogicalType::ANY;
-	table_function.named_parameters["auto_detect"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["sample_size"] = LogicalType::BIGINT;
-	table_function.named_parameters["dateformat"] = LogicalType::VARCHAR;
-	table_function.named_parameters["date_format"] = LogicalType::VARCHAR;
-	table_function.named_parameters["timestampformat"] = LogicalType::VARCHAR;
-	table_function.named_parameters["timestamp_format"] = LogicalType::VARCHAR;
-	table_function.named_parameters["records"] = LogicalType::VARCHAR;
-	table_function.named_parameters["maximum_sample_files"] = LogicalType::BIGINT;
+	table_function.AddNamedParameter("columns", LogicalType::ANY);
+	table_function.AddNamedParameter("auto_detect", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("sample_size", LogicalType::BIGINT);
+	table_function.AddNamedParameter("dateformat", LogicalType::VARCHAR);
+	table_function.AddNamedParameter("date_format", LogicalType::VARCHAR);
+	table_function.AddNamedParameter("timestampformat", LogicalType::VARCHAR);
+	table_function.AddNamedParameter("timestamp_format", LogicalType::VARCHAR);
+	table_function.AddNamedParameter("records", LogicalType::ANY);
+	table_function.AddNamedParameter("maximum_sample_files", LogicalType::BIGINT);
 
 	// TODO: might be able to do filter pushdown/prune ?
 	table_function.function_info = std::move(function_info);
@@ -255,10 +255,10 @@ TableFunction JSONFunctions::GetReadJSONTableFunction(shared_ptr<JSONScanInfo> f
 TableFunctionSet CreateJSONFunctionInfo(string name, shared_ptr<JSONScanInfo> info) {
 	auto table_function = JSONFunctions::GetReadJSONTableFunction(std::move(info));
 	table_function.SetName(Identifier(std::move(name)));
-	table_function.named_parameters["maximum_depth"] = LogicalType::BIGINT;
-	table_function.named_parameters["field_appearance_threshold"] = LogicalType::DOUBLE;
-	table_function.named_parameters["convert_strings_to_integers"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["map_inference_threshold"] = LogicalType::BIGINT;
+	table_function.AddNamedParameter("maximum_depth", LogicalType::BIGINT);
+	table_function.AddNamedParameter("field_appearance_threshold", LogicalType::DOUBLE);
+	table_function.AddNamedParameter("convert_strings_to_integers", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("map_inference_threshold", LogicalType::BIGINT);
 	return MultiFileReader::CreateFunctionSet(table_function);
 }
 

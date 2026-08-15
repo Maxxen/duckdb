@@ -172,7 +172,10 @@ bool JSONMultiFileInfo::ParseOption(ClientContext &context, const Identifier &ke
 		return true;
 	}
 	if (key == "records") {
-		auto arg = StringValue::Get(value);
+		// records is tri-state: 'auto', 'true' or 'false'. Accept a boolean for the latter two, since
+		// records = false reads more naturally than records = 'false'.
+		auto arg = value.type().id() == LogicalTypeId::BOOLEAN ? string(BooleanValue::Get(value) ? "true" : "false")
+		                                                       : StringValue::Get(value);
 		if (arg == "auto") {
 			options.record_type = JSONRecordType::AUTO_DETECT;
 		} else if (arg == "true") {

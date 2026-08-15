@@ -114,10 +114,10 @@ unique_ptr<FunctionData> JSONScan::Deserialize(Deserializer &deserializer, Table
 }
 
 void JSONScan::TableFunctionDefaults(TableFunction &table_function) {
-	table_function.named_parameters["maximum_object_size"] = LogicalType::UINTEGER;
-	table_function.named_parameters["ignore_errors"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["format"] = LogicalType::VARCHAR;
-	table_function.named_parameters["compression"] = LogicalType::VARCHAR;
+	table_function.AddNamedParameter("maximum_object_size", LogicalType::UINTEGER);
+	table_function.AddNamedParameter("ignore_errors", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("format", LogicalType::VARCHAR);
+	table_function.AddNamedParameter("compression", LogicalType::VARCHAR);
 
 	table_function.serialize = Serialize;
 	table_function.deserialize = Deserialize;

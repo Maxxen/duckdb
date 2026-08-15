@@ -133,11 +133,11 @@ static unique_ptr<FunctionData> BindDisableProfiling(ClientContext &context, Tab
 void EnableProfilingFun::RegisterFunction(BuiltinFunctions &set) {
 	auto enable_fun = TableFunction("enable_profiling", {}, EnableProfiling, BindEnableProfiling, nullptr, nullptr);
 
-	enable_fun.named_parameters.emplace("format", LogicalType::VARCHAR);
-	enable_fun.named_parameters.emplace("coverage", LogicalType::VARCHAR);
-	enable_fun.named_parameters.emplace("save_location", LogicalType::VARCHAR);
-	enable_fun.named_parameters.emplace("mode", LogicalType::VARCHAR);
-	enable_fun.named_parameters.emplace("metrics", LogicalType::ANY);
+	enable_fun.AddNamedParameter("format", LogicalType::VARCHAR);
+	enable_fun.AddNamedParameter("coverage", LogicalType::VARCHAR);
+	enable_fun.AddNamedParameter("save_location", LogicalType::VARCHAR);
+	enable_fun.AddNamedParameter("mode", LogicalType::VARCHAR);
+	enable_fun.AddNamedParameter("metrics", LogicalType::ANY);
 
 	enable_fun.SetVarArgs(LogicalType::LIST(LogicalType::VARCHAR));
 	set.AddFunction(enable_fun);

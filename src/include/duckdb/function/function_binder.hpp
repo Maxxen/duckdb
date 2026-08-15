@@ -83,16 +83,21 @@ public:
 	//! function, returns optional_idx() and sets error if none could be found
 	DUCKDB_API optional_idx BindFunction(const Identifier &name, const TableFunctionSet &functions,
 	                                     const vector<LogicalType> &regular_args,
-	                                     const vector<pair<Identifier, LogicalType>> &keyword_args, ErrorData &error);
+	                                     const vector<pair<Identifier, LogicalType>> &keyword_args, ErrorData &error) {
+		return BindFunctionFromArguments(name, functions, regular_args, keyword_args, error);
+	}
 	DUCKDB_API optional_idx BindFunction(const Identifier &name, const TableFunctionSet &functions,
 	                                     const vector<LogicalType> &regular_args, ErrorData &error) {
 		return BindFunctionFromArguments(name, functions, regular_args, {}, error);
 	}
 
-	DUCKDB_API optional_idx BindFunction(const Identifier &name, const TableFunctionSet &functions,
-	                                     const vector<unique_ptr<Expression>> &regular_args,
-	                                     const vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args,
-	                                     ErrorData &error);
+	//! Bind a table function: select the overload, then check the named arguments against it and cast both the
+	//! positional and the named argument values to the chosen signature. Mirrors the pragma overload below.
+	//! Returns the chosen overload, or nullptr with error set if none matches.
+	DUCKDB_API optional_ptr<const TableFunction>
+	BindTableFunction(const Identifier &name, const TableFunctionSet &functions, const vector<LogicalType> &arguments,
+	                  const vector<pair<Identifier, LogicalType>> &named_argument_types, vector<Value> &parameters,
+	                  named_parameter_map_t &named_parameters, ErrorData &error);
 
 	//! Bind a pragma function from the set of functions and input arguments
 	DUCKDB_API optional_idx BindFunction(const Identifier &name, const PragmaFunctionSet &functions,
@@ -219,11 +224,6 @@ private:
 
 	optional_idx BindFunctionCost(const SimpleFunction &func, const vector<LogicalType> &arguments,
 	                              const vector<pair<Identifier, LogicalType>> &named_arguments);
-
-	optional_idx BindVarArgsFunctionCost(const SimpleNamedParameterFunction &func,
-	                                     const vector<LogicalType> &arguments);
-	optional_idx BindFunctionCost(const SimpleNamedParameterFunction &func, const vector<LogicalType> &arguments,
-	                              const vector<pair<Identifier, LogicalType>> &);
 
 	template <class T>
 	vector<idx_t> BindFunctionsFromArguments(const Identifier &name, const FunctionSet<T> &functions,

@@ -24,8 +24,8 @@ public:
 	static void Serialize(Serializer &serializer, const FUNC &function, optional_ptr<FunctionData> bind_info) {
 		D_ASSERT(!function.GetName().empty());
 		serializer.WriteProperty(500, "name", function.GetName());
-		serializer.WriteProperty(501, "arguments", function.GetArguments());
-		serializer.WriteProperty(502, "original_arguments", function.GetOriginalArguments());
+		serializer.WriteProperty(501, "arguments", function.GetArgumentTypes());
+		serializer.WriteProperty(502, "original_arguments", function.GetOriginalArgumentTypes());
 		// These are optional fields that are written out of numeric order, older
 		// databases won't contain the fields, so the defaults will be used, but if
 		// the fields are present, they will be used.
@@ -92,8 +92,9 @@ public:
 		                                                         arguments, original_arguments);
 		auto has_serialize = deserializer.ReadProperty<bool>(503, "has_serialize");
 		if (has_serialize) {
-			function.GetArguments() = std::move(arguments);
-			function.GetOriginalArguments() = std::move(original_arguments);
+			// only instantiated for table functions, which never erase arguments - the original arguments have already
+			// been used to look up the overload above and are not stored on the function itself
+			function.SetArgumentTypes(std::move(arguments));
 		}
 		return make_pair(std::move(function), has_serialize);
 	}

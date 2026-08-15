@@ -1,0 +1,23 @@
+diff --git a/extension/fts/fts_extension.cpp b/extension/fts/fts_extension.cpp
+index e5e7146..0f427ed 100644
+--- a/extension/fts/fts_extension.cpp
++++ b/extension/fts/fts_extension.cpp
+@@ -55,12 +55,12 @@ static void LoadInternal(ExtensionLoader &loader) {
+ 	auto create_fts_index_func =
+ 	    PragmaFunction::PragmaCall("create_fts_index", FTSIndexing::CreateFTSIndexQuery,
+ 	                               {LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::VARCHAR);
+-	create_fts_index_func.named_parameters["stemmer"] = LogicalType::VARCHAR;
+-	create_fts_index_func.named_parameters["stopwords"] = LogicalType::VARCHAR;
+-	create_fts_index_func.named_parameters["ignore"] = LogicalType::VARCHAR;
+-	create_fts_index_func.named_parameters["strip_accents"] = LogicalType::BOOLEAN;
+-	create_fts_index_func.named_parameters["lower"] = LogicalType::BOOLEAN;
+-	create_fts_index_func.named_parameters["overwrite"] = LogicalType::BOOLEAN;
++	create_fts_index_func.AddNamedParameter("stemmer", LogicalType::VARCHAR);
++	create_fts_index_func.AddNamedParameter("stopwords", LogicalType::VARCHAR);
++	create_fts_index_func.AddNamedParameter("ignore", LogicalType::VARCHAR);
++	create_fts_index_func.AddNamedParameter("strip_accents", LogicalType::BOOLEAN);
++	create_fts_index_func.AddNamedParameter("lower", LogicalType::BOOLEAN);
++	create_fts_index_func.AddNamedParameter("overwrite", LogicalType::BOOLEAN);
+ 
+ 	auto drop_fts_index_func =
+ 	    PragmaFunction::PragmaCall("drop_fts_index", FTSIndexing::DropFTSIndexQuery, {LogicalType::VARCHAR});

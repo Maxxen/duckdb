@@ -391,7 +391,7 @@ enum class TableFunctionInitialization { INITIALIZE_ON_EXECUTE, INITIALIZE_ON_SC
 
 enum class TableFunctionReturnType { TABLE_RETURNING_FUNCTION, SET_RETURNING_FUNCTION };
 
-class TableFunction : public SimpleNamedParameterFunction { // NOLINT: work-around bug in clang-tidy
+class TableFunction : public SimpleFunction { // NOLINT: work-around bug in clang-tidy
 public:
 	DUCKDB_API TableFunction();
 	// Overloads taking table_function_t
@@ -410,6 +410,8 @@ public:
 	DUCKDB_API
 	TableFunction(const vector<LogicalType> &arguments, std::nullptr_t function, table_function_bind_t bind = nullptr,
 	              table_function_init_global_t init_global = nullptr, table_function_init_local_t init_local = nullptr);
+
+	DUCKDB_API string ToString() const override;
 
 	bool HasBindCallback() const {
 		return bind != nullptr;

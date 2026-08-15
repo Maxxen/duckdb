@@ -657,9 +657,9 @@ static void FormatSQLExecute(DataChunk &args, ExpressionState &state, Vector &re
 static void LoadInternal(ExtensionLoader &loader) {
 	TableFunction auto_complete_fun("sql_auto_complete", {LogicalType::VARCHAR}, SQLAutoCompleteFunction,
 	                                SQLAutoCompleteBind, SQLAutoCompleteInit);
-	auto_complete_fun.named_parameters["max_suggestion_count"] = LogicalType::UBIGINT;
-	auto_complete_fun.named_parameters["max_file_suggestion_count"] = LogicalType::UBIGINT;
-	auto_complete_fun.named_parameters["max_exact_suggestion_count"] = LogicalType::UBIGINT;
+	auto_complete_fun.AddNamedParameter("max_suggestion_count", LogicalType::UBIGINT);
+	auto_complete_fun.AddNamedParameter("max_file_suggestion_count", LogicalType::UBIGINT);
+	auto_complete_fun.AddNamedParameter("max_exact_suggestion_count", LogicalType::UBIGINT);
 	loader.RegisterFunction(auto_complete_fun);
 
 	TableFunction check_peg_parser_fun("check_peg_parser", {LogicalType::VARCHAR}, CheckPEGParserFunction,

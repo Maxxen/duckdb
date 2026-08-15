@@ -553,16 +553,16 @@ static vector<PartitionStatistics> ParquetGetPartitionStats(ClientContext &conte
 
 TableFunctionSet ParquetScanFunction::GetFunctionSet() {
 	MultiFileFunction<ParquetMultiFileInfo> table_function("parquet_scan");
-	table_function.named_parameters["binary_as_string"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["file_row_number"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["debug_use_openssl"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["compression"] = LogicalType::VARCHAR;
-	table_function.named_parameters["explicit_cardinality"] = LogicalType::UBIGINT;
-	table_function.named_parameters["schema"] = LogicalTypeId::ANY;
-	table_function.named_parameters["encryption_config"] = LogicalTypeId::ANY;
-	table_function.named_parameters["parquet_version"] = LogicalType::VARCHAR;
-	table_function.named_parameters["can_have_nan"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["prefetch_strategy"] = LogicalType::VARCHAR;
+	table_function.AddNamedParameter("binary_as_string", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("file_row_number", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("debug_use_openssl", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("compression", LogicalType::VARCHAR);
+	table_function.AddNamedParameter("explicit_cardinality", LogicalType::UBIGINT);
+	table_function.AddNamedParameter("schema", LogicalTypeId::ANY);
+	table_function.AddNamedParameter("encryption_config", LogicalTypeId::ANY);
+	table_function.AddNamedParameter("parquet_version", LogicalType::VARCHAR);
+	table_function.AddNamedParameter("can_have_nan", LogicalType::BOOLEAN);
+	table_function.AddNamedParameter("prefetch_strategy", LogicalType::VARCHAR);
 	table_function.statistics_extended = MultiFileFunction<ParquetMultiFileInfo>::MultiFileScanStatsExtended;
 	table_function.get_metrics = ParquetScanGetMetrics;
 	table_function.projection_expression_pushdown = ParquetProjectionExpressionPushdown;

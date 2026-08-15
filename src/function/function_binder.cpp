@@ -91,6 +91,8 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 		return optional_idx();
 	}
 
+	const auto positional_limit = sig.GetPositionalParameterCount();
+
 	idx_t cost = 0;
 	bool has_parameter = false;
 
@@ -100,7 +102,7 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 			continue;
 		}
 
-		auto arg_type = i < sig.GetParameterCount() ? sig.GetParameter(i).GetType() : sig.GetVarArgs();
+		auto arg_type = i < positional_limit ? sig.GetParameter(i).GetType() : sig.GetVarArgs();
 
 		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], arg_type);
 		if (cast_cost >= 0) {
@@ -156,65 +158,6 @@ optional_idx FunctionBinder::BindFunctionCost(const SimpleFunction &func, const 
 		}
 	}
 
-	if (has_parameter) {
-		// all arguments are implicitly castable and there is a parameter - return 0 as cost
-		return 0;
-	}
-	return cost;
-}
-
-optional_idx FunctionBinder::BindVarArgsFunctionCost(const SimpleNamedParameterFunction &func,
-                                                     const vector<LogicalType> &arguments) {
-	if (arguments.size() < func.GetArguments().size()) {
-		// not enough arguments to fulfill the non-vararg part of the function
-		return optional_idx();
-	}
-	idx_t cost = 0;
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		LogicalType arg_type = i < func.GetArguments().size() ? func.GetArguments()[i] : func.GetVarArgs();
-		if (arguments[i] == arg_type) {
-			// arguments match: do nothing
-			continue;
-		}
-		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], arg_type);
-		if (cast_cost >= 0) {
-			// we can implicitly cast, add the cost to the total cost
-			cost += idx_t(cast_cost);
-		} else {
-			// we can't implicitly cast: throw an error
-			return optional_idx();
-		}
-	}
-	return cost;
-}
-
-optional_idx FunctionBinder::BindFunctionCost(const SimpleNamedParameterFunction &func,
-                                              const vector<LogicalType> &arguments,
-                                              const vector<pair<Identifier, LogicalType>> &) {
-	if (func.HasVarArgs()) {
-		// special case varargs function
-		return BindVarArgsFunctionCost(func, arguments);
-	}
-	if (func.GetArguments().size() != arguments.size()) {
-		// invalid argument count: check the next function
-		return optional_idx();
-	}
-	idx_t cost = 0;
-	bool has_parameter = false;
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		if (arguments[i].id() == LogicalTypeId::UNKNOWN) {
-			has_parameter = true;
-			continue;
-		}
-		int64_t cast_cost = CastFunctionSet::ImplicitCastCost(context, arguments[i], func.GetArguments()[i]);
-		if (cast_cost >= 0) {
-			// we can implicitly cast, add the cost to the total cost
-			cost += idx_t(cast_cost);
-		} else {
-			// we can't implicitly cast: throw an error
-			return optional_idx();
-		}
-	}
 	if (has_parameter) {
 		// all arguments are implicitly castable and there is a parameter - return 0 as cost
 		return 0;
@@ -401,10 +344,31 @@ optional_idx FunctionBinder::BindFunction(const Identifier &name, const WindowFu
 	return BindFunctionFromArguments(name, functions, regular_args, keyword_args, error);
 }
 
-optional_idx FunctionBinder::BindFunction(const Identifier &name, const TableFunctionSet &functions,
-                                          const vector<LogicalType> &regular_args,
-                                          const vector<pair<Identifier, LogicalType>> &keyword_args, ErrorData &error) {
-	return BindFunctionFromArguments(name, functions, regular_args, keyword_args, error);
+optional_ptr<const TableFunction> FunctionBinder::BindTableFunction(
+    const Identifier &name, const TableFunctionSet &functions, const vector<LogicalType> &arguments,
+    const vector<pair<Identifier, LogicalType>> &named_argument_types, vector<Value> &parameters,
+    named_parameter_map_t &named_parameters, ErrorData &error) {
+	auto entry = BindFunctionFromArguments(name, functions, arguments, named_argument_types, error);
+	if (!entry.IsValid()) {
+		return nullptr;
+	}
+	const auto &candidate_function = functions.GetFunctionByOffset(entry.GetIndex());
+	const auto &signature = candidate_function.GetSignature();
+
+	// check the named arguments against the chosen overload and cast them to their declared types
+	Binder::BindNamedParameters(candidate_function.GetNamedParameters(), named_parameters, candidate_function.name);
+
+	// cast the positional arguments. ANY, POINTER, LIST and TABLE parameters are passed through untouched - the
+	// bind callback interprets those itself.
+	for (idx_t i = 0; i < parameters.size(); i++) {
+		auto &target_type =
+		    i < signature.GetPositionalParameterCount() ? signature.GetParameter(i).GetType() : signature.GetVarArgs();
+		if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
+		    target_type.id() != LogicalTypeId::LIST && target_type != LogicalType::TABLE) {
+			parameters[i] = parameters[i].CastAs(context, target_type);
+		}
+	}
+	return candidate_function;
 }
 
 optional_idx FunctionBinder::BindFunction(const Identifier &name, const PragmaFunctionSet &functions,
@@ -418,10 +382,11 @@ optional_idx FunctionBinder::BindFunction(const Identifier &name, const PragmaFu
 		error.Throw();
 	}
 	const auto &candidate_function = functions.GetFunctionByOffset(entry.GetIndex());
+	const auto &signature = candidate_function.GetSignature();
 	// cast the input parameters
 	for (idx_t i = 0; i < parameters.size(); i++) {
-		auto target_type = i < candidate_function.GetArguments().size() ? candidate_function.GetArguments()[i]
-		                                                                : candidate_function.GetVarArgs();
+		auto &target_type =
+		    i < signature.GetParameterCount() ? signature.GetParameter(i).GetType() : signature.GetVarArgs();
 		parameters[i] = parameters[i].CastAs(context, target_type);
 	}
 	return entry;
@@ -451,14 +416,6 @@ optional_idx FunctionBinder::BindFunction(const Identifier &name, const ScalarFu
 }
 
 optional_idx FunctionBinder::BindFunction(const Identifier &name, const AggregateFunctionSet &functions,
-                                          const vector<unique_ptr<Expression>> &regular_args,
-                                          const vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args,
-                                          ErrorData &error) {
-	auto [args, kwargs] = GetArgumentsFromExpressions(regular_args, keyword_args);
-	return BindFunctionFromArguments(name, functions, args, kwargs, error);
-}
-
-optional_idx FunctionBinder::BindFunction(const Identifier &name, const TableFunctionSet &functions,
                                           const vector<unique_ptr<Expression>> &regular_args,
                                           const vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args,
                                           ErrorData &error) {

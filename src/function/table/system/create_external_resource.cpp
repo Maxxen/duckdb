@@ -123,7 +123,9 @@ static unique_ptr<FunctionData> CreateExternalResourceBind(ClientContext &contex
 		} else if (key == "resource_name" && !np.second.IsNull()) {
 			result->resource_name = StringValue::Get(np.second);
 		} else if (key == "handle" && !np.second.IsNull()) {
-			result->adopt_handle = np.second;
+			// accept a struct literal as well as a map, e.g. handle := {'id': 'i-123'}
+			result->adopt_handle =
+			    np.second.DefaultCastAs(LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR));
 		} else if (key == "teardown_on_failure" && !np.second.IsNull()) {
 			result->teardown_on_failure = BooleanValue::Get(np.second);
 		} else if (key == "timeout_seconds" && !np.second.IsNull()) {
@@ -364,12 +366,12 @@ static void CreateExternalResourceFunction(ClientContext &context, TableFunction
 void CreateExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction fn("create_external_resource", {LogicalType::VARCHAR}, CreateExternalResourceFunction,
 	                 CreateExternalResourceBind, CreateExternalResourceInit);
-	fn.named_parameters["params"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
-	fn.named_parameters["resource_name"] = LogicalType::VARCHAR;
-	fn.named_parameters["handle"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
-	fn.named_parameters["teardown_on_failure"] = LogicalType::BOOLEAN;
-	fn.named_parameters["timeout_seconds"] = LogicalType::BIGINT;
-	fn.named_parameters["poll_interval_seconds"] = LogicalType::BIGINT;
+	fn.AddNamedParameter("params", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR));
+	fn.AddNamedParameter("resource_name", LogicalType::VARCHAR);
+	fn.AddNamedParameter("handle", LogicalType::ANY);
+	fn.AddNamedParameter("teardown_on_failure", LogicalType::BOOLEAN);
+	fn.AddNamedParameter("timeout_seconds", LogicalType::BIGINT);
+	fn.AddNamedParameter("poll_interval_seconds", LogicalType::BIGINT);
 	set.AddFunction(fn);
 }
 

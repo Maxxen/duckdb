@@ -121,7 +121,7 @@ Not implemented Error: sniff_csv does not operate on more than one file yet
 statement error
 FROM sniff_csv('{DATA_DIR}/csv/autotypecandidates.csv', oop = True);
 ----
-Invalid named parameter "oop" for function sniff_csv
+<REGEX>:.*No function matches.*sniff_csv.*
 
 # Ignore multi-partitioning options (maybe even error on them?)
 query IIIIIIIIIIII

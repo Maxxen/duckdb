@@ -1,0 +1,146 @@
+diff --git a/src/function/ducklake/iceberg_to_ducklake.cpp b/src/function/ducklake/iceberg_to_ducklake.cpp
+index 51275147..c9b45f86 100644
+--- a/src/function/ducklake/iceberg_to_ducklake.cpp
++++ b/src/function/ducklake/iceberg_to_ducklake.cpp
+@@ -986,7 +986,7 @@ TableFunctionSet IcebergFunctions::GetIcebergToDuckLakeFunction() {
+ 
+ 	auto fun = TableFunction({LogicalType::VARCHAR, LogicalType::VARCHAR}, IcebergToDuckLakeFunction,
+ 	                         iceberg::ducklake::IcebergToDuckLakeBind, IcebergToDuckLakeGlobalTableFunctionState::Init);
+-	fun.named_parameters.emplace("skip_tables", LogicalType::LIST(LogicalTypeId::VARCHAR));
++	fun.AddNamedParameter("skip_tables", LogicalType::LIST(LogicalTypeId::VARCHAR));
+ 	function_set.AddFunction(fun);
+ 
+ 	return function_set;
+diff --git a/src/function/metadata/iceberg_column_stats.cpp b/src/function/metadata/iceberg_column_stats.cpp
+index 58770948..d3809a63 100644
+--- a/src/function/metadata/iceberg_column_stats.cpp
++++ b/src/function/metadata/iceberg_column_stats.cpp
+@@ -263,12 +263,12 @@ TableFunctionSet IcebergFunctions::GetIcebergColumnStatsFunction() {
+ 	TableFunction fun({LogicalType::VARCHAR}, IcebergColumnStatsFunction, IcebergColumnStatsBind,
+ 	                  IcebergColumnStatsGlobalTableFunctionState::Init);
+ 
+-	fun.named_parameters["allow_moved_paths"] = LogicalType::BOOLEAN;
+-	fun.named_parameters["metadata_compression_codec"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version_name_format"] = LogicalType::VARCHAR;
+-	fun.named_parameters["snapshot_from_timestamp"] = LogicalType::TIMESTAMP;
+-	fun.named_parameters["snapshot_from_id"] = LogicalType::UBIGINT;
++	fun.AddNamedParameter("allow_moved_paths", LogicalType::BOOLEAN);
++	fun.AddNamedParameter("metadata_compression_codec", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version_name_format", LogicalType::VARCHAR);
++	fun.AddNamedParameter("snapshot_from_timestamp", LogicalType::TIMESTAMP);
++	fun.AddNamedParameter("snapshot_from_id", LogicalType::UBIGINT);
+ 	function_set.AddFunction(fun);
+ 	return function_set;
+ }
+diff --git a/src/function/metadata/iceberg_metadata.cpp b/src/function/metadata/iceberg_metadata.cpp
+index b2876673..7425d945 100644
+--- a/src/function/metadata/iceberg_metadata.cpp
++++ b/src/function/metadata/iceberg_metadata.cpp
+@@ -213,12 +213,12 @@ TableFunctionSet IcebergFunctions::GetIcebergMetadataFunction() {
+ 
+ 	auto fun = TableFunction({LogicalType::VARCHAR}, IcebergMetaDataFunction, IcebergMetaDataBind,
+ 	                         IcebergMetaDataGlobalTableFunctionState::Init);
+-	fun.named_parameters["allow_moved_paths"] = LogicalType::BOOLEAN;
+-	fun.named_parameters["metadata_compression_codec"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version_name_format"] = LogicalType::VARCHAR;
+-	fun.named_parameters["snapshot_from_timestamp"] = LogicalType::TIMESTAMP;
+-	fun.named_parameters["snapshot_from_id"] = LogicalType::UBIGINT;
++	fun.AddNamedParameter("allow_moved_paths", LogicalType::BOOLEAN);
++	fun.AddNamedParameter("metadata_compression_codec", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version_name_format", LogicalType::VARCHAR);
++	fun.AddNamedParameter("snapshot_from_timestamp", LogicalType::TIMESTAMP);
++	fun.AddNamedParameter("snapshot_from_id", LogicalType::UBIGINT);
+ 	function_set.AddFunction(fun);
+ 
+ 	return function_set;
+diff --git a/src/function/metadata/iceberg_partition_stats.cpp b/src/function/metadata/iceberg_partition_stats.cpp
+index 216bc6fd..40bc2935 100644
+--- a/src/function/metadata/iceberg_partition_stats.cpp
++++ b/src/function/metadata/iceberg_partition_stats.cpp
+@@ -241,12 +241,12 @@ TableFunctionSet IcebergFunctions::GetIcebergPartitionStatsFunction() {
+ 	TableFunction fun({LogicalType::VARCHAR}, IcebergPartitionStatsFunction, IcebergPartitionStatsBind,
+ 	                  IcebergPartitionStatsGlobalTableFunctionState::Init);
+ 
+-	fun.named_parameters["allow_moved_paths"] = LogicalType::BOOLEAN;
+-	fun.named_parameters["metadata_compression_codec"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version_name_format"] = LogicalType::VARCHAR;
+-	fun.named_parameters["snapshot_from_timestamp"] = LogicalType::TIMESTAMP;
+-	fun.named_parameters["snapshot_from_id"] = LogicalType::UBIGINT;
++	fun.AddNamedParameter("allow_moved_paths", LogicalType::BOOLEAN);
++	fun.AddNamedParameter("metadata_compression_codec", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version_name_format", LogicalType::VARCHAR);
++	fun.AddNamedParameter("snapshot_from_timestamp", LogicalType::TIMESTAMP);
++	fun.AddNamedParameter("snapshot_from_id", LogicalType::UBIGINT);
+ 	function_set.AddFunction(fun);
+ 	return function_set;
+ }
+diff --git a/src/function/metadata/iceberg_snapshots.cpp b/src/function/metadata/iceberg_snapshots.cpp
+index f621d84c..22fc791c 100644
+--- a/src/function/metadata/iceberg_snapshots.cpp
++++ b/src/function/metadata/iceberg_snapshots.cpp
+@@ -105,9 +105,9 @@ TableFunctionSet IcebergFunctions::GetIcebergSnapshotsFunction() {
+ 	TableFunctionSet function_set("iceberg_snapshots");
+ 	TableFunction table_function({LogicalType::VARCHAR}, IcebergSnapshotsFunction, IcebergSnapshotsBind,
+ 	                             IcebergSnapshotGlobalTableFunctionState::Init);
+-	table_function.named_parameters["metadata_compression_codec"] = LogicalType::VARCHAR;
+-	table_function.named_parameters["version"] = LogicalType::VARCHAR;
+-	table_function.named_parameters["version_name_format"] = LogicalType::VARCHAR;
++	table_function.AddNamedParameter("metadata_compression_codec", LogicalType::VARCHAR);
++	table_function.AddNamedParameter("version", LogicalType::VARCHAR);
++	table_function.AddNamedParameter("version_name_format", LogicalType::VARCHAR);
+ 	function_set.AddFunction(table_function);
+ 	return function_set;
+ }
+diff --git a/src/function/scan/iceberg_scan.cpp b/src/function/scan/iceberg_scan.cpp
+index 87b303da..3a4ae5d9 100644
+--- a/src/function/scan/iceberg_scan.cpp
++++ b/src/function/scan/iceberg_scan.cpp
+@@ -32,13 +32,13 @@
+ namespace duckdb {
+ 
+ static void AddNamedParameters(TableFunction &fun) {
+-	fun.named_parameters["allow_moved_paths"] = LogicalType::BOOLEAN;
+-	fun.named_parameters["mode"] = LogicalType::VARCHAR;
+-	fun.named_parameters["metadata_compression_codec"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version"] = LogicalType::VARCHAR;
+-	fun.named_parameters["version_name_format"] = LogicalType::VARCHAR;
+-	fun.named_parameters["snapshot_from_timestamp"] = LogicalType::TIMESTAMP;
+-	fun.named_parameters["snapshot_from_id"] = LogicalType::UBIGINT;
++	fun.AddNamedParameter("allow_moved_paths", LogicalType::BOOLEAN);
++	fun.AddNamedParameter("mode", LogicalType::VARCHAR);
++	fun.AddNamedParameter("metadata_compression_codec", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version", LogicalType::VARCHAR);
++	fun.AddNamedParameter("version_name_format", LogicalType::VARCHAR);
++	fun.AddNamedParameter("snapshot_from_timestamp", LogicalType::TIMESTAMP);
++	fun.AddNamedParameter("snapshot_from_id", LogicalType::UBIGINT);
+ }
+ 
+ virtual_column_map_t IcebergVirtualColumns(ClientContext &context, optional_ptr<FunctionData> bind_data_p) {
+@@ -101,7 +101,7 @@ TableFunctionSet IcebergFunctions::GetIcebergScanFunction(ExtensionLoader &loade
+ 		// function.supports_pushdown_type = IcebergScanSupportsPushdownType;
+ 
+ 		// Schema param is just confusing here
+-		function.named_parameters.erase("schema");
++		function.RemoveNamedParameter("schema");
+ 		AddNamedParameters(function);
+ 
+ 		function.name = "iceberg_scan";
+diff --git a/src/planning/metadata_io/deletes/iceberg_deletes_file_reader.cpp b/src/planning/metadata_io/deletes/iceberg_deletes_file_reader.cpp
+index 1666ebc6..35d7727d 100644
+--- a/src/planning/metadata_io/deletes/iceberg_deletes_file_reader.cpp
++++ b/src/planning/metadata_io/deletes/iceberg_deletes_file_reader.cpp
+@@ -56,7 +56,7 @@ TableFunctionSet IcebergFunctions::GetIcebergDeletesScanFunction(ClientContext &
+ 		function.get_virtual_columns = IcebergDeleteVirtualColumns;
+ 
+ 		// Schema param is just confusing here
+-		function.named_parameters.erase("schema");
++		function.RemoveNamedParameter("schema");
+ 		function.name = "iceberg_deletes_scan";
+ 	}
+ 

@@ -155,12 +155,12 @@ static void ExternalResourceTypesFunction(ClientContext &context, TableFunctionI
 void RegisterExternalResourceTypeFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction fn("register_external_resource_type", {LogicalType::VARCHAR}, RegisterExternalResourceTypeFunction,
 	                 RegisterExternalResourceTypeBind, RegisterExternalResourceTypeInit);
-	fn.named_parameters["kind"] = LogicalType::VARCHAR;
-	fn.named_parameters["create_function"] = LogicalType::VARCHAR;
-	fn.named_parameters["status_function"] = LogicalType::VARCHAR;
-	fn.named_parameters["destroy_function"] = LogicalType::VARCHAR;
-	fn.named_parameters["resolve_function"] = LogicalType::VARCHAR;
-	fn.named_parameters["list_function"] = LogicalType::VARCHAR;
+	fn.AddNamedParameter("kind", LogicalType::VARCHAR);
+	fn.AddNamedParameter("create_function", LogicalType::VARCHAR);
+	fn.AddNamedParameter("status_function", LogicalType::VARCHAR);
+	fn.AddNamedParameter("destroy_function", LogicalType::VARCHAR);
+	fn.AddNamedParameter("resolve_function", LogicalType::VARCHAR);
+	fn.AddNamedParameter("list_function", LogicalType::VARCHAR);
 	set.AddFunction(fn);
 }
 

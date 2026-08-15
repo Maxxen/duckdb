@@ -35,7 +35,7 @@ SELECT * FROM read_ndjson_objects('{DATA_DIR}/json/example_n.ndjson')
 statement error
 SELECT * FROM read_ndjson_objects('{DATA_DIR}/json/example_n.ndjson', records='false')
 ----
-Binder Error: Invalid named parameter
+Binder Error: No function matches
 
 query I
 SELECT * FROM read_ndjson_objects('{DATA_DIR}/json/example_n.ndjson')

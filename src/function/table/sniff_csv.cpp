@@ -333,7 +333,7 @@ void CSVSnifferFunction::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction csv_sniffer("sniff_csv", {LogicalType::VARCHAR}, CSVSniffFunction, CSVSniffBind, CSVSniffInitGlobal);
 	// Accept same options as the actual csv reader
 	ReadCSVTableFunction::ReadCSVAddNamedParameters(csv_sniffer);
-	csv_sniffer.named_parameters["force_match"] = LogicalType::BOOLEAN;
+	csv_sniffer.AddNamedParameter("force_match", LogicalType::BOOLEAN);
 	set.AddFunction(csv_sniffer);
 }
 } // namespace duckdb

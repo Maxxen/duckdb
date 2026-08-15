@@ -245,12 +245,12 @@ static string PragmaTpcdsQuery(ClientContext &context, const FunctionParameters 
 
 static void LoadInternal(ExtensionLoader &loader) {
 	TableFunction dsdgen_func("dsdgen", {}, DsdgenFunction, DsdgenBind, DsdgenInit);
-	dsdgen_func.named_parameters["sf"] = LogicalType::DOUBLE;
-	dsdgen_func.named_parameters["overwrite"] = LogicalType::BOOLEAN;
-	dsdgen_func.named_parameters["keys"] = LogicalType::BOOLEAN;
-	dsdgen_func.named_parameters["catalog"] = LogicalType::VARCHAR;
-	dsdgen_func.named_parameters["schema"] = LogicalType::VARCHAR;
-	dsdgen_func.named_parameters["suffix"] = LogicalType::VARCHAR;
+	dsdgen_func.AddNamedParameter("sf", LogicalType::DOUBLE);
+	dsdgen_func.AddNamedParameter("overwrite", LogicalType::BOOLEAN);
+	dsdgen_func.AddNamedParameter("keys", LogicalType::BOOLEAN);
+	dsdgen_func.AddNamedParameter("catalog", LogicalType::VARCHAR);
+	dsdgen_func.AddNamedParameter("schema", LogicalType::VARCHAR);
+	dsdgen_func.AddNamedParameter("suffix", LogicalType::VARCHAR);
 	dsdgen_func.call_return_type = StatementReturnType::NOTHING;
 	dsdgen_func.table_scan_progress = DsdgenProgress;
 	dsdgen_func.cardinality = DsdgenCardinality;

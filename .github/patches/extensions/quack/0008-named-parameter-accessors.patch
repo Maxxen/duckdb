@@ -1,0 +1,62 @@
+diff --git a/src/quack_extension.cpp b/src/quack_extension.cpp
+index 5cc10c4..2d8be4d 100644
+--- a/src/quack_extension.cpp
++++ b/src/quack_extension.cpp
+@@ -54,7 +54,7 @@ static void RegisterQuackSecretType(ExtensionLoader &loader) {
+ 	loader.RegisterSecretType(secret_type);
+ 
+ 	CreateSecretFunction config_fun = {QUACK_SECRET_TYPE, "config", CreateQuackSecretFromConfig};
+-	config_fun.named_parameters["token"] = LogicalType::VARCHAR;
++	config_fun.AddNamedParameter("token", LogicalType::VARCHAR);
+ 	loader.RegisterFunction(config_fun);
+ }
+ 
+@@ -101,11 +101,11 @@ static unique_ptr<FunctionData> QuackIdentifyBind(ClientContext &ctx, TableFunct
+ 
+ static TableFunction GetQuackIdentifyFunction() {
+ 	TableFunction fun("quack_identify", {}, QuackIdentifyFun, QuackIdentifyBind);
+-	fun.named_parameters["name"] = LogicalType::VARCHAR;
+-	fun.named_parameters["provider"] = LogicalType::VARCHAR;
+-	fun.named_parameters["hostname"] = LogicalType::VARCHAR;
+-	fun.named_parameters["region"] = LogicalType::VARCHAR;
+-	fun.named_parameters["meta"] = LogicalType::VARCHAR; // JSON as string
++	fun.AddNamedParameter("name", LogicalType::VARCHAR);
++	fun.AddNamedParameter("provider", LogicalType::VARCHAR);
++	fun.AddNamedParameter("hostname", LogicalType::VARCHAR);
++	fun.AddNamedParameter("region", LogicalType::VARCHAR);
++	fun.AddNamedParameter("meta", LogicalType::VARCHAR); // JSON as string
+ 	return fun;
+ }
+ 
+diff --git a/src/quack_scan.cpp b/src/quack_scan.cpp
+index cfbab78..98ffcb3 100644
+--- a/src/quack_scan.cpp
++++ b/src/quack_scan.cpp
+@@ -377,8 +377,8 @@ BindInfo QuackScanGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+ TableFunction QuackScanFunction::GetFunction() {
+ 	auto fun = TableFunction("quack_query", {LogicalType::VARCHAR, LogicalType::VARCHAR}, QuackScan, QuackScanBind,
+ 	                         QuackScanInitGlobal, QuackScanInitLocal);
+-	fun.named_parameters["disable_ssl"] = LogicalType::BOOLEAN;
+-	fun.named_parameters["token"] = LogicalType::VARCHAR;
++	fun.AddNamedParameter("disable_ssl", LogicalType::BOOLEAN);
++	fun.AddNamedParameter("token", LogicalType::VARCHAR);
+ 
+ 	fun.projection_pushdown = true;
+ 	fun.get_partition_data = QuackScanGetPartitionData;
+diff --git a/src/quack_start_stop.cpp b/src/quack_start_stop.cpp
+index 9d85809..2f1ef9a 100644
+--- a/src/quack_start_stop.cpp
++++ b/src/quack_start_stop.cpp
+@@ -78,9 +78,9 @@ static void QuackServe(ClientContext &context, TableFunctionInput &data_p, DataC
+ TableFunctionSet QuackServeFunction::GetFunction() {
+ 	TableFunctionSet set("quack_serve");
+ 	auto fun = TableFunction("quack_serve", {LogicalType::VARCHAR}, QuackServe, QuackServeBind);
+-	fun.named_parameters["disable_ssl"] = LogicalType::BOOLEAN;
+-	fun.named_parameters["allow_other_hostname"] = LogicalType::BOOLEAN;
+-	fun.named_parameters["token"] = LogicalType::VARCHAR;
++	fun.AddNamedParameter("disable_ssl", LogicalType::BOOLEAN);
++	fun.AddNamedParameter("allow_other_hostname", LogicalType::BOOLEAN);
++	fun.AddNamedParameter("token", LogicalType::VARCHAR);
+ 	set.AddFunction(fun);
+ 	fun.arguments.clear();
+ 	set.AddFunction(fun);

@@ -1,0 +1,51 @@
+diff --git a/src/functions/ducklake_add_data_files.cpp b/src/functions/ducklake_add_data_files.cpp
+index 80770331..d554d56f 100644
+--- a/src/functions/ducklake_add_data_files.cpp
++++ b/src/functions/ducklake_add_data_files.cpp
+@@ -1277,10 +1277,10 @@ TableFunctionSet DuckLakeAddDataFilesFunction::GetFunctions() {
+ 	for (auto &type : at_types) {
+ 		TableFunction function("ducklake_add_data_files", {LogicalType::VARCHAR, LogicalType::VARCHAR, type},
+ 		                       DuckLakeAddDataFilesExecute, DuckLakeAddDataFilesBind, DuckLakeAddDataFilesInit);
+-		function.named_parameters["allow_missing"] = LogicalType::BOOLEAN;
+-		function.named_parameters["ignore_extra_columns"] = LogicalType::BOOLEAN;
+-		function.named_parameters["hive_partitioning"] = LogicalType::BOOLEAN;
+-		function.named_parameters["schema"] = LogicalType::VARCHAR;
++		function.AddNamedParameter("allow_missing", LogicalType::BOOLEAN);
++		function.AddNamedParameter("ignore_extra_columns", LogicalType::BOOLEAN);
++		function.AddNamedParameter("hive_partitioning", LogicalType::BOOLEAN);
++		function.AddNamedParameter("schema", LogicalType::VARCHAR);
+ 		set.AddFunction(function);
+ 	}
+ 	return set;
+diff --git a/src/functions/ducklake_compaction_functions.cpp b/src/functions/ducklake_compaction_functions.cpp
+index fe56afe4..ae11c57f 100644
+--- a/src/functions/ducklake_compaction_functions.cpp
++++ b/src/functions/ducklake_compaction_functions.cpp
+@@ -821,11 +821,11 @@ TableFunctionSet DuckLakeMergeAdjacentFilesFunction::GetFunctions() {
+ 	for (auto &type : at_types) {
+ 		TableFunction function("ducklake_merge_adjacent_files", type, nullptr, nullptr, nullptr);
+ 		function.bind_operator = MergeAdjacentFilesBind;
+-		function.named_parameters["min_file_size"] = LogicalType::UBIGINT;
+-		function.named_parameters["max_file_size"] = LogicalType::UBIGINT;
+-		function.named_parameters["max_compacted_files"] = LogicalType::UBIGINT;
++		function.AddNamedParameter("min_file_size", LogicalType::UBIGINT);
++		function.AddNamedParameter("max_file_size", LogicalType::UBIGINT);
++		function.AddNamedParameter("max_compacted_files", LogicalType::UBIGINT);
+ 		if (type.size() == 2) {
+-			function.named_parameters["schema"] = LogicalType::VARCHAR;
++			function.AddNamedParameter("schema", LogicalType::VARCHAR);
+ 		}
+ 		set.AddFunction(function);
+ 	}
+@@ -847,9 +847,9 @@ TableFunctionSet DuckLakeRewriteDataFilesFunction::GetFunctions() {
+ 	for (auto &type : at_types) {
+ 		TableFunction function("ducklake_rewrite_data_files", type, nullptr, nullptr, nullptr);
+ 		function.bind_operator = RewriteFilesBind;
+-		function.named_parameters["delete_threshold"] = LogicalType::DOUBLE;
++		function.AddNamedParameter("delete_threshold", LogicalType::DOUBLE);
+ 		if (type.size() == 2) {
+-			function.named_parameters["schema"] = LogicalType::VARCHAR;
++			function.AddNamedParameter("schema", LogicalType::VARCHAR);
+ 		}
+ 		set.AddFunction(function);
+ 	}

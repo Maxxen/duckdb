@@ -188,11 +188,11 @@ template <class OP>
 static TableFunction GetFunction() {
 	MultiFileFunction<DirectMultiFileInfo<OP>> table_function(OP::NAME);
 	// Erase extra multi file reader options
-	table_function.named_parameters.erase("filename");
-	table_function.named_parameters.erase("hive_partitioning");
-	table_function.named_parameters.erase("union_by_name");
-	table_function.named_parameters.erase("hive_types");
-	table_function.named_parameters.erase("hive_types_autocast");
+	table_function.RemoveNamedParameter("filename");
+	table_function.RemoveNamedParameter("hive_partitioning");
+	table_function.RemoveNamedParameter("union_by_name");
+	table_function.RemoveNamedParameter("hive_types");
+	table_function.RemoveNamedParameter("hive_types_autocast");
 	return table_function;
 }
 

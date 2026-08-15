@@ -70,7 +70,7 @@ select parse_path(filename)[-6:], size, part, date from read_text('{DATA_DIR}/pa
 statement error
 select filename from read_blob('.*', union_by_name := true);
 ----
-Binder Error: Invalid named parameter "union_by_name" for function read_blob
+<REGEX>:.*No function matches.*read_blob.*
 
 
 # Searching for non-existing remote file should return empty result set (like local files)

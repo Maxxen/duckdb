@@ -28,7 +28,7 @@ typedef void (*pragma_function_t)(ClientContext &context, const FunctionParamete
 //!   -> this is similar to a call pragma but without parameters
 //! Pragma functions can either return a new query to execute (pragma_query_t)
 //! or they can
-class PragmaFunction : public SimpleNamedParameterFunction { // NOLINT: work-around bug in clang-tidy
+class PragmaFunction : public SimpleFunction { // NOLINT: work-around bug in clang-tidy
 public:
 	// Call
 	DUCKDB_API static PragmaFunction PragmaCall(const Identifier &name, pragma_query_t query,
@@ -48,7 +48,6 @@ public:
 
 	pragma_query_t query;
 	pragma_function_t function;
-	named_parameter_type_map_t named_parameters;
 
 private:
 	PragmaFunction(Identifier name, PragmaType pragma_type, pragma_query_t query, pragma_function_t function,

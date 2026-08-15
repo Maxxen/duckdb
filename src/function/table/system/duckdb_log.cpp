@@ -96,7 +96,7 @@ unique_ptr<TableRef> DuckDBLogBindReplace(ClientContext &context, TableFunctionB
 void DuckDBLogFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction logs_fun("duckdb_logs", {}, DuckDBLogFunction, DuckDBLogBind, DuckDBLogInit);
 	logs_fun.bind_replace = DuckDBLogBindReplace;
-	logs_fun.named_parameters["denormalized_table"] = LogicalType::BOOLEAN;
+	logs_fun.AddNamedParameter("denormalized_table", LogicalType::BOOLEAN);
 	set.AddFunction(logs_fun);
 }
 

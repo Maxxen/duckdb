@@ -5,8 +5,8 @@ namespace duckdb {
 
 PragmaFunction::PragmaFunction(Identifier name, PragmaType pragma_type, pragma_query_t query,
                                pragma_function_t function, vector<LogicalType> arguments, LogicalType varargs)
-    : SimpleNamedParameterFunction(std::move(name), std::move(arguments), std::move(varargs)), type(pragma_type),
-      query(query), function(function) {
+    : SimpleFunction(std::move(name), std::move(arguments), LogicalType(LogicalTypeId::INVALID), std::move(varargs)),
+      type(pragma_type), query(query), function(function) {
 }
 
 PragmaFunction PragmaFunction::PragmaCall(const Identifier &name, pragma_query_t query, vector<LogicalType> arguments,
@@ -35,7 +35,9 @@ string PragmaFunction::ToString() const {
 	case PragmaType::PRAGMA_STATEMENT:
 		return StringUtil::Format("PRAGMA %s", name);
 	case PragmaType::PRAGMA_CALL: {
-		return StringUtil::Format("PRAGMA %s", SimpleNamedParameterFunction::ToString());
+		auto call =
+		    Function::CallToString(GetCatalogName(), GetSchemaName(), name, GetArgumentTypes(), GetNamedParameters());
+		return StringUtil::Format("PRAGMA %s", call);
 	}
 	default:
 		return "UNKNOWN";

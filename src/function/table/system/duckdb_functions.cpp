@@ -453,11 +453,14 @@ struct TableFunctionExtractor {
 	static vector<Value> GetParameters(TableFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
-		for (idx_t i = 0; i < fun.GetArguments().size(); i++) {
-			results.emplace_back("col" + to_string(i));
-		}
-		for (auto &param : fun.named_parameters) {
-			results.emplace_back(param.first);
+		idx_t positional = 0;
+		for (auto &param : fun.GetSignature().GetParameters()) {
+			// optional parameters are the named options, and keep their name; the rest are positional
+			if (param.HasDefaultValue()) {
+				results.emplace_back(param.GetName());
+			} else {
+				results.emplace_back("col" + to_string(positional++));
+			}
 		}
 		return results;
 	}
@@ -466,18 +469,15 @@ struct TableFunctionExtractor {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 
-		for (idx_t i = 0; i < fun.GetArguments().size(); i++) {
-			results.emplace_back(fun.GetArguments()[i].ToString());
-		}
-		for (auto &param : fun.named_parameters) {
-			results.emplace_back(param.second.ToString());
+		for (auto &param : fun.GetSignature().GetParameters()) {
+			results.emplace_back(param.GetType().ToString());
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
 	static vector<LogicalType> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
-		return fun.GetArguments();
+		return fun.GetArgumentTypes();
 	}
 
 	static Value GetVarArgs(TableFunctionCatalogEntry &entry, idx_t offset) {
@@ -515,11 +515,14 @@ struct PragmaFunctionExtractor {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 
-		for (idx_t i = 0; i < fun.GetArguments().size(); i++) {
-			results.emplace_back("col" + to_string(i));
-		}
-		for (auto &param : fun.named_parameters) {
-			results.emplace_back(param.first);
+		idx_t positional = 0;
+		for (auto &param : fun.GetSignature().GetParameters()) {
+			// optional parameters are the named options, and keep their name; the rest are positional
+			if (param.HasDefaultValue()) {
+				results.emplace_back(param.GetName());
+			} else {
+				results.emplace_back("col" + to_string(positional++));
+			}
 		}
 		return results;
 	}
@@ -528,18 +531,15 @@ struct PragmaFunctionExtractor {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 
-		for (idx_t i = 0; i < fun.GetArguments().size(); i++) {
-			results.emplace_back(fun.GetArguments()[i].ToString());
-		}
-		for (auto &param : fun.named_parameters) {
-			results.emplace_back(param.second.ToString());
+		for (auto &param : fun.GetSignature().GetParameters()) {
+			results.emplace_back(param.GetType().ToString());
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
 	static vector<LogicalType> GetParameterLogicalTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
-		return fun.GetArguments();
+		return fun.GetArgumentTypes();
 	}
 
 	static Value GetVarArgs(PragmaFunctionCatalogEntry &entry, idx_t offset) {

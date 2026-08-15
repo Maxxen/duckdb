@@ -1,0 +1,19 @@
+diff --git a/src/aws_extension.cpp b/src/aws_extension.cpp
+index 26cbf9d..a4c2890 100644
+--- a/src/aws_extension.cpp
++++ b/src/aws_extension.cpp
+@@ -129,10 +129,10 @@ static void LoadInternal(ExtensionLoader &loader) {
+ 	auto profile_fun =
+ 	    TableFunction("load_aws_credentials", {LogicalTypeId::VARCHAR}, LoadAWSCredentialsFun, LoadAWSCredentialsBind);
+ 
+-	base_fun.named_parameters["set_region"] = LogicalTypeId::BOOLEAN;
+-	base_fun.named_parameters["redact_secret"] = LogicalTypeId::BOOLEAN;
+-	profile_fun.named_parameters["set_region"] = LogicalTypeId::BOOLEAN;
+-	profile_fun.named_parameters["redact_secret"] = LogicalTypeId::BOOLEAN;
++	base_fun.AddNamedParameter("set_region", LogicalTypeId::BOOLEAN);
++	base_fun.AddNamedParameter("redact_secret", LogicalTypeId::BOOLEAN);
++	profile_fun.AddNamedParameter("set_region", LogicalTypeId::BOOLEAN);
++	profile_fun.AddNamedParameter("redact_secret", LogicalTypeId::BOOLEAN);
+ 
+ 	function_set.AddFunction(base_fun);
+ 	function_set.AddFunction(profile_fun);

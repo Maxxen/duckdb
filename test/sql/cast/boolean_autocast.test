@@ -137,3 +137,36 @@ SELECT false='unknownbool';
 statement error
 SELECT 'unknownbool'=false;
 ----
+
+# integer literals 0 and 1 implicitly cast to boolean during overload resolution
+query T
+SELECT bool_or(1);
+----
+true
+
+query T
+SELECT bool_and(0);
+----
+false
+
+# ...but only 0 and 1
+statement error
+SELECT bool_or(2);
+----
+<REGEX>:Binder Error.*No function matches.*
+
+statement error
+SELECT bool_or(-1);
+----
+<REGEX>:Binder Error.*No function matches.*
+
+# ...and only literals - an integer column or an explicit cast is not implicitly convertible
+statement error
+SELECT bool_or(1::INTEGER);
+----
+<REGEX>:Binder Error.*No function matches.*
+
+statement error
+SELECT bool_or(i) FROM (SELECT 1 i);
+----
+<REGEX>:Binder Error.*No function matches.*

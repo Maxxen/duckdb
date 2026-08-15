@@ -401,10 +401,10 @@ void RangeTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	// single argument range: (end) - implicit start = 0 and increment = 1
 	range.AddFunction(range_function);
 	// two arguments range: (start, end) - implicit increment = 1
-	range_function.GetArguments() = {LogicalType::BIGINT, LogicalType::BIGINT};
+	range_function.SetArgumentTypes({LogicalType::BIGINT, LogicalType::BIGINT});
 	range.AddFunction(range_function);
 	// three arguments range: (start, end, increment)
-	range_function.GetArguments() = {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT};
+	range_function.SetArgumentTypes({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT});
 	range.AddFunction(range_function);
 	TableFunction range_in_out({LogicalType::TIMESTAMP, LogicalType::TIMESTAMP, LogicalType::INTERVAL}, nullptr,
 	                           RangeDateTimeBind<false>, nullptr, RangeDateTimeLocalInit);
@@ -420,11 +420,11 @@ void RangeTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	range_function.bind = RangeFunctionBind<true>;
 	range_function.in_out_function = RangeFunction<true>;
 	range_function.return_type = TableFunctionReturnType::SET_RETURNING_FUNCTION;
-	range_function.GetArguments() = {LogicalType::BIGINT};
+	range_function.SetArgumentTypes({LogicalType::BIGINT});
 	generate_series.AddFunction(range_function);
-	range_function.GetArguments() = {LogicalType::BIGINT, LogicalType::BIGINT};
+	range_function.SetArgumentTypes({LogicalType::BIGINT, LogicalType::BIGINT});
 	generate_series.AddFunction(range_function);
-	range_function.GetArguments() = {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT};
+	range_function.SetArgumentTypes({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT});
 	generate_series.AddFunction(range_function);
 	TableFunction generate_series_in_out({LogicalType::TIMESTAMP, LogicalType::TIMESTAMP, LogicalType::INTERVAL},
 	                                     nullptr, RangeDateTimeBind<true>, nullptr, RangeDateTimeLocalInit);

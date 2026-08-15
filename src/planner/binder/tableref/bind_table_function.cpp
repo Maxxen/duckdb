@@ -9,6 +9,7 @@
 #include "duckdb/parser/tableref/emptytableref.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/planner/expression_binder/table_function_binder.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/function/function_binder.hpp"
@@ -44,8 +45,8 @@ static TableFunctionBindType GetTableFunctionBindType(TableFunctionCatalogEntry 
 	bool has_table_parameter = false;
 	for (idx_t function_idx = 0; function_idx < table_function.functions.Size(); function_idx++) {
 		const auto &function = table_function.functions.GetFunctionByOffset(function_idx);
-		for (auto &arg : function.GetArguments()) {
-			if (arg.id() == LogicalTypeId::TABLE) {
+		for (auto &param : function.GetSignature().GetParameters()) {
+			if (param.GetType().id() == LogicalTypeId::TABLE) {
 				has_table_parameter = true;
 			}
 		}
@@ -87,6 +88,7 @@ void Binder::BindTableInTableOutFunction(vector<unique_ptr<ParsedExpression>> &e
 bool Binder::BindTableFunctionParameters(TableFunctionCatalogEntry &table_function,
                                          vector<unique_ptr<ParsedExpression>> &expressions,
                                          vector<LogicalType> &arguments, vector<Value> &parameters,
+                                         vector<pair<Identifier, LogicalType>> &named_argument_types,
                                          named_parameter_map_t &named_parameters, BoundStatement &subquery,
                                          ErrorData &error) {
 	auto bind_type = GetTableFunctionBindType(table_function, expressions);
@@ -120,7 +122,7 @@ bool Binder::BindTableFunctionParameters(TableFunctionCatalogEntry &table_functi
 		    child->GetExpressionType() == ExpressionType::SUBQUERY) {
 			D_ASSERT(table_function.functions.Size() == 1);
 			const auto &fun = table_function.functions.GetFunctionByOffset(0);
-			if (table_function.functions.Size() != 1 || fun.GetArguments().empty()) {
+			if (table_function.functions.Size() != 1 || fun.GetSignature().GetParameterCount() == 0) {
 				throw BinderException(
 				    "Only table-in-out functions can have subquery parameters - %s only accepts constant parameters",
 				    fun.GetName());
@@ -151,15 +153,21 @@ bool Binder::BindTableFunctionParameters(TableFunctionCatalogEntry &table_functi
 			throw InternalException("Table function requires a constant parameter");
 		}
 		auto constant = ExpressionExecutor::EvaluateScalar(context, *expr, true);
+		// Take the type from the bound expression rather than from sql_type: it reports STRING_LITERAL /
+		// INTEGER_LITERAL for constants, which lets overload selection accept e.g. header = 1 or skip = 3 against a
+		// narrower declared type, exactly as it already does for scalar functions.
+		auto argument_type =
+		    constant.IsNull() ? LogicalType(LogicalType::SQLNULL) : ExpressionBinder::GetExpressionReturnType(*expr);
 		if (parameter_name.empty()) {
 			// unnamed parameter
 			if (!named_parameters.empty()) {
 				error = ErrorData("Unnamed parameters cannot come after named parameters");
 				return false;
 			}
-			arguments.emplace_back(constant.IsNull() ? LogicalType::SQLNULL : sql_type);
+			arguments.emplace_back(std::move(argument_type));
 			parameters.emplace_back(std::move(constant));
 		} else {
+			named_argument_types.emplace_back(parameter_name, std::move(argument_type));
 			named_parameters[parameter_name] = std::move(constant);
 		}
 	}
@@ -428,6 +436,7 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 	// evaluate the input parameters to the function
 	vector<LogicalType> arguments;
 	vector<Value> parameters;
+	vector<pair<Identifier, LogicalType>> named_argument_types;
 	named_parameter_map_t named_parameters;
 	BoundStatement subquery;
 	ErrorData error;
@@ -437,22 +446,21 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		children.push_back(std::move(child.GetExpressionMutable()));
 	}
 
-	if (!BindTableFunctionParameters(function, children, arguments, parameters, named_parameters, subquery, error)) {
+	if (!BindTableFunctionParameters(function, children, arguments, parameters, named_argument_types, named_parameters,
+	                                 subquery, error)) {
 		error.AddQueryLocation(ref);
 		error.Throw();
 	}
 
-	// select the function based on the input parameters
+	// select the overload and cast the positional and named arguments to it
 	FunctionBinder function_binder(*this);
-	auto best_function_idx = function_binder.BindFunction(function.name, function.functions, arguments, error);
-	if (!best_function_idx.IsValid()) {
+	auto bound_function = function_binder.BindTableFunction(function.name, function.functions, arguments,
+	                                                        named_argument_types, parameters, named_parameters, error);
+	if (!bound_function) {
 		error.AddQueryLocation(ref);
 		error.Throw();
 	}
-	auto table_function = function.functions.GetFunctionByOffset(best_function_idx.GetIndex());
-
-	// now check the named parameters
-	BindNamedParameters(table_function.named_parameters, named_parameters, error_context, table_function.name);
+	auto table_function = *bound_function;
 
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
@@ -466,21 +474,11 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 			input_table_names.push_back(Identifier());
 		}
 	}
-	if (!parameters.empty()) {
-		// cast the parameters to the type of the function
+	auto &signature = table_function.GetSignature();
+	if (parameters.empty() && subquery.plan) {
 		for (idx_t i = 0; i < arguments.size(); i++) {
-			auto target_type = i < table_function.GetArguments().size() ? table_function.GetArguments()[i]
-			                                                            : table_function.GetVarArgs();
-
-			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
-			    target_type.id() != LogicalTypeId::LIST && target_type != LogicalType::TABLE) {
-				parameters[i] = parameters[i].CastAs(context, target_type);
-			}
-		}
-	} else if (subquery.plan) {
-		for (idx_t i = 0; i < arguments.size(); i++) {
-			auto target_type = i < table_function.GetArguments().size() ? table_function.GetArguments()[i]
-			                                                            : table_function.GetVarArgs();
+			auto &target_type = i < signature.GetPositionalParameterCount() ? signature.GetParameter(i).GetType()
+			                                                                : signature.GetVarArgs();
 
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST) {

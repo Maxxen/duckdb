@@ -1,0 +1,13 @@
+diff --git a/src/quack_start_stop.cpp b/src/quack_start_stop.cpp
+index 9d85809..578075c 100644
+--- a/src/quack_start_stop.cpp
++++ b/src/quack_start_stop.cpp
+@@ -82,7 +82,7 @@ TableFunctionSet QuackServeFunction::GetFunction() {
+ 	fun.named_parameters["allow_other_hostname"] = LogicalType::BOOLEAN;
+ 	fun.named_parameters["token"] = LogicalType::VARCHAR;
+ 	set.AddFunction(fun);
+-	fun.arguments.clear();
++	fun.SetArgumentTypes({});
+ 	set.AddFunction(fun);
+ 
+ 	return set;
