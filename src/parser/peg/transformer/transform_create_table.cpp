@@ -64,7 +64,7 @@ unique_ptr<CreateStatement> PEGTransformerFactory::TransformCreateTableStmt(
 
 	info->on_conflict = if_not_exists ? OnCreateConflict::IGNORE_ON_CONFLICT : OnCreateConflict::ERROR_ON_CONFLICT;
 	info->query = std::move(create_table_definition.select_statement);
-	info->columns = std::move(create_table_definition.columns);
+	info->parsed_columns = std::move(create_table_definition.columns);
 	info->constraints = std::move(create_table_definition.constraints);
 	info->partition_keys = std::move(create_table_definition.partition_keys);
 	info->sort_keys = std::move(create_table_definition.sort_keys);
@@ -75,7 +75,8 @@ unique_ptr<CreateStatement> PEGTransformerFactory::TransformCreateTableStmt(
 }
 
 CreateTableDefinition
-PEGTransformerFactory::TransformCreateTableAs(PEGTransformer &transformer, optional<ColumnList> identifier_list,
+PEGTransformerFactory::TransformCreateTableAs(PEGTransformer &transformer,
+                                              optional<ParsedColumnList> identifier_list,
                                               optional<PartitionSortedOptions> partition_sorted_options,
                                               optional<case_insensitive_map_t<unique_ptr<ParsedExpression>>> with_list,
                                               unique_ptr<SQLStatement> statement, const optional<bool> &with_data) {
@@ -102,11 +103,11 @@ PEGTransformerFactory::TransformCreateTableAs(PEGTransformer &transformer, optio
 	return result;
 }
 
-ColumnList PEGTransformerFactory::TransformIdentifierList(PEGTransformer &transformer,
-                                                          const vector<Identifier> &identifier) {
-	ColumnList result;
+ParsedColumnList PEGTransformerFactory::TransformIdentifierList(PEGTransformer &transformer,
+                                                                const vector<Identifier> &identifier) {
+	ParsedColumnList result;
 	for (auto &name : identifier) {
-		result.AddColumn(ColumnDefinition(name, LogicalType::UNKNOWN));
+		result.AddColumn(ParsedColumnDefinition(name, nullptr));
 	}
 	return result;
 }
@@ -155,7 +156,7 @@ PEGTransformerFactory::TransformCreateTableColumnList(PEGTransformer &transforme
 					result.constraints.push_back(make_uniq<NotNullConstraint>(LogicalIndex(col_idx)));
 				} else if (constraint_type.second == ConstraintType::UNIQUE) {
 					result.constraints.push_back(make_uniq<UniqueConstraint>(
-					    LogicalIndex(col_idx), column_result.column_definition.GetName(), constraint_type.first));
+					    LogicalIndex(col_idx), column_result.column_definition.Name(), constraint_type.first));
 				}
 			}
 			result.columns.AddColumn(std::move(column_result.column_definition));
@@ -226,7 +227,12 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 		throw ParserException("Column %s must have a type or be defined as a GENERATED column.",
 		                      qualified_name.ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA));
 	}
-	auto column_type = has_type ? *type : LogicalType::ANY;
+	// the grammar delivers the type as LogicalType::UNBOUND wrapping a TypeExpression; carry the
+	// TypeExpression directly (null = no declared type)
+	unique_ptr<ParsedExpression> type_expr;
+	if (has_type) {
+		type_expr = UnboundType::GetTypeExpression(*type)->Copy();
+	}
 	CompressionType compression_type = CompressionType::COMPRESSION_AUTO;
 	ColumnConstraint accumulated_constraints;
 	if (column_constraint) {
@@ -255,25 +261,20 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 				if (has_generated) {
 					throw ParserException("Collations are not supported on generated columns");
 				}
-				if (column_type.id() == LogicalTypeId::ANY) {
+				if (!type_expr) {
 					throw ParserException("Specify the VARCHAR type for column \"%s\" with collation.",
 					                      qualified_name.ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA));
-				} else if (column_type.IsUnbound()) {
-					auto &expr = UnboundType::GetTypeExpression(column_type);
-					if (expr->GetExpressionClass() != ExpressionClass::TYPE) {
-						throw InternalException("Expected a type expression");
-					}
-					auto &type_expr = expr->Cast<TypeExpression>();
-					if (DefaultTypeGenerator::GetDefaultType(type_expr.GetTypeName()) != LogicalTypeId::VARCHAR) {
-						throw ParserException("Only VARCHAR columns can have collations!");
-					}
-				} else {
-					throw InternalException("Expected only unbound types here");
+				}
+				if (type_expr->GetExpressionClass() != ExpressionClass::TYPE) {
+					throw InternalException("Expected a type expression");
+				}
+				auto &collated_type = type_expr->Cast<TypeExpression>();
+				if (DefaultTypeGenerator::GetDefaultType(collated_type.GetTypeName()) != LogicalTypeId::VARCHAR) {
+					throw ParserException("Only VARCHAR columns can have collations!");
 				}
 				vector<unique_ptr<ParsedExpression>> type_children;
 				type_children.push_back(std::move(cc_entry.expression));
-				column_type =
-				    LogicalType::UNBOUND(make_uniq<TypeExpression>(Identifier("VARCHAR"), std::move(type_children)));
+				type_expr = make_uniq<TypeExpression>(Identifier("VARCHAR"), std::move(type_children));
 			} else {
 				accumulated_constraints.constraints.push_back(std::move(cc_entry.constraint));
 			}
@@ -285,15 +286,18 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 			throw ParserException("Expression of generated column \"%s\" contains a subquery, which isn't allowed",
 			                      qualified_name.Name());
 		}
-		if (column_type != LogicalType::ANY) {
-			generated.expr = make_uniq<CastExpression>(column_type, std::move(generated.expr));
+		if (type_expr) {
+			// wrap in a cast to the declared type; the cast target is resolved by the binder
+			generated.expr =
+			    make_uniq<CastExpression>(LogicalType::UNBOUND(type_expr->Copy()), std::move(generated.expr));
 		}
 		if (generated.expr->HasSubquery()) {
 			throw ParserException("Expression of generated column \"%s\" contains a subquery, which isn't allowed",
 			                      qualified_name.Name());
 		}
 
-		ColumnDefinition col(qualified_name.Name(), column_type, std::move(generated.expr), TableColumnType::GENERATED);
+		ParsedColumnDefinition col(qualified_name.Name(), std::move(type_expr), std::move(generated.expr),
+		                           TableColumnType::GENERATED);
 		col.SetCompressionType(compression_type);
 		if (accumulated_constraints.default_value) {
 			throw ParserException("Not allowed to set default on a generated column");
@@ -303,7 +307,7 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 		return result;
 	}
 
-	ColumnDefinition col(qualified_name.Name(), column_type);
+	ParsedColumnDefinition col(qualified_name.Name(), std::move(type_expr));
 
 	if (accumulated_constraints.default_value) {
 		col.SetDefaultValue(std::move(accumulated_constraints.default_value));

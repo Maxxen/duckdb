@@ -1925,8 +1925,8 @@ LogicalType UnboundType::TryParseAndDefaultBind(const string &type_str) {
 		return LogicalType::INVALID;
 	}
 	try {
-		ColumnList list = Parser::ParseColumnList("dummy " + type_str);
-		auto unbound = list.GetColumn(LogicalIndex(0)).Type();
+		ParsedColumnList list = Parser::ParseColumnList("dummy " + type_str);
+		auto unbound = LogicalType::UNBOUND(list.GetColumn(LogicalIndex(0)).GetTypeExpression()->Copy());
 		return TryDefaultBind(unbound);
 	} catch (const std::runtime_error &e) {
 		throw InvalidInputException("Could not parse type string '%s'", type_str);

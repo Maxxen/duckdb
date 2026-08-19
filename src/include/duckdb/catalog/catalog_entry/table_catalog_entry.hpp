@@ -15,6 +15,7 @@
 #include "duckdb/common/enums/trigger_type.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/parser/column_list.hpp"
+#include "duckdb/parser/parsed_column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/planner/bound_constraint.hpp"
 #include "duckdb/storage/table/table_statistics.hpp"
@@ -114,9 +115,12 @@ public:
 	}
 
 	DUCKDB_API static string ColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints);
+	DUCKDB_API static string ColumnsToSQL(const ParsedColumnList &columns,
+	                                      const vector<unique_ptr<Constraint>> &constraints);
 
 	//! Returns the expression string list of the column names e.g. (col1, col2, col3)
 	static string ColumnNamesToSQL(const ColumnList &columns);
+	static string ColumnNamesToSQL(const ParsedColumnList &columns);
 
 	//! Returns a list of segment information for this table, if exists
 	virtual vector<ColumnSegmentInfo>

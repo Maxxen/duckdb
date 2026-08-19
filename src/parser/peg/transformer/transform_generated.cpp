@@ -2672,10 +2672,10 @@ PEGTransformerFactory::TransformCreateTableDefinitionInternal(PEGTransformer &tr
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformCreateTableAsInternal(PEGTransformer &transformer,
                                                                                        ParseResult &parse_result) {
 	auto &list_pr = parse_result.Cast<ListParseResult>();
-	optional<ColumnList> identifier_list {};
+	optional<ParsedColumnList> identifier_list {};
 	auto &identifier_list_opt = list_pr.GetChild(0).Cast<OptionalParseResult>();
 	if (identifier_list_opt.HasResult()) {
-		auto identifier_list_value = transformer.Transform<ColumnList>(identifier_list_opt.GetResult());
+		auto identifier_list_value = transformer.Transform<ParsedColumnList>(identifier_list_opt.GetResult());
 		identifier_list = std::move(identifier_list_value);
 	}
 	optional<PartitionSortedOptions> partition_sorted_options {};
@@ -2802,7 +2802,7 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformIdentifierListI
 		identifier.push_back(identifier_value);
 	}
 	auto result = TransformIdentifierList(transformer, identifier);
-	return make_uniq<TypedTransformResult<ColumnList>>(std::move(result));
+	return make_uniq<TypedTransformResult<ParsedColumnList>>(std::move(result));
 }
 
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformCreateColumnListInternal(PEGTransformer &transformer,

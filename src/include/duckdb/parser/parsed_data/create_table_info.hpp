@@ -12,6 +12,7 @@
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/column_list.hpp"
+#include "duckdb/parser/parsed_column_list.hpp"
 
 #include "duckdb/common/identifier.hpp"
 namespace duckdb {
@@ -29,8 +30,12 @@ struct CreateTableInfo : public CreateInfo {
 	void SetTableName(Identifier name) {
 		qualified_name = qualified_name.WithName(std::move(name));
 	}
-	//! List of columns of the table
+	//! Bound list of columns of the table. Populated by the binder (from parsed_columns) or directly
+	//! by internal callers that already have concrete types. This is what the catalog and storage consume.
 	ColumnList columns;
+	//! Parsed (unbound) list of columns, as produced by the SQL parser. At most one of this and
+	//! `columns` is populated; the binder resolves this into `columns` and clears it.
+	ParsedColumnList parsed_columns;
 	//! List of constraints on the table
 	vector<unique_ptr<Constraint>> constraints;
 	//! CREATE TABLE as QUERY

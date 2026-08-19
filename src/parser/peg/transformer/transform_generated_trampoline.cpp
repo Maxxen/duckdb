@@ -9214,9 +9214,9 @@ void PEGTransformerFactory::InitializeCreateTableAsTrampoline(PEGTransformer &tr
 unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeCreateTableAsTrampoline(PEGTransformer &transformer,
                                                                                         TransformStack &stack,
                                                                                         TransformStackFrame &frame) {
-	optional<ColumnList> identifier_list {};
+	optional<ParsedColumnList> identifier_list {};
 	if (frame.child_results[0]) {
-		identifier_list = frame.TakeResult<ColumnList>(0);
+		identifier_list = frame.TakeResult<ParsedColumnList>(0);
 	}
 	optional<PartitionSortedOptions> partition_sorted_options {};
 	if (frame.child_results[1]) {
@@ -9424,7 +9424,7 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeIdentifierListTr
 		identifier.push_back(identifier_item.get().Cast<IdentifierParseResult>().identifier);
 	}
 	auto result = TransformIdentifierList(transformer, identifier);
-	return make_uniq<TypedTransformResult<ColumnList>>(std::move(result));
+	return make_uniq<TypedTransformResult<ParsedColumnList>>(std::move(result));
 }
 
 void PEGTransformerFactory::InitializeCreateColumnListTrampoline(PEGTransformer &transformer, TransformStack &stack,

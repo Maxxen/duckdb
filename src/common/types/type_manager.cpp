@@ -16,7 +16,7 @@ static LogicalType TransformStringToUnboundType(const string &str) {
 	if (StringUtil::Lower(str) == "null") {
 		return LogicalType::SQLNULL;
 	}
-	ColumnList column_list;
+	ParsedColumnList column_list;
 	try {
 		column_list = Parser::ParseColumnList("dummy " + str);
 	} catch (const std::runtime_error &e) {
@@ -76,7 +76,8 @@ static LogicalType TransformStringToUnboundType(const string &str) {
 		}
 		throw InvalidInputException(error.str());
 	}
-	return column_list.GetColumn(LogicalIndex(0)).Type();
+	auto &col = column_list.GetColumn(LogicalIndex(0));
+	return LogicalType::UNBOUND(col.GetTypeExpression()->Copy());
 }
 
 // This has to be called with a level of indirection (through "parse_function") in order to avoid being included in

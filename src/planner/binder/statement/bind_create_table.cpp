@@ -306,14 +306,33 @@ void Binder::BindGeneratedColumns(BoundCreateTableInfo &info) {
 
 			// Update the type in the binding, for future expansions
 			table_binding->SetColumnType(i.index, col.Type());
-		} else if (col.Type().id() == LogicalTypeId::UNBOUND) {
-			// Bind column type
-			BindLogicalType(col.TypeMutable());
-			table_binding->SetColumnType(i.index, col.Type());
 		}
 
 		bound_indices.insert(i);
 	}
+}
+
+ColumnDefinition Binder::BindParsedColumnDefinition(const ParsedColumnDefinition &parsed_col) {
+	LogicalType col_type = LogicalType::ANY;
+	if (parsed_col.HasType()) {
+		col_type = BindLogicalTypeInternal(parsed_col.GetTypeExpression());
+	}
+	if (parsed_col.Generated()) {
+		ColumnDefinition bound_col(parsed_col.Name(), col_type, parsed_col.GeneratedExpression().Copy(),
+		                           TableColumnType::GENERATED);
+		bound_col.SetCompressionType(parsed_col.CompressionType());
+		bound_col.SetComment(parsed_col.Comment());
+		bound_col.SetTags(parsed_col.Tags());
+		return bound_col;
+	}
+	ColumnDefinition bound_col(parsed_col.Name(), col_type);
+	if (parsed_col.HasDefaultValue()) {
+		bound_col.SetDefaultValue(parsed_col.DefaultValue().Copy());
+	}
+	bound_col.SetCompressionType(parsed_col.CompressionType());
+	bound_col.SetComment(parsed_col.Comment());
+	bound_col.SetTags(parsed_col.Tags());
+	return bound_col;
 }
 
 void Binder::BindDefaultValue(const ColumnDefinition &column, vector<unique_ptr<Expression>> &bound_defaults,
@@ -636,7 +655,8 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 		auto &sql_types = query_obj.types;
 		// e.g. create table (col1 ,col2) as QUERY
 		// col1 and col2 are the target_col_names
-		auto target_col_names = base.columns.GetColumnNames();
+		auto target_col_names = base.parsed_columns.GetColumnNames();
+		base.parsed_columns = ParsedColumnList();
 		// TODO check  types and target_col_names are mismatch in size
 		D_ASSERT(names.size() == sql_types.size());
 		base.columns.SetAllowDuplicates(true);
@@ -659,12 +679,7 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 				base.columns.AddColumn(ColumnDefinition(names[i], sql_types[i]));
 			}
 		}
-
-		// Bind all types
-		for (idx_t i = 0; i < base.columns.PhysicalColumnCount(); i++) {
-			auto &column = base.columns.GetColumnMutable(PhysicalIndex(i));
-			type_binder->BindLogicalType(column.TypeMutable());
-		}
+		// the column types come from the bound query - they are already resolved
 
 	} else {
 		SetCatalogLookupCallback([&dependencies, &schema](CatalogEntry &entry) {
@@ -681,10 +696,14 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 			dependencies.AddDependency(entry);
 		});
 
-		// Bind all physical column types
-		for (idx_t i = 0; i < base.columns.PhysicalColumnCount(); i++) {
-			auto &column = base.columns.GetColumnMutable(PhysicalIndex(i));
-			type_binder->BindLogicalType(column.TypeMutable());
+		if (!base.parsed_columns.empty()) {
+			// SQL CREATE TABLE: resolve the parsed columns produced by the parser into bound columns
+			ColumnList bound_columns;
+			for (auto &parsed_col : base.parsed_columns.Logical()) {
+				bound_columns.AddColumn(type_binder->BindParsedColumnDefinition(parsed_col));
+			}
+			base.columns = std::move(bound_columns);
+			base.parsed_columns = ParsedColumnList();
 		}
 
 		auto &config = DBConfig::Get(catalog.GetAttached());

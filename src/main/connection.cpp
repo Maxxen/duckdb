@@ -311,8 +311,8 @@ shared_ptr<Relation> Connection::ReadCSV(const string &csv_file, const vector<st
 		if (col_list.LogicalColumnCount() != 1) {
 			throw ParserException("Expected a single column definition");
 		}
-		auto &col_def = col_list.GetColumnMutable(LogicalIndex(0));
-		column_list.emplace_back(col_def.GetName().GetIdentifierName(), col_def.GetType().ToString());
+		auto &col_def = col_list.GetColumn(LogicalIndex(0));
+		column_list.emplace_back(col_def.Name().GetIdentifierName(), col_def.Type().ToString());
 	}
 	vector<string> files {csv_file};
 	return make_shared_ptr<ReadCSVRelation>(context, files, std::move(options));

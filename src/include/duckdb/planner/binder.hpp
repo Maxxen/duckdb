@@ -46,6 +46,7 @@ class ClientContext;
 class ExpressionBinder;
 class LimitModifier;
 class OrderBinder;
+class ParsedColumnDefinition;
 class TableCatalogEntry;
 class ViewCatalogEntry;
 class TableMacroCatalogEntry;
@@ -347,6 +348,10 @@ public:
 	static void BindSchemaOrCatalog(ClientContext &context, QualifiedName &qualified_name);
 
 	void BindLogicalType(LogicalType &type);
+
+	//! Resolves a parsed (unbound) column definition into a bound ColumnDefinition, resolving its type
+	//! expression against this binder's search path
+	ColumnDefinition BindParsedColumnDefinition(const ParsedColumnDefinition &parsed_column);
 
 	optional_ptr<Binding> GetMatchingBinding(const Identifier &table_name, const Identifier &column_name,
 	                                         ErrorData &error);

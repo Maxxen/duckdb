@@ -110,7 +110,17 @@ unique_ptr<CreateInfo> TableCatalogEntry::GetInfo() const {
 	return std::move(result);
 }
 
-string TableCatalogEntry::ColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints) {
+//! The bound columns know their own logical index; parsed columns are in declaration order
+static LogicalIndex ColumnLogicalIndex(const ColumnDefinition &column, idx_t pos) {
+	return column.Logical();
+}
+
+static LogicalIndex ColumnLogicalIndex(const ParsedColumnDefinition &column, idx_t pos) {
+	return LogicalIndex(pos);
+}
+
+template <class COLUMN_LIST>
+static string ColumnsToSQLInternal(const COLUMN_LIST &columns, const vector<unique_ptr<Constraint>> &constraints) {
 	duckdb::stringstream ss;
 
 	ss << "(";
@@ -155,15 +165,17 @@ string TableCatalogEntry::ColumnsToSQL(const ColumnList &columns, const vector<u
 		}
 	}
 
+	idx_t pos = 0;
 	for (auto &column : columns.Logical()) {
-		if (column.Oid() > 0) {
+		auto logical = ColumnLogicalIndex(column, pos++);
+		if (logical.index > 0) {
 			ss << ", ";
 		}
 		ss << column.ToSQLString();
-		bool not_null = not_null_columns.find(column.Logical()) != not_null_columns.end();
-		bool is_single_key_pk = pk_columns.find(column.Logical()) != pk_columns.end();
+		bool not_null = not_null_columns.find(logical) != not_null_columns.end();
+		bool is_single_key_pk = pk_columns.find(logical) != pk_columns.end();
 		bool is_multi_key_pk = multi_key_pks.find(Identifier(column.Name().GetIdentifierName())) != multi_key_pks.end();
-		bool is_unique = unique_columns.find(column.Logical()) != unique_columns.end();
+		bool is_unique = unique_columns.find(logical) != unique_columns.end();
 		if (not_null && !is_single_key_pk && !is_multi_key_pk) {
 			// NOT NULL but not a primary key column
 			ss << " NOT NULL";
@@ -187,7 +199,17 @@ string TableCatalogEntry::ColumnsToSQL(const ColumnList &columns, const vector<u
 	return ss.str();
 }
 
-string TableCatalogEntry::ColumnNamesToSQL(const ColumnList &columns) {
+string TableCatalogEntry::ColumnsToSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints) {
+	return ColumnsToSQLInternal(columns, constraints);
+}
+
+string TableCatalogEntry::ColumnsToSQL(const ParsedColumnList &columns,
+                                       const vector<unique_ptr<Constraint>> &constraints) {
+	return ColumnsToSQLInternal(columns, constraints);
+}
+
+template <class COLUMN_LIST>
+static string ColumnNamesToSQLInternal(const COLUMN_LIST &columns) {
 	if (columns.empty()) {
 		return "";
 	}
@@ -195,14 +217,23 @@ string TableCatalogEntry::ColumnNamesToSQL(const ColumnList &columns) {
 	duckdb::stringstream ss;
 	ss << "(";
 
+	idx_t pos = 0;
 	for (auto &column : columns.Logical()) {
-		if (column.Oid() > 0) {
+		if (ColumnLogicalIndex(column, pos++).index > 0) {
 			ss << ", ";
 		}
 		ss << SQLIdentifier(column.Name()) << " ";
 	}
 	ss << ")";
 	return ss.str();
+}
+
+string TableCatalogEntry::ColumnNamesToSQL(const ColumnList &columns) {
+	return ColumnNamesToSQLInternal(columns);
+}
+
+string TableCatalogEntry::ColumnNamesToSQL(const ParsedColumnList &columns) {
+	return ColumnNamesToSQLInternal(columns);
 }
 
 string TableCatalogEntry::ToSQL() const {

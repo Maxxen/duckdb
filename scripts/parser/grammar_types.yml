@@ -1584,7 +1584,7 @@ overrides:
     type: "GeneratedColumnDefinition"
     by_value: true
   IdentifierList:
-    type: "ColumnList"
+    type: "ParsedColumnList"
     by_value: true
   # expression.gram
   NotExpression:

@@ -686,7 +686,7 @@ vector<vector<unique_ptr<ParsedExpression>>> Parser::ParseValuesList(const strin
 	return std::move(values_list.values);
 }
 
-ColumnList Parser::ParseColumnList(const string &column_list, ParserOptions options) {
+ParsedColumnList Parser::ParseColumnList(const string &column_list, ParserOptions options) {
 	string mock_query = "CREATE TABLE tbl (" + column_list + ")";
 	Parser parser(options);
 	parser.ParseQuery(mock_query);
@@ -698,10 +698,10 @@ ColumnList Parser::ParseColumnList(const string &column_list, ParserOptions opti
 		throw InternalException("Expected a single CREATE TABLE statement");
 	}
 	auto &info = create.info->Cast<CreateTableInfo>();
-	return std::move(info.columns);
+	return std::move(info.parsed_columns);
 }
 
-ColumnDefinition Parser::ParseColumnDefinition(const string &column_definition, ParserOptions options) {
+ParsedColumnDefinition Parser::ParseColumnDefinition(const string &column_definition, ParserOptions options) {
 	auto column_list = ParseColumnList(column_definition, options);
 	return column_list.GetColumn(LogicalIndex(0)).Copy();
 }

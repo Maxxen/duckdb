@@ -207,6 +207,13 @@
         "id": 206,
         "name": "options",
         "type": "case_insensitive_map_t<ParsedExpression*>"
+      },
+      {
+        "id": 207,
+        "name": "parsed_columns",
+        "type": "ParsedColumnList",
+        "version": "v2.0.0",
+        "deserialize_default": "ParsedColumnList()"
       }
     ],
     "methods": {

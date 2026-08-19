@@ -5794,7 +5794,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformCreateTableAsInternal(PEGTransformer &transformer,
 	                                                                       ParseResult &parse_result);
 	static CreateTableDefinition
-	TransformCreateTableAs(PEGTransformer &transformer, optional<ColumnList> identifier_list,
+	TransformCreateTableAs(PEGTransformer &transformer, optional<ParsedColumnList> identifier_list,
 	                       optional<PartitionSortedOptions> partition_sorted_options,
 	                       optional<case_insensitive_map_t<unique_ptr<ParsedExpression>>> with_list,
 	                       unique_ptr<SQLStatement> statement, const optional<bool> &with_data);
@@ -5829,7 +5829,7 @@ public:
 	static bool TransformWithNoData(PEGTransformer &transformer);
 	static unique_ptr<TransformResultValue> TransformIdentifierListInternal(PEGTransformer &transformer,
 	                                                                        ParseResult &parse_result);
-	static ColumnList TransformIdentifierList(PEGTransformer &transformer, const vector<Identifier> &identifier);
+	static ParsedColumnList TransformIdentifierList(PEGTransformer &transformer, const vector<Identifier> &identifier);
 	static unique_ptr<TransformResultValue> TransformCreateColumnListInternal(PEGTransformer &transformer,
 	                                                                          ParseResult &parse_result);
 	static CreateTableDefinition
