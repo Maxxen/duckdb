@@ -187,6 +187,8 @@ MOVE_LIST = [
     "CommonTableExpressionMap",
     "LogicalType",
     "ColumnDefinition",
+    "ParsedColumnDefinition",
+    "ParsedColumnList",
     "BaseStatistics",
     "BoundLimitNode",
 ]

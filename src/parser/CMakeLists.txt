@@ -16,6 +16,8 @@ add_library_unity(
   constraint.cpp
   expression_util.cpp
   keyword_helper.cpp
+  parsed_column_definition.cpp
+  parsed_column_list.cpp
   parsed_expression.cpp
   parsed_expression_iterator.cpp
   parser.cpp

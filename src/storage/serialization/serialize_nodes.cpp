@@ -21,6 +21,8 @@
 #include "duckdb/planner/tableref/bound_pivotref.hpp"
 #include "duckdb/parser/column_definition.hpp"
 #include "duckdb/parser/column_list.hpp"
+#include "duckdb/parser/parsed_column_definition.hpp"
+#include "duckdb/parser/parsed_column_list.hpp"
 #include "duckdb/planner/column_binding.hpp"
 #include "duckdb/planner/expression/bound_parameter_data.hpp"
 #include "duckdb/planner/joinside.hpp"
@@ -452,6 +454,38 @@ OrderByNode OrderByNode::Deserialize(Deserializer &deserializer) {
 	auto null_order = deserializer.ReadProperty<OrderByNullType>(101, "null_order");
 	auto expression = deserializer.ReadPropertyWithDefault<unique_ptr<ParsedExpression>>(102, "expression");
 	OrderByNode result(type, null_order, std::move(expression));
+	return result;
+}
+
+void ParsedColumnDefinition::Serialize(Serializer &serializer) const {
+	serializer.WritePropertyWithDefault<Identifier>(100, "name", name);
+	serializer.WritePropertyWithDefault<unique_ptr<ParsedExpression>>(101, "type_expression", type_expression);
+	serializer.WritePropertyWithDefault<unique_ptr<ParsedExpression>>(102, "expression", expression);
+	serializer.WriteProperty<TableColumnType>(103, "category", category);
+	serializer.WriteProperty<duckdb::CompressionType>(104, "compression_type", compression_type);
+	serializer.WritePropertyWithDefault<Value>(105, "comment", comment, Value());
+	serializer.WritePropertyWithDefault<InsertionOrderPreservingMap<string>>(106, "tags", tags, InsertionOrderPreservingMap<string>());
+}
+
+ParsedColumnDefinition ParsedColumnDefinition::Deserialize(Deserializer &deserializer) {
+	auto name = deserializer.ReadPropertyWithDefault<Identifier>(100, "name");
+	auto type_expression = deserializer.ReadPropertyWithDefault<unique_ptr<ParsedExpression>>(101, "type_expression");
+	auto expression = deserializer.ReadPropertyWithDefault<unique_ptr<ParsedExpression>>(102, "expression");
+	auto category = deserializer.ReadProperty<TableColumnType>(103, "category");
+	ParsedColumnDefinition result(std::move(name), std::move(type_expression), std::move(expression), category);
+	deserializer.ReadProperty<duckdb::CompressionType>(104, "compression_type", result.compression_type);
+	deserializer.ReadPropertyWithExplicitDefault<Value>(105, "comment", result.comment, Value());
+	deserializer.ReadPropertyWithExplicitDefault<InsertionOrderPreservingMap<string>>(106, "tags", result.tags, InsertionOrderPreservingMap<string>());
+	return result;
+}
+
+void ParsedColumnList::Serialize(Serializer &serializer) const {
+	serializer.WritePropertyWithDefault<vector<ParsedColumnDefinition>>(100, "columns", columns);
+}
+
+ParsedColumnList ParsedColumnList::Deserialize(Deserializer &deserializer) {
+	auto columns = deserializer.ReadPropertyWithDefault<vector<ParsedColumnDefinition>>(100, "columns");
+	ParsedColumnList result(std::move(columns));
 	return result;
 }
 
