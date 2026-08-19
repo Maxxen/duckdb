@@ -207,11 +207,12 @@ string RenameTableInfo::ToString() const {
 //===--------------------------------------------------------------------===//
 // AddColumnInfo
 //===--------------------------------------------------------------------===//
-AddColumnInfo::AddColumnInfo(ColumnDefinition new_column_p)
-    : AlterTableInfo(AlterTableType::ADD_COLUMN), new_column(std::move(new_column_p)) {
+AddColumnInfo::AddColumnInfo(const ColumnDefinition &new_column_p)
+    : AlterTableInfo(AlterTableType::ADD_COLUMN), new_column(ParsedColumnDefinition::FromColumn(new_column_p)) {
 }
 
-AddColumnInfo::AddColumnInfo(const AlterEntryData &data, ColumnDefinition new_column, bool if_column_not_exists)
+AddColumnInfo::AddColumnInfo(const AlterEntryData &data, ParsedColumnDefinition new_column,
+                             bool if_column_not_exists)
     : AlterTableInfo(AlterTableType::ADD_COLUMN, data), new_column(std::move(new_column)),
       if_column_not_exists(if_column_not_exists) {
 }
@@ -234,8 +235,11 @@ string AddColumnInfo::ToString() const {
 	if (if_column_not_exists) {
 		result += " IF NOT EXISTS";
 	}
-	result += " " + SQLIdentifier(this->new_column.GetName());
-	result += " " + this->new_column.GetType().ToString();
+	result += " " + SQLIdentifier(this->new_column.Name());
+	if (!this->new_column.HasType()) {
+		throw InternalException("ALTER TABLE ADD COLUMN without a type cannot be rendered as SQL");
+	}
+	result += " " + this->new_column.Type().ToString();
 	if (this->new_column.HasDefaultValue()) {
 		result += " DEFAULT ";
 		result += this->new_column.DefaultValue().ToString();
@@ -247,12 +251,12 @@ string AddColumnInfo::ToString() const {
 //===--------------------------------------------------------------------===//
 // AddFieldInfo
 //===--------------------------------------------------------------------===//
-AddFieldInfo::AddFieldInfo(ColumnDefinition new_field_p)
-    : AlterTableInfo(AlterTableType::ADD_FIELD), new_field(std::move(new_field_p)) {
+AddFieldInfo::AddFieldInfo(const ColumnDefinition &new_field_p)
+    : AlterTableInfo(AlterTableType::ADD_FIELD), new_field(ParsedColumnDefinition::FromColumn(new_field_p)) {
 }
 
-AddFieldInfo::AddFieldInfo(const AlterEntryData &data, vector<Identifier> column_path_p, ColumnDefinition new_field_p,
-                           bool if_field_not_exists)
+AddFieldInfo::AddFieldInfo(const AlterEntryData &data, vector<Identifier> column_path_p,
+                           ParsedColumnDefinition new_field_p, bool if_field_not_exists)
     : AlterTableInfo(AlterTableType::ADD_FIELD, data), column_path(std::move(column_path_p)),
       new_field(std::move(new_field_p)), if_field_not_exists(if_field_not_exists) {
 }

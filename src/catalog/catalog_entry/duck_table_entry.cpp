@@ -488,7 +488,7 @@ unique_ptr<CatalogEntry> DuckTableEntry::RenameColumn(ClientContext &context, Re
 }
 
 unique_ptr<CatalogEntry> DuckTableEntry::AddColumn(ClientContext &context, AddColumnInfo &info) {
-	auto col_name = info.new_column.GetName();
+	auto col_name = info.new_column.Name();
 
 	// We're checking for the opposite condition (ADD COLUMN IF _NOT_ EXISTS ...).
 	if (info.if_column_not_exists && ColumnExists(col_name)) {
@@ -509,16 +509,15 @@ unique_ptr<CatalogEntry> DuckTableEntry::AddColumn(ClientContext &context, AddCo
 
 	auto binder = Binder::CreateBinder(context);
 	binder->SetSearchPath(catalog, schema.name);
-	binder->BindLogicalType(info.new_column.TypeMutable());
+	auto bound_column = binder->BindParsedColumnDefinition(info.new_column);
 
 	// Check if type is supported in this database version
-	CheckTypeIsSupported(info.new_column.GetType(), catalog.GetAttached());
+	CheckTypeIsSupported(bound_column.GetType(), catalog.GetAttached());
 
-	info.new_column.SetOid(columns.LogicalColumnCount());
-	info.new_column.SetStorageOid(columns.PhysicalColumnCount());
-	auto col = info.new_column.Copy();
+	bound_column.SetOid(columns.LogicalColumnCount());
+	bound_column.SetStorageOid(columns.PhysicalColumnCount());
 
-	create_info->columns.AddColumn(std::move(col));
+	create_info->columns.AddColumn(bound_column.Copy());
 
 	vector<unique_ptr<Expression>> bound_defaults;
 	auto bound_create_info =
@@ -527,11 +526,11 @@ unique_ptr<CatalogEntry> DuckTableEntry::AddColumn(ClientContext &context, AddCo
 		// When replaying WAL, only Bind DEFAULT for added Column
 		auto &catalog_name = schema.ParentCatalog().GetName();
 		auto &schema_name = schema.name;
-		binder->BindDefaultValue(info.new_column, bound_defaults, catalog_name.GetIdentifierName(),
+		binder->BindDefaultValue(bound_column, bound_defaults, catalog_name.GetIdentifierName(),
 		                         schema_name.GetIdentifierName());
 	}
 	SetAlterDependencies(*bound_create_info, info);
-	auto new_storage = make_shared_ptr<DataTable>(context, *storage, info.new_column, *bound_defaults.back());
+	auto new_storage = make_shared_ptr<DataTable>(context, *storage, bound_column, *bound_defaults.back());
 	return make_uniq<DuckTableEntry>(catalog, schema, *bound_create_info, new_storage, triggers);
 }
 
@@ -678,7 +677,10 @@ unique_ptr<CatalogEntry> DuckTableEntry::AddField(ClientContext &context, AddFie
 	// follow the path - the parent column must exist regardless of IF NOT EXISTS (which only applies to the new field)
 	auto col_idx = GetColumnIndex(info.column_path[0], false);
 	auto &col = GetColumn(col_idx);
-	auto res = AddFieldToStruct(col.Type(), info.column_path, info.new_field);
+	auto binder = Binder::CreateBinder(context);
+	binder->SetSearchPath(catalog, schema.name);
+	auto bound_field = binder->BindParsedColumnDefinition(info.new_field);
+	auto res = AddFieldToStruct(col.Type(), info.column_path, bound_field);
 	if (res.error.HasError()) {
 		if (!info.if_field_not_exists) {
 			res.error.Throw();

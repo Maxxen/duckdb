@@ -56,10 +56,6 @@ const LogicalType &ColumnDefinition::Type() const {
 	return type;
 }
 
-LogicalType &ColumnDefinition::TypeMutable() {
-	return type;
-}
-
 void ColumnDefinition::SetType(const LogicalType &type) {
 	this->type = type;
 }

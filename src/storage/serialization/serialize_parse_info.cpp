@@ -239,7 +239,7 @@ unique_ptr<AlterInfo> AlterDatabaseInfo::Deserialize(Deserializer &deserializer)
 
 void AddColumnInfo::Serialize(Serializer &serializer) const {
 	AlterTableInfo::Serialize(serializer);
-	serializer.WriteProperty<ColumnDefinition>(400, "new_column", new_column);
+	serializer.WriteProperty<ColumnDefinition>(400, "new_column", new_column.ToResolvedColumn());
 	serializer.WritePropertyWithDefault<bool>(401, "if_column_not_exists", if_column_not_exists);
 }
 
@@ -263,7 +263,7 @@ unique_ptr<AlterTableInfo> AddConstraintInfo::Deserialize(Deserializer &deserial
 
 void AddFieldInfo::Serialize(Serializer &serializer) const {
 	AlterTableInfo::Serialize(serializer);
-	serializer.WriteProperty<ColumnDefinition>(400, "new_field", new_field);
+	serializer.WriteProperty<ColumnDefinition>(400, "new_field", new_field.ToResolvedColumn());
 	serializer.WritePropertyWithDefault<bool>(401, "if_field_not_exists", if_field_not_exists);
 	serializer.WritePropertyWithDefault<vector<Identifier>>(402, "column_path", column_path);
 }

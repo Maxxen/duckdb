@@ -3,6 +3,7 @@
 #include "duckdb/parser/expression/columnref_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/common/exception/parser_exception.hpp"
+#include "duckdb/common/serializer/serializer.hpp"
 
 namespace duckdb {
 
@@ -18,6 +19,40 @@ ParsedColumnDefinition::ParsedColumnDefinition(Identifier name_p, unique_ptr<Par
 
 unique_ptr<ParsedExpression> ParsedColumnDefinition::ResolvedTypeExpression(const LogicalType &type) {
 	return make_uniq_base<ParsedExpression, ConstantExpression>(Value::TYPE(type));
+}
+
+ColumnDefinition ParsedColumnDefinition::ToResolvedColumn() const {
+	LogicalType resolved = LogicalType::ANY;
+	if (type_expression) {
+		if (type_expression->GetExpressionClass() != ExpressionClass::CONSTANT) {
+			throw SerializationException("Column \"%s\" still has an unresolved type expression", name);
+		}
+		auto &constant = type_expression->Cast<ConstantExpression>();
+		if (constant.GetValue().type().id() != LogicalTypeId::TYPE) {
+			throw SerializationException("Column \"%s\" still has an unresolved type expression", name);
+		}
+		resolved = TypeValue::GetType(constant.GetValue());
+	}
+	ColumnDefinition result(name, resolved, expression ? expression->Copy() : nullptr, category);
+	result.SetCompressionType(compression_type);
+	result.SetComment(comment);
+	result.SetTags(tags);
+	return result;
+}
+
+ParsedColumnDefinition ParsedColumnDefinition::FromColumn(const ColumnDefinition &column) {
+	unique_ptr<ParsedExpression> type_expr;
+	if (column.Type().id() != LogicalTypeId::ANY) {
+		type_expr = ResolvedTypeExpression(column.Type());
+	}
+	auto expr = column.Generated()             ? column.GeneratedExpression().Copy()
+	            : column.HasDefaultValue()     ? column.DefaultValue().Copy()
+	                                           : nullptr;
+	ParsedColumnDefinition result(column.Name(), std::move(type_expr), std::move(expr), column.Category());
+	result.SetCompressionType(column.CompressionType());
+	result.SetComment(column.Comment());
+	result.SetTags(column.Tags());
+	return result;
 }
 
 ParsedColumnDefinition ParsedColumnDefinition::Copy() const {

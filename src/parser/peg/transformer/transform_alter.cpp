@@ -40,7 +40,7 @@ unique_ptr<SQLStatement> PEGTransformerFactory::TransformAlterStatement(PEGTrans
 	    TransformAndMaterializeAlter(alter_entry_data,
 	                                 make_uniq<AddColumnInfo>(add_column.GetAlterEntryData(), std::move(null_column),
 	                                                          add_column.if_column_not_exists),
-	                                 column_entry.GetName().GetIdentifierName(), column_entry.DefaultValue().Copy())));
+	                                 column_entry.Name().GetIdentifierName(), column_entry.DefaultValue().Copy())));
 }
 
 unique_ptr<AlterInfo>
@@ -206,7 +206,13 @@ unique_ptr<AlterTableInfo> PEGTransformerFactory::TransformAddColumn(PEGTransfor
                                                                      const bool &has_result,
                                                                      const optional<bool> &if_not_exists,
                                                                      AddColumnEntry add_column_entry) {
-	auto column_definition = ColumnDefinition(add_column_entry.column_path.back(), add_column_entry.type);
+	// the grammar delivers the type as LogicalType::UNBOUND wrapping a TypeExpression; carry the
+	// TypeExpression directly, the binder resolves it
+	unique_ptr<ParsedExpression> type_expr;
+	if (add_column_entry.type.id() != LogicalTypeId::INVALID) {
+		type_expr = UnboundType::GetTypeExpression(add_column_entry.type)->Copy();
+	}
+	auto column_definition = ParsedColumnDefinition(add_column_entry.column_path.back(), std::move(type_expr));
 	if (add_column_entry.default_value) {
 		column_definition.SetDefaultValue(std::move(add_column_entry.default_value));
 	}

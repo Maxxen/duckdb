@@ -14,6 +14,7 @@
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/common/enums/compression_type.hpp"
 #include "duckdb/catalog/catalog_entry/table_column_type.hpp"
+#include "duckdb/parser/column_definition.hpp"
 
 namespace duckdb {
 
@@ -33,6 +34,11 @@ public:
 public:
 	//! Expresses an already-resolved type as a parsed type expression
 	DUCKDB_API static unique_ptr<ParsedExpression> ResolvedTypeExpression(const LogicalType &type);
+	//! The bound form of a column whose type expression is already resolved (i.e. a constant produced by
+	//! ResolvedTypeExpression). Throws if the type still needs a binder.
+	DUCKDB_API ColumnDefinition ToResolvedColumn() const;
+	//! The parsed form of a bound column, with its type folded into a constant type expression
+	DUCKDB_API static ParsedColumnDefinition FromColumn(const ColumnDefinition &column);
 
 	//! name
 	DUCKDB_API const Identifier &Name() const;

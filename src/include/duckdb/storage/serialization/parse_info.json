@@ -150,7 +150,8 @@
       {
         "id": 400,
         "name": "new_column",
-        "type": "ColumnDefinition"
+        "type": "ColumnDefinition",
+        "serialize_property": "new_column.ToResolvedColumn()"
       },
       {
         "id": 401,
@@ -170,7 +171,8 @@
       {
         "id": 400,
         "name": "new_field",
-        "type": "ColumnDefinition"
+        "type": "ColumnDefinition",
+        "serialize_property": "new_field.ToResolvedColumn()"
       },
       {
         "id": 401,

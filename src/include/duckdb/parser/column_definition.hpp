@@ -36,7 +36,6 @@ public:
 
 	//! type
 	DUCKDB_API const LogicalType &Type() const;
-	LogicalType &TypeMutable();
 	void SetType(const LogicalType &type);
 
 	//! name

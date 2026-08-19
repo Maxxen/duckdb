@@ -10,6 +10,7 @@
 
 #include "duckdb/parser/parsed_data/alter_info.hpp"
 #include "duckdb/parser/column_definition.hpp"
+#include "duckdb/parser/parsed_column_definition.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/result_modifier.hpp"
 
@@ -181,11 +182,12 @@ private:
 // AddColumnInfo
 //===--------------------------------------------------------------------===//
 struct AddColumnInfo : public AlterTableInfo {
-	AddColumnInfo(const AlterEntryData &data, ColumnDefinition new_column, bool if_column_not_exists);
+	AddColumnInfo(const AlterEntryData &data, ParsedColumnDefinition new_column, bool if_column_not_exists);
 	~AddColumnInfo() override;
 
-	//! New column
-	ColumnDefinition new_column;
+	//! New column. Unbound as parsed; the binder resolves its type expression and folds it to a
+	//! constant, so what reaches the WAL is the type resolved at statement time.
+	ParsedColumnDefinition new_column;
 	//! Whether or not an error should be thrown if the column exist
 	bool if_column_not_exists;
 
@@ -197,21 +199,22 @@ public:
 	static unique_ptr<AlterTableInfo> Deserialize(Deserializer &deserializer);
 
 private:
-	explicit AddColumnInfo(ColumnDefinition new_column);
+	//! Deserialization: the wire format carries the bound column
+	explicit AddColumnInfo(const ColumnDefinition &new_column);
 };
 
 //===--------------------------------------------------------------------===//
 // AddFieldInfo
 //===--------------------------------------------------------------------===//
 struct AddFieldInfo : public AlterTableInfo {
-	AddFieldInfo(const AlterEntryData &data, vector<Identifier> column_path, ColumnDefinition new_field,
+	AddFieldInfo(const AlterEntryData &data, vector<Identifier> column_path, ParsedColumnDefinition new_field,
 	             bool if_field_not_exists);
 	~AddFieldInfo() override;
 
 	//! Path to source field.
 	vector<Identifier> column_path;
-	//! New field to add.
-	ColumnDefinition new_field;
+	//! New field to add. Unbound as parsed; see AddColumnInfo::new_column.
+	ParsedColumnDefinition new_field;
 	//! Whether or not an error should be thrown if the field does not exist.
 	bool if_field_not_exists;
 
@@ -226,7 +229,8 @@ public:
 	static unique_ptr<AlterTableInfo> Deserialize(Deserializer &deserializer);
 
 private:
-	explicit AddFieldInfo(ColumnDefinition new_column);
+	//! Deserialization: the wire format carries the bound column
+	explicit AddFieldInfo(const ColumnDefinition &new_field);
 };
 
 //===--------------------------------------------------------------------===//

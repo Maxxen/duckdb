@@ -77,17 +77,27 @@ BoundStatement Binder::BindAlterAddIndex(BoundStatement &result, CatalogEntry &e
 	return std::move(result);
 }
 
+//! Resolve the column's type expression here, where the session search path applies, and fold the
+//! result back into a constant so what is applied (and replayed from the WAL) is that same type
+static void FoldColumnType(Binder &binder, ParsedColumnDefinition &column) {
+	if (!column.HasType()) {
+		return;
+	}
+	auto bound = binder.BindParsedColumnDefinition(column);
+	column.SetTypeExpression(ParsedColumnDefinition::ResolvedTypeExpression(bound.Type()));
+}
+
 static void BindAlterTypes(Binder &binder, AlterStatement &stmt) {
 	if (stmt.info->type == AlterType::ALTER_TABLE) {
 		auto &table_info = stmt.info->Cast<AlterTableInfo>();
 		switch (table_info.alter_table_type) {
 		case AlterTableType::ADD_COLUMN: {
 			auto &add_info = table_info.Cast<AddColumnInfo>();
-			binder.BindLogicalType(add_info.new_column.TypeMutable());
+			FoldColumnType(binder, add_info.new_column);
 		} break;
 		case AlterTableType::ADD_FIELD: {
 			auto &add_info = table_info.Cast<AddFieldInfo>();
-			binder.BindLogicalType(add_info.new_field.TypeMutable());
+			FoldColumnType(binder, add_info.new_field);
 		} break;
 		case AlterTableType::ALTER_COLUMN_TYPE: {
 			auto &alter_column_info = table_info.Cast<ChangeColumnTypeInfo>();
