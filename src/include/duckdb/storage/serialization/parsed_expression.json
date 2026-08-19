@@ -115,8 +115,9 @@
       {
         "id": 201,
         "name": "cast_type",
-        "type": "ParsedExpression*",
-        "child_skip": true
+        "type": "TypeExpression*",
+        "child_skip": true,
+        "base": "ParsedExpression"
       },
       {
         "id": 202,

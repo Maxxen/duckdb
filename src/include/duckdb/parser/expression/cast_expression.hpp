@@ -10,6 +10,7 @@
 
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
 
 namespace duckdb {
 
@@ -19,29 +20,25 @@ public:
 	static constexpr const ExpressionClass TYPE = ExpressionClass::CAST;
 
 public:
-	//! Cast to a type that still has to be bound (a TypeExpression)
-	DUCKDB_API CastExpression(unique_ptr<ParsedExpression> target, unique_ptr<ParsedExpression> child,
+	DUCKDB_API CastExpression(unique_ptr<TypeExpression> target, unique_ptr<ParsedExpression> child,
 	                          bool try_cast = false);
-	//! Cast to a type that is already known. An UNBOUND type contributes its type expression; any other type
-	//! is folded into a constant, so the target is always a parsed expression.
+	//! Cast to an already-resolved type. The type is written back out as a TypeExpression, so the target is
+	//! always an unbound type expression - see TypeExpression::FromLogicalType.
 	DUCKDB_API CastExpression(const LogicalType &target, unique_ptr<ParsedExpression> child, bool try_cast = false);
 
 public:
-	//! Turns a type into the parsed expression a CastExpression stores it as
-	DUCKDB_API static unique_ptr<ParsedExpression> TypeExpressionFrom(const LogicalType &type);
-
-	const ParsedExpression &TargetType() const {
+	const TypeExpression &TargetType() const {
 		return *cast_type;
 	}
-	const unique_ptr<ParsedExpression> &GetTargetType() const {
+	const unique_ptr<TypeExpression> &GetTargetType() const {
 		return cast_type;
 	}
-	ParsedExpression &TargetTypeMutable() {
+	TypeExpression &TargetTypeMutable() {
 		return *cast_type;
 	}
-	void SetTargetType(unique_ptr<ParsedExpression> target);
-	//! The target as a LogicalType: the resolved type if it has been folded to a constant, an UNBOUND type
-	//! wrapping the type expression otherwise. Used at the serialization seam.
+	void SetTargetType(unique_ptr<TypeExpression> target);
+	//! The target as an UNBOUND LogicalType. Used at the serialization seam, which keeps writing a LogicalType
+	//! so that the stored format does not depend on how the target is held in memory.
 	DUCKDB_API LogicalType GetTargetLogicalType() const;
 
 	const ParsedExpression &Child() const {
@@ -75,7 +72,7 @@ private:
 	//! The child of the cast expression
 	unique_ptr<ParsedExpression> child;
 	//! The type to cast to, as an unbound type expression
-	unique_ptr<ParsedExpression> cast_type;
+	unique_ptr<TypeExpression> cast_type;
 	//! Whether or not this is a try_cast expression
 	bool try_cast;
 

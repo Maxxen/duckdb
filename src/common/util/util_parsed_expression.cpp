@@ -386,7 +386,10 @@ bool CastExpression::Equals(const ParsedExpression &other) const {
 	if (!ParsedExpression::Equals(child, other_p.child)) {
 		return false;
 	}
-	if (!ParsedExpression::Equals(cast_type, other_p.cast_type)) {
+	if (static_cast<bool>(cast_type) != static_cast<bool>(other_p.cast_type)) {
+		return false;
+	}
+	if (cast_type && !cast_type->Equals(*other_p.cast_type)) {
 		return false;
 	}
 	if (try_cast != other_p.try_cast) {
@@ -405,7 +408,7 @@ hash_t CastExpression::Hash() const {
 unique_ptr<ParsedExpression> CastExpression::Copy() const {
 	auto copy = duckdb::unique_ptr<CastExpression>(new CastExpression());
 	copy->child = child ? child->Copy() : nullptr;
-	copy->cast_type = cast_type ? cast_type->Copy() : nullptr;
+	copy->cast_type = cast_type ? unique_ptr_cast<ParsedExpression, TypeExpression>(cast_type->Copy()) : nullptr;
 	copy->try_cast = try_cast;
 	copy->CopyBase(*this);
 	return std::move(copy);

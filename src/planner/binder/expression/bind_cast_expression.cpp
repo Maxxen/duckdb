@@ -14,7 +14,7 @@ BindResult ExpressionBinder::BindExpression(CastExpression &expr, idx_t depth) {
 	}
 	// FIXME: We can also implement 'hello'::schema.custom_type; and pass by the schema down here.
 	// Right now just considering its DEFAULT_SCHEMA always
-	auto target_type = binder.BindLogicalType(expr.GetTargetType());
+	auto target_type = binder.BindLogicalType(expr.TargetType());
 	// the children have been successfully resolved
 	auto &child = BoundExpression::GetExpression(*expr.ChildMutable());
 	if (expr.IsTryCast()) {

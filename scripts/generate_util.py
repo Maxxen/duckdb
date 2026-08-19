@@ -42,6 +42,16 @@ def is_parsed_expression_ptr(type_str):
     return type_str in ('ParsedExpression*', 'unique_ptr<ParsedExpression>')
 
 
+def derived_expression_class(member):
+    """A member declared as a concrete ParsedExpression subclass pointer, e.g. TypeExpression*."""
+    if member.get('base') != 'ParsedExpression':
+        return None
+    type_str = member['type']
+    if not type_str.endswith('*'):
+        return None
+    return type_str[:-1]
+
+
 def is_parsed_expression_list(type_str):
     return type_str in ('vector<ParsedExpression*>', 'vector<unique_ptr<ParsedExpression>>')
 
@@ -166,6 +176,16 @@ def generate_member_comparison(member, indent='\t'):
     field_name = get_member_field_name(member)
     type_str = member['type']
 
+    if derived_expression_class(member):
+        return [
+            f'{indent}if (static_cast<bool>({field_name}) != static_cast<bool>(other_p.{field_name})) {{',
+            f'{indent}\treturn false;',
+            f'{indent}}}',
+            f'{indent}if ({field_name} && !{field_name}->Equals(*other_p.{field_name})) {{',
+            f'{indent}\treturn false;',
+            f'{indent}}}',
+        ]
+
     if type_str in ('Identifier', 'duckdb::Identifier'):
         return [
             f'{indent}if ({field_name} != other_p.{field_name}) {{',
@@ -280,6 +300,12 @@ def generate_member_copy(member, indent='\t'):
     field = get_member_field_name(member)
     type_str = member['type']
     ii = indent + '\t'
+
+    derived = derived_expression_class(member)
+    if derived:
+        return [
+            f'{indent}copy->{field} = {field} ? unique_ptr_cast<ParsedExpression, {derived}>({field}->Copy()) : nullptr;'
+        ]
 
     if is_parsed_expression_ptr(type_str):
         return [f'{indent}copy->{field} = {field} ? {field}->Copy() : nullptr;']
@@ -403,6 +429,8 @@ def generate_member_hash(member, indent='\t'):
     field_name = get_member_field_name(member)
     type_str = member['type']
 
+    if derived_expression_class(member):
+        return [f'{indent}hash = CombineHash(hash, {field_name} ? {field_name}->Hash() : 0);']
     # Covered by EnumerateChildren in ParsedExpression::Hash - unless it is not part of the tree
     if is_parsed_expression_ptr(type_str):
         if member.get('child_skip', False):
