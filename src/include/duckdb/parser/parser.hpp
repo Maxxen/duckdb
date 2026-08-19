@@ -97,7 +97,7 @@ public:
 	//! The returned columns are unbound - their types are TypeExpressions the caller must resolve
 	static ParsedColumnList ParseColumnList(const string &column_list, ParserOptions options = ParserOptions());
 	static ParsedColumnDefinition ParseColumnDefinition(const string &column_definition,
-	                                              ParserOptions options = ParserOptions());
+	                                                    ParserOptions options = ParserOptions());
 
 	static bool StripUnicodeSpaces(const string &query_str, string &new_query);
 

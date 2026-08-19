@@ -1,0 +1,68 @@
+# name: test/sql/alter/add_column_type_wal.test
+# description: ADD COLUMN resolves its type against the session search path; replaying it from the WAL, which has no search path, must resolve the same type
+# group: [alter]
+
+load {TEST_DIR}/add_column_type_wal.db
+
+statement ok
+PRAGMA disable_checkpoint_on_shutdown
+
+statement ok
+PRAGMA wal_autocheckpoint='1TB';
+
+statement ok
+CREATE SCHEMA s1;
+
+statement ok
+CREATE SCHEMA s2;
+
+# two distinct types named "dup", neither of them in the table's own schema, so only the session
+# search path distinguishes them
+statement ok
+CREATE TYPE s1.dup AS INTEGER;
+
+statement ok
+CREATE TYPE s2.dup AS VARCHAR;
+
+statement ok
+CREATE TABLE main.tbl (id INTEGER);
+
+statement ok
+SET search_path='s2';
+
+# unqualified: the search path picks s2.dup over s1.dup
+statement ok
+ALTER TABLE main.tbl ADD COLUMN c dup;
+
+# explicitly qualified: stays s1.dup regardless of the search path
+statement ok
+ALTER TABLE main.tbl ADD COLUMN d s1.dup;
+
+# nested: the element type inside the list needs resolving too
+statement ok
+ALTER TABLE main.tbl ADD COLUMN e dup[];
+
+query II
+SELECT column_name, data_type FROM duckdb_columns() WHERE table_name='tbl' AND column_name <> 'id' ORDER BY column_name
+----
+c	VARCHAR
+d	INTEGER
+e	VARCHAR[]
+
+statement ok
+INSERT INTO main.tbl VALUES (1, 'x', 2, ['y']);
+
+restart
+
+# the ALTERs are replayed from the WAL here, in a session with no search path set
+query II
+SELECT column_name, data_type FROM duckdb_columns() WHERE table_name='tbl' AND column_name <> 'id' ORDER BY column_name
+----
+c	VARCHAR
+d	INTEGER
+e	VARCHAR[]
+
+query IIII
+SELECT id, c, d, e FROM main.tbl
+----
+1	x	2	[y]

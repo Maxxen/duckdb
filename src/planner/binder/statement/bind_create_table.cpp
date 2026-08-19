@@ -315,7 +315,7 @@ void Binder::BindGeneratedColumns(BoundCreateTableInfo &info) {
 ColumnDefinition Binder::BindParsedColumnDefinition(const ParsedColumnDefinition &parsed_col) {
 	LogicalType col_type = LogicalType::ANY;
 	if (parsed_col.HasType()) {
-		col_type = BindLogicalTypeInternal(parsed_col.GetTypeExpression());
+		col_type = BindLogicalType(parsed_col.Type());
 	}
 	if (parsed_col.Generated()) {
 		ColumnDefinition bound_col(parsed_col.Name(), col_type, parsed_col.GeneratedExpression().Copy(),

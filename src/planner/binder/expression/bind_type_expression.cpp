@@ -17,7 +17,10 @@ static bool IsValidTypeLookup(optional_ptr<CatalogEntry> entry) {
 	return entry->Cast<TypeCatalogEntry>().user_type.id() != LogicalTypeId::INVALID;
 }
 
-BindResult ExpressionBinder::BindExpression(TypeExpression &type_expr, idx_t depth) {
+//! Resolve the catalog entry a type expression names. The qualification is resolved the same way a table
+//! reference is: a leading component is the catalog when it names an attached database, and otherwise the
+//! outermost schema of a (possibly nested) schema path.
+TypeCatalogEntry &Binder::LookupTypeEntry(const TypeExpression &type_expr) {
 	auto &type_name = type_expr.GetTypeName();
 
 	QueryErrorContext error_context(type_expr);
@@ -27,40 +30,40 @@ BindResult ExpressionBinder::BindExpression(TypeExpression &type_expr, idx_t dep
 
 	// Resolve the qualification the same way a table reference is resolved: a leading component is the catalog when
 	// it names an attached database, and otherwise the outermost schema of a (possibly nested) schema path.
-	auto bound_name = Binder::BindTableName(binder.EntryRetriever(), type_expr.GetQualifiedName());
+	auto bound_name = Binder::BindTableName(EntryRetriever(), type_expr.GetQualifiedName());
 	auto &type_catalog = bound_name.Catalog();
 	bool is_qualified = bound_name.Path().size() > 1;
 
 	if (type_catalog.empty() && !DatabaseManager::Get(context).HasDefaultDatabase()) {
 		// Look in the system catalog if no catalog was specified
-		entry = binder.entry_retriever.GetEntry(
-		    EntryLookupInfo(type_lookup, bound_name.WithCatalog(Identifier::SystemCatalog())));
+		entry =
+		    entry_retriever.GetEntry(EntryLookupInfo(type_lookup, bound_name.WithCatalog(Identifier::SystemCatalog())));
 	} else {
 		// Try to search from most specific to least specific
 		// The search path should already have been set to the correct catalog/schema,
 		// in case we are looking for a type in the same schema as a table we are creating
 
-		entry = binder.entry_retriever.GetEntry(EntryLookupInfo(type_lookup, bound_name), OnEntryNotFound::RETURN_NULL);
+		entry = entry_retriever.GetEntry(EntryLookupInfo(type_lookup, bound_name), OnEntryNotFound::RETURN_NULL);
 
 		if (!IsValidTypeLookup(entry)) {
 			if (is_qualified) {
 				// re-run the lookup to report the qualification that was given
-				entry = binder.entry_retriever.GetEntry(EntryLookupInfo(type_lookup, bound_name),
-				                                        OnEntryNotFound::THROW_EXCEPTION);
+				entry = entry_retriever.GetEntry(EntryLookupInfo(type_lookup, bound_name),
+				                                 OnEntryNotFound::THROW_EXCEPTION);
 			}
-			entry = binder.entry_retriever.GetEntry(
+			entry = entry_retriever.GetEntry(
 			    EntryLookupInfo(type_lookup, QualifiedName(type_catalog, Identifier::InvalidSchema(),
 			                                               type_lookup.GetEntryIdentifier())),
 			    OnEntryNotFound::RETURN_NULL);
 		}
 		if (!IsValidTypeLookup(entry)) {
-			entry = binder.entry_retriever.GetEntry(
+			entry = entry_retriever.GetEntry(
 			    EntryLookupInfo(type_lookup, QualifiedName(Identifier::InvalidCatalog(), Identifier::InvalidSchema(),
 			                                               type_lookup.GetEntryIdentifier())),
 			    OnEntryNotFound::RETURN_NULL);
 		}
 		if (!IsValidTypeLookup(entry)) {
-			entry = binder.entry_retriever.GetEntry(
+			entry = entry_retriever.GetEntry(
 			    EntryLookupInfo(type_lookup, QualifiedName(Identifier::SystemCatalog(), Identifier::DefaultSchema(),
 			                                               type_lookup.GetEntryIdentifier())),
 			    OnEntryNotFound::THROW_EXCEPTION);
@@ -69,7 +72,23 @@ BindResult ExpressionBinder::BindExpression(TypeExpression &type_expr, idx_t dep
 
 	// By this point we have to have found a type in the catalog
 	D_ASSERT(entry != nullptr);
-	auto &type_entry = entry->Cast<TypeCatalogEntry>();
+	return entry->Cast<TypeCatalogEntry>();
+}
+
+void Binder::QualifyTypeExpression(TypeExpression &type_expr) {
+	auto &type_entry = LookupTypeEntry(type_expr);
+	type_expr.SetQualifiedName(type_entry.ParentCatalog().GetName(), type_entry.ParentSchema().name,
+	                           type_expr.GetTypeName());
+	for (auto &child : type_expr.GetChildren()) {
+		if (child->GetExpressionClass() == ExpressionClass::TYPE) {
+			QualifyTypeExpression(child->Cast<TypeExpression>());
+		}
+	}
+}
+
+BindResult ExpressionBinder::BindExpression(TypeExpression &type_expr, idx_t depth) {
+	auto &type_name = type_expr.GetTypeName();
+	auto &type_entry = binder.LookupTypeEntry(type_expr);
 
 	// Now handle type parameters
 	auto &unbound_parameters = type_expr.GetChildren();

@@ -1980,6 +1980,25 @@ LogicalType UnboundType::TryDefaultBind(const LogicalType &unbound_type) {
 	return TryDefaultBindTypeExpression(*expr);
 }
 
+unique_ptr<TypeExpression> UnboundType::CopyTypeExpression(const LogicalType &unbound_type) {
+	auto &expr = UnboundType::GetTypeExpression(unbound_type);
+	if (expr->GetExpressionClass() != ExpressionClass::TYPE) {
+		throw InternalException("Unbound type does not wrap a type expression");
+	}
+	return unique_ptr_cast<ParsedExpression, TypeExpression>(expr->Copy());
+}
+
+LogicalType UnboundType::TryDefaultBind(const ParsedExpression &type_expr) {
+	if (type_expr.GetExpressionClass() == ExpressionClass::CONSTANT) {
+		// an already-resolved type, folded into a constant
+		auto &constant = type_expr.Cast<ConstantExpression>();
+		if (constant.GetValue().type().id() == LogicalTypeId::TYPE) {
+			return TypeValue::GetType(constant.GetValue());
+		}
+	}
+	return TryDefaultBindTypeExpression(type_expr);
+}
+
 //===--------------------------------------------------------------------===//
 // Logical Type
 //===--------------------------------------------------------------------===//

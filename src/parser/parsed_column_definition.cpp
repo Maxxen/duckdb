@@ -3,60 +3,24 @@
 #include "duckdb/parser/expression/columnref_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/common/exception/parser_exception.hpp"
-#include "duckdb/common/serializer/serializer.hpp"
 
 namespace duckdb {
 
-ParsedColumnDefinition::ParsedColumnDefinition(Identifier name_p, unique_ptr<ParsedExpression> type_expression_p)
+ParsedColumnDefinition::ParsedColumnDefinition(Identifier name_p) : name(std::move(name_p)) {
+}
+
+ParsedColumnDefinition::ParsedColumnDefinition(Identifier name_p, unique_ptr<TypeExpression> type_expression_p)
     : name(std::move(name_p)), type_expression(std::move(type_expression_p)) {
 }
 
-ParsedColumnDefinition::ParsedColumnDefinition(Identifier name_p, unique_ptr<ParsedExpression> type_expression_p,
+ParsedColumnDefinition::ParsedColumnDefinition(Identifier name_p, unique_ptr<TypeExpression> type_expression_p,
                                                unique_ptr<ParsedExpression> expression_p, TableColumnType category)
     : name(std::move(name_p)), type_expression(std::move(type_expression_p)), expression(std::move(expression_p)),
       category(category) {
 }
 
-unique_ptr<ParsedExpression> ParsedColumnDefinition::ResolvedTypeExpression(const LogicalType &type) {
-	return make_uniq_base<ParsedExpression, ConstantExpression>(Value::TYPE(type));
-}
-
-ColumnDefinition ParsedColumnDefinition::ToResolvedColumn() const {
-	LogicalType resolved = LogicalType::ANY;
-	if (type_expression) {
-		if (type_expression->GetExpressionClass() != ExpressionClass::CONSTANT) {
-			throw SerializationException("Column \"%s\" still has an unresolved type expression", name);
-		}
-		auto &constant = type_expression->Cast<ConstantExpression>();
-		if (constant.GetValue().type().id() != LogicalTypeId::TYPE) {
-			throw SerializationException("Column \"%s\" still has an unresolved type expression", name);
-		}
-		resolved = TypeValue::GetType(constant.GetValue());
-	}
-	ColumnDefinition result(name, resolved, expression ? expression->Copy() : nullptr, category);
-	result.SetCompressionType(compression_type);
-	result.SetComment(comment);
-	result.SetTags(tags);
-	return result;
-}
-
-ParsedColumnDefinition ParsedColumnDefinition::FromColumn(const ColumnDefinition &column) {
-	unique_ptr<ParsedExpression> type_expr;
-	if (column.Type().id() != LogicalTypeId::ANY) {
-		type_expr = ResolvedTypeExpression(column.Type());
-	}
-	auto expr = column.Generated()             ? column.GeneratedExpression().Copy()
-	            : column.HasDefaultValue()     ? column.DefaultValue().Copy()
-	                                           : nullptr;
-	ParsedColumnDefinition result(column.Name(), std::move(type_expr), std::move(expr), column.Category());
-	result.SetCompressionType(column.CompressionType());
-	result.SetComment(column.Comment());
-	result.SetTags(column.Tags());
-	return result;
-}
-
 ParsedColumnDefinition ParsedColumnDefinition::Copy() const {
-	ParsedColumnDefinition copy(name, type_expression ? type_expression->Copy() : nullptr);
+	ParsedColumnDefinition copy(name, CopyTypeExpression());
 	copy.expression = expression ? expression->Copy() : nullptr;
 	copy.category = category;
 	copy.compression_type = compression_type;
@@ -77,19 +41,33 @@ bool ParsedColumnDefinition::HasType() const {
 	return type_expression != nullptr;
 }
 
-const ParsedExpression &ParsedColumnDefinition::Type() const {
+const TypeExpression &ParsedColumnDefinition::Type() const {
 	if (!type_expression) {
 		throw InternalException("Type() called on a column without a declared type");
 	}
 	return *type_expression;
 }
 
-const unique_ptr<ParsedExpression> &ParsedColumnDefinition::GetTypeExpression() const {
+TypeExpression &ParsedColumnDefinition::TypeMutable() {
+	if (!type_expression) {
+		throw InternalException("TypeMutable() called on a column without a declared type");
+	}
+	return *type_expression;
+}
+
+const unique_ptr<TypeExpression> &ParsedColumnDefinition::GetTypeExpression() const {
 	return type_expression;
 }
 
-void ParsedColumnDefinition::SetTypeExpression(unique_ptr<ParsedExpression> type_expression_p) {
+void ParsedColumnDefinition::SetTypeExpression(unique_ptr<TypeExpression> type_expression_p) {
 	this->type_expression = std::move(type_expression_p);
+}
+
+unique_ptr<TypeExpression> ParsedColumnDefinition::CopyTypeExpression() const {
+	if (!type_expression) {
+		return nullptr;
+	}
+	return unique_ptr_cast<ParsedExpression, TypeExpression>(type_expression->Copy());
 }
 
 const ParsedExpression &ParsedColumnDefinition::DefaultValue() const {

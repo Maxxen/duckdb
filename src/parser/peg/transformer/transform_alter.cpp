@@ -208,9 +208,9 @@ unique_ptr<AlterTableInfo> PEGTransformerFactory::TransformAddColumn(PEGTransfor
                                                                      AddColumnEntry add_column_entry) {
 	// the grammar delivers the type as LogicalType::UNBOUND wrapping a TypeExpression; carry the
 	// TypeExpression directly, the binder resolves it
-	unique_ptr<ParsedExpression> type_expr;
+	unique_ptr<TypeExpression> type_expr;
 	if (add_column_entry.type.id() != LogicalTypeId::INVALID) {
-		type_expr = UnboundType::GetTypeExpression(add_column_entry.type)->Copy();
+		type_expr = UnboundType::CopyTypeExpression(add_column_entry.type);
 	}
 	auto column_definition = ParsedColumnDefinition(add_column_entry.column_path.back(), std::move(type_expr));
 	if (add_column_entry.default_value) {

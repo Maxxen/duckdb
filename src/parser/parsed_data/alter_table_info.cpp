@@ -207,12 +207,11 @@ string RenameTableInfo::ToString() const {
 //===--------------------------------------------------------------------===//
 // AddColumnInfo
 //===--------------------------------------------------------------------===//
-AddColumnInfo::AddColumnInfo(const ColumnDefinition &new_column_p)
-    : AlterTableInfo(AlterTableType::ADD_COLUMN), new_column(ParsedColumnDefinition::FromColumn(new_column_p)) {
+AddColumnInfo::AddColumnInfo(ParsedColumnDefinition new_column_p)
+    : AlterTableInfo(AlterTableType::ADD_COLUMN), new_column(std::move(new_column_p)) {
 }
 
-AddColumnInfo::AddColumnInfo(const AlterEntryData &data, ParsedColumnDefinition new_column,
-                             bool if_column_not_exists)
+AddColumnInfo::AddColumnInfo(const AlterEntryData &data, ParsedColumnDefinition new_column, bool if_column_not_exists)
     : AlterTableInfo(AlterTableType::ADD_COLUMN, data), new_column(std::move(new_column)),
       if_column_not_exists(if_column_not_exists) {
 }
@@ -251,8 +250,8 @@ string AddColumnInfo::ToString() const {
 //===--------------------------------------------------------------------===//
 // AddFieldInfo
 //===--------------------------------------------------------------------===//
-AddFieldInfo::AddFieldInfo(const ColumnDefinition &new_field_p)
-    : AlterTableInfo(AlterTableType::ADD_FIELD), new_field(ParsedColumnDefinition::FromColumn(new_field_p)) {
+AddFieldInfo::AddFieldInfo(ParsedColumnDefinition new_field_p)
+    : AlterTableInfo(AlterTableType::ADD_FIELD), new_field(std::move(new_field_p)) {
 }
 
 AddFieldInfo::AddFieldInfo(const AlterEntryData &data, vector<Identifier> column_path_p,

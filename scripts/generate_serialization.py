@@ -362,6 +362,8 @@ supported_member_entries = [
     "hash_skip",
     # skip (de)serialization entirely (member only exists for equals/hash/copy generation)
     "serialize_skip",
+    # the member is an expression, but not a child in the expression tree (used by generate_util.py)
+    "child_skip",
     # accessor annotations (used by generate_util.py for Children/ChildrenMutable generation)
     "accessor_mut",
     "accessor",

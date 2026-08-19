@@ -47,6 +47,8 @@ class ExpressionBinder;
 class LimitModifier;
 class OrderBinder;
 class ParsedColumnDefinition;
+class TypeExpression;
+class TypeCatalogEntry;
 class TableCatalogEntry;
 class ViewCatalogEntry;
 class TableMacroCatalogEntry;
@@ -348,6 +350,13 @@ public:
 	static void BindSchemaOrCatalog(ClientContext &context, QualifiedName &qualified_name);
 
 	void BindLogicalType(LogicalType &type);
+	//! Resolves a parsed type expression into a concrete type against this binder's search path
+	LogicalType BindLogicalType(const ParsedExpression &type_expr);
+	LogicalType BindLogicalType(const unique_ptr<ParsedExpression> &type_expr);
+	//! The catalog entry a type expression names
+	TypeCatalogEntry &LookupTypeEntry(const TypeExpression &type_expr);
+	//! Rewrites a type expression (recursively) to name its type by its resolved catalog and schema
+	void QualifyTypeExpression(TypeExpression &type_expr);
 
 	//! Resolves a parsed (unbound) column definition into a bound ColumnDefinition, resolving its type
 	//! expression against this binder's search path
@@ -635,8 +644,6 @@ private:
 
 	vector<CatalogSearchEntry> GetSearchPath(Catalog &catalog, const Identifier &schema_name,
 	                                         bool default_schema_precedence = false);
-
-	LogicalType BindLogicalTypeInternal(const unique_ptr<ParsedExpression> &type_expr);
 
 	BoundStatement BindSelectNode(SelectNode &statement, BoundStatement from_table);
 

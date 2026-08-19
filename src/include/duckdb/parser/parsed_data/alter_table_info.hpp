@@ -199,8 +199,7 @@ public:
 	static unique_ptr<AlterTableInfo> Deserialize(Deserializer &deserializer);
 
 private:
-	//! Deserialization: the wire format carries the bound column
-	explicit AddColumnInfo(const ColumnDefinition &new_column);
+	explicit AddColumnInfo(ParsedColumnDefinition new_column);
 };
 
 //===--------------------------------------------------------------------===//
@@ -229,8 +228,7 @@ public:
 	static unique_ptr<AlterTableInfo> Deserialize(Deserializer &deserializer);
 
 private:
-	//! Deserialization: the wire format carries the bound column
-	explicit AddFieldInfo(const ColumnDefinition &new_field);
+	explicit AddFieldInfo(ParsedColumnDefinition new_field);
 };
 
 //===--------------------------------------------------------------------===//

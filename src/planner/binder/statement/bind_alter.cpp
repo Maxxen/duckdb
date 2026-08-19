@@ -77,14 +77,14 @@ BoundStatement Binder::BindAlterAddIndex(BoundStatement &result, CatalogEntry &e
 	return std::move(result);
 }
 
-//! Resolve the column's type expression here, where the session search path applies, and fold the
-//! result back into a constant so what is applied (and replayed from the WAL) is that same type
-static void FoldColumnType(Binder &binder, ParsedColumnDefinition &column) {
+//! Resolve the type's qualification here, where the session search path applies, so that applying the ALTER -
+//! including replaying it from the WAL, which has no search path - names the same type. This is the same
+//! treatment the statement's table name gets.
+static void QualifyColumnType(Binder &binder, ParsedColumnDefinition &column) {
 	if (!column.HasType()) {
 		return;
 	}
-	auto bound = binder.BindParsedColumnDefinition(column);
-	column.SetTypeExpression(ParsedColumnDefinition::ResolvedTypeExpression(bound.Type()));
+	binder.QualifyTypeExpression(column.TypeMutable());
 }
 
 static void BindAlterTypes(Binder &binder, AlterStatement &stmt) {
@@ -93,11 +93,11 @@ static void BindAlterTypes(Binder &binder, AlterStatement &stmt) {
 		switch (table_info.alter_table_type) {
 		case AlterTableType::ADD_COLUMN: {
 			auto &add_info = table_info.Cast<AddColumnInfo>();
-			FoldColumnType(binder, add_info.new_column);
+			QualifyColumnType(binder, add_info.new_column);
 		} break;
 		case AlterTableType::ADD_FIELD: {
 			auto &add_info = table_info.Cast<AddFieldInfo>();
-			FoldColumnType(binder, add_info.new_field);
+			QualifyColumnType(binder, add_info.new_field);
 		} break;
 		case AlterTableType::ALTER_COLUMN_TYPE: {
 			auto &alter_column_info = table_info.Cast<ChangeColumnTypeInfo>();

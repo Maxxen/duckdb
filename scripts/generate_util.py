@@ -403,8 +403,10 @@ def generate_member_hash(member, indent='\t'):
     field_name = get_member_field_name(member)
     type_str = member['type']
 
-    # Covered by EnumerateChildren in ParsedExpression::Hash
+    # Covered by EnumerateChildren in ParsedExpression::Hash - unless it is not part of the tree
     if is_parsed_expression_ptr(type_str):
+        if member.get('child_skip', False):
+            return [f'{indent}hash = CombineHash(hash, {field_name} ? {field_name}->Hash() : 0);']
         return []
     if is_parsed_expression_list(type_str):
         return []
@@ -499,6 +501,9 @@ def generate_subclass_hash(entry):
 
 def member_is_iterable_expression(member):
     if member.get('status') in ('read_only', 'deleted'):
+        return False
+    # An expression member that is not part of the expression tree (e.g. a cast's target type)
+    if member.get('child_skip', False):
         return False
     # Synthetic views that alias already-handled fields
     if member.get('serialize_property') and member.get('equals_skip'):

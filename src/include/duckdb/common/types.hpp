@@ -23,6 +23,7 @@ class TypeCatalogEntry;
 class Vector;
 class ClientContext;
 class ParsedExpression;
+class TypeExpression;
 class CoordinateReferenceSystem;
 
 struct string_t; // NOLINT: mimic std casing
@@ -503,6 +504,9 @@ struct UnboundType {
 	// Try to bind the unbound type into a concrete type, using just the built in types
 	DUCKDB_API static LogicalType TryParseAndDefaultBind(const string &type_str);
 	DUCKDB_API static LogicalType TryDefaultBind(const LogicalType &unbound_type);
+	DUCKDB_API static LogicalType TryDefaultBind(const ParsedExpression &type_expr);
+	//! A copy of the TypeExpression an UNBOUND type wraps
+	DUCKDB_API static unique_ptr<TypeExpression> CopyTypeExpression(const LogicalType &unbound_type);
 	DUCKDB_API static const unique_ptr<ParsedExpression> &GetTypeExpression(const LogicalType &type);
 };
 

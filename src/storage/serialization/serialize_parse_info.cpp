@@ -239,12 +239,12 @@ unique_ptr<AlterInfo> AlterDatabaseInfo::Deserialize(Deserializer &deserializer)
 
 void AddColumnInfo::Serialize(Serializer &serializer) const {
 	AlterTableInfo::Serialize(serializer);
-	serializer.WriteProperty<ColumnDefinition>(400, "new_column", new_column.ToResolvedColumn());
+	serializer.WriteProperty<ParsedColumnDefinition>(400, "new_column", new_column);
 	serializer.WritePropertyWithDefault<bool>(401, "if_column_not_exists", if_column_not_exists);
 }
 
 unique_ptr<AlterTableInfo> AddColumnInfo::Deserialize(Deserializer &deserializer) {
-	auto new_column = deserializer.ReadProperty<ColumnDefinition>(400, "new_column");
+	auto new_column = deserializer.ReadProperty<ParsedColumnDefinition>(400, "new_column");
 	auto result = duckdb::unique_ptr<AddColumnInfo>(new AddColumnInfo(std::move(new_column)));
 	deserializer.ReadPropertyWithDefault<bool>(401, "if_column_not_exists", result->if_column_not_exists);
 	return std::move(result);
@@ -263,13 +263,13 @@ unique_ptr<AlterTableInfo> AddConstraintInfo::Deserialize(Deserializer &deserial
 
 void AddFieldInfo::Serialize(Serializer &serializer) const {
 	AlterTableInfo::Serialize(serializer);
-	serializer.WriteProperty<ColumnDefinition>(400, "new_field", new_field.ToResolvedColumn());
+	serializer.WriteProperty<ParsedColumnDefinition>(400, "new_field", new_field);
 	serializer.WritePropertyWithDefault<bool>(401, "if_field_not_exists", if_field_not_exists);
 	serializer.WritePropertyWithDefault<vector<Identifier>>(402, "column_path", column_path);
 }
 
 unique_ptr<AlterTableInfo> AddFieldInfo::Deserialize(Deserializer &deserializer) {
-	auto new_field = deserializer.ReadProperty<ColumnDefinition>(400, "new_field");
+	auto new_field = deserializer.ReadProperty<ParsedColumnDefinition>(400, "new_field");
 	auto result = duckdb::unique_ptr<AddFieldInfo>(new AddFieldInfo(std::move(new_field)));
 	deserializer.ReadPropertyWithDefault<bool>(401, "if_field_not_exists", result->if_field_not_exists);
 	deserializer.ReadPropertyWithDefault<vector<Identifier>>(402, "column_path", result->column_path);

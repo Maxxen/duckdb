@@ -75,8 +75,7 @@ unique_ptr<CreateStatement> PEGTransformerFactory::TransformCreateTableStmt(
 }
 
 CreateTableDefinition
-PEGTransformerFactory::TransformCreateTableAs(PEGTransformer &transformer,
-                                              optional<ParsedColumnList> identifier_list,
+PEGTransformerFactory::TransformCreateTableAs(PEGTransformer &transformer, optional<ParsedColumnList> identifier_list,
                                               optional<PartitionSortedOptions> partition_sorted_options,
                                               optional<case_insensitive_map_t<unique_ptr<ParsedExpression>>> with_list,
                                               unique_ptr<SQLStatement> statement, const optional<bool> &with_data) {
@@ -229,9 +228,9 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 	}
 	// the grammar delivers the type as LogicalType::UNBOUND wrapping a TypeExpression; carry the
 	// TypeExpression directly (null = no declared type)
-	unique_ptr<ParsedExpression> type_expr;
+	unique_ptr<TypeExpression> type_expr;
 	if (has_type) {
-		type_expr = UnboundType::GetTypeExpression(*type)->Copy();
+		type_expr = UnboundType::CopyTypeExpression(*type);
 	}
 	CompressionType compression_type = CompressionType::COMPRESSION_AUTO;
 	ColumnConstraint accumulated_constraints;
@@ -265,11 +264,7 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 					throw ParserException("Specify the VARCHAR type for column \"%s\" with collation.",
 					                      qualified_name.ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA));
 				}
-				if (type_expr->GetExpressionClass() != ExpressionClass::TYPE) {
-					throw InternalException("Expected a type expression");
-				}
-				auto &collated_type = type_expr->Cast<TypeExpression>();
-				if (DefaultTypeGenerator::GetDefaultType(collated_type.GetTypeName()) != LogicalTypeId::VARCHAR) {
+				if (DefaultTypeGenerator::GetDefaultType(type_expr->GetTypeName()) != LogicalTypeId::VARCHAR) {
 					throw ParserException("Only VARCHAR columns can have collations!");
 				}
 				vector<unique_ptr<ParsedExpression>> type_children;
