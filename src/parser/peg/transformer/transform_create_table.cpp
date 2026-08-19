@@ -216,7 +216,7 @@ string PEGTransformerFactory::TransformDotColLabel(PEGTransformer &transformer, 
 }
 
 ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
-    PEGTransformer &transformer, const vector<string> &dotted_identifier, const optional<LogicalType> &type,
+    PEGTransformer &transformer, const vector<string> &dotted_identifier, optional<unique_ptr<TypeExpression>> type,
     optional<GeneratedColumnDefinition> generated_column, const bool &has_result,
     optional<vector<ColumnConstraintEntry>> column_constraint) {
 	auto qualified_name = StringToQualifiedName(dotted_identifier);
@@ -226,11 +226,10 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 		throw ParserException("Column %s must have a type or be defined as a GENERATED column.",
 		                      qualified_name.ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA));
 	}
-	// the grammar delivers the type as LogicalType::UNBOUND wrapping a TypeExpression; carry the
-	// TypeExpression directly (null = no declared type)
+	// null = no declared type
 	unique_ptr<TypeExpression> type_expr;
 	if (has_type) {
-		type_expr = UnboundType::CopyTypeExpression(*type);
+		type_expr = std::move(*type);
 	}
 	CompressionType compression_type = CompressionType::COMPRESSION_AUTO;
 	ColumnConstraint accumulated_constraints;
@@ -283,8 +282,8 @@ ConstraintColumnDefinition PEGTransformerFactory::TransformColumnDefinition(
 		}
 		if (type_expr) {
 			// wrap in a cast to the declared type; the cast target is resolved by the binder
-			generated.expr =
-			    make_uniq<CastExpression>(LogicalType::UNBOUND(type_expr->Copy()), std::move(generated.expr));
+			auto cast_target = unique_ptr_cast<ParsedExpression, TypeExpression>(type_expr->Copy());
+			generated.expr = make_uniq<CastExpression>(std::move(cast_target), std::move(generated.expr));
 		}
 		if (generated.expr->HasSubquery()) {
 			throw ParserException("Expression of generated column \"%s\" contains a subquery, which isn't allowed",

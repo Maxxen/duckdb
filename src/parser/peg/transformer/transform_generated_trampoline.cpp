@@ -4130,9 +4130,9 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeAddColumnEntryTr
 		dynamic_child_count = dynamic_repeat_children.size();
 	}
 	auto dotted_identifier = frame.TakeResult<vector<string>>(0);
-	optional<LogicalType> type {};
+	optional<unique_ptr<TypeExpression>> type {};
 	if (frame.child_results[1]) {
-		type = frame.TakeResult<LogicalType>(1);
+		type = frame.TakeResult<unique_ptr<TypeExpression>>(1);
 	}
 	optional<GeneratedColumnDefinition> generated_column {};
 	if (frame.child_results[2]) {
@@ -4146,7 +4146,7 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeAddColumnEntryTr
 		}
 		column_constraint = std::move(column_constraint_value);
 	}
-	auto result = TransformAddColumnEntry(transformer, dotted_identifier, type, std::move(generated_column),
+	auto result = TransformAddColumnEntry(transformer, dotted_identifier, std::move(type), std::move(generated_column),
 	                                      std::move(column_constraint));
 	return make_uniq<TypedTransformResult<AddColumnEntry>>(std::move(result));
 }
@@ -4570,15 +4570,15 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeAlterTypeTrampol
 	bool has_result {};
 	auto &has_result_opt = list_pr.GetChild(0).Cast<OptionalParseResult>();
 	has_result = has_result_opt.HasResult();
-	optional<LogicalType> type {};
+	optional<unique_ptr<TypeExpression>> type {};
 	if (frame.child_results[0]) {
-		type = frame.TakeResult<LogicalType>(0);
+		type = frame.TakeResult<unique_ptr<TypeExpression>>(0);
 	}
 	optional<unique_ptr<ParsedExpression>> using_expression {};
 	if (frame.child_results[1]) {
 		using_expression = frame.TakeResult<unique_ptr<ParsedExpression>>(1);
 	}
-	auto result = TransformAlterType(transformer, has_result, type, std::move(using_expression));
+	auto result = TransformAlterType(transformer, has_result, std::move(type), std::move(using_expression));
 	return make_uniq<TypedTransformResult<unique_ptr<AlterTableInfo>>>(std::move(result));
 }
 
@@ -5387,7 +5387,7 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeTypeTrampoline(P
 		array_bounds = std::move(array_bounds_value);
 	}
 	auto result = TransformType(transformer, std::move(type_variations), array_bounds);
-	return make_uniq<TypedTransformResult<LogicalType>>(result);
+	return make_uniq<TypedTransformResult<unique_ptr<TypeExpression>>>(std::move(result));
 }
 
 void PEGTransformerFactory::InitializeTypeVariationsTrampoline(PEGTransformer &transformer, TransformStack &stack,
@@ -6399,11 +6399,11 @@ void PEGTransformerFactory::InitializeRowTypeTrampoline(PEGTransformer &transfor
 unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeRowTypeTrampoline(PEGTransformer &transformer,
                                                                                   TransformStack &stack,
                                                                                   TransformStackFrame &frame) {
-	optional<child_list_t<LogicalType>> col_id_type_list {};
+	optional<vector<pair<Identifier, unique_ptr<TypeExpression>>>> col_id_type_list {};
 	if (frame.child_results[0]) {
-		col_id_type_list = frame.TakeResult<child_list_t<LogicalType>>(0);
+		col_id_type_list = frame.TakeResult<vector<pair<Identifier, unique_ptr<TypeExpression>>>>(0);
 	}
-	auto result = TransformRowType(transformer, col_id_type_list);
+	auto result = TransformRowType(transformer, std::move(col_id_type_list));
 	return make_uniq<TypedTransformResult<unique_ptr<ParsedExpression>>>(std::move(result));
 }
 
@@ -6417,8 +6417,8 @@ void PEGTransformerFactory::InitializeSetofTypeTrampoline(PEGTransformer &transf
 unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeSetofTypeTrampoline(PEGTransformer &transformer,
                                                                                     TransformStack &stack,
                                                                                     TransformStackFrame &frame) {
-	auto type = frame.TakeResult<LogicalType>(0);
-	auto result = TransformSetofType(transformer, type);
+	auto type = frame.TakeResult<unique_ptr<TypeExpression>>(0);
+	auto result = TransformSetofType(transformer, std::move(type));
 	return make_uniq<TypedTransformResult<unique_ptr<ParsedExpression>>>(std::move(result));
 }
 
@@ -6432,8 +6432,8 @@ void PEGTransformerFactory::InitializeUnionTypeTrampoline(PEGTransformer &transf
 unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeUnionTypeTrampoline(PEGTransformer &transformer,
                                                                                     TransformStack &stack,
                                                                                     TransformStackFrame &frame) {
-	auto col_id_type_list = frame.TakeResult<child_list_t<LogicalType>>(0);
-	auto result = TransformUnionType(transformer, col_id_type_list);
+	auto col_id_type_list = frame.TakeResult<vector<pair<Identifier, unique_ptr<TypeExpression>>>>(0);
+	auto result = TransformUnionType(transformer, std::move(col_id_type_list));
 	return make_uniq<TypedTransformResult<unique_ptr<ParsedExpression>>>(std::move(result));
 }
 
@@ -6456,12 +6456,12 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeColIdTypeListTra
 	auto &list_pr = frame.parse_result.Cast<ListParseResult>();
 	auto dynamic_list_items = ExtractParseResultsFromList(ExtractResultFromParens(list_pr.GetChild(0)));
 	auto dynamic_child_count = dynamic_list_items.size();
-	vector<pair<Identifier, LogicalType>> col_id_type;
+	vector<pair<Identifier, unique_ptr<TypeExpression>>> col_id_type;
 	for (idx_t i = 0; i < 0 + dynamic_child_count; i++) {
-		col_id_type.push_back(frame.TakeResult<pair<Identifier, LogicalType>>(i));
+		col_id_type.push_back(frame.TakeResult<pair<Identifier, unique_ptr<TypeExpression>>>(i));
 	}
-	auto result = TransformColIdTypeList(transformer, col_id_type);
-	return make_uniq<TypedTransformResult<child_list_t<LogicalType>>>(result);
+	auto result = TransformColIdTypeList(transformer, std::move(col_id_type));
+	return make_uniq<TypedTransformResult<vector<pair<Identifier, unique_ptr<TypeExpression>>>>>(std::move(result));
 }
 
 void PEGTransformerFactory::InitializeMapTypeTrampoline(PEGTransformer &transformer, TransformStack &stack,
@@ -6493,16 +6493,16 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeMapTypeTrampolin
 		auto dynamic_list_items = ExtractParseResultsFromList(ExtractResultFromParens(dynamic_list_opt.GetResult()));
 		dynamic_child_count = dynamic_list_items.size();
 	}
-	optional<vector<LogicalType>> type {};
+	optional<vector<unique_ptr<TypeExpression>>> type {};
 	auto &type_opt = list_pr.GetChild(1).Cast<OptionalParseResult>();
 	if (type_opt.HasResult()) {
-		vector<LogicalType> type_value;
+		vector<unique_ptr<TypeExpression>> type_value;
 		for (idx_t i = 0; i < 0 + dynamic_child_count; i++) {
-			type_value.push_back(frame.TakeResult<LogicalType>(i));
+			type_value.push_back(frame.TakeResult<unique_ptr<TypeExpression>>(i));
 		}
 		type = std::move(type_value);
 	}
-	auto result = TransformMapType(transformer, type);
+	auto result = TransformMapType(transformer, std::move(type));
 	return make_uniq<TypedTransformResult<unique_ptr<ParsedExpression>>>(std::move(result));
 }
 
@@ -6525,11 +6525,11 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeTupleTypeTrampol
 	auto &list_pr = frame.parse_result.Cast<ListParseResult>();
 	auto dynamic_list_items = ExtractParseResultsFromList(ExtractResultFromParens(list_pr.GetChild(1)));
 	auto dynamic_child_count = dynamic_list_items.size();
-	vector<LogicalType> type;
+	vector<unique_ptr<TypeExpression>> type;
 	for (idx_t i = 0; i < 0 + dynamic_child_count; i++) {
-		type.push_back(frame.TakeResult<LogicalType>(i));
+		type.push_back(frame.TakeResult<unique_ptr<TypeExpression>>(i));
 	}
-	auto result = TransformTupleType(transformer, type);
+	auto result = TransformTupleType(transformer, std::move(type));
 	return make_uniq<TypedTransformResult<unique_ptr<ParsedExpression>>>(std::move(result));
 }
 
@@ -6545,9 +6545,9 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeColIdTypeTrampol
                                                                                     TransformStack &stack,
                                                                                     TransformStackFrame &frame) {
 	auto col_id = frame.TakeResult<Identifier>(0);
-	auto type = frame.TakeResult<LogicalType>(1);
-	auto result = TransformColIdType(transformer, col_id, type);
-	return make_uniq<TypedTransformResult<pair<Identifier, LogicalType>>>(result);
+	auto type = frame.TakeResult<unique_ptr<TypeExpression>>(1);
+	auto result = TransformColIdType(transformer, col_id, std::move(type));
+	return make_uniq<TypedTransformResult<pair<Identifier, unique_ptr<TypeExpression>>>>(std::move(result));
 }
 
 void PEGTransformerFactory::InitializeArrayBoundsTrampoline(PEGTransformer &transformer, TransformStack &stack,
@@ -8597,11 +8597,11 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeSimpleParameterT
                                                                                           TransformStack &stack,
                                                                                           TransformStackFrame &frame) {
 	auto type_func_name = frame.TakeResult<Identifier>(0);
-	optional<LogicalType> type {};
+	optional<unique_ptr<TypeExpression>> type {};
 	if (frame.child_results[1]) {
-		type = frame.TakeResult<LogicalType>(1);
+		type = frame.TakeResult<unique_ptr<TypeExpression>>(1);
 	}
-	auto result = TransformSimpleParameter(transformer, type_func_name, type);
+	auto result = TransformSimpleParameter(transformer, type_func_name, std::move(type));
 	return make_uniq<TypedTransformResult<MacroParameter>>(std::move(result));
 }
 
@@ -9826,9 +9826,9 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeColumnDefinition
 		dynamic_child_count = dynamic_repeat_children.size();
 	}
 	auto dotted_identifier = frame.TakeResult<vector<string>>(0);
-	optional<LogicalType> type {};
+	optional<unique_ptr<TypeExpression>> type {};
 	if (frame.child_results[1]) {
-		type = frame.TakeResult<LogicalType>(1);
+		type = frame.TakeResult<unique_ptr<TypeExpression>>(1);
 	}
 	optional<GeneratedColumnDefinition> generated_column {};
 	if (frame.child_results[2]) {
@@ -9845,8 +9845,8 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeColumnDefinition
 		}
 		column_constraint = std::move(column_constraint_value);
 	}
-	auto result = TransformColumnDefinition(transformer, dotted_identifier, type, std::move(generated_column),
-	                                        has_result, std::move(column_constraint));
+	auto result = TransformColumnDefinition(transformer, dotted_identifier, std::move(type),
+	                                        std::move(generated_column), has_result, std::move(column_constraint));
 	return make_uniq<TypedTransformResult<ConstraintColumnDefinition>>(std::move(result));
 }
 
@@ -11196,8 +11196,8 @@ void PEGTransformerFactory::InitializeCreateTypeFromTypeTrampoline(PEGTransforme
 unique_ptr<TransformResultValue>
 PEGTransformerFactory::FinalizeCreateTypeFromTypeTrampoline(PEGTransformer &transformer, TransformStack &stack,
                                                             TransformStackFrame &frame) {
-	auto type = frame.TakeResult<LogicalType>(0);
-	auto result = TransformCreateTypeFromType(transformer, type);
+	auto type = frame.TakeResult<unique_ptr<TypeExpression>>(0);
+	auto result = TransformCreateTypeFromType(transformer, std::move(type));
 	return make_uniq<TypedTransformResult<unique_ptr<CreateTypeInfo>>>(std::move(result));
 }
 
@@ -13257,8 +13257,8 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeCastArgumentsTra
                                                                                         TransformStack &stack,
                                                                                         TransformStackFrame &frame) {
 	auto expression = frame.TakeResult<unique_ptr<ParsedExpression>>(0);
-	auto type = frame.TakeResult<LogicalType>(1);
-	auto result = TransformCastArguments(transformer, std::move(expression), type);
+	auto type = frame.TakeResult<unique_ptr<TypeExpression>>(1);
+	auto result = TransformCastArguments(transformer, std::move(expression), std::move(type));
 	return make_uniq<TypedTransformResult<CastArguments>>(std::move(result));
 }
 
@@ -13867,9 +13867,9 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeTypeLiteralTramp
                                                                                       TransformStack &stack,
                                                                                       TransformStackFrame &frame) {
 	auto &list_pr = frame.parse_result.Cast<ListParseResult>();
-	auto type = frame.TakeResult<LogicalType>(0);
+	auto type = frame.TakeResult<unique_ptr<TypeExpression>>(0);
 	auto string_literal = TransformStringLiteral(transformer, list_pr.GetChild(1));
-	auto result = TransformTypeLiteral(transformer, type, string_literal);
+	auto result = TransformTypeLiteral(transformer, std::move(type), string_literal);
 	return make_uniq<TypedTransformResult<unique_ptr<ParsedExpression>>>(std::move(result));
 }
 
@@ -17209,8 +17209,8 @@ void PEGTransformerFactory::InitializeCastOperatorTrampoline(PEGTransformer &tra
 unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeCastOperatorTrampoline(PEGTransformer &transformer,
                                                                                        TransformStack &stack,
                                                                                        TransformStackFrame &frame) {
-	auto type = frame.TakeResult<LogicalType>(0);
-	auto result = TransformCastOperator(transformer, type);
+	auto type = frame.TakeResult<unique_ptr<TypeExpression>>(0);
+	auto result = TransformCastOperator(transformer, std::move(type));
 	return make_uniq<TypedTransformResult<unique_ptr<ParsedExpression>>>(std::move(result));
 }
 
@@ -19975,12 +19975,12 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizePrepareStatement
                                                                                            TransformStackFrame &frame) {
 	auto &list_pr = frame.parse_result.Cast<ListParseResult>();
 	auto identifier = list_pr.GetChild(1).Cast<IdentifierParseResult>().identifier;
-	optional<vector<LogicalType>> type_list {};
+	optional<vector<unique_ptr<TypeExpression>>> type_list {};
 	if (frame.child_results[0]) {
-		type_list = frame.TakeResult<vector<LogicalType>>(0);
+		type_list = frame.TakeResult<vector<unique_ptr<TypeExpression>>>(0);
 	}
 	auto statement = frame.TakeResult<unique_ptr<SQLStatement>>(1);
-	auto result = TransformPrepareStatement(transformer, identifier, type_list, std::move(statement));
+	auto result = TransformPrepareStatement(transformer, identifier, std::move(type_list), std::move(statement));
 	return make_uniq<TypedTransformResult<unique_ptr<SQLStatement>>>(std::move(result));
 }
 
@@ -20003,12 +20003,12 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeTypeListTrampoli
 	auto &list_pr = frame.parse_result.Cast<ListParseResult>();
 	auto dynamic_list_items = ExtractParseResultsFromList(ExtractResultFromParens(list_pr.GetChild(0)));
 	auto dynamic_child_count = dynamic_list_items.size();
-	vector<LogicalType> type;
+	vector<unique_ptr<TypeExpression>> type;
 	for (idx_t i = 0; i < 0 + dynamic_child_count; i++) {
-		type.push_back(frame.TakeResult<LogicalType>(i));
+		type.push_back(frame.TakeResult<unique_ptr<TypeExpression>>(i));
 	}
-	auto result = TransformTypeList(transformer, type);
-	return make_uniq<TypedTransformResult<vector<LogicalType>>>(result);
+	auto result = TransformTypeList(transformer, std::move(type));
+	return make_uniq<TypedTransformResult<vector<unique_ptr<TypeExpression>>>>(std::move(result));
 }
 
 void PEGTransformerFactory::InitializeSelectStatementTrampoline(PEGTransformer &transformer, TransformStack &stack,
@@ -21705,12 +21705,12 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::FinalizeNamedParameterTr
                                                                                          TransformStack &stack,
                                                                                          TransformStackFrame &frame) {
 	auto type_func_name = frame.TakeResult<Identifier>(0);
-	optional<LogicalType> type {};
+	optional<unique_ptr<TypeExpression>> type {};
 	if (frame.child_results[1]) {
-		type = frame.TakeResult<LogicalType>(1);
+		type = frame.TakeResult<unique_ptr<TypeExpression>>(1);
 	}
 	auto expression = frame.TakeResult<unique_ptr<ParsedExpression>>(2);
-	auto result = TransformNamedParameter(transformer, type_func_name, type, std::move(expression));
+	auto result = TransformNamedParameter(transformer, type_func_name, std::move(type), std::move(expression));
 	return make_uniq<TypedTransformResult<MacroParameter>>(std::move(result));
 }
 

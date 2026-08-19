@@ -67,7 +67,8 @@ PEGTransformerFactory::TransformMacroDefinition(PEGTransformer &transformer,
 			}
 			macro_definition_body->parameters.push_back(std::move(parameter.expression));
 		}
-		macro_definition_body->types.push_back(parameter.type);
+		macro_definition_body->types.push_back(parameter.type ? LogicalType::UNBOUND(std::move(parameter.type))
+		                                                      : LogicalType::UNKNOWN);
 	}
 
 	return macro_definition_body;
@@ -96,12 +97,12 @@ vector<MacroParameter> PEGTransformerFactory::TransformMacroParameters(PEGTransf
 
 MacroParameter PEGTransformerFactory::TransformSimpleParameter(PEGTransformer &transformer,
                                                                const Identifier &type_func_name,
-                                                               const optional<LogicalType> &type) {
+                                                               optional<unique_ptr<TypeExpression>> type) {
 	MacroParameter result;
 	result.name = Identifier(type_func_name);
 	result.expression = make_uniq<ColumnRefExpression>(Identifier(type_func_name));
 	if (type) {
-		result.type = *type;
+		result.type = std::move(*type);
 	}
 	result.is_default = false;
 	return result;

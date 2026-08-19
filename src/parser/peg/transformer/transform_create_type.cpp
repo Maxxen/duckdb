@@ -18,9 +18,10 @@ unique_ptr<CreateStatement> PEGTransformerFactory::TransformCreateTypeStmt(PEGTr
 }
 
 unique_ptr<CreateTypeInfo> PEGTransformerFactory::TransformCreateTypeFromType(PEGTransformer &transformer,
-                                                                              const LogicalType &type) {
+                                                                              unique_ptr<TypeExpression> type) {
 	auto result = make_uniq<CreateTypeInfo>();
-	result->type = type;
+	// CreateTypeInfo still stores a LogicalType, so the type expression is wrapped here
+	result->type = LogicalType::UNBOUND(std::move(type));
 	return result;
 }
 

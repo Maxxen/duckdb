@@ -53,10 +53,10 @@ string PEGTransformerFactory::TransformIdentifierOrKeyword(PEGTransformer &trans
 	throw ParserException("Unexpected ParseResult type in identifier transformation.");
 }
 
-LogicalType PEGTransformerFactory::TransformType(PEGTransformer &transformer,
-                                                 unique_ptr<ParsedExpression> type_variations,
-                                                 const optional<vector<int64_t>> &array_bounds) {
-	auto type = std::move(type_variations);
+unique_ptr<TypeExpression> PEGTransformerFactory::TransformType(PEGTransformer &transformer,
+                                                                unique_ptr<ParsedExpression> type_variations,
+                                                                const optional<vector<int64_t>> &array_bounds) {
+	auto type = unique_ptr_cast<ParsedExpression, TypeExpression>(std::move(type_variations));
 	if (array_bounds) {
 		for (auto array_size : *array_bounds) {
 			vector<unique_ptr<ParsedExpression>> children_types;
@@ -70,7 +70,7 @@ LogicalType PEGTransformerFactory::TransformType(PEGTransformer &transformer,
 			}
 		}
 	}
-	return LogicalType::UNBOUND(std::move(type));
+	return type;
 }
 
 int64_t PEGTransformerFactory::TransformArrayKeyword(PEGTransformer &transformer) {
@@ -308,36 +308,34 @@ QualifiedName PEGTransformerFactory::TransformCatalogReservedSchemaTypeName(
 	return result;
 }
 
-unique_ptr<ParsedExpression> PEGTransformerFactory::TransformMapType(PEGTransformer &transformer,
-                                                                     const optional<vector<LogicalType>> &type) {
+unique_ptr<ParsedExpression>
+PEGTransformerFactory::TransformMapType(PEGTransformer &transformer,
+                                        optional<vector<unique_ptr<TypeExpression>>> type) {
 	vector<unique_ptr<ParsedExpression>> map_children;
 	if (type) {
 		for (auto &child_type : *type) {
-			map_children.push_back(UnboundType::GetTypeExpression(child_type)->Copy());
+			map_children.push_back(std::move(child_type));
 		}
 	}
 	return make_uniq<TypeExpression>(Identifier("MAP"), std::move(map_children));
 }
 
 unique_ptr<ParsedExpression> PEGTransformerFactory::TransformTupleType(PEGTransformer &transformer,
-                                                                       const vector<LogicalType> &type) {
+                                                                       vector<unique_ptr<TypeExpression>> type) {
 	vector<unique_ptr<ParsedExpression>> tuple_children;
 	for (auto &child : type) {
-		tuple_children.push_back(UnboundType::GetTypeExpression(child)->Copy());
+		tuple_children.push_back(std::move(child));
 	}
 	return make_uniq<TypeExpression>(Identifier("TUPLE"), std::move(tuple_children));
 }
 
-unique_ptr<ParsedExpression>
-PEGTransformerFactory::TransformRowType(PEGTransformer &transformer,
-                                        const optional<child_list_t<LogicalType>> &col_id_type_list) {
+unique_ptr<ParsedExpression> PEGTransformerFactory::TransformRowType(
+    PEGTransformer &transformer, optional<vector<pair<Identifier, unique_ptr<TypeExpression>>>> col_id_type_list) {
 	vector<unique_ptr<ParsedExpression>> struct_children;
 	if (col_id_type_list) {
 		for (auto &child : *col_id_type_list) {
-			auto &type_expr = UnboundType::GetTypeExpression(child.second);
-			auto new_type_expr = type_expr->Copy();
-			new_type_expr->SetAlias(child.first);
-			struct_children.push_back(std::move(new_type_expr));
+			child.second->SetAlias(child.first);
+			struct_children.push_back(std::move(child.second));
 		}
 	}
 	return make_uniq<TypeExpression>(Identifier("STRUCT"), std::move(struct_children));
@@ -364,29 +362,25 @@ unique_ptr<ParsedExpression> PEGTransformerFactory::TransformVariantType(PEGTran
 
 unique_ptr<ParsedExpression>
 PEGTransformerFactory::TransformUnionType(PEGTransformer &transformer,
-                                          const child_list_t<LogicalType> &col_id_type_list) {
-	identifier_set_t union_names;
+                                          vector<pair<Identifier, unique_ptr<TypeExpression>>> col_id_type_list) {
 	vector<unique_ptr<ParsedExpression>> union_children;
 	for (auto &colid : col_id_type_list) {
-		union_names.insert(colid.first);
-		auto &type_expr = UnboundType::GetTypeExpression(colid.second);
-		auto new_type_expr = type_expr->Copy();
-		new_type_expr->SetAlias(colid.first);
-		union_children.push_back(std::move(new_type_expr));
+		colid.second->SetAlias(colid.first);
+		union_children.push_back(std::move(colid.second));
 	}
 	return make_uniq<TypeExpression>(Identifier("UNION"), std::move(union_children));
 }
 
-child_list_t<LogicalType>
+vector<pair<Identifier, unique_ptr<TypeExpression>>>
 PEGTransformerFactory::TransformColIdTypeList(PEGTransformer &transformer,
-                                              const vector<pair<Identifier, LogicalType>> &col_id_type) {
+                                              vector<pair<Identifier, unique_ptr<TypeExpression>>> col_id_type) {
 	return col_id_type;
 }
 
-pair<Identifier, LogicalType> PEGTransformerFactory::TransformColIdType(PEGTransformer &transformer,
-                                                                        const Identifier &col_id,
-                                                                        const LogicalType &type) {
-	return make_pair(Identifier(col_id), type);
+pair<Identifier, unique_ptr<TypeExpression>>
+PEGTransformerFactory::TransformColIdType(PEGTransformer &transformer, const Identifier &col_id,
+                                          unique_ptr<TypeExpression> type) {
+	return make_pair(Identifier(col_id), std::move(type));
 }
 
 unique_ptr<ParsedExpression> PEGTransformerFactory::TransformBitType(
@@ -644,8 +638,8 @@ unique_ptr<ParsedExpression> PEGTransformerFactory::TransformNumberLiteral(PEGTr
 }
 
 unique_ptr<ParsedExpression> PEGTransformerFactory::TransformSetofType(PEGTransformer &transformer,
-                                                                       const LogicalType &type) {
-	return UnboundType::GetTypeExpression(type)->Copy();
+                                                                       unique_ptr<TypeExpression> type) {
+	return std::move(type);
 }
 
 // StringLiteral <- '\'' [^\']* '\''

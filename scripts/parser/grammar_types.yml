@@ -1181,15 +1181,15 @@ Int64:
     - SquareBracketsArray
     - ArrayKeyword
 
-LogicalType:
-  type: "LogicalType"
-  by_value: false
+TypeExpression:
+  type: "unique_ptr<TypeExpression>"
+  by_value: true
   rules:
     - Type
 
-LogicalTypeList:
-  type: "vector<LogicalType>"
-  by_value: false
+TypeExpressionList:
+  type: "vector<unique_ptr<TypeExpression>>"
+  by_value: true
   rules:
     - TypeList
 
@@ -1569,8 +1569,12 @@ BinaryExpressionTail:
 
 overrides:
   # common.gram
-  ColIdType: "pair<Identifier, LogicalType>"
-  ColIdTypeList: "child_list_t<LogicalType>"
+  ColIdType:
+    type: "pair<Identifier, unique_ptr<TypeExpression>>"
+    by_value: true
+  ColIdTypeList:
+    type: "vector<pair<Identifier, unique_ptr<TypeExpression>>>"
+    by_value: true
   # create_index.gram
   RelOption:
     type: "pair<Identifier, unique_ptr<ParsedExpression>>"

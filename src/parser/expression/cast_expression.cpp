@@ -27,11 +27,6 @@ void CastExpression::SetTargetType(unique_ptr<TypeExpression> target) {
 	cast_type = std::move(target);
 }
 
-LogicalType CastExpression::GetTargetLogicalType() const {
-	D_ASSERT(cast_type);
-	return LogicalType::UNBOUND(cast_type->Copy());
-}
-
 string CastExpression::ToString() const {
 	return ToString<CastExpression, ParsedExpression>(*this);
 }
@@ -41,7 +36,8 @@ void CastExpression::Serialize(Serializer &serializer) const {
 	serializer.WritePropertyWithDefault<unique_ptr<ParsedExpression>>(200, "child", child);
 	if (!serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
 		// older versions store the cast target as a LogicalType
-		serializer.WriteProperty<LogicalType>(201, "cast_type", GetTargetLogicalType());
+		D_ASSERT(cast_type);
+		serializer.WriteProperty<LogicalType>(201, "cast_type", LogicalType::UNBOUND(cast_type->Copy()));
 	}
 	serializer.WritePropertyWithDefault<bool>(202, "try_cast", try_cast);
 	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {

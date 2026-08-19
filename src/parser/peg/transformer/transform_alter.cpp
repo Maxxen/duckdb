@@ -206,13 +206,8 @@ unique_ptr<AlterTableInfo> PEGTransformerFactory::TransformAddColumn(PEGTransfor
                                                                      const bool &has_result,
                                                                      const optional<bool> &if_not_exists,
                                                                      AddColumnEntry add_column_entry) {
-	// the grammar delivers the type as LogicalType::UNBOUND wrapping a TypeExpression; carry the
-	// TypeExpression directly, the binder resolves it
-	unique_ptr<TypeExpression> type_expr;
-	if (add_column_entry.type.id() != LogicalTypeId::INVALID) {
-		type_expr = UnboundType::CopyTypeExpression(add_column_entry.type);
-	}
-	auto column_definition = ParsedColumnDefinition(add_column_entry.column_path.back(), std::move(type_expr));
+	auto column_definition =
+	    ParsedColumnDefinition(add_column_entry.column_path.back(), std::move(add_column_entry.type));
 	if (add_column_entry.default_value) {
 		column_definition.SetDefaultValue(std::move(add_column_entry.default_value));
 	}
@@ -232,7 +227,7 @@ unique_ptr<AlterTableInfo> PEGTransformerFactory::TransformAddColumn(PEGTransfor
 }
 
 AddColumnEntry PEGTransformerFactory::TransformAddColumnEntry(
-    PEGTransformer &transformer, const vector<string> &dotted_identifier, const optional<LogicalType> &type,
+    PEGTransformer &transformer, const vector<string> &dotted_identifier, optional<unique_ptr<TypeExpression>> type,
     optional<GeneratedColumnDefinition> generated_column, optional<vector<ColumnConstraintEntry>> column_constraint) {
 	AddColumnEntry new_column;
 	new_column.column_path = StringsToIdentifiers(dotted_identifier);
@@ -246,7 +241,7 @@ AddColumnEntry PEGTransformerFactory::TransformAddColumnEntry(
 		throw ParserException("Adding generated columns after table creation is not supported yet");
 	}
 	if (type) {
-		new_column.type = *type;
+		new_column.type = std::move(*type);
 	}
 	if (column_constraint) {
 		for (auto &constraint : *column_constraint) {
@@ -322,12 +317,13 @@ unique_ptr<AlterTableInfo> PEGTransformerFactory::TransformChangeNullability(PEG
 
 unique_ptr<AlterTableInfo>
 PEGTransformerFactory::TransformAlterType(PEGTransformer &transformer, const bool &has_result,
-                                          const optional<LogicalType> &type,
+                                          optional<unique_ptr<TypeExpression>> type,
                                           optional<unique_ptr<ParsedExpression>> using_expression) {
 	if (!type && !using_expression) {
 		throw ParserException("Omitting the type is only possible in combination with USING");
 	}
-	auto alter_type = type ? *type : LogicalType::UNKNOWN;
+	// ChangeColumnTypeInfo still stores a LogicalType, so the type expression is wrapped here
+	auto alter_type = type ? LogicalType::UNBOUND(std::move(*type)) : LogicalType::UNKNOWN;
 	unique_ptr<ParsedExpression> expression;
 	if (using_expression) {
 		expression = std::move(*using_expression);

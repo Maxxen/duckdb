@@ -1840,10 +1840,10 @@ PEGTransformerFactory::TransformIndirectionList(PEGTransformer &transformer,
 }
 
 unique_ptr<ParsedExpression> PEGTransformerFactory::TransformCastOperator(PEGTransformer &transformer,
-                                                                          const LogicalType &type) {
+                                                                          unique_ptr<TypeExpression> type) {
 	// We input a dummy constant expression but replace this later with the real expression that precedes this post-fix
 	// castOperator
-	return make_uniq<CastExpression>(type, make_uniq<ConstantExpression>(Value()));
+	return make_uniq<CastExpression>(std::move(type), make_uniq<ConstantExpression>(Value()));
 }
 
 unique_ptr<ParsedExpression>
@@ -2620,15 +2620,16 @@ PEGTransformerFactory::TransformPositionArguments(PEGTransformer &transformer,
 unique_ptr<ParsedExpression> PEGTransformerFactory::TransformCastExpression(PEGTransformer &transformer,
                                                                             const bool &cast_or_try_cast,
                                                                             CastArguments cast_arguments) {
-	return make_uniq<CastExpression>(cast_arguments.type, std::move(cast_arguments.expression), cast_or_try_cast);
+	return make_uniq<CastExpression>(std::move(cast_arguments.type), std::move(cast_arguments.expression),
+	                                 cast_or_try_cast);
 }
 
 CastArguments PEGTransformerFactory::TransformCastArguments(PEGTransformer &transformer,
                                                             unique_ptr<ParsedExpression> expression,
-                                                            const LogicalType &type) {
+                                                            unique_ptr<TypeExpression> type) {
 	CastArguments result;
 	result.expression = std::move(expression);
-	result.type = type;
+	result.type = std::move(type);
 	return result;
 }
 
@@ -2679,10 +2680,10 @@ CaseCheck PEGTransformerFactory::TransformCaseWhenThen(PEGTransformer &transform
 }
 
 unique_ptr<ParsedExpression> PEGTransformerFactory::TransformTypeLiteral(PEGTransformer &transformer,
-                                                                         const LogicalType &type,
+                                                                         unique_ptr<TypeExpression> type,
                                                                          const string &string_literal) {
 	auto child = make_uniq<ConstantExpression>(Value(string_literal));
-	auto result = make_uniq<CastExpression>(type, std::move(child));
+	auto result = make_uniq<CastExpression>(std::move(type), std::move(child));
 	return std::move(result);
 }
 

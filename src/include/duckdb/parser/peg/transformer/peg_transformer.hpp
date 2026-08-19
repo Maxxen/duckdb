@@ -4888,7 +4888,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformAddColumnEntryInternal(PEGTransformer &transformer,
 	                                                                        ParseResult &parse_result);
 	static AddColumnEntry TransformAddColumnEntry(PEGTransformer &transformer, const vector<string> &dotted_identifier,
-	                                              const optional<LogicalType> &type,
+	                                              optional<unique_ptr<TypeExpression>> type,
 	                                              optional<GeneratedColumnDefinition> generated_column,
 	                                              optional<vector<ColumnConstraintEntry>> column_constraint);
 	static unique_ptr<TransformResultValue> TransformDropColumnInternal(PEGTransformer &transformer,
@@ -4968,7 +4968,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformAlterTypeInternal(PEGTransformer &transformer,
 	                                                                   ParseResult &parse_result);
 	static unique_ptr<AlterTableInfo> TransformAlterType(PEGTransformer &transformer, const bool &has_result,
-	                                                     const optional<LogicalType> &type,
+	                                                     optional<unique_ptr<TypeExpression>> type,
 	                                                     optional<unique_ptr<ParsedExpression>> using_expression);
 	static unique_ptr<TransformResultValue> TransformUsingExpressionInternal(PEGTransformer &transformer,
 	                                                                         ParseResult &parse_result);
@@ -5115,8 +5115,9 @@ public:
 	static Identifier TransformCollationName(PEGTransformer &transformer, const Identifier &identifier);
 	static unique_ptr<TransformResultValue> TransformTypeInternal(PEGTransformer &transformer,
 	                                                              ParseResult &parse_result);
-	static LogicalType TransformType(PEGTransformer &transformer, unique_ptr<ParsedExpression> type_variations,
-	                                 const optional<vector<int64_t>> &array_bounds);
+	static unique_ptr<TypeExpression> TransformType(PEGTransformer &transformer,
+	                                                unique_ptr<ParsedExpression> type_variations,
+	                                                const optional<vector<int64_t>> &array_bounds);
 	static unique_ptr<TransformResultValue> TransformTypeVariationsInternal(PEGTransformer &transformer,
 	                                                                        ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformSimpleTypeInternal(PEGTransformer &transformer,
@@ -5298,31 +5299,35 @@ public:
 	TransformTypeModifiers(PEGTransformer &transformer, optional<vector<unique_ptr<ParsedExpression>>> expression);
 	static unique_ptr<TransformResultValue> TransformRowTypeInternal(PEGTransformer &transformer,
 	                                                                 ParseResult &parse_result);
-	static unique_ptr<ParsedExpression> TransformRowType(PEGTransformer &transformer,
-	                                                     const optional<child_list_t<LogicalType>> &col_id_type_list);
+	static unique_ptr<ParsedExpression>
+	TransformRowType(PEGTransformer &transformer,
+	                 optional<vector<pair<Identifier, unique_ptr<TypeExpression>>>> col_id_type_list);
 	static unique_ptr<TransformResultValue> TransformSetofTypeInternal(PEGTransformer &transformer,
 	                                                                   ParseResult &parse_result);
-	static unique_ptr<ParsedExpression> TransformSetofType(PEGTransformer &transformer, const LogicalType &type);
+	static unique_ptr<ParsedExpression> TransformSetofType(PEGTransformer &transformer,
+	                                                       unique_ptr<TypeExpression> type);
 	static unique_ptr<TransformResultValue> TransformUnionTypeInternal(PEGTransformer &transformer,
 	                                                                   ParseResult &parse_result);
-	static unique_ptr<ParsedExpression> TransformUnionType(PEGTransformer &transformer,
-	                                                       const child_list_t<LogicalType> &col_id_type_list);
+	static unique_ptr<ParsedExpression>
+	TransformUnionType(PEGTransformer &transformer,
+	                   vector<pair<Identifier, unique_ptr<TypeExpression>>> col_id_type_list);
 	static unique_ptr<TransformResultValue> TransformColIdTypeListInternal(PEGTransformer &transformer,
 	                                                                       ParseResult &parse_result);
-	static child_list_t<LogicalType> TransformColIdTypeList(PEGTransformer &transformer,
-	                                                        const vector<pair<Identifier, LogicalType>> &col_id_type);
+	static vector<pair<Identifier, unique_ptr<TypeExpression>>>
+	TransformColIdTypeList(PEGTransformer &transformer,
+	                       vector<pair<Identifier, unique_ptr<TypeExpression>>> col_id_type);
 	static unique_ptr<TransformResultValue> TransformMapTypeInternal(PEGTransformer &transformer,
 	                                                                 ParseResult &parse_result);
 	static unique_ptr<ParsedExpression> TransformMapType(PEGTransformer &transformer,
-	                                                     const optional<vector<LogicalType>> &type);
+	                                                     optional<vector<unique_ptr<TypeExpression>>> type);
 	static unique_ptr<TransformResultValue> TransformTupleTypeInternal(PEGTransformer &transformer,
 	                                                                   ParseResult &parse_result);
 	static unique_ptr<ParsedExpression> TransformTupleType(PEGTransformer &transformer,
-	                                                       const vector<LogicalType> &type);
+	                                                       vector<unique_ptr<TypeExpression>> type);
 	static unique_ptr<TransformResultValue> TransformColIdTypeInternal(PEGTransformer &transformer,
 	                                                                   ParseResult &parse_result);
-	static pair<Identifier, LogicalType> TransformColIdType(PEGTransformer &transformer, const Identifier &col_id,
-	                                                        const LogicalType &type);
+	static pair<Identifier, unique_ptr<TypeExpression>>
+	TransformColIdType(PEGTransformer &transformer, const Identifier &col_id, unique_ptr<TypeExpression> type);
 	static unique_ptr<TransformResultValue> TransformArrayBoundsInternal(PEGTransformer &transformer,
 	                                                                     ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformArrayKeywordInternal(PEGTransformer &transformer,
@@ -5687,7 +5692,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformSimpleParameterInternal(PEGTransformer &transformer,
 	                                                                         ParseResult &parse_result);
 	static MacroParameter TransformSimpleParameter(PEGTransformer &transformer, const Identifier &type_func_name,
-	                                               const optional<LogicalType> &type);
+	                                               optional<unique_ptr<TypeExpression>> type);
 	static unique_ptr<TransformResultValue> TransformScalarMacroDefinitionInternal(PEGTransformer &transformer,
 	                                                                               ParseResult &parse_result);
 	static unique_ptr<MacroFunction> TransformScalarMacroDefinition(PEGTransformer &transformer,
@@ -5893,8 +5898,9 @@ public:
 	                                                                          ParseResult &parse_result);
 	static ConstraintColumnDefinition
 	TransformColumnDefinition(PEGTransformer &transformer, const vector<string> &dotted_identifier,
-	                          const optional<LogicalType> &type, optional<GeneratedColumnDefinition> generated_column,
-	                          const bool &has_result, optional<vector<ColumnConstraintEntry>> column_constraint);
+	                          optional<unique_ptr<TypeExpression>> type,
+	                          optional<GeneratedColumnDefinition> generated_column, const bool &has_result,
+	                          optional<vector<ColumnConstraintEntry>> column_constraint);
 	static unique_ptr<TransformResultValue> TransformColumnConstraintInternal(PEGTransformer &transformer,
 	                                                                          ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformNotNullConstraintInternal(PEGTransformer &transformer,
@@ -6109,7 +6115,8 @@ public:
 	                                                                    ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformCreateTypeFromTypeInternal(PEGTransformer &transformer,
 	                                                                            ParseResult &parse_result);
-	static unique_ptr<CreateTypeInfo> TransformCreateTypeFromType(PEGTransformer &transformer, const LogicalType &type);
+	static unique_ptr<CreateTypeInfo> TransformCreateTypeFromType(PEGTransformer &transformer,
+	                                                              unique_ptr<TypeExpression> type);
 	static unique_ptr<TransformResultValue> TransformEnumSelectTypeInternal(PEGTransformer &transformer,
 	                                                                        ParseResult &parse_result);
 	static unique_ptr<CreateTypeInfo> TransformEnumSelectType(PEGTransformer &transformer,
@@ -6479,7 +6486,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformCastArgumentsInternal(PEGTransformer &transformer,
 	                                                                       ParseResult &parse_result);
 	static CastArguments TransformCastArguments(PEGTransformer &transformer, unique_ptr<ParsedExpression> expression,
-	                                            const LogicalType &type);
+	                                            unique_ptr<TypeExpression> type);
 	static unique_ptr<TransformResultValue> TransformCastOrTryCastInternal(PEGTransformer &transformer,
 	                                                                       ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformCastKeywordInternal(PEGTransformer &transformer,
@@ -6594,8 +6601,8 @@ public:
 	                                                      unique_ptr<ParsedExpression> expression);
 	static unique_ptr<TransformResultValue> TransformTypeLiteralInternal(PEGTransformer &transformer,
 	                                                                     ParseResult &parse_result);
-	static unique_ptr<ParsedExpression> TransformTypeLiteral(PEGTransformer &transformer, const LogicalType &type,
-	                                                         const string &string_literal);
+	static unique_ptr<ParsedExpression>
+	TransformTypeLiteral(PEGTransformer &transformer, unique_ptr<TypeExpression> type, const string &string_literal);
 	static unique_ptr<TransformResultValue> TransformIntervalLiteralInternal(PEGTransformer &transformer,
 	                                                                         ParseResult &parse_result);
 	static unique_ptr<ParsedExpression> TransformIntervalLiteral(PEGTransformer &transformer,
@@ -7155,7 +7162,8 @@ public:
 	                                                                     ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformCastOperatorInternal(PEGTransformer &transformer,
 	                                                                      ParseResult &parse_result);
-	static unique_ptr<ParsedExpression> TransformCastOperator(PEGTransformer &transformer, const LogicalType &type);
+	static unique_ptr<ParsedExpression> TransformCastOperator(PEGTransformer &transformer,
+	                                                          unique_ptr<TypeExpression> type);
 	static unique_ptr<TransformResultValue> TransformDotOperatorInternal(PEGTransformer &transformer,
 	                                                                     ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformDotMethodOperatorInternal(PEGTransformer &transformer,
@@ -7646,11 +7654,12 @@ public:
 	static unique_ptr<TransformResultValue> TransformPrepareStatementInternal(PEGTransformer &transformer,
 	                                                                          ParseResult &parse_result);
 	static unique_ptr<SQLStatement> TransformPrepareStatement(PEGTransformer &transformer, const Identifier &identifier,
-	                                                          const optional<vector<LogicalType>> &type_list,
+	                                                          optional<vector<unique_ptr<TypeExpression>>> type_list,
 	                                                          unique_ptr<SQLStatement> statement);
 	static unique_ptr<TransformResultValue> TransformTypeListInternal(PEGTransformer &transformer,
 	                                                                  ParseResult &parse_result);
-	static vector<LogicalType> TransformTypeList(PEGTransformer &transformer, const vector<LogicalType> &type);
+	static vector<unique_ptr<TypeExpression>> TransformTypeList(PEGTransformer &transformer,
+	                                                            vector<unique_ptr<TypeExpression>> type);
 	static unique_ptr<TransformResultValue> TransformSelectStatementInternal(PEGTransformer &transformer,
 	                                                                         ParseResult &parse_result);
 	static unique_ptr<SQLStatement> TransformSelectStatement(PEGTransformer &transformer,
@@ -7946,7 +7955,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformNamedParameterInternal(PEGTransformer &transformer,
 	                                                                        ParseResult &parse_result);
 	static MacroParameter TransformNamedParameter(PEGTransformer &transformer, const Identifier &type_func_name,
-	                                              const optional<LogicalType> &type,
+	                                              optional<unique_ptr<TypeExpression>> type,
 	                                              unique_ptr<ParsedExpression> expression);
 	static unique_ptr<TransformResultValue> TransformTableAliasInternal(PEGTransformer &transformer,
 	                                                                    ParseResult &parse_result);

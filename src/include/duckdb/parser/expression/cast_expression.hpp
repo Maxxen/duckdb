@@ -22,8 +22,10 @@ public:
 public:
 	DUCKDB_API CastExpression(unique_ptr<TypeExpression> target, unique_ptr<ParsedExpression> child,
 	                          bool try_cast = false);
-	//! Cast to an already-resolved type. The type is written back out as a TypeExpression, so the target is
-	//! always an unbound type expression - see TypeExpression::FromLogicalType.
+
+	//! Cast to an already-resolved type.
+	//! The type is written back out as a TypeExpression, so the target is always an unbound type expression.
+	//! See TypeExpression::FromLogicalType.
 	DUCKDB_API CastExpression(const LogicalType &target, unique_ptr<ParsedExpression> child, bool try_cast = false);
 
 public:
@@ -37,9 +39,6 @@ public:
 		return *cast_type;
 	}
 	void SetTargetType(unique_ptr<TypeExpression> target);
-	//! The target as an UNBOUND LogicalType. Used at the serialization seam, which keeps writing a LogicalType
-	//! so that the stored format does not depend on how the target is held in memory.
-	DUCKDB_API LogicalType GetTargetLogicalType() const;
 
 	const ParsedExpression &Child() const {
 		return *child;

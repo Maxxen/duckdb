@@ -18,7 +18,7 @@ bool IsPrepareableStatement(StatementType type) {
 
 unique_ptr<SQLStatement>
 PEGTransformerFactory::TransformPrepareStatement(PEGTransformer &transformer, const Identifier &identifier,
-                                                 const optional<vector<LogicalType>> &type_list,
+                                                 optional<vector<unique_ptr<TypeExpression>>> type_list,
                                                  unique_ptr<SQLStatement> statement) {
 	auto result = make_uniq<PrepareStatement>();
 	result->name = identifier;
@@ -30,8 +30,8 @@ PEGTransformerFactory::TransformPrepareStatement(PEGTransformer &transformer, co
 	return std::move(result);
 }
 
-vector<LogicalType> PEGTransformerFactory::TransformTypeList(PEGTransformer &transformer,
-                                                             const vector<LogicalType> &type) {
+vector<unique_ptr<TypeExpression>> PEGTransformerFactory::TransformTypeList(PEGTransformer &transformer,
+                                                                            vector<unique_ptr<TypeExpression>> type) {
 	throw NotImplementedException("TypeList for prepared statement has not been implemented.");
 }
 
