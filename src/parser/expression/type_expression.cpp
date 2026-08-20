@@ -142,87 +142,87 @@ unique_ptr<ParsedExpression> ValueChild(Value value, const char *label = nullptr
 const char *BuiltinTypeName(LogicalTypeId id) {
 	switch (id) {
 	case LogicalTypeId::BOOLEAN:
-		return "boolean";
+		return "BOOLEAN";
 	case LogicalTypeId::TINYINT:
-		return "tinyint";
+		return "TINYINT";
 	case LogicalTypeId::SMALLINT:
-		return "smallint";
+		return "SMALLINT";
 	case LogicalTypeId::INTEGER:
-		return "integer";
+		return "INTEGER";
 	case LogicalTypeId::BIGINT:
-		return "bigint";
+		return "BIGINT";
 	case LogicalTypeId::HUGEINT:
-		return "hugeint";
+		return "HUGEINT";
 	case LogicalTypeId::UTINYINT:
-		return "utinyint";
+		return "UTINYINT";
 	case LogicalTypeId::USMALLINT:
-		return "usmallint";
+		return "USMALLINT";
 	case LogicalTypeId::UINTEGER:
-		return "uinteger";
+		return "UINTEGER";
 	case LogicalTypeId::UBIGINT:
-		return "ubigint";
+		return "UBIGINT";
 	case LogicalTypeId::UHUGEINT:
-		return "uhugeint";
+		return "UHUGEINT";
 	case LogicalTypeId::FLOAT:
-		return "float";
+		return "FLOAT";
 	case LogicalTypeId::DOUBLE:
-		return "double";
+		return "DOUBLE";
 	case LogicalTypeId::BIGNUM:
-		return "bignum";
+		return "BIGNUM";
 	case LogicalTypeId::DATE:
-		return "date";
+		return "DATE";
 	case LogicalTypeId::TIME:
-		return "time";
+		return "TIME";
 	case LogicalTypeId::TIME_NS:
-		return "time_ns";
+		return "TIME_NS";
 	case LogicalTypeId::TIME_TZ:
-		return "timetz";
+		return "TIMETZ";
 	case LogicalTypeId::TIMESTAMP:
-		return "timestamp_us";
+		return "TIMESTAMP_US";
 	case LogicalTypeId::TIMESTAMP_SEC:
-		return "timestamp_s";
+		return "TIMESTAMP_S";
 	case LogicalTypeId::TIMESTAMP_MS:
-		return "timestamp_ms";
+		return "TIMESTAMP_MS";
 	case LogicalTypeId::TIMESTAMP_NS:
-		return "timestamp_ns";
+		return "TIMESTAMP_NS";
 	case LogicalTypeId::TIMESTAMP_TZ:
-		return "timestamptz";
+		return "TIMESTAMPTZ";
 	case LogicalTypeId::TIMESTAMP_TZ_NS:
-		return "timestamptz_ns";
+		return "TIMESTAMPTZ_NS";
 	case LogicalTypeId::INTERVAL:
-		return "interval";
+		return "INTERVAL";
 	case LogicalTypeId::VARCHAR:
-		return "varchar";
+		return "VARCHAR";
 	case LogicalTypeId::BLOB:
-		return "blob";
+		return "BLOB";
 	case LogicalTypeId::BIT:
-		return "bit";
+		return "BIT";
 	case LogicalTypeId::UUID:
-		return "uuid";
+		return "UUID";
 	case LogicalTypeId::SQLNULL:
-		return "null";
+		return "NULL";
 	case LogicalTypeId::TYPE:
-		return "type";
+		return "TYPE";
 	case LogicalTypeId::VARIANT:
-		return "variant";
+		return "VARIANT";
 	case LogicalTypeId::GEOMETRY:
-		return "geometry";
+		return "GEOMETRY";
 	case LogicalTypeId::DECIMAL:
-		return "decimal";
+		return "DECIMAL";
 	case LogicalTypeId::ENUM:
-		return "enum";
+		return "ENUM";
 	case LogicalTypeId::LIST:
-		return "list";
+		return "LIST";
 	case LogicalTypeId::ARRAY:
-		return "array";
+		return "ARRAY";
 	case LogicalTypeId::STRUCT:
-		return "struct";
+		return "STRUCT";
 	case LogicalTypeId::TUPLE:
-		return "tuple";
+		return "TUPLE";
 	case LogicalTypeId::MAP:
-		return "map";
+		return "MAP";
 	case LogicalTypeId::UNION:
-		return "union";
+		return "UNION";
 	default:
 		return nullptr;
 	}

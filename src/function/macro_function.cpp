@@ -29,8 +29,8 @@ string FormatMacroFunction(const MacroFunction &function, const Identifier &name
 		const auto &param_name = function.parameters[param_idx]->Cast<ColumnRefExpression>().GetColumnName();
 		parameters += param_name;
 
-		if (!function.types.empty() && function.types[param_idx] != LogicalType::UNKNOWN) {
-			parameters += " " + function.types[param_idx].ToString();
+		if (param_idx < function.types.size() && function.types[param_idx]) {
+			parameters += " " + function.types[param_idx]->ToString();
 		}
 
 		auto it = function.default_parameters.find(param_name);
@@ -54,13 +54,8 @@ MacroBindResult MacroFunction::BindMacroFunction(
 	// Figure out whether we even need to bind arguments
 	bool requires_bind = false;
 	for (auto &function : functions) {
-		for (const auto &type : function->types) {
-			if (type.id() != LogicalTypeId::UNKNOWN) {
-				requires_bind = true;
-				break;
-			}
-		}
-		if (requires_bind) {
+		if (function->HasTypedParameters()) {
+			requires_bind = true;
 			break;
 		}
 	}
@@ -99,9 +94,7 @@ MacroBindResult MacroFunction::BindMacroFunction(
 	for (idx_t function_idx = 0; function_idx < functions.size(); function_idx++) {
 		auto &function = functions[function_idx];
 
-		// At some point we want to guarantee that this has the same size as "parameters", but for now we fill to match
-		auto parameter_types = function->types;
-		parameter_types.resize(function->parameters.size(), LogicalType::UNKNOWN);
+		auto parameter_types = function->GetParameterTypes(binder.context);
 
 		// Check if we can exclude the match based on argument count (also avoids out-of-bounds below)
 		if (positional_arguments.size() > function->parameters.size() ||
@@ -219,14 +212,18 @@ MacroBindResult MacroFunction::BindMacroFunction(
 	const auto &macro_def = *functions[macro_idx];
 
 	// Cast positionals to proper types
-	auto parameter_types = macro_def.types;
-	parameter_types.resize(macro_def.parameters.size(), LogicalType::UNKNOWN);
+	auto cast_target = [&macro_def](idx_t idx) -> unique_ptr<TypeExpression> {
+		if (idx >= macro_def.types.size() || !macro_def.types[idx]) {
+			return nullptr;
+		}
+		return unique_ptr_cast<ParsedExpression, TypeExpression>(macro_def.types[idx]->Copy());
+	};
 	idx_t param_idx = 0;
 	for (; param_idx < positional_arguments.size(); param_idx++) {
-		if (parameter_types[param_idx] != LogicalType::UNKNOWN) {
+		if (auto target = cast_target(param_idx)) {
 			// This macro parameter is typed, add a cast
 			auto &positional_arg = positional_arguments[param_idx];
-			positional_arg = make_uniq<CastExpression>(parameter_types[param_idx], std::move(positional_arg));
+			positional_arg = make_uniq<CastExpression>(std::move(target), std::move(positional_arg));
 		}
 	}
 
@@ -236,10 +233,10 @@ MacroBindResult MacroFunction::BindMacroFunction(
 		auto named_arg_it = named_arguments.find(param_name);
 		if (named_arg_it != named_arguments.end()) {
 			// The user has supplied an argument for this parameter
-			if (parameter_types[param_idx] != LogicalType::UNKNOWN) {
+			if (auto target = cast_target(param_idx)) {
 				// This macro parameter is typed, add a cast
 				auto &named_arg = named_arg_it->second;
-				named_arg = make_uniq<CastExpression>(parameter_types[param_idx], std::move(named_arg));
+				named_arg = make_uniq<CastExpression>(std::move(target), std::move(named_arg));
 			}
 			continue;
 		}
@@ -248,9 +245,9 @@ MacroBindResult MacroFunction::BindMacroFunction(
 		D_ASSERT(default_it != macro_def.default_parameters.end());
 		auto &named_arg = named_arguments[param_name];
 		named_arg = default_it->second->Copy();
-		if (parameter_types[param_idx] != LogicalType::UNKNOWN) {
+		if (auto target = cast_target(param_idx)) {
 			// This macro parameter is typed, add a cast
-			named_arg = make_uniq<CastExpression>(parameter_types[param_idx], std::move(named_arg));
+			named_arg = make_uniq<CastExpression>(std::move(target), std::move(named_arg));
 		}
 	}
 
@@ -258,11 +255,11 @@ MacroBindResult MacroFunction::BindMacroFunction(
 }
 
 unique_ptr<DummyBinding> MacroFunction::CreateDummyBinding(
-    const MacroFunction &macro_def, const Identifier &name, vector<unique_ptr<ParsedExpression>> &positional_arguments,
+    ClientContext &context, const MacroFunction &macro_def, const Identifier &name,
+    vector<unique_ptr<ParsedExpression>> &positional_arguments,
     InsertionOrderPreservingMap<unique_ptr<ParsedExpression>, Identifier, identifier_map_t<idx_t>> &named_arguments) {
 	// create a MacroBinding to bind this macro's parameters to its arguments
-	vector<LogicalType> types = macro_def.types;
-	types.resize(macro_def.parameters.size(), LogicalType::UNKNOWN);
+	auto types = macro_def.GetParameterTypes(context);
 	vector<Identifier> names;
 	for (idx_t i = 0; i < positional_arguments.size(); i++) {
 		names.emplace_back(macro_def.parameters[i]->Cast<ColumnRefExpression>().GetColumnName());
@@ -277,6 +274,30 @@ unique_ptr<DummyBinding> MacroFunction::CreateDummyBinding(
 	return res;
 }
 
+bool MacroFunction::HasTypedParameters() const {
+	for (auto &type : types) {
+		if (type) {
+			return true;
+		}
+	}
+	return false;
+}
+
+vector<LogicalType> MacroFunction::GetParameterTypes(ClientContext &context) const {
+	vector<LogicalType> result;
+	result.reserve(parameters.size());
+	for (idx_t i = 0; i < parameters.size(); i++) {
+		if (i >= types.size() || !types[i]) {
+			// an untyped parameter
+			result.emplace_back(LogicalType::UNKNOWN);
+			continue;
+		}
+		auto binder = Binder::CreateBinder(context);
+		result.push_back(binder->BindLogicalType(*types[i]));
+	}
+	return result;
+}
+
 void MacroFunction::CopyProperties(MacroFunction &other) const {
 	other.type = type;
 	for (auto &param : parameters) {
@@ -285,7 +306,9 @@ void MacroFunction::CopyProperties(MacroFunction &other) const {
 	for (auto &kv : default_parameters) {
 		other.default_parameters[kv.first] = kv.second->Copy();
 	}
-	other.types = types;
+	for (auto &type : types) {
+		other.types.push_back(type ? unique_ptr_cast<ParsedExpression, TypeExpression>(type->Copy()) : nullptr);
+	}
 }
 
 vector<unique_ptr<ParsedExpression>>
@@ -326,7 +349,7 @@ void MacroFunction::FinalizeDeserialization() {
 	}
 	// In older versions of DuckDB macros were always untyped
 	if (parameters.size() != types.size()) {
-		types.resize(parameters.size(), LogicalType::UNKNOWN);
+		types.resize(parameters.size());
 	}
 }
 
@@ -335,8 +358,8 @@ string MacroFunction::ToSQL() const {
 	for (idx_t param_idx = 0; param_idx < parameters.size(); param_idx++) {
 		const auto &param_name = parameters[param_idx]->Cast<ColumnRefExpression>().GetColumnName();
 		auto param_string = SQLIdentifier::ToString(param_name.GetIdentifierName());
-		if (types[param_idx] != LogicalType::UNKNOWN) {
-			param_string += " " + types[param_idx].ToString();
+		if (types[param_idx]) {
+			param_string += " " + types[param_idx]->ToString();
 		}
 		auto it = default_parameters.find(param_name);
 		if (it != default_parameters.end()) {
@@ -345,6 +368,69 @@ string MacroFunction::ToSQL() const {
 		param_strings.emplace_back(std::move(param_string));
 	}
 	return StringUtil::Format("(%s) AS ", StringUtil::Join(param_strings, ", "));
+}
+
+void MacroFunction::Serialize(Serializer &serializer) const {
+	serializer.WriteProperty<MacroType>(100, "type", type);
+	serializer.WritePropertyWithDefault<vector<unique_ptr<ParsedExpression>>>(
+	    101, "parameters", GetPositionalParametersForSerialization(serializer));
+	serializer.WritePropertyWithDefault<
+	    InsertionOrderPreservingMap<unique_ptr<ParsedExpression>, Identifier, identifier_map_t<idx_t>>>(
+	    102, "default_parameters", default_parameters);
+	if (serializer.ShouldSerialize(StorageVersion::V1_4_0) && !serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
+		// older versions store the declared types as resolved LogicalTypes. The stored expressions are normalized,
+		// so they name only built-in types and resolve without a ClientContext.
+		vector<LogicalType> logical_types;
+		logical_types.reserve(types.size());
+		for (auto &type : types) {
+			logical_types.push_back(type ? UnboundType::TryDefaultBind(*type) : LogicalType::UNKNOWN);
+		}
+		serializer.WritePropertyWithDefault<vector<LogicalType>>(103, "types", logical_types, vector<LogicalType>());
+	}
+	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
+		serializer.WritePropertyWithDefault<vector<unique_ptr<TypeExpression>>>(104, "type_expressions", types,
+		                                                                        vector<unique_ptr<TypeExpression>>());
+	}
+}
+
+unique_ptr<MacroFunction> MacroFunction::Deserialize(Deserializer &deserializer) {
+	auto type = deserializer.ReadProperty<MacroType>(100, "type");
+	auto parameters = deserializer.ReadPropertyWithDefault<vector<unique_ptr<ParsedExpression>>>(101, "parameters");
+	auto default_parameters = deserializer.ReadPropertyWithDefault<
+	    InsertionOrderPreservingMap<unique_ptr<ParsedExpression>, Identifier, identifier_map_t<idx_t>>>(
+	    102, "default_parameters");
+	auto logical_types =
+	    deserializer.ReadPropertyWithExplicitDefault<vector<LogicalType>>(103, "types", vector<LogicalType>());
+	auto type_expressions = deserializer.ReadPropertyWithExplicitDefault<vector<unique_ptr<ParsedExpression>>>(
+	    104, "type_expressions", vector<unique_ptr<ParsedExpression>>());
+	unique_ptr<MacroFunction> result;
+	switch (type) {
+	case MacroType::SCALAR_MACRO:
+		result = ScalarMacroFunction::Deserialize(deserializer);
+		break;
+	case MacroType::TABLE_MACRO:
+		result = TableMacroFunction::Deserialize(deserializer);
+		break;
+	default:
+		throw SerializationException("Unsupported type for deserialization of MacroFunction!");
+	}
+	result->parameters = std::move(parameters);
+	result->default_parameters = std::move(default_parameters);
+	if (!type_expressions.empty()) {
+		for (auto &type_expression : type_expressions) {
+			result->types.push_back(type_expression
+			                            ? unique_ptr_cast<ParsedExpression, TypeExpression>(std::move(type_expression))
+			                            : nullptr);
+		}
+	} else {
+		// written by a version that stored the declared types as resolved LogicalTypes
+		for (auto &logical_type : logical_types) {
+			result->types.push_back(
+			    logical_type.id() == LogicalTypeId::UNKNOWN ? nullptr : TypeExpression::FromLogicalType(logical_type));
+		}
+	}
+	result->FinalizeDeserialization();
+	return result;
 }
 
 } // namespace duckdb

@@ -418,12 +418,10 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 	auto &base = info.Cast<CreateMacroInfo>();
 	for (auto &function : base.macros) {
 		if (!store_types) {
-			for (const auto &type : function->types) {
-				if (type.id() != LogicalTypeId::UNKNOWN) {
-					string msg = "Typed macro parameters are only supported for storage versions v1.4.0 and higher.\n";
-					msg += "Use an in-memory database, ATTACH with (STORAGE_VERSION v1.4.0), or create a TEMP macro";
-					throw BinderException(msg);
-				}
+			if (function->HasTypedParameters()) {
+				string msg = "Typed macro parameters are only supported for storage versions v1.4.0 and higher.\n";
+				msg += "Use an in-memory database, ATTACH with (STORAGE_VERSION v1.4.0), or create a TEMP macro";
+				throw BinderException(msg);
 			}
 		}
 
@@ -474,15 +472,15 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 			it.second = std::move(const_expr);
 		}
 
-		// Resolve any user type arguments
+		// Resolve any user type arguments, and store the declared types back in their normalized form: resolving
+		// them inlines any referenced user type and folds the parameters, so what the catalog keeps names only
+		// built-in types.
 		for (idx_t param_idx = 0; param_idx < function->types.size(); param_idx++) {
-			auto &type = function->types[param_idx];
-			if (type.id() == LogicalTypeId::UNKNOWN) {
+			if (!function->types[param_idx]) {
 				continue;
 			}
-			if (type.id() == LogicalTypeId::UNBOUND) {
-				BindLogicalType(type);
-			}
+			auto type = BindLogicalType(*function->types[param_idx]);
+			function->types[param_idx] = TypeExpression::FromLogicalType(type.WithAlias(""));
 			const auto &param_name = function->parameters[param_idx]->Cast<ColumnRefExpression>().GetColumnName();
 			auto it = function->default_parameters.find(param_name);
 			if (it != function->default_parameters.end()) {
@@ -500,11 +498,10 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 			}
 		}
 
-		vector<LogicalType> dummy_types;
+		auto dummy_types = function->GetParameterTypes(context);
 		vector<Identifier> dummy_names;
 		// positional parameters
 		for (idx_t param_idx = 0; param_idx < function->parameters.size(); param_idx++) {
-			dummy_types.emplace_back(function->types.empty() ? LogicalType::UNKNOWN : function->types[param_idx]);
 			dummy_names.emplace_back(function->parameters[param_idx]->Cast<ColumnRefExpression>().GetColumnName());
 		}
 

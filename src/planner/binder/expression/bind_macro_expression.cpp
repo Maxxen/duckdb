@@ -179,7 +179,7 @@ void ExpressionBinder::UnfoldMacroExpression(FunctionExpression &function, Scala
 	auto &macro_def = macro_func.macros[bind_result.function_idx.GetIndex()]->Cast<ScalarMacroFunction>();
 
 	auto new_macro_binding =
-	    MacroFunction::CreateDummyBinding(macro_def, macro_func.name, positional_arguments, named_arguments);
+	    MacroFunction::CreateDummyBinding(context, macro_def, macro_func.name, positional_arguments, named_arguments);
 	macro_binding = new_macro_binding.get();
 
 	// replace current expression with stored macro expression

@@ -158,7 +158,7 @@ struct ScalarFunctionExtractor {
 		return results;
 	}
 
-	static Value GetParameterTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
+	static Value GetParameterTypes(ClientContext &context, ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
@@ -167,7 +167,8 @@ struct ScalarFunctionExtractor {
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<LogicalType> GetParameterLogicalTypes(ClientContext &context, ScalarFunctionCatalogEntry &entry,
+	                                                    idx_t offset) {
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		vector<LogicalType> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
@@ -216,7 +217,7 @@ struct WindowFunctionExtractor {
 		return results;
 	}
 
-	static Value GetParameterTypes(WindowFunctionCatalogEntry &entry, idx_t offset) {
+	static Value GetParameterTypes(ClientContext &context, WindowFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
@@ -225,7 +226,8 @@ struct WindowFunctionExtractor {
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(WindowFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<LogicalType> GetParameterLogicalTypes(ClientContext &context, WindowFunctionCatalogEntry &entry,
+	                                                    idx_t offset) {
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		vector<LogicalType> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
@@ -272,7 +274,7 @@ struct AggregateFunctionExtractor {
 		return results;
 	}
 
-	static Value GetParameterTypes(AggregateFunctionCatalogEntry &entry, idx_t offset) {
+	static Value GetParameterTypes(ClientContext &context, AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
@@ -281,7 +283,8 @@ struct AggregateFunctionExtractor {
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(AggregateFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<LogicalType> GetParameterLogicalTypes(ClientContext &context, AggregateFunctionCatalogEntry &entry,
+	                                                    idx_t offset) {
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		vector<LogicalType> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
@@ -333,21 +336,24 @@ struct MacroExtractor {
 		return results;
 	}
 
-	static Value GetParameterTypes(ScalarMacroCatalogEntry &entry, idx_t offset) {
+	static Value GetParameterTypes(ClientContext &context, ScalarMacroCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		auto &macro_entry = *entry.macros[offset];
+		auto macro_types = macro_entry.GetParameterTypes(context);
 		for (idx_t i = 0; i < macro_entry.parameters.size(); i++) {
-			const auto has_type = !macro_entry.types.empty() && macro_entry.types[i] != LogicalType::UNKNOWN;
-			results.emplace_back(has_type ? macro_entry.types[i].ToString() : Value(LogicalType::VARCHAR));
+			const auto has_type = i < macro_entry.types.size() && macro_entry.types[i];
+			results.emplace_back(has_type ? Value(macro_types[i].ToString()) : Value(LogicalType::VARCHAR));
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(ScalarMacroCatalogEntry &entry, idx_t offset) {
+	static vector<LogicalType> GetParameterLogicalTypes(ClientContext &context, ScalarMacroCatalogEntry &entry,
+	                                                    idx_t offset) {
 		vector<LogicalType> results;
 		auto &macro_entry = *entry.macros[offset];
+		auto macro_types = macro_entry.GetParameterTypes(context);
 		for (idx_t i = 0; i < macro_entry.parameters.size(); i++) {
-			results.emplace_back(macro_entry.types.empty() ? LogicalType::UNKNOWN : macro_entry.types[i]);
+			results.emplace_back(i < macro_types.size() ? macro_types[i] : LogicalType::UNKNOWN);
 		}
 		return results;
 	}
@@ -396,21 +402,24 @@ struct TableMacroExtractor {
 		return results;
 	}
 
-	static Value GetParameterTypes(TableMacroCatalogEntry &entry, idx_t offset) {
+	static Value GetParameterTypes(ClientContext &context, TableMacroCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		auto &macro_entry = *entry.macros[offset];
+		auto macro_types = macro_entry.GetParameterTypes(context);
 		for (idx_t i = 0; i < macro_entry.parameters.size(); i++) {
-			const auto has_type = !macro_entry.types.empty() && macro_entry.types[i] != LogicalType::UNKNOWN;
-			results.emplace_back(has_type ? macro_entry.types[i].ToString() : Value(LogicalType::VARCHAR));
+			const auto has_type = i < macro_entry.types.size() && macro_entry.types[i];
+			results.emplace_back(has_type ? Value(macro_types[i].ToString()) : Value(LogicalType::VARCHAR));
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(TableMacroCatalogEntry &entry, idx_t offset) {
+	static vector<LogicalType> GetParameterLogicalTypes(ClientContext &context, TableMacroCatalogEntry &entry,
+	                                                    idx_t offset) {
 		vector<LogicalType> results;
 		auto &macro_entry = *entry.macros[offset];
+		auto macro_types = macro_entry.GetParameterTypes(context);
 		for (idx_t i = 0; i < macro_entry.parameters.size(); i++) {
-			results.emplace_back(macro_entry.types.empty() ? LogicalType::UNKNOWN : macro_entry.types[i]);
+			results.emplace_back(i < macro_types.size() ? macro_types[i] : LogicalType::UNKNOWN);
 		}
 		return results;
 	}
@@ -462,7 +471,7 @@ struct TableFunctionExtractor {
 		return results;
 	}
 
-	static Value GetParameterTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
+	static Value GetParameterTypes(ClientContext &context, TableFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 
@@ -475,7 +484,8 @@ struct TableFunctionExtractor {
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<LogicalType> GetParameterLogicalTypes(ClientContext &context, TableFunctionCatalogEntry &entry,
+	                                                    idx_t offset) {
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		return fun.GetArguments();
 	}
@@ -524,7 +534,7 @@ struct PragmaFunctionExtractor {
 		return results;
 	}
 
-	static Value GetParameterTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
+	static Value GetParameterTypes(ClientContext &context, PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		vector<Value> results;
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 
@@ -537,7 +547,8 @@ struct PragmaFunctionExtractor {
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<LogicalType> GetParameterLogicalTypes(ClientContext &context, PragmaFunctionCatalogEntry &entry,
+	                                                    idx_t offset) {
 		const auto &fun = entry.functions.GetFunctionByOffset(offset);
 		return fun.GetArguments();
 	}
@@ -638,10 +649,10 @@ static optional_idx GetFunctionDescriptionIndex(vector<FunctionDescription> &fun
 }
 
 template <class T, class OP>
-bool ExtractFunctionData(CatalogEntry &entry, idx_t function_idx, DataChunk &output) {
+bool ExtractFunctionData(ClientContext &context, CatalogEntry &entry, idx_t function_idx, DataChunk &output) {
 	auto &function = entry.Cast<T>();
-	vector<LogicalType> parameter_types_vector = OP::GetParameterLogicalTypes(function, function_idx);
-	Value parameter_types_value = OP::GetParameterTypes(function, function_idx);
+	vector<LogicalType> parameter_types_vector = OP::GetParameterLogicalTypes(context, function, function_idx);
+	Value parameter_types_value = OP::GetParameterTypes(context, function, function_idx);
 	optional_idx description_idx = GetFunctionDescriptionIndex(function.descriptions, parameter_types_vector);
 	FunctionDescription function_description =
 	    description_idx.IsValid() ? function.descriptions[description_idx.GetIndex()] : FunctionDescription();
@@ -740,31 +751,31 @@ void DuckDBFunctionsFunction(ClientContext &context, TableFunctionInput &data_p,
 		switch (entry.type) {
 		case CatalogType::SCALAR_FUNCTION_ENTRY:
 			finished = ExtractFunctionData<ScalarFunctionCatalogEntry, ScalarFunctionExtractor>(
-			    entry, data.offset_in_entry, output);
+			    context, entry, data.offset_in_entry, output);
 			break;
 		case CatalogType::AGGREGATE_FUNCTION_ENTRY:
 			finished = ExtractFunctionData<AggregateFunctionCatalogEntry, AggregateFunctionExtractor>(
-			    entry, data.offset_in_entry, output);
+			    context, entry, data.offset_in_entry, output);
 			break;
 		case CatalogType::TABLE_MACRO_ENTRY:
-			finished =
-			    ExtractFunctionData<TableMacroCatalogEntry, TableMacroExtractor>(entry, data.offset_in_entry, output);
+			finished = ExtractFunctionData<TableMacroCatalogEntry, TableMacroExtractor>(context, entry,
+			                                                                            data.offset_in_entry, output);
 			break;
 		case CatalogType::MACRO_ENTRY:
-			finished =
-			    ExtractFunctionData<ScalarMacroCatalogEntry, MacroExtractor>(entry, data.offset_in_entry, output);
+			finished = ExtractFunctionData<ScalarMacroCatalogEntry, MacroExtractor>(context, entry,
+			                                                                        data.offset_in_entry, output);
 			break;
 		case CatalogType::TABLE_FUNCTION_ENTRY:
 			finished = ExtractFunctionData<TableFunctionCatalogEntry, TableFunctionExtractor>(
-			    entry, data.offset_in_entry, output);
+			    context, entry, data.offset_in_entry, output);
 			break;
 		case CatalogType::PRAGMA_FUNCTION_ENTRY:
 			finished = ExtractFunctionData<PragmaFunctionCatalogEntry, PragmaFunctionExtractor>(
-			    entry, data.offset_in_entry, output);
+			    context, entry, data.offset_in_entry, output);
 			break;
 		case CatalogType::WINDOW_FUNCTION_ENTRY:
 			finished = ExtractFunctionData<WindowFunctionCatalogEntry, WindowFunctionExtractor>(
-			    entry, data.offset_in_entry, output);
+			    context, entry, data.offset_in_entry, output);
 			break;
 		default:
 			throw InternalException("FIXME: unrecognized function type in duckdb_functions");

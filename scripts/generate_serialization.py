@@ -711,6 +711,8 @@ class SerializableClass:
 
 
 def generate_base_class_code(base_class: SerializableClass):
+    if base_class.custom_implementation:
+        return None
     base_class_serialize = ""
     base_class_deserialize = ""
 
@@ -1088,10 +1090,11 @@ for entry in file_list:
         # generate the base class serialization
         for base_class in base_classes:
             base_class_generation = generate_base_class_code(base_class)
-            base_class_generation = wrap_with_clang_tidy_ignore(
-                base_class_generation, base_class.ignore_clang_tidy_rules
-            )
-            f.write(base_class_generation)
+            if base_class_generation is not None:
+                base_class_generation = wrap_with_clang_tidy_ignore(
+                    base_class_generation, base_class.ignore_clang_tidy_rules
+                )
+                f.write(base_class_generation)
 
         # generate the class serialization
         classes = sorted(classes, key=lambda x: x.name)

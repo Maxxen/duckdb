@@ -10,6 +10,7 @@
 
 #include "duckdb/function/function.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
 #include "duckdb/parser/query_node.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/expression_binder.hpp"
@@ -40,8 +41,13 @@ public:
 	vector<unique_ptr<ParsedExpression>> parameters;
 	//! The default values of the parameters
 	InsertionOrderPreservingMap<unique_ptr<ParsedExpression>, Identifier, identifier_map_t<idx_t>> default_parameters;
-	//! The types of the parameters
-	vector<LogicalType> types;
+	//! The declared types of the parameters, as normalized type expressions - constant-folded, with any
+	//! referenced user types inlined. A null entry is an untyped parameter.
+	//!
+	//! TODO: this should become a TypeDescriptor (see TYPE_DESCRIPTOR_PLAN.md), for the same reason as
+	//! TypeCatalogEntry::type_expression - what is stored is always already folded, so a parse tree is more
+	//! than the catalog needs, and a descriptor would not have to be re-bound on use.
+	vector<unique_ptr<TypeExpression>> types;
 
 public:
 	virtual ~MacroFunction() {
@@ -59,8 +65,13 @@ public:
 	    FunctionExpression &function_expr, vector<unique_ptr<ParsedExpression>> &positional_arguments,
 	    InsertionOrderPreservingMap<unique_ptr<ParsedExpression>, Identifier, identifier_map_t<idx_t>> &named_arguments,
 	    idx_t depth);
+	//! The declared parameter types, resolved, padded to the parameter count with UNKNOWN for untyped ones
+	vector<LogicalType> GetParameterTypes(ClientContext &context) const;
+	//! Whether any parameter is typed
+	bool HasTypedParameters() const;
+
 	static unique_ptr<DummyBinding>
-	CreateDummyBinding(const MacroFunction &macro_def, const Identifier &name,
+	CreateDummyBinding(ClientContext &context, const MacroFunction &macro_def, const Identifier &name,
 	                   vector<unique_ptr<ParsedExpression>> &positional_arguments,
 	                   InsertionOrderPreservingMap<unique_ptr<ParsedExpression>, Identifier, identifier_map_t<idx_t>>
 	                       &named_arguments);

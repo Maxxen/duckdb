@@ -33,7 +33,11 @@
     "finalize_deserialization": [
       "result->FinalizeDeserialization();"
     ],
-    "constructor": ["parameters", "default_parameters"]
+    "constructor": [
+      "parameters",
+      "default_parameters"
+    ],
+    "custom_implementation": true
   },
   {
     "class": "ScalarMacroFunction",
