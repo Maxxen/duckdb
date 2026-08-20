@@ -24,7 +24,7 @@ LogicalType CatalogEntryRetriever::GetType(const QualifiedName &name, OnEntryNot
 		return LogicalType::INVALID;
 	}
 	auto &type_entry = result->Cast<TypeCatalogEntry>();
-	return type_entry.user_type;
+	return type_entry.GetType(context);
 }
 
 optional_ptr<SchemaCatalogEntry> CatalogEntryRetriever::GetSchema(const EntryLookupInfo &schema_lookup_p,

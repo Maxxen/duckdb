@@ -641,7 +641,7 @@ unique_ptr<SelectNode> Binder::BindPivot(PivotRef &ref, vector<unique_ptr<Parsed
 		if (!pivot.pivot_enum.empty()) {
 			auto &type_entry = Catalog::GetEntry<TypeCatalogEntry>(
 			    context, QualifiedName(Identifier::InvalidCatalog(), Identifier::InvalidSchema(), pivot.pivot_enum));
-			auto type = type_entry.user_type;
+			auto type = type_entry.GetType(context);
 			if (type.id() != LogicalTypeId::ENUM) {
 				throw BinderException(ref, "Pivot must reference an ENUM type: \"%s\" is of type \"%s\"",
 				                      pivot.pivot_enum, type.ToString());

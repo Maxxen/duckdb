@@ -250,6 +250,8 @@ unique_ptr<TypeExpression> TypeExpression::FromLogicalType(const LogicalType &ty
 
 	auto name = BuiltinTypeName(type.id());
 	if (!name) {
+		// only the internal placeholder ids (ANY, UNKNOWN, INVALID, ...) have no name, and none of them is a
+		// type a user can name in the first place
 		throw InternalException("Type '%s' cannot be expressed as a type expression", type.ToString());
 	}
 
@@ -279,11 +281,10 @@ unique_ptr<TypeExpression> TypeExpression::FromLogicalType(const LogicalType &ty
 		children.push_back(TypeChild(ListType::GetChildType(type), Identifier()));
 		break;
 	case LogicalTypeId::ARRAY:
-		if (ArrayType::IsAnySize(type)) {
-			throw InternalException("An any-size ARRAY cannot be expressed as a type expression");
-		}
 		children.push_back(TypeChild(ArrayType::GetChildType(type), Identifier()));
-		children.push_back(ValueChild(Value::UBIGINT(ArrayType::GetSize(type))));
+		if (!ArrayType::IsAnySize(type)) {
+			children.push_back(ValueChild(Value::UBIGINT(ArrayType::GetSize(type))));
+		}
 		break;
 	case LogicalTypeId::STRUCT:
 		for (auto &child : StructType::GetChildTypes(type)) {

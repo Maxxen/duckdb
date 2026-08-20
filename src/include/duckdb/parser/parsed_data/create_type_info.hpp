@@ -10,6 +10,7 @@
 
 #include "duckdb/parser/parsed_data/create_info.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
 
 #include "duckdb/common/identifier.hpp"
 namespace duckdb {
@@ -62,8 +63,12 @@ struct CreateTypeInfo : public CreateInfo {
 	void SetTypeName(Identifier name) {
 		qualified_name = qualified_name.WithName(std::move(name));
 	}
-	//! Logical Type
+	//! The resolved type. Set by the binder from `type_expression`, or directly by callers that already
+	//! have a concrete type. This is what the catalog and the persisted format use.
 	LogicalType type;
+	//! The type as written, for `CREATE TYPE x AS <type>`. The binder resolves it into `type` and clears
+	//! it, so nothing downstream of the binder ever sees it set.
+	unique_ptr<TypeExpression> type_expression;
 	//! Used by create enum from query
 	unique_ptr<SQLStatement> query;
 	//! Bind type modifiers to the type

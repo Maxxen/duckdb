@@ -14,7 +14,7 @@ static bool IsValidTypeLookup(optional_ptr<CatalogEntry> entry) {
 	if (!entry) {
 		return false;
 	}
-	return entry->Cast<TypeCatalogEntry>().user_type.id() != LogicalTypeId::INVALID;
+	return entry->Cast<TypeCatalogEntry>().IsValid();
 }
 
 //! Resolve the catalog entry a type expression names. The qualification is resolved the same way a table
@@ -100,7 +100,7 @@ BindResult ExpressionBinder::BindExpression(TypeExpression &type_expr, idx_t dep
 		}
 
 		// Otherwise, return the user type directly!
-		auto result_expr = make_uniq<BoundConstantExpression>(Value::TYPE(type_entry.user_type));
+		auto result_expr = make_uniq<BoundConstantExpression>(Value::TYPE(type_entry.GetType(context)));
 		result_expr->SetQueryLocation(type_expr.GetQueryLocation());
 		return BindResult(std::move(result_expr));
 	}

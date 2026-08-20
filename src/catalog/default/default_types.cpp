@@ -176,10 +176,8 @@ LogicalType BindIntervalType(BindLogicalTypeInput &input) {
 LogicalType BindEnumType(BindLogicalTypeInput &input) {
 	auto &arguments = input.modifiers;
 
-	if (arguments.empty()) {
-		throw BinderException("ENUM type requires at least one argument");
-	}
-
+	// an empty ENUM is a legal type - "CREATE TYPE x AS ENUM ()", an ENUM built from an empty query, and the
+	// internal types PIVOT creates all produce one, so "ENUM()" has to be able to name it too
 	Vector enum_vector(LogicalType::VARCHAR, NumericCast<idx_t>(arguments.size()));
 	auto string_data = FlatVector::Writer<string_t>(enum_vector, arguments.size());
 

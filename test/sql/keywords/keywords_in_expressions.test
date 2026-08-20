@@ -9,9 +9,17 @@ statement error
 CREATE TYPE "ENUM" AS ENUM('ALL');
 ----
 
-statement error
+# "ENUM" is not a user type, but it does name the built-in (empty) ENUM type
+statement ok
 CREATE TABLE "SCHEMA"."TABLE"("COLUMN" "ENUM");
+
+query I
+SELECT data_type FROM duckdb_columns() WHERE table_name='TABLE';
 ----
+ENUM()
+
+statement ok
+DROP TABLE "SCHEMA"."TABLE";
 
 statement ok
 CREATE TYPE E AS ENUM('ALL');

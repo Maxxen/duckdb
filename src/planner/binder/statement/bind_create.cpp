@@ -952,8 +952,16 @@ BoundStatement Binder::Bind(CreateStatement &stmt) {
 			result.plan->AddChild(std::move(query));
 		} else {
 			SetCatalogLookupCallback(dependency_callback);
-			// Bind the underlying type
-			BindLogicalType(create_type_info.type);
+			// Bind the underlying type. The callback records a dependency on any type it resolves, which is
+			// why this happens here rather than when the catalog entry is created.
+			if (create_type_info.type_expression) {
+				create_type_info.type = BindLogicalType(*create_type_info.type_expression);
+			} else {
+				BindLogicalType(create_type_info.type);
+			}
+			// Store the definition back in its normalized form: resolving it inlined any referenced user types
+			// and folded the parameters, so what the catalog keeps names only built-in types.
+			create_type_info.type_expression = TypeExpression::FromLogicalType(create_type_info.type.WithAlias(""));
 		}
 		break;
 	}

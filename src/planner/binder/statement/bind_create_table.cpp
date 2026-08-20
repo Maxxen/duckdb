@@ -65,7 +65,7 @@ static void VerifyCompressionType(ClientContext &context, optional_ptr<StorageMa
 			                  Identifier(logical_type.GetAlias())),
 			    OnEntryNotFound::RETURN_NULL);
 			if (type_entry) {
-				logical_type = type_entry->user_type;
+				logical_type = type_entry->GetType(context);
 			}
 		}
 		auto physical_type = logical_type.InternalType();

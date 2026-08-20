@@ -2,6 +2,9 @@
 
 #include "duckdb/common/sql_identifier.hpp"
 #include "duckdb/common/extra_type_info.hpp"
+#include "duckdb/common/serializer/serializer.hpp"
+#include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/storage/storage_info.hpp"
 #include "duckdb/common/sql_identifier.hpp"
 
 namespace duckdb {
@@ -18,6 +21,9 @@ unique_ptr<CreateInfo> CreateTypeInfo::Copy() const {
 	CopyProperties(*result);
 	result->SetTypeName(GetTypeName());
 	result->type = type;
+	if (type_expression) {
+		result->type_expression = unique_ptr_cast<ParsedExpression, TypeExpression>(type_expression->Copy());
+	}
 	if (query) {
 		result->query = query->Copy();
 	}
@@ -28,6 +34,13 @@ unique_ptr<CreateInfo> CreateTypeInfo::Copy() const {
 string CreateTypeInfo::ToString() const {
 	string result = GetCreatePrefix("TYPE");
 	result += QualifiedNameToString();
+	if (type_expression) {
+		// not yet bound
+		result += " AS ";
+		result += type_expression->ToString();
+		result += ";";
+		return result;
+	}
 	if (type.id() == LogicalTypeId::ENUM) {
 		auto &values_insert_order = EnumType::GetValuesInsertOrder(type);
 		idx_t size = EnumType::GetSize(type);
@@ -50,6 +63,32 @@ string CreateTypeInfo::ToString() const {
 	}
 	result += ";";
 	return result;
+}
+
+void CreateTypeInfo::Serialize(Serializer &serializer) const {
+	CreateInfo::Serialize(serializer);
+	serializer.WritePropertyWithDefault<Identifier>(200, "name", qualified_name.Name());
+	// from v2.0.0 the definition is stored as a type expression, before that as a resolved LogicalType
+	const bool write_expression = serializer.ShouldSerialize(StorageVersion::V2_0_0);
+	if (!write_expression) {
+		serializer.WriteProperty<LogicalType>(201, "logical_type", type);
+	}
+	if (write_expression) {
+		serializer.WritePropertyWithDefault<unique_ptr<TypeExpression>>(202, "type_expression", type_expression);
+	}
+}
+
+unique_ptr<CreateInfo> CreateTypeInfo::Deserialize(Deserializer &deserializer) {
+	auto result = duckdb::unique_ptr<CreateTypeInfo>(new CreateTypeInfo());
+	auto name = deserializer.ReadPropertyWithDefault<Identifier>(200, "name");
+	deserializer.ReadPropertyWithExplicitDefault<LogicalType>(201, "logical_type", result->type, LogicalType::INVALID);
+	auto type_expression =
+	    deserializer.ReadPropertyWithExplicitDefault<unique_ptr<ParsedExpression>>(202, "type_expression", nullptr);
+	if (type_expression) {
+		result->type_expression = unique_ptr_cast<ParsedExpression, TypeExpression>(std::move(type_expression));
+	}
+	result->SetName(std::move(name));
+	return std::move(result);
 }
 
 } // namespace duckdb

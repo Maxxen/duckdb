@@ -76,6 +76,7 @@ SourceResultType PhysicalCreateType::GetDataInternal(ExecutionContext &context, 
 		D_ASSERT(info->type == LogicalType::INVALID);
 		auto &g_sink_state = sink_state->Cast<CreateTypeGlobalState>();
 		info->type = LogicalType::ENUM(g_sink_state.result, g_sink_state.size);
+		info->type_expression = TypeExpression::FromLogicalType(info->type);
 	}
 
 	auto &catalog = Catalog::GetCatalog(context.client, info->GetQualifiedName().Catalog());

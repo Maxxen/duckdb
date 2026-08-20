@@ -242,20 +242,6 @@ unique_ptr<CreateInfo> CreateTriggerInfo::Deserialize(Deserializer &deserializer
 	return std::move(result);
 }
 
-void CreateTypeInfo::Serialize(Serializer &serializer) const {
-	CreateInfo::Serialize(serializer);
-	serializer.WritePropertyWithDefault<Identifier>(200, "name", qualified_name.Name());
-	serializer.WriteProperty<LogicalType>(201, "logical_type", type);
-}
-
-unique_ptr<CreateInfo> CreateTypeInfo::Deserialize(Deserializer &deserializer) {
-	auto result = duckdb::unique_ptr<CreateTypeInfo>(new CreateTypeInfo());
-	auto name = deserializer.ReadPropertyWithDefault<Identifier>(200, "name");
-	deserializer.ReadProperty<LogicalType>(201, "logical_type", result->type);
-	result->SetName(std::move(name));
-	return std::move(result);
-}
-
 void CreateViewInfo::Serialize(Serializer &serializer) const {
 	CreateInfo::Serialize(serializer);
 	serializer.WritePropertyWithDefault<Identifier>(200, "view_name", qualified_name.Name());

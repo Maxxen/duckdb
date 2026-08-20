@@ -15,15 +15,21 @@ SELECT * FROM test
 ----
 hello
 
+# an ENUM with no members is a legal type - it just has no value that can be cast to it
+query I
+SELECT typeof(NULL::ENUM);
+----
+ENUM()
+
 statement error
 SELECT 'hello'::ENUM;
 ----
-ENUM type requires at least one argument
+Could not convert string 'hello'
 
 statement error
 SELECT ENUM 'a';
 ----
-ENUM type requires at least one argument
+Could not convert string 'a'
 
 statement error
 SELECT 'hello'::ENUM(42);
