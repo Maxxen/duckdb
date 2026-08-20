@@ -6,6 +6,7 @@
 #include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/catalog/catalog_entry/type_catalog_entry.hpp"
 #include "duckdb/common/string_map_set.hpp"
+#include "duckdb/planner/binder.hpp"
 
 namespace duckdb {
 
@@ -73,11 +74,16 @@ SinkResultType PhysicalCreateType::Sink(ExecutionContext &context, DataChunk &ch
 SourceResultType PhysicalCreateType::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
                                                      OperatorSourceInput &input) const {
 	if (IsSink()) {
-		D_ASSERT(info->type == LogicalType::INVALID);
+		D_ASSERT(!info->type_expression);
 		auto &g_sink_state = sink_state->Cast<CreateTypeGlobalState>();
-		info->type = LogicalType::ENUM(g_sink_state.result, g_sink_state.size);
-		info->type_expression = TypeExpression::FromLogicalType(info->type);
+		auto enum_type = LogicalType::ENUM(g_sink_state.result, g_sink_state.size);
+		info->type_expression = TypeExpression::FromLogicalType(enum_type);
 	}
+
+	// Resolve the definition before it goes into the catalog, so an error surfaces here rather than the
+	// next time the type is used - the same reason macro bodies are bound at CREATE MACRO.
+	D_ASSERT(info->type_expression);
+	Binder::CreateBinder(context.client)->BindLogicalType(*info->type_expression);
 
 	auto &catalog = Catalog::GetCatalog(context.client, info->GetQualifiedName().Catalog());
 	catalog.CreateType(context.client, *info);

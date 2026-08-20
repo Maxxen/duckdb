@@ -5,6 +5,7 @@
 #include "duckdb/common/limits.hpp"
 #include "duckdb/parser/keyword_helper.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/catalog/default/default_types.hpp"
 #include <algorithm>
 #include <sstream>
 
@@ -13,7 +14,7 @@ namespace duckdb {
 constexpr const char *TypeCatalogEntry::Name;
 
 TypeCatalogEntry::TypeCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTypeInfo &info)
-    : StandardEntry(CatalogType::TYPE_ENTRY, schema, catalog, info.GetTypeName()), user_type(info.type),
+    : StandardEntry(CatalogType::TYPE_ENTRY, schema, catalog, info.GetTypeName()), nominal(info.nominal),
       bind_function(info.bind_function) {
 	if (info.type_expression) {
 		type_expression = unique_ptr_cast<ParsedExpression, TypeExpression>(info.type_expression->Copy());
@@ -35,16 +36,34 @@ unique_ptr<CatalogEntry> TypeCatalogEntry::Copy(ClientContext &context) const {
 
 LogicalType TypeCatalogEntry::GetType(ClientContext &context) const {
 	if (!type_expression) {
-		return user_type;
+		return LogicalType::INVALID;
 	}
-	auto binder = Binder::CreateBinder(context);
-	return binder->BindLogicalType(*type_expression);
+	LogicalType resolved;
+	if (type_expression->GetTypeName() == name) {
+		// the definition names this very entry - a built-in, whose real definition is the compiled-in
+		// table. Resolving it through the catalog would only come back here.
+		resolved = UnboundType::TryDefaultBind(*type_expression);
+	} else {
+		auto binder = Binder::CreateBinder(context);
+		resolved = binder->BindLogicalType(*type_expression);
+	}
+	if (nominal) {
+		// the description says what the type is made of; its identity is this entry's name
+		return resolved.WithAlias(name.GetIdentifierName());
+	}
+	return resolved;
+}
+
+LogicalTypeId TypeCatalogEntry::GetTypeId() const {
+	if (!type_expression) {
+		return LogicalTypeId::INVALID;
+	}
+	return DefaultTypeGenerator::GetDefaultType(type_expression->GetTypeName());
 }
 
 unique_ptr<CreateInfo> TypeCatalogEntry::GetInfo() const {
 	auto result = make_uniq<CreateTypeInfo>();
 	result->SetQualifiedName(schema.GetQualifiedName(name));
-	result->type = user_type;
 	if (type_expression) {
 		result->type_expression = unique_ptr_cast<ParsedExpression, TypeExpression>(type_expression->Copy());
 	}
@@ -53,6 +72,7 @@ unique_ptr<CreateInfo> TypeCatalogEntry::GetInfo() const {
 	result->comment = comment;
 	result->tags = tags;
 	result->bind_function = bind_function;
+	result->nominal = nominal;
 	return std::move(result);
 }
 
@@ -62,17 +82,8 @@ string TypeCatalogEntry::ToSQL() const {
 	ss << SQLIdentifier(name);
 	ss << " AS ";
 
-	if (type_expression) {
-		ss << type_expression->ToString();
-		ss << ";";
-		return ss.str();
-	}
-
-	// Strip off the potential alias so ToString doesn't just output the alias
-	auto user_type_copy = user_type.WithAlias("");
-	D_ASSERT(user_type_copy.GetAlias().empty());
-
-	ss << user_type_copy.ToString();
+	D_ASSERT(type_expression);
+	ss << type_expression->ToString();
 	ss << ";";
 	return ss.str();
 }

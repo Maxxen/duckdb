@@ -1948,11 +1948,12 @@ static LogicalType TryDefaultBindTypeExpression(const ParsedExpression &expr) {
 		switch (arg->GetExpressionType()) {
 		case ExpressionType::TYPE: {
 			auto type = TryDefaultBindTypeExpression(*arg);
-			bound_args.emplace_back(arg->GetName(), Value::TYPE(type));
+			// a parameter is labelled by its alias - GetName() would fall back to the parameter's own text
+			bound_args.emplace_back(arg->GetAlias().GetIdentifierName(), Value::TYPE(type));
 		} break;
 		case ExpressionType::VALUE_CONSTANT: {
 			auto &const_expr = arg->Cast<ConstantExpression>();
-			bound_args.emplace_back(arg->GetName(), const_expr.GetValue());
+			bound_args.emplace_back(arg->GetAlias().GetIdentifierName(), const_expr.GetValue());
 		} break;
 		default:
 			throw InvalidInputException("Cannot default bind unbound type with non-type, non-expression parameter");

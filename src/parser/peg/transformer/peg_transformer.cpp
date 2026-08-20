@@ -271,7 +271,6 @@ unique_ptr<SQLStatement> PEGTransformer::GenerateCreateEnumStmt(unique_ptr<Creat
 	auto select = make_uniq<SelectStatement>();
 	select->node = std::move(subselect);
 	info->query = std::move(select);
-	info->type = LogicalType::INVALID;
 
 	result->info = std::move(info);
 	return std::move(result);

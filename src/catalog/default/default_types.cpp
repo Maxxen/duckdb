@@ -1,6 +1,7 @@
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/common/vector/string_vector.hpp"
 #include "duckdb/catalog/default/default_types.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
 
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/type_catalog_entry.hpp"
@@ -127,12 +128,12 @@ LogicalType BindVarcharType(BindLogicalTypeInput &input) {
 				// Ignore all other modifiers and return collation type
 				auto collation = StringValue::Get(mod.GetValue());
 
-				if (!input.context) {
-					throw BinderException("Cannot bind varchar with collation without a connection");
+				// Validate the collation when there is a connection to validate it against. Without one -
+				// rebuilding a type from its parts while loading a database - the input is trusted: it can
+				// only have come from a type that was validated when it was created.
+				if (input.context) {
+					ExpressionBinder::TestCollation(*input.context, collation);
 				}
-
-				// Ensure this is a valid collation
-				ExpressionBinder::TestCollation(*input.context, collation);
 
 				return LogicalType::VARCHAR_COLLATION(collation);
 			}
@@ -431,7 +432,9 @@ LogicalType BindGeometryType(BindLogicalTypeInput &input) {
 	auto &crs = StringValue::Get(crs_value);
 
 	if (!input.context) {
-		throw BinderException("Cannot create GEOMETRY type with coordinate system without a connection");
+		// Rebuilding a type from its parts with no connection to identify the coordinate system against;
+		// the definition is trusted, since it can only have come from a type that was identified already.
+		return LogicalType::GEOMETRY(crs);
 	}
 
 	const auto crs_result = CoordinateReferenceSystem::TryIdentify(*input.context, crs);
@@ -594,7 +597,7 @@ LogicalType DefaultTypeGenerator::TryDefaultBind(const string &name, const vecto
 		args.emplace_back(param.first, param.second);
 	}
 
-	BindLogicalTypeInput input {nullptr, LogicalType(entry->type), args};
+	BindLogicalTypeInput input {nullptr, args};
 	return entry->bind_function(input);
 }
 
@@ -613,7 +616,9 @@ unique_ptr<CatalogEntry> DefaultTypeGenerator::CreateDefaultEntry(ClientContext 
 	}
 	CreateTypeInfo info;
 	info.SetTypeName(entry_name);
-	info.type = LogicalType(entry->type);
+	// a built-in is named by its own entry name; resolving it goes through the compiled-in table, not the
+	// catalog, so it does not chase back to this entry
+	info.type_expression = make_uniq<TypeExpression>(Identifier(entry->name), vector<unique_ptr<ParsedExpression>>());
 	info.internal = true;
 	info.temporary = true;
 	info.bind_function = entry->bind_function;

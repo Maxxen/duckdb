@@ -212,11 +212,12 @@ MacroBindResult MacroFunction::BindMacroFunction(
 	const auto &macro_def = *functions[macro_idx];
 
 	// Cast positionals to proper types
+	// the cast target is a parsed expression, so the description is turned back into one here
 	auto cast_target = [&macro_def](idx_t idx) -> unique_ptr<TypeExpression> {
 		if (idx >= macro_def.types.size() || !macro_def.types[idx]) {
 			return nullptr;
 		}
-		return unique_ptr_cast<ParsedExpression, TypeExpression>(macro_def.types[idx]->Copy());
+		return macro_def.types[idx]->ToTypeExpression();
 	};
 	idx_t param_idx = 0;
 	for (; param_idx < positional_arguments.size(); param_idx++) {
@@ -280,6 +281,11 @@ bool MacroFunction::HasTypedParameters() const {
 			return true;
 		}
 	}
+	for (auto &type : parsed_types) {
+		if (type) {
+			return true;
+		}
+	}
 	return false;
 }
 
@@ -293,7 +299,7 @@ vector<LogicalType> MacroFunction::GetParameterTypes(ClientContext &context) con
 			continue;
 		}
 		auto binder = Binder::CreateBinder(context);
-		result.push_back(binder->BindLogicalType(*types[i]));
+		result.push_back(binder->BindTypeDescriptor(*types[i]));
 	}
 	return result;
 }
@@ -307,7 +313,7 @@ void MacroFunction::CopyProperties(MacroFunction &other) const {
 		other.default_parameters[kv.first] = kv.second->Copy();
 	}
 	for (auto &type : types) {
-		other.types.push_back(type ? unique_ptr_cast<ParsedExpression, TypeExpression>(type->Copy()) : nullptr);
+		other.types.push_back(type ? make_uniq<TypeDescriptor>(*type) : nullptr);
 	}
 }
 
@@ -383,13 +389,12 @@ void MacroFunction::Serialize(Serializer &serializer) const {
 		vector<LogicalType> logical_types;
 		logical_types.reserve(types.size());
 		for (auto &type : types) {
-			logical_types.push_back(type ? UnboundType::TryDefaultBind(*type) : LogicalType::UNKNOWN);
+			logical_types.push_back(type ? type->DefaultBind() : LogicalType::UNKNOWN);
 		}
 		serializer.WritePropertyWithDefault<vector<LogicalType>>(103, "types", logical_types, vector<LogicalType>());
 	}
 	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
-		serializer.WritePropertyWithDefault<vector<unique_ptr<TypeExpression>>>(104, "type_expressions", types,
-		                                                                        vector<unique_ptr<TypeExpression>>());
+		serializer.WriteProperty<vector<unique_ptr<TypeDescriptor>>>(104, "type_descriptors", types);
 	}
 }
 
@@ -401,8 +406,8 @@ unique_ptr<MacroFunction> MacroFunction::Deserialize(Deserializer &deserializer)
 	    102, "default_parameters");
 	auto logical_types =
 	    deserializer.ReadPropertyWithExplicitDefault<vector<LogicalType>>(103, "types", vector<LogicalType>());
-	auto type_expressions = deserializer.ReadPropertyWithExplicitDefault<vector<unique_ptr<ParsedExpression>>>(
-	    104, "type_expressions", vector<unique_ptr<ParsedExpression>>());
+	vector<unique_ptr<TypeDescriptor>> type_descriptors;
+	deserializer.ReadPropertyWithDefault<vector<unique_ptr<TypeDescriptor>>>(104, "type_descriptors", type_descriptors);
 	unique_ptr<MacroFunction> result;
 	switch (type) {
 	case MacroType::SCALAR_MACRO:
@@ -416,17 +421,14 @@ unique_ptr<MacroFunction> MacroFunction::Deserialize(Deserializer &deserializer)
 	}
 	result->parameters = std::move(parameters);
 	result->default_parameters = std::move(default_parameters);
-	if (!type_expressions.empty()) {
-		for (auto &type_expression : type_expressions) {
-			result->types.push_back(type_expression
-			                            ? unique_ptr_cast<ParsedExpression, TypeExpression>(std::move(type_expression))
-			                            : nullptr);
-		}
+	if (!type_descriptors.empty()) {
+		result->types = std::move(type_descriptors);
 	} else {
 		// written by a version that stored the declared types as resolved LogicalTypes
 		for (auto &logical_type : logical_types) {
-			result->types.push_back(
-			    logical_type.id() == LogicalTypeId::UNKNOWN ? nullptr : TypeExpression::FromLogicalType(logical_type));
+			result->types.push_back(logical_type.id() == LogicalTypeId::UNKNOWN
+			                            ? nullptr
+			                            : make_uniq<TypeDescriptor>(TypeDescriptor::FromLogicalType(logical_type)));
 		}
 	}
 	result->FinalizeDeserialization();

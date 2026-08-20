@@ -414,6 +414,7 @@ duckdb_state duckdb_register_logical_type(duckdb_connection connection, duckdb_l
 			duckdb::CreateTypeInfo info(base_type.GetAlias(), base_type);
 			info.temporary = true;
 			info.internal = true;
+			info.nominal = true;
 			catalog.CreateType(*con->context, info);
 		});
 	} catch (...) {

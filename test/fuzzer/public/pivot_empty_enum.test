@@ -5,7 +5,8 @@
 statement ok
 CREATE TABLE t1 (c01 INT);
 
+# a bare ENUM names the empty enum type, so the pivot produces no columns at all
 statement error
 PIVOT_WIDER t1 ON c01 IN ENUM;
 ----
-Binder Error: ENUM type is incomplete
+SELECT list is empty after resolving * expressions

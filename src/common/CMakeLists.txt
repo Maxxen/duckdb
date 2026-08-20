@@ -80,6 +80,7 @@ add_library_unity(
   thread_util.cpp
   time_point.cpp
   tree_renderer.cpp
+  type_descriptor.cpp
   types.cpp
   bignum.cpp
   clustered_aggregate.cpp

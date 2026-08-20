@@ -2,6 +2,8 @@
 #include "duckdb/common/vector/string_vector.hpp"
 #include "duckdb/parser/peg/transformer/peg_transformer.hpp"
 #include "duckdb/parser/parsed_data/create_type_info.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
 
 namespace duckdb {
 
@@ -20,6 +22,7 @@ unique_ptr<CreateStatement> PEGTransformerFactory::TransformCreateTypeStmt(PEGTr
 unique_ptr<CreateTypeInfo> PEGTransformerFactory::TransformCreateTypeFromType(PEGTransformer &transformer,
                                                                               unique_ptr<TypeExpression> type) {
 	auto result = make_uniq<CreateTypeInfo>();
+	// the parser's form is an expression; the binder folds it into a descriptor
 	result->type_expression = std::move(type);
 	return result;
 }
@@ -29,7 +32,6 @@ PEGTransformerFactory::TransformEnumSelectType(PEGTransformer &transformer,
                                                unique_ptr<SelectStatement> select_statement_internal) {
 	auto result = make_uniq<CreateTypeInfo>();
 	result->query = std::move(select_statement_internal);
-	result->type = LogicalType::INVALID;
 	return result;
 }
 
@@ -45,7 +47,14 @@ PEGTransformerFactory::TransformEnumStringLiteralList(PEGTransformer &transforme
 			string_data.WriteValue(string_t(literal));
 		}
 	}
-	result->type = LogicalType::ENUM(enum_vector, enum_count);
+	vector<unique_ptr<ParsedExpression>> values;
+	values.reserve(enum_count);
+	if (string_literal) {
+		for (auto &literal : *string_literal) {
+			values.push_back(make_uniq_base<ParsedExpression, ConstantExpression>(Value(literal)));
+		}
+	}
+	result->type_expression = make_uniq<TypeExpression>(Identifier("ENUM"), std::move(values));
 	return result;
 }
 

@@ -48,6 +48,7 @@ class LimitModifier;
 class OrderBinder;
 class ParsedColumnDefinition;
 class TypeExpression;
+class TypeDescriptor;
 class TypeCatalogEntry;
 class TableCatalogEntry;
 class ViewCatalogEntry;
@@ -355,6 +356,9 @@ public:
 	LogicalType BindLogicalType(const unique_ptr<ParsedExpression> &type_expr);
 	//! The catalog entry a type expression names
 	TypeCatalogEntry &LookupTypeEntry(const TypeExpression &type_expr);
+	TypeCatalogEntry &LookupTypeEntry(const QualifiedName &qualified_name, QueryErrorContext error_context);
+	//! Resolve a folded, unbound type description against the catalog
+	LogicalType BindTypeDescriptor(const TypeDescriptor &descriptor);
 	//! Rewrites a type expression (recursively) to name its type by its resolved catalog and schema
 	void QualifyTypeExpression(TypeExpression &type_expr);
 

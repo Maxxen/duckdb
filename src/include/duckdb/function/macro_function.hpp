@@ -10,6 +10,7 @@
 
 #include "duckdb/function/function.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/common/type_descriptor.hpp"
 #include "duckdb/parser/expression/type_expression.hpp"
 #include "duckdb/parser/query_node.hpp"
 #include "duckdb/planner/binder.hpp"
@@ -41,13 +42,12 @@ public:
 	vector<unique_ptr<ParsedExpression>> parameters;
 	//! The default values of the parameters
 	InsertionOrderPreservingMap<unique_ptr<ParsedExpression>, Identifier, identifier_map_t<idx_t>> default_parameters;
-	//! The declared types of the parameters, as normalized type expressions - constant-folded, with any
-	//! referenced user types inlined. A null entry is an untyped parameter.
-	//!
-	//! TODO: this should become a TypeDescriptor (see TYPE_DESCRIPTOR_PLAN.md), for the same reason as
-	//! TypeCatalogEntry::type_expression - what is stored is always already folded, so a parse tree is more
-	//! than the catalog needs, and a descriptor would not have to be re-bound on use.
-	vector<unique_ptr<TypeExpression>> types;
+	//! The declared types of the parameters, as folded, unbound descriptions with any referenced user type
+	//! inlined. A null entry is an untyped parameter.
+	vector<unique_ptr<TypeDescriptor>> types;
+	//! The declared types as written, set by the parser. The binder folds these into `types` and clears them,
+	//! so nothing downstream of the binder ever sees them set.
+	vector<unique_ptr<TypeExpression>> parsed_types;
 
 public:
 	virtual ~MacroFunction() {

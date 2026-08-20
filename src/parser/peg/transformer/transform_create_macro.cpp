@@ -67,7 +67,8 @@ PEGTransformerFactory::TransformMacroDefinition(PEGTransformer &transformer,
 			}
 			macro_definition_body->parameters.push_back(std::move(parameter.expression));
 		}
-		macro_definition_body->types.push_back(std::move(parameter.type));
+		macro_definition_body->parsed_types.push_back(std::move(parameter.type));
+		macro_definition_body->types.push_back(nullptr);
 	}
 
 	return macro_definition_body;

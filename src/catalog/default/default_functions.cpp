@@ -245,6 +245,18 @@ unique_ptr<CreateMacroInfo> DefaultFunctionGenerator::CreateInternalMacroInfo(co
 	auto &create_stmt = parser.statements[0]->Cast<CreateStatement>();
 	D_ASSERT(create_stmt.info->type == CatalogType::MACRO_ENTRY);
 	auto &macro_info = create_stmt.info->Cast<CreateMacroInfo>();
+	// Default macros never go through the CREATE MACRO binder, so fold their declared parameter types here.
+	// TryDefaultBind resolves built-in types without requiring a ClientContext.
+	for (auto &macro : macro_info.macros) {
+		for (idx_t i = 0; i < macro->parsed_types.size(); i++) {
+			if (!macro->parsed_types[i]) {
+				continue;
+			}
+			auto type = UnboundType::TryDefaultBind(*macro->parsed_types[i]);
+			macro->types[i] = make_uniq<TypeDescriptor>(TypeDescriptor::FromLogicalType(type));
+		}
+		macro->parsed_types.clear();
+	}
 	bind_info->macros = std::move(macro_info.macros);
 	bind_info->SetQualifiedName(
 	    QualifiedName({Identifier(default_macro.schema)}, Identifier(default_macro.name)));

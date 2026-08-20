@@ -476,11 +476,18 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 		// them inlines any referenced user type and folds the parameters, so what the catalog keeps names only
 		// built-in types.
 		for (idx_t param_idx = 0; param_idx < function->types.size(); param_idx++) {
-			if (!function->types[param_idx]) {
+			const auto has_parsed =
+			    param_idx < function->parsed_types.size() && function->parsed_types[param_idx] != nullptr;
+			LogicalType type;
+			if (has_parsed) {
+				type = BindLogicalType(*function->parsed_types[param_idx]);
+			} else if (function->types[param_idx]) {
+				type = BindTypeDescriptor(*function->types[param_idx]);
+			} else {
+				// an untyped parameter
 				continue;
 			}
-			auto type = BindLogicalType(*function->types[param_idx]);
-			function->types[param_idx] = TypeExpression::FromLogicalType(type.WithAlias(""));
+			function->types[param_idx] = make_uniq<TypeDescriptor>(TypeDescriptor::FromLogicalType(type));
 			const auto &param_name = function->parameters[param_idx]->Cast<ColumnRefExpression>().GetColumnName();
 			auto it = function->default_parameters.find(param_name);
 			if (it != function->default_parameters.end()) {
@@ -497,6 +504,8 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 				}
 			}
 		}
+
+		function->parsed_types.clear();
 
 		auto dummy_types = function->GetParameterTypes(context);
 		vector<Identifier> dummy_names;
@@ -951,14 +960,12 @@ BoundStatement Binder::Bind(CreateStatement &stmt) {
 			SetCatalogLookupCallback(dependency_callback);
 			// Bind the underlying type. The callback records a dependency on any type it resolves, which is
 			// why this happens here rather than when the catalog entry is created.
-			if (create_type_info.type_expression) {
-				create_type_info.type = BindLogicalType(*create_type_info.type_expression);
-			} else {
-				BindLogicalType(create_type_info.type);
-			}
-			// Store the definition back in its normalized form: resolving it inlined any referenced user types
-			// and folded the parameters, so what the catalog keeps names only built-in types.
-			create_type_info.type_expression = TypeExpression::FromLogicalType(create_type_info.type.WithAlias(""));
+			// The definition is kept as written, so resolving it here is validation - and it records a
+			// dependency on any type it names. Qualify it too: it is resolved again whenever the type is
+			// used, including on a connection with no search path.
+			D_ASSERT(create_type_info.type_expression);
+			BindLogicalType(*create_type_info.type_expression);
+			QualifyTypeExpression(*create_type_info.type_expression);
 		}
 		break;
 	}

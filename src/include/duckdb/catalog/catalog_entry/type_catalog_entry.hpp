@@ -12,6 +12,7 @@
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/parser/parsed_data/create_type_info.hpp"
 #include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
 
 namespace duckdb {
 
@@ -25,29 +26,34 @@ public:
 	//! Create a TypeCatalogEntry and initialize storage for it
 	TypeCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTypeInfo &info);
 
-	//! The definition of a type created through SQL, as a normalized type expression: constant-folded, with any
-	//! referenced user types inlined, so it names only built-in types and can be re-bound on its own.
-	//! Null for built-in and extension-provided types, which are primitives described by `user_type` instead -
-	//! and which must not get one, since their definition would name the very entry being resolved.
-	//!
-	//! TODO: this should become a TypeDescriptor (see TYPE_DESCRIPTOR_PLAN.md). A TypeExpression is a parse tree
-	//! and carries more than the catalog needs - unbound ParsedExpression children, query locations, aliases -
-	//! whereas what is actually stored here is always already folded. A descriptor is that, as a first-class
-	//! serializable form, and would remove the need to re-bind on every lookup.
+	//! The definition of this type, as written. A user-created type constructs a type much as a macro
+	//! constructs an expression, so the definition is kept unfolded - a parameterised type would reference
+	//! its parameters, which a folded form cannot express. The entry never holds a resolved LogicalType,
+	//! which it could not anyway: a checkpoint is read with no ClientContext to resolve one against.
 	unique_ptr<TypeExpression> type_expression;
 
-	//! The type this entry names, when it is not described by `type_expression`. For a parameterised built-in
-	//! this is only the base its `bind_function` is applied to (e.g. DECIMAL with no width), not a usable type.
-	LogicalType user_type;
+	//! Whether this type keeps its own identity - see CreateTypeInfo::nominal
+	bool nominal;
 
 	bind_logical_type_function_t bind_function;
 
 public:
-	//! The type this entry names, resolving `type_expression` if it has one
+	//! The type this entry names, resolving `type_descriptor` if it has one
 	DUCKDB_API LogicalType GetType(ClientContext &context) const;
+	//! The id of the type this entry names, without resolving it
+	DUCKDB_API LogicalTypeId GetTypeId() const;
+	//! Whether this entry is a template rather than a type: a parameterised built-in like ARRAY or MAP only
+	//! becomes a type once modifiers are supplied, so there is nothing here to resolve.
+	//!
+	//! TODO: this is inferred from having a bind_function and no parameters. Once a type entry carries a
+	//! FunctionSignature the distinction is explicit - a constructor like ARRAY(TYPE, N) has parameters, a
+	//! leaf like INTEGER does not.
+	bool IsTemplate() const {
+		return bind_function && type_expression && type_expression->GetChildren().empty();
+	}
 	//! Whether this entry names a type at all
 	bool IsValid() const {
-		return type_expression != nullptr || user_type.id() != LogicalTypeId::INVALID;
+		return type_expression != nullptr || bind_function != nullptr;
 	}
 
 	unique_ptr<CreateInfo> GetInfo() const override;

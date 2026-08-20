@@ -3,6 +3,8 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/common/type_descriptor.hpp"
+#include "duckdb/catalog/default/default_types.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/planner/expression_binder/constant_binder.hpp"
@@ -21,16 +23,19 @@ static bool IsValidTypeLookup(optional_ptr<CatalogEntry> entry) {
 //! reference is: a leading component is the catalog when it names an attached database, and otherwise the
 //! outermost schema of a (possibly nested) schema path.
 TypeCatalogEntry &Binder::LookupTypeEntry(const TypeExpression &type_expr) {
-	auto &type_name = type_expr.GetTypeName();
+	return LookupTypeEntry(type_expr.GetQualifiedName(), QueryErrorContext(type_expr));
+}
 
-	QueryErrorContext error_context(type_expr);
+TypeCatalogEntry &Binder::LookupTypeEntry(const QualifiedName &qualified_name, QueryErrorContext error_context) {
+	auto &type_name = qualified_name.Name();
+
 	EntryLookupInfo type_lookup(CatalogType::TYPE_ENTRY, QualifiedName(type_name), error_context);
 
 	optional_ptr<CatalogEntry> entry = nullptr;
 
 	// Resolve the qualification the same way a table reference is resolved: a leading component is the catalog when
 	// it names an attached database, and otherwise the outermost schema of a (possibly nested) schema path.
-	auto bound_name = Binder::BindTableName(EntryRetriever(), type_expr.GetQualifiedName());
+	auto bound_name = Binder::BindTableName(EntryRetriever(), qualified_name);
 	auto &type_catalog = bound_name.Catalog();
 	bool is_qualified = bound_name.Path().size() > 1;
 
@@ -132,13 +137,42 @@ BindResult ExpressionBinder::BindExpression(TypeExpression &type_expr, idx_t dep
 	};
 
 	// Call the bind function
-	BindLogicalTypeInput input {context, type_entry.user_type, bound_parameters};
+	BindLogicalTypeInput input {context, bound_parameters};
 	auto result_type = type_entry.bind_function(input);
 
 	// Return the resulting type!
 	auto result_expr = make_uniq<BoundConstantExpression>(Value::TYPE(result_type));
 	result_expr->SetQueryLocation(type_expr.GetQueryLocation());
 	return BindResult(std::move(result_expr));
+}
+
+LogicalType Binder::BindTypeDescriptor(const TypeDescriptor &descriptor) {
+	if (!descriptor.Name().Schema().empty() || !descriptor.Name().Catalog().empty()) {
+		// qualified: it can only be a catalog entry
+	} else if (DefaultTypeGenerator::GetDefaultType(descriptor.Name().Name()) != LogicalTypeId::INVALID) {
+		// a built-in is defined by the compiled-in table; its catalog entry is generated from that table, so
+		// resolving it there would only lead back here
+		return descriptor.DefaultBind();
+	}
+	auto &type_entry = LookupTypeEntry(descriptor.Name(), QueryErrorContext());
+	auto &type_name = descriptor.Name().Name();
+
+	if (!type_entry.bind_function) {
+		if (!descriptor.Parameters().empty()) {
+			throw BinderException("Type '%s' does not take any type parameters", type_name);
+		}
+		return type_entry.GetType(context);
+	}
+
+	// a descriptor's parameters are already folded, so there is nothing to evaluate here
+	vector<TypeArgument> bound_parameters;
+	for (auto &param : descriptor.Parameters()) {
+		auto value = param.IsType() ? Value::TYPE(BindTypeDescriptor(param.GetType())) : param.GetValue();
+		bound_parameters.emplace_back(param.Label().GetIdentifierName(), std::move(value));
+	}
+
+	BindLogicalTypeInput input {context, bound_parameters};
+	return type_entry.bind_function(input);
 }
 
 } // namespace duckdb

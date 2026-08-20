@@ -45,7 +45,6 @@ private:
 
 struct BindLogicalTypeInput {
 	optional_ptr<ClientContext> context;
-	const LogicalType &base_type;
 	const vector<TypeArgument> &modifiers;
 };
 
@@ -63,12 +62,14 @@ struct CreateTypeInfo : public CreateInfo {
 	void SetTypeName(Identifier name) {
 		qualified_name = qualified_name.WithName(std::move(name));
 	}
-	//! The resolved type. Set by the binder from `type_expression`, or directly by callers that already
-	//! have a concrete type. This is what the catalog and the persisted format use.
-	LogicalType type;
-	//! The type as written, for `CREATE TYPE x AS <type>`. The binder resolves it into `type` and clears
-	//! it, so nothing downstream of the binder ever sees it set.
+	//! The definition of the type, as written. A user-created type constructs a type much as a macro
+	//! constructs an expression, so the definition stays an expression rather than being folded - a
+	//! parameterised type would reference its parameters, which a folded form cannot express.
 	unique_ptr<TypeExpression> type_expression;
+	//! Whether this type keeps its own identity. An extension-registered type is nominal: the description
+	//! says what it is made of, and the entry's name is applied on top. A type created with CREATE TYPE is
+	//! not - it is an alias, and resolves to exactly what it describes.
+	bool nominal = false;
 	//! Used by create enum from query
 	unique_ptr<SQLStatement> query;
 	//! Bind type modifiers to the type

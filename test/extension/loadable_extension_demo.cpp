@@ -1,4 +1,5 @@
 #include "duckdb.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/function/window/window_shared_expressions.hpp"
 #include "duckdb/optimizer/optimizer_extension.hpp"
@@ -1177,11 +1178,10 @@ DUCKDB_CPP_EXTENSION_ENTRY(loadable_extension_demo, loader) {
 	child_list_t<LogicalType> child_types;
 	child_types.emplace_back(make_pair("x", LogicalType::INTEGER));
 	child_types.emplace_back(make_pair("y", LogicalType::INTEGER));
-	auto alias_info = make_uniq<CreateTypeInfo>();
-	alias_info->internal = true;
-	alias_info->SetTypeName(Identifier(alias_name));
 	LogicalType target_type = LogicalType::STRUCT(child_types).WithAlias(alias_name);
-	alias_info->type = target_type;
+	// the constructor describes the type structurally and marks it nominal, so the entry does not name itself
+	auto alias_info = make_uniq<CreateTypeInfo>(alias_name, target_type);
+	alias_info->internal = true;
 
 	auto type_entry = catalog.CreateType(client_context, *alias_info);
 	type_entry->tags["ext:name"] = "loadable_extension_demo";
