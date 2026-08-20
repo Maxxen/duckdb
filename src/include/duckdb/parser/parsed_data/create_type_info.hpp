@@ -65,6 +65,10 @@ struct CreateTypeInfo : public CreateInfo {
 	//! The definition of the type, as written. A user-created type constructs a type much as a macro
 	//! constructs an expression, so the definition stays an expression rather than being folded - a
 	//! parameterised type would reference its parameters, which a folded form cannot express.
+	//!
+	//! This says what the type is made of, never what it is called: a definition naming its own entry
+	//! resolves to nothing. To register a type from a LogicalType, use the constructor below - it strips
+	//! the alias and sets `nominal`, so the name is re-applied on resolution instead.
 	unique_ptr<TypeExpression> type_expression;
 	//! Whether this type keeps its own identity. An extension-registered type is nominal: the description
 	//! says what it is made of, and the entry's name is applied on top. A type created with CREATE TYPE is

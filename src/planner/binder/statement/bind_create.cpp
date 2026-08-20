@@ -487,7 +487,9 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 				// an untyped parameter
 				continue;
 			}
-			function->types[param_idx] = make_uniq<TypeDescriptor>(TypeDescriptor::FromLogicalType(type));
+			auto descriptor = make_uniq<TypeDescriptor>(TypeDescriptor::FromLogicalType(type));
+			QualifyTypeDescriptor(*descriptor);
+			function->types[param_idx] = std::move(descriptor);
 			const auto &param_name = function->parameters[param_idx]->Cast<ColumnRefExpression>().GetColumnName();
 			auto it = function->default_parameters.find(param_name);
 			if (it != function->default_parameters.end()) {

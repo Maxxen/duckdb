@@ -46,7 +46,7 @@ public:
 	//! inlined. A null entry is an untyped parameter.
 	vector<unique_ptr<TypeDescriptor>> types;
 	//! The declared types as written, set by the parser. The binder folds these into `types` and clears them,
-	//! so nothing downstream of the binder ever sees them set.
+	//! so nothing downstream of the binder ever sees them set. NOT persisted!
 	vector<unique_ptr<TypeExpression>> parsed_types;
 
 public:

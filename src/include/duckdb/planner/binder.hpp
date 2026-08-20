@@ -359,6 +359,9 @@ public:
 	TypeCatalogEntry &LookupTypeEntry(const QualifiedName &qualified_name, QueryErrorContext error_context);
 	//! Resolve a folded, unbound type description against the catalog
 	LogicalType BindTypeDescriptor(const TypeDescriptor &descriptor);
+	//! Rewrite a type description (recursively) to name its type by its resolved catalog and schema, so that
+	//! resolving it later - on a connection with no search path - names the same type
+	void QualifyTypeDescriptor(TypeDescriptor &descriptor);
 	//! Rewrites a type expression (recursively) to name its type by its resolved catalog and schema
 	void QualifyTypeExpression(TypeExpression &type_expr);
 

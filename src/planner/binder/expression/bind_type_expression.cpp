@@ -146,6 +146,20 @@ BindResult ExpressionBinder::BindExpression(TypeExpression &type_expr, idx_t dep
 	return BindResult(std::move(result_expr));
 }
 
+void Binder::QualifyTypeDescriptor(TypeDescriptor &descriptor) {
+	// A built-in resolves the same way everywhere, so only a name that has to be looked up needs pinning.
+	if (DefaultTypeGenerator::GetDefaultType(descriptor.Name().Name()) == LogicalTypeId::INVALID) {
+		auto &type_entry = LookupTypeEntry(descriptor.Name(), QueryErrorContext());
+		descriptor.SetName(QualifiedName(type_entry.ParentCatalog().GetName(), type_entry.ParentSchema().name,
+		                                 descriptor.Name().Name()));
+	}
+	for (auto &param : descriptor.Parameters()) {
+		if (param.IsType()) {
+			QualifyTypeDescriptor(param.GetTypeMutable());
+		}
+	}
+}
+
 LogicalType Binder::BindTypeDescriptor(const TypeDescriptor &descriptor) {
 	if (!descriptor.Name().Schema().empty() || !descriptor.Name().Catalog().empty()) {
 		// qualified: it can only be a catalog entry

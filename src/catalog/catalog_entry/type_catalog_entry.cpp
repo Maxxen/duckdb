@@ -18,6 +18,16 @@ TypeCatalogEntry::TypeCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schema,
       bind_function(info.bind_function) {
 	if (info.type_expression) {
 		type_expression = unique_ptr_cast<ParsedExpression, TypeExpression>(info.type_expression->Copy());
+		// A definition that names this very entry can only resolve for a built-in, where the compiled-in
+		// table is the real definition. Otherwise it is a caller that described a nominal type by its own
+		// alias instead of by what it is made of - which resolves to nothing, far from here.
+		if (type_expression->GetTypeName() == name &&
+		    DefaultTypeGenerator::GetDefaultType(name) == LogicalTypeId::INVALID) {
+			throw InternalException(
+			    "Type \"%s\" is defined as itself. Describe what it is made of and set `nominal` instead - "
+			    "the CreateTypeInfo constructor taking a LogicalType does this.",
+			    name);
+		}
 	}
 	this->temporary = info.temporary;
 	this->internal = info.internal;

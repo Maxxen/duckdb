@@ -185,8 +185,10 @@ struct AddColumnInfo : public AlterTableInfo {
 	AddColumnInfo(const AlterEntryData &data, ParsedColumnDefinition new_column, bool if_column_not_exists);
 	~AddColumnInfo() override;
 
-	//! New column. Unbound as parsed; the binder resolves its type expression and folds it to a
-	//! constant, so what reaches the WAL is the type resolved at statement time.
+	//! New column, as parsed. An alter info is a statement that gets replayed, not catalog metadata, so
+	//! everything in it stays in parsed form - the type and the default value alike are re-bound wherever
+	//! it is applied. The binder qualifies the names it holds so that replaying it, on a connection with
+	//! no search path, resolves the same type.
 	ParsedColumnDefinition new_column;
 	//! Whether or not an error should be thrown if the column exist
 	bool if_column_not_exists;
@@ -212,7 +214,7 @@ struct AddFieldInfo : public AlterTableInfo {
 
 	//! Path to source field.
 	vector<Identifier> column_path;
-	//! New field to add. Unbound as parsed; see AddColumnInfo::new_column.
+	//! New field to add, as parsed; see AddColumnInfo::new_column.
 	ParsedColumnDefinition new_field;
 	//! Whether or not an error should be thrown if the field does not exist.
 	bool if_field_not_exists;
@@ -295,8 +297,8 @@ struct ChangeColumnTypeInfo : public AlterTableInfo {
 
 	//! The column name to alter
 	Identifier column_name;
-	//! The target type of the column
-	//! The type to change to. Null when it is to be inferred from the USING expression.
+	//! The type to change to, as parsed; see AddColumnInfo::new_column. Null when it is to be inferred
+	//! from the USING expression.
 	unique_ptr<TypeExpression> target_type;
 	//! The expression used for data conversion
 	unique_ptr<ParsedExpression> expression;

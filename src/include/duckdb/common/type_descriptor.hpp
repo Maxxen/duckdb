@@ -57,6 +57,8 @@ public:
 	DUCKDB_API const Value &GetValue() const;
 	//! The nested descriptor of a type parameter. Only valid when IsType()
 	DUCKDB_API const TypeDescriptor &GetType() const;
+	//! The nested descriptor of a type parameter, for rewriting it in place. Only valid when IsType()
+	DUCKDB_API TypeDescriptor &GetTypeMutable();
 
 	DUCKDB_API void Serialize(Serializer &serializer) const;
 	DUCKDB_API static TypeParameter Deserialize(Deserializer &deserializer);
@@ -89,7 +91,13 @@ public:
 	const QualifiedName &Name() const {
 		return name;
 	}
+	void SetName(QualifiedName name_p) {
+		name = std::move(name_p);
+	}
 	const vector<TypeParameter> &Parameters() const {
+		return parameters;
+	}
+	vector<TypeParameter> &Parameters() {
 		return parameters;
 	}
 

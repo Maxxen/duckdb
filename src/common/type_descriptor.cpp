@@ -69,6 +69,13 @@ const Value &TypeParameter::GetValue() const {
 	return value;
 }
 
+TypeDescriptor &TypeParameter::GetTypeMutable() {
+	if (!type) {
+		throw InternalException("GetTypeMutable() called on a non-type parameter");
+	}
+	return *type;
+}
+
 const TypeDescriptor &TypeParameter::GetType() const {
 	if (!IsType()) {
 		throw InternalException("TypeParameter::GetType called on a non-type parameter");
