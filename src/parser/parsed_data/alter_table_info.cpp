@@ -373,7 +373,8 @@ string RemoveFieldInfo::ToString() const {
 ChangeColumnTypeInfo::ChangeColumnTypeInfo() : AlterTableInfo(AlterTableType::ALTER_COLUMN_TYPE) {
 }
 
-ChangeColumnTypeInfo::ChangeColumnTypeInfo(const AlterEntryData &data, Identifier column_name, LogicalType target_type,
+ChangeColumnTypeInfo::ChangeColumnTypeInfo(const AlterEntryData &data, Identifier column_name,
+                                           unique_ptr<TypeExpression> target_type,
                                            unique_ptr<ParsedExpression> expression)
     : AlterTableInfo(AlterTableType::ALTER_COLUMN_TYPE, data), column_name(std::move(column_name)),
       target_type(std::move(target_type)), expression(std::move(expression)) {
@@ -382,8 +383,10 @@ ChangeColumnTypeInfo::~ChangeColumnTypeInfo() {
 }
 
 unique_ptr<AlterInfo> ChangeColumnTypeInfo::Copy() const {
-	return make_uniq_base<AlterInfo, ChangeColumnTypeInfo>(GetAlterEntryData(), column_name, target_type,
-	                                                       expression->Copy());
+	return make_uniq_base<AlterInfo, ChangeColumnTypeInfo>(
+	    GetAlterEntryData(), column_name,
+	    target_type ? unique_ptr_cast<ParsedExpression, TypeExpression>(target_type->Copy()) : nullptr,
+	    expression->Copy());
 }
 
 string ChangeColumnTypeInfo::ToString() const {
@@ -396,15 +399,8 @@ string ChangeColumnTypeInfo::ToString() const {
 	result += " ALTER COLUMN ";
 	result += SQLIdentifier(column_name);
 	result += " TYPE ";
-	if (target_type.IsValid()) {
-		result += target_type.ToString();
-	}
-	auto extra_type_info = target_type.AuxInfo();
-	if (extra_type_info && extra_type_info->type == ExtraTypeInfoType::STRING_TYPE_INFO) {
-		auto &string_info = extra_type_info->Cast<StringTypeInfo>();
-		if (!string_info.collation.empty()) {
-			result += " COLLATE " + string_info.collation;
-		}
+	if (target_type) {
+		result += target_type->ToString();
 	}
 	if (expression) {
 		result += " USING ";

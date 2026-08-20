@@ -244,7 +244,8 @@
       {
         "id": 401,
         "name": "target_type",
-        "type": "LogicalType"
+        "type": "TypeExpression*",
+        "base": "ParsedExpression"
       },
       {
         "id": 402,

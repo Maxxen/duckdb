@@ -698,8 +698,8 @@ unique_ptr<CatalogEntry> DuckTableEntry::AddField(ClientContext &context, AddFie
 
 	auto function = make_uniq<FunctionExpression>("remap_struct", std::move(children));
 
-	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0], std::move(res.new_type),
-	                                        std::move(function));
+	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0],
+	                                        TypeExpression::FromLogicalType(res.new_type), std::move(function));
 	return ChangeColumnType(context, change_column_type, AlterTableType::ADD_FIELD);
 }
 
@@ -954,8 +954,8 @@ unique_ptr<CatalogEntry> DuckTableEntry::RemoveField(ClientContext &context, Rem
 
 	auto function = make_uniq<FunctionExpression>("remap_struct", std::move(children));
 
-	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0], std::move(res.new_type),
-	                                        std::move(function));
+	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0],
+	                                        TypeExpression::FromLogicalType(res.new_type), std::move(function));
 	return ChangeColumnType(context, change_column_type, AlterTableType::REMOVE_FIELD);
 }
 
@@ -1048,8 +1048,8 @@ unique_ptr<CatalogEntry> DuckTableEntry::RenameField(ClientContext &context, Ren
 	children.push_back(make_uniq<ConstantExpression>(Value()));
 
 	auto function = make_uniq<FunctionExpression>("remap_struct", std::move(children));
-	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0], std::move(res.new_type),
-	                                        std::move(function));
+	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0],
+	                                        TypeExpression::FromLogicalType(res.new_type), std::move(function));
 	return ChangeColumnType(context, change_column_type, AlterTableType::RENAME_FIELD);
 }
 
@@ -1140,10 +1140,13 @@ unique_ptr<CatalogEntry> DuckTableEntry::DropNotNull(ClientContext &context, Dro
 
 unique_ptr<CatalogEntry> DuckTableEntry::ChangeColumnType(ClientContext &context, ChangeColumnTypeInfo &info,
                                                           AlterTableType alter_table_type) {
-	// Bind type
-	auto type_binder = Binder::CreateBinder(context);
-	type_binder->SetSearchPath(catalog, schema.name);
-	type_binder->BindLogicalType(info.target_type);
+	// Bind the target type, if one was given - otherwise it is inferred from the USING expression below
+	LogicalType target_type = LogicalType::UNKNOWN;
+	if (info.target_type) {
+		auto type_binder = Binder::CreateBinder(context);
+		type_binder->SetSearchPath(catalog, schema.name);
+		target_type = type_binder->BindLogicalType(*info.target_type);
+	}
 
 	auto change_idx = GetColumnIndex(info.column_name);
 	auto create_info = make_uniq<CreateTableInfo>(schema, name);
@@ -1154,17 +1157,17 @@ unique_ptr<CatalogEntry> DuckTableEntry::ChangeColumnType(ClientContext &context
 	// Bind the USING expression.
 	auto binder = Binder::CreateBinder(context);
 	vector<LogicalIndex> bound_columns;
-	AlterBinder expr_binder(*binder, context, *this, bound_columns, info.target_type);
+	AlterBinder expr_binder(*binder, context, *this, bound_columns, target_type);
 	auto expression = info.expression->Copy();
 	auto bound_expression = expr_binder.Bind(expression);
 
-	// Infer the target_type from the USING expression, if not set explicitly.
-	if (info.target_type == LogicalType::UNKNOWN) {
-		info.target_type = bound_expression->GetReturnType();
+	// Infer the target type from the USING expression, if not set explicitly.
+	if (target_type == LogicalType::UNKNOWN) {
+		target_type = bound_expression->GetReturnType();
 	}
 
 	// Check if type is supported in this database version
-	CheckTypeIsSupported(info.target_type, catalog.GetAttached());
+	CheckTypeIsSupported(target_type, catalog.GetAttached());
 
 	auto bound_constraints = binder->BindConstraints(constraints, name, columns);
 	for (auto &col : columns.Logical()) {
@@ -1174,10 +1177,10 @@ unique_ptr<CatalogEntry> DuckTableEntry::ChangeColumnType(ClientContext &context
 			if (copy.Generated()) {
 				throw NotImplementedException("Changing types of generated columns is not supported yet");
 			}
-			copy.SetType(info.target_type);
+			copy.SetType(target_type);
 			if (alter_table_type == AlterTableType::RENAME_FIELD && copy.HasDefaultValue()) {
 				copy.SetDefaultValue(
-				    RemapStructDefault(copy.DefaultValue().Copy(), info.target_type, GetRemapStructMapping(info)));
+				    RemapStructDefault(copy.DefaultValue().Copy(), target_type, GetRemapStructMapping(info)));
 			}
 		}
 		// TODO: check if the generated_expression breaks, only delete it if it does
@@ -1243,7 +1246,7 @@ unique_ptr<CatalogEntry> DuckTableEntry::ChangeColumnType(ClientContext &context
 
 	auto new_storage =
 	    make_shared_ptr<DataTable>(context, *storage, columns.LogicalToPhysical(LogicalIndex(change_idx)).index,
-	                               info.target_type, std::move(storage_oids), *bound_expression);
+	                               target_type, std::move(storage_oids), *bound_expression);
 	auto result = make_uniq<DuckTableEntry>(catalog, schema, *bound_create_info, new_storage, triggers);
 	return std::move(result);
 }

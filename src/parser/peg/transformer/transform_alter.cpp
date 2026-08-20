@@ -293,8 +293,10 @@ PEGTransformerFactory::TransformAlterColumn(PEGTransformer &transformer, const b
 		auto change_column_type = unique_ptr_cast<AlterTableInfo, ChangeColumnTypeInfo>(std::move(alter_column_entry));
 		change_column_type->column_name = nested_column_name->ColumnNames()[0];
 		if (!change_column_type->expression) {
+			auto cast_target =
+			    unique_ptr_cast<ParsedExpression, TypeExpression>(change_column_type->target_type->Copy());
 			change_column_type->expression =
-			    make_uniq<CastExpression>(change_column_type->target_type, std::move(nested_column_name));
+			    make_uniq<CastExpression>(std::move(cast_target), std::move(nested_column_name));
 		}
 		return std::move(change_column_type);
 	} else {
@@ -322,13 +324,15 @@ PEGTransformerFactory::TransformAlterType(PEGTransformer &transformer, const boo
 	if (!type && !using_expression) {
 		throw ParserException("Omitting the type is only possible in combination with USING");
 	}
-	// ChangeColumnTypeInfo still stores a LogicalType, so the type expression is wrapped here
-	auto alter_type = type ? LogicalType::UNBOUND(std::move(*type)) : LogicalType::UNKNOWN;
+	unique_ptr<TypeExpression> alter_type;
+	if (type) {
+		alter_type = std::move(*type);
+	}
 	unique_ptr<ParsedExpression> expression;
 	if (using_expression) {
 		expression = std::move(*using_expression);
 	}
-	return make_uniq<ChangeColumnTypeInfo>(AlterEntryData(), "", alter_type, std::move(expression));
+	return make_uniq<ChangeColumnTypeInfo>(AlterEntryData(), "", std::move(alter_type), std::move(expression));
 }
 
 unique_ptr<ParsedExpression> PEGTransformerFactory::TransformUsingExpression(PEGTransformer &transformer,

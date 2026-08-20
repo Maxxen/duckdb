@@ -289,14 +289,15 @@ private:
 // ChangeColumnTypeInfo
 //===--------------------------------------------------------------------===//
 struct ChangeColumnTypeInfo : public AlterTableInfo {
-	ChangeColumnTypeInfo(const AlterEntryData &data, Identifier column_name, LogicalType target_type,
+	ChangeColumnTypeInfo(const AlterEntryData &data, Identifier column_name, unique_ptr<TypeExpression> target_type,
 	                     unique_ptr<ParsedExpression> expression);
 	~ChangeColumnTypeInfo() override;
 
 	//! The column name to alter
 	Identifier column_name;
 	//! The target type of the column
-	LogicalType target_type;
+	//! The type to change to. Null when it is to be inferred from the USING expression.
+	unique_ptr<TypeExpression> target_type;
 	//! The expression used for data conversion
 	unique_ptr<ParsedExpression> expression;
 

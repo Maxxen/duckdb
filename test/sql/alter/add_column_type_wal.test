@@ -49,18 +49,23 @@ c	VARCHAR
 d	INTEGER
 e	VARCHAR[]
 
+# ALTER COLUMN ... TYPE resolves its target type the same way
 statement ok
-INSERT INTO main.tbl VALUES (1, 'x', 2, ['y']);
+ALTER TABLE main.tbl ALTER COLUMN id TYPE dup;
+
+statement ok
+INSERT INTO main.tbl VALUES ('1', 'x', 2, ['y']);
 
 restart
 
 # the ALTERs are replayed from the WAL here, in a session with no search path set
 query II
-SELECT column_name, data_type FROM duckdb_columns() WHERE table_name='tbl' AND column_name <> 'id' ORDER BY column_name
+SELECT column_name, data_type FROM duckdb_columns() WHERE table_name='tbl' ORDER BY column_name
 ----
 c	VARCHAR
 d	INTEGER
 e	VARCHAR[]
+id	VARCHAR
 
 query IIII
 SELECT id, c, d, e FROM main.tbl

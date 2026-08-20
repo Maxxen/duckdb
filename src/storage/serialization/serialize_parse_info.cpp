@@ -328,14 +328,15 @@ unique_ptr<ParseInfo> BoundExportData::Deserialize(Deserializer &deserializer) {
 void ChangeColumnTypeInfo::Serialize(Serializer &serializer) const {
 	AlterTableInfo::Serialize(serializer);
 	serializer.WritePropertyWithDefault<Identifier>(400, "column_name", column_name);
-	serializer.WriteProperty<LogicalType>(401, "target_type", target_type);
+	serializer.WritePropertyWithDefault<unique_ptr<TypeExpression>>(401, "target_type", target_type);
 	serializer.WritePropertyWithDefault<unique_ptr<ParsedExpression>>(402, "expression", expression);
 }
 
 unique_ptr<AlterTableInfo> ChangeColumnTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto result = duckdb::unique_ptr<ChangeColumnTypeInfo>(new ChangeColumnTypeInfo());
 	deserializer.ReadPropertyWithDefault<Identifier>(400, "column_name", result->column_name);
-	deserializer.ReadProperty<LogicalType>(401, "target_type", result->target_type);
+	auto target_type = deserializer.ReadPropertyWithDefault<unique_ptr<ParsedExpression>>(401, "target_type");
+	result->target_type = unique_ptr_cast<ParsedExpression, TypeExpression>(std::move(target_type));
 	deserializer.ReadPropertyWithDefault<unique_ptr<ParsedExpression>>(402, "expression", result->expression);
 	return std::move(result);
 }

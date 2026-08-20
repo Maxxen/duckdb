@@ -9,6 +9,9 @@
 #include "duckdb/parser/statement/alter_statement.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/parser/parsed_expression_iterator.hpp"
+#include "duckdb/parser/expression/type_expression.hpp"
+#include "duckdb/parser/expression/cast_expression.hpp"
 #include "duckdb/planner/constraints/bound_unique_constraint.hpp"
 #include "duckdb/planner/expression_binder/index_binder.hpp"
 #include "duckdb/planner/operator/logical_create_index.hpp"
@@ -87,6 +90,18 @@ static void QualifyColumnType(Binder &binder, ParsedColumnDefinition &column) {
 	binder.QualifyTypeExpression(column.TypeMutable());
 }
 
+//! Qualify every type named inside an expression. A cast target is not an expression child, so it needs
+//! visiting explicitly.
+static void QualifyTypesInExpression(Binder &binder, ParsedExpression &expr) {
+	if (expr.GetExpressionClass() == ExpressionClass::CAST) {
+		binder.QualifyTypeExpression(expr.Cast<CastExpression>().TargetTypeMutable());
+	} else if (expr.GetExpressionClass() == ExpressionClass::TYPE) {
+		binder.QualifyTypeExpression(expr.Cast<TypeExpression>());
+	}
+	ParsedExpressionIterator::EnumerateChildren(
+	    expr, [&](unique_ptr<ParsedExpression> &child) { QualifyTypesInExpression(binder, *child); });
+}
+
 static void BindAlterTypes(Binder &binder, AlterStatement &stmt) {
 	if (stmt.info->type == AlterType::ALTER_TABLE) {
 		auto &table_info = stmt.info->Cast<AlterTableInfo>();
@@ -101,7 +116,13 @@ static void BindAlterTypes(Binder &binder, AlterStatement &stmt) {
 		} break;
 		case AlterTableType::ALTER_COLUMN_TYPE: {
 			auto &alter_column_info = table_info.Cast<ChangeColumnTypeInfo>();
-			binder.BindLogicalType(alter_column_info.target_type);
+			if (alter_column_info.target_type) {
+				binder.QualifyTypeExpression(*alter_column_info.target_type);
+			}
+			if (alter_column_info.expression) {
+				// the USING expression is what gets replayed, and the parser bakes the target type into it
+				QualifyTypesInExpression(binder, *alter_column_info.expression);
+			}
 		} break;
 		default:
 			break;
