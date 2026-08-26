@@ -1007,7 +1007,13 @@ static PersistentColumnData GetPersistentColumnDataType(Deserializer &deserializ
 	}
 	case ExtraPersistentColumnDataType::GEOMETRY: {
 		const auto &geometry_data = extra_data->Cast<GeometryPersistentColumnData>();
-		PersistentColumnData result(Geometry::GetVectorizedType(geometry_data.storage_type));
+		// WKB storage keeps the column's own type: in particular a GEOGRAPHY column must not degrade to
+		// GEOMETRY here, or its deserialized statistics lose their antimeridian-aware (geodetic) extent
+		// math. The shredded and legacy layouts use their respective layout types.
+		auto column_type = geometry_data.storage_type == GeometryStorageType::WKB
+		                       ? deserializer.Get<const LogicalType &>()
+		                       : Geometry::GetVectorizedType(geometry_data.storage_type);
+		PersistentColumnData result(column_type);
 		result.extra_data = std::move(extra_data);
 		return result;
 	}
@@ -1034,8 +1040,9 @@ PersistentColumnData PersistentColumnData::Deserialize(Deserializer &deserialize
 
 	// TODO: This is ugly
 	if (result.extra_data && result.extra_data->GetType() == ExtraPersistentColumnDataType::GEOMETRY) {
-		auto &geo_data = result.extra_data->Cast<GeometryPersistentColumnData>();
-		auto actual_type = Geometry::GetVectorizedType(geo_data.storage_type);
+		// GetPersistentColumnDataType already resolved the layout type (WKB keeps the column's own type,
+		// the shredded/legacy layouts use theirs).
+		const auto &actual_type = type;
 
 		// We need to set the actual type in scope, as when we deserialize "data_pointers" we use it to detect
 		// the type of the statistics.
