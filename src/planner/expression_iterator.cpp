@@ -8,7 +8,101 @@ namespace duckdb {
 
 void ExpressionIterator::EnumerateChildren(const Expression &expr,
                                            const std::function<void(const Expression &child)> &callback) {
-	EnumerateChildren((Expression &)expr, [&](unique_ptr<Expression> &child) { callback(*child); });
+	switch (expr.GetExpressionClass()) {
+	case ExpressionClass::BOUND_AGGREGATE: {
+		auto &aggr_expr = expr.Cast<BoundAggregateExpression>();
+		for (auto &child : aggr_expr.GetChildren()) {
+			callback(*child);
+		}
+		if (aggr_expr.GetFilter()) {
+			callback(*aggr_expr.GetFilter());
+		}
+		if (aggr_expr.GetOrderBys()) {
+			for (auto &order : aggr_expr.GetOrderBys()->orders) {
+				callback(*order.expression);
+			}
+		}
+		break;
+	}
+	case ExpressionClass::BOUND_CASE: {
+		auto &case_expr = expr.Cast<BoundCaseExpression>();
+		for (auto &case_check : case_expr.CaseChecks()) {
+			callback(*case_check.when_expr);
+			callback(*case_check.then_expr);
+		}
+		callback(case_expr.Else());
+		break;
+	}
+	case ExpressionClass::BOUND_CONJUNCTION: {
+		auto &conj_expr = expr.Cast<BoundConjunctionExpression>();
+		for (auto &child : conj_expr.GetChildren()) {
+			callback(*child);
+		}
+		break;
+	}
+	case ExpressionClass::BOUND_FUNCTION: {
+		auto &func_expr = expr.Cast<BoundFunctionExpression>();
+		for (auto &child : func_expr.GetChildren()) {
+			callback(*child);
+		}
+		break;
+	}
+	case ExpressionClass::BOUND_OPERATOR: {
+		auto &op_expr = expr.Cast<BoundOperatorExpression>();
+		for (auto &child : op_expr.GetChildren()) {
+			callback(*child);
+		}
+		break;
+	}
+	case ExpressionClass::BOUND_SUBQUERY: {
+		auto &subquery_expr = expr.Cast<BoundSubqueryExpression>();
+		for (auto &child : subquery_expr.GetChildren()) {
+			callback(*child);
+		}
+		break;
+	}
+	case ExpressionClass::BOUND_WINDOW: {
+		auto &window_expr = expr.Cast<BoundWindowExpression>();
+		for (auto &partition : window_expr.Partitions()) {
+			callback(*partition);
+		}
+		for (auto &order : window_expr.OrderBy()) {
+			callback(*order.expression);
+		}
+		for (auto &child : window_expr.GetChildren()) {
+			callback(*child);
+		}
+		if (window_expr.Filter()) {
+			callback(*window_expr.Filter());
+		}
+		if (window_expr.StartExpr()) {
+			callback(*window_expr.StartExpr());
+		}
+		if (window_expr.EndExpr()) {
+			callback(*window_expr.EndExpr());
+		}
+		for (auto &order : window_expr.ArgOrders()) {
+			callback(*order.expression);
+		}
+		break;
+	}
+	case ExpressionClass::BOUND_UNNEST: {
+		auto &unnest_expr = expr.Cast<BoundUnnestExpression>();
+		callback(*unnest_expr.Child());
+		break;
+	}
+	case ExpressionClass::BOUND_COLUMN_REF:
+	case ExpressionClass::BOUND_LAMBDA:
+	case ExpressionClass::BOUND_LAMBDA_REF:
+	case ExpressionClass::BOUND_CONSTANT:
+	case ExpressionClass::BOUND_DEFAULT:
+	case ExpressionClass::BOUND_PARAMETER:
+	case ExpressionClass::BOUND_REF:
+		// these node types have no children
+		break;
+	default:
+		throw InternalException("ExpressionIterator used on unbound expression");
+	}
 }
 
 void ExpressionIterator::EnumerateChildren(Expression &expr, const std::function<void(Expression &child)> &callback) {

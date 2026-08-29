@@ -36,9 +36,6 @@ public:
 	idx_t LambdaIndex() const {
 		return lambda_idx;
 	}
-	idx_t &LambdaIndexMutable() {
-		return lambda_idx;
-	}
 	idx_t Depth() const {
 		return depth;
 	}

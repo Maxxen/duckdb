@@ -36,9 +36,6 @@ public:
 	idx_t ParameterCount() const {
 		return parameter_count;
 	}
-	idx_t &ParameterCountMutable() {
-		return parameter_count;
-	}
 	const vector<Identifier> &ParameterNames() const {
 		return parameter_names;
 	}

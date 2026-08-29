@@ -29,9 +29,6 @@ public:
 	idx_t LambdaIndex() const {
 		return lambda_idx;
 	}
-	idx_t &LambdaIndexMutable() {
-		return lambda_idx;
-	}
 	const Identifier &ColumnName() const {
 		return column_name;
 	}
