@@ -66,7 +66,7 @@ public:
 	explicit JSONFunctionLocalState(Allocator &allocator);
 	explicit JSONFunctionLocalState(ClientContext &context);
 	static unique_ptr<FunctionLocalState> Init(ExpressionState &state, const BoundFunctionExpression &expr,
-	                                           FunctionData *bind_data);
+	                                           const FunctionData *bind_data);
 	static unique_ptr<FunctionLocalState> InitCastLocalState(CastLocalStateParameters &parameters);
 	static JSONFunctionLocalState &ResetAndGet(ExpressionState &state);
 

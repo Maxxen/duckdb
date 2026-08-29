@@ -88,13 +88,13 @@ struct CScalarFunctionLocalState : public FunctionLocalState {
 };
 
 struct CScalarFunctionInternalInitInfo {
-	CScalarFunctionInternalInitInfo(ClientContext &context, CScalarFunctionBindData &bind_data,
+	CScalarFunctionInternalInitInfo(ClientContext &context, const CScalarFunctionBindData &bind_data,
 	                                CScalarFunctionLocalState &local_state)
 	    : context(context), bind_data(bind_data), local_state(local_state) {
 	}
 
 	ClientContext &context;
-	CScalarFunctionBindData &bind_data;
+	const CScalarFunctionBindData &bind_data;
 	CScalarFunctionLocalState &local_state;
 
 	bool success = true;
@@ -176,7 +176,7 @@ unique_ptr<FunctionData> CScalarFunctionBind(BindScalarFunctionInput &input) {
 }
 
 unique_ptr<FunctionLocalState> CScalarFunctionInit(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                   FunctionData *bind_data) {
+                                                   const FunctionData *bind_data) {
 	auto &function = expr.Function();
 	auto &info = function.GetExtraFunctionInfo().Cast<CScalarFunctionInfo>();
 	D_ASSERT(info.function);

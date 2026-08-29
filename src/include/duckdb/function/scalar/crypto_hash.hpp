@@ -31,7 +31,8 @@ struct LocalState : public FunctionLocalState {
 };
 
 template <CryptoHashFunction FUNCTION>
-unique_ptr<FunctionLocalState> InitLocalState(ExpressionState &state, const BoundFunctionExpression &, FunctionData *) {
+unique_ptr<FunctionLocalState> InitLocalState(ExpressionState &state, const BoundFunctionExpression &,
+                                              const FunctionData *) {
 	auto &context = state.GetContext();
 	auto &config = DBConfig::GetConfig(context);
 	if (!config.options.force_mbedtls && config.encryption_util && config.encryption_util->SupportsHash(FUNCTION)) {

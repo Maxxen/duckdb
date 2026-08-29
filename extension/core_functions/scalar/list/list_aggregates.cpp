@@ -27,7 +27,7 @@ struct ListAggregatesLocalState : public FunctionLocalState {
 };
 
 unique_ptr<FunctionLocalState> ListAggregatesInitLocalState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                            FunctionData *bind_data) {
+                                                            const FunctionData *bind_data) {
 	return make_uniq<ListAggregatesLocalState>(BufferAllocator::Get(state.GetContext()));
 }
 // FIXME: benchmark the use of cluster_update against using update (if applicable)

@@ -8,12 +8,16 @@
 #include "duckdb/main/settings.hpp"
 #include "duckdb/function/cast/cast_function_set.hpp"
 #include "duckdb/common/type_visitor.hpp"
+#include "duckdb/optimizer/verification_statistics.hpp"
 #include "duckdb/storage/table/variant_column_data.hpp"
 
 namespace duckdb {
 
 ExpressionExecutor::ExpressionExecutor(ClientContext &context) : context(&context) {
 	debug_vector_verification = Settings::Get<DebugVerifyVectorSetting>(context);
+	if (Settings::Get<DebugVerifyStatsSetting>(context)) {
+		verification_stats = VerificationStatistics::TryGet(context);
+	}
 }
 
 ExpressionExecutor::ExpressionExecutor(ClientContext &context, const Expression *expression)
@@ -168,8 +172,11 @@ bool ExpressionExecutor::TryEvaluateScalar(ClientContext &context, const Express
 void ExpressionExecutor::Verify(const Expression &expr, Vector &vector, idx_t count) {
 	D_ASSERT(expr.GetReturnType().id() == vector.GetType().id());
 	vector.Verify();
-	if (expr.GetVerificationStats()) {
-		expr.GetVerificationStats()->Verify(vector, count);
+	if (verification_stats) {
+		auto stats = verification_stats->GetStats(expr);
+		if (stats && stats->GetType() == expr.GetReturnType()) {
+			stats->Verify(vector, count);
+		}
 	}
 	if (debug_vector_verification == DebugVectorVerification::DICTIONARY_EXPRESSION) {
 		Vector::DebugTransformToDictionary(vector);

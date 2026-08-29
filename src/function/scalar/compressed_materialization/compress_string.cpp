@@ -118,7 +118,7 @@ public:
 	}
 
 	static unique_ptr<FunctionLocalState> Init(ExpressionState &state, const BoundFunctionExpression &expr,
-	                                           FunctionData *bind_data) {
+	                                           const FunctionData *bind_data) {
 		return make_uniq<StringDecompressLocalState>(state.GetContext());
 	}
 

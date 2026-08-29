@@ -133,7 +133,8 @@ static const uint16_t &HexDigits(uint8_t byte) {
 struct CollatorLocalState : public FunctionLocalState {
 	collation::CollationBuffer buffer;
 
-	static unique_ptr<FunctionLocalState> Init(ExpressionState &, const BoundFunctionExpression &, FunctionData *) {
+	static unique_ptr<FunctionLocalState> Init(ExpressionState &, const BoundFunctionExpression &,
+	                                           const FunctionData *) {
 		return make_uniq<CollatorLocalState>();
 	}
 };

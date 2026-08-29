@@ -183,7 +183,7 @@ static idx_t SelectBloomFilter(Vector &input, const BloomFilterFunctionData &fun
 }
 
 static unique_ptr<FunctionLocalState>
-BloomFilterInitLocalState(ExpressionState &state, const BoundFunctionExpression &expr, FunctionData *bind_data) {
+BloomFilterInitLocalState(ExpressionState &state, const BoundFunctionExpression &expr, const FunctionData *bind_data) {
 	auto &data = bind_data->Cast<BloomFilterFunctionData>();
 	if (!data.filter) {
 		return nullptr;

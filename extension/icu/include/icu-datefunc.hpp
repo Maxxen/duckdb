@@ -85,7 +85,7 @@ struct ICUDateFunc {
 	static duckdb::unique_ptr<FunctionData> Bind(BindScalarFunctionInput &input);
 	//! Initializes a CalendarCacheState from the function's BindData
 	static duckdb::unique_ptr<FunctionLocalState>
-	InitCalendarCache(ExpressionState &state, const BoundFunctionExpression &expr, FunctionData *bind_data);
+	InitCalendarCache(ExpressionState &state, const BoundFunctionExpression &expr, const FunctionData *bind_data);
 	//! Initializes a CalendarCacheState from a cast's CastData
 	static duckdb::unique_ptr<FunctionLocalState> InitCastCalendarCache(CastLocalStateParameters &parameters);
 

@@ -93,7 +93,7 @@ struct CombineState : public FunctionLocalState {
 };
 
 unique_ptr<FunctionLocalState> InitCombineState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                FunctionData *bind_data_p) {
+                                                const FunctionData *bind_data_p) {
 	auto &bind_data = bind_data_p->Cast<ExportAggregateBindData>();
 	return make_uniq<CombineState>(bind_data);
 }
@@ -115,7 +115,7 @@ struct FinalizeState : public FunctionLocalState {
 };
 
 unique_ptr<FunctionLocalState> InitFinalizeState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                 FunctionData *bind_data_p) {
+                                                 const FunctionData *bind_data_p) {
 	auto &bind_data = bind_data_p->Cast<ExportAggregateBindData>();
 	return make_uniq<FinalizeState>(bind_data);
 }

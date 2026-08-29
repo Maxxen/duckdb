@@ -25,10 +25,6 @@ protected:
 	//! The return type of the expression
 	LogicalType return_type;
 
-protected:
-	//! Expression statistics (if any) - ONLY USED FOR VERIFICATION
-	unique_ptr<BaseStatistics> verification_stats;
-
 public:
 	const LogicalType &GetReturnType() const {
 		return return_type;
@@ -36,11 +32,6 @@ public:
 	void SetReturnType(LogicalType type) {
 		return_type = std::move(type);
 	}
-
-	const unique_ptr<BaseStatistics> &GetVerificationStats() const {
-		return verification_stats;
-	}
-	void SetVerificationStats(unique_ptr<BaseStatistics> stats);
 
 	bool IsAggregate() const override;
 	bool IsWindow() const override;

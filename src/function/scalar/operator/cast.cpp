@@ -95,7 +95,7 @@ void CastFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 }
 
 static unique_ptr<FunctionLocalState> CastInitLocalState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                         FunctionData *bind_data) {
+                                                         const FunctionData *bind_data) {
 	auto &cast_data = bind_data->Cast<CastFunctionData>();
 	if (!cast_data.bound_cast.HasInitLocalState()) {
 		return nullptr;

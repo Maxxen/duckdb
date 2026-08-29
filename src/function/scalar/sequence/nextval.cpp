@@ -65,7 +65,7 @@ bool RowIsValid(const unique_ptr<VectorIterator<T>> &entries, idx_t i) {
 }
 
 unique_ptr<FunctionLocalState> NextValLocalFunction(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                    FunctionData *bind_data) {
+                                                    const FunctionData *bind_data) {
 	if (!bind_data) {
 		return nullptr;
 	}

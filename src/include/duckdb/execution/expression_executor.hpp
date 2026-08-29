@@ -18,6 +18,7 @@ namespace duckdb {
 class Allocator;
 class ClientContext;
 class ExecutionContext;
+class VerificationStatistics;
 
 //! ExpressionExecutor is responsible for executing a set of expressions and storing the result in a data chunk
 class ExpressionExecutor {
@@ -157,6 +158,8 @@ private:
 	vector<unique_ptr<ExpressionExecutorState>> states;
 	//! The vector verification (debug setting)
 	DebugVectorVerification debug_vector_verification = DebugVectorVerification::NONE;
+	//! Statistics to verify results against (debug setting)
+	shared_ptr<VerificationStatistics> verification_stats;
 
 private:
 	// it is possible to create an expression executor without a ClientContext - but it should be avoided

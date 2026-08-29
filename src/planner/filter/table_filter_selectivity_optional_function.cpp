@@ -121,7 +121,7 @@ struct SelectivityOptionalFilterLocalState : public FunctionLocalState {
 
 static unique_ptr<FunctionLocalState> SelectivityOptionalFilterInitLocalState(ExpressionState &state,
                                                                               const BoundFunctionExpression &expr,
-                                                                              FunctionData *bind_data) {
+                                                                              const FunctionData *bind_data) {
 	auto &data = bind_data->Cast<SelectivityOptionalFilterFunctionData>();
 	if (!data.child_filter_expr) {
 		return nullptr;

@@ -125,8 +125,4 @@ bool Expression::ListEquals(const vector<unique_ptr<Expression>> &left, const ve
 	return ExpressionUtil::ListEquals(left, right);
 }
 
-void Expression::SetVerificationStats(unique_ptr<BaseStatistics> stats) {
-	verification_stats = std::move(stats);
-}
-
 } // namespace duckdb

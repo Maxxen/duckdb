@@ -783,7 +783,7 @@ struct RowIdFilterBindData : public FunctionData {
 struct RowIdFilterState : public FunctionLocalState {};
 
 static unique_ptr<FunctionLocalState> RowIdFilterInit(ExpressionState &, const BoundFunctionExpression &,
-                                                      FunctionData *) {
+                                                      const FunctionData *) {
 	return make_uniq<RowIdFilterState>();
 }
 

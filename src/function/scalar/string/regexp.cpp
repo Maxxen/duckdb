@@ -59,7 +59,7 @@ bool RegexpBaseBindData::Equals(const FunctionData &other_p) const {
 }
 
 unique_ptr<FunctionLocalState> RegexInitLocalState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                   FunctionData *bind_data) {
+                                                   const FunctionData *bind_data) {
 	auto &info = bind_data->Cast<RegexpBaseBindData>();
 	if (info.constant_pattern) {
 		return make_uniq<RegexLocalState>(info);

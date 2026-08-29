@@ -64,7 +64,7 @@ struct LambdaInvokeState final : public FunctionLocalState {
 	}
 
 	static unique_ptr<FunctionLocalState> Init(ExpressionState &state, const BoundFunctionExpression &expr,
-	                                           FunctionData *bind_data) {
+	                                           const FunctionData *bind_data) {
 		auto &bdata = bind_data->Cast<LambdaInvokeData>();
 		if (!bdata.lambda_expr) {
 			throw InternalException("Invoke function is missing its bound lambda expression");

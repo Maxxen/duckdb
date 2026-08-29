@@ -12,24 +12,28 @@ unique_ptr<NodeStatistics> StatisticsPropagator::PropagateStatistics(LogicalWind
 	// then propagate to each of the order expressions
 	for (auto &window_expr : window.expressions) {
 		auto &over_expr = window_expr->Cast<BoundWindowExpression>();
+		vector<unique_ptr<BaseStatistics>> partitions_stats;
 		for (auto &expr : over_expr.PartitionsMutable()) {
-			over_expr.PartitionsStatsMutable().push_back(PropagateExpression(expr));
+			partitions_stats.push_back(PropagateExpression(expr));
 		}
+		over_expr.PartitionsStatsMutable() = std::move(partitions_stats);
 		for (auto &bound_order : over_expr.OrderByMutable()) {
 			bound_order.stats = PropagateExpression(bound_order.expression);
 		}
 
+		vector<unique_ptr<BaseStatistics>> expr_stats;
 		if (over_expr.StartExpr()) {
-			over_expr.ExprStatsMutable().push_back(PropagateExpression(over_expr.StartExprMutable()));
+			expr_stats.push_back(PropagateExpression(over_expr.StartExprMutable()));
 		} else {
-			over_expr.ExprStatsMutable().push_back(nullptr);
+			expr_stats.push_back(nullptr);
 		}
 
 		if (over_expr.EndExpr()) {
-			over_expr.ExprStatsMutable().push_back(PropagateExpression(over_expr.EndExprMutable()));
+			expr_stats.push_back(PropagateExpression(over_expr.EndExprMutable()));
 		} else {
-			over_expr.ExprStatsMutable().push_back(nullptr);
+			expr_stats.push_back(nullptr);
 		}
+		over_expr.ExprStatsMutable() = std::move(expr_stats);
 
 		for (auto &bound_order : over_expr.ArgOrdersMutable()) {
 			bound_order.stats = PropagateExpression(bound_order.expression);

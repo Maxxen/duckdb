@@ -48,6 +48,7 @@ add_library_unity(
   remove_unused_columns.cpp
   row_group_pruner.cpp
   statistics_propagator.cpp
+  verification_statistics.cpp
   limit_pushdown.cpp
   topn_optimizer.cpp
   topn_window_elimination.cpp

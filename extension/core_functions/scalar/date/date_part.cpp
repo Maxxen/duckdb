@@ -124,7 +124,7 @@ struct DateCacheLocalState : public FunctionLocalState {
 
 template <class OP>
 unique_ptr<FunctionLocalState> InitDateCacheLocalState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                       FunctionData *bind_data) {
+                                                       const FunctionData *bind_data) {
 	return make_uniq<DateCacheLocalState<OP>>();
 }
 

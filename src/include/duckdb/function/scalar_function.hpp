@@ -135,7 +135,7 @@ typedef unique_ptr<FunctionData> (*bind_scalar_function_t)(BindScalarFunctionInp
 //! The type to initialize a thread local state for the scalar function
 typedef unique_ptr<FunctionLocalState> (*init_local_state_t)(ExpressionState &state,
                                                              const BoundFunctionExpression &expr,
-                                                             FunctionData *bind_data);
+                                                             const FunctionData *bind_data);
 //! The type to directly access the selection vector of a scalar function
 typedef idx_t (*scalar_function_select_t)(DataChunk &args, ExpressionState &state,
                                           optional_ptr<const SelectionVector> sel,
