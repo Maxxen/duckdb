@@ -24,6 +24,7 @@ add_library_unity(
   logical_operator.cpp
   logical_operator_repeatability.cpp
   scope_chain.cpp
+  scope_resolver.cpp
   binder.cpp
   bind_context.cpp
   planner.cpp

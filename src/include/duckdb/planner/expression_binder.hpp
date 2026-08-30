@@ -28,6 +28,7 @@ namespace duckdb {
 
 class Binder;
 class ClientContext;
+class ColumnQualifier;
 class QueryNode;
 
 class ScalarFunctionCatalogEntry;
@@ -136,6 +137,9 @@ public:
 	                               optional_ptr<ColumnAliasBinder> alias_binder = nullptr);
 	static void QualifyColumnNames(ExpressionBinder &binder, unique_ptr<ParsedExpression> &expr);
 	static void QualifyColumnNames(HavingBinder &having_binder, unique_ptr<ParsedExpression> &expr);
+
+	//! Create the qualifier that resolves names against this binder's scope, with this binder's hooks
+	virtual unique_ptr<ColumnQualifier> CreateColumnQualifier();
 
 	static bool PushCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
 	                          CollationType type = CollationType::ALL_COLLATIONS);

@@ -6,6 +6,7 @@
 #include "duckdb/planner/expression/list.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/scope_chain.hpp"
+#include "duckdb/planner/scope_resolver.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/main/client_config.hpp"
 #include "duckdb/main/settings.hpp"
@@ -103,121 +104,60 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 	}
 }
 
-//! Reconstruct the source location from an error's extra info (prefers "location" so the length is kept)
-static QueryLocation ExtractLocation(const unordered_map<string, string> &info) {
-	auto pos_entry = info.find("position");
-	if (pos_entry == info.end()) {
-		return QueryLocation();
-	}
-	uint64_t start;
-	if (!TryCast::Operation<string_t, uint64_t>(string_t(pos_entry->second), start)) {
-		return QueryLocation();
-	}
-	uint64_t length = 0;
-	auto location_entry = info.find("location");
-	if (location_entry != info.end()) {
-		// value is formatted as "[start,length]"
-		auto comma = location_entry->second.find(',');
-		if (comma != string::npos) {
-			auto len_str = location_entry->second.substr(comma + 1);
-			if (!len_str.empty() && len_str.back() == ']') {
-				len_str.pop_back();
-			}
-			TryCast::Operation<string_t, uint64_t>(string_t(len_str), length);
-		}
-	}
-	return QueryLocation(start, length);
-}
-
-static bool CombineMissingColumns(ErrorData &current, ErrorData new_error) {
-	auto &current_info = current.ExtraInfo();
-	auto &new_info = new_error.ExtraInfo();
-	auto current_entry = current_info.find("error_subtype");
-	auto new_entry = new_info.find("error_subtype");
-	if (current_entry == current_info.end() || new_entry == new_info.end()) {
-		// no subtype info in either expression
-		return false;
-	}
-	if (current_entry->second != "COLUMN_NOT_FOUND" || new_entry->second != "COLUMN_NOT_FOUND") {
-		// either info is not a `COLUMN_NOT_FOUND`
-		return false;
-	}
-	current_entry = current_info.find("name");
-	new_entry = new_info.find("name");
-	if (current_entry == current_info.end() || new_entry == new_info.end()) {
-		// no candidate info in either column
-		return false;
-	}
-	if (current_entry->second != new_entry->second) {
-		// error does not concern the same name/column
-		return false;
-	}
-	auto column_name = current_entry->second;
-	current_entry = current_info.find("candidates");
-	new_entry = new_info.find("candidates");
-	if (current_entry == current_info.end()) {
-		// no current candidates - use new candidates
-		current = std::move(new_error);
-		return true;
-	}
-	if (new_entry == new_info.end()) {
-		// no new candidates - use current candidates
-		return true;
-	}
-	// both errors have candidates - combine the candidates
-	auto current_candidates = StringUtil::Split(current_entry->second, ",");
-	auto new_candidates = StringUtil::Split(new_entry->second, ",");
-	current_candidates.insert(current_candidates.end(), new_candidates.begin(), new_candidates.end());
-
-	// run the similarity ranking on both sets of candidates
-	unordered_set<string> candidates;
-	vector<pair<string, double>> scores;
-	for (auto &candidate : current_candidates) {
-		// split by "." since the candidates might be in the form "table.column"
-		auto column_splits = StringUtil::Split(candidate, ".");
-		if (column_splits.empty()) {
-			continue;
-		}
-		auto &candidate_column = column_splits.back();
-		auto entry = candidates.find(candidate);
-		if (entry != candidates.end()) {
-			// already found
-			continue;
-		}
-		auto score = StringUtil::SimilarityRating(candidate_column, column_name);
-		candidates.insert(candidate);
-		scores.emplace_back(std::move(candidate), score);
-	}
-	// get a new top-n
-	auto top_candidates = StringUtil::TopNStrings(scores);
-	// get query location (prefer the current error's location, fall back to the new error's)
-	auto location = ExtractLocation(current_info);
-	if (!location.IsValid()) {
-		location = ExtractLocation(new_info);
-	}
-	QueryErrorContext context(location);
-	// generate a new (combined) error
-	current = BinderException::ColumnNotFound(Identifier(column_name), StringsToIdentifiers(top_candidates), context);
-	return true;
-}
-
-static void CombineErrors(ErrorData &current, ErrorData new_error) {
-	// try to combine missing column exceptions in order to pick the most relevant one
-	if (CombineMissingColumns(current, new_error)) {
-		// keep the old info
+#ifdef DEBUG
+//! Collect the column references of the expression that have not been bound by an earlier attempt.
+//! Subqueries are skipped: they are bound by a binder of their own and resolve in their own chain.
+static void CollectUnboundColumns(ParsedExpression &expr, const BoundExpressionMap &bound_expressions,
+                                  vector<reference<ColumnRefExpression>> &result) {
+	if (bound_expressions.IsBound(expr)) {
 		return;
 	}
-
-	// override the error with the new one
-	current = std::move(new_error);
+	if (expr.GetExpressionClass() == ExpressionClass::SUBQUERY) {
+		return;
+	}
+	if (expr.GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+		result.push_back(expr.Cast<ColumnRefExpression>());
+		return;
+	}
+	ParsedExpressionIterator::EnumerateChildren(
+	    expr, [&](ParsedExpression &child) { CollectUnboundColumns(child, bound_expressions, result); });
 }
+
+//! A lower bound on the depth the retry loop settles on: a column that resolves at depth k is reached
+//! by the k'th attempt. It is only a lower bound because a scope can resolve a name and still fail to
+//! bind it - "s1.s2" qualifies as a struct extract of a column named s1, and only once that fails to
+//! bind does the next scope get to read s1 as a table alias.
+static optional_idx PredictSettledDepth(const ScopeChain &chain, ParsedExpression &expr,
+                                        const BoundExpressionMap &bound_expressions) {
+	vector<reference<ColumnRefExpression>> unbound;
+	CollectUnboundColumns(expr, bound_expressions, unbound);
+	if (unbound.empty()) {
+		return optional_idx();
+	}
+	idx_t predicted = 0;
+	for (auto &colref : unbound) {
+		auto resolution = ScopeResolver::ResolveColumn(chain, colref.get(), 0);
+		if (!resolution.found) {
+			// the column resolves through something other than a scope in the chain (an alias, a lambda
+			// parameter, a value function): the loop's outcome is not predicted by column resolution alone
+			return optional_idx();
+		}
+		predicted = MaxValue(predicted, resolution.depth);
+	}
+	return predicted;
+}
+#endif
 
 BindResult ExpressionBinder::BindCorrelatedColumns(unique_ptr<ParsedExpression> &expr, ErrorData error_message) {
 	// try to bind in one of the outer queries, if the binding error occurred in a subquery
 	auto chain = ScopeChain::FromBinder(*this);
+#ifdef DEBUG
+	auto predicted_depth = PredictSettledDepth(chain, *expr, binder.GetBoundExpressions());
+#endif
 	// make a copy of the enclosing scopes, so we can restore them later
 	auto saved_scopes = binder.GetEnclosingScopes();
 	auto bind_error = std::move(error_message);
+	idx_t settled_depth = 0;
 	// walk outward: the index within the chain is the depth the expression binds at
 	for (idx_t depth = 1; depth < chain.Size(); depth++) {
 		auto &next_binder = chain.At(depth);
@@ -225,13 +165,21 @@ BindResult ExpressionBinder::BindCorrelatedColumns(unique_ptr<ParsedExpression> 
 		auto next_error = next_binder.Bind(expr, depth);
 		if (!next_error.HasError()) {
 			bind_error = std::move(next_error);
+			settled_depth = depth;
 			break;
 		}
-		CombineErrors(bind_error, std::move(next_error));
+		ScopeResolver::CombineErrors(bind_error, std::move(next_error));
 		// the scope we just tried is no longer reachable while we look further outward
 		binder.PopScope();
 	}
 	binder.SetScopes(std::move(saved_scopes));
+#ifdef DEBUG
+	// the resolver must never reach a name in a scope inside the one the loop arrives at by trial:
+	// that would capture the reference in the wrong scope
+	if (!bind_error.HasError() && predicted_depth.IsValid()) {
+		D_ASSERT(predicted_depth.GetIndex() <= settled_depth);
+	}
+#endif
 	return BindResult(bind_error);
 }
 
@@ -344,7 +292,7 @@ unique_ptr<Expression> ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr
 		// aggregate with constant input must be bound to a root node.
 		auto result = BindCorrelatedColumns(expr, error_msg);
 		if (result.HasError()) {
-			CombineErrors(error_msg, std::move(result.error));
+			ScopeResolver::CombineErrors(error_msg, std::move(result.error));
 			error_msg.Throw();
 		}
 		ExtractCorrelatedExpressions(binder, GetBoundExpressions().Get(*expr));

@@ -1,0 +1,143 @@
+#include "duckdb/planner/scope_resolver.hpp"
+
+#include "duckdb/common/exception/binder_exception.hpp"
+#include "duckdb/common/operator/cast_operators.hpp"
+#include "duckdb/common/string_util.hpp"
+#include "duckdb/common/unordered_set.hpp"
+#include "duckdb/parser/expression/columnref_expression.hpp"
+#include "duckdb/planner/binder.hpp"
+#include "duckdb/planner/column_qualifier.hpp"
+#include "duckdb/planner/expression_binder.hpp"
+
+namespace duckdb {
+
+static QueryLocation ExtractLocation(const unordered_map<string, string> &info) {
+	auto pos_entry = info.find("position");
+	if (pos_entry == info.end()) {
+		return QueryLocation();
+	}
+	uint64_t start;
+	if (!TryCast::Operation<string_t, uint64_t>(string_t(pos_entry->second), start)) {
+		return QueryLocation();
+	}
+	uint64_t length = 0;
+	auto location_entry = info.find("location");
+	if (location_entry != info.end()) {
+		// value is formatted as "[start,length]"
+		auto comma = location_entry->second.find(',');
+		if (comma != string::npos) {
+			auto len_str = location_entry->second.substr(comma + 1);
+			if (!len_str.empty() && len_str.back() == ']') {
+				len_str.pop_back();
+			}
+			TryCast::Operation<string_t, uint64_t>(string_t(len_str), length);
+		}
+	}
+	return QueryLocation(start, length);
+}
+
+static bool CombineMissingColumns(ErrorData &current, ErrorData new_error) {
+	auto &current_info = current.ExtraInfo();
+	auto &new_info = new_error.ExtraInfo();
+	auto current_entry = current_info.find("error_subtype");
+	auto new_entry = new_info.find("error_subtype");
+	if (current_entry == current_info.end() || new_entry == new_info.end()) {
+		// no subtype info in either expression
+		return false;
+	}
+	if (current_entry->second != "COLUMN_NOT_FOUND" || new_entry->second != "COLUMN_NOT_FOUND") {
+		// either info is not a `COLUMN_NOT_FOUND`
+		return false;
+	}
+	current_entry = current_info.find("name");
+	new_entry = new_info.find("name");
+	if (current_entry == current_info.end() || new_entry == new_info.end()) {
+		// no candidate info in either column
+		return false;
+	}
+	if (current_entry->second != new_entry->second) {
+		// error does not concern the same name/column
+		return false;
+	}
+	auto column_name = current_entry->second;
+	current_entry = current_info.find("candidates");
+	new_entry = new_info.find("candidates");
+	if (current_entry == current_info.end()) {
+		// no current candidates - use new candidates
+		current = std::move(new_error);
+		return true;
+	}
+	if (new_entry == new_info.end()) {
+		// no new candidates - use current candidates
+		return true;
+	}
+	// both errors have candidates - combine the candidates
+	auto current_candidates = StringUtil::Split(current_entry->second, ",");
+	auto new_candidates = StringUtil::Split(new_entry->second, ",");
+	current_candidates.insert(current_candidates.end(), new_candidates.begin(), new_candidates.end());
+
+	// run the similarity ranking on both sets of candidates
+	unordered_set<string> candidates;
+	vector<pair<string, double>> scores;
+	for (auto &candidate : current_candidates) {
+		// split by "." since the candidates might be in the form "table.column"
+		auto column_splits = StringUtil::Split(candidate, ".");
+		if (column_splits.empty()) {
+			continue;
+		}
+		auto &candidate_column = column_splits.back();
+		auto entry = candidates.find(candidate);
+		if (entry != candidates.end()) {
+			// already found
+			continue;
+		}
+		auto score = StringUtil::SimilarityRating(candidate_column, column_name);
+		candidates.insert(candidate);
+		scores.emplace_back(std::move(candidate), score);
+	}
+	// get a new top-n
+	auto top_candidates = StringUtil::TopNStrings(scores);
+	// get query location (prefer the current error's location, fall back to the new error's)
+	auto location = ExtractLocation(current_info);
+	if (!location.IsValid()) {
+		location = ExtractLocation(new_info);
+	}
+	QueryErrorContext context(location);
+	// generate a new (combined) error
+	current = BinderException::ColumnNotFound(Identifier(column_name), StringsToIdentifiers(top_candidates), context);
+	return true;
+}
+
+void ScopeResolver::CombineErrors(ErrorData &current, ErrorData new_error) {
+	// try to combine missing column exceptions in order to pick the most relevant one
+	if (CombineMissingColumns(current, new_error)) {
+		// keep the old info
+		return;
+	}
+
+	// override the error with the new one
+	current = std::move(new_error);
+}
+
+ColumnResolution ScopeResolver::ResolveColumn(const ScopeChain &chain, ColumnRefExpression &colref, idx_t start) {
+	ColumnResolution result;
+	for (idx_t depth = start; depth < chain.Size(); depth++) {
+		auto qualifier = chain.At(depth).CreateColumnQualifier();
+		ErrorData error;
+		auto qualified = qualifier->QualifyColumnName(colref, error);
+		if (qualified) {
+			result.found = true;
+			result.depth = depth;
+			result.qualified = std::move(qualified);
+			return result;
+		}
+		if (depth == start) {
+			result.error = std::move(error);
+		} else {
+			CombineErrors(result.error, std::move(error));
+		}
+	}
+	return result;
+}
+
+} // namespace duckdb

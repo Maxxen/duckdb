@@ -80,6 +80,10 @@ BindResult HavingBinder::BindWindowExpression(WindowExpression &expr, idx_t dept
 	throw BinderException::Unsupported(expr, "HAVING clause cannot contain window functions!");
 }
 
+unique_ptr<ColumnQualifier> HavingBinder::CreateColumnQualifier() {
+	return make_uniq<ColumnQualifier>(binder, lambda_bindings, nullptr, *this);
+}
+
 void ExpressionBinder::QualifyColumnNames(HavingBinder &having_binder, unique_ptr<ParsedExpression> &expr) {
 	ColumnQualifier qualifier(having_binder.binder, having_binder.lambda_bindings, nullptr, having_binder);
 	vector<identifier_set_t> lambda_params;

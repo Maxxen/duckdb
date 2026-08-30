@@ -40,6 +40,10 @@ void ExpressionBinder::QualifyColumnNames(Binder &binder, unique_ptr<ParsedExpre
 	qualifier.QualifyColumnNames(expr, lambda_params);
 }
 
+unique_ptr<ColumnQualifier> ExpressionBinder::CreateColumnQualifier() {
+	return make_uniq<ColumnQualifier>(binder, lambda_bindings);
+}
+
 void ExpressionBinder::QualifyColumnNames(ExpressionBinder &expression_binder, unique_ptr<ParsedExpression> &expr) {
 	ColumnQualifier qualifier(expression_binder.binder, expression_binder.lambda_bindings);
 	vector<identifier_set_t> lambda_params;

@@ -19,6 +19,9 @@ class HavingBinder : public BaseSelectBinder {
 public:
 	HavingBinder(Binder &binder, ClientContext &context, BoundSelectNode &node, AggregateHandling aggregate_handling);
 
+public:
+	unique_ptr<ColumnQualifier> CreateColumnQualifier() override;
+
 protected:
 	BindResult BindLambdaReference(LambdaRefExpression &expr, idx_t depth);
 	BindResult BindWindowExpression(WindowExpression &expr, idx_t depth) override;
