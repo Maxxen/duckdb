@@ -270,9 +270,8 @@ bool Binder::IsInsideSubquery() const {
 }
 
 void Binder::BeginSubqueryBind(Binder &parent, ExpressionBinder &binder) {
-	// push all active expression binders
-	auto &active_binders = GetActiveBinders();
-	for (auto &active_binder : parent.GetActiveBinders()) {
+	// push all enclosing scopes of the parent
+	for (auto &active_binder : parent.active_binders) {
 		active_binders.push_back(active_binder);
 	}
 	// finally push this binder
@@ -280,19 +279,46 @@ void Binder::BeginSubqueryBind(Binder &parent, ExpressionBinder &binder) {
 }
 
 void Binder::FinishSubqueryBind() {
-	GetActiveBinders().clear();
+	active_binders.clear();
 }
 
 ExpressionBinder &Binder::GetActiveBinder() {
-	return GetActiveBinders().back();
+	return active_binders.back();
 }
 
 bool Binder::HasActiveBinder() {
-	return !GetActiveBinders().empty();
+	return !active_binders.empty();
 }
 
-vector<reference<ExpressionBinder>> &Binder::GetActiveBinders() {
+const vector<reference<ExpressionBinder>> &Binder::GetEnclosingScopes() const {
 	return active_binders;
+}
+
+void Binder::PushScope(ExpressionBinder &binder) {
+	active_binders.push_back(binder);
+}
+
+void Binder::PopScope() {
+	active_binders.pop_back();
+}
+
+vector<reference<ExpressionBinder>> Binder::SaveScopesAfter(idx_t count) {
+	vector<reference<ExpressionBinder>> result;
+	for (idx_t i = count; i < active_binders.size(); i++) {
+		result.push_back(active_binders[i]);
+	}
+	active_binders.erase(active_binders.begin() + UnsafeNumericCast<int64_t>(count), active_binders.end());
+	return result;
+}
+
+void Binder::RestoreScopes(const vector<reference<ExpressionBinder>> &scopes) {
+	for (auto &scope : scopes) {
+		active_binders.push_back(scope);
+	}
+}
+
+void Binder::SetScopes(vector<reference<ExpressionBinder>> scopes) {
+	active_binders = std::move(scopes);
 }
 
 void Binder::AddUsingBindingSet(unique_ptr<UsingColumnSet> set) {

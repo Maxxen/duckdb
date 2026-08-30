@@ -5,6 +5,7 @@
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/expression/list.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/scope_chain.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/main/client_config.hpp"
 #include "duckdb/main/settings.hpp"
@@ -213,13 +214,13 @@ static void CombineErrors(ErrorData &current, ErrorData new_error) {
 
 BindResult ExpressionBinder::BindCorrelatedColumns(unique_ptr<ParsedExpression> &expr, ErrorData error_message) {
 	// try to bind in one of the outer queries, if the binding error occurred in a subquery
-	auto &active_binders = binder.GetActiveBinders();
-	// make a copy of the set of binders, so we can restore it later
-	auto binders = active_binders;
+	auto chain = ScopeChain::FromBinder(*this);
+	// make a copy of the enclosing scopes, so we can restore them later
+	auto saved_scopes = binder.GetEnclosingScopes();
 	auto bind_error = std::move(error_message);
-	idx_t depth = 1;
-	while (!active_binders.empty()) {
-		auto &next_binder = active_binders.back().get();
+	// walk outward: the index within the chain is the depth the expression binds at
+	for (idx_t depth = 1; depth < chain.Size(); depth++) {
+		auto &next_binder = chain.At(depth);
 		ExpressionBinder::QualifyColumnNames(next_binder.binder, expr);
 		auto next_error = next_binder.Bind(expr, depth);
 		if (!next_error.HasError()) {
@@ -227,10 +228,10 @@ BindResult ExpressionBinder::BindCorrelatedColumns(unique_ptr<ParsedExpression> 
 			break;
 		}
 		CombineErrors(bind_error, std::move(next_error));
-		depth++;
-		active_binders.pop_back();
+		// the scope we just tried is no longer reachable while we look further outward
+		binder.PopScope();
 	}
-	active_binders = binders;
+	binder.SetScopes(std::move(saved_scopes));
 	return BindResult(bind_error);
 }
 

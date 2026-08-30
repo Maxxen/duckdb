@@ -785,7 +785,7 @@ SchemaCatalogEntry &Binder::BindCreateTriggerInfo(CreateTriggerInfo &create_trig
 	if (row_scope_binder) {
 		auto body_binder = Binder::CreateBinder(context, validation_binder.get());
 		auto bound_body = body_binder->Bind(*body_copy);
-		validation_binder->GetActiveBinders().pop_back();
+		validation_binder->PopScope();
 		if (body_binder->correlated_columns.empty()) {
 			throw BinderException("FOR EACH ROW trigger %s on table %s must reference at least one NEW or OLD "
 			                      "column in the trigger body (use FOR EACH STATEMENT if row data is not needed)",

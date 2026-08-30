@@ -326,7 +326,18 @@ public:
 	bool HasActiveBinder();
 	void FinishSubqueryBind();
 
-	vector<reference<ExpressionBinder>> &GetActiveBinders();
+	//! The scopes enclosing this binder, stored outermost first
+	const vector<reference<ExpressionBinder>> &GetEnclosingScopes() const;
+	//! Add an enclosing scope that expressions bound by this binder can resolve against
+	void PushScope(ExpressionBinder &binder);
+	//! Remove the innermost enclosing scope
+	void PopScope();
+	//! Remove and return the scopes added since the chain had `count` entries
+	vector<reference<ExpressionBinder>> SaveScopesAfter(idx_t count);
+	//! Restore scopes previously removed by SaveScopesAfter
+	void RestoreScopes(const vector<reference<ExpressionBinder>> &scopes);
+	//! Replace the enclosing scopes wholesale
+	void SetScopes(vector<reference<ExpressionBinder>> scopes);
 
 	void MergeCorrelatedColumns(CorrelatedColumns &other);
 	//! Add a correlated column to this binder (if it does not exist)
@@ -524,7 +535,7 @@ private:
 	                                 const vector<const_reference<TriggerCatalogEntry>> &triggers,
 	                                 TriggerEventType event_type);
 	//! Registers a row scope binding (named "new" for INSERT, "old" for DELETE) so child binders resolve
-	//! NEW.col / OLD.col at depth=1. The returned binder is pushed onto GetActiveBinders().
+	//! NEW.col / OLD.col at depth=1. The returned binder is pushed as an enclosing scope.
 	//! The caller must keep it alive until the matching pop_back().
 	unique_ptr<ExpressionBinder> SetupRowScope(TableIndex table_index, const vector<Identifier> &col_names,
 	                                           const vector<LogicalType> &col_types, const string &scope_name);

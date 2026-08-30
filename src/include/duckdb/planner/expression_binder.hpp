@@ -73,6 +73,7 @@ struct BindResult {
 
 class ExpressionBinder {
 	friend class StackChecker<ExpressionBinder>;
+	friend class ScopeChain;
 
 public:
 	ExpressionBinder(Binder &binder, ClientContext &context);
