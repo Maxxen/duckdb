@@ -26,10 +26,16 @@ unique_ptr<Expression> DistinctAggregateOptimizer::Apply(ClientContext &context,
 	return nullptr;
 }
 
-unique_ptr<Expression> DistinctAggregateOptimizer::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                         bool &changes_made, bool is_root) {
+unique_ptr<Expression> DistinctAggregateOptimizer::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                         vector<reference<Expression>> &bindings, bool is_root) {
 	auto &aggr = bindings[0].get().Cast<BoundAggregateExpression>();
-	return Apply(rewriter.context, aggr, changes_made);
+	bool changes_made = false;
+	auto result = Apply(rewriter.context, aggr, changes_made);
+	if (result) {
+		return result;
+	}
+	// the helper modifies the aggregate in place: hand back the modified expression as the replacement
+	return changes_made ? std::move(expr_ptr) : nullptr;
 }
 
 DistinctWindowedOptimizer::DistinctWindowedOptimizer(ExpressionRewriter &rewriter) : Rule(rewriter) {
@@ -56,10 +62,16 @@ unique_ptr<Expression> DistinctWindowedOptimizer::Apply(ClientContext &context, 
 	return nullptr;
 }
 
-unique_ptr<Expression> DistinctWindowedOptimizer::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                        bool &changes_made, bool is_root) {
+unique_ptr<Expression> DistinctWindowedOptimizer::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                        vector<reference<Expression>> &bindings, bool is_root) {
 	auto &wexpr = bindings[0].get().Cast<BoundWindowExpression>();
-	return Apply(rewriter.context, wexpr, changes_made);
+	bool changes_made = false;
+	auto result = Apply(rewriter.context, wexpr, changes_made);
+	if (result) {
+		return result;
+	}
+	// the helper modifies the window expression in place: hand back the modified expression as the replacement
+	return changes_made ? std::move(expr_ptr) : nullptr;
 }
 
 } // namespace duckdb

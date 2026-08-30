@@ -16,8 +16,8 @@ InClauseSimplificationRule::InClauseSimplificationRule(ExpressionRewriter &rewri
 	root = std::move(op);
 }
 
-unique_ptr<Expression> InClauseSimplificationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                         bool &changes_made, bool is_root) {
+unique_ptr<Expression> InClauseSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                         vector<reference<Expression>> &bindings, bool is_root) {
 	auto &expr = bindings[0].get().Cast<BoundOperatorExpression>();
 	if (!BoundCastExpression::IsCast(*expr.GetChildrenMutable()[0])) {
 		return nullptr;
@@ -83,8 +83,8 @@ InEnumSimplificationRule::InEnumSimplificationRule(ExpressionRewriter &rewriter)
 	root = std::move(op);
 }
 
-unique_ptr<Expression> InEnumSimplificationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                       bool &changes_made, bool is_root) {
+unique_ptr<Expression> InEnumSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                       vector<reference<Expression>> &bindings, bool is_root) {
 	auto &expr = bindings[0].get().Cast<BoundOperatorExpression>();
 	auto &children = expr.GetChildrenMutable();
 	auto &cast_expr = children[0]->Cast<BoundFunctionExpression>();
@@ -160,9 +160,8 @@ EnumCompareSimplificationRule::EnumCompareSimplificationRule(ExpressionRewriter 
 	root = std::move(op);
 }
 
-unique_ptr<Expression> EnumCompareSimplificationRule::Apply(LogicalOperator &op,
-                                                            vector<reference<Expression>> &bindings, bool &changes_made,
-                                                            bool is_root) {
+unique_ptr<Expression> EnumCompareSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                            vector<reference<Expression>> &bindings, bool is_root) {
 	auto &expr = bindings[0].get().Cast<BoundFunctionExpression>();
 
 	optional_ptr<BoundFunctionExpression> cast_expr;

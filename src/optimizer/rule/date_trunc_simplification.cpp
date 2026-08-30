@@ -37,8 +37,8 @@ DateTruncSimplificationRule::DateTruncSimplificationRule(ExpressionRewriter &rew
 	root = std::move(op);
 }
 
-unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                          bool &changes_made, bool is_root) {
+unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                          vector<reference<Expression>> &bindings, bool is_root) {
 	auto &expr = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto comparison_type = expr.GetExpressionType();
 	auto &left = BoundComparisonExpression::LeftMutable(expr);
@@ -69,8 +69,7 @@ unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, v
 	// date_trunc preserves temporal infinities, so only remove the function call.
 	if (IsInfinity(rhs.GetValue())) {
 		ReplaceDateTruncWithColumn(column_side, constant_side, column_part);
-		changes_made = true;
-		return nullptr;
+		return std::move(expr_ptr);
 	}
 
 	// Check whether trunc(date_part, constant_rhs) = constant_rhs.
@@ -247,8 +246,7 @@ unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, v
 				ReplaceDateTruncWithColumn(column_side, constant_side, column_part);
 			}
 
-			changes_made = true;
-			return nullptr;
+			return std::move(expr_ptr);
 		}
 
 	case ExpressionType::COMPARE_LESSTHANOREQUALTO:
@@ -282,8 +280,7 @@ unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, v
 				}
 			}
 
-			changes_made = true;
-			return nullptr;
+			return std::move(expr_ptr);
 		}
 
 	default:

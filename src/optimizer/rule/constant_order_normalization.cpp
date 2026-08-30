@@ -80,9 +80,8 @@ ConstantOrderNormalizationRule::ConstantOrderNormalizationRule(ExpressionRewrite
 	root = std::move(op);
 }
 
-unique_ptr<Expression> ConstantOrderNormalizationRule::Apply(LogicalOperator &op,
-                                                             vector<reference<Expression>> &bindings,
-                                                             bool &changes_made, bool is_root) {
+unique_ptr<Expression> ConstantOrderNormalizationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                             vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings.back().get().Cast<BoundFunctionExpression>();
 	const auto expression_count = bindings.size() - 1;
 

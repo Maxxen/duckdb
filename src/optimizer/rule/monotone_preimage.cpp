@@ -151,8 +151,8 @@ static unique_ptr<Expression> MakeColComparison(ExpressionType type, const Bound
 	                                         make_uniq<BoundConstantExpression>(Value::Numeric(col_type, bound)));
 }
 
-unique_ptr<Expression> MonotonePreimageRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                   bool &changes_made, bool is_root) {
+unique_ptr<Expression> MonotonePreimageRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                   vector<reference<Expression>> &bindings, bool is_root) {
 	auto &comparison = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &constant_expr = bindings[1].get();
 	auto &func = bindings[2].get().Cast<BoundFunctionExpression>();

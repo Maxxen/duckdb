@@ -313,8 +313,8 @@ ListComprehensionRewriteRule::ListComprehensionRewriteRule(ExpressionRewriter &r
 	root = make_uniq<ExpressionMatcher>(ExpressionClass::BOUND_FUNCTION);
 }
 
-unique_ptr<Expression> ListComprehensionRewriteRule::Apply(LogicalOperator &, vector<reference<Expression>> &bindings,
-                                                           bool &, bool) {
+unique_ptr<Expression> ListComprehensionRewriteRule::Apply(LogicalOperator &, unique_ptr<Expression> &expr_ptr,
+                                                           vector<reference<Expression>> &bindings, bool) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto match = MatchListComprehensionRewrite(GetContext(), root);
 	if (!match) {

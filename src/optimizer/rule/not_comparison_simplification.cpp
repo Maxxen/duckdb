@@ -12,9 +12,8 @@ NotComparisonSimplificationRule::NotComparisonSimplificationRule(ExpressionRewri
 	root = std::move(op);
 }
 
-unique_ptr<Expression> NotComparisonSimplificationRule::Apply(LogicalOperator &op,
-                                                              vector<reference<Expression>> &bindings,
-                                                              bool &changes_made, bool is_root) {
+unique_ptr<Expression> NotComparisonSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                              vector<reference<Expression>> &bindings, bool is_root) {
 	auto &not_expr = bindings[0].get().Cast<BoundOperatorExpression>();
 	D_ASSERT(not_expr.GetExpressionType() == ExpressionType::OPERATOR_NOT);
 	D_ASSERT(not_expr.GetChildren().size() == 1);
@@ -29,7 +28,6 @@ unique_ptr<Expression> NotComparisonSimplificationRule::Apply(LogicalOperator &o
 	auto negated_type = NegateComparisonExpression(comparison.GetExpressionType());
 
 	BoundComparisonExpression::SetType(comparison, negated_type);
-	changes_made = true;
 
 	return std::move(child);
 }

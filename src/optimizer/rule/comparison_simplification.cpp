@@ -109,9 +109,8 @@ RowComparisonSimplificationRule::RowComparisonSimplificationRule(ExpressionRewri
 	root = std::move(comparison);
 }
 
-unique_ptr<Expression> RowComparisonSimplificationRule::Apply(LogicalOperator &op,
-                                                              vector<reference<Expression>> &bindings,
-                                                              bool &changes_made, bool is_root) {
+unique_ptr<Expression> RowComparisonSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                              vector<reference<Expression>> &bindings, bool is_root) {
 	if (!is_root || op.type != LogicalOperatorType::LOGICAL_FILTER) {
 		return nullptr;
 	}
@@ -144,8 +143,8 @@ unique_ptr<Expression> RowComparisonSimplificationRule::Apply(LogicalOperator &o
 	return std::move(result);
 }
 
-unique_ptr<Expression> ComparisonSimplificationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                           bool &changes_made, bool is_root) {
+unique_ptr<Expression> ComparisonSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                           vector<reference<Expression>> &bindings, bool is_root) {
 	auto &expr = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &constant_expr = bindings[1].get();
 	auto &left = BoundComparisonExpression::LeftMutable(expr);
@@ -220,7 +219,7 @@ unique_ptr<Expression> ComparisonSimplificationRule::Apply(LogicalOperator &op, 
 			left = std::move(new_constant_expr);
 			right = std::move(child_expression);
 		}
-		changes_made = true;
+		return std::move(expr_ptr);
 	}
 	return nullptr;
 }

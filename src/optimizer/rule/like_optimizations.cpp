@@ -128,8 +128,8 @@ static bool PatternIsContains(const string &pattern, PatternMatchType match_type
 	return true;
 }
 
-unique_ptr<Expression> LikeOptimizationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                   bool &changes_made, bool is_root) {
+unique_ptr<Expression> LikeOptimizationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                   vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &constant_expr = bindings[2].get().Cast<BoundConstantExpression>();
 	D_ASSERT(root.GetChildren().size() == 2);

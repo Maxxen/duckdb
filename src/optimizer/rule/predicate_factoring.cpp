@@ -126,8 +126,8 @@ static column_binding_map_t<vector<reference<Expression>>> GetDisjunctedPredicat
 	return remaining_binding_map;
 }
 
-unique_ptr<Expression> PredicateFactoringRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                     bool &changes_made, bool is_root) {
+unique_ptr<Expression> PredicateFactoringRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                     vector<reference<Expression>> &bindings, bool is_root) {
 	// Only applies to top-level FILTER expressions
 	if ((op.type != LogicalOperatorType::LOGICAL_FILTER && op.type != LogicalOperatorType::LOGICAL_ANY_JOIN) ||
 	    !is_root) {

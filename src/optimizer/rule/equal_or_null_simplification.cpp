@@ -97,8 +97,8 @@ static unique_ptr<Expression> TryRewriteEqualOrIsNull(Expression &equal_expr, Ex
 	return nullptr;
 }
 
-unique_ptr<Expression> EqualOrNullSimplification::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                        bool &changes_made, bool is_root) {
+unique_ptr<Expression> EqualOrNullSimplification::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                        vector<reference<Expression>> &bindings, bool is_root) {
 	if (!IsPredicateRoot(op, is_root)) {
 		return nullptr;
 	}

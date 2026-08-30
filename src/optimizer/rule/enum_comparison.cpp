@@ -46,8 +46,8 @@ static bool AreMatchesPossible(const LogicalType &left, const LogicalType &right
 	}
 	return false;
 }
-unique_ptr<Expression> EnumComparisonRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                 bool &changes_made, bool is_root) {
+unique_ptr<Expression> EnumComparisonRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                 vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &left_child = bindings[1].get().Cast<BoundFunctionExpression>();
 	auto &right_child = bindings[3].get().Cast<BoundFunctionExpression>();

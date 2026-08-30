@@ -40,8 +40,8 @@ EmptyNeedleRemovalRule::EmptyNeedleRemovalRule(ExpressionRewriter &rewriter) : R
 	root = std::move(func);
 }
 
-unique_ptr<Expression> EmptyNeedleRemovalRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                     bool &changes_made, bool is_root) {
+unique_ptr<Expression> EmptyNeedleRemovalRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                     vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	D_ASSERT(root.GetChildren().size() == 2);
 	if (root.Function().GetName() == "||") {
@@ -86,8 +86,8 @@ NoopReplaceRemovalRule::NoopReplaceRemovalRule(ExpressionRewriter &rewriter) : R
 	root = std::move(func);
 }
 
-unique_ptr<Expression> NoopReplaceRemovalRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                     bool &changes_made, bool is_root) {
+unique_ptr<Expression> NoopReplaceRemovalRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                     vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	D_ASSERT(root.GetChildren().size() == 3);
 	auto &needle_expr = bindings[2].get();

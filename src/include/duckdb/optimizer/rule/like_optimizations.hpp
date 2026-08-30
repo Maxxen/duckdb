@@ -20,8 +20,8 @@ class LikeOptimizationRule : public Rule {
 public:
 	explicit LikeOptimizationRule(ExpressionRewriter &rewriter);
 
-	unique_ptr<Expression> Apply(LogicalOperator &op, vector<reference<Expression>> &bindings, bool &changes_made,
-	                             bool is_root) override;
+	unique_ptr<Expression> Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+	                             vector<reference<Expression>> &bindings, bool is_root) override;
 
 	unique_ptr<Expression> ApplyRule(BoundFunctionExpression &expr, const ScalarFunction &function, string pattern,
 	                                 bool is_not_like, PatternMatchType match_type) const;

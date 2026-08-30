@@ -149,8 +149,8 @@ static LikeString LikeMatchFromRegex(duckdb_re2::RE2 &pattern) {
 	return ret;
 }
 
-unique_ptr<Expression> RegexOptimizationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                    bool &changes_made, bool is_root) {
+unique_ptr<Expression> RegexOptimizationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                    vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &constant_expr = bindings[2].get().Cast<BoundConstantExpression>();
 	D_ASSERT(root.GetChildrenMutable().size() == 2 || root.GetChildrenMutable().size() == 3);
@@ -253,8 +253,8 @@ static bool RegexpHasWholeTextAnchors(duckdb_re2::Regexp *regexp) {
 // Rewrites `regexp_replace(s, P, '\N')` into `regexp_extract(s, P, N, 'k')` when parsed RE2 anchors
 // prove that any match spans the whole input. The original pattern is preserved; any regexp_extract
 // pattern simplification belongs in a separate optimization.
-unique_ptr<Expression> RegexpReplaceExtractRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                       bool &changes_made, bool is_root) {
+unique_ptr<Expression> RegexpReplaceExtractRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                       vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	if (!root.BindInfo()) {
 		return nullptr;

@@ -51,8 +51,8 @@ static bool TryOutOfRangeComparisonResult(ExpressionType comparison_type, bool &
 	}
 }
 
-unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                bool &changes_made, bool is_root) {
+unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                vector<reference<Expression>> &bindings, bool is_root) {
 	auto &comparison = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &outer_constant = bindings[1].get().Cast<BoundConstantExpression>();
 	auto &arithmetic = bindings[2].get().Cast<BoundFunctionExpression>();
@@ -186,8 +186,7 @@ unique_ptr<Expression> MoveConstantsRule::Apply(LogicalOperator &op, vector<refe
 	} else {
 		BoundComparisonExpression::LeftMutable(comparison) = std::move(arithmetic_child);
 	}
-	changes_made = true;
-	return nullptr;
+	return std::move(expr_ptr);
 }
 
 static bool IsOrderedComparison(ExpressionType comparison_type) {
@@ -250,8 +249,8 @@ MoveUnaryMinusRule::MoveUnaryMinusRule(ExpressionRewriter &rewriter) : Rule(rewr
 	root = std::move(op);
 }
 
-unique_ptr<Expression> MoveUnaryMinusRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                 bool &changes_made, bool is_root) {
+unique_ptr<Expression> MoveUnaryMinusRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                 vector<reference<Expression>> &bindings, bool is_root) {
 	auto &comparison = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &outer_constant = bindings[1].get().Cast<BoundConstantExpression>();
 	auto &negation = bindings[2].get().Cast<BoundFunctionExpression>();
@@ -358,8 +357,7 @@ unique_ptr<Expression> MoveUnaryMinusRule::Apply(LogicalOperator &op, vector<ref
 		auto result = make_uniq<BoundConjunctionExpression>(conjunction_type, comparison.Copy(), std::move(nan_guard));
 		return std::move(result);
 	}
-	changes_made = true;
-	return nullptr;
+	return std::move(expr_ptr);
 }
 
 } // namespace duckdb

@@ -42,8 +42,8 @@ unique_ptr<Expression> OrderedAggregateOptimizer::Apply(ClientContext &context, 
 	return rewrite;
 }
 
-unique_ptr<Expression> OrderedAggregateOptimizer::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                        bool &changes_made, bool is_root) {
+unique_ptr<Expression> OrderedAggregateOptimizer::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                        vector<reference<Expression>> &bindings, bool is_root) {
 	auto &aggr = bindings[0].get().Cast<BoundAggregateExpression>();
 
 	// only apply to LogicalAggregate nodes
@@ -55,8 +55,14 @@ unique_ptr<Expression> OrderedAggregateOptimizer::Apply(LogicalOperator &op, vec
 		return nullptr;
 	}
 
-	return Apply(rewriter.context, aggr, op.Cast<LogicalAggregate>().groups, op.Cast<LogicalAggregate>().grouping_sets,
-	             changes_made);
+	bool changes_made = false;
+	auto result = Apply(rewriter.context, aggr, op.Cast<LogicalAggregate>().groups,
+	                    op.Cast<LogicalAggregate>().grouping_sets, changes_made);
+	if (result) {
+		return result;
+	}
+	// the helper modifies the aggregate in place: hand back the modified expression as the replacement
+	return changes_made ? std::move(expr_ptr) : nullptr;
 }
 
 } // namespace duckdb

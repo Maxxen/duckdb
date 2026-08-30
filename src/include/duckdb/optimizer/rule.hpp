@@ -27,8 +27,11 @@ public:
 	unique_ptr<ExpressionMatcher> root;
 
 	ClientContext &GetContext() const;
-	virtual unique_ptr<Expression> Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-	                                     bool &fixed_point, bool is_root) = 0;
+	//! Apply the rule to the matched expression. `expr_ptr` owns the expression the bindings point into.
+	//! Return the replacement expression - which may be built by taking apart `expr_ptr`, or be
+	//! `std::move(expr_ptr)` itself after modifying it - or return nullptr to leave the expression untouched.
+	virtual unique_ptr<Expression> Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+	                                     vector<reference<Expression>> &bindings, bool is_root) = 0;
 };
 
 } // namespace duckdb

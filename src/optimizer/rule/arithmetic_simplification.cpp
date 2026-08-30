@@ -24,8 +24,8 @@ ArithmeticSimplificationRule::ArithmeticSimplificationRule(ExpressionRewriter &r
 	root = std::move(op);
 }
 
-unique_ptr<Expression> ArithmeticSimplificationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                           bool &changes_made, bool is_root) {
+unique_ptr<Expression> ArithmeticSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                           vector<reference<Expression>> &bindings, bool is_root) {
 	auto &root = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &constant = bindings[1].get().Cast<BoundConstantExpression>();
 	idx_t constant_child = root.GetChildren()[0].get() == &constant ? 0 : 1;

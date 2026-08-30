@@ -65,8 +65,8 @@ InstrPrefixRule::InstrPrefixRule(ExpressionRewriter &rewriter) : Rule(rewriter) 
 	root = std::move(op);
 }
 
-unique_ptr<Expression> StringPrefixRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                               bool &changes_made, bool is_root) {
+unique_ptr<Expression> StringPrefixRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                               vector<reference<Expression>> &bindings, bool is_root) {
 	const auto &comparison = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &func = bindings[1].get().Cast<BoundFunctionExpression>();
 	const auto &constant = bindings[4].get().Cast<BoundConstantExpression>();
@@ -167,8 +167,8 @@ unique_ptr<Expression> StringPrefixRule::Apply(LogicalOperator &op, vector<refer
 	return std::move(prefix_expr);
 }
 
-unique_ptr<Expression> InstrPrefixRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                              bool &changes_made, bool is_root) {
+unique_ptr<Expression> InstrPrefixRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                              vector<reference<Expression>> &bindings, bool is_root) {
 	auto &func = bindings[1].get().Cast<BoundFunctionExpression>();
 	auto &needle = bindings[3].get().Cast<BoundConstantExpression>();
 	auto &position = bindings[4].get().Cast<BoundConstantExpression>();

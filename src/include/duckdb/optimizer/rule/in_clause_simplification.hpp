@@ -17,8 +17,8 @@ class InClauseSimplificationRule : public Rule {
 public:
 	explicit InClauseSimplificationRule(ExpressionRewriter &rewriter);
 
-	unique_ptr<Expression> Apply(LogicalOperator &op, vector<reference<Expression>> &bindings, bool &changes_made,
-	                             bool is_root) override;
+	unique_ptr<Expression> Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+	                             vector<reference<Expression>> &bindings, bool is_root) override;
 };
 
 // The in enum simplification rule rewrites cases where a left enum::VARCHAR is compared with right string literals
@@ -26,8 +26,8 @@ class InEnumSimplificationRule : public Rule {
 public:
 	explicit InEnumSimplificationRule(ExpressionRewriter &rewriter);
 
-	unique_ptr<Expression> Apply(LogicalOperator &op, vector<reference<Expression>> &bindings, bool &changes_made,
-	                             bool is_root) override;
+	unique_ptr<Expression> Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+	                             vector<reference<Expression>> &bindings, bool is_root) override;
 };
 
 // The enum equals simplification rule rewrites cases where a left enum::VARCHAR is compared a right string literal
@@ -35,8 +35,8 @@ class EnumCompareSimplificationRule : public Rule {
 public:
 	explicit EnumCompareSimplificationRule(ExpressionRewriter &rewriter);
 
-	unique_ptr<Expression> Apply(LogicalOperator &op, vector<reference<Expression>> &bindings, bool &changes_made,
-	                             bool is_root) override;
+	unique_ptr<Expression> Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+	                             vector<reference<Expression>> &bindings, bool is_root) override;
 };
 
 } // namespace duckdb

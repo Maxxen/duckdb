@@ -17,8 +17,8 @@ ContainsToInClauseRule::ContainsToInClauseRule(ExpressionRewriter &rewriter) : R
 	root = std::move(func);
 }
 
-unique_ptr<Expression> ContainsToInClauseRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                     bool &changes_made, bool is_root) {
+unique_ptr<Expression> ContainsToInClauseRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                     vector<reference<Expression>> &bindings, bool is_root) {
 	auto &expr = bindings[0].get().Cast<BoundFunctionExpression>();
 	auto &list_arg = expr.GetChildren()[0];
 	auto &probe_arg = expr.GetChildren()[1];
@@ -30,7 +30,6 @@ unique_ptr<Expression> ContainsToInClauseRule::Apply(LogicalOperator &op, vector
 
 	// Null list: result is always NULL regardless of the probe value.
 	if (list_val.IsNull()) {
-		changes_made = true;
 		return make_uniq<BoundConstantExpression>(Value(LogicalType::BOOLEAN));
 	}
 
@@ -50,7 +49,6 @@ unique_ptr<Expression> ContainsToInClauseRule::Apply(LogicalOperator &op, vector
 
 	// No non-NULL elements: never contains any value.
 	if (non_null_elements.empty()) {
-		changes_made = true;
 		return ExpressionRewriter::ConstantOrNull(probe_arg->Copy(), Value::BOOLEAN(false));
 	}
 
@@ -64,7 +62,6 @@ unique_ptr<Expression> ContainsToInClauseRule::Apply(LogicalOperator &op, vector
 	for (auto &v : non_null_elements) {
 		in_expr->GetChildrenMutable().push_back(make_uniq<BoundConstantExpression>(std::move(v)));
 	}
-	changes_made = true;
 	return std::move(in_expr);
 }
 

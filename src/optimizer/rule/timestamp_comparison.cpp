@@ -62,8 +62,8 @@ static Value DateToTimestampValue(date_t date, dtime_t time) {
 	return Value::TIMESTAMP(date, time);
 }
 
-unique_ptr<Expression> TimeStampComparison::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                  bool &changes_made, bool is_root) {
+unique_ptr<Expression> TimeStampComparison::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                  vector<reference<Expression>> &bindings, bool is_root) {
 	auto &comparison = bindings[0].get().Cast<BoundFunctionExpression>();
 	D_ASSERT(comparison.GetChildren().size() == 2);
 

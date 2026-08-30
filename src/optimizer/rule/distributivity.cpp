@@ -54,8 +54,8 @@ unique_ptr<Expression> DistributivityRule::ExtractExpression(BoundConjunctionExp
 	return result;
 }
 
-unique_ptr<Expression> DistributivityRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,
-                                                 bool &changes_made, bool is_root) {
+unique_ptr<Expression> DistributivityRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                 vector<reference<Expression>> &bindings, bool is_root) {
 	auto &initial_or = bindings[0].get().Cast<BoundConjunctionExpression>();
 
 	// we want to find expressions that occur in each of the children of the OR

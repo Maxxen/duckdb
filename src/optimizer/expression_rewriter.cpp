@@ -22,21 +22,18 @@ static unique_ptr<Expression> ApplyRule(LogicalOperator &op, const vector<refere
 		vector<reference<Expression>> bindings;
 		if (rule.get().root->Match(*expr, bindings)) {
 			// the rule matches! try to apply it
-			bool rule_made_change = false;
 			auto alias = expr->GetAlias();
-			auto result = rule.get().Apply(op, bindings, rule_made_change, is_root);
+			auto result = rule.get().Apply(op, expr, bindings, is_root);
 			if (result) {
 				changes_made = true;
-				// the base node changed: the rule applied changes
+				// the rule applied changes: replace the node with the result
 				if (!alias.empty()) {
 					result->SetAlias(std::move(alias));
 				}
 				return result;
-			} else if (rule_made_change) {
-				changes_made = true;
-				return expr;
 			}
-			// else nothing changed, continue to the next rule
+			// the rule did not apply: it must have left the expression in place
+			D_ASSERT(expr);
 			continue;
 		}
 	}

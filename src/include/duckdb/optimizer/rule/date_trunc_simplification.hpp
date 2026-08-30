@@ -55,8 +55,8 @@ class DateTruncSimplificationRule : public Rule {
 public:
 	explicit DateTruncSimplificationRule(ExpressionRewriter &rewriter);
 
-	unique_ptr<Expression> Apply(LogicalOperator &op, vector<reference<Expression>> &bindings, bool &changes_made,
-	                             bool is_root) override;
+	unique_ptr<Expression> Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+	                             vector<reference<Expression>> &bindings, bool is_root) override;
 
 	static string DatePartToFunc(const DatePartSpecifier &date_part);
 

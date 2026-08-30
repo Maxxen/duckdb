@@ -11,9 +11,8 @@ NotConjunctionSimplificationRule::NotConjunctionSimplificationRule(ExpressionRew
 	root = std::move(op);
 }
 
-unique_ptr<Expression> NotConjunctionSimplificationRule::Apply(LogicalOperator &op,
-                                                               vector<reference<Expression>> &bindings,
-                                                               bool &changes_made, bool is_root) {
+unique_ptr<Expression> NotConjunctionSimplificationRule::Apply(LogicalOperator &op, unique_ptr<Expression> &expr_ptr,
+                                                               vector<reference<Expression>> &bindings, bool is_root) {
 	auto &not_expr = bindings[0].get().Cast<BoundOperatorExpression>();
 	D_ASSERT(not_expr.GetExpressionType() == ExpressionType::OPERATOR_NOT);
 	D_ASSERT(not_expr.GetChildren().size() == 1);
@@ -41,7 +40,6 @@ unique_ptr<Expression> NotConjunctionSimplificationRule::Apply(LogicalOperator &
 		result->GetChildrenMutable().push_back(std::move(negated_child));
 	}
 
-	changes_made = true;
 	return std::move(result);
 }
 
