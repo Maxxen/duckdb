@@ -27,8 +27,8 @@ ExpressionBinder::~ExpressionBinder() {
 
 void ExpressionBinder::InitializeStackCheck() {
 	static constexpr idx_t INITIAL_DEPTH = 5;
-	if (binder.HasActiveBinder()) {
-		stack_depth = binder.GetActiveBinder().stack_depth + INITIAL_DEPTH;
+	if (binder.HasEnclosingScope()) {
+		stack_depth = binder.GetInnermostScope().stack_depth + INITIAL_DEPTH;
 	} else {
 		stack_depth = INITIAL_DEPTH;
 	}

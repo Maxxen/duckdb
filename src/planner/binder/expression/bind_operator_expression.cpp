@@ -98,6 +98,11 @@ BindResult ExpressionBinder::BindGroupingFunction(OperatorExpression &op, idx_t 
 //! Bind an operator that is really a call to a scalar function, over children this binder has
 //! already bound. The name is resolved exactly as a written function call would be, so that the
 //! search path and the binder's catalog-lookup callback still apply.
+//! This repeats the tail of BindFunction (catalog lookup, BindScalarFunction, the rebind flag) because
+//! that one starts from parsed arguments and would bind these children a second time - keep the two in
+//! step. Unlike BindFunction it accepts only a scalar function: a macro shadowing the operator's
+//! backing name (say, a user macro called struct_extract) cannot be handed already-bound children, so
+//! it is reported rather than invoked.
 BindResult ExpressionBinder::BindOperatorAsFunction(OperatorExpression &op, const Identifier &function_name,
                                                     vector<unique_ptr<Expression>> children) {
 	if (binder.GetBindingMode() == BindingMode::EXTRACT_NAMES ||
@@ -128,6 +133,31 @@ BindResult ExpressionBinder::BindOperatorAsFunction(OperatorExpression &op, cons
 	return BindResult(std::move(result));
 }
 
+//! GROUPING cannot go through DispatchToScope: it is not bound by the scope's BindExpression but by its
+//! BindGroupingFunction, which is what registers the grouping set on that scope's select node. The
+//! correlated-column registration DispatchToScope would have done is therefore repeated here.
+BindResult ExpressionBinder::BindGroupingInEnclosingScope(const ScopeChain &chain, OperatorExpression &op,
+                                                          vector<reference<ParsedExpression>> &children, idx_t owner,
+                                                          idx_t depth) {
+	ErrorData bind_error;
+	for (optional_idx scope = owner; scope.IsValid();
+	     scope = ScopeResolver::ResolveOuterGroup(chain, children, scope.GetIndex() + 1)) {
+		// BindGroupingFunction qualifies the children against the scope binding them, so bind a copy and
+		// leave the original intact for the scopes further out
+		auto attempt = op.Copy();
+		auto result = chain.At(scope.GetIndex())
+		                  .BindGroupingFunction(attempt->Cast<OperatorExpression>(), depth + scope.GetIndex());
+		if (!result.HasError()) {
+			ExtractCorrelatedExpressions(binder, *result.expression);
+			return result;
+		}
+		if (!bind_error.HasError()) {
+			bind_error = std::move(result.error);
+		}
+	}
+	return BindResult(std::move(bind_error));
+}
+
 BindResult ExpressionBinder::BindExpression(OperatorExpression &op, idx_t depth) {
 	auto operator_type = op.GetExpressionType();
 	if (operator_type == ExpressionType::GROUPING_FUNCTION) {
@@ -141,12 +171,7 @@ BindResult ExpressionBinder::BindExpression(OperatorExpression &op, idx_t depth)
 			}
 			auto owner = ScopeResolver::ResolveOuterGroup(chain, children, 0);
 			if (owner.IsValid() && owner.GetIndex() != 0) {
-				auto scope = owner.GetIndex();
-				auto result = chain.At(scope).BindGroupingFunction(op, depth + scope);
-				if (!result.HasError()) {
-					ExtractCorrelatedExpressions(binder, *result.expression);
-				}
-				return result;
+				return BindGroupingInEnclosingScope(chain, op, children, owner.GetIndex(), depth);
 			}
 		}
 		return BindGroupingFunction(op, depth);

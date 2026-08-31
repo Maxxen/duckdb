@@ -29,8 +29,6 @@ public:
 	ExpressionBinder &At(idx_t depth) const {
 		return scopes[depth];
 	}
-	//! The scopes at or outside the given depth, re-based so that `from` becomes index 0
-	ScopeChain Slice(idx_t from) const;
 
 private:
 	vector<reference<ExpressionBinder>> scopes;

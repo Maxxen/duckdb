@@ -266,11 +266,11 @@ bool Binder::IsInsideSubquery() const {
 }
 
 void Binder::BeginSubqueryBind(Binder &parent, ExpressionBinder &binder) {
-	// push all enclosing scopes of the parent
-	for (auto &active_binder : parent.active_binders) {
-		active_binders.push_back(active_binder);
-	}
-	// finally push this binder
+	// this binder already inherited a copy of the enclosing scopes when it was created, so replace them
+	// rather than appending the parent's on top: appending would list every scope twice per level of
+	// nesting, growing the chain as 2^depth and making the index of a scope no longer unique
+	active_binders = parent.active_binders;
+	// the scope that is binding the subquery encloses it
 	active_binders.push_back(binder);
 }
 
@@ -278,11 +278,11 @@ void Binder::FinishSubqueryBind() {
 	active_binders.clear();
 }
 
-ExpressionBinder &Binder::GetActiveBinder() {
+ExpressionBinder &Binder::GetInnermostScope() {
 	return active_binders.back();
 }
 
-bool Binder::HasActiveBinder() {
+bool Binder::HasEnclosingScope() {
 	return !active_binders.empty();
 }
 
@@ -311,10 +311,6 @@ void Binder::RestoreScopes(const vector<reference<ExpressionBinder>> &scopes) {
 	for (auto &scope : scopes) {
 		active_binders.push_back(scope);
 	}
-}
-
-void Binder::SetScopes(vector<reference<ExpressionBinder>> scopes) {
-	active_binders = std::move(scopes);
 }
 
 void Binder::AddUsingBindingSet(unique_ptr<UsingColumnSet> set) {

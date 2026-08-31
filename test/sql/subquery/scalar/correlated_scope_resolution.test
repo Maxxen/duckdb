@@ -174,3 +174,53 @@ SELECT i, (SELECT SUM((SELECT i + 1)) OVER ()) FROM integers ORDER BY i
 2	3
 3	4
 NULL	NULL
+
+# a lambda parameter is bound by the lambda, not by a query scope, so it never decides which scope
+# owns an aggregate - even when it shares a name with a column of an enclosing scope
+query I
+SELECT (SELECT SUM(list_transform([1, 2], lambda i: i + 1)[1])) FROM integers i1 ORDER BY 1
+----
+2
+2
+2
+2
+
+# ... which is the same answer the aggregate gives when the parameter shadows nothing
+query I
+SELECT (SELECT SUM(list_transform([1, 2], lambda unshadowed: unshadowed + 1)[1])) FROM integers i1 ORDER BY 1
+----
+2
+2
+2
+2
+
+# a genuine column reference in a lambda body still owns the aggregate, whether or not the lambda
+# parameter shares the last component of its name
+query I
+SELECT (SELECT SUM(list_transform([1, 2], lambda i: i + i1.i)[1])) FROM integers i1
+----
+9
+
+query I
+SELECT (SELECT SUM(list_transform([1, 2], lambda unshadowed: unshadowed + i1.i)[1])) FROM integers i1
+----
+9
+
+statement ok
+CREATE TABLE files(data VARCHAR);
+
+statement ok
+INSERT INTO files VALUES ('x');
+
+# a table function argument that an enclosing scope can resolve but not bind - "data.csv" reads as a
+# struct extract of the column "data" - is not a lateral parameter, so it falls back to a string
+statement error
+SELECT * FROM files, read_csv(data.csv);
+----
+<REGEX>:.*No files found that match the pattern.*
+
+# a reference that the enclosing scope really does bind is still rejected
+statement error
+SELECT * FROM files, read_csv(files.data);
+----
+<REGEX>:.*does not support lateral join column parameters.*

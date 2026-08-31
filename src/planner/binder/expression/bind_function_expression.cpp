@@ -240,7 +240,10 @@ BindResult ExpressionBinder::TryBindLambdaOrJson(FunctionExpression &function, i
 		throw BinderException(msg);
 	}
 
-	// the lambda reading failed - the JSON reading binds the same nodes from scratch
+	// The lambda reading failed - the JSON reading binds the same nodes from scratch. Any child the
+	// lambda attempt already bound is therefore bound twice, which repeats that bind's side effects
+	// (correlated-column registration, subquery planning). Only the deprecated arrow syntax is
+	// ambiguous enough to reach here, so this goes away with it rather than being worked around.
 	auto json_bind_result = BindFunction(function, func.Cast<ScalarFunctionCatalogEntry>(), depth);
 	if (!json_bind_result.HasError()) {
 		return json_bind_result;
@@ -313,8 +316,8 @@ BindResult ExpressionBinder::BindExpression(FunctionExpression &function, idx_t 
 		auto chain = ScopeChain::FromBinder(*this);
 		if (chain.Size() > 1) {
 			auto owner = ScopeResolver::ResolveAggregateOwner(chain, function, 0);
-			if (owner != 0) {
-				return DispatchToScope(chain, owner, expr_ptr, depth);
+			if (owner.IsValid() && owner.GetIndex() != 0) {
+				return BindAggregateInEnclosingScope(chain, function, owner.GetIndex(), depth, expr_ptr);
 			}
 		}
 		return BindAggregate(function, func.Cast<AggregateFunctionCatalogEntry>(), depth);
@@ -325,6 +328,31 @@ BindResult ExpressionBinder::BindExpression(FunctionExpression &function, idx_t 
 	default:
 		throw InvalidInputException("Unsupported catalog type when binding function");
 	}
+}
+
+BindResult ExpressionBinder::BindAggregateInEnclosingScope(const ScopeChain &chain, FunctionExpression &aggregate,
+                                                           idx_t owner, idx_t depth,
+                                                           unique_ptr<ParsedExpression> &expr_ptr) {
+	// Bind a copy at each candidate scope. Binding rewrites the nodes it manages to bind - a column
+	// reference becomes the qualified form of the scope that owns it - so a failed attempt must not be
+	// handed to the next scope out. Moving the original aside also keeps `aggregate` valid throughout,
+	// since it aliases the node `expr_ptr` held on entry.
+	auto original = std::move(expr_ptr);
+	ErrorData bind_error;
+	for (optional_idx scope = owner; scope.IsValid();
+	     scope = ScopeResolver::ResolveAggregateOwner(chain, aggregate, scope.GetIndex() + 1)) {
+		expr_ptr = original->Copy();
+		auto result = DispatchToScope(chain, scope.GetIndex(), expr_ptr, depth);
+		if (!result.HasError()) {
+			return result;
+		}
+		if (!bind_error.HasError()) {
+			// report the innermost owner's error: that is the level the arguments actually name
+			bind_error = std::move(result.error);
+		}
+	}
+	expr_ptr = std::move(original);
+	return BindResult(std::move(bind_error));
 }
 
 BindResult ExpressionBinder::BindFunction(FunctionExpression &function, ScalarFunctionCatalogEntry &func, idx_t depth) {
@@ -482,7 +510,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 		}
 	}
 
-	// successfully bound: store the bound lambda in the map
+	// successfully bound: keep the bound lambda alongside the other bound children
 	auto alias = args[lambda_expr_idx].GetExpression().GetAlias();
 	bind_lambda_result.expression->SetAlias(alias);
 

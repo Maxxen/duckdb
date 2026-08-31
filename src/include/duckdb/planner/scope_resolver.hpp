@@ -37,10 +37,10 @@ public:
 	//! Resolve a column reference against the chain, starting at the given depth
 	static ColumnResolution ResolveColumn(const ScopeChain &chain, ColumnRefExpression &colref, idx_t start);
 
-	//! The scope that owns an aggregate: the innermost one in which any of its arguments resolves a
-	//! column of its own scope. Returns `start` when no argument resolves a column anywhere, which
-	//! pins a constant-only aggregate to the scope it appears in.
-	static idx_t ResolveAggregateOwner(const ScopeChain &chain, FunctionExpression &aggregate, idx_t start);
+	//! The scope that owns an aggregate: the innermost one at or beyond `start` in which any of its
+	//! arguments resolves a column. Returns an invalid index when no argument resolves a column at or
+	//! beyond `start` - at `start == 0` that pins a constant-only aggregate to the scope it appears in.
+	static optional_idx ResolveAggregateOwner(const ScopeChain &chain, FunctionExpression &aggregate, idx_t start);
 
 	//! The innermost scope whose groups all of the expressions match, or an invalid index if there is none
 	static optional_idx ResolveOuterGroup(const ScopeChain &chain, vector<reference<ParsedExpression>> &expressions,

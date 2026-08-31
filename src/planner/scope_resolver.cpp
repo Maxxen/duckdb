@@ -6,6 +6,7 @@
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/parser/expression/columnref_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/lambda_expression.hpp"
 #include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/column_qualifier.hpp"
@@ -118,6 +119,11 @@ void ScopeResolver::CombineErrors(ErrorData &current, ErrorData new_error) {
 	}
 
 	// override the error with the new one
+	// FIXME: the outermost scope searched always wins here, which can bury a more specific error from
+	// the scope the reference was actually written in - e.g. HAVING's "must appear in the GROUP BY
+	// clause" is replaced by an enclosing scope's "table not found". Preserving the innermost error
+	// unless the outer one is strictly more specific would read better, but it changes many existing
+	// error messages, so it is left as is here.
 	current = std::move(new_error);
 }
 
@@ -158,29 +164,64 @@ ColumnResolution ScopeResolver::ResolveColumn(const ScopeChain &chain, ColumnRef
 
 //! Collect the column references that decide which scope owns an expression. Subqueries are skipped:
 //! they bind in a chain of their own, so a column inside one says nothing about this expression.
-static void CollectResolvableColumns(ParsedExpression &expr, vector<reference<ColumnRefExpression>> &result) {
-	if (expr.GetExpressionClass() == ExpressionClass::SUBQUERY) {
+//! Lambda parameters are skipped for the same reason: they are bound by the lambda rather than by any
+//! scope, so a parameter that happens to share a name with an outer column must not pull the
+//! expression out to that scope. The parameter names are read exactly as `ColumnQualifier` reads them,
+//! so the resolver sees the same names a real bind would.
+static void CollectResolvableColumns(ParsedExpression &expr, vector<identifier_set_t> &lambda_params,
+                                     vector<reference<ColumnRefExpression>> &result) {
+	switch (expr.GetExpressionClass()) {
+	case ExpressionClass::SUBQUERY:
+		return;
+	case ExpressionClass::COLUMN_REF: {
+		auto &col_ref = expr.Cast<ColumnRefExpression>();
+		// a lambda parameter is always a bare name, so a qualified reference is a column even when its
+		// last component happens to match one - `t.x` inside `lambda x: ...` names the table's column
+		if (!col_ref.IsQualified() && LambdaExpression::IsLambdaParameter(lambda_params, col_ref.GetName())) {
+			return;
+		}
+		result.push_back(col_ref);
 		return;
 	}
-	if (expr.GetExpressionClass() == ExpressionClass::COLUMN_REF) {
-		result.push_back(expr.Cast<ColumnRefExpression>());
+	case ExpressionClass::LAMBDA: {
+		auto &lambda = expr.Cast<LambdaExpression>();
+		string error_message;
+		auto parameters = lambda.ExtractColumnRefExpressions(error_message);
+		if (!error_message.empty()) {
+			// the LHS is not a parameter list, so this is the JSON arrow operator: both sides are
+			// ordinary expressions and nothing is bound by the lambda
+			CollectResolvableColumns(*lambda.LeftMutable(), lambda_params, result);
+			CollectResolvableColumns(*lambda.RightMutable(), lambda_params, result);
+			return;
+		}
+		lambda_params.emplace_back();
+		for (auto &parameter : parameters) {
+			lambda_params.back().emplace(parameter.get().Cast<ColumnRefExpression>().GetName());
+		}
+		// only the body can reference anything outside the lambda
+		CollectResolvableColumns(*lambda.RightMutable(), lambda_params, result);
+		lambda_params.pop_back();
 		return;
+	}
+	default:
+		break;
 	}
 	ParsedExpressionIterator::EnumerateChildren(
-	    expr, [&](ParsedExpression &child) { CollectResolvableColumns(child, result); });
+	    expr, [&](ParsedExpression &child) { CollectResolvableColumns(child, lambda_params, result); });
 }
 
-idx_t ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, FunctionExpression &aggregate, idx_t start) {
+optional_idx ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, FunctionExpression &aggregate, idx_t start) {
 	vector<reference<ColumnRefExpression>> columns;
+	vector<identifier_set_t> lambda_params;
 	for (auto &child : aggregate.GetArgumentsMutable()) {
-		CollectResolvableColumns(*child.GetExpressionMutable(), columns);
+		CollectResolvableColumns(*child.GetExpressionMutable(), lambda_params, columns);
 	}
 	if (aggregate.Filter()) {
-		CollectResolvableColumns(*aggregate.FilterMutable(), columns);
+		CollectResolvableColumns(*aggregate.FilterMutable(), lambda_params, columns);
 	}
 	if (aggregate.OrderBy()) {
 		for (auto &order : aggregate.OrderByMutable()->orders) {
-			CollectResolvableColumns(*order.expression, columns);
+			CollectResolvableColumns(*order.expression, lambda_params, columns);
 		}
 	}
 	auto owner = start;
@@ -188,8 +229,8 @@ idx_t ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, FunctionExpr
 	for (auto &colref : columns) {
 		auto resolution = ResolveColumn(chain, colref.get(), start);
 		if (!resolution.found) {
-			// a lambda parameter, an alias, or a column that does not resolve at all - it says nothing
-			// about ownership, and the scope we settle on reports the error
+			// an alias or a column that does not resolve at all - it says nothing about ownership,
+			// and the scope we settle on reports the error
 			continue;
 		}
 		if (!found || resolution.depth < owner) {
@@ -197,7 +238,7 @@ idx_t ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, FunctionExpr
 			found = true;
 		}
 	}
-	return owner;
+	return found ? optional_idx(owner) : optional_idx();
 }
 
 optional_idx ScopeResolver::ResolveOuterGroup(const ScopeChain &chain, vector<reference<ParsedExpression>> &expressions,

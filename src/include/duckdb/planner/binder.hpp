@@ -205,7 +205,6 @@ struct GlobalBinderState {
 	optional_ptr<TableCatalogEntry> trigger_creation_table;
 	//! Name of the trigger being created (for error messages)
 	Identifier trigger_creation_name;
-	//! Bound expressions of parsed nodes, used to prevent re-binding of already bound parts
 };
 
 //! Bind the parsed query tree to the actual columns present in the catalog.
@@ -320,8 +319,9 @@ public:
 	void AddBoundView(ViewCatalogEntry &view);
 
 	void BeginSubqueryBind(Binder &parent, ExpressionBinder &binder);
-	ExpressionBinder &GetActiveBinder();
-	bool HasActiveBinder();
+	//! The innermost enclosing scope
+	ExpressionBinder &GetInnermostScope();
+	bool HasEnclosingScope();
 	void FinishSubqueryBind();
 
 	//! The scopes enclosing this binder, stored outermost first
@@ -334,8 +334,6 @@ public:
 	vector<reference<ExpressionBinder>> SaveScopesAfter(idx_t count);
 	//! Restore scopes previously removed by SaveScopesAfter
 	void RestoreScopes(const vector<reference<ExpressionBinder>> &scopes);
-	//! Replace the enclosing scopes wholesale
-	void SetScopes(vector<reference<ExpressionBinder>> scopes);
 
 	void MergeCorrelatedColumns(CorrelatedColumns &other);
 	//! Add a correlated column to this binder (if it does not exist)

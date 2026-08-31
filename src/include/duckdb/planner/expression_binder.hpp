@@ -74,7 +74,6 @@ struct BindResult {
 
 class ExpressionBinder {
 	friend class StackChecker<ExpressionBinder>;
-	friend class ScopeChain;
 
 public:
 	ExpressionBinder(Binder &binder, ClientContext &context);
@@ -164,6 +163,17 @@ public:
 	//! A scope that resolves the name but cannot bind it is passed over, and the search continues outward.
 	BindResult BindInEnclosingScope(ColumnRefExpression &col_ref, idx_t depth, unique_ptr<ParsedExpression> &expr_ptr,
 	                                ErrorData local_error);
+
+	//! Bind an aggregate owned by an enclosing scope, starting at the given scope. Ownership follows from
+	//! column resolutions, which are only a lower bound, so a scope that owns the aggregate but cannot
+	//! bind it is passed over and the search continues outward.
+	BindResult BindAggregateInEnclosingScope(const ScopeChain &chain, FunctionExpression &aggregate, idx_t owner,
+	                                         idx_t depth, unique_ptr<ParsedExpression> &expr_ptr);
+
+	//! Bind a GROUPING owned by an enclosing scope, starting at the given scope. A scope that groups by
+	//! all of the arguments can still fail to bind them, so it is passed over like any other.
+	BindResult BindGroupingInEnclosingScope(const ScopeChain &chain, OperatorExpression &op,
+	                                        vector<reference<ParsedExpression>> &children, idx_t owner, idx_t depth);
 
 	//! Bind a child expression, returning it. A null child, or one that fails to bind, returns null;
 	//! the first error encountered is recorded in the accumulator.
@@ -265,8 +275,6 @@ protected:
 	virtual string UnsupportedUnnestMessage();
 	optional_ptr<CatalogEntry> GetCatalogEntry(const Identifier &catalog, const Identifier &schema,
 	                                           const EntryLookupInfo &lookup_info, OnEntryNotFound on_entry_not_found);
-
-	//! The map holding the bound expressions of already bound parsed nodes
 
 	Binder &binder;
 	ClientContext &context;
