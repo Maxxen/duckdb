@@ -122,8 +122,8 @@ public:
 	}
 
 	void SetCatalogLookupCallback(catalog_entry_callback_t callback);
-	//! Bind the expression at the given depth. Memoized: a node that was already bound (by an earlier attempt at a
-	//! different depth) is skipped, and the bound expression is stored in the binder's BoundExpressionMap.
+	//! Bind the expression at the given depth, storing the result in the binder's BoundExpressionMap.
+	//! A node that is already bound is left alone.
 	ErrorData Bind(unique_ptr<ParsedExpression> &expr, idx_t depth, bool root_expression = false);
 
 	//! Returns the STRUCT_EXTRACT operator expression

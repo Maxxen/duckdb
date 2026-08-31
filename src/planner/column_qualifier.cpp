@@ -195,7 +195,8 @@ unique_ptr<ParsedExpression> ColumnQualifier::QualifyColumnName(const ParsedExpr
 void ColumnQualifier::QualifyColumnNames(unique_ptr<ParsedExpression> &expr, vector<identifier_set_t> &lambda_params,
                                          const bool within_function_expression) {
 	if (binder.GetBoundExpressions().IsBound(*expr)) {
-		// never descend into or replace already bound expressions
+		// qualification also runs mid-bind, e.g. over the children of GROUPING, where a sibling may
+		// already be bound - such a node is final and must not be descended into or replaced
 		return;
 	}
 	bool next_within_function_expression = false;

@@ -15,9 +15,8 @@
 
 namespace duckdb {
 
-//! BoundExpressionMap maps parsed expression nodes (by identity) to their bound expressions.
-//! The binder uses it to prevent re-binding of already bound parts when incrementally re-binding
-//! the same parsed tree against outer scopes (see ExpressionBinder::BindCorrelatedColumns).
+//! BoundExpressionMap maps parsed expression nodes (by identity) to their bound expressions,
+//! which is how a bound child reaches the binder that consumes it.
 //! Entries are scoped: every full bind cycle opens a BoundExpressionScope, and entries that are
 //! not consumed by the end of the cycle are erased so no entry can outlive its parsed node.
 class BoundExpressionMap {
