@@ -88,10 +88,7 @@ BindResult ExpressionBinder::BindExpression(ColumnRefExpression &col_ref_p, idx_
 
 			auto value_function = GetSQLValueFunction(col_ref_p.GetColumnName());
 			if (value_function) {
-				auto result = BindExpression(value_function, depth);
-				// the value function expression is destroyed on return: erase any entries left for its children
-				GetBoundExpressions().EraseSubtree(*value_function);
-				return result;
+				return BindExpression(value_function, depth);
 			}
 		}
 		// the name does not resolve in this scope: look for it in the enclosing ones
@@ -109,8 +106,6 @@ BindResult ExpressionBinder::BindExpression(ColumnRefExpression &col_ref_p, idx_
 		if (result.expression) {
 			result.expression->SetAlias(std::move(alias));
 		}
-		// the qualified expression is destroyed on return: erase any entries left for its children
-		GetBoundExpressions().EraseSubtree(*expr);
 		return result;
 	}
 

@@ -16,7 +16,6 @@
 #include "duckdb/parser/expression/type_expression.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/tokens.hpp"
-#include "duckdb/planner/bound_expression_map.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/catalog/catalog_entry_retriever.hpp"
 #include "duckdb/planner/expression/bound_lambda_expression.hpp"
@@ -122,9 +121,8 @@ public:
 	}
 
 	void SetCatalogLookupCallback(catalog_entry_callback_t callback);
-	//! Bind the expression at the given depth, storing the result in the binder's BoundExpressionMap.
-	//! A node that is already bound is left alone.
-	ErrorData Bind(unique_ptr<ParsedExpression> &expr, idx_t depth, bool root_expression = false);
+	//! Bind the expression at the given depth, returning the bound expression or the error
+	[[nodiscard]] BindResult Bind(unique_ptr<ParsedExpression> &expr, idx_t depth, bool root_expression = false);
 
 	//! Returns the STRUCT_EXTRACT operator expression
 	unique_ptr<ParsedExpression> CreateStructExtract(unique_ptr<ParsedExpression> base, const Identifier &field_name);
@@ -149,6 +147,10 @@ public:
 	//! though qualification cannot resolve it, and it is the one that reports any error.
 	virtual bool ClaimsAlias(ColumnRefExpression &colref);
 
+	//! Unify the types of two bound operands and build the bound comparison over them
+	unique_ptr<Expression> CreateBoundComparison(ExpressionType comparison_type, unique_ptr<Expression> left,
+	                                             unique_ptr<Expression> right, ErrorData &error);
+
 	static bool PushCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
 	                          CollationType type = CollationType::ALL_COLLATIONS);
 	static void TestCollation(ClientContext &context, const string &collation);
@@ -163,7 +165,9 @@ public:
 	BindResult BindInEnclosingScope(ColumnRefExpression &col_ref, idx_t depth, unique_ptr<ParsedExpression> &expr_ptr,
 	                                ErrorData local_error);
 
-	void BindChild(unique_ptr<ParsedExpression> &expr, idx_t depth, ErrorData &error);
+	//! Bind a child expression, returning it. A null child, or one that fails to bind, returns null;
+	//! the first error encountered is recorded in the accumulator.
+	[[nodiscard]] unique_ptr<Expression> BindChild(unique_ptr<ParsedExpression> &expr, idx_t depth, ErrorData &error);
 	static void ExtractCorrelatedExpressions(Binder &binder, Expression &expr);
 
 	static bool ContainsNullType(const LogicalType &type);
@@ -215,6 +219,8 @@ protected:
 	                          optional_ptr<bind_lambda_function_t> bind_lambda_function,
 	                          optional_ptr<BindLambdaContext> bind_lambda_context);
 	BindResult BindExpression(OperatorExpression &expr, idx_t depth);
+	BindResult BindOperatorAsFunction(OperatorExpression &op, const Identifier &function_name,
+	                                  vector<unique_ptr<Expression>> children);
 	BindResult BindExpression(ParameterExpression &expr, idx_t depth);
 	BindResult BindExpression(SubqueryExpression &expr, idx_t depth);
 	BindResult BindPositionalReference(unique_ptr<ParsedExpression> &expr, idx_t depth, bool root_expression);
@@ -261,7 +267,6 @@ protected:
 	                                           const EntryLookupInfo &lookup_info, OnEntryNotFound on_entry_not_found);
 
 	//! The map holding the bound expressions of already bound parsed nodes
-	BoundExpressionMap &GetBoundExpressions() const;
 
 	Binder &binder;
 	ClientContext &context;

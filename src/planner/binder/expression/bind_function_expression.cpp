@@ -240,6 +240,7 @@ BindResult ExpressionBinder::TryBindLambdaOrJson(FunctionExpression &function, i
 		throw BinderException(msg);
 	}
 
+	// the lambda reading failed - the JSON reading binds the same nodes from scratch
 	auto json_bind_result = BindFunction(function, func.Cast<ScalarFunctionCatalogEntry>(), depth);
 	if (!json_bind_result.HasError()) {
 		return json_bind_result;
@@ -331,8 +332,9 @@ BindResult ExpressionBinder::BindFunction(FunctionExpression &function, ScalarFu
 	ErrorData error;
 
 	// bind each child
+	vector<unique_ptr<Expression>> bound_children;
 	for (idx_t i = 0; i < function.GetArguments().size(); i++) {
-		BindChild(function.GetArgumentsMutable()[i].GetExpressionMutable(), depth, error);
+		bound_children.push_back(BindChild(function.GetArgumentsMutable()[i].GetExpressionMutable(), depth, error));
 	}
 
 	if (error.HasError()) {
@@ -348,8 +350,9 @@ BindResult ExpressionBinder::BindFunction(FunctionExpression &function, ScalarFu
 	// overload.
 	vector<pair<Identifier, unique_ptr<Expression>>> arguments;
 	arguments.reserve(function.GetArguments().size());
-	for (auto &arg : function.GetArgumentsMutable()) {
-		auto bound_arg = GetBoundExpressions().Consume(*arg.GetExpressionMutable());
+	for (idx_t i = 0; i < function.GetArgumentsMutable().size(); i++) {
+		auto &arg = function.GetArgumentsMutable()[i];
+		auto bound_arg = std::move(bound_children[i]);
 
 		// legacy function calls cannot have named arguments, so we ignore the names of the arguments during binding
 		// and pass them all positionally. We do alias them by their name though, so that alias-capturing functions
@@ -401,6 +404,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 	}
 
 	vector<LogicalType> function_child_types;
+	vector<unique_ptr<Expression>> bound_children(function.GetArguments().size());
 	ErrorData error;
 
 	for (idx_t i = 0; i < function.GetArguments().size(); i++) {
@@ -414,18 +418,17 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 			                  "'. You might need to add explicit type casts.");
 		}
 
-		BindChild(function.GetArgumentsMutable()[i].GetExpressionMutable(), depth, error);
+		bound_children[i] = BindChild(function.GetArgumentsMutable()[i].GetExpressionMutable(), depth, error);
 		if (error.HasError()) {
 			return BindResult(std::move(error));
 		}
 
-		const auto &child = GetBoundExpressions().Get(*args[i].GetExpressionMutable());
-		function_child_types.push_back(child.GetReturnType());
+		function_child_types.push_back(bound_children[i]->GetReturnType());
 	}
 
 	if (lambda_expr_idx == 1) {
 		// get the logical type of the children of the list
-		auto &list_child = GetBoundExpressions().Get(*args[0].GetExpressionMutable());
+		auto &list_child = *bound_children[0];
 		if (list_child.GetReturnType().id() != LogicalTypeId::LIST &&
 		    list_child.GetReturnType().id() != LogicalTypeId::ARRAY &&
 		    list_child.GetReturnType().id() != LogicalTypeId::SQLNULL &&
@@ -483,7 +486,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 	auto alias = args[lambda_expr_idx].GetExpression().GetAlias();
 	bind_lambda_result.expression->SetAlias(alias);
 
-	GetBoundExpressions().Insert(args[lambda_expr_idx].GetExpression(), std::move(bind_lambda_result.expression));
+	bound_children[lambda_expr_idx] = std::move(bind_lambda_result.expression);
 
 	if (binder.GetBindingMode() == BindingMode::EXTRACT_NAMES) {
 		return BindResult(make_uniq<BoundConstantExpression>(Value(LogicalType::SQLNULL)));
@@ -491,10 +494,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 
 	// all children bound successfully
 	// extract the children and types
-	vector<unique_ptr<Expression>> children;
-	for (idx_t i = 0; i < args.size(); i++) {
-		children.push_back(GetBoundExpressions().Consume(*args[i].GetExpressionMutable()));
-	}
+	auto children = std::move(bound_children);
 
 	// capture the (lambda) columns
 	auto &bound_lambda_expr = children[lambda_expr_idx]->Cast<BoundLambdaExpression>();

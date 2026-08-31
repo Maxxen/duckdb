@@ -1,8 +1,9 @@
 # name: test/fuzzer/pedro/missing_subquery_error.test
 # description: Issue #4570: Missing error message at subquery
+# group: [pedro]
+
 # note: an aggregate with only constant arguments belongs to the clause it appears in, so all three
 # report that clause. Wrapping the query in a subquery used to change the error.
-# group: [pedro]
 
 statement error
 WITH t2 AS (SELECT 3 WHERE count(*) FILTER (1)) SELECT 0 FROM t2

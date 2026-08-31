@@ -83,18 +83,20 @@ BindResult ExpressionBinder::BindExpression(SubqueryExpression &expr, idx_t dept
 		}
 	}
 	// bind the child expression the subquery is compared against, if any
+	unique_ptr<Expression> bound_child;
 	if (expr.GetChild()) {
-		auto error = Bind(expr.GetChildMutable(), depth);
-		if (error.HasError()) {
-			return BindResult(std::move(error));
+		auto child_result = Bind(expr.GetChildMutable(), depth);
+		if (child_result.HasError()) {
+			return child_result;
 		}
+		bound_child = std::move(child_result.expression);
 	}
 	vector<unique_ptr<Expression>> child_expressions;
 	if (expr.GetSubqueryType() != SubqueryType::EXISTS) {
 		idx_t expected_columns = 1;
 		bool has_unexpanded_struct = false;
 		if (expr.GetChild()) {
-			auto child = GetBoundExpressions().Consume(*expr.GetChildMutable());
+			auto child = std::move(bound_child);
 			// Check if child is an unexpanded struct before extraction
 			has_unexpanded_struct = TypeIsTuple(child->GetReturnType());
 			ExtractSubqueryChildren(child, child_expressions, bound_node.types, expr.GetComparisonType());

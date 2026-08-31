@@ -25,10 +25,6 @@ ExpressionBinder::ExpressionBinder(Binder &binder, ClientContext &context) : bin
 ExpressionBinder::~ExpressionBinder() {
 }
 
-BoundExpressionMap &ExpressionBinder::GetBoundExpressions() const {
-	return binder.GetBoundExpressions();
-}
-
 void ExpressionBinder::InitializeStackCheck() {
 	static constexpr idx_t INITIAL_DEPTH = 5;
 	if (binder.HasActiveBinder()) {
@@ -143,7 +139,6 @@ BindResult ExpressionBinder::BindInEnclosingScope(ColumnRefExpression &col_ref, 
 		}
 		// the scope reaches the name but cannot bind it - a column shadowing a table alias, say - so
 		// the scopes outside it still get their turn
-		GetBoundExpressions().EraseSubtree(*expr_ptr);
 		expr_ptr = std::move(original);
 		ScopeResolver::CombineErrors(bind_error, std::move(result.error));
 		scope = resolution.depth + 1;
@@ -152,13 +147,18 @@ BindResult ExpressionBinder::BindInEnclosingScope(ColumnRefExpression &col_ref, 
 	return BindResult(std::move(bind_error));
 }
 
-void ExpressionBinder::BindChild(unique_ptr<ParsedExpression> &expr, idx_t depth, ErrorData &error) {
-	if (expr) {
-		ErrorData bind_error = Bind(expr, depth);
-		if (!error.HasError()) {
-			error = std::move(bind_error);
-		}
+unique_ptr<Expression> ExpressionBinder::BindChild(unique_ptr<ParsedExpression> &expr, idx_t depth, ErrorData &error) {
+	if (!expr) {
+		return nullptr;
 	}
+	auto result = Bind(expr, depth);
+	if (result.HasError()) {
+		if (!error.HasError()) {
+			error = std::move(result.error);
+		}
+		return nullptr;
+	}
+	return std::move(result.expression);
 }
 
 void ExpressionBinder::ExtractCorrelatedExpressions(Binder &binder, Expression &expr) {
@@ -250,14 +250,12 @@ LogicalType ExpressionBinder::ExchangeNullType(const LogicalType &type) {
 
 unique_ptr<Expression> ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr, optional_ptr<LogicalType> result_type,
                                               bool root_expression) {
-	// open a scope for this bind cycle: entries left behind by failed bind attempts are erased on exit
-	BoundExpressionScope scope(GetBoundExpressions());
 	// bind the main expression - a name that reaches out of this scope is resolved where it occurs
-	auto error_msg = Bind(expr, 0, root_expression);
-	if (error_msg.HasError()) {
-		error_msg.Throw();
+	auto bind_result = Bind(expr, 0, root_expression);
+	if (bind_result.HasError()) {
+		bind_result.error.Throw();
 	}
-	unique_ptr<Expression> result = GetBoundExpressions().Consume(*expr);
+	unique_ptr<Expression> result = std::move(bind_result.expression);
 	if (target_type.id() != LogicalTypeId::INVALID) {
 		// the binder has a specific target type: add a cast to that type
 		result = BoundCastExpression::AddCastToType(context, std::move(result), target_type);
@@ -280,27 +278,19 @@ unique_ptr<Expression> ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr
 	return result;
 }
 
-ErrorData ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr, idx_t depth, bool root_expression) {
-	// bind the node, but only if it has not been bound yet
+BindResult ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr, idx_t depth, bool root_expression) {
 	auto query_location = expr->GetQueryLocation();
-	auto &expression = *expr;
-	auto alias = expression.GetAlias();
-	if (GetBoundExpressions().IsBound(expression)) {
-		// already bound, don't bind it again
-		return ErrorData();
-	}
-	// bind the expression
+	auto alias = expr->GetAlias();
 	BindResult result = BindExpression(expr, depth, root_expression);
 	if (result.HasError()) {
-		return std::move(result.error);
+		return result;
 	}
-	// successfully bound: store the bound expression in the map
+	// carry the location and alias of the parsed node over to the bound expression
 	result.expression->SetQueryLocation(query_location);
 	if (!alias.empty()) {
 		result.expression->SetAlias(alias);
 	}
-	GetBoundExpressions().Insert(*expr, std::move(result.expression));
-	return ErrorData();
+	return result;
 }
 
 BindResult ExpressionBinder::BindUnsupportedExpression(ParsedExpression &expr, idx_t depth, const string &message) {
@@ -308,8 +298,10 @@ BindResult ExpressionBinder::BindUnsupportedExpression(ParsedExpression &expr, i
 	// since that error might be more descriptive
 	// bind all children
 	ErrorData result;
-	ParsedExpressionIterator::EnumerateChildren(
-	    expr, [&](unique_ptr<ParsedExpression> &child) { BindChild(child, depth, result); });
+	ParsedExpressionIterator::EnumerateChildren(expr, [&](unique_ptr<ParsedExpression> &child) {
+		// the children are bound only to surface their errors - the expression itself is unsupported
+		(void)BindChild(child, depth, result);
+	});
 	if (result.HasError()) {
 		return BindResult(std::move(result));
 	}
