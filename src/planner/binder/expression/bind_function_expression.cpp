@@ -10,6 +10,8 @@
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/lambda_expression.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/planner/scope_chain.hpp"
+#include "duckdb/planner/scope_resolver.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
@@ -304,9 +306,18 @@ BindResult ExpressionBinder::BindExpression(FunctionExpression &function, idx_t 
 	case CatalogType::MACRO_ENTRY:
 		// macro function
 		return BindMacro(function, func.Cast<ScalarMacroCatalogEntry>(), depth, expr_ptr);
-	case CatalogType::AGGREGATE_FUNCTION_ENTRY:
-		// aggregate function
+	case CatalogType::AGGREGATE_FUNCTION_ENTRY: {
+		// an aggregate belongs to the innermost query level in which one of its arguments resolves a
+		// column of that level, so that the level collecting it is the one the arguments refer to
+		auto chain = ScopeChain::FromBinder(*this);
+		if (chain.Size() > 1) {
+			auto owner = ScopeResolver::ResolveAggregateOwner(chain, function, 0);
+			if (owner != 0) {
+				return DispatchToScope(chain, owner, expr_ptr, depth);
+			}
+		}
 		return BindAggregate(function, func.Cast<AggregateFunctionCatalogEntry>(), depth);
+	}
 	case CatalogType::WINDOW_FUNCTION_ENTRY:
 		// window function
 		return BindWindow(function, func.Cast<WindowFunctionCatalogEntry>(), depth);

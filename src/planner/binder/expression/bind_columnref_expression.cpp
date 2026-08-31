@@ -44,6 +44,14 @@ unique_ptr<ColumnQualifier> ExpressionBinder::CreateColumnQualifier() {
 	return make_uniq<ColumnQualifier>(binder, lambda_bindings);
 }
 
+bool ExpressionBinder::MatchesGroup(ParsedExpression &expr) {
+	return false;
+}
+
+bool ExpressionBinder::ClaimsAlias(ColumnRefExpression &colref) {
+	return false;
+}
+
 void ExpressionBinder::QualifyColumnNames(ExpressionBinder &expression_binder, unique_ptr<ParsedExpression> &expr) {
 	ColumnQualifier qualifier(expression_binder.binder, expression_binder.lambda_bindings);
 	vector<identifier_set_t> lambda_params;
@@ -86,8 +94,8 @@ BindResult ExpressionBinder::BindExpression(ColumnRefExpression &col_ref_p, idx_
 				return result;
 			}
 		}
-		error.AddQueryLocation(col_ref_p);
-		return BindResult(std::move(error));
+		// the name does not resolve in this scope: look for it in the enclosing ones
+		return BindInEnclosingScope(col_ref_p, depth, expr_ptr, std::move(error));
 	}
 
 	expr->SetQueryLocation(col_ref_p.GetQueryLocation());

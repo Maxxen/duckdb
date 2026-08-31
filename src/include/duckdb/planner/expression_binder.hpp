@@ -30,6 +30,7 @@ class Binder;
 class ClientContext;
 class ColumnQualifier;
 class QueryNode;
+class ScopeChain;
 
 class ScalarFunctionCatalogEntry;
 class AggregateFunctionCatalogEntry;
@@ -141,11 +142,26 @@ public:
 	//! Create the qualifier that resolves names against this binder's scope, with this binder's hooks
 	virtual unique_ptr<ColumnQualifier> CreateColumnQualifier();
 
+	//! Whether this scope groups by the given expression, i.e. whether a reference to it resolves to a group
+	virtual bool MatchesGroup(ParsedExpression &expr);
+
+	//! Whether the name matches a select-list alias of this scope. Such a scope owns the name even
+	//! though qualification cannot resolve it, and it is the one that reports any error.
+	virtual bool ClaimsAlias(ColumnRefExpression &colref);
+
 	static bool PushCollation(ClientContext &context, unique_ptr<Expression> &source, const LogicalType &sql_type,
 	                          CollationType type = CollationType::ALL_COLLATIONS);
 	static void TestCollation(ClientContext &context, const string &collation);
 
-	BindResult BindCorrelatedColumns(unique_ptr<ParsedExpression> &expr, ErrorData error_message);
+	//! Bind the expression in the scope at the given index of the chain, so that the semantics of that
+	//! scope apply, and register the correlated columns of the result on this binder
+	BindResult DispatchToScope(const ScopeChain &chain, idx_t scope, unique_ptr<ParsedExpression> &expr_ptr,
+	                           idx_t base_depth);
+
+	//! Bind a column that does not resolve in this scope against the innermost enclosing scope that does.
+	//! A scope that resolves the name but cannot bind it is passed over, and the search continues outward.
+	BindResult BindInEnclosingScope(ColumnRefExpression &col_ref, idx_t depth, unique_ptr<ParsedExpression> &expr_ptr,
+	                                ErrorData local_error);
 
 	void BindChild(unique_ptr<ParsedExpression> &expr, idx_t depth, ErrorData &error);
 	static void ExtractCorrelatedExpressions(Binder &binder, Expression &expr);

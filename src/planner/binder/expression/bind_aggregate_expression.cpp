@@ -192,46 +192,10 @@ BindResult BaseSelectBinder::BindAggregate(FunctionExpression &aggr, AggregateFu
 	}
 
 	inside_aggregate = false;
-	bool bound_columns = GetBoundColumns().size() > initial_bound_column_count;
 	TruncateBoundColumns(initial_bound_column_count);
 	if (error.HasError()) {
-		// failed to bind child
-		if (bound_columns) {
-			for (auto &child : aggr.GetArgumentsMutable()) {
-				// however, we bound columns!
-				// that means this aggregation belongs to this node
-				// check if we have to resolve any errors by binding with parent binders
-				auto result = BindCorrelatedColumns(child.GetExpressionMutable(), error);
-				// if there is still an error after this, we could not successfully bind the aggregate
-				if (result.HasError()) {
-					result.error.Throw();
-				}
-				ExtractCorrelatedExpressions(binder, GetBoundExpressions().Get(*child.GetExpressionMutable()));
-			}
-
-			if (aggr.Filter()) {
-				auto result = BindCorrelatedColumns(aggr.FilterMutable(), error);
-				// if there is still an error after this, we could not successfully bind the aggregate
-				if (result.HasError()) {
-					result.error.Throw();
-				}
-				ExtractCorrelatedExpressions(binder, GetBoundExpressions().Get(*aggr.Filter()));
-			}
-			if (aggr.OrderBy() && !aggr.OrderBy()->orders.empty()) {
-				for (auto &order : aggr.OrderByMutable()->orders) {
-					auto result = BindCorrelatedColumns(order.expression, error);
-					if (result.HasError()) {
-						result.error.Throw();
-					}
-					ExtractCorrelatedExpressions(binder, GetBoundExpressions().Get(*order.expression));
-				}
-			}
-		} else {
-			// we didn't bind columns, try again in children
-			return BindResult(std::move(error));
-		}
-	} else if (depth > 0 && !bound_columns) {
-		return BindResult("Aggregate with only constant parameters has to be bound in the root subquery");
+		// the arguments decided that this level owns the aggregate, so a child that does not bind here is an error
+		return BindResult(std::move(error));
 	}
 
 	if (aggr.Filter()) {

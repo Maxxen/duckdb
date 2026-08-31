@@ -5,6 +5,8 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/parser/expression/columnref_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/column_qualifier.hpp"
 #include "duckdb/planner/expression_binder.hpp"
@@ -122,13 +124,27 @@ void ScopeResolver::CombineErrors(ErrorData &current, ErrorData new_error) {
 ColumnResolution ScopeResolver::ResolveColumn(const ScopeChain &chain, ColumnRefExpression &colref, idx_t start) {
 	ColumnResolution result;
 	for (idx_t depth = start; depth < chain.Size(); depth++) {
-		auto qualifier = chain.At(depth).CreateColumnQualifier();
+		auto &scope = chain.At(depth);
+		if (scope.ClaimsAlias(colref)) {
+			// the scope has a select-list alias of this name: it owns the reference even though
+			// qualification cannot produce a replacement for it
+			result.found = true;
+			result.depth = depth;
+			return result;
+		}
+		auto qualifier = scope.CreateColumnQualifier();
 		ErrorData error;
 		auto qualified = qualifier->QualifyColumnName(colref, error);
 		if (qualified) {
 			result.found = true;
 			result.depth = depth;
 			result.qualified = std::move(qualified);
+			return result;
+		}
+		if (scope.MatchesGroup(colref)) {
+			// the name is one of this scope's groups by alias, which qualification cannot see
+			result.found = true;
+			result.depth = depth;
 			return result;
 		}
 		if (depth == start) {
@@ -138,6 +154,67 @@ ColumnResolution ScopeResolver::ResolveColumn(const ScopeChain &chain, ColumnRef
 		}
 	}
 	return result;
+}
+
+//! Collect the column references that decide which scope owns an expression. Subqueries are skipped:
+//! they bind in a chain of their own, so a column inside one says nothing about this expression.
+static void CollectResolvableColumns(ParsedExpression &expr, vector<reference<ColumnRefExpression>> &result) {
+	if (expr.GetExpressionClass() == ExpressionClass::SUBQUERY) {
+		return;
+	}
+	if (expr.GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+		result.push_back(expr.Cast<ColumnRefExpression>());
+		return;
+	}
+	ParsedExpressionIterator::EnumerateChildren(
+	    expr, [&](ParsedExpression &child) { CollectResolvableColumns(child, result); });
+}
+
+idx_t ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, FunctionExpression &aggregate, idx_t start) {
+	vector<reference<ColumnRefExpression>> columns;
+	for (auto &child : aggregate.GetArgumentsMutable()) {
+		CollectResolvableColumns(*child.GetExpressionMutable(), columns);
+	}
+	if (aggregate.Filter()) {
+		CollectResolvableColumns(*aggregate.FilterMutable(), columns);
+	}
+	if (aggregate.OrderBy()) {
+		for (auto &order : aggregate.OrderByMutable()->orders) {
+			CollectResolvableColumns(*order.expression, columns);
+		}
+	}
+	auto owner = start;
+	bool found = false;
+	for (auto &colref : columns) {
+		auto resolution = ResolveColumn(chain, colref.get(), start);
+		if (!resolution.found) {
+			// a lambda parameter, an alias, or a column that does not resolve at all - it says nothing
+			// about ownership, and the scope we settle on reports the error
+			continue;
+		}
+		if (!found || resolution.depth < owner) {
+			owner = resolution.depth;
+			found = true;
+		}
+	}
+	return owner;
+}
+
+optional_idx ScopeResolver::ResolveOuterGroup(const ScopeChain &chain, vector<reference<ParsedExpression>> &expressions,
+                                              idx_t start) {
+	for (idx_t depth = start; depth < chain.Size(); depth++) {
+		bool all_match = true;
+		for (auto &expr : expressions) {
+			if (!chain.At(depth).MatchesGroup(expr.get())) {
+				all_match = false;
+				break;
+			}
+		}
+		if (all_match) {
+			return depth;
+		}
+	}
+	return optional_idx();
 }
 
 } // namespace duckdb

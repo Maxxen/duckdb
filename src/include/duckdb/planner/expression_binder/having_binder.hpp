@@ -30,6 +30,9 @@ protected:
 public:
 	ColumnAliasBinder column_alias_binder;
 
+public:
+	bool ClaimsAlias(ColumnRefExpression &colref) override;
+
 private:
 	AggregateHandling aggregate_handling;
 };

@@ -7,6 +7,8 @@
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/table_binding.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/planner/scope_chain.hpp"
+#include "duckdb/planner/scope_resolver.hpp"
 
 namespace duckdb {
 
@@ -45,8 +47,8 @@ BindResult TableFunctionBinder::BindColumnReference(unique_ptr<ParsedExpression>
 	auto result_name = StringUtil::Join(column_names, ".");
 	if (!table_function_name.empty()) {
 		// check if this is a lateral join column/parameter
-		auto result = BindCorrelatedColumns(expr_ptr, ErrorData("error"));
-		if (!result.HasError()) {
+		auto probe_chain = ScopeChain::FromBinder(*this);
+		if (ScopeResolver::ResolveColumn(probe_chain, col_ref, 1).found) {
 			// it is a lateral join parameter - this is not supported in this type of table function
 			throw BinderException(query_location,
 			                      "Table function \"%s\" does not support lateral join column parameters - cannot use "
@@ -65,12 +67,13 @@ BindResult TableFunctionBinder::BindColumnReference(unique_ptr<ParsedExpression>
 		}
 	}
 
-	auto result = BindCorrelatedColumns(expr_ptr, ErrorData("error"));
-	if (!result.HasError()) {
-		auto bound_expr = GetBoundExpressions().Consume(*expr_ptr);
-		ExtractCorrelatedExpressions(binder, *bound_expr);
-		result.expression = std::move(bound_expr);
-		return result;
+	auto chain = ScopeChain::FromBinder(*this);
+	auto resolution = ScopeResolver::ResolveColumn(chain, col_ref, 1);
+	if (resolution.found) {
+		auto result = DispatchToScope(chain, resolution.depth, expr_ptr, depth);
+		if (!result.HasError()) {
+			return result;
+		}
 	}
 
 	if (table_function_name.empty()) {

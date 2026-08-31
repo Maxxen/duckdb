@@ -71,11 +71,11 @@ SELECT SUM((SELECT SUM(i))) FROM integers
 ----
 <REGEX>:.*aggregate function calls cannot be nested.*
 
-# a constant-only aggregate cannot be hoisted out of the level where it appears
+# a constant-only aggregate belongs to the level it appears in, so that level reports it
 statement error
 SELECT (WITH t3 AS (SELECT 3 WHERE count(*)) SELECT 0 FROM t3)
 ----
-<REGEX>:.*Aggregate with only constant parameters has to be bound in the root subquery.*
+<REGEX>:.*WHERE clause cannot contain aggregates.*
 
 # the clause that ends up owning the aggregate determines the error message
 
@@ -156,11 +156,15 @@ SELECT (SELECT COUNT(*) FROM (SELECT UNNEST(l1.l, max_depth := 2) u)) FROM lists
 1
 2
 
-# a window is always owned by the level where it appears, so a correlated argument is an error
-statement error
+# a window keeps the level it appears in, and a correlated argument is a constant within it,
+# so it agrees with the same query written through a nested subquery
+query II
 SELECT i, (SELECT SUM(i + 1) OVER ()) FROM integers ORDER BY i
 ----
-<REGEX>:.*not supported.*
+1	2
+2	3
+3	4
+NULL	NULL
 
 # hiding the correlated reference inside its own subquery keeps the window uncorrelated
 query II

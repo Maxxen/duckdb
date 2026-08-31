@@ -97,6 +97,9 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 		return BindPositionalReference(expr, depth, root_expression);
 	case ExpressionClass::STAR:
 		return BindResult(BinderException::Unsupported(expr_ref, "STAR expression is not supported here"));
+	case ExpressionClass::WINDOW:
+		// a binder that does not handle windows itself reports that they are unsupported here
+		return BindUnsupportedExpression(expr_ref, depth, UnsupportedWindowMessage());
 	default:
 		return BindResult(
 		    NotImplementedException("Unimplemented expression class in ExpressionBinder::BindExpression: %s",
@@ -104,83 +107,49 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 	}
 }
 
-#ifdef DEBUG
-//! Collect the column references of the expression that have not been bound by an earlier attempt.
-//! Subqueries are skipped: they are bound by a binder of their own and resolve in their own chain.
-static void CollectUnboundColumns(ParsedExpression &expr, const BoundExpressionMap &bound_expressions,
-                                  vector<reference<ColumnRefExpression>> &result) {
-	if (bound_expressions.IsBound(expr)) {
-		return;
+BindResult ExpressionBinder::DispatchToScope(const ScopeChain &chain, idx_t scope,
+                                             unique_ptr<ParsedExpression> &expr_ptr, idx_t base_depth) {
+	auto result = chain.At(scope).BindExpression(expr_ptr, base_depth + scope, false);
+	if (!result.HasError()) {
+		// the reference reaches out of this scope: record it as a correlated column of this binder
+		ExtractCorrelatedExpressions(binder, *result.expression);
 	}
-	if (expr.GetExpressionClass() == ExpressionClass::SUBQUERY) {
-		return;
-	}
-	if (expr.GetExpressionClass() == ExpressionClass::COLUMN_REF) {
-		result.push_back(expr.Cast<ColumnRefExpression>());
-		return;
-	}
-	ParsedExpressionIterator::EnumerateChildren(
-	    expr, [&](ParsedExpression &child) { CollectUnboundColumns(child, bound_expressions, result); });
+	return result;
 }
 
-//! A lower bound on the depth the retry loop settles on: a column that resolves at depth k is reached
-//! by the k'th attempt. It is only a lower bound because a scope can resolve a name and still fail to
-//! bind it - "s1.s2" qualifies as a struct extract of a column named s1, and only once that fails to
-//! bind does the next scope get to read s1 as a table alias.
-static optional_idx PredictSettledDepth(const ScopeChain &chain, ParsedExpression &expr,
-                                        const BoundExpressionMap &bound_expressions) {
-	vector<reference<ColumnRefExpression>> unbound;
-	CollectUnboundColumns(expr, bound_expressions, unbound);
-	if (unbound.empty()) {
-		return optional_idx();
-	}
-	idx_t predicted = 0;
-	for (auto &colref : unbound) {
-		auto resolution = ScopeResolver::ResolveColumn(chain, colref.get(), 0);
-		if (!resolution.found) {
-			// the column resolves through something other than a scope in the chain (an alias, a lambda
-			// parameter, a value function): the loop's outcome is not predicted by column resolution alone
-			return optional_idx();
-		}
-		predicted = MaxValue(predicted, resolution.depth);
-	}
-	return predicted;
-}
-#endif
-
-BindResult ExpressionBinder::BindCorrelatedColumns(unique_ptr<ParsedExpression> &expr, ErrorData error_message) {
-	// try to bind in one of the outer queries, if the binding error occurred in a subquery
+BindResult ExpressionBinder::BindInEnclosingScope(ColumnRefExpression &col_ref, idx_t depth,
+                                                  unique_ptr<ParsedExpression> &expr_ptr, ErrorData local_error) {
 	auto chain = ScopeChain::FromBinder(*this);
-#ifdef DEBUG
-	auto predicted_depth = PredictSettledDepth(chain, *expr, binder.GetBoundExpressions());
-#endif
-	// make a copy of the enclosing scopes, so we can restore them later
-	auto saved_scopes = binder.GetEnclosingScopes();
-	auto bind_error = std::move(error_message);
-	idx_t settled_depth = 0;
-	// walk outward: the index within the chain is the depth the expression binds at
-	for (idx_t depth = 1; depth < chain.Size(); depth++) {
-		auto &next_binder = chain.At(depth);
-		ExpressionBinder::QualifyColumnNames(next_binder.binder, expr);
-		auto next_error = next_binder.Bind(expr, depth);
-		if (!next_error.HasError()) {
-			bind_error = std::move(next_error);
-			settled_depth = depth;
+	auto bind_error = std::move(local_error);
+	idx_t scope = 1;
+	while (scope < chain.Size()) {
+		auto resolution = ScopeResolver::ResolveColumn(chain, col_ref, scope);
+		if (!resolution.found) {
+			// no scope reaches the name: report it against every scope that was searched
+			ScopeResolver::CombineErrors(bind_error, std::move(resolution.error));
 			break;
 		}
-		ScopeResolver::CombineErrors(bind_error, std::move(next_error));
-		// the scope we just tried is no longer reachable while we look further outward
-		binder.PopScope();
+		// bind the qualified form the scope produced, so that it is recognised by that scope - a
+		// reference to one of its groups, say. The original is kept so the search can go on.
+		auto original = std::move(expr_ptr);
+		if (resolution.qualified) {
+			expr_ptr = std::move(resolution.qualified);
+		} else {
+			expr_ptr = original->Copy();
+		}
+		auto result = DispatchToScope(chain, resolution.depth, expr_ptr, depth);
+		if (!result.HasError()) {
+			return result;
+		}
+		// the scope reaches the name but cannot bind it - a column shadowing a table alias, say - so
+		// the scopes outside it still get their turn
+		GetBoundExpressions().EraseSubtree(*expr_ptr);
+		expr_ptr = std::move(original);
+		ScopeResolver::CombineErrors(bind_error, std::move(result.error));
+		scope = resolution.depth + 1;
 	}
-	binder.SetScopes(std::move(saved_scopes));
-#ifdef DEBUG
-	// the resolver must never reach a name in a scope inside the one the loop arrives at by trial:
-	// that would capture the reference in the wrong scope
-	if (!bind_error.HasError() && predicted_depth.IsValid()) {
-		D_ASSERT(predicted_depth.GetIndex() <= settled_depth);
-	}
-#endif
-	return BindResult(bind_error);
+	bind_error.AddQueryLocation(col_ref);
+	return BindResult(std::move(bind_error));
 }
 
 void ExpressionBinder::BindChild(unique_ptr<ParsedExpression> &expr, idx_t depth, ErrorData &error) {
@@ -283,19 +252,10 @@ unique_ptr<Expression> ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr
                                               bool root_expression) {
 	// open a scope for this bind cycle: entries left behind by failed bind attempts are erased on exit
 	BoundExpressionScope scope(GetBoundExpressions());
-	// bind the main expression
+	// bind the main expression - a name that reaches out of this scope is resolved where it occurs
 	auto error_msg = Bind(expr, 0, root_expression);
 	if (error_msg.HasError()) {
-		// Try binding the correlated column. If binding the correlated column
-		// has error messages, those should be propagated up. So for the test case
-		// having subquery failed to bind:14 the real error message should be something like
-		// aggregate with constant input must be bound to a root node.
-		auto result = BindCorrelatedColumns(expr, error_msg);
-		if (result.HasError()) {
-			ScopeResolver::CombineErrors(error_msg, std::move(result.error));
-			error_msg.Throw();
-		}
-		ExtractCorrelatedExpressions(binder, GetBoundExpressions().Get(*expr));
+		error_msg.Throw();
 	}
 	unique_ptr<Expression> result = GetBoundExpressions().Consume(*expr);
 	if (target_type.id() != LogicalTypeId::INVALID) {

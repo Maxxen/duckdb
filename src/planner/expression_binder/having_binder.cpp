@@ -54,8 +54,12 @@ BindResult HavingBinder::BindColumnRef(unique_ptr<ParsedExpression> &expr_ptr, i
 	}
 
 	if (aggregate_handling != AggregateHandling::FORCE_AGGREGATES) {
-		return BindResult(StringUtil::Format(
-		    "column %s must appear in the GROUP BY clause or be used in an aggregate function", column_name));
+		// the name is not a group of this query, but it may belong to an enclosing one
+		ErrorData local_error(
+		    ExceptionType::BINDER,
+		    StringUtil::Format("column %s must appear in the GROUP BY clause or be used in an aggregate function",
+		                       column_name));
+		return BindInEnclosingScope(expr_ptr->Cast<ColumnRefExpression>(), depth, expr_ptr, std::move(local_error));
 	}
 
 	if (depth > 0) {
@@ -88,6 +92,10 @@ void ExpressionBinder::QualifyColumnNames(HavingBinder &having_binder, unique_pt
 	ColumnQualifier qualifier(having_binder.binder, having_binder.lambda_bindings, nullptr, having_binder);
 	vector<identifier_set_t> lambda_params;
 	qualifier.QualifyColumnNames(expr, lambda_params);
+}
+
+bool HavingBinder::ClaimsAlias(ColumnRefExpression &colref) {
+	return column_alias_binder.DoesColumnAliasExist(colref);
 }
 
 } // namespace duckdb

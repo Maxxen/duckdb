@@ -14,6 +14,7 @@
 
 namespace duckdb {
 class ColumnRefExpression;
+class FunctionExpression;
 class ParsedExpression;
 
 //! The outcome of resolving a name against a chain of query scopes
@@ -28,14 +29,22 @@ struct ColumnResolution {
 	ErrorData error;
 };
 
-//! Determines which query scope owns a name, without binding anything. Resolution consults exactly
-//! what a real bind against that scope would consult, by reusing the qualifier each scope builds for
-//! itself. Note that a scope can resolve a name and still fail to bind it, so a resolution is the
-//! first scope that can interpret the name, not necessarily the one that ends up binding it.
+//! Determines which query scope owns a name or an expression, without binding anything.
+//! Resolution consults exactly what a real bind against that scope would consult, by reusing
+//! the qualifier each scope builds for itself.
 class ScopeResolver {
 public:
 	//! Resolve a column reference against the chain, starting at the given depth
 	static ColumnResolution ResolveColumn(const ScopeChain &chain, ColumnRefExpression &colref, idx_t start);
+
+	//! The scope that owns an aggregate: the innermost one in which any of its arguments resolves a
+	//! column of its own scope. Returns `start` when no argument resolves a column anywhere, which
+	//! pins a constant-only aggregate to the scope it appears in.
+	static idx_t ResolveAggregateOwner(const ScopeChain &chain, FunctionExpression &aggregate, idx_t start);
+
+	//! The innermost scope whose groups all of the expressions match, or an invalid index if there is none
+	static optional_idx ResolveOuterGroup(const ScopeChain &chain, vector<reference<ParsedExpression>> &expressions,
+	                                      idx_t start);
 
 	//! Merge the error of a newly probed scope into the error accumulated over the previous ones,
 	//! preferring a missing column over any other error and merging the candidate bindings

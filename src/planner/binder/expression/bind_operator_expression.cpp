@@ -1,6 +1,8 @@
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/planner/scope_chain.hpp"
+#include "duckdb/planner/scope_resolver.hpp"
 #include "duckdb/planner/expression/bound_case_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
@@ -94,6 +96,24 @@ BindResult ExpressionBinder::BindGroupingFunction(OperatorExpression &op, idx_t 
 BindResult ExpressionBinder::BindExpression(OperatorExpression &op, idx_t depth) {
 	auto operator_type = op.GetExpressionType();
 	if (operator_type == ExpressionType::GROUPING_FUNCTION) {
+		// GROUPING reports on the groups of a query, so it belongs to the innermost level that groups
+		// by all of its arguments
+		auto chain = ScopeChain::FromBinder(*this);
+		if (chain.Size() > 1) {
+			vector<reference<ParsedExpression>> children;
+			for (auto &child : op.GetChildrenMutable()) {
+				children.push_back(*child);
+			}
+			auto owner = ScopeResolver::ResolveOuterGroup(chain, children, 0);
+			if (owner.IsValid() && owner.GetIndex() != 0) {
+				auto scope = owner.GetIndex();
+				auto result = chain.At(scope).BindGroupingFunction(op, depth + scope);
+				if (!result.HasError()) {
+					ExtractCorrelatedExpressions(binder, *result.expression);
+				}
+				return result;
+			}
+		}
 		return BindGroupingFunction(op, depth);
 	}
 

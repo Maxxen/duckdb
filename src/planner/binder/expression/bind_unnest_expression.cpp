@@ -182,14 +182,7 @@ BindResult UnnestBinder::Bind(FunctionExpression &function, idx_t depth, bool ro
 	UnnestLevelGuard unnest_level_guard(unnest_level);
 	expression_binder.BindChild(args[0].GetExpressionMutable(), depth, error);
 	if (error.HasError()) {
-		// failed to bind
-		// try to bind correlated columns manually
-		auto result = expression_binder.BindCorrelatedColumns(args[0].GetExpressionMutable(), error);
-		if (result.HasError()) {
-			return BindResult(result.error);
-		}
-		ExpressionBinder::ExtractCorrelatedExpressions(binder,
-		                                               binder.GetBoundExpressions().Get(args[0].GetExpression()));
+		return BindResult(std::move(error));
 	}
 	auto &child = binder.GetBoundExpressions().GetMutable(*args[0].GetExpressionMutable());
 	child = BoundCastExpression::AddArrayCastToList(context, std::move(child));
