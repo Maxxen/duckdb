@@ -197,9 +197,6 @@ private:
 	void InitializeStackCheck();
 	StackChecker<ExpressionBinder> StackCheck(const ParsedExpression &expr, idx_t extra_stack = 1);
 
-	//! Whether any direct child slot of the window expression has already been bound
-	bool WindowHasBoundedParts(const WindowExpression &window) const;
-
 protected:
 	BindResult BindExpression(BetweenExpression &expr, idx_t depth);
 	BindResult BindExpression(CaseExpression &expr, idx_t depth);

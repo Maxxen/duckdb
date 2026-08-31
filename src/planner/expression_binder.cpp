@@ -289,16 +289,6 @@ ErrorData ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr, idx_t depth
 		// already bound, don't bind it again
 		return ErrorData();
 	}
-	if (expression.GetExpressionClass() == ExpressionClass::WINDOW) {
-		auto &w = expression.Cast<WindowExpression>();
-		if (WindowHasBoundedParts(w)) {
-			BindResult result =
-			    BindResult(BinderException::Unsupported(*expr, "window expression is not supported here"));
-			if (result.HasError()) {
-				return std::move(result.error);
-			}
-		}
-	}
 	// bind the expression
 	BindResult result = BindExpression(expr, depth, root_expression);
 	if (result.HasError()) {
@@ -311,34 +301,6 @@ ErrorData ExpressionBinder::Bind(unique_ptr<ParsedExpression> &expr, idx_t depth
 	}
 	GetBoundExpressions().Insert(*expr, std::move(result.expression));
 	return ErrorData();
-}
-
-bool ExpressionBinder::WindowHasBoundedParts(const WindowExpression &window) const {
-	auto &bound_expressions = GetBoundExpressions();
-	if (bound_expressions.Empty()) {
-		return false;
-	}
-	for (auto &child : window.GetArguments()) {
-		if (bound_expressions.IsBound(child.GetExpression())) {
-			return true;
-		}
-	}
-	for (auto &child : window.Partitions()) {
-		if (bound_expressions.IsBound(*child)) {
-			return true;
-		}
-	}
-	for (auto &order : window.OrderBy()) {
-		if (bound_expressions.IsBound(*order.expression)) {
-			return true;
-		}
-	}
-	for (auto &order : window.ArgOrders()) {
-		if (bound_expressions.IsBound(*order.expression)) {
-			return true;
-		}
-	}
-	return false;
 }
 
 BindResult ExpressionBinder::BindUnsupportedExpression(ParsedExpression &expr, idx_t depth, const string &message) {

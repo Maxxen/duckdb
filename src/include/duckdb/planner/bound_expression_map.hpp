@@ -32,8 +32,6 @@ public:
 	unique_ptr<Expression> &GetMutable(const ParsedExpression &node);
 	//! Remove the entry for a node and return its bound expression
 	unique_ptr<Expression> Consume(const ParsedExpression &node);
-	//! Whether the node itself or any descendant has a bound expression
-	bool HasBoundDescendant(const ParsedExpression &node) const;
 	//! Erase the entries of the node and all of its descendants, if any
 	void EraseSubtree(const ParsedExpression &node);
 	bool Empty() const {

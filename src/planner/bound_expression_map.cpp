@@ -70,22 +70,6 @@ unique_ptr<Expression> BoundExpressionMap::Consume(const ParsedExpression &node)
 	return result;
 }
 
-bool BoundExpressionMap::HasBoundDescendant(const ParsedExpression &node) const {
-	if (entries.empty()) {
-		return false;
-	}
-	if (IsBound(node)) {
-		return true;
-	}
-	bool found = false;
-	ParsedExpressionIterator::EnumerateChildren(node, [&](const ParsedExpression &child) {
-		if (!found && HasBoundDescendant(child)) {
-			found = true;
-		}
-	});
-	return found;
-}
-
 void BoundExpressionMap::EraseSubtree(const ParsedExpression &node) {
 	if (entries.empty()) {
 		return;
