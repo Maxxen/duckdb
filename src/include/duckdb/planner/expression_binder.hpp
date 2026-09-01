@@ -29,7 +29,6 @@ class Binder;
 class ClientContext;
 class ColumnQualifier;
 class QueryNode;
-class ScopeChain;
 
 class ScalarFunctionCatalogEntry;
 class AggregateFunctionCatalogEntry;
@@ -47,6 +46,18 @@ struct SelectBindState;
 struct BoundColumnReferenceInfo {
 	Identifier name;
 	QueryLocation query_location;
+};
+
+//! The outcome of resolving a name against the chain of enclosing query scopes
+struct ColumnResolution {
+	//! Whether some scope in the chain resolves the name
+	bool found = false;
+	//! The index of the resolving scope, i.e. the depth a reference to it binds at
+	idx_t depth = 0;
+	//! The qualified replacement produced by the resolving scope
+	unique_ptr<ParsedExpression> qualified;
+	//! The errors of every probed scope, combined - only set when the name is not found
+	ErrorData error;
 };
 
 struct BindResult {
@@ -154,10 +165,28 @@ public:
 	                          CollationType type = CollationType::ALL_COLLATIONS);
 	static void TestCollation(ClientContext &context, const string &collation);
 
-	//! Bind the expression in the scope at the given index of the chain, so that the semantics of that
-	//! scope apply, and register the correlated columns of the result on this binder
-	BindResult DispatchToScope(const ScopeChain &chain, idx_t scope, unique_ptr<ParsedExpression> &expr_ptr,
-	                           idx_t base_depth);
+	//! The query scopes an expression can be resolved against, innermost first: this binder followed by
+	//! its enclosing scopes. The index of a scope is the depth a reference bound against it receives.
+	idx_t ScopeCount() const;
+	ExpressionBinder &ScopeAt(idx_t depth);
+
+	//! Resolve a column reference against the scopes at or beyond the given depth, without binding it.
+	//! Resolution consults exactly what a real bind against a scope would, by reusing the qualifier
+	//! that scope builds for itself.
+	ColumnResolution ResolveColumn(ColumnRefExpression &colref, idx_t start);
+	//! The scope that owns an aggregate: the innermost one at or beyond `start` in which any of its
+	//! arguments resolves a column. Invalid when no argument resolves a column at or beyond `start` -
+	//! at `start == 0` that pins a constant-only aggregate to the scope it appears in.
+	optional_idx ResolveAggregateOwner(FunctionExpression &aggregate, idx_t start);
+	//! The innermost scope at or beyond `start` whose groups all of the expressions match
+	optional_idx ResolveOuterGroup(vector<reference<ParsedExpression>> &expressions, idx_t start);
+	//! Merge the error of a newly probed scope into the error accumulated over the previous ones,
+	//! preferring a missing column over any other error and merging the candidate bindings
+	static void CombineErrors(ErrorData &current, ErrorData new_error);
+
+	//! Bind the expression in the scope at the given depth, so that the semantics of that scope apply,
+	//! and register the correlated columns of the result on this binder
+	BindResult DispatchToScope(idx_t scope, unique_ptr<ParsedExpression> &expr_ptr, idx_t base_depth);
 
 	//! Bind a column that does not resolve in this scope against the innermost enclosing scope that does.
 	//! A scope that resolves the name but cannot bind it is passed over, and the search continues outward.
@@ -167,13 +196,13 @@ public:
 	//! Bind an aggregate owned by an enclosing scope, starting at the given scope. Ownership follows from
 	//! column resolutions, which are only a lower bound, so a scope that owns the aggregate but cannot
 	//! bind it is passed over and the search continues outward.
-	BindResult BindAggregateInEnclosingScope(const ScopeChain &chain, FunctionExpression &aggregate, idx_t owner,
-	                                         idx_t depth, unique_ptr<ParsedExpression> &expr_ptr);
+	BindResult BindAggregateInEnclosingScope(FunctionExpression &aggregate, idx_t owner, idx_t depth,
+	                                         unique_ptr<ParsedExpression> &expr_ptr);
 
 	//! Bind a GROUPING owned by an enclosing scope, starting at the given scope. A scope that groups by
 	//! all of the arguments can still fail to bind them, so it is passed over like any other.
-	BindResult BindGroupingInEnclosingScope(const ScopeChain &chain, OperatorExpression &op,
-	                                        vector<reference<ParsedExpression>> &children, idx_t owner, idx_t depth);
+	BindResult BindGroupingInEnclosingScope(OperatorExpression &op, vector<reference<ParsedExpression>> &children,
+	                                        idx_t owner, idx_t depth);
 
 	//! Bind a child expression, returning it. A null child, or one that fails to bind, returns null;
 	//! the first error encountered is recorded in the accumulator.

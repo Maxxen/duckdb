@@ -1,4 +1,4 @@
-#include "duckdb/planner/scope_resolver.hpp"
+#include "duckdb/planner/expression_binder.hpp"
 
 #include "duckdb/common/exception/binder_exception.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
@@ -10,9 +10,22 @@
 #include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/column_qualifier.hpp"
-#include "duckdb/planner/expression_binder.hpp"
 
 namespace duckdb {
+
+idx_t ExpressionBinder::ScopeCount() const {
+	return binder.GetEnclosingScopes().size() + 1;
+}
+
+ExpressionBinder &ExpressionBinder::ScopeAt(idx_t depth) {
+	D_ASSERT(depth < ScopeCount());
+	if (depth == 0) {
+		return *this;
+	}
+	// the enclosing scopes are stored outermost first, so the index is counted from the back
+	auto &enclosing = binder.GetEnclosingScopes();
+	return enclosing[enclosing.size() - depth];
+}
 
 static QueryLocation ExtractLocation(const unordered_map<string, string> &info) {
 	auto pos_entry = info.find("position");
@@ -111,7 +124,7 @@ static bool CombineMissingColumns(ErrorData &current, ErrorData new_error) {
 	return true;
 }
 
-void ScopeResolver::CombineErrors(ErrorData &current, ErrorData new_error) {
+void ExpressionBinder::CombineErrors(ErrorData &current, ErrorData new_error) {
 	// try to combine missing column exceptions in order to pick the most relevant one
 	if (CombineMissingColumns(current, new_error)) {
 		// keep the old info
@@ -127,10 +140,10 @@ void ScopeResolver::CombineErrors(ErrorData &current, ErrorData new_error) {
 	current = std::move(new_error);
 }
 
-ColumnResolution ScopeResolver::ResolveColumn(const ScopeChain &chain, ColumnRefExpression &colref, idx_t start) {
+ColumnResolution ExpressionBinder::ResolveColumn(ColumnRefExpression &colref, idx_t start) {
 	ColumnResolution result;
-	for (idx_t depth = start; depth < chain.Size(); depth++) {
-		auto &scope = chain.At(depth);
+	for (idx_t depth = start; depth < ScopeCount(); depth++) {
+		auto &scope = ScopeAt(depth);
 		if (scope.ClaimsAlias(colref)) {
 			// the scope has a select-list alias of this name: it owns the reference even though
 			// qualification cannot produce a replacement for it
@@ -210,7 +223,7 @@ static void CollectResolvableColumns(ParsedExpression &expr, vector<identifier_s
 	    expr, [&](ParsedExpression &child) { CollectResolvableColumns(child, lambda_params, result); });
 }
 
-optional_idx ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, FunctionExpression &aggregate, idx_t start) {
+optional_idx ExpressionBinder::ResolveAggregateOwner(FunctionExpression &aggregate, idx_t start) {
 	vector<reference<ColumnRefExpression>> columns;
 	vector<identifier_set_t> lambda_params;
 	for (auto &child : aggregate.GetArgumentsMutable()) {
@@ -227,7 +240,7 @@ optional_idx ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, Funct
 	auto owner = start;
 	bool found = false;
 	for (auto &colref : columns) {
-		auto resolution = ResolveColumn(chain, colref.get(), start);
+		auto resolution = ResolveColumn(colref.get(), start);
 		if (!resolution.found) {
 			// an alias or a column that does not resolve at all - it says nothing about ownership,
 			// and the scope we settle on reports the error
@@ -241,12 +254,11 @@ optional_idx ScopeResolver::ResolveAggregateOwner(const ScopeChain &chain, Funct
 	return found ? optional_idx(owner) : optional_idx();
 }
 
-optional_idx ScopeResolver::ResolveOuterGroup(const ScopeChain &chain, vector<reference<ParsedExpression>> &expressions,
-                                              idx_t start) {
-	for (idx_t depth = start; depth < chain.Size(); depth++) {
+optional_idx ExpressionBinder::ResolveOuterGroup(vector<reference<ParsedExpression>> &expressions, idx_t start) {
+	for (idx_t depth = start; depth < ScopeCount(); depth++) {
 		bool all_match = true;
 		for (auto &expr : expressions) {
-			if (!chain.At(depth).MatchesGroup(expr.get())) {
+			if (!ScopeAt(depth).MatchesGroup(expr.get())) {
 				all_match = false;
 				break;
 			}

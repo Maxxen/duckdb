@@ -5,8 +5,6 @@
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/expression/list.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
-#include "duckdb/planner/scope_chain.hpp"
-#include "duckdb/planner/scope_resolver.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/main/client_config.hpp"
 #include "duckdb/main/settings.hpp"
@@ -103,9 +101,8 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 	}
 }
 
-BindResult ExpressionBinder::DispatchToScope(const ScopeChain &chain, idx_t scope,
-                                             unique_ptr<ParsedExpression> &expr_ptr, idx_t base_depth) {
-	auto result = chain.At(scope).BindExpression(expr_ptr, base_depth + scope, false);
+BindResult ExpressionBinder::DispatchToScope(idx_t scope, unique_ptr<ParsedExpression> &expr_ptr, idx_t base_depth) {
+	auto result = ScopeAt(scope).BindExpression(expr_ptr, base_depth + scope, false);
 	if (!result.HasError()) {
 		// the reference reaches out of this scope: record it as a correlated column of this binder
 		ExtractCorrelatedExpressions(binder, *result.expression);
@@ -115,14 +112,19 @@ BindResult ExpressionBinder::DispatchToScope(const ScopeChain &chain, idx_t scop
 
 BindResult ExpressionBinder::BindInEnclosingScope(ColumnRefExpression &col_ref, idx_t depth,
                                                   unique_ptr<ParsedExpression> &expr_ptr, ErrorData local_error) {
-	auto chain = ScopeChain::FromBinder(*this);
 	auto bind_error = std::move(local_error);
+#ifdef DEBUG
+	// the index of a scope is a depth, so a scope pushed or popped while the search is running would
+	// shift every index underneath it
+	const auto initial_scope_count = ScopeCount();
+#endif
 	idx_t scope = 1;
-	while (scope < chain.Size()) {
-		auto resolution = ScopeResolver::ResolveColumn(chain, col_ref, scope);
+	while (scope < ScopeCount()) {
+		D_ASSERT(ScopeCount() == initial_scope_count);
+		auto resolution = ResolveColumn(col_ref, scope);
 		if (!resolution.found) {
 			// no scope reaches the name: report it against every scope that was searched
-			ScopeResolver::CombineErrors(bind_error, std::move(resolution.error));
+			CombineErrors(bind_error, std::move(resolution.error));
 			break;
 		}
 		// bind the qualified form the scope produced, so that it is recognised by that scope - a
@@ -133,14 +135,14 @@ BindResult ExpressionBinder::BindInEnclosingScope(ColumnRefExpression &col_ref, 
 		} else {
 			expr_ptr = original->Copy();
 		}
-		auto result = DispatchToScope(chain, resolution.depth, expr_ptr, depth);
+		auto result = DispatchToScope(resolution.depth, expr_ptr, depth);
 		if (!result.HasError()) {
 			return result;
 		}
 		// the scope reaches the name but cannot bind it - a column shadowing a table alias, say - so
 		// the scopes outside it still get their turn
 		expr_ptr = std::move(original);
-		ScopeResolver::CombineErrors(bind_error, std::move(result.error));
+		CombineErrors(bind_error, std::move(result.error));
 		scope = resolution.depth + 1;
 	}
 	bind_error.AddQueryLocation(col_ref);

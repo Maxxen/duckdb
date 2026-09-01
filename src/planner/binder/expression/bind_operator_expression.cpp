@@ -1,8 +1,6 @@
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/planner/binder.hpp"
-#include "duckdb/planner/scope_chain.hpp"
-#include "duckdb/planner/scope_resolver.hpp"
 #include "duckdb/planner/expression/bound_case_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
@@ -136,16 +134,15 @@ BindResult ExpressionBinder::BindOperatorAsFunction(OperatorExpression &op, cons
 //! GROUPING cannot go through DispatchToScope: it is not bound by the scope's BindExpression but by its
 //! BindGroupingFunction, which is what registers the grouping set on that scope's select node. The
 //! correlated-column registration DispatchToScope would have done is therefore repeated here.
-BindResult ExpressionBinder::BindGroupingInEnclosingScope(const ScopeChain &chain, OperatorExpression &op,
+BindResult ExpressionBinder::BindGroupingInEnclosingScope(OperatorExpression &op,
                                                           vector<reference<ParsedExpression>> &children, idx_t owner,
                                                           idx_t depth) {
 	ErrorData bind_error;
-	for (optional_idx scope = owner; scope.IsValid();
-	     scope = ScopeResolver::ResolveOuterGroup(chain, children, scope.GetIndex() + 1)) {
+	for (optional_idx scope = owner; scope.IsValid(); scope = ResolveOuterGroup(children, scope.GetIndex() + 1)) {
 		// BindGroupingFunction qualifies the children against the scope binding them, so bind a copy and
 		// leave the original intact for the scopes further out
 		auto attempt = op.Copy();
-		auto result = chain.At(scope.GetIndex())
+		auto result = ScopeAt(scope.GetIndex())
 		                  .BindGroupingFunction(attempt->Cast<OperatorExpression>(), depth + scope.GetIndex());
 		if (!result.HasError()) {
 			ExtractCorrelatedExpressions(binder, *result.expression);
@@ -164,14 +161,13 @@ BindResult ExpressionBinder::BindExpression(OperatorExpression &op, idx_t depth)
 		// GROUPING reports on the groups of a query, so it belongs to the innermost level that groups
 		// by all of its arguments
 		if (!binder.GetEnclosingScopes().empty()) {
-			auto chain = ScopeChain::FromBinder(*this);
 			vector<reference<ParsedExpression>> children;
 			for (auto &child : op.GetChildrenMutable()) {
 				children.push_back(*child);
 			}
-			auto owner = ScopeResolver::ResolveOuterGroup(chain, children, 0);
+			auto owner = ResolveOuterGroup(children, 0);
 			if (owner.IsValid() && owner.GetIndex() != 0) {
-				return BindGroupingInEnclosingScope(chain, op, children, owner.GetIndex(), depth);
+				return BindGroupingInEnclosingScope(op, children, owner.GetIndex(), depth);
 			}
 		}
 		return BindGroupingFunction(op, depth);

@@ -10,8 +10,6 @@
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/lambda_expression.hpp"
 #include "duckdb/planner/binder.hpp"
-#include "duckdb/planner/scope_chain.hpp"
-#include "duckdb/planner/scope_resolver.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
@@ -314,10 +312,9 @@ BindResult ExpressionBinder::BindExpression(FunctionExpression &function, idx_t 
 		// an aggregate belongs to the innermost query level in which one of its arguments resolves a
 		// column of that level, so that the level collecting it is the one the arguments refer to
 		if (!binder.GetEnclosingScopes().empty()) {
-			auto chain = ScopeChain::FromBinder(*this);
-			auto owner = ScopeResolver::ResolveAggregateOwner(chain, function, 0);
+			auto owner = ResolveAggregateOwner(function, 0);
 			if (owner.IsValid() && owner.GetIndex() != 0) {
-				return BindAggregateInEnclosingScope(chain, function, owner.GetIndex(), depth, expr_ptr);
+				return BindAggregateInEnclosingScope(function, owner.GetIndex(), depth, expr_ptr);
 			}
 		}
 		return BindAggregate(function, func.Cast<AggregateFunctionCatalogEntry>(), depth);
@@ -330,8 +327,7 @@ BindResult ExpressionBinder::BindExpression(FunctionExpression &function, idx_t 
 	}
 }
 
-BindResult ExpressionBinder::BindAggregateInEnclosingScope(const ScopeChain &chain, FunctionExpression &aggregate,
-                                                           idx_t owner, idx_t depth,
+BindResult ExpressionBinder::BindAggregateInEnclosingScope(FunctionExpression &aggregate, idx_t owner, idx_t depth,
                                                            unique_ptr<ParsedExpression> &expr_ptr) {
 	// Bind a copy at each candidate scope. Binding rewrites the nodes it manages to bind - a column
 	// reference becomes the qualified form of the scope that owns it - so a failed attempt must not be
@@ -339,10 +335,9 @@ BindResult ExpressionBinder::BindAggregateInEnclosingScope(const ScopeChain &cha
 	// since it aliases the node `expr_ptr` held on entry.
 	auto original = std::move(expr_ptr);
 	ErrorData bind_error;
-	for (optional_idx scope = owner; scope.IsValid();
-	     scope = ScopeResolver::ResolveAggregateOwner(chain, aggregate, scope.GetIndex() + 1)) {
+	for (optional_idx scope = owner; scope.IsValid(); scope = ResolveAggregateOwner(aggregate, scope.GetIndex() + 1)) {
 		expr_ptr = original->Copy();
-		auto result = DispatchToScope(chain, scope.GetIndex(), expr_ptr, depth);
+		auto result = DispatchToScope(scope.GetIndex(), expr_ptr, depth);
 		if (!result.HasError()) {
 			return result;
 		}
