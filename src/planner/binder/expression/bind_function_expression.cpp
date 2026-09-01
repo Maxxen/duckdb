@@ -313,8 +313,8 @@ BindResult ExpressionBinder::BindExpression(FunctionExpression &function, idx_t 
 	case CatalogType::AGGREGATE_FUNCTION_ENTRY: {
 		// an aggregate belongs to the innermost query level in which one of its arguments resolves a
 		// column of that level, so that the level collecting it is the one the arguments refer to
-		auto chain = ScopeChain::FromBinder(*this);
-		if (chain.Size() > 1) {
+		if (!binder.GetEnclosingScopes().empty()) {
+			auto chain = ScopeChain::FromBinder(*this);
 			auto owner = ScopeResolver::ResolveAggregateOwner(chain, function, 0);
 			if (owner.IsValid() && owner.GetIndex() != 0) {
 				return BindAggregateInEnclosingScope(chain, function, owner.GetIndex(), depth, expr_ptr);

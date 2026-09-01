@@ -5,16 +5,30 @@
 
 namespace duckdb {
 
+ScopeChain::ScopeChain(ExpressionBinder &current, Binder &owner) : current(current), owner(owner) {
+#ifdef DEBUG
+	initial_size = owner.GetEnclosingScopes().size() + 1;
+#endif
+}
+
 ScopeChain ScopeChain::FromBinder(ExpressionBinder &binder) {
-	ScopeChain result;
-	// the enclosing scopes are stored outermost first - reverse them so that the index is the depth
-	auto &enclosing = binder.GetBinder().GetEnclosingScopes();
-	result.scopes.reserve(enclosing.size() + 1);
-	result.scopes.push_back(binder);
-	for (auto entry = enclosing.rbegin(); entry != enclosing.rend(); entry++) {
-		result.scopes.push_back(*entry);
+	return ScopeChain(binder, binder.GetBinder());
+}
+
+idx_t ScopeChain::Size() const {
+	auto size = owner.get().GetEnclosingScopes().size() + 1;
+	D_ASSERT(size == initial_size);
+	return size;
+}
+
+ExpressionBinder &ScopeChain::At(idx_t depth) const {
+	D_ASSERT(depth < Size());
+	if (depth == 0) {
+		return current;
 	}
-	return result;
+	// the enclosing scopes are stored outermost first, so the index is counted from the back
+	auto &enclosing = owner.get().GetEnclosingScopes();
+	return enclosing[enclosing.size() - depth];
 }
 
 } // namespace duckdb

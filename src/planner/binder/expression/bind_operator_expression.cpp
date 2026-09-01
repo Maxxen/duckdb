@@ -163,8 +163,8 @@ BindResult ExpressionBinder::BindExpression(OperatorExpression &op, idx_t depth)
 	if (operator_type == ExpressionType::GROUPING_FUNCTION) {
 		// GROUPING reports on the groups of a query, so it belongs to the innermost level that groups
 		// by all of its arguments
-		auto chain = ScopeChain::FromBinder(*this);
-		if (chain.Size() > 1) {
+		if (!binder.GetEnclosingScopes().empty()) {
+			auto chain = ScopeChain::FromBinder(*this);
 			vector<reference<ParsedExpression>> children;
 			for (auto &child : op.GetChildrenMutable()) {
 				children.push_back(*child);
