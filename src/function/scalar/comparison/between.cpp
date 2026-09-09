@@ -174,8 +174,9 @@ unique_ptr<Expression> BoundBetweenExpression::Create(unique_ptr<Expression> inp
 
 	auto function_data = make_uniq<BetweenFunctionData>(lower_inclusive, upper_inclusive);
 
-	auto result = make_uniq<BoundFunctionExpression>(BoundScalarFunction(BetweenFun::GetFunction()),
-	                                                 std::move(children), std::move(function_data), false);
+	BoundScalarFunction bound_function(BetweenFun::GetFunction());
+	bound_function.bind_info = std::move(function_data);
+	auto result = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children), false);
 	return std::move(result);
 }
 

@@ -282,8 +282,9 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 	auto new_func = list_filter_expr.Function();
 	new_func.SetReturnType(filter_return_type);
 
+	new_func.bind_info = std::move(filter_bind_info);
 	auto new_filter = make_uniq<BoundFunctionExpression>(std::move(new_func), std::move(filter_children),
-	                                                     std::move(filter_bind_info), list_filter_expr.IsOperator());
+	                                                     list_filter_expr.IsOperator());
 
 	// Build list_apply(list_filter(...), lambda result_expr)
 	auto apply_return_type = LogicalType::LIST(result_expr.GetReturnType());
@@ -302,9 +303,9 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 		apply_children.push_back(std::move(captured_child));
 	}
 
-	auto apply_bind_info = make_uniq<ListLambdaBindData>(apply_return_type, std::move(apply_lambda));
-	return make_uniq<BoundFunctionExpression>(root.Function(), std::move(apply_children), std::move(apply_bind_info),
-	                                          root.IsOperator());
+	auto apply_func = root.Function();
+	apply_func.bind_info = make_uniq<ListLambdaBindData>(apply_return_type, std::move(apply_lambda));
+	return make_uniq<BoundFunctionExpression>(std::move(apply_func), std::move(apply_children), root.IsOperator());
 }
 
 } // namespace

@@ -21,8 +21,8 @@ unique_ptr<Expression> LegacyStructFilter::ToExpression(const Expression &column
 	BoundScalarFunction bound_func(GetExtractAtFunction());
 	bound_func.SetReturnType(StructType::GetChildType(column.GetReturnType(), child_idx));
 
-	auto child = make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments),
-	                                                StructExtractAtFun::GetBindData(child_idx));
+	bound_func.bind_info = StructExtractAtFun::GetBindData(child_idx);
+	auto child = make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments));
 	return child_filter->ToExpression(*child);
 }
 } // namespace duckdb

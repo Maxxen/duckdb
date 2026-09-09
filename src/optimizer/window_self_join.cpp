@@ -63,12 +63,6 @@ static bool IsOrderableDistinctAggregate(const BoundWindowExpression &w_expr) {
 
 static unique_ptr<Expression> TranslateAggregate(ClientContext &client, const BoundWindowExpression &w_expr) {
 	auto agg_func = *w_expr.AggregateFunction();
-	unique_ptr<FunctionData> bind_info;
-	if (w_expr.BindInfo()) {
-		bind_info = w_expr.BindInfo()->Copy();
-	} else {
-		bind_info = nullptr;
-	}
 
 	vector<unique_ptr<Expression>> children;
 	for (auto &child : w_expr.GetChildren()) {
@@ -83,8 +77,8 @@ static unique_ptr<Expression> TranslateAggregate(ClientContext &client, const Bo
 
 	const auto aggr_type = w_expr.Distinct() ? AggregateType::DISTINCT : AggregateType::NON_DISTINCT;
 	const auto aggr_ordered = (agg_func.GetOrderDependent() == AggregateOrderDependent::ORDER_DEPENDENT);
-	auto result = make_uniq<BoundAggregateExpression>(std::move(agg_func), std::move(children), std::move(filter),
-	                                                  std::move(bind_info), aggr_type);
+	auto result =
+	    make_uniq<BoundAggregateExpression>(std::move(agg_func), std::move(children), std::move(filter), aggr_type);
 
 	if (!aggr_ordered) {
 		//	ORDER BY is a NOP, so drop it.

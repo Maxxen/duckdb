@@ -878,8 +878,8 @@ static unique_ptr<Expression> CreateStructExtractExpression(unique_ptr<Expressio
 	BoundScalarFunction bound_func(GetExtractAtFunction());
 	bound_func.SetReturnType(StructType::GetChildType(source_type, child_idx));
 
-	return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments),
-	                                          StructExtractAtFun::GetBindData(child_idx));
+	bound_func.bind_info = StructExtractAtFun::GetBindData(child_idx);
+	return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments));
 }
 
 static bool TryCastConstant(Value &constant, const LogicalType &target_type) {

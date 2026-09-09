@@ -506,6 +506,33 @@ protected:
 	LogicalType return_type;
 
 public:
+	//! The bound function data (if any)
+	unique_ptr<FunctionData> bind_info;
+
+public:
+	BoundSimpleFunction() = default;
+	//! Bound functions are held by value in the bound expressions, so a copy clones the bind data
+	BoundSimpleFunction(const BoundSimpleFunction &other)
+	    : name(other.name), schema_name(other.schema_name), catalog_name(other.catalog_name),
+	      extra_info(other.extra_info), arguments(other.arguments), return_type(other.return_type),
+	      bind_info(other.bind_info ? other.bind_info->Copy() : nullptr) {
+	}
+	BoundSimpleFunction &operator=(const BoundSimpleFunction &other) {
+		if (this != &other) {
+			name = other.name;
+			schema_name = other.schema_name;
+			catalog_name = other.catalog_name;
+			extra_info = other.extra_info;
+			arguments = other.arguments;
+			return_type = other.return_type;
+			bind_info = other.bind_info ? other.bind_info->Copy() : nullptr;
+		}
+		return *this;
+	}
+	BoundSimpleFunction(BoundSimpleFunction &&) = default;
+	BoundSimpleFunction &operator=(BoundSimpleFunction &&) = default;
+
+public:
 	void SetName(Identifier name_p) {
 		name = std::move(name_p);
 	}

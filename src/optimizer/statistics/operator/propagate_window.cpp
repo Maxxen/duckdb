@@ -54,17 +54,20 @@ unique_ptr<NodeStatistics> StatisticsPropagator::PropagateStatistics(LogicalWind
 			}
 			auto &aggregate = *over_expr.AggregateFunctionMutable();
 			if (aggregate.GetCallbacks().HasStatisticsCallback()) {
-				AggregateStatisticsInput input(over_expr.BindInfo(), child_stats, node_stats.get());
 				const idx_t child_count = agg_children.size();
+				auto statistics_callback = aggregate.GetCallbacks().GetStatisticsCallback();
 				// The callback takes a BoundAggregateExpression; a window aggregate has none, so
-				// synthesise one over the same function and children. Callbacks may rewrite both
-				// (count replaces itself with count_star and drops its children), so write both back.
-				BoundAggregateExpression synthetic(aggregate, std::move(agg_children), nullptr, nullptr,
+				// synthesise one over the same function and children. Callbacks may rewrite the function,
+				// its bind data and the children (count replaces itself with count_star and drops its
+				// children), so move the function in rather than copy it - the callback has to see the
+				// bind data the window expression owns, not a clone - and move everything back after.
+				BoundAggregateExpression synthetic(std::move(aggregate), std::move(agg_children), nullptr,
 				                                   over_expr.Distinct() ? AggregateType::DISTINCT
 				                                                        : AggregateType::NON_DISTINCT);
-				aggregate.GetCallbacks().GetStatisticsCallback()(context, synthetic, input);
+				AggregateStatisticsInput input(synthetic.BindInfo(), child_stats, node_stats.get());
+				statistics_callback(context, synthetic, input);
 				agg_children = std::move(synthetic.GetChildrenMutable());
-				aggregate = synthetic.FunctionMutable();
+				aggregate = std::move(synthetic.FunctionMutable());
 				removed_expressions |= agg_children.size() < child_count;
 			}
 		}

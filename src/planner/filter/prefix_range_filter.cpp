@@ -18,8 +18,9 @@ unique_ptr<Expression> LegacyPrefixRangeTableFilter::ToExpression(const Expressi
 	auto bind_data = make_uniq<PrefixRangeFunctionData>(filter, true, key_column_name, key_type, 0.0f, idx_t(0));
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(column.Copy());
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
-	                                          std::move(bind_data));
+	BoundScalarFunction bound_function(function);
+	bound_function.bind_info = std::move(bind_data);
+	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 }
 
 void LegacyPrefixRangeTableFilter::Serialize(Serializer &serializer) const {

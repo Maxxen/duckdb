@@ -777,7 +777,7 @@ void FlattenDependentJoins::AddCorrelatedFirstAggregates(LogicalAggregate &aggr,
 
 		BoundAggregateFunction bound_func(first_aggregate);
 		auto first_fun = make_uniq<BoundAggregateExpression>(std::move(bound_func), std::move(aggr_children), nullptr,
-		                                                     nullptr, AggregateType::NON_DISTINCT);
+		                                                     AggregateType::NON_DISTINCT);
 		aggr.expressions.push_back(std::move(first_fun));
 	}
 }

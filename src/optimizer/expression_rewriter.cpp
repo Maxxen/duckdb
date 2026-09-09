@@ -93,9 +93,9 @@ unique_ptr<Expression> ExpressionRewriter::ConstantOrNull(vector<unique_ptr<Expr
 	children.insert(children.begin(), make_uniq<BoundConstantExpression>(value));
 
 	BoundScalarFunction bound_func(func);
+	bound_func.bind_info = ConstantOrNull::Bind(std::move(value));
 
-	return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(children),
-	                                          ConstantOrNull::Bind(std::move(value)));
+	return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(children));
 }
 
 void ExpressionRewriter::VisitOperator(LogicalOperator &op) {

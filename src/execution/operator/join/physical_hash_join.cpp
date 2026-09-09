@@ -1492,10 +1492,10 @@ static unique_ptr<Expression> CreateRuntimeFilterExpression(ClientContext &conte
 		if (!ht.GetBloomFilter().IsInitialized()) {
 			return nullptr;
 		}
-		filter_expr = make_uniq<BoundFunctionExpression>(
-		    BoundScalarFunction(BloomFilterScalarFun::GetFunction(filter_input_type)), std::move(children),
-		    make_uniq<BloomFilterFunctionData>(ht.GetBloomFilter(), filters_null_values, key_name, key_type,
-		                                       selectivity_threshold, n_vectors_to_check));
+		BoundScalarFunction bloom_function(BloomFilterScalarFun::GetFunction(filter_input_type));
+		bloom_function.bind_info = make_uniq<BloomFilterFunctionData>(
+		    ht.GetBloomFilter(), filters_null_values, key_name, key_type, selectivity_threshold, n_vectors_to_check);
+		filter_expr = make_uniq<BoundFunctionExpression>(std::move(bloom_function), std::move(children));
 		break;
 	}
 	case DeferredRuntimeFilterType::PREFIX_RANGE: {
@@ -1504,10 +1504,10 @@ static unique_ptr<Expression> CreateRuntimeFilterExpression(ClientContext &conte
 		if (!prefix_range_filter || !prefix_range_filter->IsInitialized()) {
 			return nullptr;
 		}
-		filter_expr = make_uniq<BoundFunctionExpression>(
-		    BoundScalarFunction(PrefixRangeScalarFun::GetFunction(filter_input_type)), std::move(children),
-		    make_uniq<PrefixRangeFunctionData>(prefix_range_filter, filters_null_values, key_name, key_type,
-		                                       selectivity_threshold, n_vectors_to_check));
+		BoundScalarFunction prefix_function(PrefixRangeScalarFun::GetFunction(filter_input_type));
+		prefix_function.bind_info = make_uniq<PrefixRangeFunctionData>(
+		    prefix_range_filter, filters_null_values, key_name, key_type, selectivity_threshold, n_vectors_to_check);
+		filter_expr = make_uniq<BoundFunctionExpression>(std::move(prefix_function), std::move(children));
 		break;
 	}
 	default:

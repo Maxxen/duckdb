@@ -1085,9 +1085,9 @@ static vector<Identifier> ResolveArguments(const SimpleFunction &function, vecto
 	return argument_names;
 }
 
-pair<BoundScalarFunction, unique_ptr<FunctionData>>
-FunctionBinder::ResolveFunction(shared_ptr<const ScalarFunction> function_p, vector<unique_ptr<Expression>> &arguments,
-                                vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
+BoundScalarFunction FunctionBinder::ResolveFunction(shared_ptr<const ScalarFunction> function_p,
+                                                    vector<unique_ptr<Expression>> &arguments,
+                                                    vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
 	auto &function = *function_p;
 	// Reorder named args
 	auto argument_names = ResolveArguments(function, arguments, named_arguments);
@@ -1106,11 +1106,9 @@ FunctionBinder::ResolveFunction(shared_ptr<const ScalarFunction> function_p, vec
 	// Attempt to resolve template types, before we call the "Bind" callback.
 	ResolveTemplateTypes(bound_function, arguments);
 
-	unique_ptr<FunctionData> bind_info;
-
 	if (bound_function.HasBindCallback()) {
 		BindScalarFunctionInput input(context, bound_function, arguments, argument_names, binder);
-		bind_info = bound_function.GetBindCallback()(input);
+		bound_function.bind_info = bound_function.GetBindCallback()(input);
 	}
 
 	// After the "bind" callback, we verify that all template types are bound to concrete types.
@@ -1118,7 +1116,7 @@ FunctionBinder::ResolveFunction(shared_ptr<const ScalarFunction> function_p, vec
 
 	if (bound_function.HasModifiedDatabasesCallback() && binder) {
 		auto &properties = binder->GetStatementProperties();
-		FunctionModifiedDatabasesInput input(bind_info, properties);
+		FunctionModifiedDatabasesInput input(bound_function.bind_info, properties);
 		bound_function.GetModifiedDatabasesCallback()(context, input);
 	}
 
@@ -1127,7 +1125,7 @@ FunctionBinder::ResolveFunction(shared_ptr<const ScalarFunction> function_p, vec
 	// check if we need to add casts to the children
 	CastToFunctionArguments(bound_function, arguments);
 
-	return {std::move(bound_function), std::move(bind_info)};
+	return bound_function;
 }
 
 unique_ptr<Expression> FunctionBinder::BindScalarFunction(shared_ptr<const ScalarFunction> function,
@@ -1154,12 +1152,11 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(shared_ptr<const Scala
                                                           vector<unique_ptr<Expression>> children,
                                                           vector<pair<Identifier, unique_ptr<Expression>>> keyword_args,
                                                           bool is_operator, optional_ptr<Binder> binder) {
-	auto [bound_function, bind_info] = ResolveFunction(std::move(function), children, keyword_args);
+	auto bound_function = ResolveFunction(std::move(function), children, keyword_args);
 
 	unique_ptr<Expression> result;
 
-	auto result_func = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children),
-	                                                      std::move(bind_info), is_operator);
+	auto result_func = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children), is_operator);
 
 	if (result_func->Function().HasBindExpressionCallback()) {
 		// if a bind_expression callback is registered - call it and emit the resulting expression
@@ -1175,7 +1172,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(shared_ptr<const Scala
 	return result;
 }
 
-pair<BoundAggregateFunction, unique_ptr<FunctionData>>
+BoundAggregateFunction
 FunctionBinder::ResolveFunction(shared_ptr<const AggregateFunction> function_p,
                                 vector<unique_ptr<Expression>> &children,
                                 vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
@@ -1196,11 +1193,9 @@ FunctionBinder::ResolveFunction(shared_ptr<const AggregateFunction> function_p,
 
 	ResolveTemplateTypes(bound_function, children);
 
-	unique_ptr<FunctionData> bind_info;
-
 	if (bound_function.GetCallbacks().HasBindCallback()) {
 		BindAggregateFunctionInput input(context, bound_function, children, argument_names);
-		bind_info = bound_function.GetCallbacks().GetBindCallback()(input);
+		bound_function.bind_info = bound_function.GetCallbacks().GetBindCallback()(input);
 
 		// we may have lost some arguments in the bind
 		children.resize(MinValue(bound_function.GetArguments().size(), children.size()));
@@ -1211,7 +1206,7 @@ FunctionBinder::ResolveFunction(shared_ptr<const AggregateFunction> function_p,
 	// check if we need to add casts to the children
 	CastToFunctionArguments(bound_function, children);
 
-	return {std::move(bound_function), std::move(bind_info)};
+	return bound_function;
 }
 
 unique_ptr<BoundAggregateExpression> FunctionBinder::BindAggregateFunction(shared_ptr<const AggregateFunction> function,
@@ -1242,10 +1237,10 @@ FunctionBinder::BindAggregateFunction(shared_ptr<const AggregateFunction> functi
                                       vector<unique_ptr<Expression>> children,
                                       vector<pair<Identifier, unique_ptr<Expression>>> keyword_args,
                                       unique_ptr<Expression> filter, AggregateType aggr_type) {
-	auto [bound_function, bind_info] = ResolveFunction(std::move(function), children, keyword_args);
+	auto bound_function = ResolveFunction(std::move(function), children, keyword_args);
 
 	return make_uniq<BoundAggregateExpression>(std::move(bound_function), std::move(children), std::move(filter),
-	                                           std::move(bind_info), aggr_type);
+	                                           aggr_type);
 }
 
 unique_ptr<BoundAggregateExpression>
@@ -1269,11 +1264,11 @@ FunctionBinder::BindAggregateFunction(const AggregateFunctionCatalogEntry &func,
 	                             std::move(filter), aggr_type);
 }
 
-pair<BoundWindowFunction, unique_ptr<FunctionData>>
-FunctionBinder::ResolveFunction(shared_ptr<const WindowFunction> function_p, vector<unique_ptr<Expression>> &children,
-                                vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments,
-                                optional_ptr<vector<LogicalType>> order_types,
-                                optional_ptr<vector<LogicalType>> arg_order_types) {
+BoundWindowFunction FunctionBinder::ResolveFunction(shared_ptr<const WindowFunction> function_p,
+                                                    vector<unique_ptr<Expression>> &children,
+                                                    vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments,
+                                                    optional_ptr<vector<LogicalType>> order_types,
+                                                    optional_ptr<vector<LogicalType>> arg_order_types) {
 	auto &function = *function_p;
 	// Reorder named args
 	auto argument_names = ResolveArguments(function, children, named_arguments);
@@ -1290,11 +1285,9 @@ FunctionBinder::ResolveFunction(shared_ptr<const WindowFunction> function_p, vec
 
 	ResolveTemplateTypes(bound_function, children);
 
-	unique_ptr<FunctionData> bind_info;
-
 	if (bound_function.HasBindCallback()) {
 		BindWindowFunctionInput input(context, bound_function, children, argument_names, order_types, arg_order_types);
-		bind_info = bound_function.GetBindCallback()(input);
+		bound_function.bind_info = bound_function.GetBindCallback()(input);
 		// we may have lost some arguments in the bind
 		children.resize(MinValue(bound_function.GetArguments().size(), children.size()));
 	}
@@ -1304,19 +1297,18 @@ FunctionBinder::ResolveFunction(shared_ptr<const WindowFunction> function_p, vec
 	// check if we need to add casts to the children
 	CastToFunctionArguments(bound_function, children);
 
-	return {std::move(bound_function), std::move(bind_info)};
+	return bound_function;
 }
 
 unique_ptr<BoundWindowExpression>
 FunctionBinder::BindWindowFunction(shared_ptr<const WindowFunction> function, vector<unique_ptr<Expression>> children,
                                    vector<pair<Identifier, unique_ptr<Expression>>> keyword_args,
                                    vector<LogicalType> &order_types, vector<LogicalType> &arg_order_types) {
-	auto [bound_function, bind_info] =
-	    ResolveFunction(std::move(function), children, keyword_args, order_types, arg_order_types);
+	auto bound_function = ResolveFunction(std::move(function), children, keyword_args, order_types, arg_order_types);
 	auto return_type = bound_function.GetReturnType();
 
 	auto window = make_uniq<BoundWindowFunction>(std::move(bound_function));
-	auto result = make_uniq<BoundWindowExpression>(return_type, nullptr, std::move(window), std::move(bind_info));
+	auto result = make_uniq<BoundWindowExpression>(return_type, nullptr, std::move(window));
 	result->GetChildrenMutable() = std::move(children);
 
 	return result;

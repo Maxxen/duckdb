@@ -856,8 +856,8 @@ public:
 		children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0));
 
 		BoundScalarFunction bound_func(func);
-		auto expr = make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(children),
-		                                               make_uniq<RowIdFilterBindData>(vector<int64_t> {3, 4, 5, 7, 9}));
+		bound_func.bind_info = make_uniq<RowIdFilterBindData>(vector<int64_t> {3, 4, 5, 7, 9});
+		auto expr = make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(children));
 
 		// Ensure ROW_ID is in the scan's column list
 		auto row_id_index = get.TryGetProjectionIndex(COLUMN_IDENTIFIER_ROW_ID);

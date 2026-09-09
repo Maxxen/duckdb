@@ -45,6 +45,11 @@ public:
 		}
 	}
 
+	template <class FUNC>
+	static void Serialize(Serializer &serializer, const FUNC &function) {
+		Serialize(serializer, function, function.bind_info.get());
+	}
+
 	//! Plans written by versions whose binds erased the arguments they folded into their bind data record the
 	//! pre-erase list separately - use that as the argument list, so that the function looks the same either way
 	static void RestoreErasedArguments(vector<LogicalType> &arguments, vector<LogicalType> &original_arguments) {
@@ -158,9 +163,9 @@ public:
 	}
 
 	template <class FUNC, class CATALOG_ENTRY>
-	static pair<FUNC, unique_ptr<FunctionData>> Deserialize(Deserializer &deserializer, CatalogType catalog_type,
-	                                                        vector<unique_ptr<Expression>> &children,
-	                                                        LogicalType return_type) { // NOLINT: clang-tidy bug
+	static FUNC Deserialize(Deserializer &deserializer, CatalogType catalog_type,
+	                        vector<unique_ptr<Expression>> &children,
+	                        LogicalType return_type) { // NOLINT: clang-tidy bug
 		auto &context = deserializer.Get<ClientContext &>();
 
 		auto name = deserializer.ReadProperty<Identifier>(500, "name");
@@ -199,19 +204,16 @@ public:
 		auto &functions = func_catalog.Cast<CATALOG_ENTRY>();
 		const auto &function = functions.functions.GetFunctionByArguments(context, arguments);
 
-		// Does this function support serializing its bound data?
 		if (!has_serialize) {
-			// No, then just rebind the function
+			// The bind data is replayable, rebind the function against the argument expressions
 			try {
 				FunctionBinder binder(context);
-
-				auto [bound_function, bound_data] = binder.ResolveFunction(function, children);
-
+				FUNC bound_function = binder.ResolveFunction(function, children);
 				if (TypeRequiresAssignment(bound_function.GetReturnType())) {
 					bound_function.SetReturnType(std::move(return_type));
 				}
+				return bound_function;
 
-				return make_pair(std::move(bound_function), std::move(bound_data));
 			} catch (std::exception &ex) {
 				ErrorData error(ex);
 				throw SerializationException("Error during bind of function in deserialization: %s",
@@ -219,20 +221,18 @@ public:
 			}
 		}
 
-		// Otherwise, construct the bound function from its parts
+		// The bind data was serialized alongside the function, rebuild the function and read it back in
 		FUNC bound_function(function);
 		bound_function.GetArguments() = std::move(arguments);
 
-		// Invoke deserialization function
 		deserializer.Set<const LogicalType &>(return_type);
-		auto bound_data = FunctionDeserialize(deserializer, bound_function);
+		bound_function.bind_info = FunctionDeserialize(deserializer, bound_function);
 		deserializer.Unset<LogicalType>();
 
 		if (TypeRequiresAssignment(bound_function.GetReturnType())) {
 			bound_function.SetReturnType(std::move(return_type));
 		}
-
-		return make_pair(std::move(bound_function), std::move(bound_data));
+		return bound_function;
 	}
 };
 

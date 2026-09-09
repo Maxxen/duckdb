@@ -239,72 +239,67 @@ public:
 
 	//! Turn a function into a BoundScalarFunction bound to the given arguments. The function is kept as the
 	//! definition of the resulting bound function - see BoundScalarFunction::GetDefinition().
-	pair<BoundScalarFunction, unique_ptr<FunctionData>>
-	ResolveFunction(shared_ptr<const ScalarFunction> function, vector<unique_ptr<Expression>> &children,
-	                vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args);
+	BoundScalarFunction ResolveFunction(shared_ptr<const ScalarFunction> function,
+	                                    vector<unique_ptr<Expression>> &children,
+	                                    vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args);
 
-	pair<BoundScalarFunction, unique_ptr<FunctionData>> ResolveFunction(shared_ptr<const ScalarFunction> function,
-	                                                                    vector<unique_ptr<Expression>> &children) {
+	BoundScalarFunction ResolveFunction(shared_ptr<const ScalarFunction> function,
+	                                    vector<unique_ptr<Expression>> &children) {
 		vector<pair<Identifier, unique_ptr<Expression>>> empty_keyword_args;
 		return ResolveFunction(std::move(function), children, empty_keyword_args);
 	}
 
 	//! Resolve a function that does not come from a function set - it is copied into a definition of its own
-	pair<BoundScalarFunction, unique_ptr<FunctionData>>
-	ResolveFunction(const ScalarFunction &function, vector<unique_ptr<Expression>> &children,
-	                vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args) {
+	BoundScalarFunction ResolveFunction(const ScalarFunction &function, vector<unique_ptr<Expression>> &children,
+	                                    vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args) {
 		return ResolveFunction(make_shared_ptr<ScalarFunction>(function), children, keyword_args);
 	}
 
-	pair<BoundScalarFunction, unique_ptr<FunctionData>> ResolveFunction(const ScalarFunction &function,
-	                                                                    vector<unique_ptr<Expression>> &children) {
+	BoundScalarFunction ResolveFunction(const ScalarFunction &function, vector<unique_ptr<Expression>> &children) {
 		return ResolveFunction(make_shared_ptr<ScalarFunction>(function), children);
 	}
 
-	pair<BoundAggregateFunction, unique_ptr<FunctionData>>
-	ResolveFunction(shared_ptr<const AggregateFunction> function, vector<unique_ptr<Expression>> &children,
-	                vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args);
+	BoundAggregateFunction ResolveFunction(shared_ptr<const AggregateFunction> function,
+	                                       vector<unique_ptr<Expression>> &children,
+	                                       vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args);
 
-	pair<BoundAggregateFunction, unique_ptr<FunctionData>> ResolveFunction(shared_ptr<const AggregateFunction> function,
-	                                                                       vector<unique_ptr<Expression>> &children) {
+	BoundAggregateFunction ResolveFunction(shared_ptr<const AggregateFunction> function,
+	                                       vector<unique_ptr<Expression>> &children) {
 		vector<pair<Identifier, unique_ptr<Expression>>> empty_keyword_args;
 		return ResolveFunction(std::move(function), children, empty_keyword_args);
 	}
 
-	pair<BoundAggregateFunction, unique_ptr<FunctionData>>
-	ResolveFunction(const AggregateFunction &function, vector<unique_ptr<Expression>> &children,
-	                vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args) {
+	BoundAggregateFunction ResolveFunction(const AggregateFunction &function, vector<unique_ptr<Expression>> &children,
+	                                       vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args) {
 		return ResolveFunction(make_shared_ptr<AggregateFunction>(function), children, keyword_args);
 	}
 
-	pair<BoundAggregateFunction, unique_ptr<FunctionData>> ResolveFunction(const AggregateFunction &function,
-	                                                                       vector<unique_ptr<Expression>> &children) {
+	BoundAggregateFunction ResolveFunction(const AggregateFunction &function,
+	                                       vector<unique_ptr<Expression>> &children) {
 		return ResolveFunction(make_shared_ptr<AggregateFunction>(function), children);
 	}
 
-	pair<BoundWindowFunction, unique_ptr<FunctionData>>
-	ResolveFunction(shared_ptr<const WindowFunction> function, vector<unique_ptr<Expression>> &children,
-	                vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args,
-	                optional_ptr<vector<LogicalType>> order_types = nullptr,
-	                optional_ptr<vector<LogicalType>> arg_order_types = nullptr);
+	BoundWindowFunction ResolveFunction(shared_ptr<const WindowFunction> function,
+	                                    vector<unique_ptr<Expression>> &children,
+	                                    vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args,
+	                                    optional_ptr<vector<LogicalType>> order_types = nullptr,
+	                                    optional_ptr<vector<LogicalType>> arg_order_types = nullptr);
 
-	pair<BoundWindowFunction, unique_ptr<FunctionData>> ResolveFunction(shared_ptr<const WindowFunction> function,
-	                                                                    vector<unique_ptr<Expression>> &children) {
+	BoundWindowFunction ResolveFunction(shared_ptr<const WindowFunction> function,
+	                                    vector<unique_ptr<Expression>> &children) {
 		vector<pair<Identifier, unique_ptr<Expression>>> empty_keyword_args;
 		return ResolveFunction(std::move(function), children, empty_keyword_args);
 	}
 
-	pair<BoundWindowFunction, unique_ptr<FunctionData>>
-	ResolveFunction(const WindowFunction &function, vector<unique_ptr<Expression>> &children,
-	                vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args,
-	                optional_ptr<vector<LogicalType>> order_types = nullptr,
-	                optional_ptr<vector<LogicalType>> arg_order_types = nullptr) {
+	BoundWindowFunction ResolveFunction(const WindowFunction &function, vector<unique_ptr<Expression>> &children,
+	                                    vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args,
+	                                    optional_ptr<vector<LogicalType>> order_types = nullptr,
+	                                    optional_ptr<vector<LogicalType>> arg_order_types = nullptr) {
 		return ResolveFunction(make_shared_ptr<WindowFunction>(function), children, keyword_args, order_types,
 		                       arg_order_types);
 	}
 
-	pair<BoundWindowFunction, unique_ptr<FunctionData>> ResolveFunction(const WindowFunction &function,
-	                                                                    vector<unique_ptr<Expression>> &children) {
+	BoundWindowFunction ResolveFunction(const WindowFunction &function, vector<unique_ptr<Expression>> &children) {
 		return ResolveFunction(make_shared_ptr<WindowFunction>(function), children);
 	}
 

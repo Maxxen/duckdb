@@ -337,7 +337,7 @@ unique_ptr<CompressExpression> CMHelper::CreateIntegralFunctionCompress(unique_p
 
 	BoundScalarFunction bound_function(compress_function);
 	bound_function.SetReturnType(target_type);
-	auto compress_expr = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments), nullptr);
+	auto compress_expr = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 
 	auto compress_stats = BaseStatistics::CreateEmpty(target_type);
 	compress_stats.CopyBase(stats);
@@ -788,7 +788,7 @@ unique_ptr<CompressExpression> CMHelper::CreateStringFunctionCompress(unique_ptr
 	BoundScalarFunction bound_function(compress_function);
 	bound_function.SetReturnType(target_type);
 
-	auto compress_expr = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments), nullptr);
+	auto compress_expr = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 	return make_uniq<CompressExpression>(std::move(compress_expr), std::move(compress_stats),
 	                                     CompressedMaterializationType::FUNCTION);
 }
@@ -834,7 +834,7 @@ unique_ptr<CompressExpression> CompressedMaterialization::GetGeometryCompress(un
 
 	BoundScalarFunction bound_function(compress_function);
 	bound_function.SetReturnType(target_type);
-	auto compress_expr = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments), nullptr);
+	auto compress_expr = make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 
 	auto compress_stats = BaseStatistics::CreateEmpty(target_type);
 	compress_stats.CopyBase(stats);
@@ -966,7 +966,7 @@ unique_ptr<Expression> CompressedMaterialization::GetDecompressExpression(unique
 		bound_function.SetReturnType(LogicalType::BLOB);
 		vector<unique_ptr<Expression>> arguments;
 		arguments.push_back(std::move(variant));
-		return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments), nullptr);
+		return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 	}
 	if (type.id() == LogicalTypeId::GEOMETRY) {
 		return GetGeometryDecompress(std::move(input), result_type, stats);
@@ -992,7 +992,7 @@ unique_ptr<Expression> CompressedMaterialization::GetGeometryDecompress(unique_p
 
 	BoundScalarFunction bound_function(decompress_function);
 	bound_function.SetReturnType(result_type);
-	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments), nullptr);
+	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 }
 
 unique_ptr<Expression> CompressedMaterialization::GetIntegralDecompress(unique_ptr<Expression> input,
@@ -1008,7 +1008,7 @@ unique_ptr<Expression> CompressedMaterialization::GetIntegralDecompress(unique_p
 	BoundScalarFunction bound_function(decompress_function);
 	bound_function.SetReturnType(result_type);
 
-	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments), nullptr);
+	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 }
 
 unique_ptr<Expression> CompressedMaterialization::GetStringDecompress(unique_ptr<Expression> input,
@@ -1022,7 +1022,7 @@ unique_ptr<Expression> CompressedMaterialization::GetStringDecompress(unique_ptr
 	BoundScalarFunction bound_function(decompress_function);
 	bound_function.SetReturnType(result_type);
 
-	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments), nullptr);
+	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(arguments));
 }
 
 unique_ptr<Expression> CompressedMaterialization::GetVariantDecompress(unique_ptr<Expression> input,

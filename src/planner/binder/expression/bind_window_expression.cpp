@@ -205,7 +205,6 @@ BindResult BaseSelectBinder::BindWindowExpression(WindowExpression &window, idx_
 	LogicalType sql_type;
 	unique_ptr<BoundAggregateFunction> aggregate;
 	unique_ptr<BoundWindowFunction> window_func;
-	unique_ptr<FunctionData> bind_info;
 	vector<unique_ptr<Expression>> children;
 
 	if (entry->type == CatalogType::AGGREGATE_FUNCTION_ENTRY) {
@@ -225,8 +224,7 @@ BindResult BaseSelectBinder::BindWindowExpression(WindowExpression &window, idx_
 		}
 
 		// create the aggregate
-		aggregate = make_uniq<BoundAggregateFunction>(window_bound_aggregate->Function());
-		bind_info = std::move(window_bound_aggregate->BindInfoMutable());
+		aggregate = make_uniq<BoundAggregateFunction>(std::move(window_bound_aggregate->FunctionMutable()));
 		children = std::move(window_bound_aggregate->GetChildrenMutable());
 		sql_type = window_bound_aggregate->GetReturnType();
 
@@ -276,13 +274,11 @@ BindResult BaseSelectBinder::BindWindowExpression(WindowExpression &window, idx_
 		}
 
 		window_func = std::move(window_bound_function->WindowFunctionMutable());
-		bind_info = std::move(window_bound_function->BindInfoMutable());
 		children = std::move(window_bound_function->GetChildrenMutable());
 		sql_type = window_bound_function->GetReturnType();
 	}
 
-	auto result =
-	    make_uniq<BoundWindowExpression>(sql_type, std::move(aggregate), std::move(window_func), std::move(bind_info));
+	auto result = make_uniq<BoundWindowExpression>(sql_type, std::move(aggregate), std::move(window_func));
 	result->GetChildrenMutable() = std::move(children);
 	for (auto &bound_partition : bound_partitions) {
 		result->PartitionsMutable().push_back(std::move(bound_partition));

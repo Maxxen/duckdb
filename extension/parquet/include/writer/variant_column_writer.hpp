@@ -103,7 +103,7 @@ public:
 		BoundScalarFunction bound_func(GetTransformFunction());
 		bound_func.SetReturnType(TransformedType());
 
-		return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments), nullptr);
+		return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments));
 	}
 
 public:

@@ -11,19 +11,16 @@
 namespace duckdb {
 
 BoundFunctionExpression::BoundFunctionExpression(BoundScalarFunction bound_function,
-                                                 vector<unique_ptr<Expression>> arguments,
-                                                 unique_ptr<FunctionData> bind_info_p, bool is_operator)
-    : Expression(GetFunctionExpressionType(bound_function, arguments, bind_info_p.get()),
-                 ExpressionClass::BOUND_FUNCTION, bound_function.GetReturnType()),
-      function(std::move(bound_function)), children(std::move(arguments)), bind_info(std::move(bind_info_p)),
-      is_operator(is_operator) {
+                                                 vector<unique_ptr<Expression>> arguments, bool is_operator)
+    : Expression(GetFunctionExpressionType(bound_function, arguments), ExpressionClass::BOUND_FUNCTION,
+                 bound_function.GetReturnType()),
+      function(std::move(bound_function)), children(std::move(arguments)), is_operator(is_operator) {
 	D_ASSERT(!function.GetName().empty());
 }
 
 ExpressionType BoundFunctionExpression::GetFunctionExpressionType(const BoundScalarFunction &bound_function,
-                                                                  const vector<unique_ptr<Expression>> &arguments,
-                                                                  optional_ptr<FunctionData> bind_info_p) {
-	FunctionToStringInput input(bound_function, bind_info_p.get(), arguments);
+                                                                  const vector<unique_ptr<Expression>> &arguments) {
+	FunctionToStringInput input(bound_function, bound_function.bind_info.get(), arguments);
 	return bound_function.GetExpressionType(input);
 }
 
@@ -54,8 +51,8 @@ bool BoundFunctionExpression::IsFoldable() const {
 	// functions with side effects cannot be folded: they have to be executed once for every row
 	if (function.HasBindLambdaCallback()) {
 		// This is a lambda function
-		D_ASSERT(bind_info);
-		auto &lambda_bind_data = bind_info->Cast<LambdaFunctionData>();
+		D_ASSERT(BindInfo());
+		auto &lambda_bind_data = BindInfo()->Cast<LambdaFunctionData>();
 		auto lambda_expr = lambda_bind_data.GetLambdaExpression();
 		if (lambda_expr && lambda_expr->IsVolatile()) {
 			return false;
@@ -73,7 +70,7 @@ bool BoundFunctionExpression::CanThrow() const {
 
 string BoundFunctionExpression::ToString() const {
 	if (function.HasToStringCallback()) {
-		FunctionToStringInput input(function, bind_info.get(), children);
+		FunctionToStringInput input(function, BindInfo().get(), children);
 		return function.FunctionToString(input);
 	}
 	auto &function_name = function.GetName().GetIdentifierName();
@@ -124,7 +121,7 @@ bool BoundFunctionExpression::Equals(const BaseExpression &other_p) const {
 	if (!Expression::ListEquals(children, other.children)) {
 		return false;
 	}
-	if (!FunctionData::Equals(bind_info.get(), other.bind_info.get())) {
+	if (!FunctionData::Equals(BindInfo().get(), other.BindInfo().get())) {
 		return false;
 	}
 	return true;
@@ -136,10 +133,7 @@ unique_ptr<Expression> BoundFunctionExpression::Copy() const {
 	for (auto &child : children) {
 		new_children.push_back(child->Copy());
 	}
-	unique_ptr<FunctionData> new_bind_info = bind_info ? bind_info->Copy() : nullptr;
-
-	auto copy =
-	    make_uniq<BoundFunctionExpression>(function, std::move(new_children), std::move(new_bind_info), is_operator);
+	auto copy = make_uniq<BoundFunctionExpression>(function, std::move(new_children), is_operator);
 	copy->CopyProperties(*this);
 	return std::move(copy);
 }
@@ -152,7 +146,7 @@ void BoundFunctionExpression::Verify() const {
 void BoundFunctionExpression::Serialize(Serializer &serializer) const {
 	if (!serializer.ShouldSerialize(StorageVersion::V2_0_0) && function.HasLegacySerializeCallback()) {
 		// serialize legacy expression for backwards compatibility
-		FunctionToStringInput input(function, bind_info.get(), children);
+		FunctionToStringInput input(function, BindInfo().get(), children);
 		auto legacy_expr = function.GetLegacySerializeCallback()(input);
 		legacy_expr->Serialize(serializer);
 		return;
@@ -161,7 +155,7 @@ void BoundFunctionExpression::Serialize(Serializer &serializer) const {
 	Expression::Serialize(serializer);
 	serializer.WriteProperty(200, "return_type", return_type);
 	serializer.WriteProperty(201, "children", children);
-	FunctionSerializer::Serialize(serializer, function, bind_info.get());
+	FunctionSerializer::Serialize(serializer, function);
 	serializer.WriteProperty(202, "is_operator", is_operator);
 }
 
@@ -197,26 +191,25 @@ unique_ptr<Expression> BoundFunctionExpression::Deserialize(Deserializer &deseri
 	auto return_type = deserializer.ReadProperty<LogicalType>(200, "return_type");
 	auto children = deserializer.ReadProperty<vector<unique_ptr<Expression>>>(201, "children");
 
-	auto entry = FunctionSerializer::Deserialize<BoundScalarFunction, ScalarFunctionCatalogEntry>(
+	auto function = FunctionSerializer::Deserialize<BoundScalarFunction, ScalarFunctionCatalogEntry>(
 	    deserializer, CatalogType::SCALAR_FUNCTION_ENTRY, children, return_type);
 
 	auto is_operator = deserializer.ReadProperty<bool>(202, "is_operator");
 
-	RestoreErasedLambdaChild(entry.first, entry.second.get(), children);
+	RestoreErasedLambdaChild(function, function.bind_info.get(), children);
 
-	if (entry.first.HasBindExpressionCallback()) {
+	if (function.HasBindExpressionCallback()) {
 		// bind the function expression
 		auto &context = deserializer.Get<ClientContext &>();
-		auto bind_input = FunctionBindExpressionInput(context, entry.first, entry.second, children);
+		auto bind_input = FunctionBindExpressionInput(context, function, function.bind_info, children);
 		// replace the function expression with the bound expression
-		auto bound_expression = entry.first.GetBindExpressionCallback()(bind_input);
+		auto bound_expression = function.GetBindExpressionCallback()(bind_input);
 		if (bound_expression) {
 			return bound_expression;
 		}
 		// Otherwise, fall through and continue on normally
 	}
-	auto result =
-	    make_uniq<BoundFunctionExpression>(std::move(entry.first), std::move(children), std::move(entry.second));
+	auto result = make_uniq<BoundFunctionExpression>(std::move(function), std::move(children));
 	result->is_operator = is_operator;
 	if (result->return_type != return_type) {
 		// return type mismatch - push a cast

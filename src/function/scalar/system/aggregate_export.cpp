@@ -259,7 +259,8 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(ClientContext &context
 		}
 	}
 
-	auto [bound_aggr, bind_info] = function_binder.ResolveFunction(aggr, args);
+	auto bound_aggr = function_binder.ResolveFunction(aggr, args);
+	auto bind_info = std::move(bound_aggr.bind_info);
 
 	const auto &bound_args = bound_aggr.GetArguments();
 	bool signature_matches = bound_args.size() == argument_types.size();

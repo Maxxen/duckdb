@@ -1476,7 +1476,8 @@ unique_ptr<Expression> JSONFunctions::CreateJSONCopyToJSONExpression(ClientConte
 	arguments.push_back(LogicalType::VARCHAR);
 	bound_function.SetReturnType(LogicalType::JSON());
 
-	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children), std::move(bind_data));
+	bound_function.bind_info = std::move(bind_data);
+	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children));
 }
 
 ScalarFunctionSet JSONFunctions::GetObjectFunction() {

@@ -11,11 +11,10 @@ namespace duckdb {
 
 BoundAggregateExpression::BoundAggregateExpression(BoundAggregateFunction function,
                                                    vector<unique_ptr<Expression>> children,
-                                                   unique_ptr<Expression> filter, unique_ptr<FunctionData> bind_info,
-                                                   AggregateType aggr_type)
+                                                   unique_ptr<Expression> filter, AggregateType aggr_type)
     : Expression(ExpressionType::BOUND_AGGREGATE, ExpressionClass::BOUND_AGGREGATE, function.GetReturnType()),
-      function(std::move(function)), children(std::move(children)), bind_info(std::move(bind_info)),
-      aggr_type(aggr_type), state_export_mode(AggregateStateExportMode::NONE), filter(std::move(filter)) {
+      function(std::move(function)), children(std::move(children)), aggr_type(aggr_type),
+      state_export_mode(AggregateStateExportMode::NONE), filter(std::move(filter)) {
 	D_ASSERT(!this->function.GetName().empty());
 }
 
@@ -95,7 +94,7 @@ bool BoundAggregateExpression::Equals(const BaseExpression &other_p) const {
 	if (state_export_mode != other.state_export_mode) {
 		return false;
 	}
-	if (!FunctionData::Equals(bind_info.get(), other.BindInfo().get())) {
+	if (!FunctionData::Equals(BindInfo().get(), other.BindInfo().get())) {
 		return false;
 	}
 	if (!BoundOrderModifier::Equals(order_bys, other.order_bys)) {
@@ -116,10 +115,9 @@ unique_ptr<Expression> BoundAggregateExpression::Copy() const {
 	for (auto &child : children) {
 		new_children.push_back(child->Copy());
 	}
-	auto new_bind_info = bind_info ? bind_info->Copy() : nullptr;
 	auto new_filter = filter ? filter->Copy() : nullptr;
-	auto copy = make_uniq<BoundAggregateExpression>(function, std::move(new_children), std::move(new_filter),
-	                                                std::move(new_bind_info), aggr_type);
+	auto copy =
+	    make_uniq<BoundAggregateExpression>(function, std::move(new_children), std::move(new_filter), aggr_type);
 	copy->CopyProperties(*this);
 	copy->state_export_mode = state_export_mode;
 	copy->order_bys = order_bys ? order_bys->Copy() : nullptr;
@@ -130,7 +128,7 @@ void BoundAggregateExpression::Serialize(Serializer &serializer) const {
 	Expression::Serialize(serializer);
 	serializer.WriteProperty(200, "return_type", return_type);
 	serializer.WriteProperty(201, "children", children);
-	FunctionSerializer::Serialize(serializer, function, bind_info.get());
+	FunctionSerializer::Serialize(serializer, function);
 	serializer.WriteProperty(203, "aggregate_type", aggr_type);
 	serializer.WritePropertyWithDefault(204, "filter", filter, unique_ptr<Expression>());
 	serializer.WritePropertyWithDefault(205, "order_bys", order_bys, unique_ptr<BoundOrderModifier>());
@@ -140,13 +138,13 @@ void BoundAggregateExpression::Serialize(Serializer &serializer) const {
 unique_ptr<Expression> BoundAggregateExpression::Deserialize(Deserializer &deserializer) {
 	auto return_type = deserializer.ReadProperty<LogicalType>(200, "return_type");
 	auto children = deserializer.ReadProperty<vector<unique_ptr<Expression>>>(201, "children");
-	auto entry = FunctionSerializer::Deserialize<BoundAggregateFunction, AggregateFunctionCatalogEntry>(
+	auto function = FunctionSerializer::Deserialize<BoundAggregateFunction, AggregateFunctionCatalogEntry>(
 	    deserializer, CatalogType::AGGREGATE_FUNCTION_ENTRY, children, return_type);
 	auto aggregate_type = deserializer.ReadProperty<AggregateType>(203, "aggregate_type");
 	auto filter =
 	    deserializer.ReadPropertyWithExplicitDefault<unique_ptr<Expression>>(204, "filter", unique_ptr<Expression>());
-	auto result = make_uniq<BoundAggregateExpression>(std::move(entry.first), std::move(children), std::move(filter),
-	                                                  std::move(entry.second), aggregate_type);
+	auto result = make_uniq<BoundAggregateExpression>(std::move(function), std::move(children), std::move(filter),
+	                                                  aggregate_type);
 	deserializer.ReadPropertyWithExplicitDefault(205, "order_bys", result->order_bys, unique_ptr<BoundOrderModifier>());
 	deserializer.ReadPropertyWithExplicitDefault(206, "state_export", result->state_export_mode,
 	                                             AggregateStateExportMode::NONE);

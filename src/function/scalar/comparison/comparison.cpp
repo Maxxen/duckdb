@@ -150,8 +150,8 @@ unique_ptr<Expression> BoundComparisonExpression::Create(ExpressionType type, un
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
 
-	auto result = make_uniq<BoundFunctionExpression>(BoundScalarFunction(GetComparisonFunction(type)),
-	                                                 std::move(children), nullptr, true);
+	auto result =
+	    make_uniq<BoundFunctionExpression>(BoundScalarFunction(GetComparisonFunction(type)), std::move(children), true);
 	return std::move(result);
 }
 
