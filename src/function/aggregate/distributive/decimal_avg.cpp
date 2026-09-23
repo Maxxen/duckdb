@@ -137,19 +137,23 @@ static unique_ptr<FunctionData> BindDecimalAverage(BindAggregateFunctionInput &i
 	switch (input_type.InternalType()) {
 	case PhysicalType::INT16:
 		function.ReplaceImplementation(
-		    MakeDecimalAvgFunction<int16_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT16, scale), return_type));
+		    MakeDecimalAvgFunction<int16_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT16, scale), return_type),
+		    input.GetClientContext());
 		break;
 	case PhysicalType::INT32:
 		function.ReplaceImplementation(
-		    MakeDecimalAvgFunction<int32_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT32, scale), return_type));
+		    MakeDecimalAvgFunction<int32_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT32, scale), return_type),
+		    input.GetClientContext());
 		break;
 	case PhysicalType::INT64:
 		function.ReplaceImplementation(
-		    MakeDecimalAvgFunction<int64_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT64, scale), return_type));
+		    MakeDecimalAvgFunction<int64_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT64, scale), return_type),
+		    input.GetClientContext());
 		break;
 	case PhysicalType::INT128:
 		function.ReplaceImplementation(
-		    MakeDecimalAvgFunction<hugeint_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_DECIMAL, scale), return_type));
+		    MakeDecimalAvgFunction<hugeint_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_DECIMAL, scale), return_type),
+		    input.GetClientContext());
 		break;
 	default:
 		throw InternalException("decimal_average: unexpected physical type");

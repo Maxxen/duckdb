@@ -10,6 +10,7 @@
 #include "duckdb/function/aggregate_function.hpp"
 #include "duckdb/function/cast/cast_function_set.hpp"
 #include "duckdb/function/cast_rules.hpp"
+#include "duckdb/function/signature_resolver.hpp"
 #include "duckdb/function/type_constructor.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
@@ -84,6 +85,7 @@ optional_idx FunctionOverloads::Cost(optional_ptr<ClientContext> context, const 
                                      const vector<LogicalType> &arguments,
                                      const vector<pair<Identifier, LogicalType>> &named_arguments) {
 	const auto &sig = func.GetSignature();
+	const SignatureResolver resolver(context, func);
 
 	// Compute total number of arguments passed
 	const auto received_arg_count = static_cast<idx_t>(arguments.size() + named_arguments.size());
@@ -143,7 +145,7 @@ optional_idx FunctionOverloads::Cost(optional_ptr<ClientContext> context, const 
 			continue;
 		}
 
-		auto &arg_type = i < positional_count ? sig.GetParameter(i).GetType() : args_param->GetType();
+		auto arg_type = resolver.Resolve(i < positional_count ? sig.GetParameter(i).GetType() : args_param->GetType());
 
 		int64_t cast_cost = ImplicitCastCost(context, arguments[i], arg_type);
 		if (cast_cost >= 0) {
@@ -166,7 +168,7 @@ optional_idx FunctionOverloads::Cost(optional_ptr<ClientContext> context, const 
 				return optional_idx();
 			}
 			// the options of "**kwargs" do not select the overload - they are checked once it is chosen
-			int64_t cast_cost = ImplicitCastCost(context, named_arg.second, kwargs_param->GetType());
+			int64_t cast_cost = ImplicitCastCost(context, named_arg.second, resolver.Resolve(kwargs_param->GetType()));
 			if (cast_cost >= 0) {
 				// we can implicitly cast, add the cost to the total cost
 				cost += static_cast<idx_t>(cast_cost);
@@ -187,7 +189,7 @@ optional_idx FunctionOverloads::Cost(optional_ptr<ClientContext> context, const 
 				continue;
 			}
 
-			int64_t cast_cost = ImplicitCastCost(context, named_arg.second, param.GetType());
+			int64_t cast_cost = ImplicitCastCost(context, named_arg.second, resolver.Resolve(param.GetType()));
 			if (cast_cost >= 0) {
 				cost += idx_t(cast_cost);
 			} else {
@@ -532,6 +534,7 @@ static void PlaceArguments(ClientContext &context, const T &function,
                            vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments, vector<Value> &parameters,
                            named_argument_map_t &named_parameters) {
 	auto &signature = function.GetSignature();
+	const SignatureResolver resolver(context, function);
 	const auto positional_count = signature.GetPositionalParameterCount();
 	const auto passed_count = positional_arguments.size();
 
@@ -549,7 +552,7 @@ static void PlaceArguments(ClientContext &context, const T &function,
 			auto option_schema = signature.GetTypedKwargs();
 			if (!option_schema) {
 				// received by "**kwargs" - cast to its type, as overload selection checked, unless that is ANY
-				auto &kwargs_type = signature.GetKwargs()->GetType();
+				auto kwargs_type = resolver.Resolve(signature.GetKwargs()->GetType());
 				named_parameters.insert(
 				    make_pair(argument_name, PlaceArgument(context, *named_argument.second, kwargs_type)));
 				continue;
@@ -583,8 +586,8 @@ static void PlaceArguments(ClientContext &context, const T &function,
 		}
 		auto &param = signature.GetParameter(param_idx.GetIndex());
 		if (!param.AcceptsPosition()) {
-			named_parameters.insert(
-			    make_pair(argument_name, PlaceArgument(context, *named_argument.second, param.GetType())));
+			named_parameters.insert(make_pair(
+			    argument_name, PlaceArgument(context, *named_argument.second, resolver.Resolve(param.GetType()))));
 			continue;
 		}
 		if (param_idx.GetIndex() < passed_count) {
@@ -599,13 +602,13 @@ static void PlaceArguments(ClientContext &context, const T &function,
 
 	for (idx_t i = 0; i < positional_count; i++) {
 		auto &param = signature.GetParameter(i);
+		auto param_type = resolver.Resolve(param.GetType());
 		if (i < passed_count) {
-			parameters.push_back(PlaceArgument(context, *positional_arguments[i], param.GetType()));
+			parameters.push_back(PlaceArgument(context, *positional_arguments[i], param_type));
 		} else if (named_slots[i]) {
-			parameters.push_back(PlaceArgument(context, *named_slots[i], param.GetType()));
+			parameters.push_back(PlaceArgument(context, *named_slots[i], param_type));
 		} else if (param.HasDefaultValue()) {
-			parameters.push_back(
-			    FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(), param.GetType()));
+			parameters.push_back(FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(), param_type));
 		} else {
 			// overload selection only picks an overload whose required parameters the call fills
 			throw InternalException("Missing value for parameter %s in function call to %s", param.GetName(),
@@ -614,7 +617,7 @@ static void PlaceArguments(ClientContext &context, const T &function,
 	}
 	if (passed_count > positional_count) {
 		// overload selection only picks an overload with "*args" for surplus positional arguments
-		auto &args_type = signature.GetArgs()->GetType();
+		auto args_type = resolver.Resolve(signature.GetArgs()->GetType());
 		for (idx_t i = positional_count; i < passed_count; i++) {
 			parameters.push_back(PlaceArgument(context, *positional_arguments[i], args_type));
 		}
@@ -802,8 +805,8 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 	// because functions with DEFAULT_NULL_HANDLING should not have to deal with NULL inputs in their bind code.
 	// Some functions may have an invalid default return type, as they must be bound to infer the return type.
 	// In those cases, we default to SQLNULL.
-	const auto return_type_if_null =
-	    bound_function.GetReturnType().IsComplete() ? bound_function.GetReturnType() : LogicalType::SQLNULL;
+	const auto declared_return_type = bound_function.ResolveReturnType(context);
+	const auto return_type_if_null = declared_return_type.IsComplete() ? declared_return_type : LogicalType::SQLNULL;
 	if (bound_function.GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING) {
 		for (auto &child : regular_args) {
 			if (child->GetReturnType() == LogicalTypeId::SQLNULL) {
@@ -1166,7 +1169,8 @@ void FunctionBinder::CheckTemplateTypesResolved(const BoundSimpleFunction &bound
 // The types of the variadic arguments are added to the arguments of the bound function.
 // Returns the resolved name of every argument: the parameter name for standard and keyword-only parameters, the
 // caller-provided name for "**kwargs" and an empty identifier for "*args".
-static vector<Identifier> ResolveArguments(const SimpleFunction &function, BoundSimpleFunction &bound_function,
+static vector<Identifier> ResolveArguments(const SignatureResolver &resolver, const SimpleFunction &function,
+                                           BoundSimpleFunction &bound_function,
                                            vector<unique_ptr<Expression>> &arguments,
                                            vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
 	const auto &sig = function.GetSignature();
@@ -1237,13 +1241,13 @@ static vector<Identifier> ResolveArguments(const SimpleFunction &function, Bound
 		case FunctionParameterKind::VAR_POSITIONAL:
 			for (idx_t i = positional_count; i < passed_count; i++) {
 				bound_arguments.insert(bound_arguments.begin() + NumericCast<int64_t>(resolved_arguments.size()),
-				                       param.GetType());
+				                       resolver.Resolve(param.GetType()));
 				add_argument(std::move(positional_arguments[i]), Identifier());
 			}
 			continue;
 		case FunctionParameterKind::VAR_KEYWORD:
 			for (auto &[name, arg] : kwargs) {
-				bound_arguments.push_back(param.GetType());
+				bound_arguments.push_back(resolver.Resolve(param.GetType()));
 				named_arguments_names.push_back(name);
 				add_argument(std::move(arg), name);
 			}
@@ -1310,10 +1314,11 @@ FunctionBinder::ResolveFunction(shared_ptr<const ScalarFunction> function_p, vec
                                 vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
 	auto &function = *function_p;
 	// Make a BoundScalarFunction out of the ScalarFunction, so we can store bind info and other properties in it.
-	BoundScalarFunction bound_function(std::move(function_p));
+	BoundScalarFunction bound_function(std::move(function_p), context);
 
 	// Reorder named args and expand the variadic arguments
-	auto argument_names = ResolveArguments(function, bound_function, arguments, named_arguments);
+	auto argument_names =
+	    ResolveArguments(SignatureResolver(context, function), function, bound_function, arguments, named_arguments);
 
 	// Attempt to resolve template types, before we call the "Bind" callback.
 	ResolveTemplateTypes(bound_function, arguments);
@@ -1396,10 +1401,11 @@ FunctionBinder::ResolveFunction(shared_ptr<const AggregateFunction> function_p,
                                 vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
 	auto &function = *function_p;
 	// Make a BoundFunction out of the func
-	BoundAggregateFunction bound_function(std::move(function_p));
+	BoundAggregateFunction bound_function(std::move(function_p), context);
 
 	// Reorder named args and expand the variadic arguments
-	auto argument_names = ResolveArguments(function, bound_function, children, named_arguments);
+	auto argument_names =
+	    ResolveArguments(SignatureResolver(context, function), function, bound_function, children, named_arguments);
 
 	ResolveTemplateTypes(bound_function, children);
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, children));
@@ -1485,10 +1491,11 @@ FunctionBinder::ResolveFunction(shared_ptr<const WindowFunction> function_p, vec
                                 optional_ptr<vector<LogicalType>> order_types,
                                 optional_ptr<vector<LogicalType>> arg_order_types) {
 	auto &function = *function_p;
-	BoundWindowFunction bound_function(std::move(function_p));
+	BoundWindowFunction bound_function(std::move(function_p), context);
 
 	// Reorder named args and expand the variadic arguments
-	auto argument_names = ResolveArguments(function, bound_function, children, named_arguments);
+	auto argument_names =
+	    ResolveArguments(SignatureResolver(context, function), function, bound_function, children, named_arguments);
 
 	ResolveTemplateTypes(bound_function, children);
 	auto logical_arguments = CaptureLogicalArguments(bound_function, children);

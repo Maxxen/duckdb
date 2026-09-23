@@ -729,7 +729,7 @@ void duckdb_copy_function_set_copy_from_function(duckdb_copy_function copy_funct
 		if (param.IsVariadic()) {
 			continue;
 		}
-		if (duckdb::TypeVisitor::Contains(param.GetType(), duckdb::LogicalTypeId::INVALID)) {
+		if (param.GetType().ContainsInvalid()) {
 			return;
 		}
 	}

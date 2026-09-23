@@ -352,7 +352,7 @@ unique_ptr<BaseStatistics> SumPropagateStats(ClientContext &context, BoundAggreg
 	const bool sum_fits_in_int64 =
 	    wide_negative > NumericLimits<int64_t>::Minimum() && wide_positive < NumericLimits<int64_t>::Maximum();
 	if (has_no_overflow_variant && sum_fits_in_int64) {
-		expr.FunctionMutable().ReplaceImplementation(GetSumAggregateNoOverflow(internal_type));
+		expr.FunctionMutable().ReplaceImplementation(GetSumAggregateNoOverflow(internal_type), context);
 	}
 
 	// Propagate stats.
@@ -420,7 +420,7 @@ unique_ptr<FunctionData> BindDecimalSum(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 	auto decimal_type = arguments[0]->GetReturnType();
-	function.ReplaceImplementation(GetSumAggregate(decimal_type.InternalType()));
+	function.ReplaceImplementation(GetSumAggregate(decimal_type.InternalType()), input.GetClientContext());
 	function.SetName("sum");
 	function.GetArguments()[0] = decimal_type;
 	function.SetReturnType(LogicalType::DECIMAL(Decimal::MAX_WIDTH_DECIMAL, DecimalType::GetScale(decimal_type)));

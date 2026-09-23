@@ -18,6 +18,7 @@
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/function/signature_resolver.hpp"
 
 namespace duckdb {
 constexpr const char *AggregateFunctionCatalogEntry::Name;
@@ -140,13 +141,24 @@ Value FunctionStabilityToValue(FunctionStability stability) {
 	}
 }
 
+//! Renders a type of the function's signature the way the type it resolves to renders
+string SignatureTypeString(const SimpleFunction &function, const TypeName &type) {
+	return SignatureResolver(nullptr, function).TypeToString(type);
+}
+
+//! The type a type of the function's signature resolves to, or INVALID if it cannot be resolved without a context
+LogicalType SignatureLogicalType(const SimpleFunction &function, const TypeName &type) {
+	return SignatureResolver(nullptr, function).TryResolve(type);
+}
+
 //! The legacy "varargs" column cannot tell "*args" and "**kwargs" apart - report whichever the function has
-Value VariadicTypeValue(const FunctionSignature &signature) {
+Value VariadicTypeValue(const SimpleFunction &function) {
+	auto &signature = function.GetSignature();
 	auto variadic = signature.GetArgs();
 	if (!variadic) {
 		variadic = signature.GetKwargs();
 	}
-	return variadic ? Value(variadic->GetType().ToString()) : Value();
+	return variadic ? Value(SignatureTypeString(function, variadic->GetType())) : Value();
 }
 
 struct ScalarFunctionExtractor {
@@ -159,7 +171,8 @@ struct ScalarFunctionExtractor {
 	}
 
 	static Value GetReturnType(ScalarFunctionCatalogEntry &entry, idx_t offset) {
-		return Value(entry.functions.GetFunctionByOffset(offset)->GetReturnType().ToString());
+		return Value(SignatureTypeString(*entry.functions.GetFunctionByOffset(offset),
+		                                 entry.functions.GetFunctionByOffset(offset)->GetReturnType()));
 	}
 
 	static vector<Value> GetParameters(ScalarFunctionCatalogEntry &entry, idx_t offset) {
@@ -177,7 +190,7 @@ struct ScalarFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType().ToString());
+				results.emplace_back(SignatureTypeString(fun, fun.GetSignature().GetParameter(i).GetType()));
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
@@ -188,14 +201,14 @@ struct ScalarFunctionExtractor {
 		vector<LogicalType> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType());
+				results.emplace_back(SignatureLogicalType(fun, fun.GetSignature().GetParameter(i).GetType()));
 			}
 		}
 		return results;
 	}
 
 	static Value GetVarArgs(ScalarFunctionCatalogEntry &entry, idx_t offset) {
-		return VariadicTypeValue(entry.functions.GetFunctionByOffset(offset)->GetSignature());
+		return VariadicTypeValue(*entry.functions.GetFunctionByOffset(offset));
 	}
 
 	static Value GetMacroDefinition(ScalarFunctionCatalogEntry &entry, idx_t offset) {
@@ -222,7 +235,8 @@ struct WindowFunctionExtractor {
 	}
 
 	static Value GetReturnType(WindowFunctionCatalogEntry &entry, idx_t offset) {
-		return Value(entry.functions.GetFunctionByOffset(offset)->GetReturnType().ToString());
+		return Value(SignatureTypeString(*entry.functions.GetFunctionByOffset(offset),
+		                                 entry.functions.GetFunctionByOffset(offset)->GetReturnType()));
 	}
 
 	static vector<Value> GetParameters(WindowFunctionCatalogEntry &entry, idx_t offset) {
@@ -240,7 +254,7 @@ struct WindowFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType().ToString());
+				results.emplace_back(SignatureTypeString(fun, fun.GetSignature().GetParameter(i).GetType()));
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
@@ -251,7 +265,7 @@ struct WindowFunctionExtractor {
 		vector<LogicalType> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType());
+				results.emplace_back(SignatureLogicalType(fun, fun.GetSignature().GetParameter(i).GetType()));
 			}
 		}
 		return results;
@@ -284,7 +298,8 @@ struct AggregateFunctionExtractor {
 	}
 
 	static Value GetReturnType(AggregateFunctionCatalogEntry &entry, idx_t offset) {
-		return Value(entry.functions.GetFunctionByOffset(offset)->GetReturnType().ToString());
+		return Value(SignatureTypeString(*entry.functions.GetFunctionByOffset(offset),
+		                                 entry.functions.GetFunctionByOffset(offset)->GetReturnType()));
 	}
 
 	static vector<Value> GetParameters(AggregateFunctionCatalogEntry &entry, idx_t offset) {
@@ -302,7 +317,7 @@ struct AggregateFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType().ToString());
+				results.emplace_back(SignatureTypeString(fun, fun.GetSignature().GetParameter(i).GetType()));
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
@@ -313,14 +328,14 @@ struct AggregateFunctionExtractor {
 		vector<LogicalType> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType());
+				results.emplace_back(SignatureLogicalType(fun, fun.GetSignature().GetParameter(i).GetType()));
 			}
 		}
 		return results;
 	}
 
 	static Value GetVarArgs(AggregateFunctionCatalogEntry &entry, idx_t offset) {
-		return VariadicTypeValue(entry.functions.GetFunctionByOffset(offset)->GetSignature());
+		return VariadicTypeValue(*entry.functions.GetFunctionByOffset(offset));
 	}
 
 	static Value GetMacroDefinition(AggregateFunctionCatalogEntry &entry, idx_t offset) {
@@ -508,7 +523,7 @@ struct TableFunctionExtractor {
 
 		for (auto &param : fun.GetSignature().GetParameters()) {
 			if (!param.IsVariadic()) {
-				results.emplace_back(param.GetType().ToString());
+				results.emplace_back(SignatureTypeString(fun, param.GetType()));
 			}
 		}
 		AddOptions(fun.GetSignature(), results, true);
@@ -516,10 +531,11 @@ struct TableFunctionExtractor {
 	}
 
 	static vector<LogicalType> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
-		const auto &signature = entry.functions.GetFunctionByOffset(offset)->GetSignature();
+		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
+		const auto &signature = fun.GetSignature();
 		vector<LogicalType> result;
 		for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
-			result.push_back(signature.GetParameter(i).GetType());
+			result.push_back(SignatureLogicalType(fun, signature.GetParameter(i).GetType()));
 		}
 		return result;
 	}
@@ -527,7 +543,7 @@ struct TableFunctionExtractor {
 	static Value GetVarArgs(TableFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		auto args = fun.GetSignature().GetArgs();
-		return args ? Value(args->GetType().ToString()) : Value();
+		return args ? Value(SignatureTypeString(fun, args->GetType())) : Value();
 	}
 
 	static Value GetMacroDefinition(TableFunctionCatalogEntry &entry, idx_t offset) {
@@ -575,7 +591,7 @@ struct PragmaFunctionExtractor {
 
 		for (auto &param : fun.GetSignature().GetParameters()) {
 			if (!param.IsVariadic()) {
-				results.emplace_back(param.GetType().ToString());
+				results.emplace_back(SignatureTypeString(fun, param.GetType()));
 			}
 		}
 		AddOptions(fun.GetSignature(), results, true);
@@ -587,7 +603,7 @@ struct PragmaFunctionExtractor {
 		const auto &signature = fun.GetSignature();
 		vector<LogicalType> result;
 		for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
-			result.push_back(signature.GetParameter(i).GetType());
+			result.push_back(SignatureLogicalType(fun, signature.GetParameter(i).GetType()));
 		}
 		return result;
 	}
@@ -595,7 +611,7 @@ struct PragmaFunctionExtractor {
 	static Value GetVarArgs(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		auto args = fun.GetSignature().GetArgs();
-		return args ? Value(args->GetType().ToString()) : Value();
+		return args ? Value(SignatureTypeString(fun, args->GetType())) : Value();
 	}
 
 	static Value GetMacroDefinition(PragmaFunctionCatalogEntry &entry, idx_t offset) {

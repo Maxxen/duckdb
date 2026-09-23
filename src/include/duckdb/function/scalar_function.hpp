@@ -369,7 +369,7 @@ public:
 		function_info = std::move(info);
 	}
 	template <class T, class... ARGS>
-	void SetExtraFunctionInfo(ARGS &&... args) {
+	void SetExtraFunctionInfo(ARGS &&...args) {
 		function_info = make_shared_ptr<T>(std::forward<ARGS>(args)...);
 	}
 	shared_ptr<ScalarFunctionInfo> GetFunctionInfo() const {
@@ -581,8 +581,10 @@ public:
 
 class BoundScalarFunction : public BaseScalarFunction<BoundScalarFunction>, public BoundSimpleFunction {
 public:
-	explicit BoundScalarFunction(const ScalarFunction &function);
-	explicit BoundScalarFunction(shared_ptr<const ScalarFunction> function);
+	explicit BoundScalarFunction(const ScalarFunction &function, optional_ptr<ClientContext> context);
+	explicit BoundScalarFunction(shared_ptr<const ScalarFunction> function, optional_ptr<ClientContext> context);
+	//! Binds a function specialized for concrete types to exactly these types, without resolving its signature
+	BoundScalarFunction(const ScalarFunction &function, vector<LogicalType> arguments, LogicalType return_type);
 
 	bool operator==(const BoundScalarFunction &rhs) const;
 	bool operator!=(const BoundScalarFunction &rhs) const;

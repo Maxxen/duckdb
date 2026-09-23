@@ -429,7 +429,7 @@ AggregateFunction GetFirstFunction(const LogicalType &type) {
 	if (type.id() == LogicalTypeId::DECIMAL) {
 		type.Verify();
 		AggregateFunction function = GetDecimalFirstFunction<LAST, SKIP_NULLS>(type);
-		function.GetSignature().GetParameter(0).SetType(type);
+		function.GetSignature().SetParameterType(0, type);
 		function.SetReturnType(type);
 		return function;
 	}
@@ -485,7 +485,7 @@ unique_ptr<FunctionData> BindDecimalFirst(BindAggregateFunctionInput &input) {
 
 	auto decimal_type = arguments[0]->GetReturnType();
 	auto name = function.GetName();
-	function.ReplaceImplementation(GetFirstFunction<LAST, SKIP_NULLS>(decimal_type));
+	function.ReplaceImplementation(GetFirstFunction<LAST, SKIP_NULLS>(decimal_type), input.GetClientContext());
 	function.SetName(std::move(name));
 	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
 	function.SetDirectRewriteCallback(RewriteOrderedFirst<LAST, SKIP_NULLS>);
@@ -510,7 +510,8 @@ unique_ptr<FunctionData> BindFirst(BindAggregateFunctionInput &input) {
 
 	auto input_type = arguments[0]->GetReturnType();
 	auto name = function.GetName();
-	function.ReplaceImplementation(GetFirstOperator<LAST, SKIP_NULLS>(input_type));
+	// the input type is passed as-is: it need not re-resolve, e.g. a GEOMETRY of a coordinate system no one knows
+	function.ReplaceImplementation(GetFirstOperator<LAST, SKIP_NULLS>(input_type), {input_type}, input_type);
 	function.SetName(std::move(name));
 	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
 	function.SetDirectRewriteCallback(RewriteOrderedFirst<LAST, SKIP_NULLS>);

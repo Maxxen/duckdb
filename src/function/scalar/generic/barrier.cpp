@@ -72,8 +72,8 @@ unique_ptr<Expression> ExpressionBarrier::Wrap(unique_ptr<Expression> expr) {
 
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(expr));
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
-	                                          make_uniq<VariableReturnBindData>(return_type));
+	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function, {return_type}, return_type),
+	                                          std::move(arguments), make_uniq<VariableReturnBindData>(return_type));
 }
 
 } // namespace duckdb

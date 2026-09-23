@@ -69,8 +69,8 @@ static unique_ptr<Expression> CreateSingleArgumentFunctionExpression(const Scala
                                                                      unique_ptr<FunctionData> bind_data) {
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(make_uniq<BoundReferenceExpression>(target_type, storage_t(0)));
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
-	                                          std::move(bind_data));
+	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function, {target_type}, LogicalType::BOOLEAN),
+	                                          std::move(arguments), std::move(bind_data));
 }
 
 unique_ptr<Expression> CreateOptionalFilterExpression(unique_ptr<Expression> child_expr,
@@ -106,8 +106,8 @@ unique_ptr<Expression> CreateDynamicFilterExpression(shared_ptr<DynamicFilterDat
 	}
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(input));
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
-	                                          std::move(bind_data));
+	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function, {target_type}, LogicalType::BOOLEAN),
+	                                          std::move(arguments), std::move(bind_data));
 }
 
 void TableFilterFunctionSerialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data,

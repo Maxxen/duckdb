@@ -1,3 +1,4 @@
+#include "duckdb/function/signature_resolver.hpp"
 #include "duckdb/planner/sql_export/bound_expression_sql_exporter_internal.hpp"
 #include "duckdb/function/scalar/compressed_materialization_utils.hpp"
 #include "duckdb/planner/bound_expression_sql_exporter.hpp"
@@ -234,9 +235,10 @@ BoundExpressionSQLExportState::ExportScalarFunction(const BoundFunctionExpressio
 	// Restore result types when binding or optimization changed argument types.
 	const bool can_restore_result_type = SQLExportHelpers::IsSQLRepresentableType(expression.GetReturnType()) &&
 	                                     !expression.GetReturnType().IsAggregateState();
+	const auto declared_return_type = SignatureResolver(nullptr, *definition).TryResolve(definition->GetReturnType());
 	const bool has_specialized_result_type =
-	    (definition->HasBindCallback() || definition->GetReturnType().id() == LogicalTypeId::SQLNULL) &&
-	    definition->GetReturnType() != expression.GetReturnType();
+	    (definition->HasBindCallback() || declared_return_type.id() == LogicalTypeId::SQLNULL) &&
+	    declared_return_type != expression.GetReturnType();
 	if (can_restore_result_type && has_specialized_result_type) {
 		return RestoreResultType(expression.GetReturnType(), std::move(result), path);
 	}
@@ -358,7 +360,8 @@ BoundExpressionSQLExportState::ExportAggregate(const BoundAggregateExpression &e
 	                                     SQLExportHelpers::IsSQLRepresentableType(expression.GetReturnType()) &&
 	                                     !expression.GetReturnType().IsAggregateState();
 	const bool has_specialized_result_type =
-	    definition->HasBindCallback() && definition->GetReturnType() != expression.GetReturnType();
+	    definition->HasBindCallback() &&
+	    SignatureResolver(nullptr, *definition).TryResolve(definition->GetReturnType()) != expression.GetReturnType();
 	if (can_restore_result_type && has_specialized_result_type) {
 		return RestoreResultType(expression.GetReturnType(), std::move(result), path);
 	}

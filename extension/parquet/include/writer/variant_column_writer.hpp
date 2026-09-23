@@ -100,7 +100,7 @@ public:
 		vector<unique_ptr<Expression>> arguments;
 		arguments.push_back(unique_ptr_cast<BoundReferenceExpression, Expression>(std::move(expr)));
 
-		BoundScalarFunction bound_func(GetTransformFunction());
+		BoundScalarFunction bound_func(GetTransformFunction(), nullptr);
 		bound_func.SetReturnType(TransformedType());
 
 		return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments), nullptr);

@@ -1508,9 +1508,9 @@ unique_ptr<Expression> DecodeSortKeyFun::Bind(unique_ptr<Expression> sort_key, c
 	auto bind_data = make_uniq<SortKeyBindData>();
 	bind_data->modifiers = std::move(modifiers);
 	bind_data->all_constant = all_constant;
-	ScalarFunction definition("decode_sort_key", {sort_key->GetReturnType()}, LogicalType::STRUCT(std::move(columns)),
-	                          DecodeSortKeyFunction);
-	BoundScalarFunction function(definition);
+	auto return_type = LogicalType::STRUCT(std::move(columns));
+	ScalarFunction definition("decode_sort_key", {sort_key->GetReturnType()}, return_type, DecodeSortKeyFunction);
+	BoundScalarFunction function(definition, {sort_key->GetReturnType()}, std::move(return_type));
 	vector<unique_ptr<Expression>> children;
 	children.push_back(std::move(sort_key));
 	return make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), std::move(bind_data));

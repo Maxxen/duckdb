@@ -347,7 +347,7 @@ struct ICUStrptime : public ICUDateFunc {
 
 			auto match = true;
 			for (idx_t j = 0; j < sig.GetParameterCount(); j++) {
-				if (sig.GetParameter(j).GetType() != types[j]) {
+				if (sig.GetParameter(j).GetType() != TypeName::FromLogicalType(types[j])) {
 					match = false;
 					break;
 				}

@@ -1,3 +1,4 @@
+#include "duckdb/function/signature_resolver.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/function/partition_stats.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -68,12 +69,12 @@ TableFunction::TableFunction(Identifier name, FunctionSignature signature, std::
 BoundTableFunction::BoundTableFunction() : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
 }
 
-BoundTableFunction::BoundTableFunction(const TableFunction &function)
+BoundTableFunction::BoundTableFunction(const TableFunction &function, optional_ptr<ClientContext> context)
     // the function does not come from a function set - copy it into a definition of its own
-    : BoundTableFunction(make_shared_ptr<const TableFunction>(function)) {
+    : BoundTableFunction(make_shared_ptr<const TableFunction>(function), context) {
 }
 
-BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p)
+BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p, optional_ptr<ClientContext> context)
     : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
 	definition = std::move(function_p);
 	auto &function = *definition;
@@ -136,24 +137,27 @@ BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_
 	// the parameters a call fills by position - these are the types plan serialization records, so the named
 	// options that follow them take no part
 	auto &signature = function.GetSignature();
+	const SignatureResolver resolver(context, function);
 	for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
-		arguments.push_back(signature.GetParameter(i).GetType());
+		arguments.push_back(resolver.ResolveParameter(i));
 	}
 	positional_arguments = arguments.size();
 }
 
-void BoundTableFunction::SetCallArguments(const vector<Value> &parameters,
+void BoundTableFunction::SetCallArguments(ClientContext &context, const vector<Value> &parameters,
                                           const named_argument_map_t &named_parameters) {
 	auto &signature = GetSignature();
+	auto &definition = GetDefinition();
+	auto resolver = definition ? SignatureResolver(context, *definition) : SignatureResolver(context, signature);
 	const auto positional_count = signature.GetPositionalParameterCount();
 	arguments.clear();
 	for (idx_t i = 0; i < positional_count; i++) {
-		arguments.push_back(signature.GetParameter(i).GetType());
+		arguments.push_back(resolver.ResolveParameter(i));
 	}
-	auto args = signature.GetArgs();
+	auto args_type = resolver.ResolveVarArgs();
 	for (idx_t i = positional_count; i < parameters.size(); i++) {
-		auto is_typed = args && args->GetType().id() != LogicalTypeId::ANY;
-		arguments.push_back(is_typed ? args->GetType() : parameters[i].type());
+		auto is_typed = args_type.id() != LogicalTypeId::INVALID && args_type.id() != LogicalTypeId::ANY;
+		arguments.push_back(is_typed ? args_type : parameters[i].type());
 	}
 	const auto positional_argument_count = arguments.size();
 
@@ -171,7 +175,7 @@ void BoundTableFunction::SetCallArguments(const vector<Value> &parameters,
 		auto &param = signature.GetParameter(param_idx.GetIndex());
 		if (!param.AcceptsPosition()) {
 			names.push_back(entry.first);
-			arguments.push_back(param.GetType());
+			arguments.push_back(resolver.ResolveParameter(param_idx.GetIndex()));
 		}
 	}
 	SetNamedArguments(positional_argument_count, std::move(names));

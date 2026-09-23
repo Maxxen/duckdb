@@ -163,7 +163,7 @@ TEST_CASE("Logical plan SQL export reconstructs list PIVOT barriers",
 	    QualifiedName(catalog.GetName(), Identifier::DefaultSchema(), Identifier("sum_no_overflow")));
 	auto sum_no_overflow = sum_no_overflow_entry.functions.GetFunctionByArguments(*connection.context,
 	                                                                              sum.Function().GetLogicalArguments());
-	sum.FunctionMutable().ReplaceImplementation(*sum_no_overflow);
+	sum.FunctionMutable().ReplaceImplementation(*sum_no_overflow, *connection.context);
 	REQUIRE(sum.Function().GetName() == "sum_no_overflow");
 	REQUIRE(LogicalPlanSQLExporter::Export(*connection.context, *optimized_sum).IsSuccess());
 	RequirePivotStreamingEffects(connection);
@@ -225,7 +225,7 @@ TEST_CASE("Logical plan SQL export validates noncanonical PIVOT defaults and lis
 		idx_t modified_overloads = 0;
 		entry.functions.ApplyToFunctions([&](AggregateFunction &function) {
 			auto &signature = function.GetSignature();
-			if (signature.GetParameterCount() != 1 || signature.GetParameter(0).GetType() != LogicalType::INTEGER) {
+			if (signature.GetParameterCount() != 1 || signature.ResolveParameterType(0) != LogicalType::INTEGER) {
 				return;
 			}
 			auto qualified_name = function.GetQualifiedName();

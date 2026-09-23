@@ -70,7 +70,7 @@ void TableFunctionFileReader::BindFunction(ClientContext &context, const TableFu
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
 	TableFunctionRef empty_ref;
-	BoundTableFunction bound_function(function);
+	BoundTableFunction bound_function(function, context);
 	TableFunctionBindInput bind_input(inputs, parameters, input_table_types, input_table_names,
 	                                  function.function_info.get(), nullptr, bound_function, empty_ref);
 	bind_input.multi_file_options = file_options;
@@ -274,7 +274,8 @@ unique_ptr<BaseFileReaderOptions> TableFunctionMultiFileWrapper::InitializeOptio
 	return make_uniq<TableFunctionFileReaderOptions>();
 }
 
-optional<pair<Identifier, LogicalType>> TableFunctionMultiFileWrapper::GetDeclaredOption(const Identifier &key) const {
+optional<pair<Identifier, LogicalType>> TableFunctionMultiFileWrapper::GetDeclaredOption(ClientContext &context,
+                                                                                         const Identifier &key) const {
 	auto &signature = function.GetSignature();
 	auto index = signature.GetParameterIndexByName(key);
 	if (index.IsValid()) {
@@ -282,7 +283,7 @@ optional<pair<Identifier, LogicalType>> TableFunctionMultiFileWrapper::GetDeclar
 		if (param.GetKind() != FunctionParameterKind::KEYWORD_ONLY) {
 			return {};
 		}
-		return make_pair(param.GetName(), param.GetType());
+		return make_pair(param.GetName(), function.ResolveParameterType(index.GetIndex(), context));
 	}
 	auto option_schema = signature.GetTypedKwargs();
 	auto option = option_schema ? option_schema->Find(key) : nullptr;
@@ -292,9 +293,9 @@ optional<pair<Identifier, LogicalType>> TableFunctionMultiFileWrapper::GetDeclar
 	return make_pair(option->name, option->type);
 }
 
-bool TableFunctionMultiFileWrapper::ParseNamedParameter(const Identifier &key, const Value &val,
+bool TableFunctionMultiFileWrapper::ParseNamedParameter(ClientContext &context, const Identifier &key, const Value &val,
                                                         TableFunctionFileReaderOptions &options) const {
-	auto declared_option = GetDeclaredOption(key);
+	auto declared_option = GetDeclaredOption(context, key);
 	if (!declared_option) {
 		return false;
 	}
@@ -305,7 +306,7 @@ bool TableFunctionMultiFileWrapper::ParseNamedParameter(const Identifier &key, c
 
 bool TableFunctionMultiFileWrapper::ParseOption(ClientContext &context, const Identifier &key, const Value &val,
                                                 MultiFileOptions &file_options, BaseFileReaderOptions &options_p) {
-	if (!ParseNamedParameter(key, val, options_p.Cast<TableFunctionFileReaderOptions>())) {
+	if (!ParseNamedParameter(context, key, val, options_p.Cast<TableFunctionFileReaderOptions>())) {
 		return false;
 	}
 	if (!settings.sample_files_parameter.empty() && key == settings.sample_files_parameter) {
@@ -321,7 +322,7 @@ bool TableFunctionMultiFileWrapper::ParseCopyOption(ClientContext &context, cons
                                                     vector<Identifier> &, vector<LogicalType> &) {
 	// COPY supports exactly the named parameters of the wrapped function - the only difference is that COPY passes
 	// the values as a list, and that a bare option (e.g. "auto_detect") means "true"
-	auto declared_option = GetDeclaredOption(key);
+	auto declared_option = GetDeclaredOption(context, key);
 	if (!declared_option) {
 		return false;
 	}
@@ -344,7 +345,7 @@ bool TableFunctionMultiFileWrapper::ParseCopyOption(ClientContext &context, cons
 	} else {
 		val = values[0].DefaultCastAs(type);
 	}
-	return ParseNamedParameter(key, val, options_p.Cast<TableFunctionFileReaderOptions>());
+	return ParseNamedParameter(context, key, val, options_p.Cast<TableFunctionFileReaderOptions>());
 }
 
 void TableFunctionMultiFileWrapper::FinalizeCopyBind(ClientContext &context, BaseFileReaderOptions &options_p,
@@ -563,7 +564,7 @@ TableFunction TableFunctionMultiFileWrapper::CreateFunction(TableFunction single
                                                             TableFunctionMultiFileSettings settings) {
 	auto &wrapped_signature = single_file_function.GetSignature();
 	if (wrapped_signature.GetPositionalParameterCount() != 1 ||
-	    wrapped_signature.GetParameter(0).GetType() != LogicalType::VARCHAR) {
+	    wrapped_signature.ResolveParameterType(0) != LogicalType::VARCHAR) {
 		throw InternalException("Only table functions taking a single VARCHAR file path can be wrapped in a multi "
 		                        "file function, %s does not",
 		                        single_file_function.name);

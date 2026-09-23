@@ -1,3 +1,4 @@
+#include "duckdb/function/signature_resolver.hpp"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/table_macro_catalog_entry.hpp"
 #include "duckdb/function/builtin_function_lookup.hpp"
@@ -46,7 +47,7 @@ static TableFunctionBindType GetTableFunctionBindType(TableFunctionCatalogEntry 
 	for (idx_t function_idx = 0; function_idx < table_function.functions.Size(); function_idx++) {
 		const auto &function = *table_function.functions.GetFunctionByOffset(function_idx);
 		for (auto &param : function.GetSignature().GetParameters()) {
-			if (param.GetType().id() == LogicalTypeId::TABLE) {
+			if (param.GetType().IsPseudoType(LogicalTypeId::TABLE)) {
 				has_table_parameter = true;
 			}
 		}
@@ -217,7 +218,7 @@ BoundStatement Binder::BindTableFunctionInternal(BoundTableFunction &table_funct
 	optional_idx ordinality_column_id;
 	// the function binder has placed them already, but not for a table in-out call or a direct bind
 	table_function.GetSignature().FillNamedDefaults(context, named_parameters);
-	table_function.SetCallArguments(parameters, named_parameters);
+	table_function.SetCallArguments(context, parameters, named_parameters);
 	if (table_function.bind || table_function.bind_replace || table_function.bind_operator) {
 		TableFunctionBindInput bind_input(parameters, named_parameters, input_table_types, input_table_names,
 		                                  table_function.function_info.get(), this, table_function, ref, input_plan);
@@ -381,7 +382,7 @@ BoundStatement Binder::BindTableFunction(TableFunction &function, vector<Value> 
 	TableFunctionRef ref;
 	ref.alias = function.name;
 	D_ASSERT(!ref.alias.empty());
-	BoundTableFunction bound_function(function);
+	BoundTableFunction bound_function(function, context);
 	return BindTableFunctionInternal(bound_function, ref, std::move(parameters), std::move(named_parameters),
 	                                 std::move(input_table_types), std::move(input_table_names), nullptr);
 }
@@ -462,7 +463,7 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		error.Throw();
 	}
 	// copied out of the set: BindTableFunctionInternal fills in the bound return types
-	BoundTableFunction table_function(function.functions.GetFunctionByOffset(best_function_idx.GetIndex()));
+	BoundTableFunction table_function(function.functions.GetFunctionByOffset(best_function_idx.GetIndex()), context);
 
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
@@ -480,13 +481,15 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		// the arguments are the columns of a subquery, so the declared types apply to those instead - the function
 		// binder casts the folded constants of every other call shape
 		const auto &signature = table_function.GetSignature();
+		const auto &definition = *table_function.GetDefinition();
+		const SignatureResolver resolver(context, definition);
 		auto args = signature.GetArgs();
 		for (idx_t i = 0; i < input_table_types.size(); i++) {
 			if (i >= signature.GetPositionalParameterCount() && !args) {
 				break;
 			}
-			auto target_type =
-			    i < signature.GetPositionalParameterCount() ? signature.GetParameter(i).GetType() : args->GetType();
+			auto target_type = resolver.Resolve(
+			    i < signature.GetPositionalParameterCount() ? signature.GetParameter(i).GetType() : args->GetType());
 			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST) {
 				input_table_types[i] = target_type;

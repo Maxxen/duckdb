@@ -7,6 +7,7 @@
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/function/scalar/string_functions.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/function/signature_resolver.hpp"
 
 namespace duckdb {
 
@@ -170,16 +171,20 @@ static bool RequiresCatalogAndSchemaNamePrefix(const Identifier &catalog_name, c
 }
 
 string FunctionParameter::ToString() const {
+	return ToString(type.ToString());
+}
+
+string FunctionParameter::ToString(const string &type_string) const {
 	if (kind == FunctionParameterKind::VAR_POSITIONAL) {
-		return StringUtil::Format("*%s %s", SQLIdentifier(name), type.ToString());
+		return StringUtil::Format("*%s %s", SQLIdentifier(name), type_string);
 	}
 	if (kind == FunctionParameterKind::VAR_KEYWORD) {
-		return StringUtil::Format("**%s %s", SQLIdentifier(name), type.ToString());
+		return StringUtil::Format("**%s %s", SQLIdentifier(name), type_string);
 	}
 	if (default_value) {
-		return StringUtil::Format("%s %s := %s", SQLIdentifier(name), type.ToString(), default_value->ToString());
+		return StringUtil::Format("%s %s := %s", SQLIdentifier(name), type_string, default_value->ToString());
 	}
-	return StringUtil::Format("%s %s", SQLIdentifier(name), type.ToString());
+	return StringUtil::Format("%s %s", SQLIdentifier(name), type_string);
 }
 
 // signatures are copied and moved freely - keep the move cheap
@@ -211,6 +216,7 @@ auto FunctionSignature::ExtendTypedKwargs(const std::function<void(TypedKwargs &
 }
 
 string FunctionSignature::ToString() const {
+	SignatureResolver resolver(nullptr, *this);
 	vector<string> params;
 	params.reserve(parameters.size());
 	// A keyword-only parameter that no "*args" precedes closes the positional parameters by itself, which Python
@@ -226,14 +232,14 @@ string FunctionSignature::ToString() const {
 			params.push_back("*");
 			needs_separator = false;
 		}
-		params.push_back(param.ToString());
+		params.push_back(param.ToString(resolver.TypeToString(param.GetType())));
 	}
 	if (positional_only_count > 0 && positional_only_count == parameters.size()) {
 		params.push_back("/");
 	}
 	auto head = StringUtil::Format("(%s)", StringUtil::Join(params, ", "));
-	if (return_type.IsValid()) {
-		return head + " -> " + return_type.ToString();
+	if (HasReturnType()) {
+		return head + " -> " + resolver.TypeToString(return_type);
 	}
 	return head;
 }
@@ -282,7 +288,8 @@ void FunctionSignature::FillNamedDefaults(ClientContext &context, named_argument
 	// keyword-only parameters are slots, bound in the order they are declared - the arguments "**kwargs" receives
 	// follow them in the order they were passed
 	named_argument_map_t result;
-	for (auto &param : parameters) {
+	for (idx_t i = 0; i < parameters.size(); i++) {
+		auto &param = parameters[i];
 		if (param.GetKind() != FunctionParameterKind::KEYWORD_ONLY) {
 			continue;
 		}
@@ -290,8 +297,8 @@ void FunctionSignature::FillNamedDefaults(ClientContext &context, named_argument
 		if (entry != named_parameters.end()) {
 			result.insert(param.GetName(), std::move(entry->second));
 		} else if (param.HasDefaultValue()) {
-			result.insert(param.GetName(),
-			              FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(), param.GetType()));
+			result.insert(param.GetName(), FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(),
+			                                                                   ResolveParameterType(i, context)));
 		}
 	}
 	if (result.empty()) {
@@ -303,6 +310,117 @@ void FunctionSignature::FillNamedDefaults(ClientContext &context, named_argument
 		}
 	}
 	named_parameters = std::move(result);
+}
+
+FunctionSignature::FunctionSignature(vector<LogicalType> arguments, LogicalType return_type_p) {
+	for (auto &arg : arguments) {
+		AddParameter(std::move(arg));
+	}
+	SetReturnType(return_type_p);
+}
+
+FunctionSignature::FunctionSignature(vector<FunctionParameter> parameters_p, LogicalType return_type_p) {
+	for (auto &param : parameters_p) {
+		InsertParameter(parameters.size(), std::move(param));
+	}
+	SetReturnType(return_type_p);
+}
+
+void FunctionSignature::SetReturnType(const LogicalType &return_type_p) {
+	return_type = ConvertType(return_type_p);
+	RemoveUnusedTypeVariables();
+#ifdef D_ASSERT_IS_ENABLED
+	original_return_type = return_type_p;
+#endif
+}
+
+void FunctionSignature::SetParameterType(idx_t index, const LogicalType &type) {
+	parameters[index].type = ConvertType(type);
+	RemoveUnusedTypeVariables();
+#ifdef D_ASSERT_IS_ENABLED
+	parameters[index].original_type = type;
+#endif
+}
+
+void FunctionSignature::VerifyTypeConversion(optional_ptr<ClientContext> context) const {
+#ifdef D_ASSERT_IS_ENABLED
+	SignatureResolver resolver(context, *this);
+	auto verify = [&](const TypeName &type, const LogicalType &original) {
+		if (original.id() == LogicalTypeId::INVALID) {
+			return;
+		}
+		auto resolved = context ? resolver.Resolve(type) : resolver.TryResolve(type);
+		if (resolved.id() == LogicalTypeId::INVALID) {
+			return;
+		}
+		if (resolved != original || resolved.ToString() != original.ToString()) {
+			throw InternalException("Signature type %s resolves to %s instead of %s", type.ToString(),
+			                        resolved.ToString(), original.ToString());
+		}
+	};
+	for (idx_t i = 0; i < parameters.size(); i++) {
+		verify(parameters[i].GetType(), parameters[i].original_type);
+	}
+	verify(return_type, original_return_type);
+#endif
+}
+
+optional_ptr<const TypeVariable> FunctionSignature::GetTypeVariable(const Identifier &name) const {
+	for (auto &variable : type_variables) {
+		if (variable.GetName() == name) {
+			return variable;
+		}
+	}
+	return nullptr;
+}
+
+static void CollectNames(const TypeName &type, identifier_set_t &names) {
+	if (type.IsPlainName()) {
+		names.insert(type.GetName());
+		return;
+	}
+	for (auto &param : type.GetParams()) {
+		if (param.GetKind() == TypeParamKind::TYPE) {
+			CollectNames(param.GetType(), names);
+		}
+	}
+}
+
+void FunctionSignature::RemoveUnusedTypeVariables() {
+	identifier_set_t used;
+	for (auto &param : parameters) {
+		CollectNames(param.GetType(), used);
+	}
+	CollectNames(return_type, used);
+	for (idx_t i = type_variables.size(); i > 0; i--) {
+		if (used.find(type_variables[i - 1].GetName()) == used.end()) {
+			type_variables.erase_at(i - 1);
+		}
+	}
+}
+
+LogicalType FunctionSignature::ResolveParameterType(idx_t index, optional_ptr<ClientContext> context) const {
+	return SignatureResolver(context, *this).ResolveParameter(index);
+}
+
+LogicalType FunctionSignature::ResolveReturnType(optional_ptr<ClientContext> context) const {
+	return SignatureResolver(context, *this).ResolveReturnType();
+}
+
+LogicalType FunctionSignature::ResolveVarArgs(optional_ptr<ClientContext> context) const {
+	return SignatureResolver(context, *this).ResolveVarArgs();
+}
+
+LogicalType SimpleFunction::ResolveParameterType(idx_t index, optional_ptr<ClientContext> context) const {
+	return SignatureResolver(context, *this).ResolveParameter(index);
+}
+
+LogicalType SimpleFunction::ResolveReturnType(optional_ptr<ClientContext> context) const {
+	return SignatureResolver(context, *this).ResolveReturnType();
+}
+
+LogicalType SimpleFunction::ResolveVarArgs(optional_ptr<ClientContext> context) const {
+	return SignatureResolver(context, *this).ResolveVarArgs();
 }
 
 void FunctionSignature::Verify() const {
@@ -438,6 +556,18 @@ hash_t BoundSimpleFunction::Hash() const {
 	return hash;
 }
 
+void BoundSimpleFunction::InitializeTypes(optional_ptr<ClientContext> context, const SimpleFunction &function) {
+	SignatureResolver resolver(context, function);
+	return_type = resolver.ResolveReturnType();
+	arguments.clear();
+	auto &signature = function.GetSignature();
+	for (idx_t i = 0; i < signature.GetParameterCount(); i++) {
+		if (!signature.GetParameter(i).IsVariadic()) {
+			arguments.push_back(resolver.ResolveParameter(i));
+		}
+	}
+}
+
 idx_t BoundSimpleFunction::GetVarArgsCount(const FunctionSignature &signature) const {
 	const auto standard_count = signature.GetPositionalParameterCount();
 	return positional_arguments > standard_count ? positional_arguments - standard_count : 0;
@@ -491,8 +621,8 @@ static bool OptionSchemasEqual(optional_ptr<const TypedKwargs> lhs, optional_ptr
 }
 
 bool FunctionSignature::operator==(const FunctionSignature &other) const {
-	return parameters == other.parameters && return_type == other.return_type &&
-	       OptionSchemasEqual(GetTypedKwargs(), other.GetTypedKwargs());
+	return type_variables == other.type_variables && parameters == other.parameters &&
+	       return_type == other.return_type && OptionSchemasEqual(GetTypedKwargs(), other.GetTypedKwargs());
 }
 
 bool FunctionSignature::operator!=(const FunctionSignature &other) const {
@@ -529,7 +659,7 @@ bool FunctionSignature::IsSameOverload(const FunctionSignature &other) const {
 	}
 	// the keyword-only parameters, by name
 	auto keywords = [](const FunctionSignature &signature) {
-		identifier_map_t<LogicalType> result;
+		identifier_map_t<TypeName> result;
 		for (auto &param : signature.GetParameters()) {
 			if (param.GetKind() == FunctionParameterKind::KEYWORD_ONLY) {
 				result.emplace(param.GetName(), param.GetType());
@@ -552,7 +682,7 @@ bool FunctionSignature::IsSameOverload(const FunctionSignature &other) const {
 }
 
 bool FunctionSignature::Equal(const FunctionSignature &other) const {
-	if (parameters.size() != other.parameters.size()) {
+	if (type_variables != other.type_variables || parameters.size() != other.parameters.size()) {
 		return false;
 	}
 	for (idx_t i = 0; i < parameters.size(); i++) {

@@ -367,7 +367,7 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 
 	auto reconstructed = FunctionBinder::BindSortedAggregateState(context, inner->aggr, std::move(inner->bind_data),
 	                                                              buffer_struct, orders, argument_count);
-	BoundAggregateFunction wrapper(reconstructed.first);
+	BoundAggregateFunction wrapper(reconstructed.first, context);
 	const auto state_size = wrapper.GetStateSize(reconstructed.second.get());
 	return make_uniq<ExportAggregateBindData>(std::move(wrapper), std::move(reconstructed.second), state_size);
 }

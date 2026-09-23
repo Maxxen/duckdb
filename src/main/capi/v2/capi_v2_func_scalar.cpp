@@ -1,3 +1,4 @@
+#include "duckdb/function/signature_resolver.hpp"
 #include "duckdb/main/capi_v2/capi_v2_internal.hpp"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
@@ -185,7 +186,11 @@ public:
 			throw InvalidInputException("Exec callback must be set for the function.");
 		}
 
-		const auto &return_type = signature.GetReturnType();
+		if (!signature.HasReturnType()) {
+			throw InvalidInputException("Return type must be set for the function.");
+		}
+		// a type that is not a default type is only resolved once the function is bound
+		const auto return_type = SignatureResolver(nullptr, signature).TryResolve(signature.GetReturnType());
 
 		// ANY is allowed as a placeholder return type only when a bind callback is present to resolve the actual type.
 		if (return_type.id() == LogicalTypeId::ANY) {
@@ -193,18 +198,13 @@ public:
 				throw InvalidInputException(
 				    "An ANY return type requires a bind callback to set the concrete return type.");
 			}
-		} else {
-			if (return_type.id() == LogicalTypeId::INVALID) {
-				throw InvalidInputException("Return type must be set for the function.");
-			}
-			if (!return_type.IsComplete()) {
-				throw InvalidInputException("Return type must be a fully defined concrete type");
-			}
+		} else if (return_type.id() != LogicalTypeId::INVALID && !return_type.IsComplete()) {
+			throw InvalidInputException("Return type must be a fully defined concrete type");
 		}
 
 		signature.Verify();
 
-		ScalarFunction function(name, {}, return_type, CV2ScalarExec);
+		ScalarFunction function(name, {}, LogicalType::INVALID, CV2ScalarExec);
 		function.SetProperties(properties);
 		function.GetSignature() = signature;
 

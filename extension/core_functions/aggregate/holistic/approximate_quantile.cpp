@@ -391,7 +391,7 @@ AggregateFunction ApproxQuantileDecimalFunction(const LogicalType &type) {
 //! restored afterwards.
 void ReplaceApproxQuantileDecimal(BoundAggregateFunction &function, const AggregateFunction &implementation) {
 	auto declared_arguments = function.GetArguments();
-	function.ReplaceImplementation(implementation);
+	function.ReplaceImplementation(implementation, nullptr);
 	for (idx_t i = function.GetArguments().size(); i < declared_arguments.size(); i++) {
 		function.GetArguments().push_back(declared_arguments[i]);
 	}

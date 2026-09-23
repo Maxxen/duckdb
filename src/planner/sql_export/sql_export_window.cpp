@@ -1,3 +1,4 @@
+#include "duckdb/function/signature_resolver.hpp"
 #include "duckdb/planner/sql_export/bound_expression_sql_exporter_internal.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/planner/sql_export_helpers.hpp"
@@ -216,7 +217,7 @@ BoundExpressionSQLExportState::ExportWindowFunction(const BoundWindowExpression 
 	window->WindowExcludeMutable() = expression.WindowExclude();
 	unique_ptr<ParsedExpression> result = std::move(window);
 	if (SQLExportHelpers::IsSQLRepresentableType(expression.GetReturnType()) && definition->HasBindCallback() &&
-	    definition->GetReturnType() != expression.GetReturnType()) {
+	    SignatureResolver(nullptr, *definition).TryResolve(definition->GetReturnType()) != expression.GetReturnType()) {
 		return RestoreResultType(expression.GetReturnType(), std::move(result), path);
 	}
 	return BoundExpressionSQLExportResult::Success(std::move(result));

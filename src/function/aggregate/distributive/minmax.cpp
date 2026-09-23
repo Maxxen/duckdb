@@ -375,7 +375,8 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 		// If aggr function is min/max and uses collations, replace bound_function with arg_min/arg_max
 		// to make sure the result's correctness.
 		vector<LogicalType> types {arguments[0]->GetReturnType(), collated_arg->GetReturnType()};
-		function.ReplaceImplementation(*GetCollatedMinMaxFunction(context, function.GetName(), types));
+		function.ReplaceImplementation(*GetCollatedMinMaxFunction(context, function.GetName(), types),
+		                               input.GetClientContext());
 		function.SetSingleValueIdentity(true);
 
 		// Bind function like arg_min/arg_max.

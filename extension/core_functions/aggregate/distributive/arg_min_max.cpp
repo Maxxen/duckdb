@@ -433,8 +433,8 @@ AggregateFunction GetVectorArgMinMaxFunctionInternal(const LogicalType &by_type,
 	return function;
 #else
 	auto function = GetGenericArgMinMaxFunction<OP>(null_handling);
-	function.GetSignature().GetParameter(0).SetType(type);
-	function.GetSignature().GetParameter(1).SetType(by_type);
+	function.GetSignature().SetParameterType(0, type);
+	function.GetSignature().SetParameterType(1, by_type);
 	function.SetReturnType(type);
 	return function;
 #endif
@@ -493,8 +493,8 @@ AggregateFunction GetArgMinMaxFunctionInternal(const LogicalType &by_type, const
 	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
 #else
 	auto function = GetGenericArgMinMaxFunction<OP>(null_handling);
-	function.GetSignature().GetParameter(0).SetType(type);
-	function.GetSignature().GetParameter(1).SetType(by_type);
+	function.GetSignature().SetParameterType(0, type);
+	function.GetSignature().SetParameterType(1, by_type);
 	function.SetReturnType(type);
 #endif
 	return function;
@@ -587,7 +587,8 @@ unique_ptr<FunctionData> BindDecimalArgMinMax(BindAggregateFunctionInput &input)
 	}
 
 	auto name = function.GetName();
-	function.ReplaceImplementation(GetDecimalArgMinMaxFunction<OP>(by_type, decimal_type, NULL_HANDLING));
+	function.ReplaceImplementation(GetDecimalArgMinMaxFunction<OP>(by_type, decimal_type, NULL_HANDLING),
+	                               input.GetClientContext());
 	function.SetName(std::move(name));
 	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
 	function.SetReturnType(decimal_type);

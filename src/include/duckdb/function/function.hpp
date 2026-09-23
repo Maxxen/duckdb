@@ -18,6 +18,7 @@
 #include "duckdb/common/optional.hpp"
 #include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/parser/qualified_name.hpp"
+#include "duckdb/parser/type_name.hpp"
 
 namespace duckdb {
 class CatalogEntry;
@@ -135,7 +136,7 @@ enum class FunctionParameterKind : uint8_t {
 
 class FunctionParameter {
 public:
-	FunctionParameter(Identifier name, LogicalType type, optional<Value> value = {},
+	FunctionParameter(Identifier name, TypeName type, optional<Value> value = {},
 	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD)
 	    : name(std::move(name)), type(std::move(type)), kind(kind) {
 		if (value) {
@@ -144,8 +145,19 @@ public:
 			default_value = nullptr;
 		}
 	}
+	//! A parameter built from a LogicalType is converted to a TypeName once it is added to a signature, which declares
+	//! the type variables the conversion introduces
+	FunctionParameter(Identifier name, LogicalType type, optional<Value> value = {},
+	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD)
+	    : name(std::move(name)), kind(kind), unconverted_type(make_shared_ptr<LogicalType>(std::move(type))) {
+		if (value) {
+			default_value = make_shared_ptr<Value>(std::move(*value));
+		}
+	}
 
 	string ToString() const;
+	//! Renders the parameter with the given rendering of its type
+	string ToString(const string &type_string) const;
 
 	bool operator==(const FunctionParameter &other) const;
 	bool operator!=(const FunctionParameter &other) const;
@@ -157,11 +169,9 @@ public:
 		name = std::move(name_p);
 	}
 
-	auto GetType() const -> const LogicalType & {
+	auto GetType() const -> const TypeName & {
+		D_ASSERT(!unconverted_type);
 		return type;
-	}
-	auto SetType(LogicalType type_p) -> void {
-		type = std::move(type_p);
 	}
 
 	auto GetDefaultValue() const -> optional_ptr<Value> {
@@ -191,10 +201,18 @@ public:
 	}
 
 private:
+	friend class FunctionSignature;
+
 	Identifier name;
-	LogicalType type;
+	TypeName type;
 	shared_ptr<Value> default_value;
 	FunctionParameterKind kind;
+	//! Set until the parameter is added to a signature
+	shared_ptr<LogicalType> unconverted_type;
+#ifdef D_ASSERT_IS_ENABLED
+	//! The LogicalType the type was converted from (INVALID if unknown)
+	LogicalType original_type = LogicalType::INVALID;
+#endif
 };
 
 //! An option a function receives through its "**kwargs" parameter
@@ -252,14 +270,8 @@ class FunctionSignature {
 public:
 	FunctionSignature() = default;
 
-	FunctionSignature(vector<FunctionParameter> parameters, LogicalType return_type)
-	    : parameters(std::move(parameters)), return_type(std::move(return_type)) {
-	}
-	FunctionSignature(vector<LogicalType> arguments, LogicalType return_type) : return_type(std::move(return_type)) {
-		for (auto &arg : arguments) {
-			AddParameter(std::move(arg));
-		}
-	}
+	DUCKDB_API FunctionSignature(vector<FunctionParameter> parameters, LogicalType return_type);
+	DUCKDB_API FunctionSignature(vector<LogicalType> arguments, LogicalType return_type);
 
 	string ToString() const;
 
@@ -290,11 +302,27 @@ public:
 	auto GetParameterCount() const -> idx_t {
 		return parameters.size();
 	}
-	auto GetReturnType() const -> const LogicalType & {
+	//! Replaces the type of a parameter
+	DUCKDB_API auto SetParameterType(idx_t index, const LogicalType &type) -> void;
+	//! The resolved type of a parameter, the return type and the "*args" type (INVALID if there is none). Names that
+	//! are not type variables are looked up in the system catalog, or only among the default types without a context
+	DUCKDB_API auto ResolveParameterType(idx_t index, optional_ptr<ClientContext> context = nullptr) const
+	    -> LogicalType;
+	DUCKDB_API auto ResolveReturnType(optional_ptr<ClientContext> context = nullptr) const -> LogicalType;
+	DUCKDB_API auto ResolveVarArgs(optional_ptr<ClientContext> context = nullptr) const -> LogicalType;
+	//! The type variables the types of the parameters and the return type can refer to
+	auto GetTypeVariables() const -> const vector<TypeVariable> & {
+		return type_variables;
+	}
+	DUCKDB_API auto GetTypeVariable(const Identifier &name) const -> optional_ptr<const TypeVariable>;
+
+	auto GetReturnType() const -> const TypeName & {
 		return return_type;
 	}
-	auto SetReturnType(LogicalType return_type_p) -> void {
-		return_type = std::move(return_type_p);
+	DUCKDB_API auto SetReturnType(const LogicalType &return_type_p) -> void;
+	//! Whether the signature declares a return type
+	auto HasReturnType() const -> bool {
+		return return_type.IsValid();
 	}
 
 	auto IsVariadic() const -> bool {
@@ -331,8 +359,8 @@ public:
 
 	auto AddParameter(Identifier name, LogicalType type, optional<Value> default_value = {},
 	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD) -> FunctionSignature & {
-		parameters.emplace_back(std::move(name), std::move(type), std::move(default_value), kind);
-		return *this;
+		return InsertParameter(parameters.size(),
+		                       FunctionParameter(std::move(name), std::move(type), std::move(default_value), kind));
 	}
 	//! Adds a positional-only parameter named "col<N>", after its position - a caller cannot pass it by a name that
 	//! was never declared
@@ -362,6 +390,11 @@ public:
 	//! Adds options to the schema of the "**kwargs" parameter
 	//! @throws InternalException if the signature has no typed "**kwargs" parameter
 	DUCKDB_API auto ExtendTypedKwargs(const std::function<void(TypedKwargs &)> &configure) -> FunctionSignature &;
+
+	//! Inserts a parameter at the given position, converting a LogicalType-built parameter to a TypeName
+	DUCKDB_API auto InsertParameter(idx_t position, FunctionParameter parameter) -> FunctionSignature &;
+	//! Replaces the parameters, keeping the type variables the parameters that remain refer to
+	DUCKDB_API auto SetParameters(vector<FunctionParameter> parameters) -> FunctionSignature &;
 
 	//! Returns the index of the parameter a caller can pass by the given name. Skips the variadic parameters and the
 	//! positional-only ones, whose names a caller cannot use
@@ -409,13 +442,27 @@ public:
 	DUCKDB_API void FillNamedDefaults(ClientContext &context, named_argument_map_t &named_parameters) const;
 
 	DUCKDB_API void Verify() const;
+	//! Verifies that the types of the signature resolve to the LogicalTypes they were built from. Only checks anything
+	//! when assertions are enabled, as the LogicalTypes are not kept otherwise
+	DUCKDB_API void VerifyTypeConversion(optional_ptr<ClientContext> context) const;
 
 	hash_t Hash() const;
 
 private:
+	//! Converts a LogicalType to the equivalent TypeName, declaring the type variables it introduces
+	auto ConvertType(const LogicalType &type) -> TypeName;
+	//! Drops the type variables that no type refers to any more
+	void RemoveUnusedTypeVariables();
+
+private:
+	vector<TypeVariable> type_variables;
 	vector<FunctionParameter> parameters;
 	shared_ptr<TypedKwargs> typed_kwargs; // optional "schema" for the accepted **kwargs
-	LogicalType return_type;
+	TypeName return_type;
+#ifdef D_ASSERT_IS_ENABLED
+	//! The LogicalType the return type was converted from (INVALID if unknown)
+	LogicalType original_return_type = LogicalType::INVALID;
+#endif
 };
 
 //! Function is the base class used for any type of function (scalar, aggregate or simple function)
@@ -499,12 +546,16 @@ public:
 		return signature;
 	}
 
-	void SetReturnType(LogicalType return_type_p) {
-		signature.SetReturnType(std::move(return_type_p));
+	void SetReturnType(const LogicalType &return_type_p) {
+		signature.SetReturnType(return_type_p);
 	}
-	const LogicalType &GetReturnType() const {
+	const TypeName &GetReturnType() const {
 		return signature.GetReturnType();
 	}
+	//! The resolved types of the signature, with names looked up relative to the catalog and schema of the function
+	DUCKDB_API LogicalType ResolveParameterType(idx_t index, optional_ptr<ClientContext> context = nullptr) const;
+	DUCKDB_API LogicalType ResolveReturnType(optional_ptr<ClientContext> context = nullptr) const;
+	DUCKDB_API LogicalType ResolveVarArgs(optional_ptr<ClientContext> context = nullptr) const;
 };
 
 class FunctionProperties {
@@ -648,6 +699,8 @@ public:
 	}
 
 protected:
+	//! Sets the return type and the non-variadic arguments to the resolved types of the function's signature
+	DUCKDB_API void InitializeTypes(optional_ptr<ClientContext> context, const SimpleFunction &function);
 	//! The arguments are laid out as [standard | *args | keyword-only | **kwargs], these need the signature of the
 	//! function to tell them apart
 	DUCKDB_API auto GetVarArgsCount(const FunctionSignature &signature) const -> idx_t;

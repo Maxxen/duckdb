@@ -602,9 +602,9 @@ WindowFunction LeadFun::GetFunction() {
 
 WindowFunction LeadFun::GetTypedFunction(const LogicalType &type, idx_t nargs) {
 	auto func = GetLeadLagFunction(Name, ExpressionType::WINDOW_LEAD);
-	func.GetSignature().GetParameter(0).SetType(type);
+	func.GetSignature().SetParameterType(0, type);
 	if (nargs > 2) {
-		func.GetSignature().GetParameter(2).SetType(type);
+		func.GetSignature().SetParameterType(2, type);
 	}
 	return func;
 }

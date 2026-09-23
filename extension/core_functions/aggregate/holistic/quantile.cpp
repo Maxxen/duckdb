@@ -697,14 +697,14 @@ struct MedianFunction {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
 
 		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(GetAggregate(input_type));
+		function.ReplaceImplementation(GetAggregate(input_type), deserializer.Get<ClientContext &>());
 		return bind_data;
 	}
 
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
 		auto &function = input.GetBoundFunction();
 		auto &arguments = input.GetArguments();
-		function.ReplaceImplementation(GetAggregate(arguments[0]->GetReturnType()));
+		function.ReplaceImplementation(GetAggregate(arguments[0]->GetReturnType()), input.GetClientContext());
 		return make_uniq<QuantileBindData>(Value::DECIMAL(int16_t(5), 2, 1));
 	}
 };
@@ -726,14 +726,14 @@ struct DiscreteQuantileListFunction {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
 
 		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(GetAggregate(input_type));
+		function.ReplaceImplementation(GetAggregate(input_type), deserializer.Get<ClientContext &>());
 		return bind_data;
 	}
 
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
 		auto &function = input.GetBoundFunction();
 		auto &arguments = input.GetArguments();
-		function.ReplaceImplementation(GetAggregate(arguments[0]->GetReturnType()));
+		function.ReplaceImplementation(GetAggregate(arguments[0]->GetReturnType()), input.GetClientContext());
 		return BindQuantile(input);
 	}
 };
@@ -757,9 +757,10 @@ struct DiscreteQuantileFunction {
 
 		auto &input_type = function.GetArguments()[0];
 		if (quantile_data.quantiles.size() == 1) {
-			function.ReplaceImplementation(GetAggregate(input_type));
+			function.ReplaceImplementation(GetAggregate(input_type), deserializer.Get<ClientContext &>());
 		} else {
-			function.ReplaceImplementation(DiscreteQuantileListFunction::GetAggregate(input_type));
+			function.ReplaceImplementation(DiscreteQuantileListFunction::GetAggregate(input_type),
+			                               deserializer.Get<ClientContext &>());
 		}
 		return bind_data;
 	}
@@ -767,7 +768,7 @@ struct DiscreteQuantileFunction {
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
 		auto &function = input.GetBoundFunction();
 		auto &arguments = input.GetArguments();
-		function.ReplaceImplementation(GetAggregate(arguments[0]->GetReturnType()));
+		function.ReplaceImplementation(GetAggregate(arguments[0]->GetReturnType()), input.GetClientContext());
 		return BindQuantile(input);
 	}
 };
@@ -789,7 +790,7 @@ struct ContinuousQuantileFunction {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
 
 		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(GetAggregate(input_type));
+		function.ReplaceImplementation(GetAggregate(input_type), deserializer.Get<ClientContext &>());
 		return bind_data;
 	}
 
@@ -799,7 +800,7 @@ struct ContinuousQuantileFunction {
 		auto impl =
 		    GetAggregate(function.GetArguments()[0].id() == LogicalTypeId::DECIMAL ? arguments[0]->GetReturnType()
 		                                                                           : function.GetArguments()[0]);
-		function.ReplaceImplementation(impl);
+		function.ReplaceImplementation(impl, input.GetClientContext());
 		return BindQuantile(input);
 	}
 };
@@ -822,7 +823,7 @@ struct ContinuousQuantileListFunction {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
 
 		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(GetAggregate(input_type));
+		function.ReplaceImplementation(GetAggregate(input_type), deserializer.Get<ClientContext &>());
 		return bind_data;
 	}
 
@@ -832,7 +833,7 @@ struct ContinuousQuantileListFunction {
 		auto impl =
 		    GetAggregate(function.GetArguments()[0].id() == LogicalTypeId::DECIMAL ? arguments[0]->GetReturnType()
 		                                                                           : function.GetArguments()[0]);
-		function.ReplaceImplementation(impl);
+		function.ReplaceImplementation(impl, input.GetClientContext());
 		return BindQuantile(input);
 	}
 };

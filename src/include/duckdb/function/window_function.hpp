@@ -302,7 +302,7 @@ public:
 		function_info = std::move(info);
 	}
 	template <class T, class... ARGS>
-	auto SetExtraFunctionInfo(ARGS &&... args) -> void {
+	auto SetExtraFunctionInfo(ARGS &&...args) -> void {
 		function_info = make_shared_ptr<T>(std::forward<ARGS>(args)...);
 	}
 	auto GetFunctionInfo() const -> shared_ptr<WindowFunctionInfo> {
@@ -361,8 +361,8 @@ public:
 
 class BoundWindowFunction : public BaseWindowFunction, public BoundSimpleFunction {
 public:
-	explicit BoundWindowFunction(const WindowFunction &base);
-	explicit BoundWindowFunction(shared_ptr<const WindowFunction> base);
+	explicit BoundWindowFunction(const WindowFunction &base, optional_ptr<ClientContext> context);
+	explicit BoundWindowFunction(shared_ptr<const WindowFunction> base, optional_ptr<ClientContext> context);
 
 public:
 	const ExpressionType window_enum;

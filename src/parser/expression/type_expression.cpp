@@ -1,4 +1,5 @@
 #include "duckdb/parser/expression/type_expression.hpp"
+#include "duckdb/parser/type_name.hpp"
 #include "duckdb/common/types/geometry_crs.hpp"
 #include "duckdb/common/extension_type_info.hpp"
 #include "duckdb/common/exception.hpp"
@@ -155,96 +156,6 @@ unique_ptr<ParsedExpression> LiteralChild(unique_ptr<ConstantExpression> child, 
 	return std::move(child);
 }
 
-//! The name a built-in type is spelled with. Must be a name DefaultTypeGenerator knows.
-const char *BuiltinTypeName(LogicalTypeId id) {
-	switch (id) {
-	case LogicalTypeId::BOOLEAN:
-		return "BOOLEAN";
-	case LogicalTypeId::TINYINT:
-		return "TINYINT";
-	case LogicalTypeId::SMALLINT:
-		return "SMALLINT";
-	case LogicalTypeId::INTEGER:
-		return "INTEGER";
-	case LogicalTypeId::BIGINT:
-		return "BIGINT";
-	case LogicalTypeId::HUGEINT:
-		return "HUGEINT";
-	case LogicalTypeId::UTINYINT:
-		return "UTINYINT";
-	case LogicalTypeId::USMALLINT:
-		return "USMALLINT";
-	case LogicalTypeId::UINTEGER:
-		return "UINTEGER";
-	case LogicalTypeId::UBIGINT:
-		return "UBIGINT";
-	case LogicalTypeId::UHUGEINT:
-		return "UHUGEINT";
-	case LogicalTypeId::FLOAT:
-		return "FLOAT";
-	case LogicalTypeId::DOUBLE:
-		return "DOUBLE";
-	case LogicalTypeId::BIGNUM:
-		return "BIGNUM";
-	case LogicalTypeId::DATE:
-		return "DATE";
-	case LogicalTypeId::TIME:
-		return "TIME";
-	case LogicalTypeId::TIME_NS:
-		return "TIME_NS";
-	case LogicalTypeId::TIME_TZ:
-		return "TIMETZ";
-	case LogicalTypeId::TIMESTAMP:
-		return "TIMESTAMP_US";
-	case LogicalTypeId::TIMESTAMP_SEC:
-		return "TIMESTAMP_S";
-	case LogicalTypeId::TIMESTAMP_MS:
-		return "TIMESTAMP_MS";
-	case LogicalTypeId::TIMESTAMP_NS:
-		return "TIMESTAMP_NS";
-	case LogicalTypeId::TIMESTAMP_TZ:
-		return "TIMESTAMPTZ";
-	case LogicalTypeId::TIMESTAMP_TZ_NS:
-		return "TIMESTAMPTZ_NS";
-	case LogicalTypeId::INTERVAL:
-		return "INTERVAL";
-	case LogicalTypeId::VARCHAR:
-		return "VARCHAR";
-	case LogicalTypeId::BLOB:
-		return "BLOB";
-	case LogicalTypeId::BIT:
-		return "BIT";
-	case LogicalTypeId::UUID:
-		return "UUID";
-	case LogicalTypeId::SQLNULL:
-		return "NULL";
-	case LogicalTypeId::TYPE:
-		return "TYPE";
-	case LogicalTypeId::VARIANT:
-		return "VARIANT";
-	case LogicalTypeId::GEOMETRY:
-		return "GEOMETRY";
-	case LogicalTypeId::DECIMAL:
-		return "DECIMAL";
-	case LogicalTypeId::ENUM:
-		return "ENUM";
-	case LogicalTypeId::LIST:
-		return "LIST";
-	case LogicalTypeId::ARRAY:
-		return "ARRAY";
-	case LogicalTypeId::STRUCT:
-		return "STRUCT";
-	case LogicalTypeId::TUPLE:
-		return "TUPLE";
-	case LogicalTypeId::MAP:
-		return "MAP";
-	case LogicalTypeId::UNION:
-		return "UNION";
-	default:
-		return nullptr;
-	}
-}
-
 } // namespace
 
 unique_ptr<TypeExpression> TypeExpression::FromLogicalType(const LogicalType &type) {
@@ -269,7 +180,7 @@ unique_ptr<TypeExpression> TypeExpression::FromLogicalType(const LogicalType &ty
 		return make_uniq<TypeExpression>(Identifier(alias), std::move(children));
 	}
 
-	auto name = BuiltinTypeName(type.id());
+	auto name = TypeName::BuiltinName(type.id());
 	if (!name) {
 		// only the internal placeholder ids (ANY, UNKNOWN, INVALID, ...) have no name, and none of them is a
 		// type a user can name in the first place

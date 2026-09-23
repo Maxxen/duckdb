@@ -150,7 +150,7 @@ unique_ptr<Expression> BoundComparisonExpression::Create(ExpressionType type, un
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
 
-	auto result = make_uniq<BoundFunctionExpression>(BoundScalarFunction(GetComparisonFunction(type)),
+	auto result = make_uniq<BoundFunctionExpression>(BoundScalarFunction(GetComparisonFunction(type), nullptr),
 	                                                 std::move(children), nullptr, true);
 	return std::move(result);
 }
@@ -198,7 +198,7 @@ void BoundComparisonExpression::SetType(BoundFunctionExpression &comparison_expr
 	auto arguments = comparison_expr.FunctionMutable().GetArguments();
 
 	comparison_expr.SetExpressionTypeUnsafe(new_type);
-	comparison_expr.FunctionMutable() = BoundScalarFunction(GetComparisonFunction(new_type));
+	comparison_expr.FunctionMutable() = BoundScalarFunction(GetComparisonFunction(new_type), nullptr);
 	comparison_expr.FunctionMutable().GetArguments() = std::move(arguments);
 	comparison_expr.BindInfoMutable().reset();
 	comparison_expr.IsOperatorMutable() = true;

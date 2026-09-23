@@ -115,28 +115,22 @@ unique_ptr<BoundAggregateExpression> AggregateFunction::Bind(ClientContext &cont
 	return func_binder.BindAggregateFunction(*this, std::move(arguments));
 }
 
-BoundAggregateFunction::BoundAggregateFunction(const AggregateFunction &function)
+BoundAggregateFunction::BoundAggregateFunction(const AggregateFunction &function, optional_ptr<ClientContext> context)
     // the function does not come from a function set - copy it into a definition of its own
-    : BoundAggregateFunction(make_shared_ptr<AggregateFunction>(function)) {
+    : BoundAggregateFunction(make_shared_ptr<AggregateFunction>(function), context) {
 }
 
-BoundAggregateFunction::BoundAggregateFunction(shared_ptr<const AggregateFunction> function_p)
+BoundAggregateFunction::BoundAggregateFunction(shared_ptr<const AggregateFunction> function_p,
+                                               optional_ptr<ClientContext> context)
     : definition(std::move(function_p)) {
 	auto &function = *definition;
 	qualified_name = function.GetQualifiedName();
 	extra_info = function.extra_info;
-	return_type = function.GetReturnType();
 	properties = function.GetProperties();
 	callbacks = function.GetCallbacks();
 	function_info = function.GetFunctionInfo();
 
-	// Try to default bind the function, to fill in any missing information in the BoundScalarFunction (e.g. from the
-	// "bind" callback)
-	for (auto &param : function.GetSignature().GetParameters()) {
-		if (!param.IsVariadic()) {
-			arguments.push_back(param.GetType());
-		}
-	}
+	InitializeTypes(context, function);
 	positional_arguments = arguments.size();
 	logical_arguments = arguments;
 	logical_return_type = return_type;
@@ -157,7 +151,22 @@ void BoundAggregateFunction::ReplaceImplementation(const BoundAggregateFunction 
 	SetDefinition(definition);
 }
 
-void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &function) {
+void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &function,
+                                                   optional_ptr<ClientContext> context) {
+	ReplaceCallbacks(function);
+	// Try to default bind the function, to fill in any missing information in the BoundScalarFunction (e.g. from the
+	// "bind" callback)
+	InitializeTypes(context, function);
+}
+
+void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &function, vector<LogicalType> arguments_p,
+                                                   LogicalType return_type_p) {
+	ReplaceCallbacks(function);
+	arguments = std::move(arguments_p);
+	return_type = std::move(return_type_p);
+}
+
+void BoundAggregateFunction::ReplaceCallbacks(const AggregateFunction &function) {
 	SetName(function.GetName());
 	// The replacement is a specialized implementation of the function we were bound from, and is usually built by
 	// a factory rather than handed out by a catalog entry. Only take its qualification when it has one, so that
@@ -165,19 +174,9 @@ void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &func
 	if (!function.GetCatalogName().empty() || !function.GetSchemaName().empty()) {
 		qualified_name = function.GetQualifiedName();
 	}
-	this->return_type = function.GetReturnType();
 	this->properties = function.GetProperties();
 	this->callbacks = function.GetCallbacks();
 	this->function_info = function.GetFunctionInfo();
-
-	// Try to default bind the function, to fill in any missing information in the BoundScalarFunction (e.g. from the
-	// "bind" callback)
-	arguments.clear();
-	for (auto &param : function.GetSignature().GetParameters()) {
-		if (!param.IsVariadic()) {
-			arguments.push_back(param.GetType());
-		}
-	}
 }
 
 BindAggregateFunctionInput::BindAggregateFunctionInput(ClientContext &context_p,

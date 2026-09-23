@@ -625,11 +625,11 @@ void FunctionBinder::BindSortedAggregate(ClientContext &context, BoundAggregateE
 	}
 
 	// Replace the aggregate with the wrapper
-	auto ordered_aggregate =
-	    CreateSortedAggregateWrapper(bound_function.GetName(), arguments, bound_function.GetReturnType(),
-	                                 bound_function.GetProperties().GetNullHandling());
+	auto return_type = bound_function.GetReturnType();
+	auto ordered_aggregate = CreateSortedAggregateWrapper(bound_function.GetName(), arguments, return_type,
+	                                                      bound_function.GetProperties().GetNullHandling());
 
-	expr.FunctionMutable().ReplaceImplementation(ordered_aggregate);
+	expr.FunctionMutable().ReplaceImplementation(ordered_aggregate, std::move(arguments), std::move(return_type));
 	expr.BindInfoMutable() = std::move(sorted_bind);
 	expr.GetOrderBysMutable().reset();
 
@@ -689,7 +689,8 @@ void FunctionBinder::BindSortedAggregate(ClientContext &context, BoundWindowExpr
 	ordered_aggregate.SetWindowCallback(SortedAggregateFunction::Window);
 	ordered_aggregate.SetInitLocalStateFinalizeCallback(SortedAggregateFinalizeState::Init);
 
-	aggregate.ReplaceImplementation(ordered_aggregate);
+	auto return_type = aggregate.GetReturnType();
+	aggregate.ReplaceImplementation(ordered_aggregate, std::move(arguments), std::move(return_type));
 	expr.BindInfoMutable() = std::move(sorted_bind);
 	expr.ArgOrdersMutable().clear();
 }

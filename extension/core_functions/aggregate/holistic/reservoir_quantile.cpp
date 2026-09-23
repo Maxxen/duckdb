@@ -341,28 +341,32 @@ static unique_ptr<FunctionData> DeserializeReservoirQuantileDecimal(Deserializer
 static void SetDecimalImplementation(BoundAggregateFunction &function, const LogicalType &decimal_type, bool is_list) {
 	auto declared_arguments = function.GetArguments();
 	if (is_list) {
-		function.ReplaceImplementation(GetReservoirQuantileListAggregateFunction(decimal_type));
+		function.ReplaceImplementation(GetReservoirQuantileListAggregateFunction(decimal_type), nullptr);
 	} else {
 		switch (decimal_type.InternalType()) {
 		case PhysicalType::INT16:
 			function.ReplaceImplementation(
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<int16_t>, int16_t, int16_t,
-			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
+			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type),
+			    nullptr);
 			break;
 		case PhysicalType::INT32:
 			function.ReplaceImplementation(
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<int32_t>, int32_t, int32_t,
-			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
+			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type),
+			    nullptr);
 			break;
 		case PhysicalType::INT64:
 			function.ReplaceImplementation(
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<int64_t>, int64_t, int64_t,
-			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
+			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type),
+			    nullptr);
 			break;
 		case PhysicalType::INT128:
 			function.ReplaceImplementation(
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<hugeint_t>, hugeint_t, hugeint_t,
-			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
+			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type),
+			    nullptr);
 			break;
 		default:
 			throw InternalException("Invalid physical type for decimal reservoir quantile");

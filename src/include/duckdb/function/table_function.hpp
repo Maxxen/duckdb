@@ -698,8 +698,9 @@ public:
 class BoundTableFunction : public BaseTableFunction, public BoundSimpleFunction {
 public:
 	DUCKDB_API BoundTableFunction();
-	DUCKDB_API explicit BoundTableFunction(const TableFunction &function);
-	DUCKDB_API explicit BoundTableFunction(shared_ptr<const TableFunction> function);
+	DUCKDB_API explicit BoundTableFunction(const TableFunction &function, optional_ptr<ClientContext> context);
+	DUCKDB_API explicit BoundTableFunction(shared_ptr<const TableFunction> function,
+	                                       optional_ptr<ClientContext> context);
 
 	//! The function this was bound from. For a function bound from a TableFunctionSet this is the set's own
 	//! overload, so it compares equal by pointer across binds. Functions bound outside of a set are copied into a
@@ -725,7 +726,8 @@ public:
 	}
 	//! Records the arguments of the call this was bound to, laid out as [standard | *args | keyword-only | **kwargs].
 	//! Plan serialization writes them, so that deserialization selects the same overload the call did
-	DUCKDB_API void SetCallArguments(const vector<Value> &parameters, const named_argument_map_t &named_parameters);
+	DUCKDB_API void SetCallArguments(ClientContext &context, const vector<Value> &parameters,
+	                                 const named_argument_map_t &named_parameters);
 
 private:
 	shared_ptr<const TableFunction> definition;

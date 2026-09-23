@@ -507,7 +507,7 @@ public: // Extra function info
 		function_info = std::move(info);
 	}
 	template <class T, class... ARGS>
-	auto SetExtraFunctionInfo(ARGS &&... args) -> void {
+	auto SetExtraFunctionInfo(ARGS &&...args) -> void {
 		function_info = make_shared_ptr<T>(std::forward<ARGS>(args)...);
 	}
 	auto GetFunctionInfo() const -> shared_ptr<AggregateFunctionInfo> {
@@ -857,11 +857,15 @@ public:
 
 class BoundAggregateFunction : public BaseAggregateFunction, public BoundSimpleFunction {
 public:
-	explicit BoundAggregateFunction(const AggregateFunction &function);
-	explicit BoundAggregateFunction(shared_ptr<const AggregateFunction> function);
+	explicit BoundAggregateFunction(const AggregateFunction &function, optional_ptr<ClientContext> context);
+	explicit BoundAggregateFunction(shared_ptr<const AggregateFunction> function, optional_ptr<ClientContext> context);
 
 	//! Swap in a different implementation, keeping the definition this was bound from intact
-	void ReplaceImplementation(const AggregateFunction &function);
+	//! The context resolves the types of the implementation's signature
+	void ReplaceImplementation(const AggregateFunction &function, optional_ptr<ClientContext> context);
+	//! Replaces the implementation by one specialized for exactly these types, without resolving its signature
+	void ReplaceImplementation(const AggregateFunction &function, vector<LogicalType> arguments,
+	                           LogicalType return_type);
 	void ReplaceImplementation(const BoundAggregateFunction &function);
 
 	DUCKDB_API bool operator==(const BoundAggregateFunction &rhs) const;
@@ -916,6 +920,8 @@ public:
 	}
 
 private:
+	//! Takes over everything but the types of a replacement implementation
+	void ReplaceCallbacks(const AggregateFunction &function);
 	void SetLogicalArguments(vector<LogicalType> arguments_p) {
 		logical_arguments = std::move(arguments_p);
 	}

@@ -636,7 +636,7 @@ public:
 			throw InvalidInputException("Partition data callback must be set when the partitioning callback is set.");
 		}
 		// A table function declares the columns it returns from its bind callback, not through a return type.
-		if (signature.GetReturnType().id() != LogicalTypeId::INVALID) {
+		if (signature.HasReturnType()) {
 			throw InvalidInputException("A table function signature cannot set a return type.");
 		}
 

@@ -32,6 +32,7 @@ add_library_unity(
   scalar_macro_function.cpp
   table_macro_function.cpp
   scalar_function.cpp
+  signature_resolver.cpp
   table_function.cpp
   type_constructor.cpp
   window_function.cpp

@@ -520,12 +520,12 @@ duckdb_state duckdb_register_scalar_function_set(duckdb_connection connection, d
 		if (scalar_function.name.empty() || !info.function) {
 			return DuckDBError;
 		}
-		if (duckdb::TypeVisitor::Contains(scalar_function.GetReturnType(), duckdb::LogicalTypeId::INVALID) ||
-		    duckdb::TypeVisitor::Contains(scalar_function.GetReturnType(), duckdb::LogicalTypeId::ANY)) {
+		if (scalar_function.GetReturnType().ContainsInvalid() ||
+		    scalar_function.GetReturnType().ContainsPseudoType(duckdb::LogicalTypeId::ANY)) {
 			return DuckDBError;
 		}
 		for (const auto &argument : scalar_function.GetSignature().GetParameters()) {
-			if (duckdb::TypeVisitor::Contains(argument.GetType(), duckdb::LogicalTypeId::INVALID)) {
+			if (argument.GetType().ContainsInvalid()) {
 				return DuckDBError;
 			}
 		}

@@ -41,7 +41,8 @@ ScalarFunctionSet JSONFunctions::GetArrayLengthFunction() {
 	GetArrayLengthFunctionsInternal(set, LogicalType::JSON());
 	set.ApplyToFunctions([](ScalarFunction &func) {
 		const auto &sig = func.GetSignature();
-		if (sig.GetParameterCount() == 1 && sig.GetParameter(0).GetType().IsJSONType()) {
+		if (sig.GetParameterCount() == 1 &&
+		    sig.GetParameter(0).GetType() == TypeName::FromLogicalType(LogicalType::JSON())) {
 			return;
 		}
 		func.SetFallible();

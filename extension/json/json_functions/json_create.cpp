@@ -1463,7 +1463,7 @@ unique_ptr<Expression> JSONFunctions::CreateJSONCopyToJSONExpression(ClientConte
 	children.push_back(std::move(timestamp_format));
 
 	auto function = GetJSONCopyToJSONFunction();
-	BoundScalarFunction bound_function(function);
+	BoundScalarFunction bound_function(function, context);
 	auto &arguments = bound_function.GetArguments();
 	arguments.clear();
 	arguments.push_back(std::move(json_type));

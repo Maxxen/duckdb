@@ -306,7 +306,7 @@ duckdb_state duckdb_register_table_function(duckdb_connection connection, duckdb
 		if (param.IsVariadic()) {
 			continue;
 		}
-		if (duckdb::TypeVisitor::Contains(param.GetType(), duckdb::LogicalTypeId::INVALID)) {
+		if (param.GetType().ContainsInvalid()) {
 			return DuckDBError;
 		}
 	}

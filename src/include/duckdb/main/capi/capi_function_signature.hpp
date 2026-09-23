@@ -66,18 +66,8 @@ private:
 		std::stable_sort(
 		    parameters.begin(), parameters.end(),
 		    [](const FunctionParameter &lhs, const FunctionParameter &rhs) { return lhs.GetKind() < rhs.GetKind(); });
-		// a typed "**kwargs" keeps its schema
-		auto typed_kwargs = signature.GetTypedKwargs();
-		optional<Identifier> kwargs_name;
-		if (typed_kwargs && !parameters.empty() && parameters.back().GetKind() == FunctionParameterKind::VAR_KEYWORD) {
-			kwargs_name = parameters.back().GetName();
-			parameters.pop_back();
-		}
-		FunctionSignature result(std::move(parameters), signature.GetReturnType());
-		if (kwargs_name) {
-			result.AddTypedKwargs(*kwargs_name, *typed_kwargs);
-		}
-		signature = std::move(result);
+		// replaced in place, so that the type variables and a typed "**kwargs" are kept
+		signature.SetParameters(std::move(parameters));
 	}
 };
 

@@ -247,7 +247,7 @@ public:
 			                             StringUtil::ToString(arguments, ","), error.RawMessage());
 		}
 
-		BoundTableFunction function(functions.GetFunctionByOffset(func_idx.GetIndex()));
+		BoundTableFunction function(functions.GetFunctionByOffset(func_idx.GetIndex()), context);
 		function.GetArguments() = std::move(arguments);
 		function.SetNamedArguments(positional_count, std::move(named_arguments));
 		return make_pair(std::move(function), has_serialize);
@@ -437,7 +437,7 @@ public:
 		}
 
 		// Otherwise, construct the bound function from its parts
-		FUNC bound_function(function);
+		FUNC bound_function(function, context);
 		bound_function.GetArguments() = std::move(arguments);
 
 		bound_function.SetNamedArguments(positional_count, std::move(named_arguments));

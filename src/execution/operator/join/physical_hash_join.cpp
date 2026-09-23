@@ -694,7 +694,8 @@ unique_ptr<JoinHashTable> PhysicalHashJoin::InitializeHashTable(ClientContext &c
 			auto count_fun = GetBuiltinAggregateFunction(context, CountFun::Name, {LogicalType::BIGINT});
 			vector<unique_ptr<Expression>> children;
 			// this is a dummy but we need it to make the hash table understand whats going on
-			children.push_back(make_uniq_base<Expression, BoundReferenceExpression>(count_fun->GetReturnType(), 0U));
+			children.push_back(
+			    make_uniq_base<Expression, BoundReferenceExpression>(count_fun->ResolveReturnType(context), 0U));
 			aggr = function_binder.BindAggregateFunction(std::move(count_fun), std::move(children), nullptr,
 			                                             AggregateType::NON_DISTINCT);
 			correlated_aggregates.emplace_back(*aggr);
@@ -1495,7 +1496,9 @@ static unique_ptr<Expression> CreateRuntimeFilterExpression(ClientContext &conte
 			return nullptr;
 		}
 		filter_expr = make_uniq<BoundFunctionExpression>(
-		    BoundScalarFunction(BloomFilterScalarFun::GetFunction(filter_input_type)), std::move(children),
+		    BoundScalarFunction(BloomFilterScalarFun::GetFunction(filter_input_type), {filter_input_type},
+		                        LogicalType::BOOLEAN),
+		    std::move(children),
 		    make_uniq<BloomFilterFunctionData>(ht.GetBloomFilter(), filters_null_values, key_name, key_type,
 		                                       selectivity_threshold, n_vectors_to_check));
 		break;
@@ -1507,7 +1510,9 @@ static unique_ptr<Expression> CreateRuntimeFilterExpression(ClientContext &conte
 			return nullptr;
 		}
 		filter_expr = make_uniq<BoundFunctionExpression>(
-		    BoundScalarFunction(PrefixRangeScalarFun::GetFunction(filter_input_type)), std::move(children),
+		    BoundScalarFunction(PrefixRangeScalarFun::GetFunction(filter_input_type), {filter_input_type},
+		                        LogicalType::BOOLEAN),
+		    std::move(children),
 		    make_uniq<PrefixRangeFunctionData>(prefix_range_filter, filters_null_values, key_name, key_type,
 		                                       selectivity_threshold, n_vectors_to_check));
 		break;

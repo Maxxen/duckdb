@@ -62,8 +62,8 @@ TEST_CASE("Serialize-only table functions retain rebinding inputs in legacy plan
 	}
 	CreateTableFunctionInfo info(function);
 	Catalog::GetSystemCatalog(context).CreateFunction(context, info);
-	LogicalGet get(TableIndex(0), BoundTableFunction(function), make_uniq<TableFunctionData>(), {LogicalType::BIGINT},
-	               {Identifier("result")});
+	LogicalGet get(TableIndex(0), BoundTableFunction(function, context), make_uniq<TableFunctionData>(),
+	               {LogicalType::BIGINT}, {Identifier("result")});
 	get.parameters = {Value("scan_source")};
 	get.named_parameters["option"] = Value::INTEGER(42);
 	get.input_table_types = {LogicalType::BIGINT};
@@ -141,8 +141,8 @@ TEST_CASE("Table function bind data remains readable after removing its serializ
 	}
 	CreateTableFunctionInfo info(reader);
 	Catalog::GetSystemCatalog(context).CreateFunction(context, info);
-	LogicalGet get(TableIndex(0), BoundTableFunction(writer), make_uniq<LegacyScanBindData>(42), {LogicalType::BIGINT},
-	               {Identifier("result")});
+	LogicalGet get(TableIndex(0), BoundTableFunction(writer, context), make_uniq<LegacyScanBindData>(42),
+	               {LogicalType::BIGINT}, {Identifier("result")});
 	for (const auto &version : {"v1.4.0", "v1.5.0", "latest"}) {
 		CAPTURE(version);
 		SerializationOptions options;
@@ -465,14 +465,14 @@ struct KeywordScanBindData : public TableFunctionData {
 };
 
 //! Returns the option it was called with, typed as the overload it was bound to declares it
-static unique_ptr<FunctionData> KeywordScanBind(ClientContext &, TableFunctionBindInput &input,
+static unique_ptr<FunctionData> KeywordScanBind(ClientContext &context, TableFunctionBindInput &input,
                                                 vector<LogicalType> &types, vector<Identifier> &names) {
 	// "opt" is a keyword-only parameter, or an option of the overload's "**kwargs"
 	auto &signature = input.table_function.GetSignature();
 	auto param_idx = signature.GetParameterIndexByName("opt");
 	auto option = signature.GetTypedKwargs() ? signature.GetTypedKwargs()->Find("opt") : nullptr;
 	REQUIRE((param_idx.IsValid() || option));
-	auto &type = param_idx.IsValid() ? signature.GetParameter(param_idx.GetIndex()).GetType() : option->type;
+	auto type = param_idx.IsValid() ? signature.ResolveParameterType(param_idx.GetIndex(), context) : option->type;
 	auto entry = input.named_parameters.find("opt");
 	types.push_back(type);
 	names.emplace_back("opt");
@@ -662,8 +662,9 @@ TEST_CASE("Plans written for older versions select overloads with required keywo
 	}
 	for (auto &function : functions) {
 		CAPTURE(function.GetName().GetIdentifierName());
-		LogicalGet get(TableIndex(0), BoundTableFunction(function), make_uniq<KeywordScanBindData>(Value::BIGINT(3)),
-		               {LogicalType::BIGINT}, {Identifier("num_rows")});
+		LogicalGet get(TableIndex(0), BoundTableFunction(function, context),
+		               make_uniq<KeywordScanBindData>(Value::BIGINT(3)), {LogicalType::BIGINT},
+		               {Identifier("num_rows")});
 		get.parameters = {Value::INTEGER(1)};
 		if (pass_num_rows) {
 			get.named_parameters["num_rows"] = Value::BIGINT(3);

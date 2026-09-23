@@ -307,7 +307,7 @@ ScalarFunctionSet VariantExtractFun::GetFunctions() {
 	variant_extract.GetSignature().AddParameter("field", LogicalType::VARCHAR);
 	fun_set.AddFunction(variant_extract);
 
-	variant_extract.GetSignature().GetParameter(1).SetType(LogicalType::UINTEGER);
+	variant_extract.GetSignature().SetParameterType(1, LogicalType::UINTEGER);
 	variant_extract.GetSignature().GetParameter(1).SetName("index");
 	fun_set.AddFunction(variant_extract);
 	return fun_set;

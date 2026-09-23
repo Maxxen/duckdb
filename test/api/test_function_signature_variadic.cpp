@@ -72,7 +72,7 @@ TEST_CASE("Keyword-only parameters still accept a **kwargs after them", "[api][s
 	sig.SetReturnType(LogicalType::BIGINT);
 	REQUIRE_NOTHROW(sig.Verify());
 	REQUIRE(!sig.GetArgs());
-	REQUIRE(sig.GetKwargs()->GetType() == LogicalType::ANY);
+	REQUIRE(sig.GetKwargs()->GetType() == TypeName::FromLogicalType(LogicalType::ANY));
 	REQUIRE(sig.ToString() == "(a INTEGER, *, kw INTEGER := NULL, **kwargs ANY) -> BIGINT");
 }
 
