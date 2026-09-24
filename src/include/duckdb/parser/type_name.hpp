@@ -146,4 +146,16 @@ private:
 	vector<TypeParam> params;
 };
 
+//! Hash and equality of type names by value, which also serve maps keyed by reference<const TypeName>
+struct TypeNameHash {
+	hash_t operator()(const TypeName &type) const {
+		return type.Hash();
+	}
+};
+struct TypeNameEquality {
+	bool operator()(const TypeName &a, const TypeName &b) const {
+		return a == b;
+	}
+};
+
 } // namespace duckdb

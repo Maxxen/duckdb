@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "duckdb/function/signature_resolver.hpp"
 #include "duckdb/function/function.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/function/aggregate_function.hpp"
@@ -32,10 +33,12 @@ struct SortedAggregateStateOrder {
 //! call. Free-standing so that callers without a ClientContext - which only limits the set of implicit casts
 //! considered, can select overloads too.
 struct FunctionOverloads {
-	//! Cost of calling this overload with the given arguments, or an invalid index if it does not match
+	//! Cost of calling this overload with the given arguments, or an invalid index if it does not match. The cache
+	//! shares resolved parameter types between the overloads of one function
 	DUCKDB_API static optional_idx Cost(optional_ptr<ClientContext> context, const SimpleFunction &func,
 	                                    const vector<LogicalType> &arguments,
-	                                    const vector<pair<Identifier, LogicalType>> &named_arguments);
+	                                    const vector<pair<Identifier, LogicalType>> &named_arguments,
+	                                    optional_ptr<SignatureTypeCache> cache = nullptr);
 
 	//! All overloads that match at the lowest cost. Empty (and error set) if none match.
 	template <class T>

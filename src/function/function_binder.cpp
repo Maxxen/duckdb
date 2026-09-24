@@ -83,9 +83,10 @@ static int64_t ImplicitCastCost(optional_ptr<ClientContext> context, const Logic
 
 optional_idx FunctionOverloads::Cost(optional_ptr<ClientContext> context, const SimpleFunction &func,
                                      const vector<LogicalType> &arguments,
-                                     const vector<pair<Identifier, LogicalType>> &named_arguments) {
+                                     const vector<pair<Identifier, LogicalType>> &named_arguments,
+                                     optional_ptr<SignatureTypeCache> cache) {
 	const auto &sig = func.GetSignature();
-	const SignatureResolver resolver(context, func);
+	const SignatureResolver resolver(context, func, cache);
 
 	// Compute total number of arguments passed
 	const auto received_arg_count = static_cast<idx_t>(arguments.size() + named_arguments.size());
@@ -214,10 +215,11 @@ vector<idx_t> FunctionOverloads::Candidates(optional_ptr<ClientContext> context,
 	optional_idx best_function;
 	idx_t lowest_cost = NumericLimits<idx_t>::Maximum();
 	vector<idx_t> candidate_functions;
+	SignatureTypeCache cache;
 	for (idx_t f_idx = 0; f_idx < functions.functions.size(); f_idx++) {
 		auto &func = *functions.functions[f_idx];
 		// check the arguments of the function
-		auto bind_cost = Cost(context, func, arguments, named_arguments);
+		auto bind_cost = Cost(context, func, arguments, named_arguments, cache);
 		if (!bind_cost.IsValid()) {
 			// auto casting was not possible
 			continue;

@@ -272,8 +272,10 @@ Value IntegerArgument(int64_t value) {
 } // namespace
 
 SignatureResolver::SignatureResolver(optional_ptr<ClientContext> context_p, const FunctionSignature &signature_p,
-                                     Identifier catalog_p, Identifier schema_p)
-    : context(context_p), signature(signature_p), catalog(std::move(catalog_p)), schema(std::move(schema_p)) {
+                                     Identifier catalog_p, Identifier schema_p,
+                                     optional_ptr<SignatureTypeCache> cache_p)
+    : context(context_p), signature(signature_p), catalog(std::move(catalog_p)), schema(std::move(schema_p)),
+      cache(cache_p) {
 	if (signature.GetTypeVariables().empty()) {
 		return;
 	}
@@ -283,8 +285,29 @@ SignatureResolver::SignatureResolver(optional_ptr<ClientContext> context_p, cons
 	CountOccurrences(signature.GetReturnType(), occurrences);
 }
 
-SignatureResolver::SignatureResolver(optional_ptr<ClientContext> context_p, const SimpleFunction &function)
-    : SignatureResolver(context_p, function.GetSignature(), function.GetCatalogName(), function.GetSchemaName()) {
+SignatureResolver::SignatureResolver(optional_ptr<ClientContext> context_p, const SimpleFunction &function,
+                                     optional_ptr<SignatureTypeCache> cache_p)
+    : SignatureResolver(context_p, function.GetSignature(), function.GetCatalogName(), function.GetSchemaName(),
+                        cache_p) {
+}
+
+bool SignatureResolver::ReferencesVariables(const TypeName &type) const {
+	if (signature.GetTypeVariables().empty()) {
+		return false;
+	}
+	if (type.IsPlainName()) {
+		return signature.GetTypeVariable(type.GetName()) != nullptr;
+	}
+	for (auto &param : type.GetParams()) {
+		if (param.GetKind() == TypeParamKind::TYPE && ReferencesVariables(param.GetType())) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool SignatureResolver::IsOwnedBySystemCatalog() const {
+	return catalog.empty() || catalog == Identifier::SystemCatalog();
 }
 
 bool SignatureResolver::IsVariable(const TypeParam &param) const {
@@ -337,6 +360,21 @@ LogicalType SignatureResolver::Resolve(const TypeName &type) const {
 	if (!type.IsValid()) {
 		return LogicalType::INVALID;
 	}
+	if (!cache || ReferencesVariables(type)) {
+		return ResolveInternal(type);
+	}
+	auto entry = cache->find(type);
+	if (entry != cache->end()) {
+		return entry->second;
+	}
+	auto result = ResolveInternal(type);
+	if (result.id() != LogicalTypeId::INVALID) {
+		cache->emplace(type, result);
+	}
+	return result;
+}
+
+LogicalType SignatureResolver::ResolveInternal(const TypeName &type) const {
 	if (type.IsPlainName()) {
 		auto variable = signature.GetTypeVariable(type.GetName());
 		if (variable) {
@@ -355,6 +393,14 @@ LogicalType SignatureResolver::Resolve(const TypeName &type) const {
 		return LogicalType(id);
 	}
 	if (!type.IsQualified()) {
+		if (params.empty() && IsOwnedBySystemCatalog()) {
+			// the lookup would end in the default types of the system catalog, which a name without parameters
+			// resolves to directly unless the type has constructors of its own
+			auto builtin = DefaultTypeGenerator::TryBindWithoutConstructor(type.GetName());
+			if (builtin.id() != LogicalTypeId::INVALID) {
+				return builtin;
+			}
+		}
 		auto family = ResolveFamily(type, DefaultTypeGenerator::GetDefaultType(type.GetName()));
 		if (family.id() != LogicalTypeId::INVALID) {
 			return family;

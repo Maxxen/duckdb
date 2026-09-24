@@ -521,6 +521,15 @@ LogicalType DefaultTypeGenerator::TryDefaultBind(const string &name, const vecto
 	return GetConstructors(*entry, Identifier(name)).Bind(nullptr, LogicalType(entry->type), args);
 }
 
+LogicalType DefaultTypeGenerator::TryBindWithoutConstructor(const Identifier &name) {
+	auto entry = TryGetDefaultTypeEntry(name);
+	if (!entry || entry->register_constructors) {
+		return LogicalTypeId::INVALID;
+	}
+	// such a type only has the identity constructor, which resolves to the type itself
+	return LogicalType(entry->type);
+}
+
 DefaultTypeGenerator::DefaultTypeGenerator(Catalog &catalog, SchemaCatalogEntry &schema)
     : DefaultGenerator(catalog), schema(schema) {
 }
