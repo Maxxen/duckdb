@@ -9,6 +9,7 @@
 #include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/exception/binder_exception.hpp"
 #include "duckdb/common/array.hpp"
+#include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/common/types/geometry_crs.hpp"
 #include "duckdb/main/settings.hpp"
 #include "duckdb/planner/expression_binder.hpp"
@@ -21,9 +22,11 @@ namespace {
 //----------------------------------------------------------------------------------------------------------------------
 // FLOAT Type
 //----------------------------------------------------------------------------------------------------------------------
-void RegisterFloatConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor::Identity(Identifier("float")));
+LogicalType BindDefaultFloatType(BindLogicalTypeInput &input) {
+	return LogicalType::FLOAT;
+}
 
+void RegisterFloatConstructors(TypeConstructorSet &set) {
 	auto signature = TypeConstructor::Signature();
 	signature.AddParameter("precision", LogicalType::BIGINT);
 	set.AddFunction(TypeConstructor(std::move(signature), [](BindLogicalTypeInput &input) -> LogicalType {
@@ -62,8 +65,6 @@ LogicalType BindDecimalType(BindLogicalTypeInput &input) {
 }
 
 void RegisterDecimalConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindDefaultDecimalType));
-
 	auto signature = TypeConstructor::Signature();
 	signature.AddParameter("width", LogicalType::UTINYINT);
 	signature.AddParameter("scale", LogicalType::UTINYINT, Value::UTINYINT(0));
@@ -96,8 +97,6 @@ LogicalType BindTimestampType(BindLogicalTypeInput &input) {
 }
 
 void RegisterTimestampConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindDefaultTimestampType));
-
 	auto signature = TypeConstructor::Signature();
 	signature.AddParameter("precision", LogicalType::UTINYINT);
 	set.AddFunction(TypeConstructor(std::move(signature), BindTimestampType));
@@ -124,8 +123,6 @@ LogicalType BindCollatedVarcharType(BindLogicalTypeInput &input) {
 }
 
 void RegisterVarcharConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindVarcharType));
-
 	// The length is accepted for compatibility, but VARCHAR is not length-limited so it is ignored
 	auto length_signature = TypeConstructor::Signature();
 	length_signature.AddParameter("length", LogicalType::BIGINT);
@@ -144,8 +141,6 @@ LogicalType BindBitType(BindLogicalTypeInput &input) {
 }
 
 void RegisterBitConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindBitType));
-
 	// The length is accepted for compatibility, but BIT is not length-limited so it is ignored
 	auto signature = TypeConstructor::Signature();
 	signature.AddParameter("length", LogicalType::BIGINT);
@@ -160,8 +155,6 @@ LogicalType BindIntervalType(BindLogicalTypeInput &input) {
 }
 
 void RegisterIntervalConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindIntervalType));
-
 	// The leading field is accepted for compatibility, but is ignored
 	auto signature = TypeConstructor::Signature();
 	signature.AddParameter("precision", LogicalType::UTINYINT);
@@ -323,10 +316,6 @@ LogicalType BindVariantType(BindLogicalTypeInput &input) {
 	return LogicalType::VARIANT();
 }
 
-void RegisterVariantConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindVariantType));
-}
-
 //----------------------------------------------------------------------------------------------------------------------
 // GEOMETRY Type
 //----------------------------------------------------------------------------------------------------------------------
@@ -365,8 +354,6 @@ LogicalType BindGeometryType(BindLogicalTypeInput &input) {
 }
 
 void RegisterGeometryConstructors(TypeConstructorSet &set) {
-	set.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindDefaultGeometryType));
-
 	auto signature = TypeConstructor::Signature();
 	signature.AddParameter("crs", LogicalType::VARCHAR);
 	set.AddFunction(TypeConstructor(std::move(signature), BindGeometryType));
@@ -383,112 +370,123 @@ struct DefaultType {
 	LogicalTypeId type;
 	//! Registers the constructors accepting this type's modifiers, or null if it takes no modifiers
 	constructor_registration_t register_constructors;
+	//! Binds the type without modifiers, or null if it requires them (or takes none and binds to itself)
+	bind_logical_type_function_t bind_without_modifiers;
 };
 
 using builtin_type_array = std::array<DefaultType, 83>;
 
-const builtin_type_array BUILTIN_TYPES = {{{"decimal", LogicalTypeId::DECIMAL, RegisterDecimalConstructors},
-                                           {"dec", LogicalTypeId::DECIMAL, RegisterDecimalConstructors},
-                                           {"numeric", LogicalTypeId::DECIMAL, RegisterDecimalConstructors},
-                                           {"time", LogicalTypeId::TIME, nullptr},
-                                           {"time_ns", LogicalTypeId::TIME_NS, nullptr},
-                                           {"date", LogicalTypeId::DATE, nullptr},
-                                           {"timestamp", LogicalTypeId::TIMESTAMP, RegisterTimestampConstructors},
-                                           {"datetime", LogicalTypeId::TIMESTAMP, RegisterTimestampConstructors},
-                                           {"timestamp_us", LogicalTypeId::TIMESTAMP, nullptr},
-                                           {"timestamp_ms", LogicalTypeId::TIMESTAMP_MS, nullptr},
-                                           {"timestamp_ns", LogicalTypeId::TIMESTAMP_NS, nullptr},
-                                           {"timestamp_s", LogicalTypeId::TIMESTAMP_SEC, nullptr},
-                                           {"timestamptz", LogicalTypeId::TIMESTAMP_TZ, nullptr},
-                                           {"timestamp with time zone", LogicalTypeId::TIMESTAMP_TZ, nullptr},
-                                           {"timestamptz_ns", LogicalTypeId::TIMESTAMP_TZ_NS, nullptr},
-                                           {"timetz", LogicalTypeId::TIME_TZ, nullptr},
-                                           {"time with time zone", LogicalTypeId::TIME_TZ, nullptr},
-                                           {"interval", LogicalTypeId::INTERVAL, RegisterIntervalConstructors},
-                                           {"varchar", LogicalTypeId::VARCHAR, RegisterVarcharConstructors},
-                                           {"bpchar", LogicalTypeId::VARCHAR, RegisterVarcharConstructors},
-                                           {"string", LogicalTypeId::VARCHAR, RegisterVarcharConstructors},
-                                           {"char", LogicalTypeId::VARCHAR, RegisterVarcharConstructors},
-                                           {"nvarchar", LogicalTypeId::VARCHAR, RegisterVarcharConstructors},
-                                           {"text", LogicalTypeId::VARCHAR, RegisterVarcharConstructors},
-                                           {"blob", LogicalTypeId::BLOB, nullptr},
-                                           {"bytea", LogicalTypeId::BLOB, nullptr},
-                                           {"varbinary", LogicalTypeId::BLOB, nullptr},
-                                           {"binary", LogicalTypeId::BLOB, nullptr},
-                                           {"hugeint", LogicalTypeId::HUGEINT, nullptr},
-                                           {"int128", LogicalTypeId::HUGEINT, nullptr},
-                                           {"uhugeint", LogicalTypeId::UHUGEINT, nullptr},
-                                           {"uint128", LogicalTypeId::UHUGEINT, nullptr},
-                                           {"bigint", LogicalTypeId::BIGINT, nullptr},
-                                           {"oid", LogicalTypeId::BIGINT, nullptr},
-                                           {"long", LogicalTypeId::BIGINT, nullptr},
-                                           {"int8", LogicalTypeId::BIGINT, nullptr},
-                                           {"int64", LogicalTypeId::BIGINT, nullptr},
-                                           {"ubigint", LogicalTypeId::UBIGINT, nullptr},
-                                           {"uint64", LogicalTypeId::UBIGINT, nullptr},
-                                           {"integer", LogicalTypeId::INTEGER, nullptr},
-                                           {"int", LogicalTypeId::INTEGER, nullptr},
-                                           {"int4", LogicalTypeId::INTEGER, nullptr},
-                                           {"signed", LogicalTypeId::INTEGER, nullptr},
-                                           {"integral", LogicalTypeId::INTEGER, nullptr},
-                                           {"int32", LogicalTypeId::INTEGER, nullptr},
-                                           {"uinteger", LogicalTypeId::UINTEGER, nullptr},
-                                           {"uint32", LogicalTypeId::UINTEGER, nullptr},
-                                           {"smallint", LogicalTypeId::SMALLINT, nullptr},
-                                           {"int2", LogicalTypeId::SMALLINT, nullptr},
-                                           {"short", LogicalTypeId::SMALLINT, nullptr},
-                                           {"int16", LogicalTypeId::SMALLINT, nullptr},
-                                           {"usmallint", LogicalTypeId::USMALLINT, nullptr},
-                                           {"uint16", LogicalTypeId::USMALLINT, nullptr},
-                                           {"tinyint", LogicalTypeId::TINYINT, nullptr},
-                                           {"int1", LogicalTypeId::TINYINT, nullptr},
-                                           {"utinyint", LogicalTypeId::UTINYINT, nullptr},
-                                           {"uint8", LogicalTypeId::UTINYINT, nullptr},
-                                           {"struct", LogicalTypeId::STRUCT, RegisterStructConstructors},
-                                           {"row", LogicalTypeId::STRUCT, RegisterStructConstructors},
-                                           {"tuple", LogicalTypeId::TUPLE, RegisterTupleConstructors},
-                                           {"list", LogicalTypeId::LIST, RegisterListConstructors},
-                                           {"array", LogicalTypeId::ARRAY, RegisterArrayConstructors},
-                                           {"map", LogicalTypeId::MAP, RegisterMapConstructors},
-                                           {"union", LogicalTypeId::UNION, RegisterUnionConstructors},
-                                           {"bit", LogicalTypeId::BIT, RegisterBitConstructors},
-                                           {"bitstring", LogicalTypeId::BIT, RegisterBitConstructors},
-                                           {"variant", LogicalTypeId::VARIANT, RegisterVariantConstructors},
-                                           {"bignum", LogicalTypeId::BIGNUM, nullptr},
-                                           {"varint", LogicalTypeId::BIGNUM, nullptr},
-                                           {"boolean", LogicalTypeId::BOOLEAN, nullptr},
-                                           {"bool", LogicalTypeId::BOOLEAN, nullptr},
-                                           {"logical", LogicalTypeId::BOOLEAN, nullptr},
-                                           {"uuid", LogicalTypeId::UUID, nullptr},
-                                           {"guid", LogicalTypeId::UUID, nullptr},
-                                           {"enum", LogicalTypeId::ENUM, RegisterEnumConstructors},
-                                           {"null", LogicalTypeId::SQLNULL, nullptr},
-                                           {"float", LogicalTypeId::FLOAT, RegisterFloatConstructors},
-                                           {"real", LogicalTypeId::FLOAT, nullptr},
-                                           {"float4", LogicalTypeId::FLOAT, nullptr},
-                                           {"double", LogicalTypeId::DOUBLE, nullptr},
-                                           {"float8", LogicalTypeId::DOUBLE, nullptr},
-                                           {"geometry", LogicalTypeId::GEOMETRY, RegisterGeometryConstructors},
-                                           {"type", LogicalTypeId::TYPE, nullptr}}};
+const builtin_type_array BUILTIN_TYPES = {
+    {{"decimal", LogicalTypeId::DECIMAL, RegisterDecimalConstructors, BindDefaultDecimalType},
+     {"dec", LogicalTypeId::DECIMAL, RegisterDecimalConstructors, BindDefaultDecimalType},
+     {"numeric", LogicalTypeId::DECIMAL, RegisterDecimalConstructors, BindDefaultDecimalType},
+     {"time", LogicalTypeId::TIME, nullptr, nullptr},
+     {"time_ns", LogicalTypeId::TIME_NS, nullptr, nullptr},
+     {"date", LogicalTypeId::DATE, nullptr, nullptr},
+     {"timestamp", LogicalTypeId::TIMESTAMP, RegisterTimestampConstructors, BindDefaultTimestampType},
+     {"datetime", LogicalTypeId::TIMESTAMP, RegisterTimestampConstructors, BindDefaultTimestampType},
+     {"timestamp_us", LogicalTypeId::TIMESTAMP, nullptr, nullptr},
+     {"timestamp_ms", LogicalTypeId::TIMESTAMP_MS, nullptr, nullptr},
+     {"timestamp_ns", LogicalTypeId::TIMESTAMP_NS, nullptr, nullptr},
+     {"timestamp_s", LogicalTypeId::TIMESTAMP_SEC, nullptr, nullptr},
+     {"timestamptz", LogicalTypeId::TIMESTAMP_TZ, nullptr, nullptr},
+     {"timestamp with time zone", LogicalTypeId::TIMESTAMP_TZ, nullptr, nullptr},
+     {"timestamptz_ns", LogicalTypeId::TIMESTAMP_TZ_NS, nullptr, nullptr},
+     {"timetz", LogicalTypeId::TIME_TZ, nullptr, nullptr},
+     {"time with time zone", LogicalTypeId::TIME_TZ, nullptr, nullptr},
+     {"interval", LogicalTypeId::INTERVAL, RegisterIntervalConstructors, BindIntervalType},
+     {"varchar", LogicalTypeId::VARCHAR, RegisterVarcharConstructors, BindVarcharType},
+     {"bpchar", LogicalTypeId::VARCHAR, RegisterVarcharConstructors, BindVarcharType},
+     {"string", LogicalTypeId::VARCHAR, RegisterVarcharConstructors, BindVarcharType},
+     {"char", LogicalTypeId::VARCHAR, RegisterVarcharConstructors, BindVarcharType},
+     {"nvarchar", LogicalTypeId::VARCHAR, RegisterVarcharConstructors, BindVarcharType},
+     {"text", LogicalTypeId::VARCHAR, RegisterVarcharConstructors, BindVarcharType},
+     {"blob", LogicalTypeId::BLOB, nullptr, nullptr},
+     {"bytea", LogicalTypeId::BLOB, nullptr, nullptr},
+     {"varbinary", LogicalTypeId::BLOB, nullptr, nullptr},
+     {"binary", LogicalTypeId::BLOB, nullptr, nullptr},
+     {"hugeint", LogicalTypeId::HUGEINT, nullptr, nullptr},
+     {"int128", LogicalTypeId::HUGEINT, nullptr, nullptr},
+     {"uhugeint", LogicalTypeId::UHUGEINT, nullptr, nullptr},
+     {"uint128", LogicalTypeId::UHUGEINT, nullptr, nullptr},
+     {"bigint", LogicalTypeId::BIGINT, nullptr, nullptr},
+     {"oid", LogicalTypeId::BIGINT, nullptr, nullptr},
+     {"long", LogicalTypeId::BIGINT, nullptr, nullptr},
+     {"int8", LogicalTypeId::BIGINT, nullptr, nullptr},
+     {"int64", LogicalTypeId::BIGINT, nullptr, nullptr},
+     {"ubigint", LogicalTypeId::UBIGINT, nullptr, nullptr},
+     {"uint64", LogicalTypeId::UBIGINT, nullptr, nullptr},
+     {"integer", LogicalTypeId::INTEGER, nullptr, nullptr},
+     {"int", LogicalTypeId::INTEGER, nullptr, nullptr},
+     {"int4", LogicalTypeId::INTEGER, nullptr, nullptr},
+     {"signed", LogicalTypeId::INTEGER, nullptr, nullptr},
+     {"integral", LogicalTypeId::INTEGER, nullptr, nullptr},
+     {"int32", LogicalTypeId::INTEGER, nullptr, nullptr},
+     {"uinteger", LogicalTypeId::UINTEGER, nullptr, nullptr},
+     {"uint32", LogicalTypeId::UINTEGER, nullptr, nullptr},
+     {"smallint", LogicalTypeId::SMALLINT, nullptr, nullptr},
+     {"int2", LogicalTypeId::SMALLINT, nullptr, nullptr},
+     {"short", LogicalTypeId::SMALLINT, nullptr, nullptr},
+     {"int16", LogicalTypeId::SMALLINT, nullptr, nullptr},
+     {"usmallint", LogicalTypeId::USMALLINT, nullptr, nullptr},
+     {"uint16", LogicalTypeId::USMALLINT, nullptr, nullptr},
+     {"tinyint", LogicalTypeId::TINYINT, nullptr, nullptr},
+     {"int1", LogicalTypeId::TINYINT, nullptr, nullptr},
+     {"utinyint", LogicalTypeId::UTINYINT, nullptr, nullptr},
+     {"uint8", LogicalTypeId::UTINYINT, nullptr, nullptr},
+     {"struct", LogicalTypeId::STRUCT, RegisterStructConstructors, nullptr},
+     {"row", LogicalTypeId::STRUCT, RegisterStructConstructors, nullptr},
+     {"tuple", LogicalTypeId::TUPLE, RegisterTupleConstructors, nullptr},
+     {"list", LogicalTypeId::LIST, RegisterListConstructors, nullptr},
+     {"array", LogicalTypeId::ARRAY, RegisterArrayConstructors, nullptr},
+     {"map", LogicalTypeId::MAP, RegisterMapConstructors, nullptr},
+     {"union", LogicalTypeId::UNION, RegisterUnionConstructors, nullptr},
+     {"bit", LogicalTypeId::BIT, RegisterBitConstructors, BindBitType},
+     {"bitstring", LogicalTypeId::BIT, RegisterBitConstructors, BindBitType},
+     {"variant", LogicalTypeId::VARIANT, nullptr, BindVariantType},
+     {"bignum", LogicalTypeId::BIGNUM, nullptr, nullptr},
+     {"varint", LogicalTypeId::BIGNUM, nullptr, nullptr},
+     {"boolean", LogicalTypeId::BOOLEAN, nullptr, nullptr},
+     {"bool", LogicalTypeId::BOOLEAN, nullptr, nullptr},
+     {"logical", LogicalTypeId::BOOLEAN, nullptr, nullptr},
+     {"uuid", LogicalTypeId::UUID, nullptr, nullptr},
+     {"guid", LogicalTypeId::UUID, nullptr, nullptr},
+     {"enum", LogicalTypeId::ENUM, RegisterEnumConstructors, nullptr},
+     {"null", LogicalTypeId::SQLNULL, nullptr, nullptr},
+     {"float", LogicalTypeId::FLOAT, RegisterFloatConstructors, BindDefaultFloatType},
+     {"real", LogicalTypeId::FLOAT, nullptr, nullptr},
+     {"float4", LogicalTypeId::FLOAT, nullptr, nullptr},
+     {"double", LogicalTypeId::DOUBLE, nullptr, nullptr},
+     {"float8", LogicalTypeId::DOUBLE, nullptr, nullptr},
+     {"geometry", LogicalTypeId::GEOMETRY, RegisterGeometryConstructors, BindDefaultGeometryType},
+     {"type", LogicalTypeId::TYPE, nullptr, nullptr}}};
 
 TypeConstructorSet GetConstructors(const DefaultType &entry, const Identifier &name) {
 	TypeConstructorSet result(name);
+	if (entry.bind_without_modifiers) {
+		result.AddFunction(TypeConstructor(TypeConstructor::Signature(), entry.bind_without_modifiers));
+	}
 	if (entry.register_constructors) {
 		entry.register_constructors(result);
-	} else {
+	} else if (!entry.bind_without_modifiers) {
 		result.AddFunction(TypeConstructor::Identity(name));
 	}
 	return result;
 }
 
 optional_ptr<const DefaultType> TryGetDefaultTypeEntry(const Identifier &name) {
-	auto &internal_types = BUILTIN_TYPES;
-	for (auto &type : internal_types) {
-		if (name == type.name) {
-			return &type;
+	static const case_insensitive_map_t<reference<const DefaultType>> lookup = [] {
+		case_insensitive_map_t<reference<const DefaultType>> result;
+		for (auto &type : BUILTIN_TYPES) {
+			result.emplace(type.name, type);
 		}
+		return result;
+	}();
+	auto entry = lookup.find(name.GetIdentifierName());
+	if (entry == lookup.end()) {
+		return nullptr;
 	}
-	return nullptr;
+	return &entry->second.get();
 }
 
 } // namespace
@@ -497,13 +495,8 @@ optional_ptr<const DefaultType> TryGetDefaultTypeEntry(const Identifier &name) {
 // Default Type Generator
 //----------------------------------------------------------------------------------------------------------------------
 LogicalTypeId DefaultTypeGenerator::GetDefaultType(const Identifier &name) {
-	auto &internal_types = BUILTIN_TYPES;
-	for (auto &type : internal_types) {
-		if (name == type.name) {
-			return type.type;
-		}
-	}
-	return LogicalType::INVALID;
+	auto entry = TryGetDefaultTypeEntry(name);
+	return entry ? entry->type : LogicalTypeId::INVALID;
 }
 
 LogicalType DefaultTypeGenerator::TryDefaultBind(const string &name, const vector<pair<string, Value>> &params) {
@@ -521,13 +514,21 @@ LogicalType DefaultTypeGenerator::TryDefaultBind(const string &name, const vecto
 	return GetConstructors(*entry, Identifier(name)).Bind(nullptr, LogicalType(entry->type), args);
 }
 
-LogicalType DefaultTypeGenerator::TryBindWithoutConstructor(const Identifier &name) {
+LogicalType DefaultTypeGenerator::TryBindWithoutParameters(const Identifier &name) {
 	auto entry = TryGetDefaultTypeEntry(name);
-	if (!entry || entry->register_constructors) {
+	if (!entry) {
 		return LogicalTypeId::INVALID;
 	}
-	// such a type only has the identity constructor, which resolves to the type itself
-	return LogicalType(entry->type);
+	LogicalType base_type(entry->type);
+	if (entry->bind_without_modifiers) {
+		vector<TypeArgument> modifiers;
+		BindLogicalTypeInput input {nullptr, base_type, modifiers, QueryLocation()};
+		return entry->bind_without_modifiers(input);
+	}
+	if (entry->register_constructors) {
+		return LogicalTypeId::INVALID;
+	}
+	return base_type;
 }
 
 DefaultTypeGenerator::DefaultTypeGenerator(Catalog &catalog, SchemaCatalogEntry &schema)

@@ -23,9 +23,9 @@ public:
 public:
 	DUCKDB_API static LogicalTypeId GetDefaultType(const Identifier &name);
 	DUCKDB_API static LogicalType TryDefaultBind(const string &name, const vector<pair<string, Value>> &params);
-	//! The type a default type name resolves to without type parameters, when that needs no constructor - INVALID if
-	//! the name is not a default type or has constructors of its own
-	DUCKDB_API static LogicalType TryBindWithoutConstructor(const Identifier &name);
+	//! The type a default type name binds to without type parameters - INVALID if the name is not a default type or
+	//! requires parameters
+	DUCKDB_API static LogicalType TryBindWithoutParameters(const Identifier &name);
 
 	unique_ptr<CatalogEntry> CreateDefaultEntry(ClientContext &context, const Identifier &entry_name) override;
 	vector<Identifier> GetDefaultEntries() override;

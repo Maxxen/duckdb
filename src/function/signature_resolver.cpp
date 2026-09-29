@@ -394,9 +394,8 @@ LogicalType SignatureResolver::ResolveInternal(const TypeName &type) const {
 	}
 	if (!type.IsQualified()) {
 		if (params.empty() && IsOwnedBySystemCatalog()) {
-			// the lookup would end in the default types of the system catalog, which a name without parameters
-			// resolves to directly unless the type has constructors of its own
-			auto builtin = DefaultTypeGenerator::TryBindWithoutConstructor(type.GetName());
+			// the lookup would end in the default types of the system catalog, which bind the same without a context
+			auto builtin = DefaultTypeGenerator::TryBindWithoutParameters(type.GetName());
 			if (builtin.id() != LogicalTypeId::INVALID) {
 				return builtin;
 			}
