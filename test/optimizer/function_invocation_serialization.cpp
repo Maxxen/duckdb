@@ -31,6 +31,7 @@
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/operator/logical_projection.hpp"
 #include "duckdb/planner/operator/logical_window.hpp"
+#include "duckdb/function/signature_resolver.hpp"
 
 using namespace duckdb;
 
@@ -472,7 +473,8 @@ static unique_ptr<FunctionData> KeywordScanBind(ClientContext &context, TableFun
 	auto param_idx = signature.GetParameterIndexByName("opt");
 	auto option = signature.GetTypedKwargs() ? signature.GetTypedKwargs()->Find("opt") : nullptr;
 	REQUIRE((param_idx.IsValid() || option));
-	auto type = param_idx.IsValid() ? signature.ResolveParameterType(param_idx.GetIndex(), context) : option->type;
+	auto type = param_idx.IsValid() ? signature.ResolveParameterType(param_idx.GetIndex(), context)
+	                                : SignatureResolver(context, signature).Resolve(option->type);
 	auto entry = input.named_parameters.find("opt");
 	types.push_back(type);
 	names.emplace_back("opt");

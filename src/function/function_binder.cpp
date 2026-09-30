@@ -508,16 +508,17 @@ static Value PlaceArgument(ClientContext &context, Expression &expr, const Logic
 
 //! Fold an option to a constant and cast it to its type like an explicit cast - overload selection never checked it.
 //! A failed cast names the option, as the cast alone cannot tell which one it was
-static Value PlaceOption(ClientContext &context, Expression &expr, const TypedKwarg &option) {
+static Value PlaceOption(ClientContext &context, Expression &expr, const TypedKwarg &option,
+                         const LogicalType &option_type) {
 	auto value = FoldArgument(context, expr);
-	if (RequiresCast(value.type(), option.type) != LogicalTypeComparisonResult::DIFFERENT_TYPES) {
+	if (RequiresCast(value.type(), option_type) != LogicalTypeComparisonResult::DIFFERENT_TYPES) {
 		return value;
 	}
 	string error_message;
-	auto result = value.TryCastAs(context, option.type, &error_message);
+	auto result = value.TryCastAs(context, option_type, &error_message);
 	if (!result) {
 		throw InvalidInputException(expr, "Could not cast value %s to named parameter %s of type %s: %s",
-		                            value.ToSQLString(), option.name, option.type.ToString(), error_message);
+		                            value.ToSQLString(), option.name, option_type.ToString(), error_message);
 	}
 	return std::move(*result);
 }
@@ -583,7 +584,8 @@ static void PlaceArguments(ClientContext &context, const T &function,
 				                      "Named parameter %s was passed more than once in function call to %s",
 				                      option.name, function.GetName().GetIdentifierName());
 			}
-			named_parameters.insert(make_pair(option.name, PlaceOption(context, *named_argument.second, option)));
+			named_parameters.insert(make_pair(
+			    option.name, PlaceOption(context, *named_argument.second, option, resolver.Resolve(option.type))));
 			continue;
 		}
 		auto &param = signature.GetParameter(param_idx.GetIndex());

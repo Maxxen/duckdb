@@ -232,6 +232,93 @@ FunctionSignature &FunctionSignature::InsertParameter(idx_t position, FunctionPa
 	return *this;
 }
 
+void FunctionSignature::ConvertTypedKwargs() {
+	for (auto &option : typed_kwargs->options) {
+		if (!option.unconverted_type) {
+			continue;
+		}
+#ifdef D_ASSERT_IS_ENABLED
+		option.original_type = *option.unconverted_type;
+#endif
+		option.type = ConvertType(*option.unconverted_type);
+		option.unconverted_type = nullptr;
+	}
+}
+
+namespace {
+
+void CollectReferencedNames(const TypeName &type, identifier_set_t &names) {
+	if (type.IsPlainName()) {
+		names.insert(type.GetName());
+		return;
+	}
+	for (auto &param : type.GetParams()) {
+		if (param.GetKind() == TypeParamKind::TYPE) {
+			CollectReferencedNames(param.GetType(), names);
+		}
+	}
+}
+
+TypeName RenameVariables(const TypeName &type, const identifier_map_t<Identifier> &renames) {
+	if (type.IsPlainName()) {
+		auto entry = renames.find(type.GetName());
+		return entry == renames.end() ? type : TypeName(QualifiedName(entry->second));
+	}
+	vector<TypeParam> params;
+	for (auto &param : type.GetParams()) {
+		if (param.GetKind() != TypeParamKind::TYPE) {
+			params.push_back(param);
+			continue;
+		}
+		params.push_back(
+		    TypeParam::Type(RenameVariables(param.GetType(), renames), param.GetName(), param.ExpandsPack()));
+	}
+	return TypeName(type.GetQualifiedName(), std::move(params));
+}
+
+} // namespace
+
+FunctionSignature &FunctionSignature::MergeTypedKwargs(const FunctionSignature &other) {
+	auto other_schema = other.GetTypedKwargs();
+	if (!other_schema) {
+		return *this;
+	}
+	if (!typed_kwargs) {
+		throw InternalException("MergeTypedKwargs called on a signature without typed \"**kwargs\"");
+	}
+	if (typed_kwargs.use_count() > 1) {
+		// other signatures copied from this one share its schema - extend a copy of it
+		typed_kwargs = make_shared_ptr<TypedKwargs>(*typed_kwargs);
+	}
+	// declare the variables the options refer to, under a fresh name where this signature has one of that name
+	identifier_set_t referenced;
+	for (auto &option : other_schema->GetOptions()) {
+		CollectReferencedNames(option.type, referenced);
+	}
+	identifier_map_t<Identifier> renames;
+	for (auto &variable : other.GetTypeVariables()) {
+		if (referenced.find(variable.GetName()) == referenced.end()) {
+			continue;
+		}
+		auto name = variable.GetName();
+		for (idx_t i = 1; GetTypeVariable(name); i++) {
+			name = Identifier(variable.GetName().GetIdentifierName() + "_" + to_string(i));
+		}
+		if (name != variable.GetName()) {
+			renames.emplace(variable.GetName(), name);
+		}
+		type_variables.emplace_back(name, variable.GetKind(), variable.GetArity());
+	}
+	for (auto &option : other_schema->GetOptions()) {
+		auto merged = option;
+		if (!renames.empty()) {
+			merged.type = RenameVariables(option.type, renames);
+		}
+		typed_kwargs->options.push_back(std::move(merged));
+	}
+	return *this;
+}
+
 FunctionSignature &FunctionSignature::SetParameters(vector<FunctionParameter> parameters_p) {
 	parameters.clear();
 	for (auto &param : parameters_p) {
@@ -283,6 +370,11 @@ SignatureResolver::SignatureResolver(optional_ptr<ClientContext> context_p, cons
 		CountOccurrences(param.GetType(), occurrences);
 	}
 	CountOccurrences(signature.GetReturnType(), occurrences);
+	if (signature.GetTypedKwargs()) {
+		for (auto &option : signature.GetTypedKwargs()->GetOptions()) {
+			CountOccurrences(option.type, occurrences);
+		}
+	}
 }
 
 SignatureResolver::SignatureResolver(optional_ptr<ClientContext> context_p, const SimpleFunction &function,

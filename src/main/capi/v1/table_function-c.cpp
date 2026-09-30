@@ -312,7 +312,7 @@ duckdb_state duckdb_register_table_function(duckdb_connection connection, duckdb
 	}
 	if (auto option_schema = tf.GetSignature().GetTypedKwargs()) {
 		for (auto &option : option_schema->GetOptions()) {
-			if (duckdb::TypeVisitor::Contains(option.type, duckdb::LogicalTypeId::INVALID)) {
+			if (option.type.ContainsInvalid()) {
 				return DuckDBError;
 			}
 		}

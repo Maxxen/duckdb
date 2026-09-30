@@ -481,13 +481,13 @@ struct TableMacroExtractor {
 };
 
 //! The options a "**kwargs" parameter declares are listed after the parameters, as they are passed by name like them
-static void AddOptions(const FunctionSignature &signature, vector<Value> &results, bool types) {
-	auto option_schema = signature.GetTypedKwargs();
+static void AddOptions(const SimpleFunction &function, vector<Value> &results, bool types) {
+	auto option_schema = function.GetSignature().GetTypedKwargs();
 	if (!option_schema) {
 		return;
 	}
 	for (auto &option : option_schema->GetOptions()) {
-		results.emplace_back(types ? Value(option.type.ToString()) : Value(option.name));
+		results.emplace_back(types ? Value(SignatureTypeString(function, option.type)) : Value(option.name));
 	}
 }
 
@@ -513,7 +513,7 @@ struct TableFunctionExtractor {
 				results.emplace_back(param.GetName());
 			}
 		}
-		AddOptions(fun.GetSignature(), results, false);
+		AddOptions(fun, results, false);
 		return results;
 	}
 
@@ -526,7 +526,7 @@ struct TableFunctionExtractor {
 				results.emplace_back(SignatureTypeString(fun, param.GetType()));
 			}
 		}
-		AddOptions(fun.GetSignature(), results, true);
+		AddOptions(fun, results, true);
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
@@ -581,7 +581,7 @@ struct PragmaFunctionExtractor {
 				results.emplace_back(param.GetName());
 			}
 		}
-		AddOptions(fun.GetSignature(), results, false);
+		AddOptions(fun, results, false);
 		return results;
 	}
 
@@ -594,7 +594,7 @@ struct PragmaFunctionExtractor {
 				results.emplace_back(SignatureTypeString(fun, param.GetType()));
 			}
 		}
-		AddOptions(fun.GetSignature(), results, true);
+		AddOptions(fun, results, true);
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 

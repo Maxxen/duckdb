@@ -8,6 +8,7 @@
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
+#include "duckdb/function/signature_resolver.hpp"
 
 namespace duckdb {
 
@@ -290,7 +291,7 @@ optional<pair<Identifier, LogicalType>> TableFunctionMultiFileWrapper::GetDeclar
 	if (!option) {
 		return {};
 	}
-	return make_pair(option->name, option->type);
+	return make_pair(option->name, SignatureResolver(context, function).Resolve(option->type));
 }
 
 bool TableFunctionMultiFileWrapper::ParseNamedParameter(ClientContext &context, const Identifier &key, const Value &val,
@@ -576,10 +577,7 @@ TableFunction TableFunctionMultiFileWrapper::CreateFunction(TableFunction single
 	result.bind = TableFunctionMultiFileBind;
 	// forward the options and the pushdown capabilities of the wrapped function
 	auto &signature = result.GetSignature();
-	auto wrapped_options = single_file_function.GetSignature().GetTypedKwargs();
-	if (wrapped_options) {
-		signature.ExtendTypedKwargs([&](TypedKwargs &options) { options = options.Merge(*wrapped_options); });
-	}
+	signature.MergeTypedKwargs(single_file_function.GetSignature());
 	result.projection_pushdown = single_file_function.projection_pushdown;
 	result.filter_pushdown = single_file_function.filter_pushdown;
 	result.filter_prune = single_file_function.filter_prune;

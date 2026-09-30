@@ -11,11 +11,21 @@
 
 namespace duckdb {
 
-TypedKwarg::TypedKwarg(Identifier name_p, LogicalType type_p) : name(std::move(name_p)), type(std::move(type_p)) {
+TypedKwarg::TypedKwarg(Identifier name_p, LogicalType type_p)
+    : name(std::move(name_p)), unconverted_type(make_shared_ptr<LogicalType>(std::move(type_p))) {
+}
+
+TypedKwarg::TypedKwarg(Identifier name_p, TypeName type_p) : name(std::move(name_p)), type(std::move(type_p)) {
 }
 
 bool TypedKwarg::operator==(const TypedKwarg &other) const {
-	return name == other.name && aliases == other.aliases && type == other.type;
+	if (name != other.name || aliases != other.aliases) {
+		return false;
+	}
+	if (unconverted_type || other.unconverted_type) {
+		return unconverted_type && other.unconverted_type && *unconverted_type == *other.unconverted_type;
+	}
+	return type == other.type;
 }
 
 bool TypedKwarg::operator!=(const TypedKwarg &other) const {
@@ -23,10 +33,16 @@ bool TypedKwarg::operator!=(const TypedKwarg &other) const {
 }
 
 string TypedKwarg::ToString() const {
-	return StringUtil::Format("%s %s", SQLIdentifier(name), type.ToString());
+	auto type_string = unconverted_type ? unconverted_type->ToString() : type.ToString();
+	return StringUtil::Format("%s %s", SQLIdentifier(name), type_string);
 }
 
 TypedKwargs &TypedKwargs::Add(Identifier name, LogicalType type) {
+	options.emplace_back(std::move(name), std::move(type));
+	return *this;
+}
+
+TypedKwargs &TypedKwargs::Add(Identifier name, TypeName type) {
 	options.emplace_back(std::move(name), std::move(type));
 	return *this;
 }
@@ -101,7 +117,7 @@ hash_t TypedKwargs::Hash() const {
 	hash_t hash = duckdb::Hash(options.size());
 	for (auto &option : options) {
 		hash = CombineHash(hash, IdentifierHashFunction()(option.name));
-		hash = CombineHash(hash, option.type.Hash());
+		hash = CombineHash(hash, option.unconverted_type ? option.unconverted_type->Hash() : option.type.Hash());
 	}
 	return hash;
 }
@@ -193,6 +209,7 @@ static_assert(std::is_nothrow_move_assignable<FunctionSignature>::value, "Functi
 
 auto FunctionSignature::AddTypedKwargs(Identifier name, TypedKwargs schema) -> FunctionSignature & {
 	typed_kwargs = make_shared_ptr<TypedKwargs>(std::move(schema));
+	ConvertTypedKwargs();
 	return AddKwargs(std::move(name), LogicalType::ANY);
 }
 
@@ -212,6 +229,8 @@ auto FunctionSignature::ExtendTypedKwargs(const std::function<void(TypedKwargs &
 		typed_kwargs = make_shared_ptr<TypedKwargs>(*typed_kwargs);
 	}
 	configure(*typed_kwargs);
+	ConvertTypedKwargs();
+	RemoveUnusedTypeVariables();
 	return *this;
 }
 
@@ -362,6 +381,11 @@ void FunctionSignature::VerifyTypeConversion(optional_ptr<ClientContext> context
 		verify(parameters[i].GetType(), parameters[i].original_type);
 	}
 	verify(return_type, original_return_type);
+	if (typed_kwargs) {
+		for (auto &option : typed_kwargs->GetOptions()) {
+			verify(option.type, option.original_type);
+		}
+	}
 #endif
 }
 
@@ -392,6 +416,11 @@ void FunctionSignature::RemoveUnusedTypeVariables() {
 		CollectNames(param.GetType(), used);
 	}
 	CollectNames(return_type, used);
+	if (typed_kwargs) {
+		for (auto &option : typed_kwargs->GetOptions()) {
+			CollectNames(option.type, used);
+		}
+	}
 	for (idx_t i = type_variables.size(); i > 0; i--) {
 		if (used.find(type_variables[i - 1].GetName()) == used.end()) {
 			type_variables.erase_at(i - 1);

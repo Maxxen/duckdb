@@ -218,19 +218,34 @@ private:
 //! An option a function receives through its "**kwargs" parameter
 class TypedKwarg {
 public:
+	//! An option built from a LogicalType is converted to a TypeName once its schema is added to a signature, which
+	//! declares the type variables the conversion introduces
 	TypedKwarg(Identifier name, LogicalType type);
+	TypedKwarg(Identifier name, TypeName type);
 
 	//! The name the function receives the option under
 	Identifier name;
 	//! Other names a caller can pass the option by
 	vector<Identifier> aliases;
-	//! The type a passed value is cast to - ANY passes it through as-is, for the function to check
-	LogicalType type;
+	//! The type a passed value is cast to - ANY passes it through as-is, for the function to check. Resolved like the
+	//! types of the parameters, against the type variables of the signature
+	TypeName type;
 
 public:
 	DUCKDB_API bool operator==(const TypedKwarg &other) const;
 	DUCKDB_API bool operator!=(const TypedKwarg &other) const;
 	DUCKDB_API string ToString() const;
+
+private:
+	friend class FunctionSignature;
+	friend class TypedKwargs;
+
+	//! Set until the schema is added to a signature
+	shared_ptr<LogicalType> unconverted_type;
+#ifdef D_ASSERT_IS_ENABLED
+	//! The LogicalType the type was converted from (INVALID if unknown)
+	LogicalType original_type = LogicalType::INVALID;
+#endif
 };
 
 //! The "options" a function receives through its "**kwargs" parameter
@@ -241,10 +256,13 @@ class TypedKwargs {
 public:
 	//! Adds an option - a call that leaves it out does not pass it, the function decides what that means
 	DUCKDB_API TypedKwargs &Add(Identifier name, LogicalType type);
+	DUCKDB_API TypedKwargs &Add(Identifier name, TypeName type);
 	//! Adds another name for the option added last
 	DUCKDB_API TypedKwargs &Alias(Identifier alias);
 
-	//! A schema holding the options of this one followed by those of the other
+	//! A schema holding the options of this one followed by those of the other. The types of an option taken from the
+	//! schema of another signature refer to the type variables of that one - FunctionSignature::MergeTypedKwargs
+	//! carries those over
 	DUCKDB_API TypedKwargs Merge(const TypedKwargs &other) const;
 
 	//! The option a name or an alias refers to, or nullptr if the schema declares no such name
@@ -263,6 +281,8 @@ public:
 	DUCKDB_API void Verify() const;
 
 private:
+	friend class FunctionSignature;
+
 	vector<TypedKwarg> options;
 };
 
@@ -390,6 +410,10 @@ public:
 	//! Adds options to the schema of the "**kwargs" parameter
 	//! @throws InternalException if the signature has no typed "**kwargs" parameter
 	DUCKDB_API auto ExtendTypedKwargs(const std::function<void(TypedKwargs &)> &configure) -> FunctionSignature &;
+	//! Adds the options of another signature's "**kwargs", declaring the type variables their types refer to - renamed
+	//! where this signature already declares a variable of that name
+	//! @throws InternalException if the signature has no typed "**kwargs" parameter
+	DUCKDB_API auto MergeTypedKwargs(const FunctionSignature &other) -> FunctionSignature &;
 
 	//! Inserts a parameter at the given position, converting a LogicalType-built parameter to a TypeName
 	DUCKDB_API auto InsertParameter(idx_t position, FunctionParameter parameter) -> FunctionSignature &;
@@ -451,6 +475,8 @@ public:
 private:
 	//! Converts a LogicalType to the equivalent TypeName, declaring the type variables it introduces
 	auto ConvertType(const LogicalType &type) -> TypeName;
+	//! Converts the options of the "**kwargs" schema that were built from a LogicalType
+	void ConvertTypedKwargs();
 	//! Drops the type variables that no type refers to any more
 	void RemoveUnusedTypeVariables();
 
