@@ -59,12 +59,10 @@ void ReplRecordName(duckdb_v2_replacement_scan_info_handle info, duckdb_v2_error
 			repl_observed.parts.push_back(Convert(part));
 		}
 	}
-	idx_t length = 0;
-	if (duckdb_v2_qname_render(name, nullptr, 0, &length, err) == DUCKDB_V2_ERROR_NONE) {
-		std::vector<char> buffer(length + 1, '\0');
-		if (duckdb_v2_qname_render(name, buffer.data(), buffer.size(), &length, err) == DUCKDB_V2_ERROR_NONE) {
-			repl_observed.rendered = std::string(buffer.data(), length);
-		}
+	duckdb_v2_bytebuf rendered;
+	if (duckdb_v2_qname_render(name, &rendered, err) == DUCKDB_V2_ERROR_NONE) {
+		repl_observed.rendered = std::string(rendered.data, rendered.size);
+		duckdb_v2_bytebuf_destroy(&rendered);
 	}
 	duckdb_v2_qname_destroy(&name);
 }

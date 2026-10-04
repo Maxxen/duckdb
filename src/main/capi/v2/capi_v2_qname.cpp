@@ -88,14 +88,12 @@ DUCKDB_V2_ERROR duckdb_v2_qname_get_part(duckdb_v2_qname_handle name, idx_t inde
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_qname_render(duckdb_v2_qname_handle name, char *out_text, idx_t out_capacity,
-                                       idx_t *out_length, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_qname_render(duckdb_v2_qname_handle name, duckdb_v2_bytebuf *out_text,
+                                       duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(out_text);
+	ResetBytebuf(*out_text);
 	DUCKDB_CHECK_ARG(name);
-	DUCKDB_CHECK_ARG(out_length);
-	return WithErrorHandler(err, [&]() {
-		*out_length = 0;
-		FillCallerText(out_text, out_capacity, out_length, Convert(name)->ToString(), "duckdb_v2_qname_render");
-	});
+	return WithErrorHandler(err, [&]() { SetBytebufText(*out_text, Convert(name)->ToString()); });
 }
 
 DUCKDB_V2_ERROR duckdb_v2_qname_equals(duckdb_v2_qname_handle left, duckdb_v2_qname_handle right, bool *result,

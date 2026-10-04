@@ -138,38 +138,37 @@ inline auto Convert(const duckdb_v2_bytes &s) -> duckdb_v2_str {
 // Caller-buffer text getters
 //----------------------------------------------------------------------------------------------------------------------
 
-// Runs the two-call text protocol: size with a null buffer, then fill one that
-// leaves room for the terminator. `rc` gets the result of whichever call failed.
+// Runs a call that returns text as an owned bytebuf, copies the text out and frees the bytebuf.
+// `rc` gets the result of the call.
 template <class CALL>
 inline std::string RenderText(CALL call, DUCKDB_V2_ERROR &rc) {
-	idx_t len = 0;
-	rc = call(nullptr, 0, &len);
+	duckdb_v2_bytebuf buf;
+	rc = call(&buf);
 	if (rc != DUCKDB_V2_ERROR_NONE) {
+		// A failed call leaves the bytebuf empty.
+		REQUIRE(buf.data == nullptr);
+		REQUIRE(buf.release == nullptr);
 		return std::string();
 	}
-	std::vector<char> buf(len + 1, '\xff');
-	rc = call(buf.data(), buf.size(), &len);
-	if (rc != DUCKDB_V2_ERROR_NONE) {
-		return std::string();
-	}
-	// The protocol promises a terminator the caller can rely on.
-	REQUIRE(buf[len] == '\0');
-	return std::string(buf.data(), len);
+	// Text producers promise a terminator the caller can rely on.
+	REQUIRE(buf.data[buf.size] == '\0');
+	std::string out(buf.data, buf.size);
+	REQUIRE(duckdb_v2_bytebuf_destroy(&buf) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(buf.release == nullptr);
+	return out;
 }
 
 inline std::string Render(duckdb_v2_value_handle value) {
 	auto rc = DUCKDB_V2_ERROR_NONE;
-	auto out = RenderText(
-	    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_value_to_string(value, buf, cap, len, nullptr); }, rc);
+	auto out = RenderText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_value_to_string(value, out, nullptr); }, rc);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	return out;
 }
 
 inline std::string Render(duckdb_v2_logical_type_handle type) {
 	auto rc = DUCKDB_V2_ERROR_NONE;
-	auto out = RenderText(
-	    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_logical_type_to_text(type, buf, cap, len, nullptr); },
-	    rc);
+	auto out =
+	    RenderText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_logical_type_to_text(type, out, nullptr); }, rc);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	return out;
 }

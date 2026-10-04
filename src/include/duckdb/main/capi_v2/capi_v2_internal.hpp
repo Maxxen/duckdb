@@ -698,25 +698,19 @@ void FillCallerBuffer(uint8_t *out_data, idx_t out_capacity, idx_t *out_length, 
 	write(out_data);
 }
 
-//! Text flavour of FillCallerBuffer: reports the length without the null
-//! terminator, but always writes one, so the buffer is usable as a C string.
-//! The capacity must therefore cover the terminator too.
-inline void FillCallerText(char *out_text, idx_t out_capacity, idx_t *out_length, const string &text,
-                           const char *function_name) {
-	*out_length = text.size();
-	if (!out_text) {
-		return;
-	}
-	const idx_t required = text.size() + 1;
-	if (out_capacity < required) {
-		throw Exception(ExceptionType::OBJECT_SIZE,
-		                StringUtil::Format("%s needs a buffer of %llu bytes including the null terminator, but "
-		                                   "out_capacity is %llu",
-		                                   function_name, static_cast<uint64_t>(required),
-		                                   static_cast<uint64_t>(out_capacity)));
-	}
-	memcpy(out_text, text.c_str(), required);
+//----------------------------------------------------------------------------------------------------------------------
+// Owned byte buffers
+//----------------------------------------------------------------------------------------------------------------------
+//! Clears a bytebuf to the empty state.
+inline void ResetBytebuf(duckdb_v2_bytebuf &buf) {
+	buf.data = nullptr;
+	buf.size = 0;
+	buf.private_data = nullptr;
+	buf.release = nullptr;
 }
+
+//! Hands a string to the caller as an owned bytebuf. Takes over the string's storage, so the text is not copied.
+void SetBytebufText(duckdb_v2_bytebuf &buf, string text);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Opaque User Data

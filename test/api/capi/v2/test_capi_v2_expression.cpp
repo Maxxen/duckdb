@@ -47,31 +47,25 @@ void ProbeFail(const char *what, duckdb_v2_error_info_handle *err) {
 	}
 }
 
-// The two-call text protocol, without REQUIRE so it is safe inside a callback.
+// Runs a call that returns text as an owned bytebuf, without REQUIRE so it is safe inside a callback.
 template <class CALL>
 std::string ProbeText(CALL call, bool &ok) {
-	idx_t len = 0;
-	if (call(nullptr, 0, &len) != DUCKDB_V2_ERROR_NONE) {
+	duckdb_v2_bytebuf buf;
+	if (call(&buf) != DUCKDB_V2_ERROR_NONE) {
 		ok = false;
 		return std::string();
 	}
-	std::vector<char> buf(len + 1, '\0');
-	if (call(buf.data(), buf.size(), &len) != DUCKDB_V2_ERROR_NONE) {
-		ok = false;
-		return std::string();
-	}
-	return std::string(buf.data(), len);
+	std::string out(buf.data, buf.size);
+	duckdb_v2_bytebuf_destroy(&buf);
+	return out;
 }
 
 std::string ProbeValue(duckdb_v2_value_handle value, bool &ok) {
-	return ProbeText(
-	    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_value_to_string(value, buf, cap, len, nullptr); }, ok);
+	return ProbeText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_value_to_string(value, out, nullptr); }, ok);
 }
 
 std::string ProbeType(duckdb_v2_logical_type_handle type, bool &ok) {
-	return ProbeText(
-	    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_logical_type_to_text(type, buf, cap, len, nullptr); },
-	    ok);
+	return ProbeText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_logical_type_to_text(type, out, nullptr); }, ok);
 }
 
 // A tag for the node types that are not function calls.
@@ -194,9 +188,7 @@ std::string ProbeRender(duckdb_v2_table_function_filter_pushdown_info_handle inf
 			ok = false;
 			return "";
 		}
-		auto text = ProbeText(
-		    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_qname_render(qname, buf, cap, len, nullptr); },
-		    ok);
+		auto text = ProbeText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_qname_render(qname, out, nullptr); }, ok);
 		duckdb_v2_qname_destroy(&qname);
 		return text + "(" + children + ")";
 	}

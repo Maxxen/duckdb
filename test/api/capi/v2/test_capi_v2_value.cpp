@@ -1,5 +1,7 @@
 #include "test_capi_v2.hpp"
 
+#include <cstring>
+
 #include "duckdb.h" // V1 C API: used only by the [v1_v2_bridge] cross-API parity pin.
 
 // ---------------------------------------------------------------------------
@@ -149,9 +151,8 @@ void RequireTypedRoundTrip(MAKE make, T payload, const char *expected_text = nul
 	auto render_rc = DUCKDB_V2_ERROR_NONE;
 	std::string rendered;
 	if (expected_text && create_rc == DUCKDB_V2_ERROR_NONE) {
-		rendered = RenderText(
-		    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_value_to_string(v, buf, cap, len, nullptr); },
-		    render_rc);
+		rendered =
+		    RenderText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_value_to_string(v, out, nullptr); }, render_rc);
 	}
 	duckdb_v2_value_destroy(&v);
 
@@ -391,9 +392,8 @@ void RequireTemporalRoundTrip(MAKE make, READ read, T payload, const char *expec
 	auto render_rc = DUCKDB_V2_ERROR_NONE;
 	std::string rendered;
 	if (create_rc == DUCKDB_V2_ERROR_NONE) {
-		rendered = RenderText(
-		    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_value_to_string(v, buf, cap, len, nullptr); },
-		    render_rc);
+		rendered =
+		    RenderText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_value_to_string(v, out, nullptr); }, render_rc);
 	}
 	duckdb_v2_value_destroy(&v);
 	REQUIRE(create_rc == DUCKDB_V2_ERROR_NONE);
@@ -594,23 +594,52 @@ TEST_CASE("V2: V1-built leaf values read through the typed getters", "[capi_v2][
 	duckdb_v2_value_destroy(&v1_blob);
 }
 
-TEST_CASE("V2: value_to_string null handle / short buffer", "[capi_v2][value][to_string]") {
+TEST_CASE("V2: value_to_string null arguments / owned result", "[capi_v2][value][to_string]") {
 	EnvFixture fx;
-	char buf[64] = {};
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_value_to_string(nullptr, buf, sizeof(buf), &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-
 	auto v = MakeInt32Value(fx.conn, 7);
-	// out_length carries the answer, so it is mandatory in both modes.
-	REQUIRE(duckdb_v2_value_to_string(v, buf, sizeof(buf), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	// Sizing excludes the terminator; the buffer must still have room for it.
-	REQUIRE(duckdb_v2_value_to_string(v, nullptr, 0, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 1);
-	REQUIRE(duckdb_v2_value_to_string(v, buf, len, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_OBJECT_SIZE);
-	REQUIRE(len == 1);
-	REQUIRE(duckdb_v2_value_to_string(v, buf, len + 1, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(buf) == "7");
+	// A null handle fails and leaves the bytebuf empty, even when it held garbage on entry.
+	duckdb_v2_bytebuf buf;
+	memset(&buf, 0xff, sizeof(buf));
+	REQUIRE(duckdb_v2_value_to_string(nullptr, &buf, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(buf.data == nullptr);
+	REQUIRE(buf.size == 0);
+	REQUIRE(buf.release == nullptr);
+	REQUIRE(duckdb_v2_value_to_string(v, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+
+	// The result is null-terminated and owned by the caller.
+	REQUIRE(duckdb_v2_value_to_string(v, &buf, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(buf.size == 1);
+	REQUIRE(std::string(buf.data) == "7");
+	REQUIRE(buf.release != nullptr);
+
+	// A long result, stored out of line in the string, is handed over intact.
+	duckdb_v2_value_destroy(&v);
+	const std::string long_text(1000, 'x');
+	v = MakeVarcharValue(fx.conn, long_text.c_str());
+	duckdb_v2_bytebuf long_buf;
+	REQUIRE(duckdb_v2_value_to_string(v, &long_buf, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(std::string(long_buf.data, long_buf.size) == long_text);
+	REQUIRE(long_buf.data[long_buf.size] == '\0');
+
+	// A bytebuf can be moved by copying the struct and clearing release in the source.
+	duckdb_v2_bytebuf moved = buf;
+	buf.release = nullptr;
+	REQUIRE(duckdb_v2_bytebuf_destroy(&buf) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(std::string(moved.data) == "7");
+
+	// Releasing through the function pointer and through bytebuf_destroy both leave the bytebuf empty.
+	moved.release(&moved);
+	REQUIRE(moved.data == nullptr);
+	REQUIRE(moved.size == 0);
+	REQUIRE(moved.release == nullptr);
+	REQUIRE(duckdb_v2_bytebuf_destroy(&long_buf) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(long_buf.data == nullptr);
+	REQUIRE(long_buf.release == nullptr);
+
+	// Destroying an empty bytebuf, or a null pointer, is a no-op.
+	REQUIRE(duckdb_v2_bytebuf_destroy(&long_buf) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_bytebuf_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_value_destroy(&v);
 }
 

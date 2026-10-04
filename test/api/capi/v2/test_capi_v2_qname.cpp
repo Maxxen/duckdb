@@ -46,8 +46,7 @@ std::vector<std::string> QNameParts(duckdb_v2_qname_handle name) {
 
 std::string QNameRender(duckdb_v2_qname_handle name) {
 	auto rc = DUCKDB_V2_ERROR_NONE;
-	auto out = RenderText(
-	    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_qname_render(name, buf, cap, len, nullptr); }, rc);
+	auto out = RenderText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_qname_render(name, out, nullptr); }, rc);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	return out;
 }
@@ -175,26 +174,22 @@ TEST_CASE("V2 qname: null arguments and destroy null-safety", "[capi_v2][qname]"
 
 	idx_t count = 0;
 	duckdb_v2_identifier_t part = {nullptr, 0};
-	idx_t length = 0;
+	duckdb_v2_bytebuf text;
 	bool result = false;
 	uint64_t hash = 0;
 	REQUIRE(duckdb_v2_qname_get_part_count(nullptr, &count, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_get_part_count(name, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_get_part(nullptr, 0, &part, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_get_part(name, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(duckdb_v2_qname_render(nullptr, nullptr, 0, &length, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-	REQUIRE(duckdb_v2_qname_render(name, nullptr, 0, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_qname_render(nullptr, &text, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(text.data == nullptr);
+	REQUIRE(text.release == nullptr);
+	REQUIRE(duckdb_v2_qname_render(name, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_equals(nullptr, name, &result, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_equals(name, nullptr, &result, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_equals(name, name, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_hash(nullptr, &hash, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 	REQUIRE(duckdb_v2_qname_hash(name, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
-
-	// A buffer that cannot hold the text plus its terminator is refused, with the required length reported.
-	char small[2] = {'\0', '\0'};
-	length = 0;
-	REQUIRE(duckdb_v2_qname_render(name, small, 1, &length, nullptr) == DUCKDB_V2_ERROR_INPUT_OBJECT_SIZE);
-	REQUIRE(length == 3);
 
 	REQUIRE(duckdb_v2_qname_destroy(&name) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(name == nullptr);

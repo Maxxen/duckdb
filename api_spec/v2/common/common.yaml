@@ -189,6 +189,26 @@ structs:
       - {name: ptr, type: void, pointer: 1}
       - {name: destroy, type: opaque_destroy}
       - {name: equals, type: opaque_equals}
+  bytebuf:
+    description: |
+      An owned block of bytes: `data` points at `size` bytes, and `release` frees them.
+
+      A producing function fills the bytebuf without reading it first, so the struct may be uninitialized on entry,
+      and whatever it held before is overwritten, not released. On failure it is left empty: `data` NULL, `size` 0
+      and `release` NULL. On success the caller owns the bytes and frees them with `[[bytebuf_destroy]]`, or
+      equivalently by calling `release` when it is not NULL. A bytebuf with a NULL `release` holds nothing to free.
+
+      When the producer emits text, the bytes are followed by a null terminator that `size` does not count, so `data`
+      is usable as a C string. Binary producers make no such promise.
+
+      `data` is writable and stays valid until the bytebuf is released. The bytebuf can be moved by copying the struct
+      and setting `release` to NULL in the source; only the copy is released afterwards. `private_data` belongs to the
+      producer and must not be read or modified.
+    fields:
+      - {name: data, type: char, pointer: 1}
+      - {name: size, type: idx}
+      - {name: private_data, type: void, pointer: 1}
+      - {name: release, type: bytebuf_release}
 callbacks:
   text_sink:
     description: |
@@ -259,6 +279,19 @@ callbacks:
         type: void
         indirection: 1
         description: Opaque pointer to the resource to destroy. The callback is responsible for freeing it.
+  bytebuf_release:
+    description: |
+      Frees the bytes held by a bytebuf.
+
+      Set by the producer of the bytebuf. Releasing leaves the bytebuf empty: `data` NULL, `size` 0 and `release`
+      NULL, so a released bytebuf is recognizable and never freed twice. Must not be called on an empty bytebuf,
+      whose `release` is already NULL.
+    return_type: void
+    parameters:
+      buf:
+        type: bytebuf
+        indirection: 1
+        description: The bytebuf to release. Left empty on return.
 aliases:
   sel:
     underlying: u32

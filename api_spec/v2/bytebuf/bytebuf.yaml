@@ -1,0 +1,20 @@
+module: bytebuf
+# The "bytebuf" is an owned, self-describing block of bytes handed from a producer to a consumer. It carries its own
+# release callback, so the consumer frees it without knowing how it was allocated, in the style of the Arrow C Data
+# Interface. Functions that produce text or bytes of a size not known up front return one, so the work is done once.
+functions:
+  bytebuf_destroy:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Frees the bytes held by a bytebuf and leaves it empty.
+
+      Calls `release` when it is not NULL, so it works for any bytebuf, whoever produced it. For callers that cannot
+      call a function pointer directly. Null-safe: a NULL `buf`, or an empty bytebuf, is a no-op and returns
+      ERROR_NONE.
+    parameters:
+      buf:
+        type: bytebuf
+        indirection: 1
+        description: The bytebuf to free. Left empty on return.
+    return_type: ERROR

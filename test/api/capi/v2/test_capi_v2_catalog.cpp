@@ -41,8 +41,7 @@ std::string ResolvedName(duckdb_v2_table_description_handle desc) {
 	duckdb_v2_qname_handle qname = nullptr;
 	REQUIRE(duckdb_v2_table_description_get_qname(desc, &qname, nullptr) == DUCKDB_V2_ERROR_NONE);
 	auto rc = DUCKDB_V2_ERROR_NONE;
-	auto out = RenderText(
-	    [&](char *buf, idx_t cap, idx_t *len) { return duckdb_v2_qname_render(qname, buf, cap, len, nullptr); }, rc);
+	auto out = RenderText([&](duckdb_v2_bytebuf *out) { return duckdb_v2_qname_render(qname, out, nullptr); }, rc);
 	REQUIRE(rc == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_qname_destroy(&qname);
 	return out;

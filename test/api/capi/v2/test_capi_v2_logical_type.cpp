@@ -672,24 +672,22 @@ TEST_CASE("V2: logical_type to_text renders an aliased type as its alias", "[cap
 	duckdb_v2_logical_type_destroy(&t);
 }
 
-TEST_CASE("V2: logical_type to_text null handle / short buffer", "[capi_v2][logical_type][to_text]") {
+TEST_CASE("V2: logical_type to_text null arguments / owned result", "[capi_v2][logical_type][to_text]") {
 	EnvFixture fx;
-	char buf[64] = {};
-	idx_t len = 0;
-	REQUIRE(duckdb_v2_logical_type_to_text(nullptr, buf, sizeof(buf), &len, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	duckdb_v2_bytebuf buf;
+	REQUIRE(duckdb_v2_logical_type_to_text(nullptr, &buf, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(buf.data == nullptr);
+	REQUIRE(buf.release == nullptr);
 
 	duckdb_v2_logical_type_handle t = nullptr;
 	duckdb_v2_connection_create_type_from_id(fx.conn, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER, nullptr, nullptr, 0, &t,
 	                                         nullptr);
-	REQUIRE(duckdb_v2_logical_type_to_text(t, buf, sizeof(buf), nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
+	REQUIRE(duckdb_v2_logical_type_to_text(t, nullptr, nullptr) == DUCKDB_V2_ERROR_INPUT_INVALID);
 
-	// Sizing excludes the terminator; the buffer must still have room for it.
-	REQUIRE(duckdb_v2_logical_type_to_text(t, nullptr, 0, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(len == 7);
-	REQUIRE(duckdb_v2_logical_type_to_text(t, buf, len, &len, nullptr) == DUCKDB_V2_ERROR_INPUT_OBJECT_SIZE);
-	REQUIRE(len == 7);
-	REQUIRE(duckdb_v2_logical_type_to_text(t, buf, len + 1, &len, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(std::string(buf) == "INTEGER");
+	REQUIRE(duckdb_v2_logical_type_to_text(t, &buf, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(buf.size == 7);
+	REQUIRE(std::string(buf.data) == "INTEGER");
+	REQUIRE(duckdb_v2_bytebuf_destroy(&buf) == DUCKDB_V2_ERROR_NONE);
 	duckdb_v2_logical_type_destroy(&t);
 }
 

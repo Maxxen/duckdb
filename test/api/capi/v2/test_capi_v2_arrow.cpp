@@ -819,10 +819,7 @@ void EnumProbeExec(duckdb_v2_scalar_function_exec_info_handle info, duckdb_v2_co
 		if (duckdb_v2_schema_get_field(resolved, 0, &field_name, &field_type, err) == DUCKDB_V2_ERROR_NONE) {
 			auto rc2 = DUCKDB_V2_ERROR_NONE;
 			enum_probe_type = RenderText(
-			    [&](char *buf, idx_t cap, idx_t *len) {
-				    return duckdb_v2_logical_type_to_text(field_type, buf, cap, len, nullptr);
-			    },
-			    rc2);
+			    [&](duckdb_v2_bytebuf *out) { return duckdb_v2_logical_type_to_text(field_type, out, nullptr); }, rc2);
 		}
 		duckdb_v2_schema_destroy(&resolved);
 	}

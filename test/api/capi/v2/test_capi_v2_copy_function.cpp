@@ -183,15 +183,12 @@ void DestroyBatchData(void *) {
 
 // Renders an option value without Catch assertions; the caller owns the value.
 std::string RenderOption(duckdb_v2_value_handle value) {
-	idx_t len = 0;
-	if (duckdb_v2_value_to_string(value, nullptr, 0, &len, nullptr) != DUCKDB_V2_ERROR_NONE) {
+	duckdb_v2_bytebuf buf;
+	if (duckdb_v2_value_to_string(value, &buf, nullptr) != DUCKDB_V2_ERROR_NONE) {
 		return "<error>";
 	}
-	std::string out(len + 1, '\0');
-	if (duckdb_v2_value_to_string(value, &out[0], out.size(), &len, nullptr) != DUCKDB_V2_ERROR_NONE) {
-		return "<error>";
-	}
-	out.resize(len);
+	std::string out(buf.data, buf.size);
+	duckdb_v2_bytebuf_destroy(&buf);
 	return out;
 }
 

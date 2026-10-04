@@ -297,17 +297,13 @@ private:
 	std::vector<duckdb_v2_value_handle> value_handles;
 };
 
-// Runs the C API's two-call text protocol: a null buffer reports the length,
-// then a buffer with room for the terminator receives the text. The library
-// never allocates, so there is nothing to free.
+// Copies the text a C API call returns as an owned bytebuf into a std::string, and frees the bytebuf.
 template <class F, class... ARGS>
 auto RenderText(F &&func, ARGS &&... args) -> std::string {
-	idx_t length = 0;
-	CheckedAPICall(func, args..., static_cast<char *>(nullptr), static_cast<idx_t>(0), &length);
-	std::string out;
-	out.resize(length);
-	// resize() guarantees length + 1 writable bytes, the last being the terminator.
-	CheckedAPICall(func, args..., &out[0], length + 1, &length);
+	duckdb_v2_bytebuf buf;
+	CheckedAPICall(func, args..., &buf);
+	std::string out(buf.data, buf.size);
+	duckdb_v2_bytebuf_destroy(&buf);
 	return out;
 }
 
@@ -5791,11 +5787,7 @@ auto QualifiedName::GetName() const -> std::string_view {
 }
 
 auto QualifiedName::Render() const -> std::string {
-	idx_t length = 0;
-	CheckedAPICall(duckdb_v2_qname_render, handle(), nullptr, 0, &length);
-	std::string out(length, '\0');
-	CheckedAPICall(duckdb_v2_qname_render, handle(), &out[0], length + 1, &length);
-	return out;
+	return RenderText(duckdb_v2_qname_render, handle());
 }
 
 auto QualifiedName::Equals(const QualifiedName &other) const -> bool {

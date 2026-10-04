@@ -410,14 +410,12 @@ DUCKDB_V2_ERROR duckdb_v2_logical_type_get_name(duckdb_v2_logical_type_handle ty
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_logical_type_to_text(duckdb_v2_logical_type_handle type, char *out_text, idx_t out_capacity,
-                                               idx_t *out_length, duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_logical_type_to_text(duckdb_v2_logical_type_handle type, duckdb_v2_bytebuf *out_text,
+                                               duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(out_text);
+	ResetBytebuf(*out_text);
 	DUCKDB_CHECK_ARG(type);
-	DUCKDB_CHECK_ARG(out_length);
-	return WithErrorHandler(err, [&]() {
-		*out_length = 0;
-		FillCallerText(out_text, out_capacity, out_length, Convert(type)->ToString(), "duckdb_v2_logical_type_to_text");
-	});
+	return WithErrorHandler(err, [&]() { SetBytebufText(*out_text, Convert(type)->ToString()); });
 }
 
 // ---------------------------------------------------------------------------
