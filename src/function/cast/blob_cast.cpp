@@ -17,6 +17,7 @@ BoundCastInfo DefaultCasts::BlobCastSwitch(BindCastInput &input, const LogicalTy
 	case LogicalTypeId::BIT:
 		return BoundCastInfo(&VectorCastHelpers::StringCast<string_t, duckdb::CastFromBlobToBit>);
 	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		return BlobToGeoCast(input, source, target);
 	default:
 		return DefaultCasts::TryVectorNullCast;
