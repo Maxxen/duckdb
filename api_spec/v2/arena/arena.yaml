@@ -8,7 +8,6 @@ module: arena
 #  so called the "String Heap". This is used to store the actual string data of large strings that do not fit in the
 # individual `string_t`s inline storage.
 functions:
-  # TODO: This should probably take an "alignment" parameter too
   arena_allocate:
     lifecycle:
       - [ "stable", "v2.0.0", "2026-08-04" ]
@@ -18,6 +17,8 @@ functions:
       Returns a writable pointer to `byte_len` uninitialized bytes, valid for as long as the arena is. There is no
       minimum or maximum allocation size, and the arena may return a pointer to a block of memory that is larger than 
       `byte_len`. The arena will free all allocated memory when it is destroyed, so the caller should not attempt to free the returned pointer themselves.
+      The pointer has no alignment guarantee; use `[[arena_allocate_aligned]]` for memory that holds anything other
+      than bytes.
     role: method
     belongs_to: arena
     parameters:
@@ -37,4 +38,218 @@ functions:
         indirection: 1
         kind: OUT
         description: Optional. On failure, receives an opaque info handle the caller must destroy via error_info_destroy.
+    return_type: ERROR
+
+  arena_allocate_aligned:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Allocate `byte_len` bytes from the arena, aligned to 8 bytes.
+
+      Like `[[arena_allocate]]`, but the returned pointer is a multiple of 8, so the bytes can hold integers, doubles
+      and pointers. Aligning may skip a few bytes of the arena.
+    role: method
+    belongs_to: arena
+    parameters:
+      arena:
+        type: arena
+        description: The arena to allocate from.
+      byte_len:
+        type: idx
+        description: Number of bytes to reserve. May be 0.
+      out_ptr:
+        type: u8
+        indirection: 2
+        kind: OUT_BORROW
+        description: Receives a writable, 8-byte aligned pointer to byte_len arena-owned bytes.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  arena_reserve:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Makes room in the arena for an allocation of `byte_len` bytes.
+
+      Guarantees that the next allocation of up to `byte_len` bytes, aligned or not, is served from memory the arena
+      already holds, without calling its allocator. Use it to move the cost of growing the arena out of a section
+      that must not allocate. Allocates nothing by itself.
+    role: method
+    belongs_to: arena
+    parameters:
+      arena:
+        type: arena
+        description: The arena to make room in.
+      byte_len:
+        type: idx
+        description: The size of the allocation to make room for.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Owned arenas
+  #---------------------------------------------------------------------------------------------------------------------
+  owned_arena_create:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Creates an arena that the caller owns.
+
+      The arena takes its memory from `allocator` in large chunks, and hands it out in small pieces through the
+      borrowed handle `[[owned_arena_get_arena]]` returns. The allocator is copied, but its `ctx` must stay valid
+      until the arena is destroyed. Pass the allocator from `[[context_get_allocator]]` or
+      `[[connection_get_allocator]]` to have the arena's memory tracked by DuckDB, or NULL to use DuckDB's default
+      allocator, whose memory is not tracked.
+    role: constructor
+    belongs_to: owned_arena
+    parameters:
+      allocator:
+        type: allocator
+        indirection: 1
+        const: true
+        kind: IN
+        description: The allocator the arena takes its memory from, or NULL for DuckDB's default allocator.
+      arena:
+        type: owned_arena
+        indirection: 1
+        kind: OUT
+        description: On success, receives the arena. Owned by the caller; destroy via `[[owned_arena_destroy]]`.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  owned_arena_get_arena:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Borrows the arena of an owned arena, to allocate from it.
+
+      The borrowed handle is accepted wherever an `arena` is, and is valid until the owned arena is destroyed.
+      Borrowing is free, so it can be done as often as convenient.
+    role: getter
+    belongs_to: owned_arena
+    parameters:
+      owned:
+        type: owned_arena
+        description: The owned arena to borrow from.
+      arena:
+        type: arena
+        indirection: 1
+        kind: OUT
+        description: Receives the borrowed arena.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  owned_arena_clear:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Frees everything allocated from the arena at once, keeping it for reuse.
+
+      Every pointer handed out by the arena becomes invalid. The arena keeps its most recent chunk of memory, which
+      is also its largest, since chunks double in size up to 16 MB. Reusing it once per batch of a loop therefore
+      stops allocating once that chunk covers a whole batch, for batches of up to 16 MB.
+    role: method
+    belongs_to: owned_arena
+    parameters:
+      owned:
+        type: owned_arena
+        description: The arena to clear.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  owned_arena_destroy:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Destroys an owned arena, freeing all memory allocated from it.
+
+      Null-safe: passing a null pointer or null handle is a no-op. The handle is set to null on return to prevent
+      double-destruction. Every pointer handed out by the arena, and every borrowed handle to it, becomes dangling.
+    role: destructor
+    belongs_to: owned_arena
+    parameters:
+      owned:
+        type: owned_arena
+        indirection: 1
+        description: The arena to destroy. Set to null on return.
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Allocators
+  #---------------------------------------------------------------------------------------------------------------------
+  context_get_allocator:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Returns the memory allocator of a context.
+
+      Memory allocated through it is tracked by DuckDB and counts against the `memory_limit` setting: allocating may
+      first evict buffered data to make room, and fails with out of memory when it cannot. Use it, directly or
+      through `[[owned_arena_create]]`, for memory whose size depends on the data being processed.
+
+      Use this from inside a callback, where a context is in hand. The allocator is valid only for as long as the
+      context is: everything allocated through it, and every arena created from it, must be freed before then.
+    role: getter
+    belongs_to: context
+    parameters:
+      context:
+        type: context
+        description: The context to take the allocator from.
+      allocator:
+        type: allocator
+        indirection: 1
+        kind: OUT
+        description: Receives the allocator.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  connection_get_allocator:
+    lifecycle:
+      - [ "stable", "v2.0.0", "2026-10-04" ]
+    description: |
+      Returns the memory allocator of a connection.
+
+      The connection form of `[[context_get_allocator]]`, for callers outside a callback. The allocator is valid only
+      for as long as the connection is: everything allocated through it, and every arena created from it, must be
+      freed before the connection is destroyed.
+    role: getter
+    belongs_to: connection
+    parameters:
+      connection:
+        type: connection
+        description: The connection to take the allocator from.
+      allocator:
+        type: allocator
+        indirection: 1
+        kind: OUT
+        description: Receives the allocator.
+      err:
+        type: error_info
+        indirection: 1
+        kind: OUT
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
     return_type: ERROR

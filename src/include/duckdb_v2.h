@@ -220,6 +220,8 @@ typedef struct duckdb_v2_opaque duckdb_v2_opaque;
 
 typedef struct duckdb_v2_bytebuf duckdb_v2_bytebuf;
 
+typedef struct duckdb_v2_allocator duckdb_v2_allocator;
+
 /* --- Types for common --- */
 
 /*!
@@ -321,15 +323,28 @@ typedef struct _duckdb_v2_vector {
 } * duckdb_v2_vector_handle;
 
 /*!
- * A borrowed handle to a "arena allocator".
+ * A borrowed handle to an arena allocator, through which bytes are allocated but never individually freed.
  *
- * Bytes handed out by `duckdb_v2_arena_allocate()` share the same lifetime as the arena itself.
- * `duckdb_v2_vector_get_arena()` yields the arena backing the out-of-line bytes of non-inlined VARCHAR / BLOB / BIT /
- * BIGNUM values, valid until the owning vector is flattened, reallocated, or destroyed.
+ * Bytes handed out by `duckdb_v2_arena_allocate()` share the same lifetime as the arena itself. A borrowed arena can
+ * only be allocated from; clearing and destroying belong to whoever owns it. `duckdb_v2_vector_get_arena()` yields the
+ * arena backing the out-of-line bytes of non-inlined VARCHAR / BLOB / BIT / BIGNUM values, valid until the owning
+ * vector is flattened, reallocated, or destroyed. `duckdb_v2_owned_arena_get_arena()` yields the arena of an owned
+ * arena, valid until that is destroyed.
  */
 typedef struct _duckdb_v2_arena {
 	void *internal_ptr;
 } * duckdb_v2_arena_handle;
+
+/*!
+ * An opaque, owned handle to an arena allocator created by the caller with `duckdb_v2_owned_arena_create()`.
+ *
+ * Unlike a borrowed `arena`, an owned arena can be cleared with `duckdb_v2_owned_arena_clear()`, which frees everything
+ * allocated from it at once. Allocate from it through the borrowed handle `duckdb_v2_owned_arena_get_arena()` returns.
+ * Not thread-safe: use one arena per thread. Always destroy via `duckdb_v2_owned_arena_destroy()`.
+ */
+typedef struct _duckdb_v2_owned_arena {
+	void *internal_ptr;
+} * duckdb_v2_owned_arena_handle;
 
 /*!
  * A borrowed handle to a client context: a connection seen from inside DuckDB. Handed out within DuckDB-managed scopes
@@ -428,6 +443,24 @@ typedef void (*duckdb_v2_opaque_destroy_fn)(void *data);
  */
 typedef void (*duckdb_v2_bytebuf_release_fn)(duckdb_v2_bytebuf *buf);
 
+/*!
+ * Allocates, resizes or frees a block of memory.
+ *
+ * - `ptr` NULL and `new_size` > 0: allocates `new_size` bytes.
+ * - `ptr` not NULL and `new_size` > 0: resizes the block, keeping its first min(`old_size`, `new_size`) bytes. The
+ * block may move.
+ * - `ptr` not NULL and `new_size` 0: frees the block and returns NULL.
+ * - `ptr` NULL and `new_size` 0: does nothing and returns NULL.
+ *
+ * `old_size` is always the size the block was allocated or last resized to, so the allocator need not track it.
+ * Returning NULL for a nonzero `new_size` signals out of memory, and leaves the original block, if any, intact.
+ * Returned blocks must be aligned to at least 8 bytes.
+ *
+ * Must be safe to call concurrently from several threads, since one allocator may back several arenas. Must not throw
+ * or unwind across the boundary, and must not re-enter the API on the object being allocated for.
+ */
+typedef void *(*duckdb_v2_allocator_reallocate_fn)(void *ctx, void *ptr, idx_t old_size, idx_t new_size);
+
 /* --- Functions for common --- */
 
 /* --- Struct definitions for common --- */
@@ -503,6 +536,21 @@ struct duckdb_v2_bytebuf {
 	idx_t size;
 	void *private_data;
 	duckdb_v2_bytebuf_release_fn release;
+};
+
+/*!
+ * A general-purpose memory allocator: a reallocate function and the context it is called with.
+ *
+ * A plain value, copied freely; it owns nothing and has nothing to destroy. Obtain DuckDB's memory-tracked allocator
+ * with `duckdb_v2_context_get_allocator()` or `duckdb_v2_connection_get_allocator()`, or fill one in to supply your
+ * own, e.g. to `duckdb_v2_owned_arena_create()`.
+ *
+ * Memory allocated through an allocator must be freed through the same allocator, and both `ctx` and `reallocate` must
+ * stay valid until it is.
+ */
+struct duckdb_v2_allocator {
+	void *ctx;
+	duckdb_v2_allocator_reallocate_fn reallocate;
 };
 
 /* ============================================================================
@@ -813,7 +861,8 @@ typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
  * Returns a writable pointer to `byte_len` uninitialized bytes, valid for as long as the arena is. There is no minimum
  * or maximum allocation size, and the arena may return a pointer to a block of memory that is larger than `byte_len`.
  * The arena will free all allocated memory when it is destroyed, so the caller should not attempt to free the returned
- * pointer themselves.
+ * pointer themselves. The pointer has no alignment guarantee; use `duckdb_v2_arena_allocate_aligned()` for memory that
+ * holds anything other than bytes.
  *
  * history:
  * - stable: v2.0.0
@@ -826,6 +875,160 @@ typedef enum DUCKDB_V2_FUNCTION_PROPERTY_VALUE {
  */
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_arena_allocate(duckdb_v2_arena_handle arena, idx_t byte_len, uint8_t **out_ptr,
                                                       duckdb_v2_error_info_handle *err);
+
+/*!
+ * Allocate `byte_len` bytes from the arena, aligned to 8 bytes.
+ *
+ * Like `duckdb_v2_arena_allocate()`, but the returned pointer is a multiple of 8, so the bytes can hold integers,
+ * doubles and pointers. Aligning may skip a few bytes of the arena.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param arena The arena to allocate from.
+ * @param byte_len Number of bytes to reserve. May be 0.
+ * @param out_ptr Receives a writable, 8-byte aligned pointer to byte_len arena-owned bytes.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_arena_allocate_aligned(duckdb_v2_arena_handle arena, idx_t byte_len,
+                                                              uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
+
+/*!
+ * Makes room in the arena for an allocation of `byte_len` bytes.
+ *
+ * Guarantees that the next allocation of up to `byte_len` bytes, aligned or not, is served from memory the arena
+ * already holds, without calling its allocator. Use it to move the cost of growing the arena out of a section that must
+ * not allocate. Allocates nothing by itself.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param arena The arena to make room in.
+ * @param byte_len The size of the allocation to make room for.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_arena_reserve(duckdb_v2_arena_handle arena, idx_t byte_len,
+                                                     duckdb_v2_error_info_handle *err);
+
+/*!
+ * Creates an arena that the caller owns.
+ *
+ * The arena takes its memory from `allocator` in large chunks, and hands it out in small pieces through the borrowed
+ * handle `duckdb_v2_owned_arena_get_arena()` returns. The allocator is copied, but its `ctx` must stay valid until the
+ * arena is destroyed. Pass the allocator from `duckdb_v2_context_get_allocator()` or
+ * `duckdb_v2_connection_get_allocator()` to have the arena's memory tracked by DuckDB, or NULL to use DuckDB's default
+ * allocator, whose memory is not tracked.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param allocator The allocator the arena takes its memory from, or NULL for DuckDB's default allocator.
+ * @param arena On success, receives the arena. Owned by the caller; destroy via `duckdb_v2_owned_arena_destroy()`.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_owned_arena_create(const duckdb_v2_allocator *allocator,
+                                                          duckdb_v2_owned_arena_handle *arena,
+                                                          duckdb_v2_error_info_handle *err);
+
+/*!
+ * Borrows the arena of an owned arena, to allocate from it.
+ *
+ * The borrowed handle is accepted wherever an `arena` is, and is valid until the owned arena is destroyed. Borrowing is
+ * free, so it can be done as often as convenient.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param owned The owned arena to borrow from.
+ * @param arena Receives the borrowed arena.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_owned_arena_get_arena(duckdb_v2_owned_arena_handle owned,
+                                                             duckdb_v2_arena_handle *arena,
+                                                             duckdb_v2_error_info_handle *err);
+
+/*!
+ * Frees everything allocated from the arena at once, keeping it for reuse.
+ *
+ * Every pointer handed out by the arena becomes invalid. The arena keeps its most recent chunk of memory, which is also
+ * its largest, since chunks double in size up to 16 MB. Reusing it once per batch of a loop therefore stops allocating
+ * once that chunk covers a whole batch, for batches of up to 16 MB.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param owned The arena to clear.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_owned_arena_clear(duckdb_v2_owned_arena_handle owned,
+                                                         duckdb_v2_error_info_handle *err);
+
+/*!
+ * Destroys an owned arena, freeing all memory allocated from it.
+ *
+ * Null-safe: passing a null pointer or null handle is a no-op. The handle is set to null on return to prevent
+ * double-destruction. Every pointer handed out by the arena, and every borrowed handle to it, becomes dangling.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param owned The arena to destroy. Set to null on return.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_owned_arena_destroy(duckdb_v2_owned_arena_handle *owned);
+
+/*!
+ * Returns the memory allocator of a context.
+ *
+ * Memory allocated through it is tracked by DuckDB and counts against the `memory_limit` setting: allocating may first
+ * evict buffered data to make room, and fails with out of memory when it cannot. Use it, directly or through
+ * `duckdb_v2_owned_arena_create()`, for memory whose size depends on the data being processed.
+ *
+ * Use this from inside a callback, where a context is in hand. The allocator is valid only for as long as the context
+ * is: everything allocated through it, and every arena created from it, must be freed before then.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param context The context to take the allocator from.
+ * @param allocator Receives the allocator.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_context_get_allocator(duckdb_v2_context_handle context,
+                                                             duckdb_v2_allocator *allocator,
+                                                             duckdb_v2_error_info_handle *err);
+
+/*!
+ * Returns the memory allocator of a connection.
+ *
+ * The connection form of `duckdb_v2_context_get_allocator()`, for callers outside a callback. The allocator is valid
+ * only for as long as the connection is: everything allocated through it, and every arena created from it, must be
+ * freed before the connection is destroyed.
+ *
+ * history:
+ * - stable: v2.0.0
+ *
+ * @param connection The connection to take the allocator from.
+ * @param allocator Receives the allocator.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_connection_get_allocator(duckdb_v2_connection_handle connection,
+                                                                duckdb_v2_allocator *allocator,
+                                                                duckdb_v2_error_info_handle *err);
 
 /* --- Struct definitions for arena --- */
 

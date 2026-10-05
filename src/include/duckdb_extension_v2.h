@@ -1390,7 +1390,22 @@ typedef struct {
 	 const duckdb_v2_identifier_t *parameter_names, const duckdb_v2_value_handle *parameter_values,
 	 idx_t parameter_count, idx_t batch_size, duckdb_v2_arrow_result_handle *out_result,
 	 duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR(*duckdb_v2_arena_allocate_aligned)
+	(duckdb_v2_arena_handle arena, idx_t byte_len, uint8_t **out_ptr, duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR(*duckdb_v2_arena_reserve)
+	(duckdb_v2_arena_handle arena, idx_t byte_len, duckdb_v2_error_info_handle *err);
 	DUCKDB_V2_ERROR (*duckdb_v2_bytebuf_destroy)(duckdb_v2_bytebuf *buf);
+	DUCKDB_V2_ERROR(*duckdb_v2_connection_get_allocator)
+	(duckdb_v2_connection_handle connection, duckdb_v2_allocator *allocator, duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR(*duckdb_v2_context_get_allocator)
+	(duckdb_v2_context_handle context, duckdb_v2_allocator *allocator, duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR(*duckdb_v2_owned_arena_clear)
+	(duckdb_v2_owned_arena_handle owned, duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR(*duckdb_v2_owned_arena_create)
+	(const duckdb_v2_allocator *allocator, duckdb_v2_owned_arena_handle *arena, duckdb_v2_error_info_handle *err);
+	DUCKDB_V2_ERROR (*duckdb_v2_owned_arena_destroy)(duckdb_v2_owned_arena_handle *owned);
+	DUCKDB_V2_ERROR(*duckdb_v2_owned_arena_get_arena)
+	(duckdb_v2_owned_arena_handle owned, duckdb_v2_arena_handle *arena, duckdb_v2_error_info_handle *err);
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
 	DUCKDB_V2_ERROR(*duckdb_v2_copy_to_set_statistics_callback)
 	(duckdb_v2_copy_function_handle function, duckdb_v2_copy_to_statistics_callback_fn callback,
@@ -2089,7 +2104,15 @@ typedef struct {
 #define duckdb_v2_arrow_result_wait                duckdb_ext_api.duckdb_v2_arrow_result_wait
 #define duckdb_v2_prepared_statement_execute_arrow duckdb_ext_api.duckdb_v2_prepared_statement_execute_arrow
 #define duckdb_v2_statement_execute_arrow          duckdb_ext_api.duckdb_v2_statement_execute_arrow
+#define duckdb_v2_arena_allocate_aligned           duckdb_ext_api.duckdb_v2_arena_allocate_aligned
+#define duckdb_v2_arena_reserve                    duckdb_ext_api.duckdb_v2_arena_reserve
 #define duckdb_v2_bytebuf_destroy                  duckdb_ext_api.duckdb_v2_bytebuf_destroy
+#define duckdb_v2_connection_get_allocator         duckdb_ext_api.duckdb_v2_connection_get_allocator
+#define duckdb_v2_context_get_allocator            duckdb_ext_api.duckdb_v2_context_get_allocator
+#define duckdb_v2_owned_arena_clear                duckdb_ext_api.duckdb_v2_owned_arena_clear
+#define duckdb_v2_owned_arena_create               duckdb_ext_api.duckdb_v2_owned_arena_create
+#define duckdb_v2_owned_arena_destroy              duckdb_ext_api.duckdb_v2_owned_arena_destroy
+#define duckdb_v2_owned_arena_get_arena            duckdb_ext_api.duckdb_v2_owned_arena_get_arena
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
 #define duckdb_v2_copy_to_set_statistics_callback duckdb_ext_api.duckdb_v2_copy_to_set_statistics_callback
 #endif

@@ -118,11 +118,21 @@ handles:
       Vectors are always borrowed from a data chunk, and are valid only as long as their parent data chunk is alive.
   arena:
     description: |
-      A borrowed handle to a "arena allocator". 
-      
-      Bytes handed out by `[[arena_allocate]]` share the same lifetime as the arena itself.
-      `[[vector_get_arena]]` yields the arena backing the out-of-line bytes of non-inlined VARCHAR / BLOB / BIT / BIGNUM 
-      values, valid until the owning vector is flattened, reallocated, or destroyed.
+      A borrowed handle to an arena allocator, through which bytes are allocated but never individually freed.
+
+      Bytes handed out by `[[arena_allocate]]` share the same lifetime as the arena itself. A borrowed arena can only
+      be allocated from; clearing and destroying belong to whoever owns it. `[[vector_get_arena]]` yields the arena
+      backing the out-of-line bytes of non-inlined VARCHAR / BLOB / BIT / BIGNUM values, valid until the owning
+      vector is flattened, reallocated, or destroyed. `[[owned_arena_get_arena]]` yields the arena of an owned arena,
+      valid until that is destroyed.
+  owned_arena:
+    description: |
+      An opaque, owned handle to an arena allocator created by the caller with `[[owned_arena_create]]`.
+
+      Unlike a borrowed `arena`, an owned arena can be cleared with `[[owned_arena_clear]]`, which frees everything
+      allocated from it at once. Allocate from it through the borrowed handle `[[owned_arena_get_arena]]` returns.
+      Not thread-safe: use one arena per thread. Always destroy via `[[owned_arena_destroy]]`.
+    cleanup_with: owned_arena_destroy
   context:
     description: |
       A borrowed handle to a client context: a connection seen from inside
@@ -209,6 +219,19 @@ structs:
       - {name: size, type: idx}
       - {name: private_data, type: void, pointer: 1}
       - {name: release, type: bytebuf_release}
+  allocator:
+    description: |
+      A general-purpose memory allocator: a reallocate function and the context it is called with.
+
+      A plain value, copied freely; it owns nothing and has nothing to destroy. Obtain DuckDB's memory-tracked
+      allocator with `[[context_get_allocator]]` or `[[connection_get_allocator]]`, or fill one in to supply your
+      own, e.g. to `[[owned_arena_create]]`.
+
+      Memory allocated through an allocator must be freed through the same allocator, and both `ctx` and
+      `reallocate` must stay valid until it is.
+    fields:
+      - {name: ctx, type: void, pointer: 1}
+      - {name: reallocate, type: allocator_reallocate}
 callbacks:
   text_sink:
     description: |
@@ -292,6 +315,39 @@ callbacks:
         type: bytebuf
         indirection: 1
         description: The bytebuf to release. Left empty on return.
+  allocator_reallocate:
+    description: |
+      Allocates, resizes or frees a block of memory.
+
+      - `ptr` NULL and `new_size` > 0: allocates `new_size` bytes.
+      - `ptr` not NULL and `new_size` > 0: resizes the block, keeping its first min(`old_size`, `new_size`) bytes.
+        The block may move.
+      - `ptr` not NULL and `new_size` 0: frees the block and returns NULL.
+      - `ptr` NULL and `new_size` 0: does nothing and returns NULL.
+
+      `old_size` is always the size the block was allocated or last resized to, so the allocator need not track it.
+      Returning NULL for a nonzero `new_size` signals out of memory, and leaves the original block, if any, intact.
+      Returned blocks must be aligned to at least 8 bytes.
+
+      Must be safe to call concurrently from several threads, since one allocator may back several arenas. Must not
+      throw or unwind across the boundary, and must not re-enter the API on the object being allocated for.
+    return_type: void
+    return_pointer: 1
+    parameters:
+      ctx:
+        type: void
+        indirection: 1
+        description: The `ctx` of the allocator, passed through untouched.
+      ptr:
+        type: void
+        indirection: 1
+        description: The block to resize or free, or NULL to allocate.
+      old_size:
+        type: idx
+        description: The current size of the block in bytes. 0 when `ptr` is NULL.
+      new_size:
+        type: idx
+        description: The requested size in bytes. 0 frees the block.
 aliases:
   sel:
     underlying: u32
