@@ -297,6 +297,7 @@ bool LogicalType::HasParameters() const {
 	case LogicalTypeId::TEMPLATE:
 		return info_type == LogicalTypeInfoType::TEMPLATE_TYPE_INFO;
 	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
 		return info_type == LogicalTypeInfoType::GEO_TYPE_INFO;
 	case LogicalTypeId::UNBOUND:
 		return info_type == LogicalTypeInfoType::UNBOUND_TYPE_INFO;
