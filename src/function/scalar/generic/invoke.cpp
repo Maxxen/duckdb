@@ -86,6 +86,7 @@ struct LambdaInvokeState final : public FunctionLocalState {
 		auto &bound_lambda_expr = bdata.lambda_expr->Cast<BoundLambdaExpression>();
 		const auto parameter_count = bound_lambda_expr.ParameterCount();
 		D_ASSERT(parameter_count < expr.GetChildren().size());
+		D_ASSERT(expr.GetChildren()[0]->GetExpressionClass() == ExpressionClass::BOUND_LAMBDA);
 
 		// children[0] is the lambda placeholder itself, the parameters follow it. The lambda body refers
 		// to its parameters in reverse order, so the input chunk lists them reversed
@@ -94,8 +95,9 @@ struct LambdaInvokeState final : public FunctionLocalState {
 		for (idx_t i = 0; i < parameter_count; i++) {
 			input_types.push_back(expr.GetChildren()[parameter_count - i]->GetReturnType());
 		}
-		for (idx_t i = parameter_count + 1; i < expr.GetChildren().size(); i++) {
-			input_types.push_back(expr.GetChildren()[i]->GetReturnType());
+		// the captures of the lambda follow the parameters - they are passed after the arguments
+		for (auto &capture : expr.GetChildren()[0]->Cast<BoundLambdaExpression>().Captures()) {
+			input_types.push_back(capture->GetReturnType());
 		}
 
 		auto executor = make_uniq<ExpressionExecutor>(state.GetContext(), *bound_lambda_expr.LambdaExpr());

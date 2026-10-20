@@ -1,5 +1,6 @@
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_lambda_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
@@ -72,11 +73,15 @@ bool BoundFunctionExpression::IsFoldable() const {
 	if (function.GetStability() == FunctionStability::VOLATILE) {
 		return false;
 	}
-	// a lambda is not a value and cannot be folded, but a call with constant arguments can be
+	// a lambda is not a value and cannot be folded, but a call with constant arguments and captures can be
 	bool is_foldable = true;
 	for (auto &child : children) {
-		if (child->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA && !child->IsFoldable()) {
-			is_foldable = false;
+		if (child->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
+			is_foldable = is_foldable && child->IsFoldable();
+			continue;
+		}
+		for (auto &capture : child->Cast<BoundLambdaExpression>().Captures()) {
+			is_foldable = is_foldable && capture->IsFoldable();
 		}
 	}
 	return is_foldable;
@@ -180,7 +185,24 @@ void BoundFunctionExpression::Serialize(Serializer &serializer) const {
 
 	Expression::Serialize(serializer);
 	serializer.WriteProperty(200, "return_type", return_type);
-	serializer.WriteProperty(201, "children", children);
+	if (!serializer.ShouldSerialize(StorageVersion::V2_1_0) && function.TakesLambda()) {
+		// older versions pass the captures of a lambda as trailing arguments of the function it is passed to
+		vector<unique_ptr<Expression>> legacy_children;
+		for (auto &child : children) {
+			legacy_children.push_back(child->Copy());
+		}
+		for (auto &child : children) {
+			if (child->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
+				continue;
+			}
+			for (auto &capture : child->Cast<BoundLambdaExpression>().Captures()) {
+				legacy_children.push_back(capture->Copy());
+			}
+		}
+		serializer.WriteProperty(201, "children", legacy_children);
+	} else {
+		serializer.WriteProperty(201, "children", children);
+	}
 	FunctionSerializer::Serialize(serializer, function, bind_info.get());
 	serializer.WriteProperty(202, "is_operator", is_operator);
 }
@@ -211,6 +233,29 @@ void RestoreErasedLambdaChild(const BoundScalarFunction &function, optional_ptr<
 	}
 }
 
+//! Plans serialized before v2.1.0 pass the captures of a lambda as trailing arguments of the function it is passed to.
+//! Move them into the lambda - the body refers to them by the same index either way.
+void RestoreLambdaCaptures(const BoundScalarFunction &function, vector<unique_ptr<Expression>> &children) {
+	auto argument_count = function.GetArguments().size();
+	if (!function.TakesLambda() || children.size() <= argument_count) {
+		return;
+	}
+	for (idx_t i = 0; i < argument_count; i++) {
+		if (children[i]->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
+			continue;
+		}
+		auto &lambda = children[i]->Cast<BoundLambdaExpression>();
+		if (!lambda.Captures().empty()) {
+			return;
+		}
+		for (idx_t capture_idx = argument_count; capture_idx < children.size(); capture_idx++) {
+			lambda.CapturesMutable().push_back(std::move(children[capture_idx]));
+		}
+		children.resize(argument_count);
+		return;
+	}
+}
+
 } // namespace
 
 unique_ptr<Expression> BoundFunctionExpression::Deserialize(Deserializer &deserializer) {
@@ -223,6 +268,7 @@ unique_ptr<Expression> BoundFunctionExpression::Deserialize(Deserializer &deseri
 	auto is_operator = deserializer.ReadProperty<bool>(202, "is_operator");
 
 	RestoreErasedLambdaChild(entry.first, entry.second.get(), children);
+	RestoreLambdaCaptures(entry.first, children);
 	FunctionBinder(deserializer.Get<ClientContext &>()).RestoreLambdaTypes(*entry.first.GetDefinition(), children);
 
 	if (entry.first.HasBindExpressionCallback()) {

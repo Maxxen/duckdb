@@ -133,42 +133,50 @@ struct ListComprehensionMatch {
 	optional_ptr<ListLambdaBindData> inner_bind;
 	optional_ptr<Expression> filter_expr;
 	optional_ptr<Expression> result_expr;
-	vector<unique_ptr<Expression>> captured_children;
+	vector<unique_ptr<Expression>> captures;
 };
 
-vector<unique_ptr<Expression>> CopyCapturedChildren(BoundFunctionExpression &inner_apply) {
-	vector<unique_ptr<Expression>> captured_children;
-	captured_children.reserve(inner_apply.GetChildren().empty() ? 0 : inner_apply.GetChildren().size() - 1);
-	// skip the list and the lambda placeholder - everything after them is a capture
-	for (idx_t i = 1; i < inner_apply.GetChildren().size(); i++) {
-		if (inner_apply.GetChildren()[i]->GetReturnType().id() == LogicalTypeId::LAMBDA) {
+//! The captures of the lambda passed to a list function
+vector<unique_ptr<Expression>> CopyCaptures(BoundFunctionExpression &inner_apply) {
+	vector<unique_ptr<Expression>> captures;
+	for (auto &child : inner_apply.GetChildren()) {
+		if (child->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
 			continue;
 		}
-		captured_children.push_back(inner_apply.GetChildren()[i]->Copy());
+		for (auto &capture : child->Cast<BoundLambdaExpression>().Captures()) {
+			captures.push_back(capture->Copy());
+		}
 	}
-	return captured_children;
+	return captures;
 }
 
 //! Builds the lambda child that accompanies a rewritten list function. The bind data keeps its own copy
 //! of the body, this is the copy that stays in the expression tree
 unique_ptr<Expression> MakeLambdaChild(const Expression &lambda_body, const LogicalType &list_type,
-                                       const bool has_index, vector<Identifier> parameter_names) {
+                                       const bool has_index, vector<Identifier> parameter_names,
+                                       const vector<unique_ptr<Expression>> &captures) {
 	const idx_t parameter_count = has_index ? 2 : 1;
 	// carry the original names over, so that the rewritten lambda still prints like the one the user wrote
 	if (parameter_names.size() != parameter_count) {
 		parameter_names.clear();
 	}
+	unique_ptr<BoundLambdaExpression> lambda;
 	if (list_type.id() != LogicalTypeId::LIST) {
-		auto lambda = make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalTypeId::LAMBDA,
-		                                               lambda_body.Copy(), parameter_count);
+		lambda = make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalTypeId::LAMBDA, lambda_body.Copy(),
+		                                          parameter_count);
 		lambda->SetParameterNames(std::move(parameter_names));
-		return std::move(lambda);
+	} else {
+		vector<LogicalType> parameter_types {ListType::GetChildType(list_type)};
+		if (has_index) {
+			parameter_types.push_back(LogicalType::BIGINT);
+		}
+		lambda = make_uniq<BoundLambdaExpression>(std::move(parameter_types), lambda_body.Copy(),
+		                                          std::move(parameter_names));
 	}
-	vector<LogicalType> parameter_types {ListType::GetChildType(list_type)};
-	if (has_index) {
-		parameter_types.push_back(LogicalType::BIGINT);
+	for (auto &capture : captures) {
+		lambda->CapturesMutable().push_back(capture->Copy());
 	}
-	return make_uniq<BoundLambdaExpression>(std::move(parameter_types), lambda_body.Copy(), std::move(parameter_names));
+	return std::move(lambda);
 }
 
 //! Returns the parameter names of the lambda child of a bound list function, if it has one
@@ -258,7 +266,7 @@ unique_ptr<ListComprehensionMatch> MatchListComprehensionRewrite(ClientContext &
 	match->inner_bind = inner_bind;
 	match->filter_expr = filter_expr;
 	match->result_expr = result_expr;
-	match->captured_children = CopyCapturedChildren(inner_apply);
+	match->captures = CopyCaptures(inner_apply);
 	return match;
 }
 
@@ -287,8 +295,8 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 	// the moved-over children still carry inner_apply's lambda - replace it with the filter's own lambda
 	for (auto &filter_child : filter_children) {
 		if (filter_child->GetReturnType().id() == LogicalTypeId::LAMBDA) {
-			filter_child =
-			    MakeLambdaChild(*filter_lambda, filter_return_type, inner_bind.has_index, lambda_parameter_names);
+			filter_child = MakeLambdaChild(*filter_lambda, filter_return_type, inner_bind.has_index,
+			                               lambda_parameter_names, match.captures);
 			break;
 		}
 	}
@@ -313,12 +321,9 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 	vector<unique_ptr<Expression>> apply_children;
 	apply_children.reserve(inner_apply.GetChildren().size());
 	apply_children.push_back(std::move(new_filter));
-	// the lambda keeps its argument position, the captures follow it
+	// both lambdas refer to the captures of the original one, which follow their parameters
 	apply_children.push_back(
-	    MakeLambdaChild(*apply_lambda, filter_return_type, false, std::move(lambda_parameter_names)));
-	for (auto &captured_child : match.captured_children) {
-		apply_children.push_back(std::move(captured_child));
-	}
+	    MakeLambdaChild(*apply_lambda, filter_return_type, false, std::move(lambda_parameter_names), match.captures));
 
 	auto apply_bind_info = make_uniq<ListLambdaBindData>(apply_return_type, std::move(apply_lambda));
 	auto apply_func = root.Function();

@@ -1,4 +1,5 @@
 #include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/expression/bound_lambda_expression.hpp"
 
 #include "duckdb/planner/expression/list.hpp"
 #include "duckdb/planner/tableref/list.hpp"
@@ -100,11 +101,14 @@ void ExpressionIterator::EnumerateChildren(Expression &expr,
 		callback(unnest_expr.ChildMutable());
 		break;
 	}
+	case ExpressionClass::BOUND_LAMBDA: {
+		// the captures are evaluated in the scope of the lambda, the body is not - it refers to its own parameters
+		for (auto &capture : expr.Cast<BoundLambdaExpression>().CapturesMutable()) {
+			callback(capture);
+		}
+		break;
+	}
 	case ExpressionClass::BOUND_COLUMN_REF:
-	// TODO: enumerate the lambda body here. That would give volatility, CanThrow and Hash for free,
-	// but the body's BoundReferenceExpressions index the lambda's own input chunk rather than the
-	// outer one, so every pass that rewrites references must first be shown to leave them alone.
-	case ExpressionClass::BOUND_LAMBDA:
 	case ExpressionClass::BOUND_LAMBDA_REF:
 	case ExpressionClass::BOUND_CONSTANT:
 	case ExpressionClass::BOUND_DEFAULT:

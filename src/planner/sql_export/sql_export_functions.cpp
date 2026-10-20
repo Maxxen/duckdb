@@ -30,7 +30,7 @@ BoundExpressionSQLExportResult BoundExpressionSQLExportState::ExportLambda(const
 	                             lambda.GetReturnType().id() == LogicalTypeId::LAMBDA && lambda.LambdaExpr();
 	const bool has_parameter_names =
 	    lambda.ParameterCount() > 0 && lambda.ParameterNames().size() == lambda.ParameterCount();
-	if (!has_lambda_body || !lambda.Captures().empty() || !has_parameter_names) {
+	if (!has_lambda_body || !has_parameter_names) {
 		return BoundExpressionSQLExportResult::Failure({BoundExpressionSQLExportState::UnsupportedFeature(
 		    path, "lambda_binding", "The bound lambda does not retain its SQL parameter binding")});
 	}
@@ -40,8 +40,10 @@ BoundExpressionSQLExportResult BoundExpressionSQLExportState::ExportLambda(const
 		auto &parameter = lambda.ParameterNames()[lambda.ParameterCount() - index - 1];
 		references.push_back(make_uniq<ColumnRefExpression>(parameter));
 	}
-	for (idx_t index = logical_argument_count; index < function.GetChildren().size(); index++) {
-		auto reference = Export(*function.GetChildren()[index], SQLExportHelpers::ChildPath(path, index));
+	// the captures follow the parameters, and are written out where the lambda is passed
+	for (idx_t index = 0; index < lambda.Captures().size(); index++) {
+		auto reference =
+		    Export(*lambda.Captures()[index], SQLExportHelpers::ChildPath(path, logical_argument_count + index));
 		if (reference.HasError()) {
 			return reference;
 		}

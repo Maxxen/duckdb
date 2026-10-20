@@ -12,29 +12,6 @@
 
 namespace duckdb {
 
-static idx_t GetLambdaParamCount(vector<DummyBinding> &lambda_bindings) {
-	idx_t count = 0;
-	for (auto &binding : lambda_bindings) {
-		count += binding.GetColumnCount();
-	}
-	return count;
-}
-
-static idx_t GetLambdaParamIndex(vector<DummyBinding> &lambda_bindings, const BoundLambdaExpression &bound_lambda_expr,
-                                 const BoundLambdaRefExpression &bound_lambda_ref_expr) {
-	D_ASSERT(bound_lambda_ref_expr.LambdaIndex() < lambda_bindings.size());
-	idx_t offset = 0;
-	// count the remaining lambda parameters BEFORE the current lambda parameter,
-	// as these will be in front of the current lambda parameter in the input chunk
-	for (idx_t i = bound_lambda_ref_expr.LambdaIndex() + 1; i < lambda_bindings.size(); i++) {
-		offset += lambda_bindings[i].GetColumnCount();
-	}
-	offset += lambda_bindings[bound_lambda_ref_expr.LambdaIndex()].GetColumnCount() -
-	          bound_lambda_ref_expr.Binding().column_index - 1;
-	offset += bound_lambda_expr.ParameterCount();
-	return offset;
-}
-
 static void ExtractParameter(const ParsedExpression &expr, vector<Identifier> &column_names,
                              vector<string> &column_aliases) {
 	auto &column_ref = expr.Cast<ColumnRefExpression>();
@@ -167,51 +144,35 @@ BindResult ExpressionBinder::BindLambda(LambdaExpression &expr, idx_t depth, vec
 void ExpressionBinder::TransformCapturedLambdaColumn(unique_ptr<Expression> &original,
                                                      unique_ptr<Expression> &replacement,
                                                      BoundLambdaExpression &bound_lambda_expr) {
-	// check if the original expression is a lambda parameter
+	// a parameter of this lambda: the parameters come first in the input chunk of the body, in reverse order
 	if (original->GetExpressionClass() == ExpressionClass::BOUND_LAMBDA_REF) {
 		auto &bound_lambda_ref = original->Cast<BoundLambdaRefExpression>();
-		auto alias = bound_lambda_ref.GetAlias();
-
-		// refers to a lambda parameter outside the current lambda function
-		// so the lambda parameter will be inside the lambda_bindings
-		if (lambda_bindings && bound_lambda_ref.LambdaIndex() != lambda_bindings->size()) {
-			auto &binding = (*lambda_bindings)[bound_lambda_ref.LambdaIndex()];
-			auto &column_names = binding.GetColumnNames();
-			auto &column_types = binding.GetColumnTypes();
-			D_ASSERT(column_names.size() == column_types.size());
-
-			// find the matching dummy column in the lambda binding
-			for (idx_t column_idx = 0; column_idx < binding.GetColumnCount(); column_idx++) {
-				if (ProjectionIndex(column_idx) == bound_lambda_ref.Binding().column_index) {
-					// now create the replacement
-					auto index = GetLambdaParamIndex(*lambda_bindings, bound_lambda_expr, bound_lambda_ref);
-					replacement =
-					    make_uniq<BoundReferenceExpression>(column_names[column_idx], column_types[column_idx], index);
-					return;
-				}
-			}
-
-			// error resolving the lambda index
-			throw InternalException("Failed to bind lambda parameter internally");
+		const bool is_own_parameter = !lambda_bindings || bound_lambda_ref.LambdaIndex() == lambda_bindings->size();
+		if (is_own_parameter) {
+			D_ASSERT(bound_lambda_expr.HasSignature());
+			auto column_index = bound_lambda_ref.Binding().column_index;
+			auto &logical_type = bound_lambda_expr.ParameterTypes()[column_index];
+			auto index = bound_lambda_expr.ParameterCount() - column_index - 1;
+			replacement = make_uniq<BoundReferenceExpression>(bound_lambda_ref.GetAlias(), logical_type, index);
+			return;
 		}
-		// refers to a lambda parameter inside the current lambda function
-		D_ASSERT(bound_lambda_expr.HasSignature());
-		auto &logical_type = bound_lambda_expr.ParameterTypes()[bound_lambda_ref.Binding().column_index];
-		auto index = bound_lambda_expr.ParameterCount() - bound_lambda_ref.Binding().column_index - 1;
-		replacement = make_uniq<BoundReferenceExpression>(alias, logical_type, index);
-		return;
 	}
 
-	// this is not a lambda parameter, get the capture offset
-	idx_t offset = 0;
-	if (lambda_bindings) {
-		offset += GetLambdaParamCount(*lambda_bindings);
+	// anything else - including a parameter of an enclosing lambda - is captured: it is evaluated where the lambda
+	// is passed, and follows the parameters in the input chunk of the body
+	auto &captures = bound_lambda_expr.CapturesMutable();
+	idx_t capture_idx = captures.size();
+	for (idx_t i = 0; i < captures.size(); i++) {
+		if (captures[i]->Equals(*original)) {
+			capture_idx = i;
+			break;
+		}
 	}
-	offset += bound_lambda_expr.ParameterCount();
-	offset += bound_lambda_expr.CapturesMutable().size();
-
-	replacement = make_uniq<BoundReferenceExpression>(original->GetAlias(), original->GetReturnType(), offset);
-	bound_lambda_expr.CapturesMutable().push_back(std::move(original));
+	auto index = bound_lambda_expr.ParameterCount() + capture_idx;
+	replacement = make_uniq<BoundReferenceExpression>(original->GetAlias(), original->GetReturnType(), index);
+	if (capture_idx == captures.size()) {
+		captures.push_back(std::move(original));
+	}
 }
 
 void ExpressionBinder::CaptureLambdaColumns(BoundLambdaExpression &bound_lambda_expr, unique_ptr<Expression> &expr) {
@@ -219,11 +180,8 @@ void ExpressionBinder::CaptureLambdaColumns(BoundLambdaExpression &bound_lambda_
 		throw BinderException("subqueries in lambda expressions are not supported");
 	}
 
-	// lambdas are bound depth-first, so an inner lambda has already had its own columns captured by the
-	// time we get here - its captures are children of the function it belongs to, which we do visit
-	if (expr->GetExpressionClass() == ExpressionClass::BOUND_LAMBDA) {
-		return;
-	}
+	// lambdas are bound depth-first, so an inner lambda has already captured its columns - those are its
+	// children, which belong to the scope of this lambda and are visited below
 
 	// we do not need to replace anything, as these will be constant in the lambda expression
 	// when executed by the expression executor

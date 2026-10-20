@@ -1,0 +1,47 @@
+# name: test/sql/function/list/lambdas/lambda_capture_serialization.test
+# description: Lambdas with captures survive plan serialization for every storage version, including the layout before v2.1.0 that passes the captures as trailing arguments
+# group: [lambdas]
+
+statement ok
+CREATE TABLE t (l INTEGER[], c INTEGER, s VARCHAR);
+
+statement ok
+INSERT INTO t VALUES ([1, 2, 3], 10, 'a'), ([4], 20, 'b'), (NULL, 30, NULL);
+
+foreach version v2.0.0 latest
+
+statement ok
+SET storage_compatibility_version='${version}';
+
+statement ok
+SET debug_verify_serializer=true;
+
+query IIII
+SELECT list_transform(l, lambda x: x + c + c), list_filter(l, lambda x, i: x + i > c / 10), list_reduce(l, lambda acc, x: acc + x + c), list_reduce(l, lambda acc, x: acc + x + c, c) FROM t ORDER BY c;
+----
+[21, 22, 23]	[1, 2, 3]	26	46
+[44]	[4]	4	44
+NULL	NULL	NULL	NULL
+
+# a nested lambda captures a parameter of the enclosing lambda and a column
+query I
+SELECT list_transform(l, lambda x: list_transform(l, lambda y: x + y + c)) FROM t ORDER BY c;
+----
+[[12, 13, 14], [13, 14, 15], [14, 15, 16]]
+[[28]]
+NULL
+
+query II
+SELECT invoke(lambda x, y: x || y || s, 'p', 'q'), [x + c FOR x IN l IF x > 1] FROM t ORDER BY c;
+----
+pqa	[12, 13]
+pqb	[24]
+NULL	NULL
+
+statement ok
+SET debug_verify_serializer=false;
+
+statement ok
+RESET storage_compatibility_version;
+
+endloop

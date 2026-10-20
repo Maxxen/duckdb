@@ -124,6 +124,9 @@ protected:
 	             Vector &result);
 	void Execute(const BoundFunctionExpression &expr, ExpressionState *state, const SelectionVector *sel, idx_t count,
 	             Vector &result);
+	//! Evaluates the captures of the lambdas a function is passed into the arguments following its children
+	void ExecuteLambdaCaptures(const BoundFunctionExpression &expr, ExpressionState &state, const SelectionVector *sel,
+	                           idx_t count, DataChunk &arguments, bool &all_constant);
 	void Execute(const BoundLambdaExpression &expr, ExpressionState *state, const SelectionVector *sel, idx_t count,
 	             Vector &result);
 	void Execute(const BoundOperatorExpression &expr, ExpressionState *state, const SelectionVector *sel, idx_t count,

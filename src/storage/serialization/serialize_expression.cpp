@@ -159,7 +159,9 @@ void BoundLambdaExpression::Serialize(Serializer &serializer) const {
 	Expression::Serialize(serializer);
 	serializer.WriteProperty<LogicalType>(200, "return_type", return_type);
 	serializer.WritePropertyWithDefault<unique_ptr<Expression>>(201, "lambda_expr", lambda_expr);
-	serializer.WritePropertyWithDefault<vector<unique_ptr<Expression>>>(202, "captures", captures);
+	if (serializer.ShouldSerialize(StorageVersion::V2_1_0)) {
+		serializer.WritePropertyWithDefault<vector<unique_ptr<Expression>>>(202, "captures", captures);
+	}
 	serializer.WritePropertyWithDefault<idx_t>(203, "parameter_count", parameter_count);
 	serializer.WritePropertyWithDefault<vector<Identifier>>(204, "parameter_names", parameter_names);
 }

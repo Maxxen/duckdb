@@ -421,40 +421,6 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 		error.Throw();
 	}
 
-	auto &bound_function_expr = result->Cast<BoundFunctionExpression>();
-
-	// the lambda expression stays in the children, so that the argument positions do not shift.
-	// it has no runtime value - the expression executor fills its slot with a constant placeholder
-	auto &bound_lambda = bound_function_expr.GetChildrenMutable()[lambda_expr_idx]->Cast<BoundLambdaExpression>();
-
-	// push back (in reverse order) any nested lambda parameters so that we can later use them in the lambda
-	// expression (rhs). This happens after we bound the lambda expression of this depth. So it is relevant for
-	// correctly binding lambdas one level 'out'. Therefore, the current parameter count does not matter here.
-	if (lambda_bindings) {
-		idx_t offset = 0;
-
-		for (idx_t i = lambda_bindings->size(); i > 0; i--) {
-			auto &binding = (*lambda_bindings)[i - 1];
-			auto &column_names = binding.GetColumnNames();
-			auto &column_types = binding.GetColumnTypes();
-			D_ASSERT(column_names.size() == column_types.size());
-
-			for (idx_t column_idx = column_names.size(); column_idx > 0; column_idx--) {
-				auto bound_lambda_param = make_uniq<BoundReferenceExpression>(column_names[column_idx - 1],
-				                                                              column_types[column_idx - 1], offset);
-				offset++;
-				bound_function_expr.GetChildrenMutable().push_back(std::move(bound_lambda_param));
-			}
-		}
-	}
-
-	// push back the captures into the children vector
-	for (auto &capture : bound_lambda.CapturesMutable()) {
-		bound_function_expr.GetChildrenMutable().push_back(std::move(capture));
-	}
-	// the lambda stays in the children, so it must not hold on to the moved-from capture slots
-	bound_lambda.CapturesMutable().clear();
-
 	return BindResult(std::move(result));
 }
 
