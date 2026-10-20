@@ -118,13 +118,29 @@ BindResult ExpressionBinder::BindExpression(LambdaExpression &expr, idx_t depth,
 		return bind_result;
 	}
 
-	// extract and verify lambda parameters to create dummy columns
 	vector<LogicalType> column_types;
+	auto parameter_count = GetLambdaParameterCount(expr);
+	for (idx_t i = 0; i < parameter_count; i++) {
+		column_types.push_back((*bind_lambda_function)(context, function_child_types, i, bind_lambda_context));
+	}
+	return BindLambda(expr, depth, std::move(column_types));
+}
+
+idx_t ExpressionBinder::GetLambdaParameterCount(LambdaExpression &expr) {
 	vector<Identifier> column_names;
 	vector<string> column_aliases;
 	ExtractParameters(expr, column_names, column_aliases);
-	for (idx_t i = 0; i < column_names.size(); i++) {
-		column_types.push_back((*bind_lambda_function)(context, function_child_types, i, bind_lambda_context));
+	return column_names.size();
+}
+
+BindResult ExpressionBinder::BindLambda(LambdaExpression &expr, idx_t depth, vector<LogicalType> column_types) {
+	// extract and verify lambda parameters to create dummy columns
+	vector<Identifier> column_names;
+	vector<string> column_aliases;
+	ExtractParameters(expr, column_names, column_aliases);
+	if (column_names.size() != column_types.size()) {
+		throw BinderException("The lambda expects %llu parameters, but it was given %llu", column_types.size(),
+		                      column_names.size());
 	}
 
 	// base table alias
@@ -163,10 +179,7 @@ BindResult ExpressionBinder::BindExpression(LambdaExpression &expr, idx_t depth,
 
 void ExpressionBinder::TransformCapturedLambdaColumn(unique_ptr<Expression> &original,
                                                      unique_ptr<Expression> &replacement,
-                                                     BoundLambdaExpression &bound_lambda_expr,
-                                                     const optional_ptr<bind_lambda_function_t> bind_lambda_function,
-                                                     const optional_ptr<BindLambdaContext> bind_lambda_context,
-                                                     const vector<LogicalType> &function_child_types) {
+                                                     BoundLambdaExpression &bound_lambda_expr) {
 	// check if the original expression is a lambda parameter
 	if (original->GetExpressionClass() == ExpressionClass::BOUND_LAMBDA_REF) {
 		auto &bound_lambda_ref = original->Cast<BoundLambdaRefExpression>();
@@ -195,8 +208,8 @@ void ExpressionBinder::TransformCapturedLambdaColumn(unique_ptr<Expression> &ori
 			throw InternalException("Failed to bind lambda parameter internally");
 		}
 		// refers to a lambda parameter inside the current lambda function
-		auto logical_type = (*bind_lambda_function)(context, function_child_types,
-		                                            bound_lambda_ref.Binding().column_index, bind_lambda_context);
+		D_ASSERT(bound_lambda_expr.HasSignature());
+		auto &logical_type = bound_lambda_expr.ParameterTypes()[bound_lambda_ref.Binding().column_index];
 		auto index = bound_lambda_expr.ParameterCount() - bound_lambda_ref.Binding().column_index - 1;
 		replacement = make_uniq<BoundReferenceExpression>(alias, logical_type, index);
 		return;
@@ -214,10 +227,7 @@ void ExpressionBinder::TransformCapturedLambdaColumn(unique_ptr<Expression> &ori
 	bound_lambda_expr.CapturesMutable().push_back(std::move(original));
 }
 
-void ExpressionBinder::CaptureLambdaColumns(BoundLambdaExpression &bound_lambda_expr, unique_ptr<Expression> &expr,
-                                            const optional_ptr<bind_lambda_function_t> bind_lambda_function,
-                                            const optional_ptr<BindLambdaContext> bind_lambda_context,
-                                            const vector<LogicalType> &function_child_types) {
+void ExpressionBinder::CaptureLambdaColumns(BoundLambdaExpression &bound_lambda_expr, unique_ptr<Expression> &expr) {
 	if (expr->GetExpressionClass() == ExpressionClass::BOUND_SUBQUERY) {
 		throw BinderException("subqueries in lambda expressions are not supported");
 	}
@@ -248,18 +258,15 @@ void ExpressionBinder::CaptureLambdaColumns(BoundLambdaExpression &bound_lambda_
 		auto original = std::move(expr);
 		unique_ptr<Expression> replacement;
 
-		TransformCapturedLambdaColumn(original, replacement, bound_lambda_expr, bind_lambda_function,
-		                              bind_lambda_context, function_child_types);
+		TransformCapturedLambdaColumn(original, replacement, bound_lambda_expr);
 
 		// replace the expression
 		expr = std::move(replacement);
 
 	} else {
 		// recursively enumerate the children of the expression
-		ExpressionIterator::EnumerateChildren(*expr, [&](unique_ptr<Expression> &child) {
-			CaptureLambdaColumns(bound_lambda_expr, child, bind_lambda_function, bind_lambda_context,
-			                     function_child_types);
-		});
+		ExpressionIterator::EnumerateChildren(
+		    *expr, [&](unique_ptr<Expression> &child) { CaptureLambdaColumns(bound_lambda_expr, child); });
 	}
 
 	expr->Verify();

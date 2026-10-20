@@ -39,7 +39,7 @@ NULL	NULL
 # Multiple captured columns and an index parameter
 query II
 SELECT list_reduce(l, lambda acc, x: acc + x + v + initial, 0),
-       list_reduce(l, lambda acc, x, i: acc + x + v + i, 0)
+       list_reduce(l, lambda acc, x, i: acc + x + v + i::INTEGER, 0)
 FROM t;
 ----
 111	12

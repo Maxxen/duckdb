@@ -434,6 +434,9 @@ class ScalarFunction : public BaseScalarFunction<ScalarFunction>,
                        public SimpleFunction { // NOLINT: work-around bug in clang-tidy
 public:
 	DUCKDB_API ScalarFunction(Identifier name, FunctionSignature sig, scalar_function_t function);
+
+	//! Whether the function takes a lambda - declared in its signature, or bound by its lambda callback
+	DUCKDB_API bool TakesLambda() const;
 	DUCKDB_API ScalarFunction(Identifier name, vector<LogicalType> arguments, LogicalType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
@@ -604,6 +607,10 @@ public:
 	//! Only null in a moved-from bound function.
 	const shared_ptr<const ScalarFunction> &GetDefinition() const {
 		return definition;
+	}
+	//! Whether the function takes a lambda, whose body is held by its bind data
+	bool TakesLambda() const {
+		return definition && definition->TakesLambda();
 	}
 	//! The number of arguments that were received by the standard and positional-only parameters, they come first
 	idx_t GetStandardArgumentCount() const {

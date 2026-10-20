@@ -56,7 +56,7 @@ static bool IsEffectfulSemanticExpression(const Expression &expression) {
 		    function.GetErrorMode() == FunctionErrors::CAN_THROW_RUNTIME_ERROR) {
 			return true;
 		}
-		if (!function.HasBindLambdaCallback()) {
+		if (!function.TakesLambda() || !bound_function.BindInfo()) {
 			return false;
 		}
 		auto lambda = bound_function.BindInfo()->Cast<LambdaFunctionData>().GetLambdaExpression();

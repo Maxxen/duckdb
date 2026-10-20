@@ -88,7 +88,7 @@ select [x + 5 for x in l] as filtered from base;
 statement error
 select [a for a, b, c in [1,2,3]];
 ----
-This lambda function only supports up to two lambda parameters!
+No function matches the given name and argument types
 
 statement error
 select [a for a[1], b[2] in [1,2,3,4]];

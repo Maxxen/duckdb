@@ -386,6 +386,10 @@ int64_t ImplicitCastToUnionMember(const LogicalType &from, const LogicalType &to
 }
 
 int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) {
+	if (from.id() == LogicalTypeId::SQLNULL && to.id() == LogicalTypeId::LAMBDA && to.HasParameters()) {
+		// a NULL passed for a lambda prefers the overload with the fewest parameters, like an untyped lambda
+		return NumericCast<int64_t>(LambdaType::GetParameterTypes(to).size());
+	}
 	if (from.id() == LogicalTypeId::SQLNULL && to.id() == LogicalTypeId::TEMPLATE) {
 		// Prefer the TEMPLATE type for NULL casts, as it is the most generic
 		return 5;
@@ -444,8 +448,12 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 	}
 	if (from.id() == LogicalTypeId::LAMBDA && to.id() == LogicalTypeId::LAMBDA) {
 		// a lambda matches an untyped LAMBDA parameter, or a typed one with the same number of parameters
-		if (!from.HasParameters() || !to.HasParameters()) {
+		if (!to.HasParameters()) {
 			return 0;
+		}
+		if (!from.HasParameters()) {
+			// a lambda of unknown arity prefers the overload with the fewest parameters
+			return NumericCast<int64_t>(LambdaType::GetParameterTypes(to).size());
 		}
 		return LambdaType::GetParameterTypes(from).size() == LambdaType::GetParameterTypes(to).size() ? 0 : -1;
 	}

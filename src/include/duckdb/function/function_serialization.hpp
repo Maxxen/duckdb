@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "duckdb/planner/expression/bound_lambda_expression.hpp"
 #include "duckdb/catalog/catalog_entry/table_function_catalog_entry.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/catalog/catalog.hpp"
@@ -266,6 +267,10 @@ public:
 	}
 
 	static bool TypeRequiresAssignment(const LogicalType &type) {
+		if (type.IsTemplated()) {
+			// the return type of a templated signature follows from the arguments the call was bound with
+			return true;
+		}
 		switch (type.id()) {
 		case LogicalTypeId::SQLNULL:
 		case LogicalTypeId::ANY:
@@ -381,6 +386,17 @@ public:
 			    qualified_name.ToString(), arguments.size(), children.size(), positional_count, named_arguments.size());
 		}
 
+		// Plans serialized before lambdas were typed hold an untyped lambda - select the overload by its arity
+		for (idx_t arg_idx = 0; arg_idx < arguments.size() && arg_idx < children.size(); arg_idx++) {
+			auto &child = *children[arg_idx];
+			if (arguments[arg_idx].id() == LogicalTypeId::LAMBDA && !arguments[arg_idx].HasParameters() &&
+			    child.GetExpressionClass() == ExpressionClass::BOUND_LAMBDA) {
+				auto parameter_count = child.Cast<BoundLambdaExpression>().ParameterCount();
+				arguments[arg_idx] =
+				    LogicalType::LAMBDA(vector<LogicalType>(parameter_count, LogicalType::ANY), LogicalType::ANY);
+			}
+		}
+
 		// Split types by positional and keyword arguments
 		vector<LogicalType> positional_types;
 		vector<pair<Identifier, LogicalType>> keyword_types;
@@ -407,6 +423,14 @@ public:
 		}
 
 		const auto function = functions.GetFunctionByOffset(func_idx.GetIndex());
+		binder.RestoreLambdaTypes(*function, children);
+		for (idx_t arg_idx = 0; arg_idx < arguments.size() && arg_idx < children.size(); arg_idx++) {
+			// plans written while lambdas were erased from the children recover the lambda later
+			if (arguments[arg_idx].id() == LogicalTypeId::LAMBDA &&
+			    children[arg_idx]->GetExpressionClass() == ExpressionClass::BOUND_LAMBDA) {
+				arguments[arg_idx] = children[arg_idx]->GetReturnType();
+			}
+		}
 
 		// Does this function support serializing its bound data?
 		if (!has_serialize) {

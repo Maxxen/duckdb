@@ -1,14 +1,23 @@
 # name: test/sql/function/list/lambdas/reduce_alias_initial_value_type.test
-# description: The aliases of list_reduce widen the accumulator to the type of the lambda result like list_reduce
+# description: The aliases of list_reduce take the accumulator type from the initial value like list_reduce
 # group: [lambdas]
 
 query IIII
-SELECT reduce([1.0, 2.0, 3.0], lambda x, y: x + y, 100), array_reduce([1.0, 2.0, 3.0], lambda x, y: x + y, 100), list_reduce([1.0, 2.0, 3.0], lambda x, y: x + y, 100), reduce([1.5, 2.5], lambda x, y: x + y, 100);
+SELECT reduce([1.0, 2.0, 3.0], lambda x, y: x + y, 100::DOUBLE), array_reduce([1.0, 2.0, 3.0], lambda x, y: x + y, 100::DOUBLE), list_reduce([1.0, 2.0, 3.0], lambda x, y: x + y, 100::DOUBLE), reduce([1.5, 2.5], lambda x, y: x + y, 100::DOUBLE);
 ----
 106.0	106.0	106.0	104.0
 
+foreach func_name reduce array_reduce list_reduce
+
+statement error
+SELECT {func_name}([1.0, 2.0, 3.0], lambda x, y: x + y, 100);
+----
+which cannot be implicitly cast to INTEGER
+
+endloop
+
 query II
-SELECT reduce([1, 1000, 3], lambda x, y: x + y, 100), reduce([1, 1e308, 3], lambda x, y: x + y, 100);
+SELECT reduce([1, 1000, 3], lambda x, y: x + y, 100), reduce([1, 1e308, 3], lambda x, y: x + y, 100::DOUBLE);
 ----
 1104	1e+308
 
@@ -18,9 +27,9 @@ SELECT reduce([1.0, 2.5], lambda x, y: x + y);
 3.5
 
 query I
-SELECT reduce(l, lambda x, y: x + y, 100) FROM (VALUES ([1.5, 2.5]), ([0.5]), (NULL), ([])) t(l) ORDER BY ALL;
+SELECT reduce(l, lambda x, y: x + y, 100::DOUBLE) FROM (VALUES ([1.5, 2.5]), ([0.5]), (NULL), ([])) t(l) ORDER BY ALL;
 ----
-100
+100.0
 100.5
 104.0
 NULL

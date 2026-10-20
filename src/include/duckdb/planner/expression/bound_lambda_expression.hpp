@@ -58,6 +58,11 @@ public:
 		parameter_names = std::move(names);
 	}
 
+	//! A lambda is not a value - only the function it is passed to can be evaluated
+	bool IsFoldable() const override {
+		return false;
+	}
+
 	string ToString() const override;
 	bool Equals(const BaseExpression &other) const override;
 	unique_ptr<Expression> Copy() const override;

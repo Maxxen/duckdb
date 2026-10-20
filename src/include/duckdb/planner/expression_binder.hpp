@@ -269,16 +269,16 @@ protected:
 	BindResult BindExpression(SubqueryExpression &expr, idx_t depth);
 	BindResult BindPositionalReference(unique_ptr<ParsedExpression> &expr, idx_t depth, bool root_expression);
 
-	void TransformCapturedLambdaColumn(unique_ptr<Expression> &original, unique_ptr<Expression> &replacement,
-	                                   BoundLambdaExpression &bound_lambda_expr,
-	                                   const optional_ptr<bind_lambda_function_t> bind_lambda_function,
-	                                   const optional_ptr<BindLambdaContext> bind_lambda_context,
-	                                   const vector<LogicalType> &function_child_types);
+	//! Binds the lambda argument at lambda_idx against the lambda signature of the function it is passed to
+	BindResult BindTypedLambda(ScalarFunctionCatalogEntry &func, LambdaExpression &lambda_expr, idx_t depth,
+	                           idx_t lambda_idx, vector<LogicalType> argument_types);
+	//! Binds the body of a lambda whose parameters have the given types
+	BindResult BindLambda(LambdaExpression &expr, idx_t depth, vector<LogicalType> parameter_types);
+	static idx_t GetLambdaParameterCount(LambdaExpression &expr);
 
-	void CaptureLambdaColumns(BoundLambdaExpression &bound_lambda_expr, unique_ptr<Expression> &expr,
-	                          const optional_ptr<bind_lambda_function_t> bind_lambda_function,
-	                          const optional_ptr<BindLambdaContext> bind_lambda_context,
-	                          const vector<LogicalType> &function_child_types);
+	void TransformCapturedLambdaColumn(unique_ptr<Expression> &original, unique_ptr<Expression> &replacement,
+	                                   BoundLambdaExpression &bound_lambda_expr);
+	void CaptureLambdaColumns(BoundLambdaExpression &bound_lambda_expr, unique_ptr<Expression> &expr);
 
 	unique_ptr<ParsedExpression> GetSQLValueFunction(const Identifier &column_name);
 

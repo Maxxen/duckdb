@@ -172,6 +172,14 @@ unique_ptr<Expression> MakeLambdaChild(const Expression &lambda_body, const Logi
 }
 
 //! Returns the parameter names of the lambda child of a bound list function, if it has one
+//! The rewritten functions are not bound again - their argument types follow their new children
+void SetArgumentTypes(BoundScalarFunction &function, const vector<unique_ptr<Expression>> &children) {
+	auto &arguments = function.GetArguments();
+	for (idx_t i = 0; i < arguments.size() && i < children.size(); i++) {
+		arguments[i] = children[i]->GetReturnType();
+	}
+}
+
 vector<Identifier> GetLambdaParameterNames(const BoundFunctionExpression &expr) {
 	for (auto &child : expr.GetChildren()) {
 		if (child->GetReturnType().id() == LogicalTypeId::LAMBDA) {
@@ -289,6 +297,7 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 
 	auto new_func = list_filter_expr.Function();
 	new_func.SetReturnType(filter_return_type);
+	SetArgumentTypes(new_func, filter_children);
 
 	auto new_filter = make_uniq<BoundFunctionExpression>(std::move(new_func), std::move(filter_children),
 	                                                     std::move(filter_bind_info), list_filter_expr.IsOperator());
@@ -312,8 +321,11 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 	}
 
 	auto apply_bind_info = make_uniq<ListLambdaBindData>(apply_return_type, std::move(apply_lambda));
-	return make_uniq<BoundFunctionExpression>(root.Function(), std::move(apply_children), std::move(apply_bind_info),
-	                                          root.IsOperator());
+	auto apply_func = root.Function();
+	apply_func.SetReturnType(apply_return_type);
+	SetArgumentTypes(apply_func, apply_children);
+	return make_uniq<BoundFunctionExpression>(std::move(apply_func), std::move(apply_children),
+	                                          std::move(apply_bind_info), root.IsOperator());
 }
 
 } // namespace

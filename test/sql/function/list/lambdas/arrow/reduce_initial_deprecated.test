@@ -16,7 +16,7 @@ SELECT list_reduce([1, 2, 3], (x, y) -> x * y, -1);
 -6
 
 query I
-SELECT list_reduce([100, 10, 1], (x, y, i) -> x - y - i, 1000);
+SELECT list_reduce([100, 10, 1], (x, y, i) -> x - y - i::INTEGER, 1000);
 ----
 883
 
@@ -31,7 +31,7 @@ SELECT list_reduce([1, 2, 3], (x, y) -> x - y, 10);
 4
 
 query I
-SELECT list_reduce([1, 2, 3], (x, y, i) -> x + y + i, -1);
+SELECT list_reduce([1, 2, 3], (x, y, i) -> x + y + i::INTEGER, -1);
 ----
 11
 
@@ -41,12 +41,12 @@ SELECT list_reduce([1, 2, 3], (x, y) -> x + y, NULL);
 NULL
 
 query I
-SELECT list_reduce([NULL], (x, y, i) -> x + y + i, 100);
+SELECT list_reduce([NULL], (x, y, i) -> x + y + i::INTEGER, 100);
 ----
 NULL
 
 query I
-SELECT list_reduce(NULL, (x, y, i) -> x + y + i, 100);
+SELECT list_reduce(NULL, (x, y, i) -> x + y + i::INTEGER, 100);
 ----
 NULL
 
@@ -74,7 +74,7 @@ Binder Error
 statement error
 SELECT list_reduce([1, 2], (x) -> x, 100);
 ----
-list_reduce expects a function with 2 or 3 arguments
+No function matches the given name and argument types
 
 statement error
 SELECT list_reduce([1, 2], NULL, 100);
@@ -120,7 +120,7 @@ NULL
 NULL
 
 query I
-SELECT list_reduce(l, (x, y, i) -> x + y + i, initial) FROM t1;
+SELECT list_reduce(l, (x, y, i) -> x + y + i::INTEGER, initial) FROM t1;
 ----
 112
 1667
@@ -238,12 +238,12 @@ SELECT list_reduce([1, 2, 3], (x, y) -> list_reduce([], (a, b) -> x + y + a + b)
 Cannot perform list_reduce on an empty input list
 
 query I
-SELECT list_reduce([1, 2, 3], (x, y, x_i) -> list_reduce([4, 5, 6], (a, b, a_i) -> x + y + a + b + x_i + a_i, 100), 1000);
+SELECT list_reduce([1, 2, 3], (x, y, x_i) -> list_reduce([4, 5, 6], (a, b, a_i) -> x + y + a + b + x_i::INTEGER + a_i::INTEGER, 100), 1000);
 ----
 28681
 
 statement error
-SELECT list_reduce([1, 2, 3], (x, y, x_i) -> list_reduce([], (a, b, a_i) -> x + y + a + b + x_i + a_i), 1000);
+SELECT list_reduce([1, 2, 3], (x, y, x_i) -> list_reduce([], (a, b, a_i) -> x + y + a + b + x_i::INTEGER + a_i::INTEGER), 1000);
 ----
 Cannot perform list_reduce on an empty input list
 
@@ -291,7 +291,7 @@ NULL
 NULL
 
 query I
-SELECT list_reduce(n, (x, y, x_i) -> list_reduce(l, (a, b, a_i) -> x + y + a + b + x_i + a_i), initial) FROM nested;
+SELECT list_reduce(n, (x, y, x_i) -> list_reduce(l, (a, b, a_i) -> x + y + a + b + x_i::INTEGER + a_i::INTEGER), initial) FROM nested;
 ----
 984
 NULL
@@ -299,7 +299,7 @@ NULL
 NULL
 
 query I
-SELECT list_reduce(n, (x, y, x_i) -> list_reduce(l, (a, b, a_i) -> x + y + x_i < a + b + a_i), initial) FROM nested;
+SELECT list_reduce(n, (x, y, x_i) -> list_reduce(l, (a, b, a_i) -> (x + y + x_i::INTEGER < a + b + a_i::INTEGER)::INTEGER), initial) FROM nested;
 ----
 1
 NULL
@@ -369,7 +369,7 @@ SELECT list_reduce([1, 2, 3], (x, y) -> list_reduce([4, 5, 6], (a, b) -> list_re
 25917331
 
 query I
-SELECT list_reduce([1, 2, 3], (x, y, x_i) -> list_reduce([4, 5, 6], (a, b, a_i) -> list_reduce([7, 8, 9], (c, d, c_i) -> x + y + a + b + c + d + x_i + a_i + c_i, 1000), 100), 10);
+SELECT list_reduce([1, 2, 3], (x, y, x_i) -> list_reduce([4, 5, 6], (a, b, a_i) -> list_reduce([7, 8, 9], (c, d, c_i) -> x + y + a + b + c + d + x_i::INTEGER + a_i::INTEGER + c_i::INTEGER, 1000), 100), 10);
 ----
 26185861
 

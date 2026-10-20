@@ -18,12 +18,8 @@ static unique_ptr<FunctionData> ListFilterBind(BindScalarFunctionInput &input) {
 
 	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
 
-	// try to cast to boolean, if the return type of the lambda filter expression is not already boolean
-	if (bound_lambda_expr.LambdaExpr()->GetReturnType() != LogicalType::BOOLEAN) {
-		auto cast_lambda_expr = BoundCastExpression::AddCastToType(
-		    context, std::move(bound_lambda_expr.LambdaExprMutable()), LogicalType::BOOLEAN);
-		bound_lambda_expr.SetLambdaExpr(std::move(cast_lambda_expr));
-	}
+	// the binder casts the body to the BOOLEAN the lambda signature declares
+	D_ASSERT(bound_lambda_expr.LambdaExpr()->GetReturnType() == LogicalType::BOOLEAN);
 
 	arguments[0] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[0]));
 
@@ -32,27 +28,27 @@ static unique_ptr<FunctionData> ListFilterBind(BindScalarFunctionInput &input) {
 	return LambdaFunctions::ListLambdaBind(context, bound_function, arguments, has_index);
 }
 
-static LogicalType ListFilterBindLambda(ClientContext &context, const vector<LogicalType> &function_child_types,
-                                        const idx_t parameter_idx,
-                                        optional_ptr<BindLambdaContext> bind_lambda_context) {
-	return LambdaFunctions::BindBinaryChildren(function_child_types, parameter_idx);
-}
+ScalarFunctionSet ListFilterFun::GetFunctions() {
+	ScalarFunctionSet set;
+	for (const bool has_index : {false, true}) {
+		vector<LogicalType> lambda_parameters {LogicalType::TEMPLATE("T")};
+		if (has_index) {
+			lambda_parameters.push_back(LogicalType::BIGINT);
+		}
+		FunctionSignature signature;
+		signature.AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+		    .AddParameter("lambda", LogicalType::LAMBDA(std::move(lambda_parameters), LogicalType::BOOLEAN));
+		signature.SetReturnType(LogicalType::LIST(LogicalType::TEMPLATE("T")));
 
-ScalarFunction ListFilterFun::GetFunction() {
-	ScalarFunction fun({}, LogicalType::LIST(LogicalType::ANY), LambdaFunctions::ListFilterFunction, ListFilterBind,
-	                   nullptr, nullptr);
-	fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalTypeId::LAMBDA);
-
-	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	fun.SetSerializeCallback(ListLambdaBindData::Serialize);
-	fun.SetDeserializeCallback(ListLambdaBindData::Deserialize);
-	fun.SetBindLambdaCallback(ListFilterBindLambda);
-	// the lambda expression that is executed for every element can throw
-	fun.SetFallible();
-
-	return fun;
+		ScalarFunction fun(Identifier(), std::move(signature), LambdaFunctions::ListFilterFunction);
+		fun.SetBindCallback(ListFilterBind);
+		fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+		fun.SetSerializeCallback(ListLambdaBindData::Serialize);
+		fun.SetDeserializeCallback(ListLambdaBindData::Deserialize);
+		fun.SetFallible();
+		set.AddFunction(fun);
+	}
+	return set;
 }
 
 } // namespace duckdb

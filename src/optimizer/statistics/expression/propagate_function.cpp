@@ -75,7 +75,7 @@ unique_ptr<BaseStatistics> StatisticsPropagator::PropagateConstantInputs(ClientC
 		return nullptr;
 	}
 	// Lambda arguments are placeholders, not SQL values that can be evaluated independently.
-	if (func.Function().HasBindLambdaCallback()) {
+	if (func.Function().TakesLambda()) {
 		return nullptr;
 	}
 	vector<Value> values;

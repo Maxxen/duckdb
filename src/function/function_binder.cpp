@@ -15,6 +15,9 @@
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_lambda_expression.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/expression/bound_window_expression.hpp"
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/planner/binder.hpp"
@@ -775,8 +778,13 @@ void FunctionBinder::CastToFunctionArguments(BoundSimpleFunction &function, vect
 			    function.GetName());
 		}
 		target_type.Verify();
-		// don't cast lambda children, their slot only ever holds a placeholder
+		// lambdas are not cast - they are bound against the parameter type of the function
 		if (children[i]->GetReturnType().id() == LogicalTypeId::LAMBDA) {
+			auto &source_type = children[i]->GetReturnType();
+			if (target_type.HasParameters() && source_type.HasParameters() && source_type != target_type) {
+				throw InternalException("Function %s received a lambda of type %s for a parameter of type %s",
+				                        function.GetName(), source_type, target_type);
+			}
 			continue;
 		}
 		const bool target_has_any = TypeVisitor::Contains(target_type, LogicalTypeId::ANY);
@@ -1151,9 +1159,10 @@ static void PropagateReturnCollation(BoundSimpleFunction &bound_function, const 
 	bound_function.SetReturnType(LogicalType::VARCHAR_COLLATION(std::move(collation)));
 }
 
+template <class FUNC>
 static void InferTemplateType(ClientContext &context, const LogicalType &source, const LogicalType &target,
-                              case_insensitive_map_t<vector<LogicalType>> &bindings, const Expression &current_expr,
-                              const BoundSimpleFunction &function) {
+                              case_insensitive_map_t<vector<LogicalType>> &bindings, const QueryLocation &location,
+                              const FUNC &function) {
 	if (target.id() == LogicalTypeId::UNKNOWN || target.id() == LogicalTypeId::SQLNULL) {
 		// If the actual type is unknown, we cannot infer anything more.
 		// Therefore, we map all remaining templates in the source to UNKNOWN or SQLNULL, if not already inferred to
@@ -1219,7 +1228,29 @@ static void InferTemplateType(ClientContext &context, const LogicalType &source,
 			}
 		}
 		msg += StringUtil::Format(" - '%s', which is incompatible with previously inferred type!", target.ToString());
-		throw BinderException(current_expr.GetQueryLocation(), msg);
+		throw BinderException(location, msg);
+	}
+
+	// A lambda is matched by its signature. Parameters that are not known yet (ANY) do not bind anything
+	if (source.id() == LogicalTypeId::LAMBDA) {
+		if (target.id() != LogicalTypeId::LAMBDA || !source.HasParameters() || !target.HasParameters()) {
+			return;
+		}
+		auto &source_parameters = LambdaType::GetParameterTypes(source);
+		auto &target_parameters = LambdaType::GetParameterTypes(target);
+		if (source_parameters.size() != target_parameters.size()) {
+			return;
+		}
+		for (idx_t i = 0; i < source_parameters.size(); i++) {
+			if (target_parameters[i].id() != LogicalTypeId::ANY) {
+				InferTemplateType(context, source_parameters[i], target_parameters[i], bindings, location, function);
+			}
+		}
+		auto &target_return = LambdaType::GetReturnType(target);
+		if (target_return.id() != LogicalTypeId::ANY) {
+			InferTemplateType(context, LambdaType::GetReturnType(source), target_return, bindings, location, function);
+		}
+		return;
 	}
 
 	// Otherwise, recurse downwards into nested types, and try to infer nested type members
@@ -1238,7 +1269,7 @@ static void InferTemplateType(ClientContext &context, const LogicalType &source,
 			    source.id() == LogicalTypeId::LIST ? ListType::GetChildType(source) : ArrayType::GetChildType(source);
 			const auto &target_child =
 			    target.id() == LogicalTypeId::LIST ? ListType::GetChildType(target) : ArrayType::GetChildType(target);
-			InferTemplateType(context, source_child, target_child, bindings, current_expr, function);
+			InferTemplateType(context, source_child, target_child, bindings, location, function);
 		}
 	} break;
 	case LogicalTypeId::MAP: {
@@ -1249,8 +1280,8 @@ static void InferTemplateType(ClientContext &context, const LogicalType &source,
 			const auto &target_key = MapType::KeyType(target);
 			const auto &target_val = MapType::ValueType(target);
 
-			InferTemplateType(context, source_key, target_key, bindings, current_expr, function);
-			InferTemplateType(context, source_val, target_val, bindings, current_expr, function);
+			InferTemplateType(context, source_key, target_key, bindings, location, function);
+			InferTemplateType(context, source_val, target_val, bindings, location, function);
 		}
 	} break;
 	case LogicalTypeId::UNION: {
@@ -1268,7 +1299,7 @@ static void InferTemplateType(ClientContext &context, const LogicalType &source,
 			for (idx_t i = 0; i < common_children; i++) {
 				const auto &source_child_type = source_children[i].second;
 				const auto &target_child_type = target_children[i].second;
-				InferTemplateType(context, source_child_type, target_child_type, bindings, current_expr, function);
+				InferTemplateType(context, source_child_type, target_child_type, bindings, location, function);
 			}
 		} else {
 			// TODO: Support named structs with template child types.
@@ -1313,7 +1344,7 @@ void FunctionBinder::ResolveTemplateTypes(BoundSimpleFunction &bound_function,
 		// If the parameter is not templated, we can skip it.
 		if (param.IsTemplated()) {
 			auto actual = ExpressionBinder::GetExpressionReturnType(*children[i]);
-			InferTemplateType(context, param, actual, bindings, *children[i], bound_function);
+			InferTemplateType(context, param, actual, bindings, children[i]->GetQueryLocation(), bound_function);
 
 			to_substitute.emplace_back(param);
 		}
@@ -1347,6 +1378,89 @@ void FunctionBinder::CheckTemplateTypesResolved(const BoundSimpleFunction &bound
 		VerifyTemplateType(arg, bound_function.GetName());
 	}
 	VerifyTemplateType(bound_function.GetReturnType(), bound_function.GetName());
+}
+
+LogicalType FunctionBinder::ResolveLambdaType(const SimpleFunction &function, const vector<LogicalType> &arguments,
+                                              idx_t lambda_idx) {
+	auto &signature = function.GetSignature();
+	D_ASSERT(lambda_idx < signature.GetParameterCount());
+	case_insensitive_map_t<vector<LogicalType>> bindings;
+	for (idx_t i = 0; i < arguments.size() && i < signature.GetParameterCount(); i++) {
+		auto &parameter_type = signature.GetParameter(i).GetType();
+		if (parameter_type.IsTemplated()) {
+			InferTemplateType(context, parameter_type, arguments[i], bindings, QueryLocation(), function);
+		}
+	}
+	auto result = signature.GetParameter(lambda_idx).GetType();
+	SubstituteTemplateType(result, bindings, function.GetName());
+	return result;
+}
+
+//! Collects the types of the lambda parameters that the body refers to - ANY if the body does not use a parameter
+static void CollectLambdaParameterTypes(const Expression &expr, vector<LogicalType> &parameter_types) {
+	if (expr.GetExpressionClass() == ExpressionClass::BOUND_REF) {
+		auto index = expr.Cast<BoundReferenceExpression>().Index();
+		if (index < parameter_types.size()) {
+			// the parameters are referenced in reverse order
+			parameter_types[parameter_types.size() - index - 1] = expr.GetReturnType();
+		}
+		return;
+	}
+	ExpressionIterator::EnumerateChildren(
+	    expr, [&](const Expression &child) { CollectLambdaParameterTypes(child, parameter_types); });
+}
+
+void FunctionBinder::RestoreLambdaTypes(const SimpleFunction &function, vector<unique_ptr<Expression>> &children) {
+	auto &signature = function.GetSignature();
+	for (idx_t lambda_idx = 0; lambda_idx < children.size() && lambda_idx < signature.GetParameterCount();
+	     lambda_idx++) {
+		auto &parameter_type = signature.GetParameter(lambda_idx).GetType();
+		if (parameter_type.id() != LogicalTypeId::LAMBDA || !parameter_type.HasParameters() ||
+		    children[lambda_idx]->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
+			continue;
+		}
+		auto &lambda = children[lambda_idx]->Cast<BoundLambdaExpression>();
+		auto parameter_count = lambda.ParameterCount();
+		if (lambda.HasSignature() || !lambda.LambdaExpr() ||
+		    parameter_count != LambdaType::GetParameterTypes(parameter_type).size()) {
+			continue;
+		}
+		vector<LogicalType> referenced_types(parameter_count, LogicalType::ANY);
+		CollectLambdaParameterTypes(*lambda.LambdaExpr(), referenced_types);
+
+		vector<LogicalType> argument_types;
+		for (idx_t i = 0; i < children.size(); i++) {
+			if (i == lambda_idx) {
+				argument_types.push_back(LogicalType::LAMBDA(referenced_types, lambda.LambdaExpr()->GetReturnType()));
+			} else {
+				argument_types.push_back(children[i]->GetReturnType());
+			}
+		}
+		auto resolved = ResolveLambdaType(function, argument_types, lambda_idx);
+		auto parameter_types = LambdaType::GetParameterTypes(resolved);
+		bool resolved_all = true;
+		for (idx_t i = 0; i < parameter_count; i++) {
+			// the body was bound against the types it references, those take precedence
+			if (referenced_types[i].id() != LogicalTypeId::ANY) {
+				parameter_types[i] = referenced_types[i];
+			}
+			if (parameter_types[i].IsTemplated() || parameter_types[i].id() == LogicalTypeId::ANY) {
+				resolved_all = false;
+			}
+		}
+		if (!resolved_all) {
+			continue;
+		}
+		auto parameter_names = lambda.ParameterNames();
+		if (parameter_names.size() != parameter_count) {
+			parameter_names.clear();
+		}
+		auto typed_lambda = make_uniq<BoundLambdaExpression>(
+		    std::move(parameter_types), std::move(lambda.LambdaExprMutable()), std::move(parameter_names));
+		typed_lambda->CapturesMutable() = std::move(lambda.CapturesMutable());
+		typed_lambda->SetAlias(lambda.GetAlias());
+		children[lambda_idx] = std::move(typed_lambda);
+	}
 }
 
 // Drain all named arguments and lay out the arguments in the order of the function signature:

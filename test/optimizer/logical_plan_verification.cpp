@@ -1151,7 +1151,7 @@ TEST_CASE("Logical plan verification result records enforce their structural con
 	RequireInvalidFact("template_fact", Value(LogicalType::TEMPLATE("T")));
 	RequireInvalidFact("type_fact", Value::TYPE(LogicalType::INTEGER));
 	RequireInvalidFact("validity_fact", Value(LogicalType(LogicalTypeId::VALIDITY)));
-	RequireInvalidFact("lambda_fact", Value(LogicalType::LAMBDA));
+	RequireInvalidFact("lambda_fact", Value(LogicalType(LogicalTypeId::LAMBDA)));
 
 	auto invalid_enum_issue = projection_issue;
 	invalid_enum_issue.code = static_cast<LogicalPlanVerificationIssueCode>(255);

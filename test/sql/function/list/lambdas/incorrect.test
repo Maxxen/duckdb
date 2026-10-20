@@ -72,7 +72,7 @@ SELECT {func_name}(1, 1);
 statement error
 SELECT {func_name}(1, x -> x + 1);
 ----
-Invalid LIST argument during lambda function binding!
+No function matches the given name and argument types
 
 endloop
 
@@ -95,7 +95,7 @@ endloop
 statement error
 SELECT list_reduce([1], x -> x, 3);
 ----
-<REGEX>:Binder Error.*list_reduce expects a function with 2 or 3 arguments.*
+<REGEX>:Binder Error.*No function matches the given name and argument types.*
 
 statement error
 SELECT list_reduce([True], x -> x, x -> x);
@@ -142,12 +142,12 @@ CREATE TABLE l_filter_test (l integer[]);
 statement error
 SELECT list_transform([1, 2], (x, y, z) -> x + y + z);
 ----
-<REGEX>:Binder Error.*This lambda function only supports up to two lambda parameters!.*
+<REGEX>:Binder Error.*No function matches the given name and argument types.*
 
 statement error
 SELECT list_filter([1, 2], (x, y, z) -> x >= y AND y >= z);
 ----
-<REGEX>:Binder Error.*This lambda function only supports up to two lambda parameters!.*
+<REGEX>:Binder Error.*No function matches the given name and argument types.*
 
 # using lambdas in functions that do not support them
 

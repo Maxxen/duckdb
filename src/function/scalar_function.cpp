@@ -117,6 +117,18 @@ ScalarFunction::ScalarFunction(std::initializer_list<FunctionParameter> params, 
                      init_local_state, std::move(varargs), side_effects, null_handling, bind_lambda) {
 }
 
+bool ScalarFunction::TakesLambda() const {
+	if (HasBindLambdaCallback()) {
+		return true;
+	}
+	for (auto &parameter : GetSignature().GetParameters()) {
+		if (parameter.GetType().id() == LogicalTypeId::LAMBDA) {
+			return true;
+		}
+	}
+	return false;
+}
+
 bool ScalarFunction::operator==(const ScalarFunction &rhs) const {
 	return name == rhs.name && signature == rhs.signature && callbacks == rhs.callbacks && properties == rhs.properties;
 }

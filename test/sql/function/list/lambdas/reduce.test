@@ -16,7 +16,7 @@ SELECT list_reduce([1, 2, 3], lambda x, y: x * y);
 6
 
 query I
-SELECT list_reduce([100, 10, 1], lambda x, y, i: x - y - i);
+SELECT list_reduce([100, 10, 1], lambda x, y, i: x - y - i::INTEGER);
 ----
 84
 
@@ -31,17 +31,17 @@ SELECT list_reduce([1, 2, 3], lambda x, y: x - y);
 -4
 
 query I
-SELECT list_reduce([1, 2, 3], lambda x, y, i: x + y + i);
+SELECT list_reduce([1, 2, 3], lambda x, y, i: x + y + i::INTEGER);
 ----
 11
 
 query I
-SELECT list_reduce([NULL], lambda x, y, i: x + y + i);
+SELECT list_reduce([NULL], lambda x, y, i: x + y + i::INTEGER);
 ----
 NULL
 
 query I
-SELECT list_reduce(NULL, lambda x, y, i: x + y + i);
+SELECT list_reduce(NULL, lambda x, y, i: x + y + i::INTEGER);
 ----
 NULL
 
@@ -58,7 +58,7 @@ a - 2 - b - 3 - c - 4 - d
 #errors on simple reduce
 
 statement error
-SELECT list_reduce([], lambda x, y, i: x + y + i);
+SELECT list_reduce([], lambda x, y, i: x + y + i::INTEGER);
 ----
 Cannot perform list_reduce on an empty input list
 
@@ -70,7 +70,7 @@ Binder Error
 statement error
 SELECT list_reduce([1, 2], lambda x: x);
 ----
-list_reduce expects a function with 2 or 3 arguments
+No function matches the given name and argument types
 
 statement error
 SELECT list_reduce([1, 2], NULL);
@@ -112,7 +112,7 @@ NULL
 NULL
 
 query I
-SELECT list_reduce(a, lambda x, y, i: x + y + i) FROM t1;
+SELECT list_reduce(a, lambda x, y, i: x + y + i::INTEGER) FROM t1;
 ----
 11
 666
@@ -184,12 +184,12 @@ SELECT list_reduce([1, 2, 3], lambda x, y: list_reduce([], lambda a, b: x + y + 
 Cannot perform list_reduce on an empty input list
 
 query I
-SELECT list_reduce([1, 2, 3], lambda x, y, x_i: list_reduce([4, 5, 6], lambda a, b, a_i: x + y + a + b + x_i + a_i));
+SELECT list_reduce([1, 2, 3], lambda x, y, x_i: list_reduce([4, 5, 6], lambda a, b, a_i: x + y + a + b + x_i::INTEGER + a_i::INTEGER));
 ----
 92
 
 statement error
-SELECT list_reduce([1, 2, 3], lambda x, y, x_i: list_reduce([], lambda a, b, a_i: x + y + a + b + x_i + a_i));
+SELECT list_reduce([1, 2, 3], lambda x, y, x_i: list_reduce([], lambda a, b, a_i: x + y + a + b + x_i::INTEGER + a_i::INTEGER));
 ----
 Cannot perform list_reduce on an empty input list
 
@@ -243,7 +243,7 @@ NULL
 NULL
 
 query I
-SELECT list_reduce(n, lambda x, y, x_i: list_reduce(l, lambda a, b, a_i: x + y + a + b + x_i + a_i)) FROM nested;
+SELECT list_reduce(n, lambda x, y, x_i: list_reduce(l, lambda a, b, a_i: x + y + a + b + x_i::INTEGER + a_i::INTEGER)) FROM nested;
 ----
 92
 NULL
@@ -251,7 +251,7 @@ NULL
 NULL
 
 query I
-SELECT list_reduce(n, lambda x, y, x_i: list_reduce(l, lambda a, b, a_i: x + y + x_i < a + b + a_i)) FROM nested;
+SELECT list_reduce(n, lambda x, y, x_i: list_reduce(l, lambda a, b, a_i: (x + y + x_i::INTEGER < a + b + a_i::INTEGER)::INTEGER)) FROM nested;
 ----
 1
 NULL
@@ -327,7 +327,7 @@ query I
 SELECT
 	list_reduce([1, 2, 3], lambda x, y, x_i:
 		list_reduce([4, 5, 6], lambda a, b, a_i:
-			list_reduce([7, 8, 9], lambda c, d, c_i: x + y + a + b + c + d + x_i + a_i + c_i)));
+			list_reduce([7, 8, 9], lambda c, d, c_i: x + y + a + b + c + d + x_i::INTEGER + a_i::INTEGER + c_i::INTEGER)));
 ----
 1259
 

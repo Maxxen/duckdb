@@ -158,7 +158,7 @@ BoundExpressionSQLExportState::ExportScalarFunction(const BoundFunctionExpressio
 			lambda_index = index;
 		}
 	}
-	if (function.HasBindLambdaCallback() != lambda_index.IsValid()) {
+	if (function.TakesLambda() != lambda_index.IsValid()) {
 		return BoundExpressionSQLExportResult::Failure({BoundExpressionSQLExportState::UnsupportedFunction(
 		    path, std::move(identity), "The scalar function does not retain its SQL lambda argument")});
 	}

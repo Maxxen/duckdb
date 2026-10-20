@@ -201,94 +201,30 @@ bool ExecuteReduce(const idx_t loops, ReduceExecuteInfo &execute_info, LambdaFun
 	return false;
 }
 
-LogicalType ResolveReduceAccumulatorType(ClientContext &context, const LogicalType &initial_type,
-                                         const LogicalType &lambda_return_type) {
-	LogicalType max_logical_type;
-	if (LogicalType::TryGetMaxLogicalType(context, initial_type, lambda_return_type, max_logical_type)) {
-		return max_logical_type;
-	}
-	throw BinderException("No common super type between initial value type %s and lambda return type %s",
-	                      initial_type.ToString(), lambda_return_type.ToString());
-}
-
 unique_ptr<FunctionData> ListReduceBind(BindScalarFunctionInput &input) {
 	auto &context = input.GetClientContext();
 	auto &bound_function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
-	// the list column and the bound lambda expression
 	D_ASSERT(arguments.size() == 2 || arguments.size() == 3);
 	if (arguments[1]->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
 		throw BinderException("Invalid lambda expression!");
 	}
 
 	arguments[0] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[0]));
-
 	unique_ptr<FunctionData> bind_data = LambdaFunctions::ListLambdaPrepareBind(arguments, context, bound_function);
 	if (bind_data) {
 		return bind_data;
 	}
 
-	bool has_initial = arguments.size() == 3;
-	LogicalType accumulator_type;
-	if (has_initial) {
-		const auto &initial_value_type = arguments[2]->GetReturnType();
-		auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
-		auto &lambda_return_type = bound_lambda_expr.LambdaExpr()->GetReturnType();
-		accumulator_type = ResolveReduceAccumulatorType(context, initial_value_type, lambda_return_type);
-		arguments[2] = BoundCastExpression::AddCastToType(context, std::move(arguments[2]), accumulator_type);
-	} else {
-		auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
-		auto list_child_type = LambdaFunctions::DetermineListChildType(arguments[0]->GetReturnType());
-		auto &lambda_return_type = bound_lambda_expr.LambdaExpr()->GetReturnType();
-		if (!LogicalType::TryGetMaxLogicalType(context, list_child_type, lambda_return_type, accumulator_type)) {
-			throw BinderException("No common super type between list element type %s and lambda return type %s",
-			                      list_child_type.ToString(), lambda_return_type.ToString());
-		}
-	}
-
+	// the binder casts the body to the accumulator type: the element type, or the type of the initial value
 	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
-	if (bound_lambda_expr.ParameterCount() < 2 || bound_lambda_expr.ParameterCount() > 3) {
-		throw BinderException("list_reduce expects a function with 2 or 3 arguments");
-	}
-	auto has_index = bound_lambda_expr.ParameterCount() == 3;
-
-	const auto lambda_return_type = bound_lambda_expr.LambdaExpr()->GetReturnType();
-	auto cast_lambda_expr =
-	    BoundCastExpression::AddCastToType(context, std::move(bound_lambda_expr.LambdaExprMutable()), accumulator_type);
-	if (!cast_lambda_expr) {
-		throw BinderException("Could not cast lambda return type %s to accumulator type %s",
-		                      lambda_return_type.ToString(), accumulator_type.ToString());
-	}
-	// cast in place, so that the bound lambda expression stays intact as a child of the function
-	bound_lambda_expr.SetLambdaExpr(std::move(cast_lambda_expr));
-	bound_function.SetReturnType(bound_lambda_expr.LambdaExpr()->GetReturnType());
+	const bool has_initial = arguments.size() == 3;
+	const bool has_index = bound_lambda_expr.ParameterCount() == 3;
 	if (bound_lambda_expr.LambdaExpr()->IsVolatile()) {
 		bound_function.SetVolatile();
 	}
 	return make_uniq<ListLambdaBindData>(bound_function.GetReturnType(), bound_lambda_expr.LambdaExpr()->Copy(),
 	                                     has_index, has_initial);
-}
-
-LogicalType BindReduceChildren(ClientContext &context, const vector<LogicalType> &function_child_types,
-                               const idx_t parameter_idx, optional_ptr<BindLambdaContext> bind_lambda_context) {
-	auto list_child_type = LambdaFunctions::DetermineListChildType(function_child_types[0]);
-	const bool has_initial = function_child_types.size() == 3;
-
-	switch (parameter_idx) {
-	case 0:
-		return has_initial ? function_child_types[2] : list_child_type;
-	case 1:
-		return list_child_type;
-	case 2:
-		return LogicalType::BIGINT;
-	default:
-		throw BinderException("This lambda function only supports up to three lambda parameters!");
-	}
-}
-
-LogicalType ListReduceBindLambda(ClientContext &context, const vector<LogicalType> &function_child_types,
-                                 const idx_t parameter_idx, optional_ptr<BindLambdaContext> bind_lambda_context) {
-	return BindReduceChildren(context, function_child_types, parameter_idx, bind_lambda_context);
 }
 
 } // namespace
@@ -331,21 +267,33 @@ void LambdaFunctions::ListReduceFunction(DataChunk &args, ExpressionState &state
 }
 
 ScalarFunctionSet ListReduceFun::GetFunctions() {
-	ScalarFunction fun({}, LogicalType::ANY, LambdaFunctions::ListReduceFunction, ListReduceBind, nullptr, nullptr);
-	fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalTypeId::LAMBDA);
-
-	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	fun.SetSerializeCallback(ListLambdaBindData::Serialize);
-	fun.SetDeserializeCallback(ListLambdaBindData::Deserialize);
-	fun.SetBindLambdaCallback(ListReduceBindLambda);
-	fun.SetFallible();
-
 	ScalarFunctionSet set;
-	set.AddFunction(fun);
-	fun.GetSignature().AddParameter("initial_value", LogicalType::ANY);
-	set.AddFunction(fun);
+	for (const bool has_initial : {false, true}) {
+		for (const bool has_index : {false, true}) {
+			// without an initial value the reduction starts from the first element
+			auto element_type = LogicalType::TEMPLATE("T");
+			auto accumulator_type = has_initial ? LogicalType::TEMPLATE("ACC") : element_type;
+			vector<LogicalType> lambda_parameters {accumulator_type, element_type};
+			if (has_index) {
+				lambda_parameters.push_back(LogicalType::BIGINT);
+			}
+			FunctionSignature signature;
+			signature.AddParameter("list", LogicalType::LIST(element_type))
+			    .AddParameter("lambda", LogicalType::LAMBDA(std::move(lambda_parameters), accumulator_type));
+			if (has_initial) {
+				signature.AddParameter("initial_value", accumulator_type);
+			}
+			signature.SetReturnType(accumulator_type);
+
+			ScalarFunction fun(Identifier(), std::move(signature), LambdaFunctions::ListReduceFunction);
+			fun.SetBindCallback(ListReduceBind);
+			fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+			fun.SetSerializeCallback(ListLambdaBindData::Serialize);
+			fun.SetDeserializeCallback(ListLambdaBindData::Deserialize);
+			fun.SetFallible();
+			set.AddFunction(fun);
+		}
+	}
 	return set;
 }
 

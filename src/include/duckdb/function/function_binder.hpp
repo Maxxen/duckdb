@@ -342,6 +342,13 @@ public:
 		return ResolveFunction(make_shared_ptr<WindowFunction>(function), children);
 	}
 
+	//! The type of the lambda parameter at lambda_idx, with the templates bound from the argument types - including the
+	//! known parts of the lambda's own type, including its return type. Unbound templates are left in place.
+	DUCKDB_API LogicalType ResolveLambdaType(const SimpleFunction &function, const vector<LogicalType> &arguments,
+	                                         idx_t lambda_idx);
+	//! Plans serialized before lambdas were typed hold an untyped lambda - give it the type the signature expects
+	DUCKDB_API void RestoreLambdaTypes(const SimpleFunction &function, vector<unique_ptr<Expression>> &children);
+
 private:
 	//! Resolves the argument / return types of the function and casts the children to them - everything that happens
 	//! before the bind callback is invoked

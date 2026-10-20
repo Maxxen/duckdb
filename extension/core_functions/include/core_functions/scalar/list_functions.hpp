@@ -184,7 +184,7 @@ struct ListTransformFun {
 	static constexpr const char *Example = "list_transform([1, 2, 3], lambda x : x + 1)";
 	static constexpr const char *Categories = "list,lambda";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct ArrayTransformFun {
@@ -218,7 +218,7 @@ struct ListFilterFun {
 	static constexpr const char *Example = "list_filter([3, 4, 5], lambda x : x > 4)";
 	static constexpr const char *Categories = "list,lambda";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct ArrayFilterFun {

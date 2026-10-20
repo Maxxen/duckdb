@@ -13,6 +13,7 @@
 #include "tpch_extension.hpp"
 
 #include <fstream>
+#include <unordered_set>
 
 using namespace duckdb;
 
@@ -147,12 +148,23 @@ TEST_CASE("Test specific serialized plans", "[.][serialization]") {
 	auto dir_location = get_full_file_name("cases");
 
 	std::vector<std::pair<string, string>> plans;
+	// PLAN_CASES restricts the run to the named cases (comma separated, without the extension)
+	std::unordered_set<string> selected_cases;
+	if (auto cases = std::getenv("PLAN_CASES")) {
+		for (auto &name : StringUtil::Split(string(cases), ',')) {
+			selected_cases.insert(name);
+		}
+	}
 
 	fs.ListFiles(dir_location, [&](const string &entry, bool is_dir) {
 		if (is_dir) {
 			return;
 		}
 		if (entry.rfind(".bin") != string::npos) {
+			if (!selected_cases.empty() &&
+			    selected_cases.find(entry.substr(0, entry.size() - 4)) == selected_cases.end()) {
+				return;
+			}
 			auto query_file = entry.substr(0, entry.size() - 4) + ".sql";
 			auto query_path = fs.JoinPath(dir_location, query_file);
 			auto plan_path = fs.JoinPath(dir_location, entry);
@@ -169,6 +181,7 @@ TEST_CASE("Test specific serialized plans", "[.][serialization]") {
 	for (auto &entry : plans) {
 		auto &bin_file = entry.first;
 		auto &sql_file = entry.second;
+		INFO("Plan file: " << bin_file);
 
 		// First, read the query from the sql file
 		auto statements = read_case_statements(sql_file);

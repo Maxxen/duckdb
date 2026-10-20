@@ -1,3 +1,4 @@
+#include "duckdb/function/function_binder.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
@@ -12,10 +13,9 @@
 namespace duckdb {
 
 static optional_ptr<const Expression> GetLambdaExpression(const BoundFunctionExpression &expr) {
-	if (!expr.Function().HasBindLambdaCallback()) {
+	if (!expr.Function().TakesLambda() || !expr.BindInfo()) {
 		return nullptr;
 	}
-	D_ASSERT(expr.BindInfo());
 	return expr.BindInfo()->Cast<LambdaFunctionData>().GetLambdaExpression();
 }
 
@@ -69,7 +69,17 @@ bool BoundFunctionExpression::IsFoldable() const {
 	if (lambda_expr && lambda_expr->IsVolatile()) {
 		return false;
 	}
-	return function.GetStability() == FunctionStability::VOLATILE ? false : Expression::IsFoldable();
+	if (function.GetStability() == FunctionStability::VOLATILE) {
+		return false;
+	}
+	// a lambda is not a value and cannot be folded, but a call with constant arguments can be
+	bool is_foldable = true;
+	for (auto &child : children) {
+		if (child->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA && !child->IsFoldable()) {
+			is_foldable = false;
+		}
+	}
+	return is_foldable;
 }
 
 bool BoundFunctionExpression::CanThrow() const {
@@ -181,7 +191,7 @@ namespace {
 //! the bind data, so that the children line up with the function's arguments either way.
 void RestoreErasedLambdaChild(const BoundScalarFunction &function, optional_ptr<FunctionData> bind_info,
                               vector<unique_ptr<Expression>> &children) {
-	if (!function.HasBindLambdaCallback() || !bind_info) {
+	if (!bind_info) {
 		return;
 	}
 	auto &arguments = function.GetArguments();
@@ -213,6 +223,7 @@ unique_ptr<Expression> BoundFunctionExpression::Deserialize(Deserializer &deseri
 	auto is_operator = deserializer.ReadProperty<bool>(202, "is_operator");
 
 	RestoreErasedLambdaChild(entry.first, entry.second.get(), children);
+	FunctionBinder(deserializer.Get<ClientContext &>()).RestoreLambdaTypes(*entry.first.GetDefinition(), children);
 
 	if (entry.first.HasBindExpressionCallback()) {
 		// bind the function expression
