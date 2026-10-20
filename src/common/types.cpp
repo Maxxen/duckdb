@@ -295,6 +295,8 @@ bool LogicalType::HasParameters() const {
 		return info_type == LogicalTypeInfoType::INTEGER_LITERAL_TYPE_INFO;
 	case LogicalTypeId::TEMPLATE:
 		return info_type == LogicalTypeInfoType::TEMPLATE_TYPE_INFO;
+	case LogicalTypeId::LAMBDA:
+		return info_type == LogicalTypeInfoType::LAMBDA_TYPE_INFO;
 	case LogicalTypeId::GEOMETRY:
 		return info_type == LogicalTypeInfoType::GEO_TYPE_INFO;
 	case LogicalTypeId::UNBOUND:
@@ -354,7 +356,6 @@ constexpr const LogicalTypeId LogicalType::ROW_TYPE;
 
 // TODO these are incomplete and should maybe not exist as such
 constexpr const LogicalTypeId LogicalType::TABLE;
-constexpr const LogicalTypeId LogicalType::LAMBDA;
 
 constexpr const LogicalTypeId LogicalType::ANY;
 
@@ -605,6 +606,24 @@ string LogicalType::ToString() const {
 			auto size = ArrayType::GetSize(type);
 			push_text(size == 0 ? "[ANY]" : "[" + to_string(size) + "]");
 			push_type(ArrayType::GetChildType(type));
+			break;
+		}
+		case LogicalTypeId::LAMBDA: {
+			if (!type.HasParameters()) {
+				result += "LAMBDA";
+				break;
+			}
+			auto &parameter_types = LambdaType::GetParameterTypes(type);
+			push_text(")");
+			push_type(LambdaType::GetReturnType(type));
+			push_text(parameter_types.empty() ? "-> " : " -> ");
+			for (idx_t i = parameter_types.size(); i > 0; i--) {
+				push_type(parameter_types[i - 1]);
+				if (i > 1) {
+					push_text(", ");
+				}
+			}
+			push_text("LAMBDA(");
 			break;
 		}
 		case LogicalTypeId::MAP: {
@@ -1364,6 +1383,16 @@ void LogicalType::Verify() const {
 		MapType::ValueType(*this).Verify();
 		break;
 	}
+	case LogicalTypeId::LAMBDA: {
+		if (!HasParameters()) {
+			break;
+		}
+		for (auto &parameter_type : LambdaType::GetParameterTypes(*this)) {
+			parameter_type.Verify();
+		}
+		LambdaType::GetReturnType(*this).Verify();
+		break;
+	}
 	default:
 		break;
 	}
@@ -1436,6 +1465,10 @@ void LogicalType::Serialize(Serializer &serializer) const {
 	optional_ptr<const LogicalTypeInfo> type_info;
 	if (type_info_.get().type != LogicalTypeInfoType::INVALID_TYPE_INFO) {
 		type_info = type_info_.get();
+	}
+	// formats before v2.1.0 only know the untyped LAMBDA - drop the signature
+	if (id() == LogicalTypeId::LAMBDA && !serializer.ShouldSerialize(StorageVersion::V2_1_0)) {
+		type_info = nullptr;
 	}
 	serializer.WritePropertyWithDefault<optional_ptr<const LogicalTypeInfo>>(101, "type_info", type_info);
 }
@@ -2018,6 +2051,28 @@ const string &TemplateType::GetName(const LogicalType &type) {
 	auto &info = type.GetTypeInfo();
 	D_ASSERT(info.type == LogicalTypeInfoType::TEMPLATE_TYPE_INFO);
 	return info.Cast<TemplateTypeInfo>().name;
+}
+
+//===--------------------------------------------------------------------===//
+// Lambda Type
+//===--------------------------------------------------------------------===//
+LogicalType LogicalType::LAMBDA(vector<LogicalType> parameter_types, LogicalType return_type) {
+	auto type_info = make_uniq<LambdaTypeInfo>(std::move(parameter_types), std::move(return_type));
+	return LogicalType(LogicalTypeId::LAMBDA, std::move(type_info));
+}
+
+const vector<LogicalType> &LambdaType::GetParameterTypes(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::LAMBDA);
+	auto &info = type.GetTypeInfo();
+	D_ASSERT(info.type == LogicalTypeInfoType::LAMBDA_TYPE_INFO);
+	return info.Cast<LambdaTypeInfo>().parameter_types;
+}
+
+const LogicalType &LambdaType::GetReturnType(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::LAMBDA);
+	auto &info = type.GetTypeInfo();
+	D_ASSERT(info.type == LogicalTypeInfoType::LAMBDA_TYPE_INFO);
+	return info.Cast<LambdaTypeInfo>().return_type;
 }
 
 //===--------------------------------------------------------------------===//

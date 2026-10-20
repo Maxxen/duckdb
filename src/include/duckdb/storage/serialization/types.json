@@ -230,6 +230,23 @@
     ]
   },
   {
+    "class": "LambdaTypeInfo",
+    "base": "LogicalTypeInfo",
+    "enum": "LAMBDA_TYPE_INFO",
+    "members": [
+      {
+        "id": 200,
+        "name": "parameter_types",
+        "type": "vector<LogicalType>"
+      },
+      {
+        "id": 201,
+        "name": "return_type",
+        "type": "LogicalType"
+      }
+    ]
+  },
+  {
     "class": "GeoTypeInfo",
     "base": "LogicalTypeInfo",
     "enum": "GEO_TYPE_INFO",

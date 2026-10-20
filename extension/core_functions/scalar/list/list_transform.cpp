@@ -35,7 +35,7 @@ ScalarFunction ListTransformFun::GetFunction() {
 	                   ListTransformBind, nullptr, nullptr);
 	fun.GetSignature()
 	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalType::LAMBDA);
+	    .AddParameter("lambda", LogicalTypeId::LAMBDA);
 
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(ListLambdaBindData::Serialize);

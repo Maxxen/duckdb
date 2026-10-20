@@ -260,7 +260,7 @@ unique_ptr<FunctionData> ListReduceBind(BindScalarFunctionInput &input) {
 		                      lambda_return_type.ToString(), accumulator_type.ToString());
 	}
 	// cast in place, so that the bound lambda expression stays intact as a child of the function
-	bound_lambda_expr.LambdaExprMutable() = std::move(cast_lambda_expr);
+	bound_lambda_expr.SetLambdaExpr(std::move(cast_lambda_expr));
 	bound_function.SetReturnType(bound_lambda_expr.LambdaExpr()->GetReturnType());
 	if (bound_lambda_expr.LambdaExpr()->IsVolatile()) {
 		bound_function.SetVolatile();
@@ -334,7 +334,7 @@ ScalarFunctionSet ListReduceFun::GetFunctions() {
 	ScalarFunction fun({}, LogicalType::ANY, LambdaFunctions::ListReduceFunction, ListReduceBind, nullptr, nullptr);
 	fun.GetSignature()
 	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalType::LAMBDA);
+	    .AddParameter("lambda", LogicalTypeId::LAMBDA);
 
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(ListLambdaBindData::Serialize);

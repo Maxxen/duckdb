@@ -122,7 +122,7 @@ static void CastDecimalLambdaToAccumulatorType(ClientContext &context, BindResul
 		throw BinderException("Could not cast lambda return type %s to accumulator type %s", return_type.ToString(),
 		                      accumulator_type.ToString());
 	}
-	rebound_lambda_expr.LambdaExprMutable() = std::move(cast_expr);
+	rebound_lambda_expr.SetLambdaExpr(std::move(cast_expr));
 }
 
 ListReduceRebindResult MaybeRebindListReduceLambda(ClientContext &context, idx_t depth,
@@ -452,7 +452,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 
 	for (idx_t i = 0; i < function.GetArguments().size(); i++) {
 		if (i == lambda_expr_idx) {
-			function_child_types.push_back(LogicalType::LAMBDA);
+			function_child_types.push_back(LogicalTypeId::LAMBDA);
 			continue;
 		}
 

@@ -27,7 +27,7 @@ BoundExpressionSQLExportResult BoundExpressionSQLExportState::ExportLambda(const
                                                                            idx_t logical_argument_count,
                                                                            const LogicalPlanVerificationPath &path) {
 	const bool has_lambda_body = lambda.GetExpressionType() == ExpressionType::LAMBDA &&
-	                             lambda.GetReturnType() == LogicalType::LAMBDA && lambda.LambdaExpr();
+	                             lambda.GetReturnType().id() == LogicalTypeId::LAMBDA && lambda.LambdaExpr();
 	const bool has_parameter_names =
 	    lambda.ParameterCount() > 0 && lambda.ParameterNames().size() == lambda.ParameterCount();
 	if (!has_lambda_body || !lambda.Captures().empty() || !has_parameter_names) {

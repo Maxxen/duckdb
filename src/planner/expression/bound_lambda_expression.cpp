@@ -9,6 +9,23 @@ BoundLambdaExpression::BoundLambdaExpression(ExpressionType type_p, LogicalType 
       lambda_expr(std::move(lambda_expr_p)), parameter_count(parameter_count_p) {
 }
 
+BoundLambdaExpression::BoundLambdaExpression(vector<LogicalType> parameter_types_p,
+                                             unique_ptr<Expression> lambda_expr_p, vector<Identifier> parameter_names_p)
+    : Expression(ExpressionType::LAMBDA, ExpressionClass::BOUND_LAMBDA,
+                 LogicalType::LAMBDA(parameter_types_p, lambda_expr_p->GetReturnType())),
+      lambda_expr(std::move(lambda_expr_p)), parameter_count(parameter_types_p.size()),
+      parameter_names(std::move(parameter_names_p)) {
+	D_ASSERT(parameter_names.empty() || parameter_names.size() == parameter_count);
+}
+
+void BoundLambdaExpression::SetLambdaExpr(unique_ptr<Expression> lambda_expr_p) {
+	D_ASSERT(lambda_expr_p);
+	if (HasSignature()) {
+		SetReturnType(LogicalType::LAMBDA(ParameterTypes(), lambda_expr_p->GetReturnType()));
+	}
+	lambda_expr = std::move(lambda_expr_p);
+}
+
 string BoundLambdaExpression::ToString() const {
 	if (parameter_names.empty()) {
 		// we do not know the parameter names, e.g. for an internally synthesized lambda

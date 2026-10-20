@@ -173,9 +173,8 @@ static bool PushStructCollation(ClientContext &context, unique_ptr<Expression> &
 	is_null->GetChildrenMutable().push_back(lambda_parameter_expr->Copy());
 	auto null_result = make_uniq<BoundConstantExpression>(Value(result->GetReturnType()));
 	auto body = make_uniq<BoundCaseExpression>(std::move(is_null), std::move(null_result), std::move(result));
-	auto lambda =
-	    make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalType::LAMBDA, std::move(body), idx_t(1));
-	lambda->SetParameterNames({lambda_parameter});
+	auto lambda = make_uniq<BoundLambdaExpression>(vector<LogicalType> {lambda_parameter_expr->GetReturnType()},
+	                                               std::move(body), vector<Identifier> {lambda_parameter});
 
 	// Invoke evaluates the source once, even when several fields need collations.
 	auto source_alias = source->GetAlias();
@@ -209,9 +208,8 @@ static bool PushNestedCollation(ClientContext &context, unique_ptr<Expression> &
 		return false;
 	}
 
-	auto bound_lambda =
-	    make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalType::LAMBDA, std::move(lambda_body), idx_t(1));
-	bound_lambda->SetParameterNames({lambda_parameter});
+	auto bound_lambda = make_uniq<BoundLambdaExpression>(vector<LogicalType> {child_type}, std::move(lambda_body),
+	                                                     vector<Identifier> {lambda_parameter});
 	vector<unique_ptr<Expression>> children;
 	children.push_back(std::move(source));
 	children.push_back(std::move(bound_lambda));

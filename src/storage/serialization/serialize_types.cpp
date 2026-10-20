@@ -47,6 +47,9 @@ unique_ptr<LogicalTypeInfo> LogicalTypeInfo::Deserialize(Deserializer &deseriali
 		break;
 	case LogicalTypeInfoType::INVALID_TYPE_INFO:
 		return nullptr;
+	case LogicalTypeInfoType::LAMBDA_TYPE_INFO:
+		result = LambdaTypeInfo::Deserialize(deserializer);
+		break;
 	case LogicalTypeInfoType::LEGACY_AGGREGATE_STATE_TYPE_INFO:
 		result = LegacyAggregateStateTypeInfo::Deserialize(deserializer);
 		break;
@@ -143,6 +146,19 @@ void IntegerLiteralTypeInfo::Serialize(Serializer &serializer) const {
 unique_ptr<LogicalTypeInfo> IntegerLiteralTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto result = duckdb::unique_ptr<IntegerLiteralTypeInfo>(new IntegerLiteralTypeInfo());
 	deserializer.ReadProperty<Value>(200, "constant_value", result->constant_value);
+	return std::move(result);
+}
+
+void LambdaTypeInfo::Serialize(Serializer &serializer) const {
+	LogicalTypeInfo::Serialize(serializer);
+	serializer.WritePropertyWithDefault<vector<LogicalType>>(200, "parameter_types", parameter_types);
+	serializer.WriteProperty<LogicalType>(201, "return_type", return_type);
+}
+
+unique_ptr<LogicalTypeInfo> LambdaTypeInfo::Deserialize(Deserializer &deserializer) {
+	auto result = duckdb::unique_ptr<LambdaTypeInfo>(new LambdaTypeInfo());
+	deserializer.ReadPropertyWithDefault<vector<LogicalType>>(200, "parameter_types", result->parameter_types);
+	deserializer.ReadProperty<LogicalType>(201, "return_type", result->return_type);
 	return std::move(result);
 }
 

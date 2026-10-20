@@ -64,6 +64,12 @@ inline idx_t TypeVisitor::PushChildren(const LogicalType &type, vector<reference
 	case LogicalTypeId::ARRAY:
 		worklist.push_back(ArrayType::GetChildType(type));
 		break;
+	case LogicalTypeId::LAMBDA:
+		for (const auto &parameter_type : LambdaType::GetParameterTypes(type)) {
+			worklist.push_back(parameter_type);
+		}
+		worklist.push_back(LambdaType::GetReturnType(type));
+		break;
 	default:
 		break;
 	}
@@ -106,6 +112,14 @@ inline LogicalType TypeVisitor::RebuildType(const VisitorFrame &frame, vector<Lo
 		return LogicalType::LIST(PopType(result_stack));
 	case LogicalTypeId::ARRAY:
 		return LogicalType::ARRAY(PopType(result_stack), ArrayType::GetSize(type));
+	case LogicalTypeId::LAMBDA: {
+		auto return_type = PopType(result_stack);
+		auto parameter_types = LambdaType::GetParameterTypes(type);
+		for (idx_t i = parameter_types.size(); i > 0; i--) {
+			parameter_types[i - 1] = PopType(result_stack);
+		}
+		return LogicalType::LAMBDA(std::move(parameter_types), std::move(return_type));
+	}
 	default:
 		throw InternalException("Cannot rebuild children of a non-nested type");
 	}

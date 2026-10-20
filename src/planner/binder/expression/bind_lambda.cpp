@@ -157,10 +157,8 @@ BindResult ExpressionBinder::BindExpression(LambdaExpression &expr, idx_t depth,
 		result.error.Throw();
 	}
 
-	auto bound_lambda = make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalType::LAMBDA,
-	                                                     std::move(result.expression), column_names.size());
-	bound_lambda->SetParameterNames(std::move(column_names));
-	return BindResult(std::move(bound_lambda));
+	return BindResult(make_uniq<BoundLambdaExpression>(std::move(column_types), std::move(result.expression),
+	                                                   std::move(column_names)));
 }
 
 void ExpressionBinder::TransformCapturedLambdaColumn(unique_ptr<Expression> &original,

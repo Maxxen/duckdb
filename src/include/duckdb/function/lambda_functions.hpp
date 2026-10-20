@@ -71,7 +71,7 @@ public:
 		}
 		// the parameter count is only read while binding, so recovering it approximately is good enough here
 		const idx_t parameter_count = has_index ? 2 : 1;
-		return make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalType::LAMBDA, lambda_expr->Copy(),
+		return make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalTypeId::LAMBDA, lambda_expr->Copy(),
 		                                        parameter_count);
 	}
 };

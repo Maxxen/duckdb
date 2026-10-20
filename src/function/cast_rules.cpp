@@ -442,6 +442,13 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 
 		return -1;
 	}
+	if (from.id() == LogicalTypeId::LAMBDA && to.id() == LogicalTypeId::LAMBDA) {
+		// a lambda matches an untyped LAMBDA parameter, or a typed one with the same number of parameters
+		if (!from.HasParameters() || !to.HasParameters()) {
+			return 0;
+		}
+		return LambdaType::GetParameterTypes(from).size() == LambdaType::GetParameterTypes(to).size() ? 0 : -1;
+	}
 	if (from.id() == LogicalTypeId::LIST && to.id() == LogicalTypeId::LIST) {
 		// Lists can be cast if their child types can be cast
 		auto child_cost = ImplicitCast(ListType::GetChildType(from), ListType::GetChildType(to));

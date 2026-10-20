@@ -505,6 +505,26 @@ unique_ptr<LogicalTypeInfo> TemplateTypeInfo::Copy() const {
 }
 
 //===--------------------------------------------------------------------===//
+// Lambda Type Info
+//===--------------------------------------------------------------------===//
+LambdaTypeInfo::LambdaTypeInfo() : LogicalTypeInfo(LogicalTypeInfoType::LAMBDA_TYPE_INFO) {
+}
+
+LambdaTypeInfo::LambdaTypeInfo(vector<LogicalType> parameter_types_p, LogicalType return_type_p)
+    : LogicalTypeInfo(LogicalTypeInfoType::LAMBDA_TYPE_INFO), parameter_types(std::move(parameter_types_p)),
+      return_type(std::move(return_type_p)) {
+}
+
+bool LambdaTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
+	auto &other = other_p->Cast<LambdaTypeInfo>();
+	return parameter_types == other.parameter_types && return_type == other.return_type;
+}
+
+unique_ptr<LogicalTypeInfo> LambdaTypeInfo::Copy() const {
+	return make_uniq<LambdaTypeInfo>(*this);
+}
+
+//===--------------------------------------------------------------------===//
 // Geo Type Info
 //===--------------------------------------------------------------------===//
 GeoTypeInfo::GeoTypeInfo() : LogicalTypeInfo(LogicalTypeInfoType::GEO_TYPE_INFO) {

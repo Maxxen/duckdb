@@ -277,7 +277,8 @@ enum class LogicalTypeInfoType : uint8_t {
 	ANY_TYPE_INFO = 10,
 	INTEGER_LITERAL_TYPE_INFO = 11,
 	TEMPLATE_TYPE_INFO = 12,
-	GEO_TYPE_INFO = 13
+	GEO_TYPE_INFO = 13,
+	LAMBDA_TYPE_INFO = 14
 };
 
 //! The intrusively ref-counted data behind a LogicalType. Types without parameters use an INVALID_TYPE_INFO.
@@ -554,7 +555,6 @@ public:
 	static constexpr const LogicalTypeId HASH = LogicalTypeId::UBIGINT;
 	static constexpr const LogicalTypeId POINTER = LogicalTypeId::POINTER;
 	static constexpr const LogicalTypeId TABLE = LogicalTypeId::TABLE;
-	static constexpr const LogicalTypeId LAMBDA = LogicalTypeId::LAMBDA;
 	static constexpr const LogicalTypeId INVALID = LogicalTypeId::INVALID;
 	static constexpr const LogicalTypeId ROW_TYPE = LogicalTypeId::BIGINT;
 
@@ -577,6 +577,8 @@ public:
 	// ANY but with special rules (default is LogicalType::ANY, 5)
 	DUCKDB_API static LogicalType ANY_PARAMS(LogicalType target, idx_t cast_score = 5); // NOLINT
 	DUCKDB_API static LogicalType TEMPLATE(const string &name);                         // NOLINT
+	//! A lambda with the given parameter types and return type, e.g. LAMBDA(BIGINT, BIGINT -> BOOLEAN)
+	DUCKDB_API static LogicalType LAMBDA(vector<LogicalType> parameter_types, LogicalType return_type); // NOLINT
 	DUCKDB_API static LogicalType VARIANT();                                            // NOLINT
 	//! Integer literal of the specified value
 	DUCKDB_API static LogicalType INTEGER_LITERAL(const Value &constant); // NOLINT
@@ -690,6 +692,13 @@ struct IntegerLiteral {
 	DUCKDB_API static LogicalType GetType(const LogicalType &type);
 	//! Whether or not the integer literal fits into the target numeric type
 	DUCKDB_API static bool FitsInType(const LogicalType &type, const LogicalType &target);
+};
+
+struct LambdaType {
+	//! The parameter types of the lambda - only valid if the type has parameters
+	DUCKDB_API static const vector<LogicalType> &GetParameterTypes(const LogicalType &type);
+	//! The return type of the lambda - only valid if the type has parameters
+	DUCKDB_API static const LogicalType &GetReturnType(const LogicalType &type);
 };
 
 struct TemplateType {

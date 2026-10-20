@@ -19,6 +19,9 @@ public:
 public:
 	BoundLambdaExpression(ExpressionType type_p, LogicalType return_type_p, unique_ptr<Expression> lambda_expr_p,
 	                      idx_t parameter_count_p);
+	//! A lambda with a known signature - its type is LAMBDA(parameter_types -> body type)
+	BoundLambdaExpression(vector<LogicalType> parameter_types_p, unique_ptr<Expression> lambda_expr_p,
+	                      vector<Identifier> parameter_names_p = {});
 
 public:
 	const unique_ptr<Expression> &LambdaExpr() const {
@@ -26,6 +29,15 @@ public:
 	}
 	unique_ptr<Expression> &LambdaExprMutable() {
 		return lambda_expr;
+	}
+	//! Replaces the body, keeping the lambda type in sync with the body's return type
+	void SetLambdaExpr(unique_ptr<Expression> lambda_expr_p);
+	//! Whether the lambda type carries parameter and return types (plans serialized before v2.1.0 do not)
+	bool HasSignature() const {
+		return return_type.HasParameters();
+	}
+	const vector<LogicalType> &ParameterTypes() const {
+		return LambdaType::GetParameterTypes(return_type);
 	}
 	const vector<unique_ptr<Expression>> &Captures() const {
 		return captures;

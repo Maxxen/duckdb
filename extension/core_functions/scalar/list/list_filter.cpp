@@ -22,7 +22,7 @@ static unique_ptr<FunctionData> ListFilterBind(BindScalarFunctionInput &input) {
 	if (bound_lambda_expr.LambdaExpr()->GetReturnType() != LogicalType::BOOLEAN) {
 		auto cast_lambda_expr = BoundCastExpression::AddCastToType(
 		    context, std::move(bound_lambda_expr.LambdaExprMutable()), LogicalType::BOOLEAN);
-		bound_lambda_expr.LambdaExprMutable() = std::move(cast_lambda_expr);
+		bound_lambda_expr.SetLambdaExpr(std::move(cast_lambda_expr));
 	}
 
 	arguments[0] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[0]));
@@ -43,7 +43,7 @@ ScalarFunction ListFilterFun::GetFunction() {
 	                   nullptr, nullptr);
 	fun.GetSignature()
 	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalType::LAMBDA);
+	    .AddParameter("lambda", LogicalTypeId::LAMBDA);
 
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(ListLambdaBindData::Serialize);

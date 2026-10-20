@@ -199,6 +199,24 @@ protected:
 	TemplateTypeInfo();
 };
 
+struct LambdaTypeInfo : public LogicalTypeInfo {
+	LambdaTypeInfo(vector<LogicalType> parameter_types_p, LogicalType return_type_p);
+
+	vector<LogicalType> parameter_types;
+	LogicalType return_type;
+
+public:
+	void Serialize(Serializer &serializer) const override;
+	static unique_ptr<LogicalTypeInfo> Deserialize(Deserializer &source);
+	unique_ptr<LogicalTypeInfo> Copy() const override;
+
+protected:
+	bool EqualsInternal(const LogicalTypeInfo *other_p) const override;
+
+private:
+	LambdaTypeInfo();
+};
+
 struct GeoTypeInfo : public LogicalTypeInfo {
 public:
 	GeoTypeInfo();
