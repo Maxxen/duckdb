@@ -3,12 +3,20 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_lambda_expression.hpp"
 #include "duckdb/common/exception/binder_exception.hpp"
 
 namespace duckdb {
 
+LogicalType ExpressionState::GetExecutionType(const Expression &expr) {
+	if (expr.GetExpressionClass() == ExpressionClass::BOUND_LAMBDA) {
+		return expr.Cast<BoundLambdaExpression>().GetCapturesType();
+	}
+	return expr.GetReturnType();
+}
+
 void ExpressionState::AddChild(const Expression &child_expr) {
-	types.push_back(child_expr.GetReturnType());
+	types.push_back(GetExecutionType(child_expr));
 	auto child_state = ExpressionExecutor::InitializeState(child_expr, root);
 	child_states.push_back(std::move(child_state));
 

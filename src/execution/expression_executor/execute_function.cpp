@@ -3,31 +3,11 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckdb/planner/expression/bound_lambda_expression.hpp"
 
 namespace duckdb {
 
-static void CollectLambdaCaptures(const Expression &expr, vector<reference<const Expression>> &captures) {
-	if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
-		return;
-	}
-	for (auto &child : expr.Cast<BoundFunctionExpression>().GetChildren()) {
-		if (child->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
-			continue;
-		}
-		for (auto &capture : child->Cast<BoundLambdaExpression>().Captures()) {
-			captures.push_back(*capture);
-		}
-	}
-}
-
 ExecuteFunctionState::ExecuteFunctionState(const Expression &expr, ExpressionExecutorState &root)
     : ExpressionState(expr, root) {
-	CollectLambdaCaptures(expr, lambda_captures);
-	if (!lambda_captures.empty()) {
-		return; // The captures are inputs too, so the function is not "practically unary"
-	}
-
 	// Check if the expression is eligible for dictionary optimization
 	if (!expr.IsConsistent() || expr.IsVolatile() || expr.CanThrow()) {
 		return; // Needs to be consistent, non-volatile, and non-throwing
@@ -157,9 +137,6 @@ unique_ptr<ExpressionState> ExpressionExecutor::InitializeState(const BoundFunct
 	for (auto &child : expr.GetChildren()) {
 		result->AddChild(*child);
 	}
-	for (auto &capture : result->lambda_captures) {
-		result->AddChild(capture);
-	}
 
 	result->Finalize();
 	if (expr.Function().HasInitStateCallback()) {
@@ -252,21 +229,6 @@ static void ExecuteConstantSelectFunction(const BoundFunctionExpression &expr, D
 	*ConstantVector::GetData<bool>(result) = true_count == 1;
 }
 
-void ExpressionExecutor::ExecuteLambdaCaptures(const BoundFunctionExpression &expr, ExpressionState &state,
-                                               const SelectionVector *sel, idx_t count, DataChunk &arguments,
-                                               bool &all_constant) {
-	auto &captures = state.Cast<ExecuteFunctionState>().lambda_captures;
-	const auto child_count = expr.GetChildren().size();
-	for (idx_t i = 0; i < captures.size(); i++) {
-		auto argument_idx = child_count + i;
-		D_ASSERT(state.types[argument_idx] == captures[i].get().GetReturnType());
-		Execute(captures[i].get(), state.child_states[argument_idx].get(), sel, count, arguments.data[argument_idx]);
-		if (arguments.data[argument_idx].GetVectorType() != VectorType::CONSTANT_VECTOR) {
-			all_constant = false;
-		}
-	}
-}
-
 void ExpressionExecutor::Execute(const BoundFunctionExpression &expr, ExpressionState *state,
                                  const SelectionVector *sel, idx_t count, Vector &result) {
 	state->intermediate_chunk.Reset();
@@ -280,7 +242,7 @@ void ExpressionExecutor::Execute(const BoundFunctionExpression &expr, Expression
 	auto default_null_handling = expr.Function().GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING;
 	if (!state->types.empty()) {
 		for (idx_t i = 0; i < expr.GetChildren().size(); i++) {
-			D_ASSERT(state->types[i] == expr.GetChildren()[i]->GetReturnType());
+			D_ASSERT(state->types[i] == ExpressionState::GetExecutionType(*expr.GetChildren()[i]));
 			Execute(*expr.GetChildren()[i], state->child_states[i].get(), sel, count, arguments.data[i]);
 			if (arguments.data[i].GetVectorType() != VectorType::CONSTANT_VECTOR) {
 				all_constant = false;
@@ -290,7 +252,6 @@ void ExpressionExecutor::Execute(const BoundFunctionExpression &expr, Expression
 				return;
 			}
 		}
-		ExecuteLambdaCaptures(expr, *state, sel, count, arguments, all_constant);
 	}
 	auto &execute_function_state = state->Cast<ExecuteFunctionState>();
 	if (execute_function_state.init_error.HasError()) {
@@ -340,7 +301,7 @@ idx_t ExpressionExecutor::Select(const BoundFunctionExpression &expr, Expression
 	}
 	auto default_null_handling = expr.Function().GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING;
 	for (idx_t i = 0; i < expr.GetChildren().size(); i++) {
-		D_ASSERT(state->types[i] == expr.GetChildren()[i]->GetReturnType());
+		D_ASSERT(state->types[i] == ExpressionState::GetExecutionType(*expr.GetChildren()[i]));
 		Execute(*expr.GetChildren()[i], state->child_states[i].get(), sel, count, arguments.data[i]);
 		if (arguments.data[i].GetVectorType() != VectorType::CONSTANT_VECTOR) {
 			all_constant = false;
@@ -350,7 +311,6 @@ idx_t ExpressionExecutor::Select(const BoundFunctionExpression &expr, Expression
 			return SelectBooleanResult(result, sel, count, true_sel, false_sel);
 		}
 	}
-	ExecuteLambdaCaptures(expr, *state, sel, count, arguments, all_constant);
 	auto &execute_function_state = state->Cast<ExecuteFunctionState>();
 	if (execute_function_state.init_error.HasError()) {
 		execute_function_state.init_error.Throw();

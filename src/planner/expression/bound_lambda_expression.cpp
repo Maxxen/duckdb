@@ -18,6 +18,14 @@ BoundLambdaExpression::BoundLambdaExpression(vector<LogicalType> parameter_types
 	D_ASSERT(parameter_names.empty() || parameter_names.size() == parameter_count);
 }
 
+LogicalType BoundLambdaExpression::GetCapturesType() const {
+	vector<LogicalType> capture_types;
+	for (auto &capture : captures) {
+		capture_types.push_back(capture->GetReturnType());
+	}
+	return LogicalType::TUPLE(std::move(capture_types));
+}
+
 void BoundLambdaExpression::SetLambdaExpr(unique_ptr<Expression> lambda_expr_p) {
 	D_ASSERT(lambda_expr_p);
 	if (HasSignature()) {

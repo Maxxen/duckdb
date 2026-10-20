@@ -1,4 +1,5 @@
 #include "duckdb/function/scalar/generic_functions.hpp"
+#include "duckdb/common/vector/struct_vector.hpp"
 #include "duckdb/function/lambda_functions.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -110,8 +111,10 @@ void LambdaInvokeFunction(DataChunk &args, ExpressionState &state, Vector &resul
 	for (idx_t i = 0; i < lstate.parameter_count; i++) {
 		lstate.input_chunk.data[i].Reference(args.data[lstate.parameter_count - i]);
 	}
-	for (idx_t i = lstate.parameter_count + 1; i < args.ColumnCount(); i++) {
-		lstate.input_chunk.data[i - 1].Reference(args.data[i]);
+	// the lambda evaluates to its captures, which follow the parameters
+	auto &captures = StructVector::GetEntries(args.data[0]);
+	for (idx_t i = 0; i < captures.size(); i++) {
+		lstate.input_chunk.data[lstate.parameter_count + i].Reference(captures[i]);
 	}
 	lstate.input_chunk.SetChildCardinality(args.size());
 	lstate.executor->ExecuteExpression(lstate.input_chunk, result);

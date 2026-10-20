@@ -35,6 +35,8 @@ struct ExpressionState {
 
 public:
 	void AddChild(const Expression &child_expr);
+	//! The type of the vector an expression is evaluated into - its return type, except for a lambda
+	static LogicalType GetExecutionType(const Expression &expr);
 	void Finalize();
 	Allocator &GetAllocator();
 	bool HasContext();
@@ -79,9 +81,6 @@ public:
 	ErrorData init_error;
 	//! The buffers of all-constant arguments, which can be shared with the input and have to get their size back
 	vector<buffer_ptr<VectorBuffer>> constant_argument_buffers;
-	//! The captures of the lambdas the function is passed - they are evaluated after the children, and follow them in
-	//! the arguments of the function
-	vector<reference<const Expression>> lambda_captures;
 
 private:
 	//! The column index of the "unary" input column that may be a dictionary vector

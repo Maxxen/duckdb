@@ -45,6 +45,9 @@ public:
 	vector<unique_ptr<Expression>> &CapturesMutable() {
 		return captures;
 	}
+	//! The type a lambda is evaluated to: a TUPLE of its captures, which the function it is passed to reads.
+	//! It differs from the return type, the LAMBDA type of the signature, which does not include the captures.
+	LogicalType GetCapturesType() const;
 	idx_t ParameterCount() const {
 		return parameter_count;
 	}

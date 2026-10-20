@@ -1,3 +1,4 @@
+#include "duckdb/common/vector/struct_vector.hpp"
 #include "duckdb/function/lambda_functions.hpp"
 #include "duckdb/common/exception/binder_exception.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -20,8 +21,9 @@ namespace duckdb {
 //! LambdaExecuteInfo holds information for executing the lambda expression on an input chunk and
 //! a resulting lambda chunk.
 struct LambdaExecuteInfo {
-	LambdaExecuteInfo(ClientContext &context, const Expression &lambda_expr, const DataChunk &args,
-	                  const bool has_index, const Vector &child_vector)
+	LambdaExecuteInfo(ClientContext &context, const Expression &lambda_expr,
+	                  const vector<LambdaFunctions::ColumnInfo> &column_infos, const bool has_index,
+	                  const Vector &child_vector)
 	    : has_index(has_index) {
 		expr_executor = make_uniq<ExpressionExecutor>(context, lambda_expr);
 
@@ -31,12 +33,8 @@ struct LambdaExecuteInfo {
 			input_types.push_back(LogicalType::BIGINT);
 		}
 		input_types.push_back(child_vector.GetType());
-		for (idx_t i = 1; i < args.ColumnCount(); i++) {
-			if (args.data[i].GetType().id() == LogicalTypeId::LAMBDA) {
-				// placeholder slot for the lambda argument itself
-				continue;
-			}
-			input_types.push_back(args.data[i].GetType());
+		for (auto &column_info : column_infos) {
+			input_types.push_back(column_info.vector.get().GetType());
 		}
 
 		// get the result types
@@ -168,14 +166,18 @@ struct ListFilterFunctor {
 };
 
 vector<LambdaFunctions::ColumnInfo> LambdaFunctions::GetColumnInfo(DataChunk &args, const idx_t row_count) {
+	// the list is the first argument and the lambda the second - the arguments after it, e.g. the initial value of
+	// list_reduce, come first, followed by the captures of the lambda, which it evaluates to
 	vector<ColumnInfo> data;
-	// skip the input list and the lambda placeholder, then insert all remaining input vectors
-	for (idx_t i = 1; i < args.ColumnCount(); i++) {
-		if (args.data[i].GetType().id() == LogicalTypeId::LAMBDA) {
-			continue;
-		}
-		data.emplace_back(args.data[i]);
-		args.data[i].ToUnifiedFormat(data.back().format);
+	auto add_column = [&](Vector &vector) {
+		data.emplace_back(vector);
+		vector.ToUnifiedFormat(data.back().format);
+	};
+	for (idx_t i = 2; i < args.ColumnCount(); i++) {
+		add_column(args.data[i]);
+	}
+	for (auto &capture : StructVector::GetEntries(args.data[1])) {
+		add_column(capture);
 	}
 	return data;
 }
@@ -278,7 +280,8 @@ static void ExecuteLambda(DataChunk &args, ExpressionState &state, Vector &resul
 	info.child_vector->ToUnifiedFormat(child_info.format);
 
 	// get the expression executor
-	LambdaExecuteInfo execute_info(state.GetContext(), *info.lambda_expr, args, info.has_index, *info.child_vector);
+	LambdaExecuteInfo execute_info(state.GetContext(), *info.lambda_expr, info.column_infos, info.has_index,
+	                               *info.child_vector);
 
 	// get list_filter specific info
 	ListFilterInfo list_filter_info;

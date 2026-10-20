@@ -271,10 +271,13 @@ void ExpressionExecutor::Execute(const Expression &expr, ExpressionState *state,
 	if (count == 0) {
 		return;
 	}
-	if (result.GetType().id() != expr.GetReturnType().id()) {
+	// a lambda is evaluated to the TUPLE of its captures
+	auto expected_type_id =
+	    expr.GetExpressionClass() == ExpressionClass::BOUND_LAMBDA ? LogicalTypeId::TUPLE : expr.GetReturnType().id();
+	if (result.GetType().id() != expected_type_id) {
 		throw InternalException(
 		    "ExpressionExecutor::Execute called with a result vector of type %s that does not match expression type %s",
-		    result.GetType(), expr.GetReturnType());
+		    result.GetType(), ExpressionState::GetExecutionType(expr));
 	}
 	switch (expr.GetExpressionClass()) {
 	case ExpressionClass::BOUND_REF:
