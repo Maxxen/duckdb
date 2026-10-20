@@ -345,39 +345,25 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
                                                 idx_t depth) {
 	auto &args = function.GetArgumentsMutable();
 
-	// functions with a lambda callback determine the parameter types themselves, the others declare the lambda
-	// signature as a parameter type
-	auto bind_lambda_function = func.functions.functions.front()->GetBindLambdaCallback();
-	const bool typed_lambda = !bind_lambda_function && TakesTypedLambda(func.functions);
-	if (!bind_lambda_function && !typed_lambda) {
+	if (!TakesTypedLambda(func.functions)) {
 		return BindResult("This scalar function does not support lambdas!");
 	}
 
-	idx_t lambda_expr_idx;
-	if (typed_lambda) {
-		optional_idx found_idx;
-		for (idx_t i = 0; i < args.size(); i++) {
-			if (args[i].GetExpression().GetExpressionClass() != ExpressionClass::LAMBDA) {
-				continue;
-			}
-			if (found_idx.IsValid()) {
-				return BindResult("No function matches the given name and argument types: '" + function.ToString() +
-				                  "'. You might need to add explicit type casts.");
-			}
-			found_idx = i;
+	optional_idx found_idx;
+	for (idx_t i = 0; i < args.size(); i++) {
+		if (args[i].GetExpression().GetExpressionClass() != ExpressionClass::LAMBDA) {
+			continue;
 		}
-		if (!found_idx.IsValid()) {
-			return BindResult("This scalar function requires a lambda expression!");
+		if (found_idx.IsValid()) {
+			return BindResult("No function matches the given name and argument types: '" + function.ToString() +
+			                  "'. You might need to add explicit type casts.");
 		}
-		lambda_expr_idx = found_idx.GetIndex();
-	} else {
-		// invoke takes the lambda as its first argument, the list functions as their second
-		lambda_expr_idx = func.name == "invoke" ? 0 : 1;
-		if (args.size() <= lambda_expr_idx ||
-		    args[lambda_expr_idx].GetExpression().GetExpressionClass() != ExpressionClass::LAMBDA) {
-			return BindResult("This scalar function requires a lambda expression!");
-		}
+		found_idx = i;
 	}
+	if (!found_idx.IsValid()) {
+		return BindResult("This scalar function requires a lambda expression!");
+	}
+	const auto lambda_expr_idx = found_idx.GetIndex();
 
 	vector<LogicalType> function_child_types;
 	vector<unique_ptr<Expression>> bound_children(function.GetArguments().size());
@@ -389,11 +375,6 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 			continue;
 		}
 
-		if (args[i].GetExpression().GetExpressionClass() == ExpressionClass::LAMBDA) {
-			return BindResult("No function matches the given name and argument types: '" + function.ToString() +
-			                  "'. You might need to add explicit type casts.");
-		}
-
 		bound_children[i] = BindChild(function.GetArgumentsMutable()[i].GetExpressionMutable(), depth, error);
 		if (error.HasError()) {
 			return BindResult(std::move(error));
@@ -403,22 +384,7 @@ BindResult ExpressionBinder::BindLambdaFunction(FunctionExpression &function, Sc
 	}
 
 	auto &lambda_expr = args[lambda_expr_idx].GetExpressionMutable()->Cast<LambdaExpression>();
-	BindResult bind_lambda_result;
-	if (typed_lambda) {
-		bind_lambda_result = BindTypedLambda(func, lambda_expr, depth, lambda_expr_idx, function_child_types);
-	} else {
-		if (lambda_expr_idx == 1) {
-			// get the logical type of the children of the list
-			auto &list_child = *bound_children[0];
-			if (list_child.GetReturnType().id() != LogicalTypeId::LIST &&
-			    list_child.GetReturnType().id() != LogicalTypeId::ARRAY &&
-			    list_child.GetReturnType().id() != LogicalTypeId::SQLNULL &&
-			    list_child.GetReturnType().id() != LogicalTypeId::UNKNOWN) {
-				return BindResult("Invalid LIST argument during lambda function binding!");
-			}
-		}
-		bind_lambda_result = BindExpression(lambda_expr, depth, function_child_types, &bind_lambda_function, nullptr);
-	}
+	auto bind_lambda_result = BindTypedLambda(func, lambda_expr, depth, lambda_expr_idx, function_child_types);
 	if (bind_lambda_result.HasError()) {
 		return BindResult(bind_lambda_result.error);
 	}

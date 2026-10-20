@@ -83,47 +83,34 @@ static unique_ptr<ParsedExpression> RestructureArrowChain(LambdaExpression &expr
 	return std::move(restructured);
 }
 
-BindResult ExpressionBinder::BindExpression(LambdaExpression &expr, idx_t depth,
-                                            const vector<LogicalType> &function_child_types,
-                                            optional_ptr<bind_lambda_function_t> bind_lambda_function,
-                                            optional_ptr<BindLambdaContext> bind_lambda_context) {
-	if (expr.GetLambdaSyntaxType() == LambdaSyntaxType::LAMBDA_KEYWORD && !bind_lambda_function) {
+BindResult ExpressionBinder::BindExpression(LambdaExpression &expr, idx_t depth) {
+	// a lambda is bound by the function it is passed to - anywhere else, it is the JSON arrow operator
+	if (expr.GetLambdaSyntaxType() == LambdaSyntaxType::LAMBDA_KEYWORD) {
 		return BindResult("invalid lambda expression");
 	}
-
-	if (!bind_lambda_function) {
-		// The PEG parser produces A -> (B ->> C) where the standard parser left-associates to (A -> B) ->> C.
-		// Restructure to match standard behavior before binding.
-		if (IsDoubleArrowRHS(expr.Right())) {
-			unique_ptr<ParsedExpression> restructured = RestructureArrowChain(expr);
-			return BindExpression(restructured, depth);
-		}
-
-		// This is not a lambda expression, but the JSON arrow operator.
-		// Remember the original expression in case of a binding error.
-		if (!expr.CopiedExprMutable()) {
-			expr.CopiedExprMutable() = expr.Right().Copy();
-		}
-		OperatorExpression arrow_expr(ExpressionType::ARROW, std::move(expr.LeftMutable()),
-		                              std::move(expr.RightMutable()));
-		auto bind_result = BindExpression(arrow_expr, depth);
-
-		// The arrow_expr now might contain bound nodes.
-		// Restore the original expression.
-		if (bind_result.HasError()) {
-			D_ASSERT(arrow_expr.GetChildrenMutable().size() == 2);
-			expr.LeftMutable() = std::move(arrow_expr.GetChildrenMutable()[0]);
-			expr.RightMutable() = std::move(arrow_expr.GetChildrenMutable()[1]);
-		}
-		return bind_result;
+	// The PEG parser produces A -> (B ->> C) where the standard parser left-associates to (A -> B) ->> C.
+	// Restructure to match standard behavior before binding.
+	if (IsDoubleArrowRHS(expr.Right())) {
+		unique_ptr<ParsedExpression> restructured = RestructureArrowChain(expr);
+		return BindExpression(restructured, depth);
 	}
 
-	vector<LogicalType> column_types;
-	auto parameter_count = GetLambdaParameterCount(expr);
-	for (idx_t i = 0; i < parameter_count; i++) {
-		column_types.push_back((*bind_lambda_function)(context, function_child_types, i, bind_lambda_context));
+	// This is not a lambda expression, but the JSON arrow operator.
+	// Remember the original expression in case of a binding error.
+	if (!expr.CopiedExprMutable()) {
+		expr.CopiedExprMutable() = expr.Right().Copy();
 	}
-	return BindLambda(expr, depth, std::move(column_types));
+	OperatorExpression arrow_expr(ExpressionType::ARROW, std::move(expr.LeftMutable()), std::move(expr.RightMutable()));
+	auto bind_result = BindExpression(arrow_expr, depth);
+
+	// The arrow_expr now might contain bound nodes.
+	// Restore the original expression.
+	if (bind_result.HasError()) {
+		D_ASSERT(arrow_expr.GetChildrenMutable().size() == 2);
+		expr.LeftMutable() = std::move(arrow_expr.GetChildrenMutable()[0]);
+		expr.RightMutable() = std::move(arrow_expr.GetChildrenMutable()[1]);
+	}
+	return bind_result;
 }
 
 idx_t ExpressionBinder::GetLambdaParameterCount(LambdaExpression &expr) {

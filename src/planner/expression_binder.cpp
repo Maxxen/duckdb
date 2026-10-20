@@ -90,10 +90,8 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 		// binding a function expression requires an extra parameter for macros
 		return BindExpression(function, depth, expr);
 	}
-	case ExpressionClass::LAMBDA: {
-		const vector<LogicalType> function_child_types;
-		return BindExpression(expr_ref.Cast<LambdaExpression>(), depth, function_child_types, nullptr, nullptr);
-	}
+	case ExpressionClass::LAMBDA:
+		return BindExpression(expr_ref.Cast<LambdaExpression>(), depth);
 	case ExpressionClass::PATTERN:
 		// a row pattern is matched by MATCH_RECOGNIZE rather than evaluated, so it is not an expression
 		// anywhere an expression is expected

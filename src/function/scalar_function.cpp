@@ -44,7 +44,7 @@ vector<LogicalType> ResolveScalarFunctionTypesInput::GetArgumentTypes() const {
 
 bool ScalarFunctionCallbacks::operator==(const ScalarFunctionCallbacks &rhs) const {
 	return resolve_types == rhs.resolve_types && bind == rhs.bind && init_local_state == rhs.init_local_state &&
-	       statistics == rhs.statistics && bind_lambda == rhs.bind_lambda && bind_expression == rhs.bind_expression &&
+	       statistics == rhs.statistics && bind_expression == rhs.bind_expression &&
 	       get_modified_databases == rhs.get_modified_databases && serialize == rhs.serialize &&
 	       deserialize == rhs.deserialize && filter_prune == rhs.filter_prune && unbind == rhs.unbind;
 }
@@ -67,8 +67,7 @@ ScalarFunction::ScalarFunction(Identifier name, FunctionSignature sig, scalar_fu
 ScalarFunction::ScalarFunction(Identifier name, vector<LogicalType> arguments, LogicalType return_type,
                                scalar_function_t function, bind_scalar_function_t bind,
                                function_statistics_t statistics, init_local_state_t init_local_state,
-                               LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling,
-                               bind_lambda_function_t bind_lambda)
+                               LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling)
     : SimpleFunction(std::move(name), std::move(arguments), std::move(return_type), std::move(varargs)) {
 	properties.stability = side_effects;
 	properties.null_handling = null_handling;
@@ -77,23 +76,21 @@ ScalarFunction::ScalarFunction(Identifier name, vector<LogicalType> arguments, L
 	callbacks.bind = bind;
 	callbacks.init_local_state = init_local_state;
 	callbacks.statistics = statistics;
-	callbacks.bind_lambda = bind_lambda;
 }
 
 ScalarFunction::ScalarFunction(vector<LogicalType> arguments, LogicalType return_type, scalar_function_t function,
                                bind_scalar_function_t bind, function_statistics_t statistics,
                                init_local_state_t init_local_state, LogicalType varargs, FunctionStability side_effects,
-                               FunctionNullHandling null_handling, bind_lambda_function_t bind_lambda)
+                               FunctionNullHandling null_handling)
     : ScalarFunction(Identifier(), std::move(arguments), std::move(return_type), std::move(function), bind, statistics,
-                     init_local_state, std::move(varargs), side_effects, null_handling, bind_lambda) {
+                     init_local_state, std::move(varargs), side_effects, null_handling) {
 }
 
 // (we take an initializer list to ensure that the function is not ambiguous with the other constructor)
 ScalarFunction::ScalarFunction(Identifier name, std::initializer_list<FunctionParameter> params,
                                LogicalType return_type, scalar_function_t function, bind_scalar_function_t bind,
                                function_statistics_t statistics, init_local_state_t init_local_state,
-                               LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling,
-                               bind_lambda_function_t bind_lambda)
+                               LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling)
     : SimpleFunction(std::move(name), FunctionSignature(params, std::move(return_type))) {
 	if (varargs.id() != LogicalTypeId::INVALID) {
 		signature.AddArgs("args", varargs).AddKwargs("kwargs", std::move(varargs));
@@ -105,22 +102,17 @@ ScalarFunction::ScalarFunction(Identifier name, std::initializer_list<FunctionPa
 	callbacks.bind = bind;
 	callbacks.init_local_state = init_local_state;
 	callbacks.statistics = statistics;
-	callbacks.bind_lambda = bind_lambda;
 }
 
 ScalarFunction::ScalarFunction(std::initializer_list<FunctionParameter> params, LogicalType return_type,
                                scalar_function_t function, bind_scalar_function_t bind,
                                function_statistics_t statistics, init_local_state_t init_local_state,
-                               LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling,
-                               bind_lambda_function_t bind_lambda)
+                               LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling)
     : ScalarFunction(Identifier(), params, std::move(return_type), std::move(function), bind, statistics,
-                     init_local_state, std::move(varargs), side_effects, null_handling, bind_lambda) {
+                     init_local_state, std::move(varargs), side_effects, null_handling) {
 }
 
 bool ScalarFunction::TakesLambda() const {
-	if (HasBindLambdaCallback()) {
-		return true;
-	}
 	for (auto &parameter : GetSignature().GetParameters()) {
 		if (parameter.GetType().id() == LogicalTypeId::LAMBDA) {
 			return true;

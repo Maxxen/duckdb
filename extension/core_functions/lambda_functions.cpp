@@ -262,20 +262,6 @@ LogicalType LambdaFunctions::DetermineListChildType(const LogicalType &child_typ
 	return child_type;
 }
 
-LogicalType LambdaFunctions::BindBinaryChildren(const vector<LogicalType> &function_child_types,
-                                                const idx_t parameter_idx) {
-	auto list_type = DetermineListChildType(function_child_types[0]);
-
-	switch (parameter_idx) {
-	case 0:
-		return list_type;
-	case 1:
-		return LogicalType::BIGINT;
-	default:
-		throw BinderException("This lambda function only supports up to two lambda parameters!");
-	}
-}
-
 template <class FUNCTION_FUNCTOR>
 static void ExecuteLambda(DataChunk &args, ExpressionState &state, Vector &result) {
 	bool result_is_null = false;

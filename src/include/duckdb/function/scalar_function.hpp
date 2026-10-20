@@ -37,22 +37,6 @@ struct ScalarFunctionInfo {
 	}
 };
 
-//! Optional context passed to lambda bind callbacks
-struct BindLambdaContext {
-	virtual ~BindLambdaContext() = default;
-
-	template <class TARGET>
-	TARGET &Cast() {
-		DynamicCastCheck<TARGET>(this);
-		return reinterpret_cast<TARGET &>(*this);
-	}
-	template <class TARGET>
-	const TARGET &Cast() const {
-		DynamicCastCheck<TARGET>(this);
-		return reinterpret_cast<const TARGET &>(*this);
-	}
-};
-
 class Binder;
 class BoundFunctionExpression;
 class BoundScalarFunction;
@@ -157,11 +141,7 @@ typedef idx_t (*scalar_function_select_t)(DataChunk &args, ExpressionState &stat
 //! The type to propagate statistics for this scalar function
 typedef unique_ptr<BaseStatistics> (*function_statistics_t)(ClientContext &context, FunctionStatisticsInput &input);
 
-//! The type to bind lambda-specific parameter types
-typedef LogicalType (*bind_lambda_function_t)(ClientContext &context, const vector<LogicalType> &function_child_types,
-                                              idx_t parameter_idx, optional_ptr<BindLambdaContext> bind_lambda_context);
-
-//! The type to bind lambda-specific parameter types
+//! The type to collect the databases a function modifies
 typedef void (*get_modified_databases_t)(ClientContext &context, FunctionModifiedDatabasesInput &input);
 
 typedef void (*function_serialize_t)(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
@@ -200,8 +180,6 @@ public:
 	init_local_state_t init_local_state = nullptr;
 	//! The statistics propagation function (if any)
 	function_statistics_t statistics = nullptr;
-	//! The lambda bind function (if any)
-	bind_lambda_function_t bind_lambda = nullptr;
 	//! Function to bind the result function expression directly (if any)
 	function_bind_expression_t bind_expression = nullptr;
 	//! Gets the modified databases (if any)
@@ -287,10 +265,6 @@ public: // Callbacks
 	auto HasBindCallback() const -> bool { return callbacks.bind != nullptr; };
 	auto GetBindCallback() const -> bind_scalar_function_t { return callbacks.bind; };
 	auto SetBindCallback(bind_scalar_function_t callback) -> void { callbacks.bind = callback; }
-
-	auto HasBindLambdaCallback() const -> bool { return callbacks.bind_lambda != nullptr; }
-	auto GetBindLambdaCallback() const -> bind_lambda_function_t { return callbacks.bind_lambda; }
-	auto SetBindLambdaCallback(bind_lambda_function_t callback) -> void { callbacks.bind_lambda = callback; }
 
 	auto HasBindExpressionCallback() const -> bool { return callbacks.bind_expression != nullptr; }
 	auto GetBindExpressionCallback() const -> function_bind_expression_t { return callbacks.bind_expression; }
@@ -435,39 +409,35 @@ class ScalarFunction : public BaseScalarFunction<ScalarFunction>,
 public:
 	DUCKDB_API ScalarFunction(Identifier name, FunctionSignature sig, scalar_function_t function);
 
-	//! Whether the function takes a lambda - declared in its signature, or bound by its lambda callback
+	//! Whether the function takes a lambda argument
 	DUCKDB_API bool TakesLambda() const;
 	DUCKDB_API ScalarFunction(Identifier name, vector<LogicalType> arguments, LogicalType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),
 	                          FunctionStability stability = FunctionStability::CONSISTENT,
-	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
-	                          bind_lambda_function_t bind_lambda = nullptr);
+	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING);
 
 	DUCKDB_API ScalarFunction(vector<LogicalType> arguments, LogicalType return_type, scalar_function_t function,
 	                          bind_scalar_function_t bind = nullptr, function_statistics_t statistics = nullptr,
 	                          init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),
 	                          FunctionStability stability = FunctionStability::CONSISTENT,
-	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
-	                          bind_lambda_function_t bind_lambda = nullptr);
+	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING);
 
 	DUCKDB_API ScalarFunction(Identifier name, std::initializer_list<FunctionParameter> params, LogicalType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),
 	                          FunctionStability stability = FunctionStability::CONSISTENT,
-	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
-	                          bind_lambda_function_t bind_lambda = nullptr);
+	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING);
 
 	DUCKDB_API ScalarFunction(std::initializer_list<FunctionParameter> params, LogicalType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),
 	                          FunctionStability stability = FunctionStability::CONSISTENT,
-	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
-	                          bind_lambda_function_t bind_lambda = nullptr);
+	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING);
 
 	DUCKDB_API bool operator==(const ScalarFunction &rhs) const;
 	DUCKDB_API bool operator!=(const ScalarFunction &rhs) const;

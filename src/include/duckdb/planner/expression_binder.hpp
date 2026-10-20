@@ -259,9 +259,7 @@ protected:
 	BindResult BindExpression(FunctionExpression &expr, idx_t depth, unique_ptr<ParsedExpression> &expr_ptr);
 	BindResult BindExpression(TypeExpression &expr, idx_t depth);
 
-	BindResult BindExpression(LambdaExpression &expr, idx_t depth, const vector<LogicalType> &function_child_types,
-	                          optional_ptr<bind_lambda_function_t> bind_lambda_function,
-	                          optional_ptr<BindLambdaContext> bind_lambda_context);
+	BindResult BindExpression(LambdaExpression &expr, idx_t depth);
 	BindResult BindExpression(OperatorExpression &expr, idx_t depth);
 	BindResult BindOperatorAsFunction(OperatorExpression &op, const Identifier &function_name,
 	                                  vector<unique_ptr<Expression>> children);

@@ -1,6 +1,7 @@
 #include "duckdb/function/scalar/generic_functions.hpp"
 #include "duckdb/function/lambda_functions.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/planner/expression/bound_lambda_expression.hpp"
@@ -117,51 +118,43 @@ void LambdaInvokeFunction(DataChunk &args, ExpressionState &state, Vector &resul
 unique_ptr<FunctionData> LambdaInvokeBind(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
-	// the list column and the bound lambda expression
 	if (arguments[0]->GetExpressionClass() != ExpressionClass::BOUND_LAMBDA) {
 		throw BinderException("Invalid lambda expression passed to 'invoke' function.");
 	}
-
 	auto &bound_lambda_expr = arguments[0]->Cast<BoundLambdaExpression>();
-	if (bound_lambda_expr.ParameterCount() != arguments.size() - 1) {
-		throw BinderException("The number of lambda parameters does not match the number of arguments passed to the "
-		                      "'invoke' function, expected %d, got %d.",
-		                      bound_lambda_expr.ParameterCount(), arguments.size() - 1);
-	}
-
-	bound_function.SetReturnType(bound_lambda_expr.LambdaExpr()->GetReturnType());
 	PropagateLambdaProperties(bound_function, *bound_lambda_expr.LambdaExpr());
-
 	return make_uniq<LambdaInvokeData>(bound_lambda_expr.Copy());
-}
-
-LogicalType LambdaInvokeBindParameters(ClientContext &context, const vector<LogicalType> &function_child_types,
-                                       const idx_t parameter_idx, optional_ptr<BindLambdaContext> bind_lambda_context) {
-	// The first parameter is always the lambda
-	auto child_idx = parameter_idx + 1;
-	if (child_idx >= function_child_types.size()) {
-		throw BinderException("The number of lambda parameters does not match the number of arguments passed to the "
-		                      "'invoke' function, expected at least %d, got %d.",
-		                      parameter_idx + 1, function_child_types.size() - 1);
-	}
-	return function_child_types[child_idx];
 }
 
 } // namespace
 
-ScalarFunction InvokeFun::GetFunction() {
-	ScalarFunction fun("invoke", {}, LogicalType::ANY, LambdaInvokeFunction);
-	fun.GetSignature().AddParameter("lambda", LogicalTypeId::LAMBDA).AddParameter("arg1", LogicalType::ANY);
-	fun.SetBindCallback(LambdaInvokeBind);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY);
-	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	fun.SetBindLambdaCallback(LambdaInvokeBindParameters);
-	fun.SetInitStateCallback(LambdaInvokeState::Init);
-	fun.SetSerializeCallback(LambdaInvokeData::Serialize);
-	fun.SetDeserializeCallback(LambdaInvokeData::Deserialize);
-	// the lambda expression that is executed for every row can throw
-	fun.SetFallible();
-	return fun;
+//! The maximum number of arguments invoke passes to its lambda
+static constexpr idx_t INVOKE_MAX_ARGUMENTS = 16;
+
+ScalarFunctionSet InvokeFun::GetFunctions() {
+	ScalarFunctionSet set;
+	for (idx_t argument_count = 1; argument_count <= INVOKE_MAX_ARGUMENTS; argument_count++) {
+		vector<LogicalType> argument_types;
+		for (idx_t i = 0; i < argument_count; i++) {
+			argument_types.push_back(LogicalType::TEMPLATE(StringUtil::Format("T%llu", i + 1)));
+		}
+		FunctionSignature signature;
+		signature.AddParameter("lambda", LogicalType::LAMBDA(argument_types, LogicalType::TEMPLATE("U")));
+		for (idx_t i = 0; i < argument_count; i++) {
+			signature.AddParameter(Identifier(StringUtil::Format("arg%llu", i + 1)), argument_types[i]);
+		}
+		signature.SetReturnType(LogicalType::TEMPLATE("U"));
+
+		ScalarFunction fun("invoke", std::move(signature), LambdaInvokeFunction);
+		fun.SetBindCallback(LambdaInvokeBind);
+		fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+		fun.SetInitStateCallback(LambdaInvokeState::Init);
+		fun.SetSerializeCallback(LambdaInvokeData::Serialize);
+		fun.SetDeserializeCallback(LambdaInvokeData::Deserialize);
+		fun.SetFallible();
+		set.AddFunction(std::move(fun));
+	}
+	return set;
 }
 
 } // namespace duckdb
