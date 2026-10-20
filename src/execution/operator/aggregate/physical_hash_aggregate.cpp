@@ -169,12 +169,13 @@ PhysicalHashAggregate::PhysicalHashAggregate(PhysicalPlan &physical_plan, Client
 		auto &aggregate = aggregates[i];
 		auto &aggr = aggregate->Cast<BoundAggregateExpression>();
 		if (aggr.GetFilter()) {
-			auto &filter_ref = *aggr.GetFilter();
-			auto &bound_ref_expr = filter_ref.Cast<BoundReferenceExpression>();
-			if (!filter_indexes.count(filter_ref)) {
-				// Replace the bound reference expression's index with the corresponding index of the payload chunk
-				filter_indexes[filter_ref] = bound_ref_expr.Index();
-				bound_ref_expr.IndexMutable() = aggregate_input_idx;
+			auto &filter = aggr.GetFilterMutable();
+			if (!filter_indexes.count(*filter)) {
+				// Replace the bound reference expression with one pointing at the index of the payload chunk
+				auto &bound_ref_expr = filter->Cast<BoundReferenceExpression>();
+				auto original_index = bound_ref_expr.Index();
+				filter = bound_ref_expr.WithIndex(aggregate_input_idx);
+				filter_indexes[*filter] = original_index;
 			}
 			aggregate_input_idx++;
 		}

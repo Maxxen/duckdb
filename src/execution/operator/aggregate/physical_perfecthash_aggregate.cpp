@@ -51,7 +51,6 @@ PhysicalPerfectHashAggregate::PhysicalPerfectHashAggregate(PhysicalPlan &physica
 	for (const auto &pay_filters : payload_types_filters) {
 		payload_types.push_back(pay_filters);
 	}
-	aggregate_objects = AggregateObject::CreateAggregateObjects(bindings);
 
 	// filter_indexes must be pre-built, not lazily instantiated in parallel...
 	idx_t aggregate_input_idx = 0;
@@ -62,17 +61,20 @@ PhysicalPerfectHashAggregate::PhysicalPerfectHashAggregate(PhysicalPlan &physica
 	for (auto &aggregate : aggregates) {
 		auto &aggr = aggregate->Cast<BoundAggregateExpression>();
 		if (aggr.GetFilter()) {
-			auto &filter_ref = *aggr.GetFilter();
-			auto &bound_ref_expr = filter_ref.Cast<BoundReferenceExpression>();
-			auto it = filter_indexes.find(filter_ref);
+			auto &filter = aggr.GetFilterMutable();
+			auto it = filter_indexes.find(*filter);
 			if (it == filter_indexes.end()) {
-				filter_indexes[filter_ref] = bound_ref_expr.Index();
-				bound_ref_expr.IndexMutable() = aggregate_input_idx++;
+				auto &bound_ref_expr = filter->Cast<BoundReferenceExpression>();
+				auto original_index = bound_ref_expr.Index();
+				filter = bound_ref_expr.WithIndex(aggregate_input_idx++);
+				filter_indexes[*filter] = original_index;
 			} else {
 				++aggregate_input_idx;
 			}
 		}
 	}
+	// created after the filters are rewritten, since the aggregate objects reference them
+	aggregate_objects = AggregateObject::CreateAggregateObjects(bindings);
 }
 
 unique_ptr<PerfectAggregateHashTable> PhysicalPerfectHashAggregate::CreateHT(Allocator &allocator,
