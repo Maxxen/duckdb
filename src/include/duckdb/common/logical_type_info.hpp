@@ -200,10 +200,12 @@ protected:
 };
 
 struct LambdaTypeInfo : public LogicalTypeInfo {
-	LambdaTypeInfo(vector<LogicalType> parameter_types_p, LogicalType return_type_p);
+	LambdaTypeInfo(vector<LogicalType> parameter_types_p, LogicalType return_type_p, LogicalType varargs_p);
 
 	vector<LogicalType> parameter_types;
 	LogicalType return_type;
+	//! The type of any number of parameters following parameter_types - INVALID if the lambda is not variadic
+	LogicalType varargs;
 
 public:
 	void Serialize(Serializer &serializer) const override;

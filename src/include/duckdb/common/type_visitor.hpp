@@ -69,6 +69,9 @@ inline idx_t TypeVisitor::PushChildren(const LogicalType &type, vector<reference
 			worklist.push_back(parameter_type);
 		}
 		worklist.push_back(LambdaType::GetReturnType(type));
+		if (LambdaType::IsVariadic(type)) {
+			worklist.push_back(LambdaType::GetVarargsType(type));
+		}
 		break;
 	default:
 		break;
@@ -113,12 +116,13 @@ inline LogicalType TypeVisitor::RebuildType(const VisitorFrame &frame, vector<Lo
 	case LogicalTypeId::ARRAY:
 		return LogicalType::ARRAY(PopType(result_stack), ArrayType::GetSize(type));
 	case LogicalTypeId::LAMBDA: {
+		auto varargs = LambdaType::IsVariadic(type) ? PopType(result_stack) : LogicalType(LogicalTypeId::INVALID);
 		auto return_type = PopType(result_stack);
 		auto parameter_types = LambdaType::GetParameterTypes(type);
 		for (idx_t i = parameter_types.size(); i > 0; i--) {
 			parameter_types[i - 1] = PopType(result_stack);
 		}
-		return LogicalType::LAMBDA(std::move(parameter_types), std::move(return_type));
+		return LogicalType::LAMBDA(std::move(parameter_types), std::move(return_type), std::move(varargs));
 	}
 	default:
 		throw InternalException("Cannot rebuild children of a non-nested type");

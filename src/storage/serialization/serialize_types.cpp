@@ -153,12 +153,14 @@ void LambdaTypeInfo::Serialize(Serializer &serializer) const {
 	LogicalTypeInfo::Serialize(serializer);
 	serializer.WritePropertyWithDefault<vector<LogicalType>>(200, "parameter_types", parameter_types);
 	serializer.WriteProperty<LogicalType>(201, "return_type", return_type);
+	serializer.WritePropertyWithDefault<LogicalType>(202, "varargs", varargs, LogicalType(LogicalTypeId::INVALID));
 }
 
 unique_ptr<LogicalTypeInfo> LambdaTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto result = duckdb::unique_ptr<LambdaTypeInfo>(new LambdaTypeInfo());
 	deserializer.ReadPropertyWithDefault<vector<LogicalType>>(200, "parameter_types", result->parameter_types);
 	deserializer.ReadProperty<LogicalType>(201, "return_type", result->return_type);
+	deserializer.ReadPropertyWithExplicitDefault<LogicalType>(202, "varargs", result->varargs, LogicalType(LogicalTypeId::INVALID));
 	return std::move(result);
 }
 

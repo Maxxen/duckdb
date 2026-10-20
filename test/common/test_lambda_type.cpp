@@ -48,6 +48,32 @@ TEST_CASE("LAMBDA type carries parameter and return types", "[lambda_type]") {
 	REQUIRE(typed.IsComplete());
 }
 
+TEST_CASE("Variadic LAMBDA types", "[lambda_type]") {
+	const auto variadic = LogicalType::LAMBDA({LogicalType::BIGINT}, LogicalType::TEMPLATE("U"), LogicalType::ANY);
+	REQUIRE(LambdaType::IsVariadic(variadic));
+	REQUIRE(LambdaType::GetVarargsType(variadic) == LogicalType::ANY);
+	REQUIRE(LambdaType::GetParameterTypes(variadic).size() == 1);
+	REQUIRE(variadic.ToString() == "LAMBDA(BIGINT, ANY... -> U)");
+	REQUIRE(LogicalType::LAMBDA({}, LogicalType::INTEGER, LogicalType::ANY).ToString() == "LAMBDA(ANY... -> INTEGER)");
+
+	const auto fixed = LogicalType::LAMBDA({LogicalType::BIGINT}, LogicalType::TEMPLATE("U"));
+	REQUIRE(!LambdaType::IsVariadic(fixed));
+	REQUIRE(variadic != fixed);
+	REQUIRE(variadic.IsTemplated());
+
+	// the varargs type is visited and replaced like the other children
+	auto resolved = TypeVisitor::VisitReplace(variadic, [&](const LogicalType &child) {
+		if (child.id() == LogicalTypeId::TEMPLATE) {
+			return LogicalType(LogicalType::DOUBLE);
+		}
+		if (child.id() == LogicalTypeId::ANY) {
+			return LogicalType(LogicalType::VARCHAR);
+		}
+		return child;
+	});
+	REQUIRE(resolved == LogicalType::LAMBDA({LogicalType::BIGINT}, LogicalType::DOUBLE, LogicalType::VARCHAR));
+}
+
 TEST_CASE("LAMBDA type participates in type visiting", "[lambda_type]") {
 	const auto templated = LogicalType::LAMBDA({LogicalType::TEMPLATE("T"), LogicalType::BIGINT},
 	                                           LogicalType::LIST(LogicalType::TEMPLATE("U")));
@@ -84,6 +110,10 @@ TEST_CASE("LAMBDA type serialization drops the signature before v2.1.0", "[lambd
 	const LogicalType untyped(LogicalTypeId::LAMBDA);
 	REQUIRE(RoundTrip(untyped, StorageVersion::LATEST) == untyped);
 	REQUIRE(RoundTrip(untyped, StorageVersion::V1_5_0) == untyped);
+
+	const auto variadic = LogicalType::LAMBDA({LogicalType::BIGINT}, LogicalType::VARCHAR, LogicalType::INTEGER);
+	REQUIRE(RoundTrip(variadic, StorageVersion::LATEST) == variadic);
+	REQUIRE(RoundTrip(variadic, StorageVersion::V2_0_0) == untyped);
 
 	// nested inside another type
 	const auto nested = LogicalType::LIST(typed);

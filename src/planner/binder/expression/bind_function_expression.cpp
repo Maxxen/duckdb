@@ -285,6 +285,11 @@ BindResult ExpressionBinder::BindTypedLambda(ScalarFunctionCatalogEntry &func, L
 	// the parameter types follow from the other arguments
 	auto parameter_types =
 	    LambdaType::GetParameterTypes(function_binder.ResolveLambdaType(function, argument_types, lambda_idx));
+	if (parameter_types.size() != parameter_count) {
+		throw BinderException("The number of lambda parameters does not match the number of arguments passed to the "
+		                      "'%s' function, expected %llu, got %llu.",
+		                      func.name.GetIdentifierName(), parameter_count, parameter_types.size());
+	}
 	for (idx_t i = 0; i < parameter_types.size(); i++) {
 		if (parameter_types[i].IsTemplated()) {
 			throw BinderException("Could not determine the type of parameter %llu of the lambda passed to %s", i + 1,
@@ -325,7 +330,8 @@ BindResult ExpressionBinder::BindTypedLambda(ScalarFunctionCatalogEntry &func, L
 	auto return_type =
 	    LambdaType::GetReturnType(function_binder.ResolveLambdaType(function, argument_types, lambda_idx));
 	auto &body_type = bound_lambda.LambdaExpr()->GetReturnType();
-	if (!return_type.IsTemplated() && return_type != body_type) {
+	// a lambda that may return anything keeps the type of its body
+	if (!return_type.IsTemplated() && return_type.id() != LogicalTypeId::ANY && return_type != body_type) {
 		// a return type that follows from the arguments has to be reachable implicitly, as for any other argument.
 		// A return type the signature declares, e.g. the BOOLEAN of a filter, is a context the body is cast to
 		auto &declared_return_type = LambdaType::GetReturnType(lambda_type);

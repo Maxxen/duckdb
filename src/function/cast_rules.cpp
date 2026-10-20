@@ -455,7 +455,12 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 			// a lambda of unknown arity prefers the overload with the fewest parameters
 			return NumericCast<int64_t>(LambdaType::GetParameterTypes(to).size());
 		}
-		return LambdaType::GetParameterTypes(from).size() == LambdaType::GetParameterTypes(to).size() ? 0 : -1;
+		auto from_count = LambdaType::GetParameterTypes(from).size();
+		auto to_count = LambdaType::GetParameterTypes(to).size();
+		if (LambdaType::IsVariadic(to)) {
+			return from_count >= to_count ? 0 : -1;
+		}
+		return from_count == to_count ? 0 : -1;
 	}
 	if (from.id() == LogicalTypeId::LIST && to.id() == LogicalTypeId::LIST) {
 		// Lists can be cast if their child types can be cast

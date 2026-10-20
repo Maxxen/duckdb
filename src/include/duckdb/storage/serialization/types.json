@@ -243,6 +243,12 @@
         "id": 201,
         "name": "return_type",
         "type": "LogicalType"
+      },
+      {
+        "id": 202,
+        "name": "varargs",
+        "type": "LogicalType",
+        "default": "LogicalType(LogicalTypeId::INVALID)"
       }
     ]
   },

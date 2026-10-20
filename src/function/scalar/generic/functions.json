@@ -41,6 +41,6 @@
         "parameters": "lambda,arg1,...",
         "description": "Invokes a lambda function with the given arguments",
         "example": "invoke(x -> x + 1, 5)",
-        "type": "scalar_function_set"
+        "type": "scalar_function"
     }
 ]

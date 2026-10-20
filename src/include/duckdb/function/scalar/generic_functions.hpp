@@ -72,7 +72,7 @@ struct InvokeFun {
 	static constexpr const char *Example = "invoke(x -> x + 1, 5)";
 	static constexpr const char *Categories = "";
 
-	static ScalarFunctionSet GetFunctions();
+	static ScalarFunction GetFunction();
 };
 
 } // namespace duckdb

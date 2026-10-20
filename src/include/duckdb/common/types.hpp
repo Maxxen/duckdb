@@ -577,8 +577,10 @@ public:
 	// ANY but with special rules (default is LogicalType::ANY, 5)
 	DUCKDB_API static LogicalType ANY_PARAMS(LogicalType target, idx_t cast_score = 5); // NOLINT
 	DUCKDB_API static LogicalType TEMPLATE(const string &name);                         // NOLINT
-	//! A lambda with the given parameter types and return type, e.g. LAMBDA(BIGINT, BIGINT -> BOOLEAN)
-	DUCKDB_API static LogicalType LAMBDA(vector<LogicalType> parameter_types, LogicalType return_type); // NOLINT
+	//! A lambda with the given parameter types and return type, e.g. LAMBDA(BIGINT, BIGINT -> BOOLEAN). A variadic
+	//! lambda takes any number of further parameters of the varargs type, e.g. LAMBDA(BIGINT, ANY... -> BOOLEAN)
+	DUCKDB_API static LogicalType LAMBDA(vector<LogicalType> parameter_types, LogicalType return_type, // NOLINT
+	                                     LogicalType varargs = LogicalType(LogicalTypeId::INVALID));
 	DUCKDB_API static LogicalType VARIANT();                                            // NOLINT
 	//! Integer literal of the specified value
 	DUCKDB_API static LogicalType INTEGER_LITERAL(const Value &constant); // NOLINT
@@ -699,6 +701,10 @@ struct LambdaType {
 	DUCKDB_API static const vector<LogicalType> &GetParameterTypes(const LogicalType &type);
 	//! The return type of the lambda - only valid if the type has parameters
 	DUCKDB_API static const LogicalType &GetReturnType(const LogicalType &type);
+	//! Whether the lambda takes any number of parameters after its parameter types
+	DUCKDB_API static bool IsVariadic(const LogicalType &type);
+	//! The type of the parameters after the parameter types - INVALID if the lambda is not variadic
+	DUCKDB_API static const LogicalType &GetVarargsType(const LogicalType &type);
 };
 
 struct TemplateType {

@@ -614,9 +614,17 @@ string LogicalType::ToString() const {
 				break;
 			}
 			auto &parameter_types = LambdaType::GetParameterTypes(type);
+			const bool is_variadic = LambdaType::IsVariadic(type);
 			push_text(")");
 			push_type(LambdaType::GetReturnType(type));
-			push_text(parameter_types.empty() ? "-> " : " -> ");
+			push_text(parameter_types.empty() && !is_variadic ? "-> " : " -> ");
+			if (is_variadic) {
+				push_text("...");
+				push_type(LambdaType::GetVarargsType(type));
+				if (!parameter_types.empty()) {
+					push_text(", ");
+				}
+			}
 			for (idx_t i = parameter_types.size(); i > 0; i--) {
 				push_type(parameter_types[i - 1]);
 				if (i > 1) {
@@ -1391,6 +1399,9 @@ void LogicalType::Verify() const {
 			parameter_type.Verify();
 		}
 		LambdaType::GetReturnType(*this).Verify();
+		if (LambdaType::IsVariadic(*this)) {
+			LambdaType::GetVarargsType(*this).Verify();
+		}
 		break;
 	}
 	default:
@@ -2056,8 +2067,8 @@ const string &TemplateType::GetName(const LogicalType &type) {
 //===--------------------------------------------------------------------===//
 // Lambda Type
 //===--------------------------------------------------------------------===//
-LogicalType LogicalType::LAMBDA(vector<LogicalType> parameter_types, LogicalType return_type) {
-	auto type_info = make_uniq<LambdaTypeInfo>(std::move(parameter_types), std::move(return_type));
+LogicalType LogicalType::LAMBDA(vector<LogicalType> parameter_types, LogicalType return_type, LogicalType varargs) {
+	auto type_info = make_uniq<LambdaTypeInfo>(std::move(parameter_types), std::move(return_type), std::move(varargs));
 	return LogicalType(LogicalTypeId::LAMBDA, std::move(type_info));
 }
 
@@ -2073,6 +2084,17 @@ const LogicalType &LambdaType::GetReturnType(const LogicalType &type) {
 	auto &info = type.GetTypeInfo();
 	D_ASSERT(info.type == LogicalTypeInfoType::LAMBDA_TYPE_INFO);
 	return info.Cast<LambdaTypeInfo>().return_type;
+}
+
+bool LambdaType::IsVariadic(const LogicalType &type) {
+	return GetVarargsType(type).id() != LogicalTypeId::INVALID;
+}
+
+const LogicalType &LambdaType::GetVarargsType(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::LAMBDA);
+	auto &info = type.GetTypeInfo();
+	D_ASSERT(info.type == LogicalTypeInfoType::LAMBDA_TYPE_INFO);
+	return info.Cast<LambdaTypeInfo>().varargs;
 }
 
 //===--------------------------------------------------------------------===//

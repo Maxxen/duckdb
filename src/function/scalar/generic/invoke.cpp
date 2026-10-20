@@ -122,39 +122,28 @@ unique_ptr<FunctionData> LambdaInvokeBind(BindScalarFunctionInput &input) {
 		throw BinderException("Invalid lambda expression passed to 'invoke' function.");
 	}
 	auto &bound_lambda_expr = arguments[0]->Cast<BoundLambdaExpression>();
+	bound_function.SetReturnType(bound_lambda_expr.LambdaExpr()->GetReturnType());
 	PropagateLambdaProperties(bound_function, *bound_lambda_expr.LambdaExpr());
 	return make_uniq<LambdaInvokeData>(bound_lambda_expr.Copy());
 }
 
 } // namespace
 
-//! The maximum number of arguments invoke passes to its lambda
-static constexpr idx_t INVOKE_MAX_ARGUMENTS = 16;
+ScalarFunction InvokeFun::GetFunction() {
+	// the lambda takes one parameter for every argument
+	FunctionSignature signature;
+	signature.AddParameter("lambda", LogicalType::LAMBDA({}, LogicalType::ANY, LogicalType::ANY))
+	    .AddArgs("args", LogicalType::ANY);
+	signature.SetReturnType(LogicalType::ANY);
 
-ScalarFunctionSet InvokeFun::GetFunctions() {
-	ScalarFunctionSet set;
-	for (idx_t argument_count = 1; argument_count <= INVOKE_MAX_ARGUMENTS; argument_count++) {
-		vector<LogicalType> argument_types;
-		for (idx_t i = 0; i < argument_count; i++) {
-			argument_types.push_back(LogicalType::TEMPLATE(StringUtil::Format("T%llu", i + 1)));
-		}
-		FunctionSignature signature;
-		signature.AddParameter("lambda", LogicalType::LAMBDA(argument_types, LogicalType::TEMPLATE("U")));
-		for (idx_t i = 0; i < argument_count; i++) {
-			signature.AddParameter(Identifier(StringUtil::Format("arg%llu", i + 1)), argument_types[i]);
-		}
-		signature.SetReturnType(LogicalType::TEMPLATE("U"));
-
-		ScalarFunction fun("invoke", std::move(signature), LambdaInvokeFunction);
-		fun.SetBindCallback(LambdaInvokeBind);
-		fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-		fun.SetInitStateCallback(LambdaInvokeState::Init);
-		fun.SetSerializeCallback(LambdaInvokeData::Serialize);
-		fun.SetDeserializeCallback(LambdaInvokeData::Deserialize);
-		fun.SetFallible();
-		set.AddFunction(std::move(fun));
-	}
-	return set;
+	ScalarFunction fun("invoke", std::move(signature), LambdaInvokeFunction);
+	fun.SetBindCallback(LambdaInvokeBind);
+	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+	fun.SetInitStateCallback(LambdaInvokeState::Init);
+	fun.SetSerializeCallback(LambdaInvokeData::Serialize);
+	fun.SetDeserializeCallback(LambdaInvokeData::Deserialize);
+	fun.SetFallible();
+	return fun;
 }
 
 } // namespace duckdb

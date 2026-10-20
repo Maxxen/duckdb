@@ -781,6 +781,11 @@ void FunctionBinder::CastToFunctionArguments(BoundSimpleFunction &function, vect
 		// lambdas are not cast - they are bound against the parameter type of the function
 		if (children[i]->GetReturnType().id() == LogicalTypeId::LAMBDA) {
 			auto &source_type = children[i]->GetReturnType();
+			if (target_type.HasParameters() && LambdaType::IsVariadic(target_type) && source_type.HasParameters()) {
+				// the bound function takes the lambda it was passed, like any variadic argument
+				target_type = source_type;
+				continue;
+			}
 			if (target_type.HasParameters() && source_type.HasParameters() && source_type != target_type) {
 				throw InternalException("Function %s received a lambda of type %s for a parameter of type %s",
 				                        function.GetName(), source_type, target_type);
@@ -1238,12 +1243,16 @@ static void InferTemplateType(ClientContext &context, const LogicalType &source,
 		}
 		auto &source_parameters = LambdaType::GetParameterTypes(source);
 		auto &target_parameters = LambdaType::GetParameterTypes(target);
-		if (source_parameters.size() != target_parameters.size()) {
+		const bool is_variadic = LambdaType::IsVariadic(source);
+		if (is_variadic ? target_parameters.size() < source_parameters.size()
+		                : target_parameters.size() != source_parameters.size()) {
 			return;
 		}
-		for (idx_t i = 0; i < source_parameters.size(); i++) {
+		for (idx_t i = 0; i < target_parameters.size(); i++) {
+			auto &source_parameter =
+			    i < source_parameters.size() ? source_parameters[i] : LambdaType::GetVarargsType(source);
 			if (target_parameters[i].id() != LogicalTypeId::ANY) {
-				InferTemplateType(context, source_parameters[i], target_parameters[i], bindings, location, function);
+				InferTemplateType(context, source_parameter, target_parameters[i], bindings, location, function);
 			}
 		}
 		auto &target_return = LambdaType::GetReturnType(target);
@@ -1391,9 +1400,36 @@ LogicalType FunctionBinder::ResolveLambdaType(const SimpleFunction &function, co
 			InferTemplateType(context, parameter_type, arguments[i], bindings, QueryLocation(), function);
 		}
 	}
-	auto result = signature.GetParameter(lambda_idx).GetType();
+	auto &lambda_parameter_type = signature.GetParameter(lambda_idx).GetType();
+	auto result = lambda_parameter_type;
 	SubstituteTemplateType(result, bindings, function.GetName());
-	return result;
+	if (result.id() != LogicalTypeId::LAMBDA || !result.HasParameters() || !LambdaType::IsVariadic(result)) {
+		return result;
+	}
+	// a variadic lambda takes as many parameters as it is passed: those of the arguments "*args" receives if it has
+	// the same type, and otherwise as many as the lambda passed declares
+	auto parameter_types = LambdaType::GetParameterTypes(result);
+	auto &varargs_type = LambdaType::GetVarargsType(result);
+	optional_idx args_idx;
+	for (idx_t i = 0; i < signature.GetParameterCount(); i++) {
+		auto &parameter = signature.GetParameter(i);
+		if (parameter.GetKind() == FunctionParameterKind::VAR_POSITIONAL &&
+		    parameter.GetType() == LambdaType::GetVarargsType(lambda_parameter_type)) {
+			args_idx = i;
+		}
+	}
+	if (args_idx.IsValid()) {
+		for (idx_t i = args_idx.GetIndex(); i < arguments.size(); i++) {
+			parameter_types.push_back(arguments[i]);
+		}
+	} else if (lambda_idx < arguments.size() && arguments[lambda_idx].id() == LogicalTypeId::LAMBDA &&
+	           arguments[lambda_idx].HasParameters()) {
+		auto passed_count = LambdaType::GetParameterTypes(arguments[lambda_idx]).size();
+		while (parameter_types.size() < passed_count) {
+			parameter_types.push_back(varargs_type);
+		}
+	}
+	return LogicalType::LAMBDA(std::move(parameter_types), LambdaType::GetReturnType(result));
 }
 
 //! Collects the types of the lambda parameters that the body refers to - ANY if the body does not use a parameter
@@ -1421,8 +1457,10 @@ void FunctionBinder::RestoreLambdaTypes(const SimpleFunction &function, vector<u
 		}
 		auto &lambda = children[lambda_idx]->Cast<BoundLambdaExpression>();
 		auto parameter_count = lambda.ParameterCount();
-		if (lambda.HasSignature() || !lambda.LambdaExpr() ||
-		    parameter_count != LambdaType::GetParameterTypes(parameter_type).size()) {
+		auto declared_count = LambdaType::GetParameterTypes(parameter_type).size();
+		const bool count_matches = LambdaType::IsVariadic(parameter_type) ? parameter_count >= declared_count
+		                                                                  : parameter_count == declared_count;
+		if (lambda.HasSignature() || !lambda.LambdaExpr() || !count_matches) {
 			continue;
 		}
 		vector<LogicalType> referenced_types(parameter_count, LogicalType::ANY);
@@ -1438,6 +1476,9 @@ void FunctionBinder::RestoreLambdaTypes(const SimpleFunction &function, vector<u
 		}
 		auto resolved = ResolveLambdaType(function, argument_types, lambda_idx);
 		auto parameter_types = LambdaType::GetParameterTypes(resolved);
+		if (parameter_types.size() != parameter_count) {
+			continue;
+		}
 		bool resolved_all = true;
 		for (idx_t i = 0; i < parameter_count; i++) {
 			// the body was bound against the types it references, those take precedence

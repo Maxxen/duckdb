@@ -233,23 +233,18 @@ SELECT sum(invoke(lambda x: x::INTEGER, s)) FROM invoke_throw_dictionary_tbl WHE
 statement error
 SELECT invoke(lambda x: x + x, 2, 4, 6);
 ----
-Binder Error: No function matches the given name and argument types
+Binder Error: The number of lambda parameters does not match the number of arguments passed to the 'invoke' function, expected 1, got 3.
 
 statement error
 SELECT invoke(lambda x, y: x + y, 2);
 ----
-Binder Error: No function matches the given name and argument types
+Binder Error: The number of lambda parameters does not match the number of arguments passed to the 'invoke' function, expected 2, got 1.
 
-# invoke passes up to 16 arguments
+# the lambda takes one parameter for every argument
 query I
-SELECT invoke(lambda a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16: a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+SELECT invoke(lambda a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20: a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
 ----
-136
-
-statement error
-SELECT invoke(lambda a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17: a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17);
-----
-Binder Error: No function matches the given name and argument types
+210
 
 statement error
 SELECT invoke(NULL, 1);
