@@ -160,10 +160,8 @@ unique_ptr<Expression> PredicateFactoringRule::Apply(LogicalOperator &op, vector
 			if (!column_filter) {
 				column_filter = expr.get().Copy();
 			} else {
-				auto new_disjunction = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR);
-				new_disjunction->GetChildrenMutable().push_back(std::move(column_filter));
-				new_disjunction->GetChildrenMutable().push_back(expr.get().Copy());
-				column_filter = std::move(new_disjunction);
+				column_filter = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR,
+				                                                      std::move(column_filter), expr.get().Copy());
 			}
 		}
 
@@ -171,18 +169,14 @@ unique_ptr<Expression> PredicateFactoringRule::Apply(LogicalOperator &op, vector
 		if (!derived_filter) {
 			derived_filter = std::move(column_filter);
 		} else {
-			auto new_conjunction = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND);
-			new_conjunction->GetChildrenMutable().push_back(std::move(column_filter));
-			new_conjunction->GetChildrenMutable().push_back(std::move(derived_filter));
-			derived_filter = std::move(new_conjunction);
+			derived_filter = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND,
+			                                                       std::move(column_filter), std::move(derived_filter));
 		}
 	}
 
 	// Now add the derived filter as an AND to the original expression
-	auto result = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND);
-	result->GetChildrenMutable().push_back(bindings[0].get().Copy());
-	result->GetChildrenMutable().push_back(std::move(derived_filter));
-	return std::move(result);
+	return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, bindings[0].get().Copy(),
+	                                             std::move(derived_filter));
 }
 
 } // namespace duckdb

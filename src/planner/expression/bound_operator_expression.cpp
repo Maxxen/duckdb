@@ -4,8 +4,15 @@
 
 namespace duckdb {
 
-BoundOperatorExpression::BoundOperatorExpression(ExpressionType type, LogicalType return_type)
+BoundOperatorExpression::BoundOperatorExpression(ExpressionType type, LogicalType return_type,
+                                                 vector<unique_ptr<Expression>> children_p)
+    : Expression(type, ExpressionClass::BOUND_OPERATOR, std::move(return_type)), children(std::move(children_p)) {
+}
+
+BoundOperatorExpression::BoundOperatorExpression(ExpressionType type, LogicalType return_type,
+                                                 unique_ptr<Expression> child)
     : Expression(type, ExpressionClass::BOUND_OPERATOR, std::move(return_type)) {
+	children.push_back(std::move(child));
 }
 
 string BoundOperatorExpression::ToString() const {
@@ -24,11 +31,12 @@ bool BoundOperatorExpression::Equals(const BaseExpression &other_p) const {
 }
 
 unique_ptr<Expression> BoundOperatorExpression::Copy() const {
-	auto copy = make_uniq<BoundOperatorExpression>(type, return_type);
-	copy->CopyProperties(*this);
+	vector<unique_ptr<Expression>> new_children;
 	for (auto &child : children) {
-		copy->children.push_back(child->Copy());
+		new_children.push_back(child->Copy());
 	}
+	auto copy = make_uniq<BoundOperatorExpression>(type, return_type, std::move(new_children));
+	copy->CopyProperties(*this);
 	return std::move(copy);
 }
 

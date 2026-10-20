@@ -955,7 +955,6 @@ JoinOrderExtraction RelationManager::ExtractEdges(LogicalOperator &op,
 				auto right_set = semantic_sets.second;
 				D_ASSERT(left_set && left_set->count > 0);
 				D_ASSERT(right_set && right_set->count == 1);
-				auto conjunction_expression = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND);
 				// create a conjunction expression for the semi/anti join.
 				// It's possible multiple LHS relations have a condition in
 				// this join. Suppose we have ((A ⨝ B) ⋉ C). (example in test_4950.test)
@@ -966,15 +965,18 @@ JoinOrderExtraction RelationManager::ExtractEdges(LogicalOperator &op,
 				// the relations from the conditions in the conjunction expression, we can prevent invalid reordering.
 
 				// Only comparison copies participate in costing. The operator occurrence owns the complete condition.
+				vector<unique_ptr<Expression>> comparisons;
 				for (auto &cond : conditions) {
 					if (cond.IsComparison()) {
 						auto comparison = BoundComparisonExpression::Create(cond.GetComparisonType(),
 						                                                    cond.GetLHS().Copy(), cond.GetRHS().Copy());
-						conjunction_expression->GetChildrenMutable().push_back(std::move(comparison));
+						comparisons.push_back(std::move(comparison));
 					}
 				}
 
-				D_ASSERT(!conjunction_expression->GetChildrenMutable().empty());
+				D_ASSERT(!comparisons.empty());
+				auto conjunction_expression =
+				    make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(comparisons));
 				auto &full_set = set_manager.Union(*left_set, *right_set);
 				auto filter_index = filters_and_bindings.size();
 				auto filter_info =

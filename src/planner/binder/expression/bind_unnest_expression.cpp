@@ -272,8 +272,7 @@ BindResult UnnestBinder::Bind(FunctionExpression &function, idx_t depth, bool ro
 			unnest_expr = BoundCastExpression::AddArrayCastToList(context, std::move(unnest_expr));
 		}
 
-		auto result = make_uniq<BoundUnnestExpression>(return_type);
-		result->ChildMutable() = std::move(unnest_expr);
+		auto result = make_uniq<BoundUnnestExpression>(return_type, std::move(unnest_expr));
 		Identifier alias = function.GetAlias().empty() ? Identifier(result->ToString()) : function.GetAlias();
 
 		auto current_level = outer_unnest_level + list_unnests - current_depth - 1;

@@ -17,7 +17,7 @@ public:
 	static constexpr const ExpressionClass TYPE = ExpressionClass::BOUND_CONJUNCTION;
 
 public:
-	explicit BoundConjunctionExpression(ExpressionType type);
+	BoundConjunctionExpression(ExpressionType type, vector<unique_ptr<Expression>> children);
 	BoundConjunctionExpression(ExpressionType type, unique_ptr<Expression> left, unique_ptr<Expression> right);
 
 	//! Returns a lone child as is

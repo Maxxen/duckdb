@@ -84,7 +84,7 @@ unique_ptr<Expression> DistributivityRule::Apply(LogicalOperator &op, vector<ref
 	}
 	// now for each of the remaining expressions in the candidate set we know that it is contained in all branches of
 	// the OR
-	auto new_root = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND);
+	vector<unique_ptr<Expression>> new_root_children;
 	for (auto &expr : candidate_set) {
 		D_ASSERT(initial_or.GetChildrenMutable().size() > 0);
 
@@ -95,7 +95,7 @@ unique_ptr<Expression> DistributivityRule::Apply(LogicalOperator &op, vector<ref
 			ExtractExpression(initial_or, i, *result);
 		}
 		// now we add the expression to the new root
-		new_root->GetChildrenMutable().push_back(std::move(result));
+		new_root_children.push_back(std::move(result));
 	}
 
 	// check if we completely erased one of the children of the OR
@@ -107,30 +107,24 @@ unique_ptr<Expression> DistributivityRule::Apply(LogicalOperator &op, vector<ref
 	//   and (2) all tuples that qualify "X" will pass this predicate
 	for (idx_t i = 0; i < initial_or.GetChildrenMutable().size(); i++) {
 		if (!initial_or.GetChildrenMutable()[i]) {
-			if (new_root->GetChildrenMutable().size() <= 1) {
-				return std::move(new_root->GetChildrenMutable()[0]);
-			} else {
-				return std::move(new_root);
-			}
+			return BoundConjunctionExpression::Create(ExpressionType::CONJUNCTION_AND, std::move(new_root_children));
 		}
 	}
 	// finally we need to add the remaining expressions in the OR to the new root
 	if (initial_or.GetChildrenMutable().size() == 1) {
 		// one child: skip the OR entirely and only add the single child
-		new_root->GetChildrenMutable().push_back(std::move(initial_or.GetChildrenMutable()[0]));
+		new_root_children.push_back(std::move(initial_or.GetChildrenMutable()[0]));
 	} else if (initial_or.GetChildrenMutable().size() > 1) {
 		// multiple children still remain: push them into a new OR and add that to the new root
-		auto new_or = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR);
+		vector<unique_ptr<Expression>> new_or_children;
 		for (auto &child : initial_or.GetChildrenMutable()) {
-			new_or->GetChildrenMutable().push_back(std::move(child));
+			new_or_children.push_back(std::move(child));
 		}
-		new_root->GetChildrenMutable().push_back(std::move(new_or));
+		new_root_children.push_back(
+		    make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR, std::move(new_or_children)));
 	}
 	// finally return the new root
-	if (new_root->GetChildrenMutable().size() == 1) {
-		return std::move(new_root->GetChildrenMutable()[0]);
-	}
-	return std::move(new_root);
+	return BoundConjunctionExpression::Create(ExpressionType::CONJUNCTION_AND, std::move(new_root_children));
 }
 
 } // namespace duckdb

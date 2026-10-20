@@ -433,10 +433,11 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 				auto &pre_val_expr = agg_results[i];
 				Identifier merge_func((fun_name == "min") ? "least" : "greatest");
 				auto merged = optimizer.BindScalarFunction(merge_func, pre_val_expr->Copy(), std::move(agg_col_ref));
-				auto coalesce =
-				    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_COALESCE, aggr_expr.GetReturnType());
-				coalesce->GetChildrenMutable().push_back(std::move(merged));
-				coalesce->GetChildrenMutable().push_back(pre_val_expr->Copy());
+				vector<unique_ptr<Expression>> coalesce_children;
+				coalesce_children.push_back(std::move(merged));
+				coalesce_children.push_back(pre_val_expr->Copy());
+				auto coalesce = make_uniq<BoundOperatorExpression>(
+				    ExpressionType::OPERATOR_COALESCE, aggr_expr.GetReturnType(), std::move(coalesce_children));
 				coalesce->SetAlias(aggr.expressions[i]->GetAlias());
 				proj_expressions.push_back(std::move(coalesce));
 			}

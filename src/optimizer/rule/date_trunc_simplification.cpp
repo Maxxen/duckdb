@@ -131,8 +131,8 @@ unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, v
 		{
 			// First check if we can just return `column IS NULL`.
 			if (rhs_comparison_type == ExpressionType::COMPARE_NOT_DISTINCT_FROM && rhs.GetValue().IsNull()) {
-				auto op = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NULL, LogicalType::BOOLEAN);
-				op->GetChildrenMutable().push_back(column_part.Copy());
+				auto op = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NULL, LogicalType::BOOLEAN,
+				                                             column_part.Copy());
 				return std::move(op);
 			} else {
 				if (!is_truncated) {
@@ -164,9 +164,8 @@ unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, v
 					auto comp = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(gteq),
 					                                                  std::move(lt));
 
-					auto isnotnull =
-					    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN);
-					isnotnull->GetChildrenMutable().push_back(column_part.Copy());
+					auto isnotnull = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL,
+					                                                    LogicalType::BOOLEAN, column_part.Copy());
 
 					return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(comp),
 					                                             std::move(isnotnull));
@@ -203,9 +202,8 @@ unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, v
 		{
 			if (rhs_comparison_type == ExpressionType::COMPARE_DISTINCT_FROM && rhs.GetValue().IsNull()) {
 				// Return 'column IS NOT NULL'.
-				auto op =
-				    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN);
-				op->GetChildrenMutable().push_back(column_part.Copy());
+				auto op = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN,
+				                                             column_part.Copy());
 				return std::move(op);
 			} else {
 				if (!is_truncated) {
@@ -237,9 +235,8 @@ unique_ptr<Expression> DateTruncSimplificationRule::Apply(LogicalOperator &op, v
 					auto comp = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR, std::move(gteq),
 					                                                  std::move(lt));
 
-					auto isnull =
-					    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NULL, LogicalType::BOOLEAN);
-					isnull->GetChildrenMutable().push_back(column_part.Copy());
+					auto isnull = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NULL,
+					                                                 LogicalType::BOOLEAN, column_part.Copy());
 
 					return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR, std::move(comp),
 					                                             std::move(isnull));

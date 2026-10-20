@@ -9,11 +9,11 @@ LegacyConjunctionOrFilter::LegacyConjunctionOrFilter()
 }
 
 unique_ptr<Expression> LegacyConjunctionOrFilter::ToExpression(const Expression &column) const {
-	auto conjunction = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR);
+	vector<unique_ptr<Expression>> children;
 	for (auto &filter : child_filters) {
-		conjunction->GetChildrenMutable().push_back(filter->ToExpression(column));
+		children.push_back(filter->ToExpression(column));
 	}
-	return std::move(conjunction);
+	return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR, std::move(children));
 }
 
 LegacyConjunctionAndFilter::LegacyConjunctionAndFilter()
@@ -21,11 +21,11 @@ LegacyConjunctionAndFilter::LegacyConjunctionAndFilter()
 }
 
 unique_ptr<Expression> LegacyConjunctionAndFilter::ToExpression(const Expression &column) const {
-	auto conjunction = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND);
+	vector<unique_ptr<Expression>> children;
 	for (auto &filter : child_filters) {
-		conjunction->GetChildrenMutable().push_back(filter->ToExpression(column));
+		children.push_back(filter->ToExpression(column));
 	}
-	return std::move(conjunction);
+	return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(children));
 }
 
 } // namespace duckdb

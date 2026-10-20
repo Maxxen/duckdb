@@ -1629,9 +1629,8 @@ bool GeneratedDedupRefEliminator::RemoveJoin(unique_ptr<LogicalOperator> &join, 
 		    BoundComparisonExpression::Create(cond.GetComparisonType(), cond.GetLHS().Copy(), cond.GetRHS().Copy()));
 		if (cond.GetComparisonType() != ExpressionType::COMPARE_NOT_DISTINCT_FROM &&
 		    cond.GetComparisonType() != ExpressionType::COMPARE_DISTINCT_FROM) {
-			auto is_not_null_expr =
-			    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN);
-			is_not_null_expr->GetChildrenMutable().push_back(other_side.Copy());
+			auto is_not_null_expr = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL,
+			                                                           LogicalType::BOOLEAN, other_side.Copy());
 			not_null_filter_expressions.push_back(std::move(is_not_null_expr));
 		}
 	}
@@ -1757,9 +1756,8 @@ bool GeneratedDedupRefEliminator::RemoveFilterCrossProduct(unique_ptr<LogicalOpe
 			}
 			if (comparison_type != ExpressionType::COMPARE_NOT_DISTINCT_FROM &&
 			    comparison_type != ExpressionType::COMPARE_DISTINCT_FROM) {
-				auto is_not_null_expr =
-				    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN);
-				is_not_null_expr->GetChildrenMutable().push_back(rhs.Copy());
+				auto is_not_null_expr = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL,
+				                                                           LogicalType::BOOLEAN, rhs.Copy());
 				generated_filter_expressions.push_back(std::move(is_not_null_expr));
 			}
 		} else {
@@ -1774,9 +1772,8 @@ bool GeneratedDedupRefEliminator::RemoveFilterCrossProduct(unique_ptr<LogicalOpe
 			}
 			if (comparison_type != ExpressionType::COMPARE_NOT_DISTINCT_FROM &&
 			    comparison_type != ExpressionType::COMPARE_DISTINCT_FROM) {
-				auto is_not_null_expr =
-				    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN);
-				is_not_null_expr->GetChildrenMutable().push_back(lhs.Copy());
+				auto is_not_null_expr = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL,
+				                                                           LogicalType::BOOLEAN, lhs.Copy());
 				generated_filter_expressions.push_back(std::move(is_not_null_expr));
 			}
 		}

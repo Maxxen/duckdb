@@ -1091,15 +1091,15 @@ static unique_ptr<Expression> TryCastFilterExpression(const Expression &expr, co
 	}
 	case ExpressionClass::BOUND_CONJUNCTION: {
 		auto &conjunction = expr.Cast<BoundConjunctionExpression>();
-		auto result = make_uniq<BoundConjunctionExpression>(conjunction.GetExpressionType());
+		vector<unique_ptr<Expression>> children;
 		for (auto &child : conjunction.GetChildren()) {
 			auto rewritten_child = TryCastFilterExpression(*child, mapping, target_type);
 			if (!rewritten_child) {
 				return nullptr;
 			}
-			result->GetChildrenMutable().push_back(std::move(rewritten_child));
+			children.push_back(std::move(rewritten_child));
 		}
-		return std::move(result);
+		return make_uniq<BoundConjunctionExpression>(conjunction.GetExpressionType(), std::move(children));
 	}
 	case ExpressionClass::BOUND_OPERATOR: {
 		auto &op = expr.Cast<BoundOperatorExpression>();
@@ -1113,8 +1113,8 @@ static unique_ptr<Expression> TryCastFilterExpression(const Expression &expr, co
 			if (!child.expr) {
 				return nullptr;
 			}
-			auto result = make_uniq<BoundOperatorExpression>(op.GetExpressionType(), op.GetReturnType());
-			result->GetChildrenMutable().push_back(std::move(child.expr));
+			auto result =
+			    make_uniq<BoundOperatorExpression>(op.GetExpressionType(), op.GetReturnType(), std::move(child.expr));
 			return std::move(result);
 		}
 		case ExpressionType::COMPARE_IN: {
@@ -1125,8 +1125,8 @@ static unique_ptr<Expression> TryCastFilterExpression(const Expression &expr, co
 			if (!lhs.expr || !lhs.type) {
 				return nullptr;
 			}
-			auto result = make_uniq<BoundOperatorExpression>(op.GetExpressionType(), op.GetReturnType());
-			result->GetChildrenMutable().push_back(std::move(lhs.expr));
+			vector<unique_ptr<Expression>> children;
+			children.push_back(std::move(lhs.expr));
 			for (idx_t i = 1; i < op.GetChildren().size(); i++) {
 				if (op.GetChildren()[i]->GetExpressionType() != ExpressionType::VALUE_CONSTANT) {
 					return nullptr;
@@ -1135,9 +1135,9 @@ static unique_ptr<Expression> TryCastFilterExpression(const Expression &expr, co
 				if (!TryCastConstant(constant, *lhs.mapping, *lhs.type)) {
 					return nullptr;
 				}
-				result->GetChildrenMutable().push_back(make_uniq<BoundConstantExpression>(std::move(constant)));
+				children.push_back(make_uniq<BoundConstantExpression>(std::move(constant)));
 			}
-			return std::move(result);
+			return make_uniq<BoundOperatorExpression>(op.GetExpressionType(), op.GetReturnType(), std::move(children));
 		}
 		default:
 			return nullptr;

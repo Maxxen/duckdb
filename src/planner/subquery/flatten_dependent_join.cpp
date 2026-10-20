@@ -1040,12 +1040,13 @@ FlattenDependentJoins::UnnestingState FlattenDependentJoins::PushDownFullOuterJo
 		expressions.push_back(make_uniq<BoundColumnRefExpression>(join_types[position], binding));
 	}
 	for (idx_t i = 0; i < correlated_columns.size(); i++) {
-		auto coalesce =
-		    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_COALESCE, correlated_columns[i].type);
-		coalesce->GetChildrenMutable().push_back(
+		vector<unique_ptr<Expression>> coalesce_children;
+		coalesce_children.push_back(
 		    make_uniq<BoundColumnRefExpression>(correlated_columns[i].type, left_state.bindings[i]));
-		coalesce->GetChildrenMutable().push_back(
+		coalesce_children.push_back(
 		    make_uniq<BoundColumnRefExpression>(correlated_columns[i].type, right_state.bindings[i]));
+		auto coalesce = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_COALESCE,
+		                                                   correlated_columns[i].type, std::move(coalesce_children));
 		expressions.push_back(std::move(coalesce));
 	}
 

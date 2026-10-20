@@ -33,16 +33,15 @@ unique_ptr<Expression> NotConjunctionSimplificationRule::Apply(LogicalOperator &
 	                        ? ExpressionType::CONJUNCTION_OR
 	                        : ExpressionType::CONJUNCTION_AND;
 
-	auto result = make_uniq<BoundConjunctionExpression>(negated_type);
-	result->GetChildrenMutable().reserve(conjunction.GetChildren().size());
+	vector<unique_ptr<Expression>> negated_children;
+	negated_children.reserve(conjunction.GetChildren().size());
 	for (auto &conj_child : conjunction.GetChildrenMutable()) {
-		auto negated_child = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_NOT, LogicalType::BOOLEAN);
-		negated_child->GetChildrenMutable().push_back(std::move(conj_child));
-		result->GetChildrenMutable().push_back(std::move(negated_child));
+		negated_children.push_back(make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_NOT,
+		                                                              LogicalType::BOOLEAN, std::move(conj_child)));
 	}
 
 	changes_made = true;
-	return std::move(result);
+	return make_uniq<BoundConjunctionExpression>(negated_type, std::move(negated_children));
 }
 
 } // namespace duckdb

@@ -93,14 +93,14 @@ unique_ptr<Expression> InClauseRewriter::VisitReplace(BoundOperatorExpression &e
 		// low amount of children or not all scalar
 		// IN: turn into (X = 1 OR X = 2 OR X = 3...)
 		// NOT IN: turn into (X <> 1 AND X <> 2 AND X <> 3 ...)
-		auto conjunction = make_uniq<BoundConjunctionExpression>(is_regular_in ? ExpressionType::CONJUNCTION_OR
-		                                                                       : ExpressionType::CONJUNCTION_AND);
+		vector<unique_ptr<Expression>> comparisons;
 		for (idx_t i = 1; i < expr.GetChildrenMutable().size(); i++) {
-			conjunction->GetChildrenMutable().push_back(BoundComparisonExpression::Create(
+			comparisons.push_back(BoundComparisonExpression::Create(
 			    is_regular_in ? ExpressionType::COMPARE_EQUAL : ExpressionType::COMPARE_NOTEQUAL,
 			    expr.GetChildrenMutable()[0]->Copy(), std::move(expr.GetChildrenMutable()[i])));
 		}
-		return std::move(conjunction);
+		return make_uniq<BoundConjunctionExpression>(
+		    is_regular_in ? ExpressionType::CONJUNCTION_OR : ExpressionType::CONJUNCTION_AND, std::move(comparisons));
 	}
 	// IN clause with many constant children
 	// generate a mark join that replaces this IN expression
@@ -161,8 +161,8 @@ unique_ptr<Expression> InClauseRewriter::VisitReplace(BoundOperatorExpression &e
 	                                                                    ColumnBinding(mark_index, ProjectionIndex(0)));
 	if (!is_regular_in) {
 		// NOT IN: invert
-		auto invert = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_NOT, LogicalType::BOOLEAN);
-		invert->GetChildrenMutable().push_back(std::move(result));
+		auto invert =
+		    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_NOT, LogicalType::BOOLEAN, std::move(result));
 		result = std::move(invert);
 	}
 	return result;

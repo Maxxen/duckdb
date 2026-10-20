@@ -76,8 +76,8 @@ static unique_ptr<GlobalTableFunctionState> UnnestInit(ClientContext &context, T
 		child = BoundCastExpression::AddArrayCastToList(context, std::move(child));
 	}
 
-	auto bound_unnest = make_uniq<BoundUnnestExpression>(ListType::GetChildType(child->GetReturnType()));
-	bound_unnest->ChildMutable() = std::move(child);
+	auto child_type = ListType::GetChildType(child->GetReturnType());
+	auto bound_unnest = make_uniq<BoundUnnestExpression>(std::move(child_type), std::move(child));
 	result->select_list.push_back(std::move(bound_unnest));
 	return std::move(result);
 }

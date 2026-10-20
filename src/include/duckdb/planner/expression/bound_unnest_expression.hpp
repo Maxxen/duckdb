@@ -18,7 +18,7 @@ public:
 	static constexpr const ExpressionClass TYPE = ExpressionClass::BOUND_UNNEST;
 
 public:
-	explicit BoundUnnestExpression(LogicalType return_type);
+	BoundUnnestExpression(LogicalType return_type, unique_ptr<Expression> child);
 
 public:
 	const unique_ptr<Expression> &Child() const {

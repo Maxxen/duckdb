@@ -17,7 +17,8 @@ public:
 	static constexpr const ExpressionClass TYPE = ExpressionClass::BOUND_OPERATOR;
 
 public:
-	BoundOperatorExpression(ExpressionType type, LogicalType return_type);
+	BoundOperatorExpression(ExpressionType type, LogicalType return_type, vector<unique_ptr<Expression>> children);
+	BoundOperatorExpression(ExpressionType type, LogicalType return_type, unique_ptr<Expression> child);
 
 public:
 	const vector<unique_ptr<Expression>> &GetChildren() const {

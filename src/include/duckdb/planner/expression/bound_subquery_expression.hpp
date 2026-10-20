@@ -20,7 +20,10 @@ public:
 	static constexpr const ExpressionClass TYPE = ExpressionClass::BOUND_SUBQUERY;
 
 public:
-	explicit BoundSubqueryExpression(LogicalType return_type);
+	BoundSubqueryExpression(LogicalType return_type, shared_ptr<Binder> binder, BoundStatement subquery,
+	                        SubqueryType subquery_type, ExpressionType comparison_type,
+	                        vector<unique_ptr<Expression>> children, vector<LogicalType> child_types,
+	                        vector<LogicalType> child_targets);
 
 	bool IsCorrelated() const {
 		return !binder->correlated_columns.empty();
@@ -28,9 +31,6 @@ public:
 
 public:
 	const shared_ptr<Binder> &GetBinder() const {
-		return binder;
-	}
-	shared_ptr<Binder> &GetBinderMutable() {
 		return binder;
 	}
 	const BoundStatement &Subquery() const {
@@ -42,9 +42,6 @@ public:
 	SubqueryType GetSubqueryType() const {
 		return subquery_type;
 	}
-	SubqueryType &SubqueryTypeMutable() {
-		return subquery_type;
-	}
 	const vector<unique_ptr<Expression>> &GetChildren() const {
 		return children;
 	}
@@ -54,19 +51,10 @@ public:
 	const vector<LogicalType> &GetChildTypes() const {
 		return child_types;
 	}
-	vector<LogicalType> &ChildTypesMutable() {
-		return child_types;
-	}
 	const vector<LogicalType> &GetChildTargets() const {
 		return child_targets;
 	}
-	vector<LogicalType> &ChildTargetsMutable() {
-		return child_targets;
-	}
 	ExpressionType ComparisonType() const {
-		return comparison_type;
-	}
-	ExpressionType &ComparisonTypeMutable() {
 		return comparison_type;
 	}
 	bool HasSubquery() const override {

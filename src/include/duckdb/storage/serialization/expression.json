@@ -99,7 +99,7 @@
         "type": "Expression*"
       }
     ],
-    "constructor": ["return_type"]
+    "constructor": ["return_type", "case_checks", "else_expr"]
   },
   {
     "class": "LegacyBoundCastExpression",
@@ -184,7 +184,7 @@
         "type": "vector<Expression*>"
       }
     ],
-    "constructor": ["type"]
+    "constructor": ["type", "children"]
   },
   {
     "class": "BoundConstantExpression",
@@ -290,7 +290,7 @@
         "type": "vector<Expression*>"
       }
     ],
-    "constructor": ["type", "return_type"]
+    "constructor": ["type", "return_type", "children"]
   },
   {
     "class": "BoundParameterExpression",
@@ -349,7 +349,7 @@
         "type": "Expression*"
       }
     ],
-    "constructor": ["return_type"]
+    "constructor": ["return_type", "child"]
   },
   {
     "class": "BoundFunctionExpression",

@@ -320,11 +320,7 @@ BindResult ExpressionBinder::BindExpression(OperatorExpression &op, idx_t depth)
 		}
 	}
 
-	auto result = make_uniq<BoundOperatorExpression>(op.GetExpressionType(), result_type);
-	for (auto &child : children) {
-		result->GetChildrenMutable().push_back(std::move(child));
-	}
-	return BindResult(std::move(result));
+	return BindResult(make_uniq<BoundOperatorExpression>(op.GetExpressionType(), result_type, std::move(children)));
 }
 
 } // namespace duckdb

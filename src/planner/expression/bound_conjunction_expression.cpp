@@ -4,13 +4,13 @@
 
 namespace duckdb {
 
-BoundConjunctionExpression::BoundConjunctionExpression(ExpressionType type)
-    : Expression(type, ExpressionClass::BOUND_CONJUNCTION, LogicalType::BOOLEAN) {
+BoundConjunctionExpression::BoundConjunctionExpression(ExpressionType type, vector<unique_ptr<Expression>> children_p)
+    : Expression(type, ExpressionClass::BOUND_CONJUNCTION, LogicalType::BOOLEAN), children(std::move(children_p)) {
 }
 
 BoundConjunctionExpression::BoundConjunctionExpression(ExpressionType type, unique_ptr<Expression> left,
                                                        unique_ptr<Expression> right)
-    : BoundConjunctionExpression(type) {
+    : Expression(type, ExpressionClass::BOUND_CONJUNCTION, LogicalType::BOOLEAN) {
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
 }
@@ -21,9 +21,7 @@ unique_ptr<Expression> BoundConjunctionExpression::Create(ExpressionType type,
 	if (children.size() == 1) {
 		return std::move(children[0]);
 	}
-	auto result = make_uniq<BoundConjunctionExpression>(type);
-	result->children = std::move(children);
-	return std::move(result);
+	return make_uniq<BoundConjunctionExpression>(type, std::move(children));
 }
 
 string BoundConjunctionExpression::ToString() const {
@@ -43,10 +41,11 @@ bool BoundConjunctionExpression::PropagatesNullValues() const {
 }
 
 unique_ptr<Expression> BoundConjunctionExpression::Copy() const {
-	auto copy = make_uniq<BoundConjunctionExpression>(type);
+	vector<unique_ptr<Expression>> new_children;
 	for (auto &expr : children) {
-		copy->children.push_back(expr->Copy());
+		new_children.push_back(expr->Copy());
 	}
+	auto copy = make_uniq<BoundConjunctionExpression>(type, std::move(new_children));
 	copy->CopyProperties(*this);
 	return std::move(copy);
 }

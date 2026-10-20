@@ -21,8 +21,8 @@ static vector<JoinCondition> Comparison(TableIndex left, TableIndex right, Expre
 
 static vector<JoinCondition> NonRejectingDisjunction(TableIndex shared, TableIndex other) {
 	auto equality = BoundComparisonExpression::Create(ExpressionType::COMPARE_EQUAL, Column(shared), Column(other));
-	auto is_not_null = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN);
-	is_not_null->GetChildrenMutable().push_back(Column(other));
+	auto is_not_null =
+	    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN, Column(other));
 	auto disjunction = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR, std::move(equality),
 	                                                         std::move(is_not_null));
 	vector<JoinCondition> result;

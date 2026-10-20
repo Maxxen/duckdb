@@ -165,8 +165,7 @@ static unique_ptr<Expression> PlanExtremumRewrite(Binder &binder, BoundSubqueryE
 
 	// 2. WHEN X IS NULL THEN NULL
 	unique_ptr<Expression> x_is_null =
-	    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NULL, LogicalType::BOOLEAN);
-	x_is_null->Cast<BoundOperatorExpression>().GetChildrenMutable().push_back(x_expr.Copy());
+	    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NULL, LogicalType::BOOLEAN, x_expr.Copy());
 	current_else = make_uniq<BoundCaseExpression>(std::move(x_is_null), null_val->Copy(), std::move(current_else));
 
 	// 1. WHEN count_star == 0 THEN FALSE
@@ -177,9 +176,8 @@ static unique_ptr<Expression> PlanExtremumRewrite(Binder &binder, BoundSubqueryE
 	    make_uniq<BoundCaseExpression>(std::move(count_star_is_zero), false_val->Copy(), std::move(current_else));
 
 	// 0. WHEN count_star IS NULL THEN FALSE (for correlated empty groups)
-	unique_ptr<Expression> count_star_is_null =
-	    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NULL, LogicalType::BOOLEAN);
-	count_star_is_null->Cast<BoundOperatorExpression>().GetChildrenMutable().push_back(count_star_ref->Copy());
+	unique_ptr<Expression> count_star_is_null = make_uniq<BoundOperatorExpression>(
+	    ExpressionType::OPERATOR_IS_NULL, LogicalType::BOOLEAN, count_star_ref->Copy());
 	current_else =
 	    make_uniq<BoundCaseExpression>(std::move(count_star_is_null), false_val->Copy(), std::move(current_else));
 

@@ -18,13 +18,11 @@ BindResult ExpressionBinder::BindExpression(ConjunctionExpression &expr, idx_t d
 	// the children have been successfully resolved
 	// cast the input types to boolean (if necessary)
 	// and construct the bound conjunction expression
-	auto result = make_uniq<BoundConjunctionExpression>(expr.GetExpressionType());
 	for (auto &child : children) {
-		result->GetChildrenMutable().push_back(
-		    BoundCastExpression::AddCastToType(context, std::move(child), LogicalType::BOOLEAN));
+		child = BoundCastExpression::AddCastToType(context, std::move(child), LogicalType::BOOLEAN);
 	}
 	// now create the bound conjunction expression
-	return BindResult(std::move(result));
+	return BindResult(make_uniq<BoundConjunctionExpression>(expr.GetExpressionType(), std::move(children)));
 }
 
 } // namespace duckdb

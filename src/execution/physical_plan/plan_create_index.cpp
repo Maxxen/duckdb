@@ -34,9 +34,8 @@ static PhysicalOperator &AddFilter(PhysicalPlanGenerator &plan, LogicalCreateInd
 	for (idx_t i = 0; i < prev.types.size() - 1; i++) {
 		filter_types.push_back(prev.types[i]);
 		auto is_not_null_expr =
-		    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN);
-		auto bound_ref = make_uniq<BoundReferenceExpression>(prev.types[i], i);
-		is_not_null_expr->GetChildrenMutable().push_back(std::move(bound_ref));
+		    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalType::BOOLEAN,
+		                                       make_uniq<BoundReferenceExpression>(prev.types[i], i));
 
 		filter_exprs.push_back(std::move(is_not_null_expr));
 	}

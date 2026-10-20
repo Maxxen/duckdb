@@ -130,7 +130,9 @@ BindResult ExpressionBinder::BindExpression(SubqueryExpression &expr, idx_t dept
 		return_type = LogicalType::SQLNULL;
 	}
 
-	auto result = make_uniq<BoundSubqueryExpression>(return_type);
+	vector<unique_ptr<Expression>> children;
+	vector<LogicalType> child_types;
+	vector<LogicalType> child_targets;
 	if (expr.GetSubqueryType() == SubqueryType::ANY) {
 		// ANY comparison
 		// cast child and subquery child to equivalent types
@@ -148,11 +150,11 @@ BindResult ExpressionBinder::BindExpression(SubqueryExpression &expr, idx_t dept
 				    child_type.ToString(), subquery_type);
 			}
 			child = BoundCastExpression::AddCastToType(context, std::move(child), compare_type);
-			result->GetChildrenMutable().push_back(std::move(child));
+			children.push_back(std::move(child));
 			for (idx_t child_idx = 0; child_idx < bound_node.types.size(); child_idx++) {
 				auto &subquery_child_type = bound_node.types[child_idx];
-				result->ChildTypesMutable().push_back(subquery_child_type);
-				result->ChildTargetsMutable().push_back(StructType::GetChildType(compare_type, child_idx));
+				child_types.push_back(subquery_child_type);
+				child_targets.push_back(StructType::GetChildType(compare_type, child_idx));
 			}
 		} else {
 			// Standard case: either no struct or struct was extracted into separate expressions
@@ -168,18 +170,15 @@ BindResult ExpressionBinder::BindExpression(SubqueryExpression &expr, idx_t dept
 					    child_type.ToString(), subquery_type);
 				}
 				child = BoundCastExpression::AddCastToType(context, std::move(child), compare_type);
-				result->ChildTypesMutable().push_back(subquery_type);
-				result->ChildTargetsMutable().push_back(compare_type);
-				result->GetChildrenMutable().push_back(std::move(child));
+				child_types.push_back(subquery_type);
+				child_targets.push_back(compare_type);
+				children.push_back(std::move(child));
 			}
 		}
 	}
-	result->GetBinderMutable() = std::move(subquery_binder);
-	result->SubqueryMutable() = std::move(bound_node);
-	result->SubqueryTypeMutable() = expr.GetSubqueryType();
-	result->ComparisonTypeMutable() = expr.GetComparisonType();
-
-	return BindResult(std::move(result));
+	return BindResult(make_uniq<BoundSubqueryExpression>(
+	    return_type, std::move(subquery_binder), std::move(bound_node), expr.GetSubqueryType(),
+	    expr.GetComparisonType(), std::move(children), std::move(child_types), std::move(child_targets)));
 }
 
 } // namespace duckdb

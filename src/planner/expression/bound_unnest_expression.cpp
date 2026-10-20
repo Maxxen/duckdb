@@ -5,8 +5,9 @@
 
 namespace duckdb {
 
-BoundUnnestExpression::BoundUnnestExpression(LogicalType return_type)
-    : Expression(ExpressionType::BOUND_UNNEST, ExpressionClass::BOUND_UNNEST, std::move(return_type)) {
+BoundUnnestExpression::BoundUnnestExpression(LogicalType return_type, unique_ptr<Expression> child_p)
+    : Expression(ExpressionType::BOUND_UNNEST, ExpressionClass::BOUND_UNNEST, std::move(return_type)),
+      child(std::move(child_p)) {
 }
 
 bool BoundUnnestExpression::IsFoldable() const {
@@ -34,9 +35,7 @@ bool BoundUnnestExpression::Equals(const BaseExpression &other_p) const {
 }
 
 unique_ptr<Expression> BoundUnnestExpression::Copy() const {
-	auto copy = make_uniq<BoundUnnestExpression>(return_type);
-	copy->child = child->Copy();
-	return std::move(copy);
+	return make_uniq<BoundUnnestExpression>(return_type, child->Copy());
 }
 
 } // namespace duckdb

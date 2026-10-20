@@ -60,20 +60,19 @@ ExpressionFilter &ExpressionFilter::GetExpressionFilter(TableFilter &filter, con
 }
 
 unique_ptr<Expression> ExpressionFilter::CreateInExpression(unique_ptr<Expression> column, vector<Value> values) {
-	auto result = make_uniq<BoundOperatorExpression>(ExpressionType::COMPARE_IN, LogicalType::BOOLEAN);
-	result->GetChildrenMutable().push_back(std::move(column));
+	vector<unique_ptr<Expression>> children;
+	children.push_back(std::move(column));
 	for (auto &value : values) {
-		result->GetChildrenMutable().push_back(make_uniq<BoundConstantExpression>(std::move(value)));
+		children.push_back(make_uniq<BoundConstantExpression>(std::move(value)));
 	}
-	return std::move(result);
+	return make_uniq<BoundOperatorExpression>(ExpressionType::COMPARE_IN, LogicalType::BOOLEAN, std::move(children));
 }
 
 unique_ptr<Expression> ExpressionFilter::CreateNullCheckExpression(unique_ptr<Expression> column,
                                                                    ExpressionType expression_type) {
 	D_ASSERT(expression_type == ExpressionType::OPERATOR_IS_NULL ||
 	         expression_type == ExpressionType::OPERATOR_IS_NOT_NULL);
-	auto result = make_uniq<BoundOperatorExpression>(expression_type, LogicalType::BOOLEAN);
-	result->GetChildrenMutable().push_back(std::move(column));
+	auto result = make_uniq<BoundOperatorExpression>(expression_type, LogicalType::BOOLEAN, std::move(column));
 	return std::move(result);
 }
 

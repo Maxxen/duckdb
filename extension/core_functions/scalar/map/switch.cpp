@@ -57,7 +57,6 @@ unique_ptr<FunctionData> SwitchBindReturnType(BindScalarFunctionInput &input) {
 unique_ptr<Expression> SwitchBindExpression(FunctionBindExpressionInput &input) {
 	auto &function_data = input.bind_data->Cast<SwitchFunctionBindData>();
 	auto &return_type = function_data.ReturnType();
-	auto result = make_uniq<BoundCaseExpression>(return_type);
 	idx_t map_index = function_data.map_index;
 	unique_ptr<Expression> base_expr = nullptr;
 	unique_ptr<Expression> default_expr = nullptr;
@@ -73,7 +72,8 @@ unique_ptr<Expression> SwitchBindExpression(FunctionBindExpressionInput &input) 
 
 	// every entry of the cases map becomes a WHEN key THEN value check
 	auto &entries = MapValue::GetChildren(function_data.cases);
-	result->CaseChecksMutable().reserve(entries.size());
+	vector<BoundCaseCheck> case_checks;
+	case_checks.reserve(entries.size());
 	for (auto &entry : entries) {
 		auto &key_value = StructValue::GetChildren(entry)[0];
 		auto &then_value = StructValue::GetChildren(entry)[1];
@@ -90,14 +90,13 @@ unique_ptr<Expression> SwitchBindExpression(FunctionBindExpressionInput &input) 
 			    BoundCastExpression::AddCastToType(input.context, std::move(key), LogicalType::BOOLEAN);
 		}
 		case_check.then_expr = make_uniq<BoundConstantExpression>(then_value);
-		result->CaseChecksMutable().push_back(std::move(case_check));
+		case_checks.push_back(std::move(case_check));
 	}
-	if (default_expr) {
-		result->ElseMutable() = std::move(default_expr);
-	} else {
-		result->ElseMutable() =
+	if (!default_expr) {
+		default_expr =
 		    BoundCastExpression::AddCastToType(input.context, make_uniq<BoundConstantExpression>(Value()), return_type);
 	}
+	auto result = make_uniq<BoundCaseExpression>(return_type, std::move(case_checks), std::move(default_expr));
 	return std::move(result);
 }
 

@@ -711,7 +711,7 @@ FilterPushdownResult FilterCombiner::TryPushdownOrClause(TableFilterSet &table_f
 	if (conj.GetExpressionType() != ExpressionType::CONJUNCTION_OR) {
 		return FilterPushdownResult::NO_PUSHDOWN;
 	}
-	auto conj_filter = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR);
+	vector<unique_ptr<Expression>> conj_children;
 	if (conj.GetChildren().empty()) {
 		return FilterPushdownResult::NO_PUSHDOWN;
 	}
@@ -762,13 +762,13 @@ FilterPushdownResult FilterCombiner::TryPushdownOrClause(TableFilterSet &table_f
 			case ExpressionType::COMPARE_DISTINCT_FROM: {
 				auto null_expr = ExpressionFilter::CreateNullCheckExpression(CreateFilterTargetExpression(*column_ref),
 				                                                             ExpressionType::OPERATOR_IS_NOT_NULL);
-				conj_filter->GetChildrenMutable().push_back(std::move(null_expr));
+				conj_children.push_back(std::move(null_expr));
 				break;
 			}
 			case ExpressionType::COMPARE_NOT_DISTINCT_FROM: {
 				auto null_expr = ExpressionFilter::CreateNullCheckExpression(CreateFilterTargetExpression(*column_ref),
 				                                                             ExpressionType::OPERATOR_IS_NULL);
-				conj_filter->GetChildrenMutable().push_back(std::move(null_expr));
+				conj_children.push_back(std::move(null_expr));
 				break;
 			}
 			default:
@@ -777,14 +777,14 @@ FilterPushdownResult FilterCombiner::TryPushdownOrClause(TableFilterSet &table_f
 				break;
 			}
 		} else {
-			conj_filter->GetChildrenMutable().push_back(
-			    CreateComparisonExpression(*column_ref, comparison_type, const_val->GetValue()));
+			conj_children.push_back(CreateComparisonExpression(*column_ref, comparison_type, const_val->GetValue()));
 		}
 	}
 	if (only_equalities && equality_column &&
 	    TryPushdownDenseInFilter(table_filters, *equality_column, equality_values)) {
 		return FilterPushdownResult::PUSHED_DOWN_FULLY;
 	}
+	auto conj_filter = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR, std::move(conj_children));
 	table_filters.PushFilter(proj_id, CreateOptionalExpressionFilter(std::move(conj_filter), col_type));
 	return FilterPushdownResult::PUSHED_DOWN_PARTIALLY;
 }

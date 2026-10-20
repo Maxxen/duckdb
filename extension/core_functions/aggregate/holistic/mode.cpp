@@ -669,10 +669,11 @@ static FrequencyAggregateFinalizeResult FinalizeEntropyRewrite(FrequencyAggregat
 	auto log_total = BindScalar(context, "log2", total_ref->Copy());
 	auto normalized = BindScalar(context, "/", std::move(weighted_ref), std::move(total_ref));
 	auto entropy = BindScalar(context, "-", std::move(log_total), std::move(normalized));
-	auto coalesce = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_COALESCE, LogicalType::DOUBLE);
-	coalesce->GetChildrenMutable().push_back(std::move(entropy));
-	coalesce->GetChildrenMutable().push_back(make_uniq<BoundConstantExpression>(Value::DOUBLE(0)));
-	result.result = std::move(coalesce);
+	vector<unique_ptr<Expression>> coalesce_children;
+	coalesce_children.push_back(std::move(entropy));
+	coalesce_children.push_back(make_uniq<BoundConstantExpression>(Value::DOUBLE(0)));
+	result.result = make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_COALESCE, LogicalType::DOUBLE,
+	                                                   std::move(coalesce_children));
 	return result;
 }
 

@@ -3,8 +3,10 @@
 
 namespace duckdb {
 
-BoundCaseExpression::BoundCaseExpression(LogicalType type)
-    : Expression(ExpressionType::CASE_EXPR, ExpressionClass::BOUND_CASE, std::move(type)) {
+BoundCaseExpression::BoundCaseExpression(LogicalType return_type, vector<BoundCaseCheck> case_checks_p,
+                                         unique_ptr<Expression> else_expr_p)
+    : Expression(ExpressionType::CASE_EXPR, ExpressionClass::BOUND_CASE, std::move(return_type)),
+      case_checks(std::move(case_checks_p)), else_expr(std::move(else_expr_p)) {
 }
 
 BoundCaseExpression::BoundCaseExpression(unique_ptr<Expression> when_expr, unique_ptr<Expression> then_expr,
@@ -44,15 +46,14 @@ bool BoundCaseExpression::Equals(const BaseExpression &other_p) const {
 }
 
 unique_ptr<Expression> BoundCaseExpression::Copy() const {
-	auto new_case = make_uniq<BoundCaseExpression>(return_type);
+	vector<BoundCaseCheck> new_checks;
 	for (auto &check : case_checks) {
 		BoundCaseCheck new_check;
 		new_check.when_expr = check.when_expr->Copy();
 		new_check.then_expr = check.then_expr->Copy();
-		new_case->case_checks.push_back(std::move(new_check));
+		new_checks.push_back(std::move(new_check));
 	}
-	new_case->else_expr = else_expr->Copy();
-
+	auto new_case = make_uniq<BoundCaseExpression>(return_type, std::move(new_checks), else_expr->Copy());
 	new_case->CopyProperties(*this);
 	return std::move(new_case);
 }

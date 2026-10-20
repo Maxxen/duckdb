@@ -82,7 +82,6 @@ unique_ptr<Expression> TimeStampComparison::Apply(LogicalOperator &op, vector<re
 
 	auto cast_constant = constant_expr->Copy();
 	auto cast_columnref = BoundCastExpression::Child(*cast_expr).Copy();
-	auto new_expr = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND);
 
 	Value result;
 	if (ExpressionExecutor::TryEvaluateScalar(context, *cast_constant, result)) {
@@ -98,8 +97,9 @@ unique_ptr<Expression> TimeStampComparison::Apply(LogicalOperator &op, vector<re
 			auto column_copy = cast_columnref->Copy();
 			auto eq_expr = BoundComparisonExpression::Create(ExpressionType::COMPARE_EQUAL, std::move(column_copy),
 			                                                 std::move(original_val_for_comparison));
-			new_expr->GetChildrenMutable().push_back(std::move(eq_expr));
-			return std::move(new_expr);
+			vector<unique_ptr<Expression>> children;
+			children.push_back(std::move(eq_expr));
+			return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(children));
 		}
 
 		// add one day and validate the new date
@@ -125,9 +125,8 @@ unique_ptr<Expression> TimeStampComparison::Apply(LogicalOperator &op, vector<re
 		                                                    std::move(val_for_comparison));
 		auto gt_eq_expr = BoundComparisonExpression::Create(
 		    ExpressionType::COMPARE_GREATERTHANOREQUALTO, std::move(left_copy), std::move(original_val_for_comparison));
-		new_expr->GetChildrenMutable().push_back(std::move(gt_eq_expr));
-		new_expr->GetChildrenMutable().push_back(std::move(lt_eq_expr));
-		return std::move(new_expr);
+		return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(gt_eq_expr),
+		                                             std::move(lt_eq_expr));
 	}
 	return nullptr;
 }

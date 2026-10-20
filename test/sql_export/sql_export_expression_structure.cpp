@@ -293,8 +293,7 @@ TEST_CASE("Bound expression SQL export rejects TRY around volatile children",
 		       expression.Cast<BoundFunctionExpression>().Function().GetName() == "random";
 	});
 	REQUIRE(random);
-	BoundOperatorExpression volatile_try(ExpressionType::OPERATOR_TRY, LogicalType::DOUBLE);
-	volatile_try.GetChildrenMutable().push_back(random->Copy());
+	BoundOperatorExpression volatile_try(ExpressionType::OPERATOR_TRY, LogicalType::DOUBLE, random->Copy());
 	auto volatile_result = BoundExpressionSQLExporter::Export(volatile_try, context);
 	RequireIssue(volatile_result, LogicalPlanVerificationIssueCode::UNSUPPORTED_EXPORT_FEATURE, path);
 	REQUIRE(*volatile_result.GetIssues()[0].construct->identifier == "try_volatile_child");
@@ -349,9 +348,11 @@ TEST_CASE("Bound expression SQL export rejects deferred expression kinds",
 	deferred.push_back(make_uniq<BoundDefaultExpression>(LogicalType::INTEGER));
 	deferred.push_back(make_uniq<BoundParameterExpression>(Identifier("1")));
 	deferred.push_back(make_uniq<BoundReferenceExpression>(LogicalType::INTEGER, storage_t(0)));
-	deferred.push_back(make_uniq<BoundSubqueryExpression>(LogicalType::INTEGER));
+	deferred.push_back(make_uniq<BoundSubqueryExpression>(
+	    LogicalType::INTEGER, nullptr, BoundStatement(), SubqueryType::SCALAR, ExpressionType::INVALID,
+	    vector<unique_ptr<Expression>>(), vector<LogicalType>(), vector<LogicalType>()));
 	deferred.push_back(make_uniq<BoundWindowExpression>(LogicalType::INTEGER, nullptr, nullptr, nullptr));
-	deferred.push_back(make_uniq<BoundUnnestExpression>(LogicalType::INTEGER));
+	deferred.push_back(make_uniq<BoundUnnestExpression>(LogicalType::INTEGER, nullptr));
 	deferred.push_back(
 	    make_uniq<BoundLambdaExpression>(ExpressionType::LAMBDA, LogicalType::INTEGER, Constant(Value::INTEGER(1)), 1));
 	deferred.push_back(

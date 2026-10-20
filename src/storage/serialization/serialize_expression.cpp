@@ -101,9 +101,9 @@ void BoundCaseExpression::Serialize(Serializer &serializer) const {
 
 unique_ptr<Expression> BoundCaseExpression::Deserialize(Deserializer &deserializer) {
 	auto return_type = deserializer.ReadProperty<LogicalType>(200, "return_type");
-	auto result = duckdb::unique_ptr<BoundCaseExpression>(new BoundCaseExpression(std::move(return_type)));
-	deserializer.ReadPropertyWithDefault<vector<BoundCaseCheck>>(201, "case_checks", result->case_checks);
-	deserializer.ReadPropertyWithDefault<unique_ptr<Expression>>(202, "else_expr", result->else_expr);
+	auto case_checks = deserializer.ReadPropertyWithDefault<vector<BoundCaseCheck>>(201, "case_checks");
+	auto else_expr = deserializer.ReadPropertyWithDefault<unique_ptr<Expression>>(202, "else_expr");
+	auto result = duckdb::unique_ptr<BoundCaseExpression>(new BoundCaseExpression(std::move(return_type), std::move(case_checks), std::move(else_expr)));
 	return std::move(result);
 }
 
@@ -128,8 +128,8 @@ void BoundConjunctionExpression::Serialize(Serializer &serializer) const {
 }
 
 unique_ptr<Expression> BoundConjunctionExpression::Deserialize(Deserializer &deserializer) {
-	auto result = duckdb::unique_ptr<BoundConjunctionExpression>(new BoundConjunctionExpression(deserializer.Get<ExpressionType>()));
-	deserializer.ReadPropertyWithDefault<vector<unique_ptr<Expression>>>(200, "children", result->children);
+	auto children = deserializer.ReadPropertyWithDefault<vector<unique_ptr<Expression>>>(200, "children");
+	auto result = duckdb::unique_ptr<BoundConjunctionExpression>(new BoundConjunctionExpression(deserializer.Get<ExpressionType>(), std::move(children)));
 	return std::move(result);
 }
 
@@ -200,8 +200,8 @@ void BoundOperatorExpression::Serialize(Serializer &serializer) const {
 
 unique_ptr<Expression> BoundOperatorExpression::Deserialize(Deserializer &deserializer) {
 	auto return_type = deserializer.ReadProperty<LogicalType>(200, "return_type");
-	auto result = duckdb::unique_ptr<BoundOperatorExpression>(new BoundOperatorExpression(deserializer.Get<ExpressionType>(), std::move(return_type)));
-	deserializer.ReadPropertyWithDefault<vector<unique_ptr<Expression>>>(201, "children", result->children);
+	auto children = deserializer.ReadPropertyWithDefault<vector<unique_ptr<Expression>>>(201, "children");
+	auto result = duckdb::unique_ptr<BoundOperatorExpression>(new BoundOperatorExpression(deserializer.Get<ExpressionType>(), std::move(return_type), std::move(children)));
 	return std::move(result);
 }
 
@@ -241,8 +241,8 @@ void BoundUnnestExpression::Serialize(Serializer &serializer) const {
 
 unique_ptr<Expression> BoundUnnestExpression::Deserialize(Deserializer &deserializer) {
 	auto return_type = deserializer.ReadProperty<LogicalType>(200, "return_type");
-	auto result = duckdb::unique_ptr<BoundUnnestExpression>(new BoundUnnestExpression(std::move(return_type)));
-	deserializer.ReadPropertyWithDefault<unique_ptr<Expression>>(201, "child", result->child);
+	auto child = deserializer.ReadPropertyWithDefault<unique_ptr<Expression>>(201, "child");
+	auto result = duckdb::unique_ptr<BoundUnnestExpression>(new BoundUnnestExpression(std::move(return_type), std::move(child)));
 	return std::move(result);
 }
 

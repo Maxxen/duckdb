@@ -5,8 +5,15 @@
 
 namespace duckdb {
 
-BoundSubqueryExpression::BoundSubqueryExpression(LogicalType return_type)
-    : Expression(ExpressionType::SUBQUERY, ExpressionClass::BOUND_SUBQUERY, std::move(return_type)) {
+BoundSubqueryExpression::BoundSubqueryExpression(LogicalType return_type, shared_ptr<Binder> binder_p,
+                                                 BoundStatement subquery_p, SubqueryType subquery_type_p,
+                                                 ExpressionType comparison_type_p,
+                                                 vector<unique_ptr<Expression>> children_p,
+                                                 vector<LogicalType> child_types_p, vector<LogicalType> child_targets_p)
+    : Expression(ExpressionType::SUBQUERY, ExpressionClass::BOUND_SUBQUERY, std::move(return_type)),
+      binder(std::move(binder_p)), subquery(std::move(subquery_p)), subquery_type(subquery_type_p),
+      children(std::move(children_p)), comparison_type(comparison_type_p), child_types(std::move(child_types_p)),
+      child_targets(std::move(child_targets_p)) {
 }
 
 string BoundSubqueryExpression::ToString() const {

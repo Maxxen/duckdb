@@ -420,9 +420,9 @@ TopNWindowElimination::CreateRowNumberGenerator(unique_ptr<Expression> aggregate
 	    BindBuiltinScalarFunction(context, "generate_series", std::move(generate_series_exprs));
 
 	// unnest
-	auto unnest_row_number_expr = make_uniq<BoundUnnestExpression>(LogicalType::BIGINT);
+	auto unnest_row_number_expr =
+	    make_uniq<BoundUnnestExpression>(LogicalType::BIGINT, std::move(bound_generate_series_fun));
 	unnest_row_number_expr->SetAlias("row_number");
-	unnest_row_number_expr->ChildMutable() = std::move(bound_generate_series_fun);
 
 	return unique_ptr<Expression>(std::move(unnest_row_number_expr));
 }
@@ -448,8 +448,8 @@ TopNWindowElimination::TryCreateUnnestOperator(unique_ptr<LogicalOperator> op,
 
 	vector<unique_ptr<Expression>> unnest_exprs;
 
-	auto unnest_aggregate = make_uniq<BoundUnnestExpression>(ListType::GetChildType(aggregate_type));
-	unnest_aggregate->ChildMutable() = aggregate_column_ref->Copy();
+	auto unnest_aggregate =
+	    make_uniq<BoundUnnestExpression>(ListType::GetChildType(aggregate_type), aggregate_column_ref->Copy());
 	unnest_exprs.push_back(std::move(unnest_aggregate));
 
 	if (params.include_row_number) {

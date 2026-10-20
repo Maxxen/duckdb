@@ -137,8 +137,7 @@ static bool ConstantCastIsInvertible(ClientContext &context, BoundFunctionExpres
 static unique_ptr<Expression> CreateNullCheckExpression(ExpressionType expression_type, unique_ptr<Expression> child) {
 	D_ASSERT(expression_type == ExpressionType::OPERATOR_IS_NULL ||
 	         expression_type == ExpressionType::OPERATOR_IS_NOT_NULL);
-	auto result = make_uniq<BoundOperatorExpression>(expression_type, LogicalType::BOOLEAN);
-	result->GetChildrenMutable().push_back(std::move(child));
+	auto result = make_uniq<BoundOperatorExpression>(expression_type, LogicalType::BOOLEAN, std::move(child));
 	return std::move(result);
 }
 
@@ -184,13 +183,13 @@ unique_ptr<Expression> RowComparisonSimplificationRule::Apply(LogicalOperator &o
 		}
 	}
 
-	auto result = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND);
+	vector<unique_ptr<Expression>> comparisons;
 	for (idx_t child_idx = 0; child_idx < left_children.size(); child_idx++) {
-		result->GetChildrenMutable().push_back(BoundComparisonExpression::Create(
-		    ExpressionType::COMPARE_NOT_DISTINCT_FROM, std::move(left_children[child_idx]),
-		    std::move(right_children[child_idx])));
+		comparisons.push_back(BoundComparisonExpression::Create(ExpressionType::COMPARE_NOT_DISTINCT_FROM,
+		                                                        std::move(left_children[child_idx]),
+		                                                        std::move(right_children[child_idx])));
 	}
-	return std::move(result);
+	return make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(comparisons));
 }
 
 unique_ptr<Expression> ComparisonSimplificationRule::Apply(LogicalOperator &op, vector<reference<Expression>> &bindings,

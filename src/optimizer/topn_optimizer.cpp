@@ -141,12 +141,10 @@ void TopN::PushdownDynamicFilters(LogicalTopN &op) {
 		if (nulls_first) {
 			// rows whose sort key evaluates to NULL must not be dropped by the filter: with
 			// NULLS FIRST they can be part of the top-N
-			auto or_filter = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR);
 			auto is_null =
 			    ExpressionFilter::CreateNullCheckExpression(std::move(filter_input), ExpressionType::OPERATOR_IS_NULL);
-			or_filter->GetChildrenMutable().push_back(std::move(is_null));
-			or_filter->GetChildrenMutable().push_back(std::move(pushed_expr));
-			pushed_expr = std::move(or_filter);
+			pushed_expr = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR, std::move(is_null),
+			                                                    std::move(pushed_expr));
 		}
 
 		// push the filter into the table scan
