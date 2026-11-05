@@ -4,6 +4,9 @@
 #include "duckdb/common/operator/multiply.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_columnref_expression.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/joinside.hpp"
 
 namespace duckdb {
@@ -37,8 +40,32 @@ InsertionOrderPreservingMap<string> LogicalNearestJoin::ParamsToString() const {
 	    "%s %s", order_type == OrderType::DESCENDING ? "BY SIMILARITY" : "BY DISTANCE", GetRanking().ToString());
 	result["Count"] = to_string(nearest_count);
 	result["Mode"] = approx ? "APPROX" : "EXACT";
+	if (include_null_rankings) {
+		result["NULL Rankings"] = "INCLUDED";
+	}
 	SetParamsEstimatedCardinality(result);
 	return result;
+}
+
+//! The side of the join an argument of the ranking refers to. Before the column bindings are resolved arguments
+//! reference the children by binding, afterwards by position in [left columns, right columns].
+static JoinSide GetArgumentSide(const Expression &argument, const unordered_set<TableIndex> &left_bindings,
+                                const unordered_set<TableIndex> &right_bindings, idx_t left_column_count) {
+	JoinSide side = JoinSide::NONE;
+	ExpressionIterator::VisitExpression<BoundReferenceExpression>(argument, [&](const BoundReferenceExpression &ref) {
+		side = JoinSide::CombineJoinSide(side, ref.Index() < left_column_count ? JoinSide::LEFT : JoinSide::RIGHT);
+	});
+	ExpressionIterator::VisitExpression<BoundColumnRefExpression>(argument, [&](const BoundColumnRefExpression &ref) {
+		auto table_index = ref.Binding().table_index;
+		if (left_bindings.count(table_index)) {
+			side = JoinSide::CombineJoinSide(side, JoinSide::LEFT);
+		} else if (right_bindings.count(table_index)) {
+			side = JoinSide::CombineJoinSide(side, JoinSide::RIGHT);
+		} else {
+			side = JoinSide::BOTH;
+		}
+	});
+	return side;
 }
 
 optional_ptr<BoundFunctionExpression> LogicalNearestJoin::TrySplitRanking(idx_t &left_argument, idx_t &right_argument) {
@@ -50,10 +77,11 @@ optional_ptr<BoundFunctionExpression> LogicalNearestJoin::TrySplitRanking(idx_t 
 	unordered_set<TableIndex> left_bindings, right_bindings;
 	LogicalJoin::GetTableReferences(*children[0], left_bindings);
 	LogicalJoin::GetTableReferences(*children[1], right_bindings);
+	const auto left_column_count = children[0]->GetColumnBindings().size();
 	optional_idx left_index, right_index;
 	auto &arguments = function.GetChildren();
 	for (idx_t i = 0; i < arguments.size(); i++) {
-		auto side = JoinSide::GetJoinSide(*arguments[i], left_bindings, right_bindings);
+		auto side = GetArgumentSide(*arguments[i], left_bindings, right_bindings, left_column_count);
 		if (side == JoinSide::LEFT && !left_index.IsValid()) {
 			left_index = i;
 		} else if (side == JoinSide::RIGHT && !right_index.IsValid()) {

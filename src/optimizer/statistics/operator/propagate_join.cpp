@@ -4,6 +4,7 @@
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/operator/logical_any_join.hpp"
+#include "duckdb/planner/operator/logical_nearest_join.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
 #include "duckdb/planner/operator/logical_cross_product.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
@@ -352,6 +353,15 @@ unique_ptr<NodeStatistics> StatisticsPropagator::PropagateStatistics(LogicalJoin
 	case LogicalOperatorType::LOGICAL_ANY_JOIN:
 		PropagateStatistics(join.Cast<LogicalAnyJoin>(), node_ptr);
 		break;
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN: {
+		auto &nearest = join.Cast<LogicalNearestJoin>();
+		auto ranking_stats = PropagateExpression(nearest.GetRankingMutable());
+		// implementations may skip evaluating the ranking for some rows, so it must not be able to throw
+		if (ranking_stats && !ranking_stats->CanHaveNull() && !nearest.GetRanking().CanThrow()) {
+			nearest.include_null_rankings = false;
+		}
+		break;
+	}
 	default:
 		break;
 	}

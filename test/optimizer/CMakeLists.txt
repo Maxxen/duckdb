@@ -13,6 +13,7 @@ add_library_unity(
   function_invocation_serialization.cpp
   join_filter_optimizer_hooks.cpp
   nearest_join_optimizer_hooks.cpp
+  physical_planner_extension.cpp
   join_order_conflict_detector.cpp
   join_order_enumeration.cpp
   logical_plan_verification.cpp

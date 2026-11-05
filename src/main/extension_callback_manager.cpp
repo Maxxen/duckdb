@@ -4,6 +4,7 @@
 #include "duckdb/parser/peg/compiled_grammar.hpp"
 #include "duckdb/parser/peg/dialect_extension.hpp"
 #include "duckdb/optimizer/optimizer_extension.hpp"
+#include "duckdb/execution/physical_planner_extension.hpp"
 #include "duckdb/planner/operator_extension.hpp"
 #include "duckdb/planner/planner_extension.hpp"
 #include "duckdb/storage/storage_extension.hpp"
@@ -25,6 +26,8 @@ struct ExtensionCallbackRegistry {
 	vector<PlannerExtension> planner_extensions;
 	//! Extensions made to the optimizer
 	vector<OptimizerExtension> optimizer_extensions;
+	//! Extensions made to the physical planner
+	vector<PhysicalPlannerExtension> physical_planner_extensions;
 	//! Extensions made to binder
 	vector<shared_ptr<OperatorExtension>> operator_extensions;
 	//! Extensions made to storage
@@ -129,6 +132,13 @@ void ExtensionCallbackManager::Register(OptimizerExtension extension) {
 	PublishRegistry(std::move(new_registry));
 }
 
+void ExtensionCallbackManager::Register(PhysicalPlannerExtension extension) {
+	lock_guard<mutex> guard(registry_lock);
+	auto new_registry = CopyRegistry();
+	new_registry->physical_planner_extensions.push_back(std::move(extension));
+	PublishRegistry(std::move(new_registry));
+}
+
 void ExtensionCallbackManager::Register(shared_ptr<OperatorExtension> extension) {
 	lock_guard<mutex> guard(registry_lock);
 	auto new_registry = CopyRegistry();
@@ -180,6 +190,12 @@ ExtensionCallbackIteratorHelper<OptimizerExtension> ExtensionCallbackManager::Op
 	auto registry = callback_registry.load();
 	auto &optimizer_extensions = registry->optimizer_extensions;
 	return ExtensionCallbackIteratorHelper<OptimizerExtension>(optimizer_extensions);
+}
+
+ExtensionCallbackIteratorHelper<PhysicalPlannerExtension> ExtensionCallbackManager::PhysicalPlannerExtensions() const {
+	auto registry = callback_registry.load();
+	auto &physical_planner_extensions = registry->physical_planner_extensions;
+	return ExtensionCallbackIteratorHelper<PhysicalPlannerExtension>(physical_planner_extensions);
 }
 
 ExtensionCallbackIteratorHelper<ParserExtension> ExtensionCallbackManager::ParserExtensions() const {
@@ -252,6 +268,10 @@ void OptimizerExtension::Register(DBConfig &config, OptimizerExtension extension
 	config.GetCallbackManager().Register(std::move(extension));
 }
 
+void PhysicalPlannerExtension::Register(DBConfig &config, PhysicalPlannerExtension extension) {
+	config.GetCallbackManager().Register(std::move(extension));
+}
+
 void ParserExtension::Register(DBConfig &config, ParserExtension extension) {
 	config.GetCallbackManager().Register(std::move(extension));
 }
@@ -296,6 +316,7 @@ optional_ptr<ProfilerExtension> ProfilerExtension::Find(const ClientContext &con
 template class ExtensionCallbackIteratorHelper<shared_ptr<ExtensionCallback>>;
 template class ExtensionCallbackIteratorHelper<shared_ptr<OperatorExtension>>;
 template class ExtensionCallbackIteratorHelper<OptimizerExtension>;
+template class ExtensionCallbackIteratorHelper<PhysicalPlannerExtension>;
 template class ExtensionCallbackIteratorHelper<ParserExtension>;
 template class ExtensionCallbackIteratorHelper<shared_ptr<GrammarExtension>>;
 template class ExtensionCallbackIteratorHelper<shared_ptr<DialectExtension>>;

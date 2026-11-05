@@ -105,6 +105,14 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 		    ref.Index() < left_count ? left_offset + ref.Index() : right_offset + ref.Index() - left_count;
 	});
 
+	if (op.join_type == JoinType::LEFT) {
+		// the ranking is also evaluated on the NULL row emitted for left rows without a match
+		ExpressionIterator::EnumerateExpression(ranking,
+		                                        [&](Expression &child) { child.SetVerificationStats(nullptr); });
+	}
+
+	// right rows with a NULL ranking only match if include_null_rankings is set
+	const bool filter_null_rankings = !op.include_null_rankings;
 	optional_ptr<PhysicalOperator> join;
 	if (op.join_type == JoinType::INNER) {
 		join = Make<PhysicalCrossProduct>(join_types, probe, build, cardinality);
@@ -112,8 +120,10 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 		// left rows without a match produce a single row with NULLs for the right side
 		LogicalAnyJoin join_op(build_left ? JoinType::RIGHT : JoinType::LEFT);
 		join_op.types = join_types;
-		join = Make<PhysicalBlockwiseNLJoin>(join_op, probe, build, CreateIsNotNull(ranking->Copy()), join_op.join_type,
-		                                     cardinality);
+		auto condition = filter_null_rankings ? CreateIsNotNull(ranking->Copy())
+		                                      : make_uniq<BoundConstantExpression>(Value::BOOLEAN(true));
+		join =
+		    Make<PhysicalBlockwiseNLJoin>(join_op, probe, build, std::move(condition), join_op.join_type, cardinality);
 	}
 
 	// bind the aggregate computing the matches of every left row
@@ -165,8 +175,7 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 	args.children.push_back(*join);
 	reference<PhysicalOperator> aggregate_input = args;
 
-	if (op.join_type == JoinType::INNER) {
-		// right rows with a NULL ranking never match
+	if (op.join_type == JoinType::INNER && filter_null_rankings) {
 		vector<unique_ptr<Expression>> filters;
 		filters.push_back(
 		    CreateIsNotNull(make_uniq<BoundReferenceExpression>(args_types[ranking_index], ranking_index)));

@@ -1,4 +1,5 @@
 #include "duckdb/execution/physical_plan_generator.hpp"
+#include "duckdb/execution/physical_planner_extension.hpp"
 
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/common/types/column/column_data_collection.hpp"
@@ -72,9 +73,46 @@ unique_ptr<PhysicalPlan> PhysicalPlanGenerator::PlanInternal(LogicalOperator &op
 	return std::move(physical_plan);
 }
 
+//! Operators that register planner state other operators depend on cannot be planned by extensions
+static bool CanBePlannedByExtension(LogicalOperatorType type) {
+	switch (type) {
+	case LogicalOperatorType::LOGICAL_MATERIALIZED_CTE:
+	case LogicalOperatorType::LOGICAL_RECURSIVE_CTE:
+	case LogicalOperatorType::LOGICAL_CTE_REF:
+	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
+	case LogicalOperatorType::LOGICAL_DELIM_GET:
+		return false;
+	default:
+		return true;
+	}
+}
+
+optional_ptr<PhysicalOperator> PhysicalPlanGenerator::TryPlanWithExtensions(LogicalOperator &op) {
+	if (!CanBePlannedByExtension(op.type)) {
+		return nullptr;
+	}
+	for (auto &extension : PhysicalPlannerExtension::Iterate(context)) {
+		if (!extension.plan_function) {
+			continue;
+		}
+		PhysicalPlannerExtensionInput input {context, *this, extension.planner_info.get()};
+		auto result = extension.plan_function(input, op);
+		if (result) {
+			if (result->GetTypes() != op.types) {
+				throw InternalException("Physical planner extension for %s produced types that do not match the "
+				                        "types of the logical operator",
+				                        EnumUtil::ToString(op.type));
+			}
+			return result;
+		}
+	}
+	return nullptr;
+}
+
 PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalOperator &op) {
 	const auto repeatable = ClassifyLogicalOperatorRepeatability(op) == LogicalOperatorRepeatability::REPEATABLE;
-	auto &result = CreatePlanInternal(op);
+	auto extension_plan = TryPlanWithExtensions(op);
+	auto &result = extension_plan ? *extension_plan : CreatePlanInternal(op);
 	if (!repeatable) {
 		non_repeatable_operators.insert(result);
 	}

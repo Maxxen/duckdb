@@ -623,6 +623,11 @@
         "id": 204,
         "name": "approx",
         "type": "bool"
+      },
+      {
+        "id": 205,
+        "name": "include_null_rankings",
+        "type": "bool"
       }
     ],
     "constructor": [

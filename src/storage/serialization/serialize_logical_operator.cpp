@@ -749,6 +749,7 @@ void LogicalNearestJoin::Serialize(Serializer &serializer) const {
 	serializer.WritePropertyWithDefault<idx_t>(202, "nearest_count", nearest_count);
 	serializer.WriteProperty<OrderType>(203, "order_type", order_type);
 	serializer.WritePropertyWithDefault<bool>(204, "approx", approx);
+	serializer.WritePropertyWithDefault<bool>(205, "include_null_rankings", include_null_rankings);
 }
 
 unique_ptr<LogicalOperator> LogicalNearestJoin::Deserialize(Deserializer &deserializer) {
@@ -758,6 +759,7 @@ unique_ptr<LogicalOperator> LogicalNearestJoin::Deserialize(Deserializer &deseri
 	deserializer.ReadPropertyWithDefault<idx_t>(202, "nearest_count", result->nearest_count);
 	deserializer.ReadProperty<OrderType>(203, "order_type", result->order_type);
 	deserializer.ReadPropertyWithDefault<bool>(204, "approx", result->approx);
+	deserializer.ReadPropertyWithDefault<bool>(205, "include_null_rankings", result->include_null_rankings);
 	return std::move(result);
 }
 

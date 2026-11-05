@@ -203,6 +203,7 @@ private:
 
 private:
 	PhysicalOperator &CreatePlanInternal(LogicalOperator &op);
+	optional_ptr<PhysicalOperator> TryPlanWithExtensions(LogicalOperator &op);
 	PhysicalOperator &ResolveAndPlan(unique_ptr<LogicalOperator> logical);
 	unique_ptr<PhysicalPlan> PlanInternal(LogicalOperator &logical);
 	bool PreserveInsertionOrder(PhysicalOperator &plan);

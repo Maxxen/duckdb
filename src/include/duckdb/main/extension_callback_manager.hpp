@@ -25,6 +25,7 @@ class OperatorExtension;
 class OptimizerExtension;
 class GrammarExtension;
 class ParserExtension;
+class PhysicalPlannerExtension;
 class PlannerExtension;
 class ProfilerExtension;
 class StorageExtension;
@@ -50,6 +51,7 @@ public:
 	void Register(shared_ptr<DialectExtension> extension);
 	void Register(PlannerExtension extension);
 	void Register(OptimizerExtension extension);
+	void Register(PhysicalPlannerExtension extension);
 	void Register(shared_ptr<OperatorExtension> extension);
 	void Register(const string &name, shared_ptr<StorageExtension> extension);
 	void Register(shared_ptr<ExtensionCallback> extension);
@@ -57,6 +59,7 @@ public:
 
 	ExtensionCallbackIteratorHelper<shared_ptr<OperatorExtension>> OperatorExtensions() const;
 	ExtensionCallbackIteratorHelper<OptimizerExtension> OptimizerExtensions() const;
+	ExtensionCallbackIteratorHelper<PhysicalPlannerExtension> PhysicalPlannerExtensions() const;
 	ExtensionCallbackIteratorHelper<ParserExtension> ParserExtensions() const;
 	ExtensionCallbackIteratorHelper<shared_ptr<DialectExtension>> DialectExtensions() const;
 	ExtensionCallbackIteratorHelper<PlannerExtension> PlannerExtensions() const;

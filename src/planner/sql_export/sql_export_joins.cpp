@@ -6,6 +6,10 @@
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/expression/star_expression.hpp"
+#include "duckdb/parser/result_modifier.hpp"
+#include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
 #include "duckdb/planner/operator/logical_nearest_join.hpp"
@@ -158,8 +162,11 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 			left_plain = nullptr;
 		}
 	}
+	// NEAREST BY joins that include NULL rankings are exported as a lateral join against the top-k rows of the target
+	const bool export_as_lateral =
+	    op.type == LogicalOperatorType::LOGICAL_NEAREST_JOIN && op.Cast<LogicalNearestJoin>().include_null_rankings;
 	if (right_plain && op.type == LogicalOperatorType::LOGICAL_NEAREST_JOIN &&
-	    right_plain->from_table->type == TableReferenceType::JOIN) {
+	    (export_as_lateral || right_plain->from_table->type == TableReferenceType::JOIN)) {
 		// the target of a NEAREST BY join is a single table reference
 		right_plain = nullptr;
 	}
@@ -181,6 +188,7 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 	                                                                            {left_plain, right_plain});
 	auto join = make_uniq<JoinRef>();
 	optional_ptr<LogicalJoin> logical_join;
+	unique_ptr<ParsedExpression> lateral_ranking;
 	if (op.type == LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
 		join->ref_type = JoinRefType::CROSS;
 	} else if (op.type == LogicalOperatorType::LOGICAL_POSITIONAL_JOIN) {
@@ -198,13 +206,18 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 			if (ranking.HasError()) {
 				return LogicalPlanSQLExportResult::Failure(ranking);
 			}
-			join->ref_type = JoinRefType::NEAREST;
-			join->ranking_expression = std::move(ranking.GetValue());
-			join->nearest_count = nearest.nearest_count;
-			join->nearest_order_type = nearest.order_type;
-			join->nearest_approx = nearest.approx;
+			if (export_as_lateral) {
+				lateral_ranking = std::move(ranking.GetValue());
+				join->condition = ConstantExpression::FromValue(Value::BOOLEAN(true));
+			} else {
+				join->ref_type = JoinRefType::NEAREST;
+				join->ranking_expression = std::move(ranking.GetValue());
+				join->nearest_count = nearest.nearest_count;
+				join->nearest_order_type = nearest.order_type;
+				join->nearest_approx = nearest.approx;
+			}
 		}
-		if (join->ref_type != JoinRefType::NEAREST) {
+		if (op.type != LogicalOperatorType::LOGICAL_NEAREST_JOIN) {
 			auto condition = ExportJoinCondition(*logical_join, context, expression_context, path);
 			if (condition.HasError()) {
 				return LogicalPlanSQLExportResult::Failure(condition);
@@ -236,6 +249,23 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 	                        : LogicalPlanSQLExportHelpers::CreateSubquery(std::move(left.GetValue()));
 	join->right = right_plain ? std::move(right.GetValue().relation.query->Cast<SelectNode>().from_table)
 	                          : LogicalPlanSQLExportHelpers::CreateSubquery(std::move(right.GetValue()));
+	if (export_as_lateral) {
+		// (SELECT * FROM <target> AS rN ORDER BY <ranking> NULLS LAST LIMIT <k>) AS rN keeps all column names intact
+		auto &nearest = op.Cast<LogicalNearestJoin>();
+		auto target_alias = join->right->alias;
+		auto top_k = make_uniq<SelectNode>();
+		top_k->select_list.push_back(make_uniq<StarExpression>());
+		top_k->from_table = std::move(join->right);
+		auto order = make_uniq<OrderModifier>();
+		order->orders.emplace_back(nearest.order_type, OrderByNullType::NULLS_LAST, std::move(lateral_ranking));
+		top_k->modifiers.push_back(std::move(order));
+		auto limit = make_uniq<LimitModifier>();
+		limit->limit = ConstantExpression::FromValue(Value::BIGINT(NumericCast<int64_t>(nearest.nearest_count)));
+		top_k->modifiers.push_back(std::move(limit));
+		auto top_k_statement = make_uniq<SelectStatement>();
+		top_k_statement->node = std::move(top_k);
+		join->right = make_uniq<SubqueryRef>(std::move(top_k_statement), std::move(target_alias));
+	}
 	select->from_table = std::move(join);
 	return LogicalPlanSQLExportResult::Success({std::move(select), std::move(fields.GetValue())});
 }

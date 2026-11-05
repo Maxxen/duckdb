@@ -1,17 +1,24 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/main/config.hpp"
 #include "duckdb/optimizer/optimizer.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/expression/bound_columnref_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_operator_expression.hpp"
 #include "duckdb/planner/expression_binder/lateral_binder.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/logical_operator_visitor.hpp"
 #include "duckdb/planner/operator/logical_any_join.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
 #include "duckdb/planner/operator/logical_cross_product.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
+#include "duckdb/planner/operator/logical_limit.hpp"
+#include "duckdb/planner/operator/logical_nearest_join.hpp"
+#include "duckdb/planner/operator/logical_order.hpp"
+#include "duckdb/planner/operator/logical_projection.hpp"
 #include "duckdb/planner/operator/logical_positional_join.hpp"
 #include "duckdb/planner/tableref/bound_joinref.hpp"
 
@@ -353,6 +360,206 @@ static bool HasCorrelatedColumns(const Expression &root_expr) {
 	return has_correlated_columns;
 }
 
+//! Whether the plan references columns that are not produced inside of it
+static bool HasOuterReferences(LogicalOperator &op) {
+	if (op.type == LogicalOperatorType::LOGICAL_DEPENDENT_JOIN || op.type == LogicalOperatorType::LOGICAL_DELIM_GET) {
+		return true;
+	}
+	bool has_outer_references = false;
+	LogicalOperatorVisitor::EnumerateExpressions(op, [&](unique_ptr<Expression> *expr) {
+		has_outer_references |= HasCorrelatedColumns(**expr) || (*expr)->HasSubquery();
+	});
+	for (auto &child : op.children) {
+		has_outer_references |= HasOuterReferences(*child);
+	}
+	return has_outer_references;
+}
+
+static bool IsConstantTrue(const Expression &expr) {
+	if (expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+		return false;
+	}
+	auto &value = expr.Cast<BoundConstantExpression>().GetValue();
+	return value.type() == LogicalType::BOOLEAN && !value.IsNull() && BooleanValue::Get(value);
+}
+
+//! The output binding of `prune` that passes through the column `binding` of the input of `projection`. If the
+//! subquery does not return the column, it is added to both projections as an additional, unreferenced column.
+static ColumnBinding GetPrunedColumn(LogicalProjection &prune, LogicalProjection &projection,
+                                     const BoundColumnRefExpression &colref) {
+	auto &binding = colref.Binding();
+	for (idx_t proj_idx = 0; proj_idx < projection.expressions.size(); proj_idx++) {
+		auto &proj_expr = *projection.expressions[proj_idx];
+		if (proj_expr.GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF ||
+		    proj_expr.Cast<BoundColumnRefExpression>().Binding() != binding) {
+			continue;
+		}
+		for (idx_t prune_idx = 0; prune_idx < prune.expressions.size(); prune_idx++) {
+			auto &prune_ref = prune.expressions[prune_idx]->Cast<BoundColumnRefExpression>();
+			if (prune_ref.Binding() == ColumnBinding(projection.table_index, ProjectionIndex(proj_idx))) {
+				return ColumnBinding(prune.table_index, ProjectionIndex(prune_idx));
+			}
+		}
+	}
+	const ColumnBinding projection_binding(projection.table_index, ProjectionIndex(projection.expressions.size()));
+	projection.expressions.push_back(make_uniq<BoundColumnRefExpression>(colref.GetReturnType(), binding));
+	const ColumnBinding prune_binding(prune.table_index, ProjectionIndex(prune.expressions.size()));
+	prune.expressions.push_back(make_uniq<BoundColumnRefExpression>(colref.GetReturnType(), projection_binding));
+	return prune_binding;
+}
+
+//! Plans a lateral join against the top-k rows of a target as a LogicalNearestJoin:
+//!   <left> [LEFT] JOIN LATERAL (SELECT * FROM <target> [WHERE ...] ORDER BY <ranking> LIMIT <k>) ON TRUE
+//! The ranking may reference the left side, the rest of the subquery may not.
+static unique_ptr<LogicalOperator> TryPlanLateralNearestJoin(ClientContext &context, BoundJoinRef &ref,
+                                                             unique_ptr<LogicalOperator> &left,
+                                                             unique_ptr<LogicalOperator> &right) {
+	if (ref.type != JoinType::INNER && ref.type != JoinType::LEFT) {
+		return nullptr;
+	}
+	if (ref.condition && !IsConstantTrue(*ref.condition)) {
+		return nullptr;
+	}
+	if (!ref.left_binder || !ref.left_binder->correlated_columns.empty()) {
+		return nullptr;
+	}
+	for (auto &correlated : ref.correlated_columns) {
+		if (correlated.depth != 1) {
+			return nullptr;
+		}
+	}
+
+	// match PROJECTION (prune) <- LIMIT <- ORDER BY <- PROJECTION [<- FILTER]
+	if (right->type != LogicalOperatorType::LOGICAL_PROJECTION ||
+	    right->children[0]->type != LogicalOperatorType::LOGICAL_LIMIT) {
+		return nullptr;
+	}
+	auto &prune = right->Cast<LogicalProjection>();
+	auto &limit = prune.children[0]->Cast<LogicalLimit>();
+	if (limit.limit_val.Type() != LimitNodeType::CONSTANT_VALUE || limit.offset_val.Type() != LimitNodeType::UNSET ||
+	    limit.limit_val.GetConstantValue() == 0 || limit.children[0]->type != LogicalOperatorType::LOGICAL_ORDER_BY) {
+		return nullptr;
+	}
+	auto &order = limit.children[0]->Cast<LogicalOrder>();
+	if (order.orders.size() != 1 || order.HasProjectionMap() ||
+	    order.children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
+		return nullptr;
+	}
+	auto &order_node = order.orders[0];
+	auto &projection = order.children[0]->Cast<LogicalProjection>();
+	if (order_node.expression->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+		return nullptr;
+	}
+	auto &order_ref = order_node.expression->Cast<BoundColumnRefExpression>();
+	// the ranking is only ordered on, the subquery does not return it
+	const auto ranking_index = projection.expressions.size() - 1;
+	if (order_ref.Depth() != 0 ||
+	    order_ref.Binding() != ColumnBinding(projection.table_index, ProjectionIndex(ranking_index))) {
+		return nullptr;
+	}
+	for (auto &prune_expr : prune.expressions) {
+		if (prune_expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+			return nullptr;
+		}
+		auto &prune_ref = prune_expr->Cast<BoundColumnRefExpression>();
+		if (prune_ref.Depth() != 0 || prune_ref.Binding().table_index != projection.table_index ||
+		    prune_ref.Binding().column_index == ProjectionIndex(ranking_index)) {
+			return nullptr;
+		}
+	}
+
+	// the ranking can reference the left side and the columns of the target
+	auto &ranking = projection.expressions[ranking_index];
+	if (ranking->HasSubquery()) {
+		return nullptr;
+	}
+	unordered_set<TableIndex> left_bindings;
+	LogicalJoin::GetTableReferences(*left, left_bindings);
+	bool valid_ranking = true;
+	ExpressionIterator::VisitExpression<BoundColumnRefExpression>(*ranking, [&](const BoundColumnRefExpression &col) {
+		if (col.Depth() == 1) {
+			valid_ranking &= left_bindings.count(col.Binding().table_index) > 0;
+		} else if (col.Depth() > 1) {
+			valid_ranking = false;
+		}
+	});
+	if (!valid_ranking) {
+		return nullptr;
+	}
+
+	// a "WHERE <ranking> IS NOT NULL" gives the subquery the NULL semantics of NEAREST BY
+	optional_ptr<LogicalFilter> filter;
+	optional_idx not_null_index;
+	if (projection.children[0]->type == LogicalOperatorType::LOGICAL_FILTER) {
+		filter = projection.children[0]->Cast<LogicalFilter>();
+		for (idx_t i = 0; i < filter->expressions.size(); i++) {
+			auto &expr = *filter->expressions[i];
+			if (expr.GetExpressionType() == ExpressionType::OPERATOR_IS_NOT_NULL &&
+			    expr.Cast<BoundOperatorExpression>().GetChildren()[0]->Equals(*ranking)) {
+				not_null_index = i;
+				break;
+			}
+		}
+		if (filter->HasProjectionMap()) {
+			return nullptr;
+		}
+	}
+	const bool include_null_rankings = !not_null_index.IsValid();
+	auto null_order = DBConfig::GetConfig(context).ResolveNullOrder(context, order_node.type, order_node.null_order);
+	if (include_null_rankings && null_order != OrderByNullType::NULLS_LAST) {
+		return nullptr;
+	}
+
+	// apart from the ranking, the subquery must not be correlated
+	for (idx_t i = 0; i < ranking_index; i++) {
+		if (HasCorrelatedColumns(*projection.expressions[i]) || projection.expressions[i]->HasSubquery()) {
+			return nullptr;
+		}
+	}
+	if (filter) {
+		for (idx_t i = 0; i < filter->expressions.size(); i++) {
+			if (not_null_index.IsValid() && i == not_null_index.GetIndex()) {
+				continue;
+			}
+			if (HasCorrelatedColumns(*filter->expressions[i]) || filter->expressions[i]->HasSubquery()) {
+				return nullptr;
+			}
+		}
+	}
+	auto &target_source = filter ? *filter->children[0] : *projection.children[0];
+	if (HasOuterReferences(target_source)) {
+		return nullptr;
+	}
+
+	// rewrite the ranking to refer to the left side and to the columns returned by the target
+	// (the ranking is removed from the projection first, so that added columns do not shift it)
+	auto ranking_expr = std::move(projection.expressions[ranking_index]);
+	projection.expressions.pop_back();
+	ExpressionIterator::VisitExpressionMutable<BoundColumnRefExpression>(
+	    ranking_expr, [&](BoundColumnRefExpression &col, unique_ptr<Expression> &) {
+		    if (col.Depth() == 1) {
+			    col.DepthMutable() = 0;
+		    } else {
+			    col.BindingMutable() = GetPrunedColumn(prune, projection, col);
+		    }
+	    });
+	if (not_null_index.IsValid()) {
+		filter->expressions.erase_at(not_null_index.GetIndex());
+		if (filter->expressions.empty()) {
+			projection.children[0] = std::move(filter->children[0]);
+		}
+	}
+	const auto order_type = order_node.type;
+	const auto nearest_count = limit.limit_val.GetConstantValue();
+	prune.children[0] = std::move(order.children[0]);
+
+	auto join = make_uniq<LogicalNearestJoin>(ref.type, std::move(ranking_expr), nearest_count, order_type, false);
+	join->include_null_rankings = include_null_rankings;
+	join->children.push_back(std::move(left));
+	join->children.push_back(std::move(right));
+	return std::move(join);
+}
+
 unique_ptr<LogicalOperator> LogicalComparisonJoin::CreateJoin(ClientContext &context, JoinType type,
                                                               JoinRefType reftype,
                                                               unique_ptr<LogicalOperator> left_child,
@@ -408,6 +615,10 @@ unique_ptr<LogicalOperator> Binder::CreatePlan(BoundJoinRef &ref) {
 	if (ref.lateral) {
 		if (ref.type == JoinType::MARK) {
 			throw NotImplementedException("Unsupported explicit MARK join conditions");
+		}
+		auto nearest_join = TryPlanLateralNearestJoin(context, ref, left, right);
+		if (nearest_join) {
+			return nearest_join;
 		}
 		auto new_plan = PlanLateralJoin(std::move(left), std::move(right), ref.correlated_columns, ref.type,
 		                                std::move(ref.condition));
