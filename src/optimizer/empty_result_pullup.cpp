@@ -10,7 +10,8 @@ unique_ptr<LogicalOperator> EmptyResultPullup::PullUpEmptyJoinChildren(unique_pt
 	JoinType join_type = JoinType::INVALID;
 	D_ASSERT(op->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN ||
 	         op->type == LogicalOperatorType::LOGICAL_ANY_JOIN || op->type == LogicalOperatorType::LOGICAL_DELIM_JOIN ||
-	         op->type == LogicalOperatorType::LOGICAL_ASOF_JOIN || op->type == LogicalOperatorType::LOGICAL_EXCEPT);
+	         op->type == LogicalOperatorType::LOGICAL_ASOF_JOIN ||
+	         op->type == LogicalOperatorType::LOGICAL_NEAREST_JOIN || op->type == LogicalOperatorType::LOGICAL_EXCEPT);
 	switch (op->type) {
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
 	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
@@ -19,6 +20,9 @@ unique_ptr<LogicalOperator> EmptyResultPullup::PullUpEmptyJoinChildren(unique_pt
 		break;
 	case LogicalOperatorType::LOGICAL_ANY_JOIN:
 		join_type = op->Cast<LogicalAnyJoin>().join_type;
+		break;
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
+		join_type = op->Cast<LogicalJoin>().join_type;
 		break;
 	case LogicalOperatorType::LOGICAL_EXCEPT:
 		join_type = JoinType::ANTI;
@@ -103,6 +107,7 @@ unique_ptr<LogicalOperator> EmptyResultPullup::Optimize(unique_ptr<LogicalOperat
 	case LogicalOperatorType::LOGICAL_ANY_JOIN:
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
 	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
 	case LogicalOperatorType::LOGICAL_COMPARISON_JOIN: {
 		op = PullUpEmptyJoinChildren(std::move(op));
 		break;

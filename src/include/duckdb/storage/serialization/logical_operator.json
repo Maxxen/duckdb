@@ -595,6 +595,41 @@
     ]
   },
   {
+    "class": "LogicalNearestJoin",
+    "base": "LogicalOperator",
+    "enum": "LOGICAL_NEAREST_JOIN",
+    "members": [
+      {
+        "id": 200,
+        "name": "join_type",
+        "type": "JoinType"
+      },
+      {
+        "id": 201,
+        "name": "expressions",
+        "type": "vector<Expression*>"
+      },
+      {
+        "id": 202,
+        "name": "nearest_count",
+        "type": "idx_t"
+      },
+      {
+        "id": 203,
+        "name": "order_type",
+        "type": "OrderType"
+      },
+      {
+        "id": 204,
+        "name": "approx",
+        "type": "bool"
+      }
+    ],
+    "constructor": [
+      "join_type"
+    ]
+  },
+  {
     "class": "LogicalCrossProduct",
     "base": "LogicalOperator",
     "enum": "LOGICAL_CROSS_PRODUCT",

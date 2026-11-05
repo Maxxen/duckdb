@@ -1,0 +1,70 @@
+# name: test/sql/sql_export/nearest_join.test
+# description: NEAREST BY joins round-trip through SQL export
+# group: [sql_export]
+
+statement ok
+CREATE TABLE lnums(id INT, x INT);
+
+statement ok
+INSERT INTO lnums VALUES (1, 10), (2, 20), (3, NULL);
+
+statement ok
+CREATE TABLE rnums(y INT, tag VARCHAR);
+
+statement ok
+INSERT INTO rnums VALUES (11, 'a'), (19, 'b'), (25, 'c'), (100, 'd'), (NULL, 'e');
+
+query TT
+EXPLAIN (SQL) SELECT q.id, t.y FROM lnums q JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y);
+----
+sql	<REGEX>:.*INNER JOIN.*EXACT NEAREST 2 BY DISTANCE.*abs.*
+
+query TT
+EXPLAIN (SQL) SELECT q.id, t.y FROM lnums q LEFT JOIN rnums t APPROX NEAREST 1 BY SIMILARITY t.y;
+----
+sql	<REGEX>:.*LEFT JOIN.*APPROX NEAREST 1 BY SIMILARITY.*
+
+statement ok
+SET debug_verify_statement='explain_sql_strict';
+
+query II
+SELECT q.id, t.y FROM lnums q JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	11
+1	19
+2	19
+2	25
+
+query II
+SELECT q.id, t.y FROM lnums q LEFT JOIN rnums t NEAREST 1 BY DISTANCE abs(q.x - t.y) WHERE q.id > 1 ORDER BY ALL;
+----
+2	19
+3	NULL
+
+query I
+SELECT t.y FROM lnums q JOIN rnums t APPROX NEAREST 1 BY SIMILARITY t.y WHERE q.id = 1;
+----
+100
+
+# Chained NEAREST BY joins
+query III
+SELECT a.id, b.y, c.y FROM lnums a JOIN rnums b NEAREST 1 BY DISTANCE abs(a.x - b.y)
+  JOIN rnums c NEAREST 1 BY DISTANCE abs(b.y - c.y) ORDER BY ALL;
+----
+1	11	11
+2	19	19
+
+# Filtered and joined targets are exported as subqueries
+query II
+SELECT q.id, t.y FROM lnums q JOIN (SELECT * FROM rnums WHERE tag <> 'a') t NEAREST 1 BY DISTANCE abs(q.x - t.y)
+  ORDER BY ALL;
+----
+1	19
+2	19
+
+query II
+SELECT q.id, t.y FROM lnums q JOIN (SELECT r1.y FROM rnums r1, rnums r2 WHERE r1.y = r2.y) t
+  NEAREST 1 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	11
+2	19

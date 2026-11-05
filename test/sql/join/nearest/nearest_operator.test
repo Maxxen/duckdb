@@ -1,0 +1,193 @@
+# name: test/sql/join/nearest/nearest_operator.test
+# description: NEAREST BY joins are planned as a LogicalNearestJoin
+# group: [nearest]
+
+statement ok
+CREATE TABLE lnums(id INT, x INT);
+
+statement ok
+INSERT INTO lnums VALUES (1, 10), (2, 20), (3, NULL);
+
+statement ok
+CREATE TABLE rnums(y INT, tag VARCHAR);
+
+statement ok
+INSERT INTO rnums VALUES (11, 'a'), (19, 'b'), (25, 'c'), (100, 'd'), (NULL, 'e');
+
+statement ok
+CREATE TABLE big AS SELECT range::INT AS y FROM range(1000);
+
+statement ok
+SET explain_output='optimized_only';
+
+# The join survives optimization as a single operator
+query II
+EXPLAIN SELECT q.id, t.y FROM lnums q INNER JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y);
+----
+logical_opt	<REGEX>:.*Nearest Join.*Count: 2.*
+
+# Filters on the left side are pushed below the join
+query II
+EXPLAIN SELECT q.id, t.y FROM lnums q INNER JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y) WHERE q.id = 2;
+----
+logical_opt	<REGEX>:.*Nearest Join.*Filters: id = 2.*
+
+# Filters on the right side stay above the join
+query II
+EXPLAIN SELECT q.id, t.y FROM lnums q INNER JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y) WHERE t.y > 15;
+----
+logical_opt	<REGEX>:.*Filter.*Nearest Join.*
+
+# A target that references the left side is planned as a lateral join instead
+query II
+EXPLAIN SELECT q.id, t.y FROM lnums q JOIN (SELECT * FROM rnums WHERE y > q.x) t NEAREST 1 BY DISTANCE abs(q.x - t.y);
+----
+logical_opt	<!REGEX>:.*Nearest Join.*
+
+statement ok
+SET explain_output='physical_only';
+
+query II
+SELECT q.id, t.y FROM lnums q JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y) WHERE t.y > 15 ORDER BY ALL;
+----
+1	19
+2	19
+2	25
+
+query II
+SELECT q.id, t.y FROM lnums q JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y) WHERE q.id = 2 ORDER BY ALL;
+----
+2	19
+2	25
+
+# Both sides can be the materialized side of the fallback plan
+query II
+SELECT q.id, t.y FROM lnums q JOIN big t NEAREST 2 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	9
+1	10
+2	19
+2	20
+
+query II
+SELECT q.id, t.y FROM lnums q LEFT JOIN big t NEAREST 2 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	9
+1	10
+2	19
+2	20
+3	NULL
+
+query II
+SELECT q.y, t.id FROM big q LEFT JOIN lnums t NEAREST 1 BY DISTANCE abs(q.y - t.x) WHERE q.y < 3 ORDER BY ALL;
+----
+0	1
+1	1
+2	1
+
+query III
+SELECT q.id, t.y, t.tag FROM lnums q LEFT JOIN rnums t NEAREST 2 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	11	a
+1	19	b
+2	19	b
+2	25	c
+3	NULL	NULL
+
+# A NULL-rejecting filter above a LEFT join only keeps the unmatched rows
+query II
+SELECT q.id, t.y FROM lnums q LEFT JOIN rnums t NEAREST 1 BY DISTANCE abs(q.x - t.y) WHERE t.y IS NULL;
+----
+3	NULL
+
+# Correlated targets, correlated rankings and subqueries in the ranking fall back to a lateral join
+query II
+SELECT q.id, t.y FROM lnums q JOIN (SELECT * FROM rnums WHERE y > q.x) t NEAREST 1 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	11
+2	25
+
+query II
+SELECT id, (SELECT t.y FROM (SELECT o.x AS x) q JOIN rnums t NEAREST 1 BY DISTANCE abs(q.x - t.y)) FROM lnums o ORDER BY ALL;
+----
+1	11
+2	19
+3	NULL
+
+query II
+SELECT id, (SELECT max(t.y) FROM rnums q JOIN rnums t NEAREST 1 BY DISTANCE abs(o.x - t.y)) FROM lnums o ORDER BY ALL;
+----
+1	11
+2	19
+3	NULL
+
+query II
+SELECT q.id, t.y FROM lnums q JOIN rnums t NEAREST 1 BY DISTANCE abs(q.x - t.y + (SELECT 0)) ORDER BY ALL;
+----
+1	11
+2	19
+
+# More neighbours requested than there are candidates
+query I
+SELECT count(*) FROM lnums q JOIN rnums t NEAREST 100 BY DISTANCE abs(q.x - t.y);
+----
+8
+
+# Non-numeric ranking
+query II
+SELECT q.id, t.tag FROM lnums q JOIN rnums t NEAREST 1 BY SIMILARITY t.tag ORDER BY ALL;
+----
+1	e
+2	e
+3	e
+
+# Hidden columns of the target are accessible
+query II
+SELECT q.id, t.rowid FROM lnums q JOIN rnums t NEAREST 1 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	0
+2	1
+
+# No target columns are needed
+query I
+SELECT count(*) FROM lnums q JOIN rnums t NEAREST 2 BY DISTANCE q.x;
+----
+4
+
+query I
+SELECT count(*) FROM lnums q LEFT JOIN rnums t NEAREST 2 BY DISTANCE q.x;
+----
+5
+
+# Chained NEAREST BY joins
+query III
+SELECT a.id, b.y, c.y FROM lnums a JOIN rnums b NEAREST 1 BY DISTANCE abs(a.x - b.y)
+  JOIN big c NEAREST 1 BY DISTANCE abs(b.y - c.y) ORDER BY ALL;
+----
+1	11	11
+2	19	19
+
+query II
+WITH cte AS (SELECT * FROM rnums) SELECT q.id, t.y FROM lnums q JOIN cte t NEAREST 1 BY DISTANCE abs(q.x - t.y) ORDER BY ALL;
+----
+1	11
+2	19
+
+query I
+SELECT count(*) FROM (SELECT * FROM lnums WHERE false) q LEFT JOIN rnums t NEAREST 1 BY DISTANCE abs(q.x - t.y);
+----
+0
+
+# Duplicate left rows each get their own neighbours
+query II
+SELECT q.x, t.y FROM (SELECT 10 AS x FROM range(3)) q JOIN rnums t NEAREST 1 BY DISTANCE abs(q.x - t.y);
+----
+10	11
+10	11
+10	11
+
+# Aggregates are not allowed in the ranking expression
+statement error
+SELECT 1 FROM lnums q JOIN rnums t NEAREST 1 BY DISTANCE sum(t.y);
+----
+Aggregate functions are not supported here

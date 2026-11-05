@@ -127,6 +127,8 @@ unique_ptr<LogicalOperator> FilterPushdown::Rewrite(unique_ptr<LogicalOperator> 
 	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
 		return PushdownJoin(std::move(op));
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
+		return PushdownNearestJoin(std::move(op));
 	case LogicalOperatorType::LOGICAL_PROJECTION:
 		return PushdownProjection(std::move(op));
 	case LogicalOperatorType::LOGICAL_INTERSECT:

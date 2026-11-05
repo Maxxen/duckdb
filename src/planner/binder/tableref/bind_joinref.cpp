@@ -17,6 +17,7 @@
 #include "duckdb/planner/expression_binder/lateral_binder.hpp"
 #include "duckdb/planner/query_node/bound_select_node.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
+#include "duckdb/planner/operator/logical_nearest_join.hpp"
 
 namespace duckdb {
 
@@ -151,8 +152,8 @@ static Identifier GetNearestTargetAlias(const TableRef &target) {
 	return Identifier();
 }
 
-BoundStatement Binder::BindNearestJoin(JoinRef &ref) {
-	// NEAREST BY is sugar for a lateral join against the top-k rows of the target:
+BoundStatement Binder::BindLateralNearestJoin(JoinRef &ref) {
+	// A NEAREST BY join is equivalent to a lateral join against the top-k rows of the target:
 	//   <left> JOIN (SELECT * FROM <target> WHERE <ranking> IS NOT NULL
 	//                ORDER BY <ranking> LIMIT <k>) <target_alias> ON TRUE
 	auto select_node = make_uniq<SelectNode>();
@@ -183,6 +184,60 @@ BoundStatement Binder::BindNearestJoin(JoinRef &ref) {
 	lateral_join->condition = ConstantExpression::Boolean(true);
 	lateral_join->query_location = ref.query_location;
 	return Bind(*lateral_join);
+}
+
+BoundStatement Binder::BindNearestJoin(JoinRef &ref) {
+	// Correlated NEAREST BY joins cannot be planned as a LogicalNearestJoin, bind those as a lateral join instead
+	auto lateral_ref = unique_ptr_cast<TableRef, JoinRef>(ref.Copy());
+	lateral_ref->query_location = ref.query_location;
+	auto initial_unnamed_subquery_index = unnamed_subquery_index;
+	auto bind_lateral = [&]() {
+		unnamed_subquery_index = initial_unnamed_subquery_index;
+		return BindLateralNearestJoin(*lateral_ref);
+	};
+
+	auto left_binder = Binder::CreateBinder(context, this);
+	auto right_binder = Binder::CreateBinder(context, this);
+	auto left = left_binder->BindJoin(*this, *ref.left);
+	BoundStatement right;
+	{
+		LateralBinder lateral_binder(*left_binder, context);
+		right_binder->BeginSubqueryBind(*left_binder, lateral_binder);
+		right = right_binder->BindJoin(*this, *ref.right);
+		right_binder->FinishSubqueryBind();
+	}
+	if (!left_binder->correlated_columns.empty() || !right_binder->correlated_columns.empty()) {
+		return bind_lateral();
+	}
+	if (ref.type == JoinType::LEFT) {
+		for (auto &binding : right_binder->bind_context.GetBindingsList()) {
+			binding->SetNullExtended();
+		}
+	}
+
+	// Bind the ranking expression in a separate binder so we can still fall back if it turns out to be correlated
+	auto ranking_binder = Binder::CreateBinder(context, this);
+	ranking_binder->bind_context.AddContext(std::move(left_binder->bind_context));
+	ranking_binder->bind_context.AddContext(std::move(right_binder->bind_context));
+	ExpressionBinder ranking_expr_binder(*ranking_binder, context);
+	auto ranking = ranking_expr_binder.Bind(ref.ranking_expression);
+	if (!ranking_binder->correlated_columns.empty() || ranking->HasSubquery()) {
+		return bind_lateral();
+	}
+	bind_context.AddContext(std::move(ranking_binder->bind_context));
+
+	auto join = make_uniq<LogicalNearestJoin>(ref.type, std::move(ranking), ref.nearest_count, ref.nearest_order_type,
+	                                          ref.nearest_approx);
+	join->children.push_back(std::move(left.plan));
+	join->children.push_back(std::move(right.plan));
+
+	BoundStatement result;
+	result.types = std::move(left.types);
+	result.types.insert(result.types.end(), right.types.begin(), right.types.end());
+	result.names = std::move(left.names);
+	result.names.insert(result.names.end(), right.names.begin(), right.names.end());
+	result.plan = std::move(join);
+	return result;
 }
 
 BoundStatement Binder::Bind(JoinRef &ref) {

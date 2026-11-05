@@ -243,6 +243,15 @@ static optional<RelationStats> ExtractCrossProductStats(LogicalOperator &op,
 	return ProjectChildStats(op, child_stats, cardinality);
 }
 
+static optional<RelationStats> ExtractNearestJoinStats(LogicalNearestJoin &join,
+                                                       const vector<reference<const RelationStats>> &child_stats) {
+	if (child_stats.size() != 2) {
+		return {};
+	}
+	auto cardinality = join.GetCardinality(child_stats[0].get().cardinality, child_stats[1].get().cardinality);
+	return ProjectChildStats(join, child_stats, cardinality);
+}
+
 static idx_t AddDistinctCounts(idx_t left, idx_t right) {
 	idx_t result;
 	if (!TryAddOperator::Operation(left, right, result)) {
@@ -392,6 +401,8 @@ RelationStatisticsHelper::ExtractOperatorStats(LogicalOperator &op, ClientContex
 		return ExtractComparisonJoinStats(op.Cast<LogicalComparisonJoin>(), child_stats);
 	case LogicalOperatorType::LOGICAL_CROSS_PRODUCT:
 		return ExtractCrossProductStats(op, child_stats);
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
+		return ExtractNearestJoinStats(op.Cast<LogicalNearestJoin>(), child_stats);
 	case LogicalOperatorType::LOGICAL_UNION:
 	case LogicalOperatorType::LOGICAL_INTERSECT:
 	case LogicalOperatorType::LOGICAL_EXCEPT:

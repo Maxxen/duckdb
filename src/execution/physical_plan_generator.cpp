@@ -119,6 +119,8 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlanInternal(LogicalOperator &op)
 		return CreatePlan(op.Cast<LogicalCrossProduct>());
 	case LogicalOperatorType::LOGICAL_POSITIONAL_JOIN:
 		return CreatePlan(op.Cast<LogicalPositionalJoin>());
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
+		return CreatePlan(op.Cast<LogicalNearestJoin>());
 	case LogicalOperatorType::LOGICAL_UNION:
 	case LogicalOperatorType::LOGICAL_EXCEPT:
 	case LogicalOperatorType::LOGICAL_INTERSECT:

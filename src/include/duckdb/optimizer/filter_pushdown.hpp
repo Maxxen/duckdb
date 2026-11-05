@@ -76,6 +76,8 @@ private:
 	unique_ptr<LogicalOperator> PushdownCrossProduct(unique_ptr<LogicalOperator> op);
 	//! Push down a join operator
 	unique_ptr<LogicalOperator> PushdownJoin(unique_ptr<LogicalOperator> op);
+	//! Push down a LogicalNearestJoin op
+	unique_ptr<LogicalOperator> PushdownNearestJoin(unique_ptr<LogicalOperator> op);
 	//! Push down a LogicalProjection op
 	unique_ptr<LogicalOperator> PushdownProjection(unique_ptr<LogicalOperator> op);
 	//! Split a projection so filters can reuse computed outputs without forcing all expressions to be evaluated early

@@ -12,6 +12,7 @@ add_library_unity(
   filter_pushdown_alias.cpp
   function_invocation_serialization.cpp
   join_filter_optimizer_hooks.cpp
+  nearest_join_optimizer_hooks.cpp
   join_order_conflict_detector.cpp
   join_order_enumeration.cpp
   logical_plan_verification.cpp

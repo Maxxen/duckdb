@@ -249,6 +249,7 @@ static bool OperatorIsNonReorderable(const LogicalOperator &op) {
 	case LogicalOperatorType::LOGICAL_INTERSECT:
 	case LogicalOperatorType::LOGICAL_ANY_JOIN:
 	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
 	// DML operators have side effects and must never be reordered away or passed through (a correlated
 	// trigger body can place an INSERT/UPDATE/DELETE mid-plan, as a cross-product child for example).
 	case LogicalOperatorType::LOGICAL_INSERT:

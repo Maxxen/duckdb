@@ -152,6 +152,9 @@ unique_ptr<LogicalOperator> LogicalOperator::Deserialize(Deserializer &deseriali
 	case LogicalOperatorType::LOGICAL_MERGE_INTO:
 		result = LogicalMergeInto::Deserialize(deserializer);
 		break;
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
+		result = LogicalNearestJoin::Deserialize(deserializer);
+		break;
 	case LogicalOperatorType::LOGICAL_ORDER_BY:
 		result = LogicalOrder::Deserialize(deserializer);
 		break;
@@ -736,6 +739,25 @@ unique_ptr<LogicalOperator> LogicalMergeInto::Deserialize(Deserializer &deserial
 	deserializer.ReadPropertyWithDefault<map<MergeActionCondition, vector<unique_ptr<BoundMergeIntoAction>>>>(205, "actions", result->actions);
 	deserializer.ReadPropertyWithDefault<bool>(206, "return_chunk", result->return_chunk);
 	deserializer.ReadPropertyWithDefault<vector<idx_t>>(207, "delete_return_columns", result->delete_return_columns);
+	return std::move(result);
+}
+
+void LogicalNearestJoin::Serialize(Serializer &serializer) const {
+	LogicalOperator::Serialize(serializer);
+	serializer.WriteProperty<JoinType>(200, "join_type", join_type);
+	serializer.WritePropertyWithDefault<vector<unique_ptr<Expression>>>(201, "expressions", expressions);
+	serializer.WritePropertyWithDefault<idx_t>(202, "nearest_count", nearest_count);
+	serializer.WriteProperty<OrderType>(203, "order_type", order_type);
+	serializer.WritePropertyWithDefault<bool>(204, "approx", approx);
+}
+
+unique_ptr<LogicalOperator> LogicalNearestJoin::Deserialize(Deserializer &deserializer) {
+	auto join_type = deserializer.ReadProperty<JoinType>(200, "join_type");
+	auto result = duckdb::unique_ptr<LogicalNearestJoin>(new LogicalNearestJoin(join_type));
+	deserializer.ReadPropertyWithDefault<vector<unique_ptr<Expression>>>(201, "expressions", result->expressions);
+	deserializer.ReadPropertyWithDefault<idx_t>(202, "nearest_count", result->nearest_count);
+	deserializer.ReadProperty<OrderType>(203, "order_type", result->order_type);
+	deserializer.ReadPropertyWithDefault<bool>(204, "approx", result->approx);
 	return std::move(result);
 }
 

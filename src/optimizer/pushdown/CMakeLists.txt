@@ -10,6 +10,7 @@ add_library_unity(
   pushdown_limit.cpp
   pushdown_left_join.cpp
   pushdown_mark_join.cpp
+  pushdown_nearest_join.cpp
   pushdown_outer_join.cpp
   pushdown_projection.cpp
   pushdown_secure_view.cpp

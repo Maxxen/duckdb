@@ -153,6 +153,14 @@ void ColumnBindingResolver::VisitOperator(LogicalOperator &op) {
 		types = op.types;
 		return;
 	}
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN: {
+		// the ranking expression is evaluated on the bindings of both join sides
+		VisitOperatorChildren(op);
+		bindings = op.GetColumnBindings();
+		types = op.types;
+		VisitOperatorExpressions(op);
+		return;
+	}
 	case LogicalOperatorType::LOGICAL_CREATE_INDEX: {
 		// CREATE INDEX statement, add the columns of the table with table index 0 to the binding set
 		// afterwards bind the expressions of the CREATE INDEX statement

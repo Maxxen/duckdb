@@ -100,6 +100,7 @@ unique_ptr<NodeStatistics> StatisticsPropagator::PropagateStatistics(LogicalOper
 	case LogicalOperatorType::LOGICAL_COMPARISON_JOIN:
 	case LogicalOperatorType::LOGICAL_JOIN:
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN:
 		result = PropagateStatistics(node.Cast<LogicalJoin>(), node_ptr);
 		break;
 	case LogicalOperatorType::LOGICAL_LIMIT:

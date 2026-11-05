@@ -8,6 +8,7 @@
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
+#include "duckdb/planner/operator/logical_nearest_join.hpp"
 #include "duckdb/planner/sql_export_helpers.hpp"
 
 namespace duckdb {
@@ -157,6 +158,11 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 			left_plain = nullptr;
 		}
 	}
+	if (right_plain && op.type == LogicalOperatorType::LOGICAL_NEAREST_JOIN &&
+	    right_plain->from_table->type == TableReferenceType::JOIN) {
+		// the target of a NEAREST BY join is a single table reference
+		right_plain = nullptr;
+	}
 	if (right_plain) {
 		LogicalPlanSQLExportHelpers::CollectScopeAliases(*right_plain->from_table, right_aliases);
 		if (right_aliases.count(left.GetValue().relation_alias)) {
@@ -185,11 +191,26 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 		if (op.type == LogicalOperatorType::LOGICAL_ASOF_JOIN) {
 			join->ref_type = JoinRefType::ASOF;
 		}
-		auto condition = ExportJoinCondition(*logical_join, context, expression_context, path);
-		if (condition.HasError()) {
-			return LogicalPlanSQLExportResult::Failure(condition);
+		if (op.type == LogicalOperatorType::LOGICAL_NEAREST_JOIN) {
+			auto &nearest = op.Cast<LogicalNearestJoin>();
+			auto expressions = LogicalPlanSQLExportHelpers::CollectExpressions(op);
+			auto ranking = context.ExportExpression(op, expressions, 0, expression_context, path);
+			if (ranking.HasError()) {
+				return LogicalPlanSQLExportResult::Failure(ranking);
+			}
+			join->ref_type = JoinRefType::NEAREST;
+			join->ranking_expression = std::move(ranking.GetValue());
+			join->nearest_count = nearest.nearest_count;
+			join->nearest_order_type = nearest.order_type;
+			join->nearest_approx = nearest.approx;
 		}
-		join->condition = std::move(condition.GetValue());
+		if (join->ref_type != JoinRefType::NEAREST) {
+			auto condition = ExportJoinCondition(*logical_join, context, expression_context, path);
+			if (condition.HasError()) {
+				return LogicalPlanSQLExportResult::Failure(condition);
+			}
+			join->condition = std::move(condition.GetValue());
+		}
 	}
 	auto select = make_uniq<SelectNode>();
 	for (auto &field : fields.GetValue()) {
@@ -222,7 +243,7 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 LogicalPlanVerificationResult<LogicalPlanSQLExportRelation>
 LogicalJoin::ToSQL(LogicalPlanSQLExportContext &context, const LogicalPlanVerificationPath &path) {
 	if (type != LogicalOperatorType::LOGICAL_COMPARISON_JOIN && type != LogicalOperatorType::LOGICAL_ANY_JOIN &&
-	    type != LogicalOperatorType::LOGICAL_ASOF_JOIN) {
+	    type != LogicalOperatorType::LOGICAL_ASOF_JOIN && type != LogicalOperatorType::LOGICAL_NEAREST_JOIN) {
 		return LogicalOperator::ToSQL(context, path);
 	}
 	return ExportJoin(*this, context, path);

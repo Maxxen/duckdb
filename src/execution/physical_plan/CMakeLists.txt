@@ -29,6 +29,7 @@ add_library_unity(
   plan_merge_into.cpp
   plan_order.cpp
   plan_pivot.cpp
+  plan_nearest_join.cpp
   plan_positional_join.cpp
   plan_pragma.cpp
   plan_prepare.cpp
