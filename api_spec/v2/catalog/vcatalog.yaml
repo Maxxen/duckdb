@@ -1,0 +1,754 @@
+module: vcatalog
+#
+# Implementing a database type of your own: one that `ATTACH` can open, whose catalog and transactions are provided by
+# callbacks instead of by DuckDB's storage. A vcatalog is built with the setters below and registered on an instance
+# under a name, after which `ATTACH '<path>' (TYPE <name>)` attaches a database of that type.
+#
+# State lives at three levels, each an opaque pointer bundled with an optional destructor:
+#   - The user data, set on the vcatalog and shared by every database attached with it. It lives as long as the
+#     instance does.
+#   - The catalog state, set by the attach callback for one attached database. It is destroyed when the database is
+#     detached, after every transaction state of that database.
+#   - The transaction state, set by the begin callback for one transaction on one attached database. It is destroyed
+#     once that transaction has been committed or rolled back.
+#
+# DuckDB begins a transaction on an attached database the first time a transaction touches it, and commits or rolls it
+# back together with the rest of the transaction. What a transaction means for the backing store is up to the
+# implementation: the callbacks only tell it when to begin, commit and roll back. A transaction writes to at most one
+# attached database, so a commit needs no coordination with the other databases the transaction read from.
+#
+# The transaction state may be used by several threads of one query at once, e.g. by a parallel scan, so the
+# implementation must synchronize its own access to it.
+#
+# Registration is not transactional: a registered vcatalog lives for as long as the instance does.
+
+#-----------------------------------------------------------------------------------------------------------------------
+# Handles
+#-----------------------------------------------------------------------------------------------------------------------
+handles:
+  vcatalog:
+    description: |
+      An owned opaque handle to a vcatalog being built. Created with `[[vcatalog_create]]`, configured with
+      `[[vcatalog_set_name]]`, `[[vcatalog_set_attach_callback]]` and the other setters, made available with
+      `[[connection_register_vcatalog]]` or `[[extension_register_vcatalog]]`, and destroyed with
+      `[[vcatalog_destroy]]`.
+
+  vcatalog_attach_info:
+    description: |
+      A borrowed opaque handle to a database being attached, received by the attach callback and valid only for the
+      duration of that call. It gives access to the name, path and options of the `ATTACH` and to the user data, and
+      sets the catalog state of the database.
+
+  vcatalog_transaction_begin_info:
+    description: |
+      A borrowed opaque handle to a transaction beginning on an attached database, received by the begin callback and
+      valid only for the duration of that call. It gives access to the user data and the catalog state, and sets the
+      transaction state.
+
+  vcatalog_transaction_commit_info:
+    description: |
+      A borrowed opaque handle to a transaction committing on an attached database, received by the commit callback
+      and valid only for the duration of that call. It gives access to the user data, the catalog state and the
+      transaction state.
+
+  vcatalog_transaction_rollback_info:
+    description: |
+      A borrowed opaque handle to a transaction rolling back on an attached database, received by the rollback
+      callback and valid only for the duration of that call. It gives access to the user data, the catalog state and
+      the transaction state.
+
+#-----------------------------------------------------------------------------------------------------------------------
+# Callbacks
+#-----------------------------------------------------------------------------------------------------------------------
+callbacks:
+  vcatalog_attach_callback:
+    parameters:
+      info:
+        type: vcatalog_attach_info
+        description: Borrowed opaque handle to the database being attached.
+      context:
+        type: context
+        description: Borrowed handle to the context of the connection running the `ATTACH`.
+      err:
+        type: error_info
+        indirection: 1
+        description: |
+          Borrowed error info handle to use to report errors that occur during the callback. Reporting an error fails
+          the `ATTACH`.
+    return_type: void
+
+  vcatalog_transaction_begin_callback:
+    parameters:
+      info:
+        type: vcatalog_transaction_begin_info
+        description: Borrowed opaque handle to the beginning transaction.
+      err:
+        type: error_info
+        indirection: 1
+        description: |
+          Borrowed error info handle to use to report errors that occur during the callback. Reporting an error fails
+          the statement that touched the database.
+    return_type: void
+
+  vcatalog_transaction_commit_callback:
+    parameters:
+      info:
+        type: vcatalog_transaction_commit_info
+        description: Borrowed opaque handle to the committing transaction.
+      err:
+        type: error_info
+        indirection: 1
+        description: |
+          Borrowed error info handle to use to report errors that occur during the callback. Reporting an error fails
+          the commit, after which the transaction is rolled back.
+    return_type: void
+
+  vcatalog_transaction_rollback_callback:
+    parameters:
+      info:
+        type: vcatalog_transaction_rollback_info
+        description: Borrowed opaque handle to the transaction rolling back.
+      err:
+        type: error_info
+        indirection: 1
+        description: |
+          Borrowed error info handle to use to report errors that occur during the callback. A reported error is
+          passed on, but does not stop the transaction from ending.
+    return_type: void
+
+#-----------------------------------------------------------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------------------------------------------------------
+functions:
+  #---------------------------------------------------------------------------------------------------------------------
+  # Constructors
+  #---------------------------------------------------------------------------------------------------------------------
+  vcatalog_create:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Creates a new vcatalog through a factory.
+
+      The vcatalog starts out empty: configure it with the setter functions, then make it available with
+      `[[connection_register_vcatalog]]` or `[[extension_register_vcatalog]]`. The caller owns the returned handle and
+      must destroy it with `[[vcatalog_destroy]]`, also after registration.
+
+      The vcatalog can only be registered on the instance the factory belongs to.
+    role: constructor
+    belongs_to: vcatalog
+    parameters:
+      factory:
+        type: factory
+        description: The factory to create the vcatalog through.
+      vcatalog:
+        type: vcatalog
+        indirection: 1
+        kind: OUT
+        description: On success, receives the newly created vcatalog. Owned by the caller.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_destroy:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Destroys the vcatalog, releasing its resources.
+
+      Null-safe: passing a null pointer or null handle is a no-op. The handle is set to null on return to prevent
+      double-destruction. Destroying the handle after registration does not affect the registered vcatalog.
+    parameters:
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to destroy.
+        indirection: 1
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Properties
+  #---------------------------------------------------------------------------------------------------------------------
+  vcatalog_set_name:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets the name of the database type, as `ATTACH '<path>' (TYPE <name>)` refers to it.
+
+      Names are matched case-insensitively. A name of at least two characters, all alphanumeric or underscores, can
+      also be given as a path prefix: `ATTACH '<name>:<path>'`. The name is borrowed and copied. Calling this again
+      replaces the previous name. A name must be set before registration.
+    parameters:
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to set the name of.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        kind: IN
+        description: The name to set. Borrowed and copied.
+      name_length:
+        type: idx
+        description: The length of `name` in bytes. `name` must be valid UTF-8, need not be null-terminated, and may be NULL only when this is 0.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_set_user_data:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets arbitrary user data on the vcatalog.
+
+      Associates an opaque pointer with the vcatalog, retrievable from each of its callbacks through their info
+      handles, e.g. via `[[vcatalog_attach_get_user_data]]`. Every database attached with the vcatalog shares it, so
+      the callbacks must synchronize their own access to it. The opaque handle bundles the pointer with an optional
+      destructor, invoked when the data is no longer needed: once the vcatalog handle is destroyed and, if it was
+      registered, the instance is too.
+    parameters:
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to set the user data of.
+      data:
+        type: opaque
+        indirection: 1
+        description: Opaque handle bundling the user data pointer plus an optional destructor.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_set_attach_callback:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets the attach callback of the vcatalog, invoked once for every `ATTACH` of a database of its type.
+
+      The callback reads the path and options of the `ATTACH` through the attach info, opens what the database needs,
+      and sets the catalog state the other callbacks of the database receive, via `[[vcatalog_attach_set_catalog_state]]`.
+      Reporting an error fails the `ATTACH`. So does an option the callback did not read, which is reported as
+      unrecognized. An attach callback must be set before registration.
+    parameters:
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to set the attach callback of.
+      callback:
+        type: vcatalog_attach_callback
+        description: The attach callback to set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_set_transaction_begin_callback:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets the optional begin callback of the vcatalog, invoked when a transaction first touches a database of its
+      type.
+
+      A transaction touches a database the first time it looks up, reads or writes anything in it, or at `BEGIN` for
+      every attached database when `immediate_transaction_mode` is set. The callback runs while DuckDB holds the lock
+      of the transaction, so it receives no context and must return quickly: set the transaction state via
+      `[[vcatalog_transaction_begin_set_transaction_state]]`, and defer work on the backing store, such as beginning
+      a transaction of its own, to the first callback that needs it.
+
+      Reporting an error fails the statement that touched the database. Neither the commit nor the rollback callback is
+      then invoked for the transaction, and a transaction state set before the error is destroyed.
+
+      Without a begin callback, transactions on the database have no transaction state.
+    parameters:
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to set the begin callback of.
+      callback:
+        type: vcatalog_transaction_begin_callback
+        description: The begin callback to set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_set_transaction_commit_callback:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets the optional commit callback of the vcatalog, invoked when a transaction that began on a database of its
+      type commits: at `COMMIT`, or at the end of a statement in auto-commit mode.
+
+      The callback receives no context: the connection's transaction has already ended when its databases commit.
+      Reporting an error fails the commit. The rollback callback is then invoked for the same transaction, and the
+      error is reported to the client. A transaction spanning several attached databases commits them one after the
+      other; once one of them fails, the remaining ones are rolled back instead of committed.
+
+      The transaction state is destroyed after the transaction ends, whether it committed or not.
+    parameters:
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to set the commit callback of.
+      callback:
+        type: vcatalog_transaction_commit_callback
+        description: The commit callback to set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_set_transaction_rollback_callback:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets the optional rollback callback of the vcatalog, invoked when a transaction that began on a database of its
+      type ends without committing.
+
+      That is at `ROLLBACK`; at `COMMIT` of a transaction a failed statement invalidated; at the end of a failed
+      statement in auto-commit mode; after the commit of this or another attached database failed; and when the
+      connection closes with the transaction still open. A statement that fails inside an explicit transaction only
+      invalidates the transaction: the callback is invoked once the transaction ends.
+
+      The callback runs on cleanup paths, so it receives no context, and an error it reports is passed on but does not
+      stop the transaction from ending. After a failed commit it is invoked for the same transaction, so it must cope
+      with a transaction of the backing store that the failed commit already ended.
+
+      The transaction state is destroyed after the callback returns.
+    parameters:
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to set the rollback callback of.
+      callback:
+        type: vcatalog_transaction_rollback_callback
+        description: The rollback callback to set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Attach Info
+  #---------------------------------------------------------------------------------------------------------------------
+  vcatalog_attach_get_user_data:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the user data set via `[[vcatalog_set_user_data]]`.
+    parameters:
+      info:
+        type: vcatalog_attach_info
+        description: The attach info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_attach_get_name:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Retrieves the name the database is attached under: the alias of `ATTACH ... AS <alias>`, or else the name DuckDB
+      derived from the path. The name is borrowed and valid only for the duration of the callback.
+    parameters:
+      info:
+        type: vcatalog_attach_info
+        description: The attach info handle.
+      name:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Receives a borrowed pointer to the name. Valid only for the duration of the callback.
+      name_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the length of `*name` in bytes. `*name` is not guaranteed to be null-terminated.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_attach_get_path:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Retrieves the path the database is attached from, as given to `ATTACH`, with a leading `<name>:` prefix removed.
+      What the path means is up to the vcatalog: a file, a connection string, a URL. The path is borrowed and valid
+      only for the duration of the callback.
+    parameters:
+      info:
+        type: vcatalog_attach_info
+        description: The attach info handle.
+      path:
+        type: char
+        indirection: 2
+        const: true
+        kind: OUT_BORROW
+        description: Receives a borrowed pointer to the path. Valid only for the duration of the callback.
+      path_length:
+        type: idx
+        indirection: 1
+        kind: OUT
+        description: Receives the length of `*path` in bytes. `*path` is not guaranteed to be null-terminated.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_attach_is_read_only:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Retrieves whether the database is attached read-only: with the `READ_ONLY` option, or because the access mode of
+      the instance is read-only.
+    parameters:
+      info:
+        type: vcatalog_attach_info
+        description: The attach info handle.
+      read_only:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives whether the database is attached read-only.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_attach_get_option:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Retrieves the value of an option given to `ATTACH`, e.g. `ATTACH '<path>' (TYPE <name>, <option> <value>)`.
+
+      Option names are matched case-insensitively. The options DuckDB interprets itself, such as `TYPE` and
+      `READ_ONLY`, are not visible here. Retrieving an option marks it as recognized: an option no call retrieves fails
+      the `ATTACH` once the attach callback returns. An option that was not given has no value: `present` then
+      receives false and `value` is left untouched.
+    parameters:
+      info:
+        type: vcatalog_attach_info
+        description: The attach info handle.
+      name:
+        type: char
+        indirection: 1
+        const: true
+        kind: IN
+        description: The name of the option. Borrowed for the duration of the call.
+      name_length:
+        type: idx
+        description: The length of `name` in bytes. `name` must be valid UTF-8, need not be null-terminated, and may be NULL only when this is 0.
+      value:
+        type: value
+        indirection: 1
+        kind: OUT
+        description: Receives the value of the option, if present. Owned by the caller; destroy via `[[value_destroy]]`.
+      present:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives whether the option was given.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_attach_set_catalog_state:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets the catalog state of the database being attached.
+
+      The catalog state is retrievable from every other callback of the database through their info handles, e.g. via
+      `[[vcatalog_transaction_begin_get_catalog_state]]`. Every connection using the database shares it, so the
+      callbacks must synchronize their own access to it. The opaque handle bundles the pointer with an optional
+      destructor, invoked when the database is detached, after every transaction state of the database was destroyed,
+      or right away if the `ATTACH` fails. Calling this again replaces the previous state, destroying it.
+    parameters:
+      info:
+        type: vcatalog_attach_info
+        description: The attach info handle.
+      data:
+        type: opaque
+        indirection: 1
+        description: Opaque handle bundling the catalog state pointer plus an optional destructor.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Transaction Begin Info
+  #---------------------------------------------------------------------------------------------------------------------
+  vcatalog_transaction_begin_get_user_data:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the user data set via `[[vcatalog_set_user_data]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_begin_info
+        description: The begin info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_transaction_begin_get_catalog_state:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the catalog state set via `[[vcatalog_attach_set_catalog_state]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_begin_info
+        description: The begin info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the catalog state pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_transaction_begin_is_read_only:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Retrieves whether the transaction cannot write to the database: because the database is attached read-only, or
+      because the transaction was started with `BEGIN TRANSACTION READ ONLY`. A transaction that can write need not.
+    parameters:
+      info:
+        type: vcatalog_transaction_begin_info
+        description: The begin info handle.
+      read_only:
+        type: bool
+        indirection: 1
+        kind: OUT
+        description: Receives whether the transaction is read-only.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_transaction_begin_set_transaction_state:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Sets the transaction state of the beginning transaction.
+
+      The transaction state is retrievable from every later callback of the transaction through their info handles,
+      e.g. via `[[vcatalog_transaction_commit_get_transaction_state]]`. The opaque handle bundles the pointer with an
+      optional destructor, invoked once the transaction has ended, after the commit or rollback callback returned, or
+      right away if the begin callback fails. Calling this again replaces the previous state, destroying it.
+    parameters:
+      info:
+        type: vcatalog_transaction_begin_info
+        description: The begin info handle.
+      data:
+        type: opaque
+        indirection: 1
+        description: Opaque handle bundling the transaction state pointer plus an optional destructor.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Transaction Commit Info
+  #---------------------------------------------------------------------------------------------------------------------
+  vcatalog_transaction_commit_get_user_data:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the user data set via `[[vcatalog_set_user_data]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_commit_info
+        description: The commit info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_transaction_commit_get_catalog_state:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the catalog state set via `[[vcatalog_attach_set_catalog_state]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_commit_info
+        description: The commit info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the catalog state pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_transaction_commit_get_transaction_state:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the transaction state set via `[[vcatalog_transaction_begin_set_transaction_state]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_commit_info
+        description: The commit info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the transaction state pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Transaction Rollback Info
+  #---------------------------------------------------------------------------------------------------------------------
+  vcatalog_transaction_rollback_get_user_data:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the user data set via `[[vcatalog_set_user_data]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_rollback_info
+        description: The rollback info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the user data pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_transaction_rollback_get_catalog_state:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the catalog state set via `[[vcatalog_attach_set_catalog_state]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_rollback_info
+        description: The rollback info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the catalog state pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  vcatalog_transaction_rollback_get_transaction_state:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: Retrieves the transaction state set via `[[vcatalog_transaction_begin_set_transaction_state]]`.
+    parameters:
+      info:
+        type: vcatalog_transaction_rollback_info
+        description: The rollback info handle.
+      data:
+        type: void
+        indirection: 2
+        kind: OUT
+        description: Receives the transaction state pointer, or null if none was set.
+      err:
+        type: error_info
+        indirection: 1
+        description: Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`.
+    return_type: ERROR
+
+  #---------------------------------------------------------------------------------------------------------------------
+  # Register
+  #---------------------------------------------------------------------------------------------------------------------
+  connection_register_vcatalog:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Registers the vcatalog on the connection's instance, making its name available as a database type to `ATTACH`
+      on every connection.
+
+      Registration is not transactional: it takes effect at once, also inside an explicit transaction, and a rollback
+      does not undo it. Registration requires a name and an attach callback, and fails when a database type of the
+      same name is already registered. The vcatalog must have been created through a factory of the same instance.
+      Its user data passes to the registered vcatalog. The caller still owns the handle after registration and must
+      destroy it with `[[vcatalog_destroy]]`, which does not affect the registered vcatalog.
+    role: method
+    belongs_to: connection
+    parameters:
+      conn:
+        type: connection
+        description: The connection to register on.
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to register.
+      err:
+        type: error_info
+        indirection: 1
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`."
+    return_type: ERROR
+
+  extension_register_vcatalog:
+    lifecycle:
+      - [ "unstable", "v2.0.0", "2026-11-04" ]
+    description: |
+      Registers the vcatalog on the loading extension's instance, making its name available as a database type to
+      `ATTACH` on every connection.
+
+      Use this from the extension's load callback. Registration follows the rules of
+      `[[connection_register_vcatalog]]`.
+    role: method
+    belongs_to: extension
+    parameters:
+      extension:
+        type: extension
+        description: The loading extension.
+      vcatalog:
+        type: vcatalog
+        description: The vcatalog to register.
+      err:
+        type: error_info
+        indirection: 1
+        description: "Optional. On failure, receives an opaque info handle the caller must destroy via `[[error_info_destroy]]`."
+    return_type: ERROR
