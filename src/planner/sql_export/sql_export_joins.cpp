@@ -8,6 +8,7 @@
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
+#include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/result_modifier.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/planner/logical_operator.hpp"
@@ -162,9 +163,18 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 			left_plain = nullptr;
 		}
 	}
-	// NEAREST BY joins that include NULL rankings are exported as a lateral join against the top-k rows of the target
-	const bool export_as_lateral =
-	    op.type == LogicalOperatorType::LOGICAL_NEAREST_JOIN && op.Cast<LogicalNearestJoin>().include_null_rankings;
+	// NEAREST BY joins that include NULL rankings or output the ranking are exported as a lateral join against the
+	// top-k rows of the target
+	optional_ptr<LogicalNearestJoin> lateral_nearest;
+	if (op.type == LogicalOperatorType::LOGICAL_NEAREST_JOIN) {
+		auto &nearest = op.Cast<LogicalNearestJoin>();
+		if (nearest.include_null_rankings || nearest.OutputsRanking()) {
+			lateral_nearest = nearest;
+		}
+	}
+	const bool export_as_lateral = lateral_nearest != nullptr;
+	const auto target_alias = right.GetValue().relation_alias;
+	static const Identifier RANKING_COLUMN("__nearest_ranking");
 	if (right_plain && op.type == LogicalOperatorType::LOGICAL_NEAREST_JOIN &&
 	    (export_as_lateral || right_plain->from_table->type == TableReferenceType::JOIN)) {
 		// the target of a NEAREST BY join is a single table reference
@@ -231,6 +241,9 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 		if (logical_join && logical_join->join_type == JoinType::MARK &&
 		    field.source_binding.table_index == logical_join->mark_index) {
 			expression = make_uniq<ColumnRefExpression>(Identifier("__mark_join_marker"));
+		} else if (lateral_nearest && lateral_nearest->OutputsRanking() &&
+		           field.source_binding == lateral_nearest->GetRankingBinding()) {
+			expression = make_uniq<ColumnRefExpression>(RANKING_COLUMN, target_alias);
 		} else {
 			auto resolved = expression_context.resolve_binding(field.source_binding);
 			if (!resolved || resolved->type != field.type) {
@@ -250,11 +263,21 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 	join->right = right_plain ? std::move(right.GetValue().relation.query->Cast<SelectNode>().from_table)
 	                          : LogicalPlanSQLExportHelpers::CreateSubquery(std::move(right.GetValue()));
 	if (export_as_lateral) {
-		// (SELECT * FROM <target> AS rN ORDER BY <ranking> NULLS LAST LIMIT <k>) AS rN keeps all column names intact
-		auto &nearest = op.Cast<LogicalNearestJoin>();
-		auto target_alias = join->right->alias;
+		// (SELECT *[, <ranking>] FROM <target> AS rN [WHERE <ranking> IS NOT NULL] ORDER BY <ranking> NULLS LAST
+		//  LIMIT <k>) AS rN keeps all column names intact
+		auto &nearest = *lateral_nearest;
+		D_ASSERT(join->right->alias == target_alias);
 		auto top_k = make_uniq<SelectNode>();
 		top_k->select_list.push_back(make_uniq<StarExpression>());
+		if (nearest.OutputsRanking()) {
+			auto ranking_column = lateral_ranking->Copy();
+			ranking_column->SetAlias(RANKING_COLUMN);
+			top_k->select_list.push_back(std::move(ranking_column));
+		}
+		if (!nearest.include_null_rankings) {
+			top_k->where_clause =
+			    make_uniq<OperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, lateral_ranking->Copy());
+		}
 		top_k->from_table = std::move(join->right);
 		auto order = make_uniq<OrderModifier>();
 		order->orders.emplace_back(nearest.order_type, OrderByNullType::NULLS_LAST, std::move(lateral_ranking));
@@ -264,7 +287,7 @@ static LogicalPlanSQLExportResult ExportJoin(LogicalOperator &op, LogicalPlanSQL
 		top_k->modifiers.push_back(std::move(limit));
 		auto top_k_statement = make_uniq<SelectStatement>();
 		top_k_statement->node = std::move(top_k);
-		join->right = make_uniq<SubqueryRef>(std::move(top_k_statement), std::move(target_alias));
+		join->right = make_uniq<SubqueryRef>(std::move(top_k_statement), target_alias);
 	}
 	select->from_table = std::move(join);
 	return LogicalPlanSQLExportResult::Success({std::move(select), std::move(fields.GetValue())});

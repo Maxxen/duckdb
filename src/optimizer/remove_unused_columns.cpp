@@ -19,6 +19,7 @@
 #include "duckdb/planner/operator/logical_aggregate.hpp"
 #include "duckdb/planner/operator/logical_column_data_get.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
+#include "duckdb/planner/operator/logical_nearest_join.hpp"
 #include "duckdb/planner/operator/logical_distinct.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
@@ -633,6 +634,15 @@ void RemoveUnusedColumns::VisitOperator(unique_ptr<LogicalOperator> &op_ref) {
 	}
 	case LogicalOperatorType::LOGICAL_ANY_JOIN:
 		break;
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN: {
+		auto &nearest = op.Cast<LogicalNearestJoin>();
+		if (!analyze && !everything_referenced && nearest.OutputsRanking() &&
+		    column_references.find(nearest.GetRankingBinding()) == column_references.end()) {
+			// nothing reads the ranking output
+			nearest.ranking_index = TableIndex();
+		}
+		break;
+	}
 	case LogicalOperatorType::LOGICAL_UNION: {
 		auto &setop = op.Cast<LogicalSetOperation>();
 		if (analyze) {

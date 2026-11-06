@@ -628,6 +628,11 @@
         "id": 205,
         "name": "include_null_rankings",
         "type": "bool"
+      },
+      {
+        "id": 206,
+        "name": "ranking_index",
+        "type": "TableIndex"
       }
     ],
     "constructor": [

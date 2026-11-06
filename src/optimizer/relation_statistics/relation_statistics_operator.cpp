@@ -249,7 +249,30 @@ static optional<RelationStats> ExtractNearestJoinStats(LogicalNearestJoin &join,
 		return {};
 	}
 	auto cardinality = join.GetCardinality(child_stats[0].get().cardinality, child_stats[1].get().cardinality);
-	return ProjectChildStats(join, child_stats, cardinality);
+	RelationStats result;
+	result.cardinality = cardinality;
+	result.stats_initialized = true;
+	result.table_name = Identifier(join.GetName());
+	RelationColumnStatsLookup child_columns;
+	for (auto &child : child_stats) {
+		child_columns.AddRelation(child.get());
+	}
+	for (auto &binding : join.GetColumnBindings()) {
+		if (join.OutputsRanking() && binding == join.GetRankingBinding()) {
+			// every match can have its own ranking
+			result.columns.emplace_back(binding, DistinctCount(cardinality, DistinctCountSource::CARDINALITY),
+			                            Identifier("ranking"));
+			continue;
+		}
+		auto source = child_columns.Find(binding);
+		if (!source) {
+			return {};
+		}
+		result.columns.emplace_back(binding, source->total_domain, source->current_domain, source->name);
+	}
+	result.CapCurrentDomainsToCardinality();
+	result.Verify(join.GetColumnBindings());
+	return result;
 }
 
 static idx_t AddDistinctCounts(idx_t left, idx_t right) {

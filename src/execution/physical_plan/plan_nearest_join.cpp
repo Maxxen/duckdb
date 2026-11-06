@@ -12,6 +12,7 @@
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/function/window/rows_functions.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
+#include "duckdb/planner/expression/bound_case_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_operator_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
@@ -33,11 +34,11 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 	// Brute-force fallback: compute the top-k right rows of every left row with an aggregate over all pairs.
 	// A row number primary key keeps duplicate left rows apart.
 	//
-	//		 ∏ left, match.right
+	//		 ∏ left, match.right[, match.ranking]
 	//		 |
 	//		 UNNEST matches
 	//		 |
-	//		 Γ pk; first(left), arg_min/max_nulls_last(struct_pack(right), ranking, k) AS matches
+	//		 Γ pk; first(left), arg_min/max_nulls_last(struct_pack(right[, ranking]), ranking, k) AS matches
 	//		 |
 	//		 σ ranking IS NOT NULL (INNER only)
 	//		 |
@@ -52,12 +53,30 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 	D_ASSERT(op.join_type == JoinType::INNER || op.join_type == JoinType::LEFT);
 
 	auto &left = CreatePlan(*op.children[0]);
-	auto &right = CreatePlan(*op.children[1]);
+	reference<PhysicalOperator> right = CreatePlan(*op.children[1]);
 	// use the types of the planned children, planning can change them
 	const auto left_types = left.GetTypes();
-	const auto right_types = right.GetTypes();
+	const auto right_types = right.get().GetTypes();
 	const auto left_count = left_types.size();
 	const auto right_count = right_types.size();
+
+	// the ranking output of a LEFT join is NULL for left rows without a match: mark the rows of the right side
+	const bool mark_right = op.join_type == JoinType::LEFT && op.OutputsRanking();
+	auto right_width = right_count;
+	if (mark_right) {
+		vector<LogicalType> marked_types = right_types;
+		marked_types.push_back(LogicalType::BOOLEAN);
+		vector<unique_ptr<Expression>> marked_list;
+		for (idx_t i = 0; i < right_count; i++) {
+			marked_list.push_back(make_uniq<BoundReferenceExpression>(right_types[i], i));
+		}
+		marked_list.push_back(make_uniq<BoundConstantExpression>(Value::BOOLEAN(true)));
+		auto &marked = Make<PhysicalProjection>(std::move(marked_types), std::move(marked_list),
+		                                        right.get().estimated_cardinality);
+		marked.children.push_back(right);
+		right = marked;
+		right_width++;
+	}
 	const auto pk_type = LogicalType::BIGINT;
 	const auto cardinality = op.estimated_cardinality;
 
@@ -75,24 +94,25 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 	window.children.push_back(left);
 
 	// materialize the smaller side of the join
-	const bool build_left = left.estimated_cardinality < right.estimated_cardinality;
+	const bool build_left = left.estimated_cardinality < right.get().estimated_cardinality;
 	vector<LogicalType> join_types;
 	idx_t left_offset, pk_index, right_offset;
 	if (build_left) {
-		join_types = right_types;
+		join_types = right.get().GetTypes();
 		join_types.insert(join_types.end(), window_types.begin(), window_types.end());
 		right_offset = 0;
-		left_offset = right_count;
-		pk_index = right_count + left_count;
+		left_offset = right_width;
+		pk_index = right_width + left_count;
 	} else {
 		join_types = window_types;
-		join_types.insert(join_types.end(), right_types.begin(), right_types.end());
+		auto &join_right_types = right.get().GetTypes();
+		join_types.insert(join_types.end(), join_right_types.begin(), join_right_types.end());
 		left_offset = 0;
 		pk_index = left_count;
 		right_offset = left_count + 1;
 	}
-	auto &probe = build_left ? right : window;
-	auto &build = build_left ? window : right;
+	auto &probe = build_left ? right.get() : window;
+	auto &build = build_left ? window : right.get();
 
 	// the ranking refers to [left, right], remap it to the join layout
 	auto ranking = std::move(op.GetRankingMutable());
@@ -129,15 +149,27 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 	// bind the aggregate computing the matches of every left row
 	FunctionBinder function_binder(context);
 	unique_ptr<Expression> match;
-	if (right_count == 0) {
+	vector<unique_ptr<Expression>> struct_children;
+	for (idx_t i = 0; i < right_count; i++) {
+		auto child = make_uniq<BoundReferenceExpression>(right_types[i], right_offset + i);
+		child->SetAlias(Identifier(StringUtil::Format("c%llu", i)));
+		struct_children.push_back(std::move(child));
+	}
+	if (op.OutputsRanking()) {
+		auto ranking_value = ranking->Copy();
+		if (mark_right) {
+			auto marker = make_uniq<BoundReferenceExpression>(LogicalType::BOOLEAN, right_offset + right_count);
+			auto null_ranking = make_uniq<BoundConstantExpression>(Value(ranking_value->GetReturnType()));
+			ranking_value = make_uniq<BoundCaseExpression>(CreateIsNotNull(std::move(marker)), std::move(ranking_value),
+			                                               std::move(null_ranking));
+		}
+		ranking_value->SetAlias(Identifier("ranking"));
+		struct_children.push_back(std::move(ranking_value));
+	}
+	const auto output_count = struct_children.size();
+	if (struct_children.empty()) {
 		match = make_uniq<BoundConstantExpression>(Value::BOOLEAN(true));
 	} else {
-		vector<unique_ptr<Expression>> struct_children;
-		for (idx_t i = 0; i < right_count; i++) {
-			auto child = make_uniq<BoundReferenceExpression>(right_types[i], right_offset + i);
-			child->SetAlias(Identifier(StringUtil::Format("c%llu", i)));
-			struct_children.push_back(std::move(child));
-		}
 		match = BindBuiltinScalarFunction(context, Identifier("struct_pack"), std::move(struct_children));
 	}
 	const auto match_type = match->GetReturnType();
@@ -224,18 +256,17 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalNearestJoin &op) {
 		result_types.push_back(left_types[i]);
 		result_list.push_back(make_uniq<BoundReferenceExpression>(left_types[i], 1 + i));
 	}
-	if (right_count > 0) {
+	if (output_count > 0) {
 		auto struct_extract =
 		    GetBuiltinScalarFunction(context, Identifier("struct_extract"), {match_type, LogicalType::VARCHAR});
 		auto &fields = StructType::GetChildTypes(match_type);
-		D_ASSERT(fields.size() == right_count);
-		for (idx_t i = 0; i < right_count; i++) {
+		D_ASSERT(fields.size() == output_count);
+		for (idx_t i = 0; i < output_count; i++) {
 			vector<unique_ptr<Expression>> extract_children;
 			extract_children.push_back(make_uniq<BoundReferenceExpression>(match_type, match_index));
 			extract_children.push_back(make_uniq<BoundConstantExpression>(Value(fields[i].first)));
 			auto field = function_binder.BindScalarFunction(struct_extract, std::move(extract_children));
-			D_ASSERT(field->GetReturnType() == right_types[i]);
-			result_types.push_back(right_types[i]);
+			result_types.push_back(field->GetReturnType());
 			result_list.push_back(std::move(field));
 		}
 	}

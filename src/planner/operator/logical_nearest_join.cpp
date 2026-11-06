@@ -23,6 +23,34 @@ LogicalNearestJoin::LogicalNearestJoin(JoinType join_type, unique_ptr<Expression
 	expressions.push_back(std::move(ranking));
 }
 
+ColumnBinding LogicalNearestJoin::GetRankingBinding() const {
+	D_ASSERT(OutputsRanking());
+	return ColumnBinding(ranking_index, ProjectionIndex(0));
+}
+
+vector<ColumnBinding> LogicalNearestJoin::GetColumnBindings() {
+	auto result = LogicalJoin::GetColumnBindings();
+	if (OutputsRanking()) {
+		result.push_back(GetRankingBinding());
+	}
+	return result;
+}
+
+vector<TableIndex> LogicalNearestJoin::GetTableIndex() const {
+	vector<TableIndex> result;
+	if (OutputsRanking()) {
+		result.push_back(ranking_index);
+	}
+	return result;
+}
+
+void LogicalNearestJoin::ResolveTypes() {
+	LogicalJoin::ResolveTypes();
+	if (OutputsRanking()) {
+		types.push_back(GetRanking().GetReturnType());
+	}
+}
+
 const Expression &LogicalNearestJoin::GetRanking() const {
 	D_ASSERT(expressions.size() == 1);
 	return *expressions[0];
@@ -42,6 +70,9 @@ InsertionOrderPreservingMap<string> LogicalNearestJoin::ParamsToString() const {
 	result["Mode"] = approx ? "APPROX" : "EXACT";
 	if (include_null_rankings) {
 		result["NULL Rankings"] = "INCLUDED";
+	}
+	if (OutputsRanking()) {
+		result["Outputs Ranking"] = "true";
 	}
 	SetParamsEstimatedCardinality(result);
 	return result;

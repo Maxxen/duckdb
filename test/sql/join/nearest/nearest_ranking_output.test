@@ -1,0 +1,156 @@
+# name: test/sql/join/nearest/nearest_ranking_output.test
+# description: NEAREST BY joins output their ranking when the query above reads it
+# group: [nearest]
+
+statement ok
+CREATE TABLE lnums(id INT, x INT);
+
+statement ok
+INSERT INTO lnums VALUES (1, 10), (2, 20), (3, NULL);
+
+statement ok
+CREATE TABLE rnums(y INT, tag VARCHAR);
+
+statement ok
+INSERT INTO rnums VALUES (11, 'a'), (19, 'b'), (25, 'c'), (100, 'd'), (NULL, 'e');
+
+statement ok
+CREATE TABLE empty_rnums(y INT, tag VARCHAR);
+
+statement ok
+SET explain_output='optimized_only';
+
+# Recomputing the ranking above the join reads the ranking output instead
+query II
+EXPLAIN SELECT l.id, t.y, abs(l.x - t.y) AS d FROM lnums l JOIN rnums t NEAREST 2 BY DISTANCE abs(l.x - t.y);
+----
+logical_opt	<REGEX>:.*Nearest Join.*Outputs Ranking: true.*
+
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l JOIN rnums t NEAREST 2 BY DISTANCE abs(l.x - t.y);
+----
+logical_opt	<!REGEX>:.*Outputs Ranking.*
+
+# Rankings that are not NULL for rows without a match are recomputed
+query II
+EXPLAIN SELECT l.id, coalesce(t.y, 0) - l.x FROM lnums l LEFT JOIN rnums t NEAREST 1 BY DISTANCE coalesce(t.y, 0) - l.x;
+----
+logical_opt	<!REGEX>:.*Outputs Ranking.*
+
+# Lateral subqueries can return the ranking, and columns of the left side for INNER joins
+query II
+EXPLAIN SELECT l.id, t.d FROM lnums l,
+  LATERAL (SELECT *, abs(l.x - r.y) AS d FROM rnums r ORDER BY d LIMIT 2) t;
+----
+logical_opt	<REGEX>:.*Nearest Join.*Outputs Ranking: true.*
+
+query II
+EXPLAIN SELECT t.* FROM lnums l,
+  LATERAL (SELECT r.y, l.id AS id_dup FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 1) t;
+----
+logical_opt	<REGEX>:.*Nearest Join.*
+
+# ... but LEFT joins return NULL for the left columns of unmatched rows, so those stay lateral joins
+query II
+EXPLAIN SELECT t.* FROM lnums l LEFT JOIN
+  LATERAL (SELECT r.y, l.id AS id_dup FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 1) t ON true;
+----
+logical_opt	<!REGEX>:.*Nearest Join.*
+
+statement ok
+SET explain_output='physical_only';
+
+query III
+SELECT l.id, t.y, abs(l.x - t.y) AS d FROM lnums l JOIN rnums t NEAREST 2 BY DISTANCE abs(l.x - t.y) ORDER BY ALL;
+----
+1	11	1
+1	19	9
+2	19	1
+2	25	5
+
+query III
+SELECT l.id, t.y, abs(l.x - t.y) AS d FROM lnums l LEFT JOIN rnums t NEAREST 2 BY DISTANCE abs(l.x - t.y) ORDER BY ALL;
+----
+1	11	1
+1	19	9
+2	19	1
+2	25	5
+3	NULL	NULL
+
+query III
+SELECT l.id, t.y, abs(l.x - t.y) FROM lnums l LEFT JOIN empty_rnums t NEAREST 2 BY DISTANCE abs(l.x - t.y) ORDER BY ALL;
+----
+1	NULL	NULL
+2	NULL	NULL
+3	NULL	NULL
+
+query II
+SELECT l.id, coalesce(t.y, 0) - l.x FROM lnums l LEFT JOIN empty_rnums t NEAREST 1 BY DISTANCE coalesce(t.y, 0) - l.x
+  ORDER BY ALL;
+----
+1	-10
+2	-20
+3	NULL
+
+# The ranking output can be filtered and aggregated
+query II
+SELECT l.id, max(abs(l.x - t.y)) FROM lnums l JOIN rnums t NEAREST 2 BY DISTANCE abs(l.x - t.y)
+  WHERE abs(l.x - t.y) < 9 GROUP BY ALL ORDER BY ALL;
+----
+1	1
+2	5
+
+query III
+SELECT l.id, t.y, t.d FROM lnums l, LATERAL (SELECT *, abs(l.x - r.y) AS d FROM rnums r ORDER BY d LIMIT 2) t
+  WHERE l.id < 3 ORDER BY ALL;
+----
+1	11	1
+1	19	9
+2	19	1
+2	25	5
+
+query III
+SELECT l.id, t.d, t.tag FROM lnums l LEFT JOIN
+  LATERAL (SELECT abs(l.x - r.y) AS d, tag FROM empty_rnums r ORDER BY d LIMIT 1) t ON true ORDER BY ALL;
+----
+1	NULL	NULL
+2	NULL	NULL
+3	NULL	NULL
+
+query II
+SELECT t.* FROM lnums l,
+  LATERAL (SELECT r.y, l.id AS id_dup FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 1) t
+  ORDER BY ALL;
+----
+11	1
+19	2
+
+# Correlated subqueries can read the returned ranking
+query II
+SELECT l.id, (SELECT t.d * 2) FROM lnums l,
+  LATERAL (SELECT abs(l.x - r.y) AS d FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY d LIMIT 1) t ORDER BY ALL;
+----
+1	2
+2	2
+
+# The ranking output round-trips through SQL export
+statement ok
+SET debug_verify_statement='explain_sql_strict';
+
+query III
+SELECT l.id, t.y, abs(l.x - t.y) AS d FROM lnums l LEFT JOIN rnums t NEAREST 2 BY DISTANCE abs(l.x - t.y) ORDER BY ALL;
+----
+1	11	1
+1	19	9
+2	19	1
+2	25	5
+3	NULL	NULL
+
+query III
+SELECT l.id, t.y, t.d FROM lnums l, LATERAL (SELECT *, abs(l.x - r.y) AS d FROM rnums r ORDER BY d LIMIT 2) t
+  WHERE l.id < 3 ORDER BY ALL;
+----
+1	11	1
+1	19	9
+2	19	1
+2	25	5

@@ -136,9 +136,18 @@ BindResult Binding::Bind(ColumnRefExpression &colref, idx_t depth) {
 	ColumnBinding binding;
 	binding.table_index = index;
 	binding.column_index = ProjectionIndex(column_index);
+	auto redirect = column_redirects.find(column_index);
+	if (redirect != column_redirects.end()) {
+		binding = redirect->second;
+	}
 	LogicalType sql_type = types[column_index];
 	SetBoundColumnAlias(colref);
 	return BindResult(make_uniq<BoundColumnRefExpression>(Identifier(colref.GetName()), sql_type, binding, depth));
+}
+
+void Binding::RedirectColumn(column_t column_index, ColumnBinding target) {
+	D_ASSERT(column_index < types.size());
+	column_redirects[column_index] = target;
 }
 
 optional_ptr<StandardEntry> Binding::GetStandardEntry() {

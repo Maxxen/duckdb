@@ -1,0 +1,204 @@
+# name: test/sql/join/nearest/nearest_lateral.test
+# description: Lateral joins against the top-k rows of a target are planned as a LogicalNearestJoin
+# group: [nearest]
+
+statement ok
+CREATE TABLE lnums(id INT, x INT);
+
+statement ok
+INSERT INTO lnums VALUES (1, 10), (2, 20), (3, NULL);
+
+statement ok
+CREATE TABLE rnums(y INT, tag VARCHAR);
+
+statement ok
+INSERT INTO rnums VALUES (11, 'a'), (19, 'b'), (25, 'c'), (100, 'd'), (NULL, 'e');
+
+statement ok
+CREATE TABLE q AS SELECT i AS id, [i, 0, 0]::FLOAT[3] AS e FROM range(3) t(i);
+
+statement ok
+CREATE TABLE p AS SELECT i AS id, [i, 1, 0]::FLOAT[3] AS e FROM range(10) t(i);
+
+statement ok
+SET explain_output='optimized_only';
+
+# A "WHERE <ranking> IS NOT NULL" filter gives the subquery NEAREST BY semantics
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 2) t;
+----
+logical_opt	<REGEX>:.*Nearest Join.*Count: 2.*
+
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 2) t;
+----
+logical_opt	<!REGEX>:.*NULL Rankings.*
+
+# Without it, rows with a NULL ranking still match after all other rows
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l, LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 2) t;
+----
+logical_opt	<REGEX>:.*Nearest Join.*NULL Rankings: INCLUDED.*
+
+# ... unless the statistics show that the ranking can neither be NULL nor throw
+query II
+EXPLAIN SELECT q.id, t.id FROM q, LATERAL (SELECT * FROM p ORDER BY array_distance(q.e, p.e) LIMIT 2) t;
+----
+logical_opt	<REGEX>:.*Nearest Join.*
+
+query II
+EXPLAIN SELECT q.id, t.id FROM q, LATERAL (SELECT * FROM p ORDER BY array_distance(q.e, p.e) LIMIT 2) t;
+----
+logical_opt	<!REGEX>:.*NULL Rankings.*
+
+# The ranking can use columns of the target that the subquery does not return
+query II
+EXPLAIN SELECT l.id, t.* FROM lnums l,
+  LATERAL (SELECT upper(r.tag) AS tag FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 1) t;
+----
+logical_opt	<REGEX>:.*Nearest Join.*
+
+# Shapes that are not a plain top-k of an uncorrelated target stay lateral joins
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE r.y > l.x ORDER BY abs(l.x - r.y) LIMIT 2) t;
+----
+logical_opt	<!REGEX>:.*Nearest Join.*
+
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y), r.tag LIMIT 2) t;
+----
+logical_opt	<!REGEX>:.*Nearest Join.*
+
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 2 OFFSET 1) t;
+----
+logical_opt	<!REGEX>:.*Nearest Join.*
+
+
+# NULL rankings sorting first cannot be planned as a NEAREST BY join
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) NULLS FIRST LIMIT 2) t;
+----
+logical_opt	<!REGEX>:.*Nearest Join.*
+
+# ... but they can if they are filtered out
+query II
+EXPLAIN SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) NULLS FIRST LIMIT 2) t;
+----
+logical_opt	<REGEX>:.*Nearest Join.*
+
+statement ok
+SET explain_output='physical_only';
+
+query II
+SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 2) t ORDER BY ALL;
+----
+1	11
+1	19
+2	19
+2	25
+
+# NULL rankings come last, and are returned if there are not enough other rows
+query II
+SELECT l.id, t.y FROM lnums l, LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 2) t WHERE l.id < 3
+  ORDER BY ALL;
+----
+1	11
+1	19
+2	19
+2	25
+
+# a NULL query value ranks every candidate NULL, so any two of them match
+query II
+SELECT l.id, count(*) FROM lnums l, LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 2) t
+  GROUP BY ALL ORDER BY ALL;
+----
+1	2
+2	2
+3	2
+
+query I
+SELECT count(*) FROM lnums l, LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 100) t;
+----
+15
+
+query I
+SELECT count(*) FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 100) t;
+----
+8
+
+query II
+SELECT l.id, t.* FROM lnums l,
+  LATERAL (SELECT upper(r.tag) AS tag FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 1) t
+  ORDER BY ALL;
+----
+1	A
+2	B
+
+# Other filters on the target are kept
+query II
+SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE r.tag <> 'a' AND abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 1) t
+  ORDER BY ALL;
+----
+1	19
+2	19
+
+# LEFT joins keep left rows without candidates
+query II
+SELECT l.id, t.y FROM lnums l LEFT JOIN
+  LATERAL (SELECT * FROM rnums r WHERE abs(l.x - r.y) IS NOT NULL ORDER BY abs(l.x - r.y) LIMIT 1) t ON true
+  ORDER BY ALL;
+----
+1	11
+2	19
+3	NULL
+
+# Descending order ranks by similarity
+query II
+SELECT l.id, t.y FROM lnums l,
+  LATERAL (SELECT * FROM rnums r WHERE r.y + l.x IS NOT NULL ORDER BY r.y + l.x DESC LIMIT 1) t ORDER BY ALL;
+----
+1	100
+2	100
+
+query II
+SELECT q.id, t.id FROM q, LATERAL (SELECT * FROM p ORDER BY array_distance(q.e, p.e) LIMIT 1) t ORDER BY ALL;
+----
+0	0
+1	1
+2	2
+
+# The lateral form round-trips through SQL export
+statement ok
+SET debug_verify_statement='explain_sql_strict';
+
+query II
+SELECT l.id, count(*) FROM lnums l, LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 2) t
+  GROUP BY ALL ORDER BY ALL;
+----
+1	2
+2	2
+3	2
+
+query II
+SELECT l.id, t.y FROM lnums l LEFT JOIN
+  LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 1) t ON true WHERE l.id < 3 ORDER BY ALL;
+----
+1	11
+2	19
+
+query I
+SELECT count(*) FROM (SELECT * FROM lnums WHERE false) l LEFT JOIN
+  LATERAL (SELECT * FROM rnums r ORDER BY abs(l.x - r.y) LIMIT 1) t ON true;
+----
+0

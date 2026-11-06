@@ -59,6 +59,8 @@ public:
 	const vector<Identifier> &GetColumnNames();
 	idx_t GetColumnCount();
 	void SetColumnType(idx_t col_idx, LogicalType type);
+	//! Binds references to a column of this binding to a column produced elsewhere in the plan instead
+	void RedirectColumn(column_t column_index, ColumnBinding target);
 	//! Marks this binding as the NULL-producing side of an outer join
 	void SetNullExtended();
 	bool IsNullExtended() const;
@@ -103,6 +105,8 @@ protected:
 	identifier_map_t<column_t> name_map;
 	//! Whether rows of this binding can be NULL-extended by an outer join
 	bool null_extended = false;
+	//! Columns whose references are bound to another column
+	unordered_map<column_t, ColumnBinding> column_redirects;
 };
 
 struct EntryBinding : public Binding {

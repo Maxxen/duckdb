@@ -1,5 +1,5 @@
 diff --git a/src/hnsw/hnsw_optimize_join.cpp b/src/hnsw/hnsw_optimize_join.cpp
-index eff7fe4..f415bf0 100644
+index eff7fe4..538b309 100644
 --- a/src/hnsw/hnsw_optimize_join.cpp
 +++ b/src/hnsw/hnsw_optimize_join.cpp
 @@ -1,22 +1,17 @@
@@ -697,14 +697,7 @@ index eff7fe4..f415bf0 100644
 -	auto &inner_get = (*inner_get_ptr)->Cast<LogicalGet>();
 -	if (inner_get.function.GetName() != "seq_scan") {
 -		return false;
-+//! Plans a LogicalNearestJoin as an HNSW index join if the ranking is the distance function of an HNSW index over a
-+//! column of the target table:
-+//!   <left> JOIN <table> NEAREST k BY DISTANCE <distance>(<left column>, <indexed column>)
-+//! The target may be wrapped in projections, which are evaluated on top of the rows fetched from the table.
-+static optional_ptr<PhysicalOperator> PlanHNSWIndexJoin(PhysicalPlannerExtensionInput &input, LogicalOperator &op) {
-+	if (op.type != LogicalOperatorType::LOGICAL_NEAREST_JOIN) {
-+		return nullptr;
- 	}
+-	}
 -
 -	// The distance expression lives in inner_proj, referenced by the order argument.
 -	const auto inner_proj_bindings = inner_proj.GetColumnBindings();
@@ -714,6 +707,16 @@ index eff7fe4..f415bf0 100644
 -			order_in_inner_proj = true;
 -			break;
 -		}
++//! Plans a LogicalNearestJoin as an HNSW index join if the ranking is the distance function of an HNSW index over a
++//! column of the target table:
++//!   <left> JOIN <table> NEAREST k BY DISTANCE <distance>(<left column>, <indexed column>)
++//! The target may be wrapped in projections, which are evaluated on top of the rows fetched from the table.
++static optional_ptr<PhysicalOperator> PlanHNSWIndexJoin(PhysicalPlannerExtensionInput &input, LogicalOperator &op) {
++	if (op.type != LogicalOperatorType::LOGICAL_NEAREST_JOIN) {
++		return nullptr;
+ 	}
+-	if (!order_in_inner_proj || order_ref.Binding().column_index >= inner_proj.expressions.size()) {
+-		return false;
 +	auto &context = input.context;
 +	auto &planner = input.planner;
 +	auto &join = op.Cast<LogicalNearestJoin>();
@@ -721,32 +724,23 @@ index eff7fe4..f415bf0 100644
 +	if (join.join_type != JoinType::INNER || join.include_null_rankings || join.order_type != OrderType::ASCENDING) {
 +		return nullptr;
  	}
--	if (!order_in_inner_proj || order_ref.Binding().column_index >= inner_proj.expressions.size()) {
--		return false;
-+	if (join.nearest_count == 0 || join.nearest_count >= STANDARD_VECTOR_SIZE) {
-+		return nullptr;
- 	}
 -	auto &distance_expr_ptr = *inner_proj.expressions[order_ref.Binding().column_index];
- 
+-
 -	//------------------------------------------------------------------------------
 -	// Match the index (identical to the window-plan matcher).
 -	//------------------------------------------------------------------------------
 -	auto &table = *inner_get.GetTable();
 -	if (!table.IsDuckTable()) {
 -		return false;
-+	// the target has to be a (projected) scan of a DuckDB table without filters
-+	vector<reference<LogicalProjection>> projections;
-+	reference<LogicalOperator> target = *join.children[1];
-+	while (target.get().type == LogicalOperatorType::LOGICAL_PROJECTION) {
-+		projections.push_back(target.get().Cast<LogicalProjection>());
-+		target = *target.get().children[0];
++	if (join.nearest_count == 0 || join.nearest_count >= STANDARD_VECTOR_SIZE) {
++		return nullptr;
  	}
 -	auto &duck_table = table.Cast<DuckTableEntry>();
 -	auto &table_info = *table.GetStorage().GetDataTableInfo();
 -
 -	shared_ptr<IndexEntry> found_entry;
 -	vector<reference<Expression>> bindings;
--
+ 
 -	table_info.BindIndexes(context, HNSWIndex::TYPE_NAME);
 -	for (auto index_entry : table_info.GetIndexes().IndexEntries()) {
 -		if (index_entry->GetBindState() != IndexBindState::BOUND ||
@@ -781,7 +775,13 @@ index eff7fe4..f415bf0 100644
 -		}
 -		found_entry = index_entry;
 -		break;
--	}
++	// the target has to be a (projected) scan of a DuckDB table without filters
++	vector<reference<LogicalProjection>> projections;
++	reference<LogicalOperator> target = *join.children[1];
++	while (target.get().type == LogicalOperatorType::LOGICAL_PROJECTION) {
++		projections.push_back(target.get().Cast<LogicalProjection>());
++		target = *target.get().children[0];
+ 	}
 -	if (!found_entry) {
 -		return false;
 -	}
@@ -845,8 +845,12 @@ index eff7fe4..f415bf0 100644
 -			return {ArgMinOrigin::Kind::DISTANCE, {}};
 -		}
 -		return {ArgMinOrigin::Kind::UNKNOWN, {}};
--	};
--
++	// the index join fetches all column ids of the scan, the scan only outputs those in its projection ids
++	auto &column_ids = get.GetColumnIds();
++	auto fetched_column = [&](idx_t scan_column) {
++		return get.projection_ids.empty() ? scan_column : get.projection_ids[scan_column].GetIndex();
+ 	};
+ 
 -	resolve = [&](const ColumnBinding &b) -> ArgMinOrigin {
 -		for (auto &ib : inner_get_bindings) {
 -			if (ib == b) {
@@ -918,12 +922,8 @@ index eff7fe4..f415bf0 100644
 -			}
 -		}
 -		return {ArgMinOrigin::Kind::UNKNOWN, {}};
-+	// the index join fetches all column ids of the scan, the scan only outputs those in its projection ids
-+	auto &column_ids = get.GetColumnIds();
-+	auto fetched_column = [&](idx_t scan_column) {
-+		return get.projection_ids.empty() ? scan_column : get.projection_ids[scan_column].GetIndex();
- 	};
- 
+-	};
+-
 -	//------------------------------------------------------------------------------
 -	// Build the HNSW index join (identical shape to the window-plan matcher).
 -	//------------------------------------------------------------------------------
@@ -1169,7 +1169,7 @@ index eff7fe4..f415bf0 100644
  	table_info.BindIndexes(context, HNSWIndex::TYPE_NAME);
  	for (auto index_entry : table_info.GetIndexes().IndexEntries()) {
  		if (index_entry->GetBindState() != IndexBindState::BOUND ||
-@@ -1270,239 +268,102 @@ bool HNSWIndexJoinOptimizer::TryOptimizeArgMinCte(Binder &binder, ClientContext
+@@ -1270,239 +268,118 @@ bool HNSWIndexJoinOptimizer::TryOptimizeArgMinCte(Binder &binder, ClientContext
  			continue;
  		}
  		auto guard = index_entry->GetReadHandle<HNSWIndex>();
@@ -1331,24 +1331,6 @@ index eff7fe4..f415bf0 100644
 -							return nullptr;
 -						}
 -						return resolve_expression(*projection.expressions[i]);
--					}
--				}
--			} else if (op.type == LogicalOperatorType::LOGICAL_UNNEST) {
--				auto unnest_bindings = op.GetColumnBindings();
--				auto child_bindings = op.children[0]->GetColumnBindings();
--				for (auto &unnest_binding : unnest_bindings) {
--					if (!(unnest_binding == binding)) {
--						continue;
--					}
--					bool passthrough = false;
--					for (auto &child_binding : child_bindings) {
--						if (child_binding == binding) {
--							passthrough = true;
--							break;
--						}
--					}
--					if (!passthrough) {
--						return resolve_expression(*agg_expr.GetChildren()[0]);
 +	// plan the left side, left rows with a NULL query vector have no matches
 +	auto &left = planner.CreatePlan(*join.children[0]);
 +	const auto left_types = left.GetTypes();
@@ -1397,10 +1379,27 @@ index eff7fe4..f415bf0 100644
 +						ref.IndexMutable() = fetched_column(ref.Index());
  					}
 -				}
+-			} else if (op.type == LogicalOperatorType::LOGICAL_UNNEST) {
+-				auto unnest_bindings = op.GetColumnBindings();
+-				auto child_bindings = op.children[0]->GetColumnBindings();
+-				for (auto &unnest_binding : unnest_bindings) {
+-					if (!(unnest_binding == binding)) {
+-						continue;
+-					}
+-					bool passthrough = false;
+-					for (auto &child_binding : child_bindings) {
+-						if (child_binding == binding) {
+-							passthrough = true;
+-							break;
+-						}
+-					}
+-					if (!passthrough) {
+-						return resolve_expression(*agg_expr.GetChildren()[0]);
+-					}
+-				}
 +				});
  			}
-+			expressions.push_back(std::move(copy));
- 		}
+-		}
 -		return nullptr;
 -	};
 -
@@ -1420,29 +1419,46 @@ index eff7fe4..f415bf0 100644
 -		auto replacement = resolve_binding(output_bindings[i]);
 -		if (!replacement || replacement->GetReturnType() != output_types[i]) {
 -			return false;
-+		const auto right_width = expressions.size();
-+		for (idx_t col = 0; col < left_types.size(); col++) {
-+			types.push_back(left_types[col]);
-+			expressions.push_back(make_uniq<BoundReferenceExpression>(left_types[col], left_offset + col));
- 		}
+-		}
 -		projection_expressions.push_back(std::move(replacement));
-+		auto &physical_projection =
-+		    planner.Make<PhysicalProjection>(std::move(types), std::move(expressions), join.estimated_cardinality);
-+		physical_projection.children.push_back(plan);
-+		plan = physical_projection;
-+		left_offset = right_width;
- 	}
- 
+-	}
+-
 -	auto projection_table_index = binder.GenerateTableIndex();
 -	ProjectionIndex new_binding_idx(0);
 -	for (idx_t i = 0; i < output_bindings.size(); i++) {
 -		replacer.replacement_bindings.emplace_back(output_bindings[i],
 -		                                           ColumnBinding(projection_table_index, new_binding_idx++));
++			expressions.push_back(std::move(copy));
++		}
++		const auto right_width = expressions.size();
++		for (idx_t col = 0; col < left_types.size(); col++) {
++			types.push_back(left_types[col]);
++			expressions.push_back(make_uniq<BoundReferenceExpression>(left_types[col], left_offset + col));
++		}
++		auto &physical_projection =
++		    planner.Make<PhysicalProjection>(std::move(types), std::move(expressions), join.estimated_cardinality);
++		physical_projection.children.push_back(plan);
++		plan = physical_projection;
++		left_offset = right_width;
++	}
++
 +	// reorder the output to [left columns, right columns]
 +	const auto right_types = join.children[1]->types;
 +	vector<unique_ptr<Expression>> result_expressions;
 +	for (idx_t col = 0; col < left_types.size(); col++) {
 +		result_expressions.push_back(make_uniq<BoundReferenceExpression>(left_types[col], left_offset + col));
++	}
++	for (idx_t col = 0; col < right_types.size(); col++) {
++		auto index = projections.empty() ? fetched_column(col) : col;
++		result_expressions.push_back(make_uniq<BoundReferenceExpression>(right_types[col], index));
++	}
++	auto result_types = left_types;
++	result_types.insert(result_types.end(), right_types.begin(), right_types.end());
++	auto &result =
++	    planner.Make<PhysicalProjection>(result_types, std::move(result_expressions), join.estimated_cardinality);
++	result.children.push_back(plan);
++	if (!join.OutputsRanking()) {
++		return result;
  	}
 -	auto new_projection = make_uniq<LogicalProjection>(projection_table_index, std::move(projection_expressions));
 -
@@ -1459,7 +1475,7 @@ index eff7fe4..f415bf0 100644
 -
 -	CardinalityResetter cardinality_resetter(context);
 -	cardinality_resetter.VisitOperator(*root);
--
+ 
 -	return true;
 -}
 -
@@ -1472,21 +1488,24 @@ index eff7fe4..f415bf0 100644
 -		for (auto &child : plan->children) {
 -			OptimizeRecursive(input, root, child);
 -		}
-+	for (idx_t col = 0; col < right_types.size(); col++) {
-+		auto index = projections.empty() ? fetched_column(col) : col;
-+		result_expressions.push_back(make_uniq<BoundReferenceExpression>(right_types[col], index));
++	// the ranking refers to [left columns, right columns]: evaluate it on top
++	vector<unique_ptr<Expression>> ranking_expressions;
++	for (idx_t col = 0; col < result_types.size(); col++) {
++		ranking_expressions.push_back(make_uniq<BoundReferenceExpression>(result_types[col], col));
  	}
 -}
 -
 -void HNSWIndexJoinOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
 -	OptimizeRecursive(input, plan, plan);
-+	auto &result = planner.Make<PhysicalProjection>(op.types, std::move(result_expressions), join.estimated_cardinality);
-+	result.children.push_back(plan);
-+	return result;
++	ranking_expressions.push_back(join.GetRanking().Copy());
++	auto &ranking_projection =
++	    planner.Make<PhysicalProjection>(op.types, std::move(ranking_expressions), join.estimated_cardinality);
++	ranking_projection.children.push_back(result);
++	return ranking_projection;
  }
  
  //------------------------------------------------------------------------------
-@@ -1510,7 +371,9 @@ void HNSWIndexJoinOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr
+@@ -1510,7 +387,9 @@ void HNSWIndexJoinOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr
  //------------------------------------------------------------------------------
  
  void HNSWModule::RegisterJoinOptimizer(DatabaseInstance &db) {
@@ -1498,7 +1517,7 @@ index eff7fe4..f415bf0 100644
  
  } // namespace duckdb
 diff --git a/test/sql/hnsw/hnsw_lateral_join_plan.test b/test/sql/hnsw/hnsw_lateral_join_plan.test
-index 2c176f4..b7c32df 100644
+index 2c176f4..2156412 100644
 --- a/test/sql/hnsw/hnsw_lateral_join_plan.test
 +++ b/test/sql/hnsw/hnsw_lateral_join_plan.test
 @@ -2,13 +2,9 @@
@@ -1518,7 +1537,7 @@ index 2c176f4..b7c32df 100644
  
  require vss
  
-@@ -107,3 +103,43 @@ ORDER BY a_id, b_str;
+@@ -107,3 +103,68 @@ ORDER BY a_id, b_str;
  1	b	4	B
  2	a	1	A
  2	b	4	B
@@ -1552,6 +1571,31 @@ index 2c176f4..b7c32df 100644
 +EXPLAIN SELECT * FROM a LEFT JOIN b NEAREST 1 BY DISTANCE array_distance(a.a_vec, b.b_vec);
 +----
 +physical_plan	<!REGEX>:.*HNSW_INDEX_JOIN.*
++
++# Returning the distance and columns of the left side keeps using the index
++query II
++EXPLAIN SELECT * FROM a, LATERAL (SELECT array_distance(a.a_vec, b.b_vec) AS dist, *, a_id AS id_dup FROM b ORDER BY dist LIMIT 1);
++----
++physical_plan	<REGEX>:.*HNSW_INDEX_JOIN.*
++
++query RTI
++SELECT dist, b_str, id_dup FROM a, LATERAL (SELECT array_distance(a.a_vec, b.b_vec) AS dist, *, a_id AS id_dup FROM b ORDER BY dist LIMIT 1)
++ORDER BY a_id;
++----
++0.0	a	1
++0.0	b	2
++
++query II
++EXPLAIN SELECT a_id, b_str, array_distance(a.a_vec, b.b_vec) AS dist FROM a JOIN b NEAREST 1 BY DISTANCE array_distance(a.a_vec, b.b_vec);
++----
++physical_plan	<REGEX>:.*HNSW_INDEX_JOIN.*
++
++query ITR
++SELECT a_id, b_str, array_distance(a.a_vec, b.b_vec) AS dist FROM a JOIN b NEAREST 1 BY DISTANCE array_distance(a.a_vec, b.b_vec)
++ORDER BY a_id;
++----
++1	a	0.0
++2	b	0.0
 +
 +# Query vectors that are NULL have no neighbours
 +statement ok

@@ -1,4 +1,5 @@
 #include "duckdb/optimizer/optimizer.hpp"
+#include "duckdb/optimizer/nearest_join_ranking.hpp"
 
 #include "duckdb/common/enums/optimizer_type.hpp"
 #include "duckdb/function/function_binder.hpp"
@@ -376,6 +377,12 @@ void Optimizer::RunBuiltInOptimizers() {
 	RunOptimizer(OptimizerType::UNNEST_REWRITER, [&]() {
 		UnnestRewriter unnest_rewriter(context);
 		plan = unnest_rewriter.Optimize(std::move(plan));
+	});
+
+	// reuse the ranking output of nearest joins instead of recomputing the ranking above them
+	RunOptimizer(OptimizerType::NEAREST_JOIN_RANKING, [&]() {
+		NearestJoinRanking nearest_join_ranking(*this);
+		nearest_join_ranking.Optimize(*plan);
 	});
 
 	// removes unused columns

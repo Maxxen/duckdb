@@ -28,6 +28,13 @@ struct TableIndexAccessor {
 };
 
 template <>
+struct TableIndexAccessor<LogicalNearestJoin> {
+	static TableIndex &Get(LogicalNearestJoin &plan) {
+		return plan.ranking_index;
+	}
+};
+
+template <>
 struct TableIndexAccessor<LogicalAggregate> {
 	static vector<reference<TableIndex>> Get(LogicalAggregate &plan) {
 		return {std::ref(plan.group_index), std::ref(plan.aggregate_index), std::ref(plan.groupings_index)};
@@ -161,6 +168,12 @@ void LogicalOperatorDeepCopy::VisitOperator(LogicalOperator &op) {
 		// Only replace the mark index for JOINs that have a valid mark index in the first place
 		if (join.join_type == JoinType::MARK) {
 			ReplaceTableIndex<LogicalJoin>(op);
+		}
+		break;
+	}
+	case LogicalOperatorType::LOGICAL_NEAREST_JOIN: {
+		if (op.Cast<LogicalNearestJoin>().OutputsRanking()) {
+			ReplaceTableIndex<LogicalNearestJoin>(op);
 		}
 		break;
 	}
