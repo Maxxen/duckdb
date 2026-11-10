@@ -36,9 +36,9 @@ struct Recorder {
 	idx_t transaction_states_destroyed = 0;
 	//! The schemas every database has
 	std::vector<std::string> schema_names = {"main", "other"};
-	idx_t schema_lookups = 0;
-	std::string last_schema_lookup;
-	idx_t schema_scans = 0;
+	idx_t schema_finds = 0;
+	std::string last_schema_find;
+	idx_t schema_lists = 0;
 	idx_t schemas_destroyed = 0;
 	//! Whether every catalog callback received a context
 	bool contexts_seen = true;
@@ -49,21 +49,39 @@ struct Recorder {
 	bool fail_begin = false;
 	bool fail_commit = false;
 	bool fail_rollback = false;
-	bool fail_schema_lookup = false;
-	//! Resolve every schema lookup to `first_schema`
+	bool fail_schema_find = false;
+	//! Report `first_schema` for every schema the find callback is asked for
 	bool resolve_to_first_schema = false;
+	idx_t table_finds = 0;
+	std::string last_table_find;
+	idx_t table_lists = 0;
+	idx_t tables_destroyed = 0;
+	//! Whether adding a second column of the same name failed
+	bool duplicate_column_rejected = false;
+	//! Report the tables of "main" for every schema the table find callback is asked about
+	bool resolve_in_any_schema = false;
 };
 
 struct CatalogState {
 	Recorder *recorder;
 	//! The schemas of the database, in the order of the recorder's names. Created on first use, destroyed on DETACH.
 	std::vector<duckdb_v2_vcatalog_schema_handle> schemas;
+	//! The tables of "main", in the order of MainTables(). Created on first use, destroyed on DETACH.
+	std::vector<duckdb_v2_vcatalog_table_handle> tables;
+	//! A table of "main" without columns, which cannot be handed out
+	duckdb_v2_vcatalog_table_handle empty_table = nullptr;
 };
 
 void DestroyCatalogState(void *ptr) {
 	auto state = static_cast<CatalogState *>(ptr);
 	auto &recorder = *state->recorder;
 	recorder.catalog_states_destroyed++;
+	// Tables before the schemas they were created in
+	for (auto &table : state->tables) {
+		duckdb_v2_vcatalog_table_destroy(&table);
+		recorder.tables_destroyed++;
+	}
+	duckdb_v2_vcatalog_table_destroy(&state->empty_table);
 	for (auto &schema : state->schemas) {
 		if (recorder.first_schema == schema) {
 			recorder.first_schema = nullptr;
@@ -298,20 +316,20 @@ void CheckSchema(duckdb_v2_vcatalog_schema_handle schema, duckdb_v2_vcatalog_dat
 	}
 }
 
-void SchemaLookup(duckdb_v2_vcatalog_schema_lookup_info_handle info, duckdb_v2_vcatalog_database_handle database,
-                  duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err) {
+void SchemaFind(duckdb_v2_vcatalog_schema_find_info_handle info, duckdb_v2_vcatalog_database_handle database,
+                duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err) {
 	Recorder *recorder = nullptr;
 	CatalogState *state = nullptr;
 	void *transaction_state = nullptr;
 	const char *name = nullptr;
 	idx_t name_length = 0;
 	if (!GetStates(database, recorder, state, err) ||
-	    duckdb_v2_vcatalog_schema_lookup_get_transaction_state(info, &transaction_state, err) != DUCKDB_V2_ERROR_NONE ||
-	    duckdb_v2_vcatalog_schema_lookup_get_name(info, &name, &name_length, err) != DUCKDB_V2_ERROR_NONE) {
+	    duckdb_v2_vcatalog_schema_find_get_transaction_state(info, &transaction_state, err) != DUCKDB_V2_ERROR_NONE ||
+	    duckdb_v2_vcatalog_schema_find_get_name(info, &name, &name_length, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
-	recorder->schema_lookups++;
-	recorder->last_schema_lookup.assign(name, name_length);
+	recorder->schema_finds++;
+	recorder->last_schema_find.assign(name, name_length);
 	if (!context) {
 		recorder->contexts_seen = false;
 	}
@@ -319,36 +337,36 @@ void SchemaLookup(duckdb_v2_vcatalog_schema_lookup_info_handle info, duckdb_v2_v
 	if (!transaction_state || static_cast<TransactionState *>(transaction_state)->catalog != state) {
 		recorder->states_seen = false;
 	}
-	if (recorder->fail_schema_lookup) {
-		Fail(err, "schema lookup refused");
+	if (recorder->fail_schema_find) {
+		Fail(err, "schema find refused");
 		return;
 	}
 	if (recorder->resolve_to_first_schema && recorder->first_schema) {
-		duckdb_v2_vcatalog_schema_lookup_set_schema(info, recorder->first_schema, err);
+		duckdb_v2_vcatalog_schema_find_set_schema(info, recorder->first_schema, err);
 		return;
 	}
 	if (!EnsureSchemas(database, *state, err)) {
 		return;
 	}
 	for (idx_t i = 0; i < state->schemas.size(); i++) {
-		if (EqualsIgnoreCase(recorder->schema_names[i], recorder->last_schema_lookup)) {
+		if (EqualsIgnoreCase(recorder->schema_names[i], recorder->last_schema_find)) {
 			CheckSchema(state->schemas[i], database, *state, recorder->schema_names[i]);
-			duckdb_v2_vcatalog_schema_lookup_set_schema(info, state->schemas[i], err);
+			duckdb_v2_vcatalog_schema_find_set_schema(info, state->schemas[i], err);
 			return;
 		}
 	}
 }
 
-void SchemaScan(duckdb_v2_vcatalog_schema_scan_info_handle info, duckdb_v2_vcatalog_database_handle database,
+void SchemaList(duckdb_v2_vcatalog_schema_list_info_handle info, duckdb_v2_vcatalog_database_handle database,
                 duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err) {
 	Recorder *recorder = nullptr;
 	CatalogState *state = nullptr;
 	void *transaction_state = nullptr;
 	if (!GetStates(database, recorder, state, err) ||
-	    duckdb_v2_vcatalog_schema_scan_get_transaction_state(info, &transaction_state, err) != DUCKDB_V2_ERROR_NONE) {
+	    duckdb_v2_vcatalog_schema_list_get_transaction_state(info, &transaction_state, err) != DUCKDB_V2_ERROR_NONE) {
 		return;
 	}
-	recorder->schema_scans++;
+	recorder->schema_lists++;
 	if (!context) {
 		recorder->contexts_seen = false;
 	}
@@ -360,12 +378,163 @@ void SchemaScan(duckdb_v2_vcatalog_schema_scan_info_handle info, duckdb_v2_vcata
 	}
 	for (idx_t i = 0; i < state->schemas.size(); i++) {
 		CheckSchema(state->schemas[i], database, *state, recorder->schema_names[i]);
-		if (duckdb_v2_vcatalog_schema_scan_add_schema(info, state->schemas[i], err) != DUCKDB_V2_ERROR_NONE) {
+		if (duckdb_v2_vcatalog_schema_list_add_schema(info, state->schemas[i], err) != DUCKDB_V2_ERROR_NONE) {
 			return;
 		}
 	}
 	// A schema added twice is listed once
-	duckdb_v2_vcatalog_schema_scan_add_schema(info, state->schemas[0], err);
+	duckdb_v2_vcatalog_schema_list_add_schema(info, state->schemas[0], err);
+}
+
+struct ColumnSpec {
+	std::string_view name;
+	DUCKDB_V2_LOGICAL_TYPE_ID type;
+};
+
+struct TableSpec {
+	std::string_view name;
+	std::vector<ColumnSpec> columns;
+};
+
+// The tables of schema "main"; "other" has none.
+const std::vector<TableSpec> &MainTables() {
+	static const std::vector<TableSpec> tables = {
+	    {"t1", {{"id", DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER}, {"name", DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR}}},
+	    {"t2", {{"x", DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE}}}};
+	return tables;
+}
+
+DUCKDB_V2_ERROR AddColumn(duckdb_v2_vcatalog_table_handle table, duckdb_v2_factory_handle factory,
+                          const ColumnSpec &column, duckdb_v2_error_info_handle *err) {
+	duckdb_v2_logical_type_handle type = nullptr;
+	auto rc = duckdb_v2_factory_create_type_from_id(factory, column.type, nullptr, nullptr, nullptr, 0, &type, err);
+	if (rc == DUCKDB_V2_ERROR_NONE) {
+		rc = duckdb_v2_vcatalog_table_add_column(table, column.name.data(), column.name.size(), type, err);
+	}
+	duckdb_v2_logical_type_destroy(&type);
+	return rc;
+}
+
+// Creates the tables of "main" on first use, each carrying the catalog state as its own state.
+bool EnsureTables(duckdb_v2_context_handle context, CatalogState &state, duckdb_v2_error_info_handle *err) {
+	if (!state.tables.empty()) {
+		return true;
+	}
+	duckdb_v2_factory_handle factory = nullptr;
+	if (duckdb_v2_context_get_factory(context, &factory, err) != DUCKDB_V2_ERROR_NONE) {
+		return false;
+	}
+	for (auto &spec : MainTables()) {
+		duckdb_v2_vcatalog_table_handle table = nullptr;
+		if (duckdb_v2_vcatalog_table_create(state.schemas[0], spec.name.data(), spec.name.size(), &table, err) !=
+		    DUCKDB_V2_ERROR_NONE) {
+			return false;
+		}
+		state.tables.push_back(table);
+		for (auto &column : spec.columns) {
+			if (AddColumn(table, factory, column, err) != DUCKDB_V2_ERROR_NONE) {
+				return false;
+			}
+		}
+		duckdb_v2_opaque table_state = {&state, nullptr, nullptr};
+		if (duckdb_v2_vcatalog_table_set_state(table, &table_state, err) != DUCKDB_V2_ERROR_NONE) {
+			return false;
+		}
+	}
+	state.recorder->duplicate_column_rejected =
+	    AddColumn(state.tables[0], factory, MainTables()[0].columns[0], nullptr) != DUCKDB_V2_ERROR_NONE;
+	std::string_view empty_name = "empty";
+	return duckdb_v2_vcatalog_table_create(state.schemas[0], empty_name.data(), empty_name.size(), &state.empty_table,
+	                                       err) == DUCKDB_V2_ERROR_NONE;
+}
+
+// Checks that a table reports the schema, state and name it was created with.
+void CheckTable(duckdb_v2_vcatalog_table_handle table, CatalogState &state, std::string_view name) {
+	duckdb_v2_vcatalog_schema_handle table_schema = nullptr;
+	void *table_state = nullptr;
+	const char *table_name = nullptr;
+	idx_t table_name_length = 0;
+	if (duckdb_v2_vcatalog_table_get_schema(table, &table_schema, nullptr) != DUCKDB_V2_ERROR_NONE ||
+	    duckdb_v2_vcatalog_table_get_state(table, &table_state, nullptr) != DUCKDB_V2_ERROR_NONE ||
+	    duckdb_v2_vcatalog_table_get_name(table, &table_name, &table_name_length, nullptr) != DUCKDB_V2_ERROR_NONE ||
+	    table_schema != state.schemas[0] || table_state != &state ||
+	    std::string_view(table_name, table_name_length) != name) {
+		state.recorder->states_seen = false;
+	}
+}
+
+void TableFind(duckdb_v2_vcatalog_table_find_info_handle info, duckdb_v2_vcatalog_database_handle database,
+               duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err) {
+	Recorder *recorder = nullptr;
+	CatalogState *state = nullptr;
+	void *transaction_state = nullptr;
+	duckdb_v2_vcatalog_schema_handle schema = nullptr;
+	const char *name = nullptr;
+	idx_t name_length = 0;
+	if (!GetStates(database, recorder, state, err) ||
+	    duckdb_v2_vcatalog_table_find_get_transaction_state(info, &transaction_state, err) != DUCKDB_V2_ERROR_NONE ||
+	    duckdb_v2_vcatalog_table_find_get_schema(info, &schema, err) != DUCKDB_V2_ERROR_NONE ||
+	    duckdb_v2_vcatalog_table_find_get_name(info, &name, &name_length, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	recorder->table_finds++;
+	recorder->last_table_find.assign(name, name_length);
+	if (!context) {
+		recorder->contexts_seen = false;
+	}
+	if (!transaction_state || static_cast<TransactionState *>(transaction_state)->catalog != state) {
+		recorder->states_seen = false;
+	}
+	// The schema was handed out by the schema find callback, which created them
+	if (state->schemas.empty() || (schema != state->schemas[0] && !recorder->resolve_in_any_schema) ||
+	    !EnsureTables(context, *state, err)) {
+		return;
+	}
+	if (EqualsIgnoreCase(recorder->last_table_find, "empty")) {
+		duckdb_v2_vcatalog_table_find_set_table(info, state->empty_table, err);
+		return;
+	}
+	auto &specs = MainTables();
+	for (idx_t i = 0; i < specs.size(); i++) {
+		if (!EqualsIgnoreCase(specs[i].name, recorder->last_table_find)) {
+			continue;
+		}
+		CheckTable(state->tables[i], *state, specs[i].name);
+		duckdb_v2_vcatalog_table_find_set_table(info, state->tables[i], err);
+		return;
+	}
+}
+
+void TableList(duckdb_v2_vcatalog_table_list_info_handle info, duckdb_v2_vcatalog_database_handle database,
+               duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err) {
+	Recorder *recorder = nullptr;
+	CatalogState *state = nullptr;
+	void *transaction_state = nullptr;
+	duckdb_v2_vcatalog_schema_handle schema = nullptr;
+	if (!GetStates(database, recorder, state, err) ||
+	    duckdb_v2_vcatalog_table_list_get_transaction_state(info, &transaction_state, err) != DUCKDB_V2_ERROR_NONE ||
+	    duckdb_v2_vcatalog_table_list_get_schema(info, &schema, err) != DUCKDB_V2_ERROR_NONE) {
+		return;
+	}
+	recorder->table_lists++;
+	if (!context) {
+		recorder->contexts_seen = false;
+	}
+	if (!transaction_state || static_cast<TransactionState *>(transaction_state)->catalog != state) {
+		recorder->states_seen = false;
+	}
+	if (state->schemas.empty() || schema != state->schemas[0] || !EnsureTables(context, *state, err)) {
+		return;
+	}
+	auto &specs = MainTables();
+	for (idx_t i = 0; i < specs.size(); i++) {
+		CheckTable(state->tables[i], *state, specs[i].name);
+		if (duckdb_v2_vcatalog_table_list_add_table(info, state->tables[i], err) != DUCKDB_V2_ERROR_NONE) {
+			return;
+		}
+	}
+	// A table added twice is listed once
+	duckdb_v2_vcatalog_table_list_add_table(info, state->tables[0], err);
 }
 
 // A vcatalog with every callback set, recording into `recorder`.
@@ -379,8 +548,10 @@ duckdb_v2_vcatalog_handle MakeVCatalog(duckdb_v2_factory_handle factory, std::st
 	REQUIRE(duckdb_v2_vcatalog_set_transaction_begin_callback(vcatalog, Begin, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vcatalog_set_transaction_commit_callback(vcatalog, Commit, nullptr) == DUCKDB_V2_ERROR_NONE);
 	REQUIRE(duckdb_v2_vcatalog_set_transaction_rollback_callback(vcatalog, Rollback, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vcatalog_set_schema_lookup_callback(vcatalog, SchemaLookup, nullptr) == DUCKDB_V2_ERROR_NONE);
-	REQUIRE(duckdb_v2_vcatalog_set_schema_scan_callback(vcatalog, SchemaScan, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vcatalog_set_schema_find_callback(vcatalog, SchemaFind, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vcatalog_set_schema_list_callback(vcatalog, SchemaList, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vcatalog_set_table_find_callback(vcatalog, TableFind, nullptr) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vcatalog_set_table_list_callback(vcatalog, TableList, nullptr) == DUCKDB_V2_ERROR_NONE);
 	if (recorder) {
 		duckdb_v2_opaque data = {recorder, nullptr, nullptr};
 		REQUIRE(duckdb_v2_vcatalog_set_user_data(vcatalog, &data, nullptr) == DUCKDB_V2_ERROR_NONE);
@@ -671,37 +842,37 @@ TEST_CASE("V2 vcatalog: the user data lives as long as the instance", "[capi_v2]
 	REQUIRE(destroyed);
 }
 
-TEST_CASE("V2 vcatalog: schemas resolve through the lookup callback", "[capi_v2][vcatalog]") {
+TEST_CASE("V2 vcatalog: schemas are found through the find callback", "[capi_v2][vcatalog]") {
 	VCatalogFixture vfx;
 	auto &recorder = vfx.recorder;
 	auto conn = vfx.fx.conn;
 	REQUIRE(RunSql(conn, "ATTACH 'p' AS v (TYPE vtest)") == DUCKDB_V2_ERROR_NONE);
 
-	SECTION("a schema the lookup resolves") {
+	SECTION("a schema the find callback reports") {
 		REQUIRE(RunSql(conn, "USE v.other") == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(recorder.last_schema_lookup == "other");
+		REQUIRE(recorder.last_schema_find == "other");
 	}
 	SECTION("the default schema") {
 		REQUIRE(RunSql(conn, "USE v") == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(recorder.last_schema_lookup == "main");
+		REQUIRE(recorder.last_schema_find == "main");
 	}
-	SECTION("the lookup decides how names match") {
+	SECTION("the find callback decides how names match") {
 		REQUIRE(RunSql(conn, "USE v.OTHER") == DUCKDB_V2_ERROR_NONE);
-		REQUIRE(recorder.last_schema_lookup == "OTHER");
+		REQUIRE(recorder.last_schema_find == "OTHER");
 	}
-	SECTION("a name the lookup does not resolve") {
+	SECTION("a name the find callback reports nothing for") {
 		REQUIRE(Contains(ErrorText(conn, "USE v.nope"), "nope"));
 	}
-	SECTION("an error the lookup reports fails the statement") {
-		recorder.fail_schema_lookup = true;
-		REQUIRE(Contains(ErrorText(conn, "USE v.other"), "schema lookup refused"));
+	SECTION("an error the find callback reports fails the statement") {
+		recorder.fail_schema_find = true;
+		REQUIRE(Contains(ErrorText(conn, "USE v.other"), "schema find refused"));
 	}
-	REQUIRE(recorder.schema_lookups > 0);
+	REQUIRE(recorder.schema_finds > 0);
 	REQUIRE(recorder.states_seen);
 	REQUIRE(recorder.contexts_seen);
 }
 
-TEST_CASE("V2 vcatalog: schemas are listed through the scan callback", "[capi_v2][vcatalog]") {
+TEST_CASE("V2 vcatalog: schemas are listed through the list callback", "[capi_v2][vcatalog]") {
 	VCatalogFixture vfx;
 	auto &recorder = vfx.recorder;
 	auto conn = vfx.fx.conn;
@@ -711,7 +882,7 @@ TEST_CASE("V2 vcatalog: schemas are listed through the scan callback", "[capi_v2
 	REQUIRE(CountRows(conn, "SELECT schema_name FROM duckdb_schemas() WHERE database_name = 'v'") == 2);
 	REQUIRE(CountRows(conn, "SELECT schema_name FROM duckdb_schemas() WHERE database_name = 'v' AND schema_name = "
 	                        "'other'") == 1);
-	REQUIRE(recorder.schema_scans > 0);
+	REQUIRE(recorder.schema_lists > 0);
 	REQUIRE(recorder.states_seen);
 	REQUIRE(recorder.contexts_seen);
 }
@@ -729,7 +900,7 @@ TEST_CASE("V2 vcatalog: the implementation owns its schemas", "[capi_v2][vcatalo
 	REQUIRE(recorder.schemas_destroyed == 2);
 }
 
-TEST_CASE("V2 vcatalog: a lookup cannot resolve to a schema of another database", "[capi_v2][vcatalog]") {
+TEST_CASE("V2 vcatalog: the find callback cannot report a schema of another database", "[capi_v2][vcatalog]") {
 	VCatalogFixture vfx;
 	auto &recorder = vfx.recorder;
 	auto conn = vfx.fx.conn;
@@ -741,7 +912,7 @@ TEST_CASE("V2 vcatalog: a lookup cannot resolve to a schema of another database"
 
 	recorder.resolve_to_first_schema = true;
 	auto error = ErrorText(conn, "USE w");
-	CAPTURE(error, recorder.last_schema_lookup);
+	CAPTURE(error, recorder.last_schema_find);
 	REQUIRE(Contains(error, "different database"));
 }
 
@@ -752,6 +923,85 @@ TEST_CASE("V2 vcatalog: schema arguments are checked", "[capi_v2][vcatalog]") {
 	REQUIRE(duckdb_v2_vcatalog_schema_destroy(&schema) == DUCKDB_V2_ERROR_NONE);
 	void *state = nullptr;
 	REQUIRE(duckdb_v2_vcatalog_schema_get_state(nullptr, &state, nullptr) != DUCKDB_V2_ERROR_NONE);
+}
+
+TEST_CASE("V2 vcatalog: tables are found through the find callback", "[capi_v2][vcatalog]") {
+	VCatalogFixture vfx;
+	auto &recorder = vfx.recorder;
+	auto conn = vfx.fx.conn;
+	REQUIRE(RunSql(conn, "ATTACH 'p' AS v (TYPE vtest)") == DUCKDB_V2_ERROR_NONE);
+
+	SECTION("a table's columns") {
+		REQUIRE(CountRows(conn, "SELECT * FROM pragma_table_info('v.main.t1')") == 2);
+		REQUIRE(recorder.last_table_find == "t1");
+		REQUIRE(CountRows(conn, "SELECT * FROM pragma_table_info('v.main.T2')") == 1);
+		REQUIRE(recorder.last_table_find == "T2");
+	}
+	SECTION("reading a table is not supported yet") {
+		auto error = ErrorText(conn, "SELECT * FROM v.main.t1");
+		CAPTURE(error);
+		REQUIRE(Contains(error, "not supported yet"));
+	}
+	SECTION("a name the find callback reports nothing for") {
+		REQUIRE(Contains(ErrorText(conn, "SELECT * FROM v.main.nope"), "nope"));
+		REQUIRE(Contains(ErrorText(conn, "SELECT * FROM v.other.t1"), "t1"));
+	}
+	REQUIRE(recorder.table_finds > 0);
+	REQUIRE(recorder.duplicate_column_rejected);
+	REQUIRE(recorder.states_seen);
+	REQUIRE(recorder.contexts_seen);
+}
+
+TEST_CASE("V2 vcatalog: tables are listed through the list callback", "[capi_v2][vcatalog]") {
+	VCatalogFixture vfx;
+	auto &recorder = vfx.recorder;
+	auto conn = vfx.fx.conn;
+	REQUIRE(RunSql(conn, "ATTACH 'p' AS v (TYPE vtest)") == DUCKDB_V2_ERROR_NONE);
+
+	// "t1" is added twice, and listed once
+	REQUIRE(CountRows(conn, "SELECT table_name FROM duckdb_tables() WHERE database_name = 'v'") == 2);
+	REQUIRE(CountRows(conn, "SELECT column_name FROM duckdb_columns() WHERE database_name = 'v' AND table_name = "
+	                        "'t1'") == 2);
+	REQUIRE(CountRows(conn, "SELECT * FROM (SHOW ALL TABLES) WHERE database = 'v'") == 2);
+	REQUIRE(recorder.table_lists > 0);
+	REQUIRE(recorder.states_seen);
+	REQUIRE(recorder.contexts_seen);
+}
+
+TEST_CASE("V2 vcatalog: a table must be complete and in the right schema", "[capi_v2][vcatalog]") {
+	VCatalogFixture vfx;
+	auto &recorder = vfx.recorder;
+	auto conn = vfx.fx.conn;
+	REQUIRE(RunSql(conn, "ATTACH 'p' AS v (TYPE vtest)") == DUCKDB_V2_ERROR_NONE);
+
+	SECTION("a table without columns") {
+		REQUIRE(Contains(ErrorText(conn, "SELECT * FROM pragma_table_info('v.main.empty')"), "no columns"));
+	}
+	SECTION("a table of another schema") {
+		// Create the tables of "main" first
+		REQUIRE(CountRows(conn, "SELECT * FROM pragma_table_info('v.main.t1')") == 2);
+		recorder.resolve_in_any_schema = true;
+		REQUIRE(Contains(ErrorText(conn, "SELECT * FROM pragma_table_info('v.other.t1')"), "different schema"));
+	}
+}
+
+TEST_CASE("V2 vcatalog: the implementation owns its tables", "[capi_v2][vcatalog]") {
+	VCatalogFixture vfx;
+	auto &recorder = vfx.recorder;
+	auto conn = vfx.fx.conn;
+	REQUIRE(RunSql(conn, "ATTACH 'p' AS v (TYPE vtest)") == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(CountRows(conn, "SELECT * FROM pragma_table_info('v.main.t1')") == 2);
+	REQUIRE(recorder.tables_destroyed == 0);
+	REQUIRE(RunSql(conn, "DETACH v") == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(recorder.tables_destroyed == 2);
+}
+
+TEST_CASE("V2 vcatalog: table arguments are checked", "[capi_v2][vcatalog]") {
+	REQUIRE(duckdb_v2_vcatalog_table_create(nullptr, "t", 1, nullptr, nullptr) != DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vcatalog_table_destroy(nullptr) == DUCKDB_V2_ERROR_NONE);
+	duckdb_v2_vcatalog_table_handle table = nullptr;
+	REQUIRE(duckdb_v2_vcatalog_table_destroy(&table) == DUCKDB_V2_ERROR_NONE);
+	REQUIRE(duckdb_v2_vcatalog_table_add_column(nullptr, "c", 1, nullptr, nullptr) != DUCKDB_V2_ERROR_NONE);
 }
 
 } // namespace test_capi_v2

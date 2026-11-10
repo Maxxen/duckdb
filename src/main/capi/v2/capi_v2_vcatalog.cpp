@@ -2,14 +2,18 @@
 
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/entry_lookup_info.hpp"
 #include "duckdb/common/reference_map.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/parser/parsed_data/attach_info.hpp"
+#include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
+#include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/storage/database_size.hpp"
 #include "duckdb/storage/storage_extension.hpp"
+#include "duckdb/storage/table_storage_info.hpp"
 #include "duckdb/transaction/meta_transaction.hpp"
 #include "duckdb/transaction/transaction.hpp"
 #include "duckdb/transaction/transaction_manager.hpp"
@@ -23,8 +27,10 @@ struct CV2VCatalogDefinition {
 	duckdb_v2_vcatalog_transaction_begin_callback_fn begin_cb = nullptr;
 	duckdb_v2_vcatalog_transaction_commit_callback_fn commit_cb = nullptr;
 	duckdb_v2_vcatalog_transaction_rollback_callback_fn rollback_cb = nullptr;
-	duckdb_v2_vcatalog_schema_lookup_callback_fn schema_lookup_cb = nullptr;
-	duckdb_v2_vcatalog_schema_scan_callback_fn schema_scan_cb = nullptr;
+	duckdb_v2_vcatalog_schema_find_callback_fn schema_find_cb = nullptr;
+	duckdb_v2_vcatalog_schema_list_callback_fn schema_list_cb = nullptr;
+	duckdb_v2_vcatalog_table_find_callback_fn table_find_cb = nullptr;
+	duckdb_v2_vcatalog_table_list_callback_fn table_list_cb = nullptr;
 	shared_ptr<CV2UserData> user_data;
 
 	void *GetUserData() const {
@@ -61,23 +67,20 @@ static void *GetState(const unique_ptr<CV2UserData> &state) {
 //----------------------------------------------------------------------------------------------------------------------
 // Schema
 //----------------------------------------------------------------------------------------------------------------------
-//! A schema of a vcatalog database. Owned by the implementation, which hands it to DuckDB from its lookup and scan
+//! A schema of a vcatalog database. Owned by the implementation, which hands it to DuckDB from its find and list
 //! callbacks.
 class CV2VCatalogSchema final : public SchemaCatalogEntry {
 public:
 	CV2VCatalogSchema(Catalog &catalog, CreateSchemaInfo &info) : SchemaCatalogEntry(catalog, info) {
 	}
 
-	void Scan(ClientContext &context, CatalogType type, const std::function<void(CatalogEntry &)> &callback) override {
-	}
+	void Scan(ClientContext &context, CatalogType type, const std::function<void(CatalogEntry &)> &callback) override;
 
+	//! Without a context there is no transaction to list in
 	void Scan(CatalogType type, const std::function<void(CatalogEntry &)> &callback) override {
 	}
 
-	optional_ptr<CatalogEntry> LookupEntry(CatalogTransaction transaction,
-	                                       const EntryLookupInfo &lookup_info) override {
-		return nullptr;
-	}
+	optional_ptr<CatalogEntry> LookupEntry(CatalogTransaction transaction, const EntryLookupInfo &lookup_info) override;
 
 	optional_ptr<CatalogEntry> CreateIndex(CatalogTransaction transaction, CreateIndexInfo &info,
 	                                       TableCatalogEntry &table) override {
@@ -128,6 +131,60 @@ static auto Convert(CV2VCatalogSchema *schema) -> duckdb_v2_vcatalog_schema_hand
 	return reinterpret_cast<duckdb_v2_vcatalog_schema_handle>(schema);
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// Table
+//----------------------------------------------------------------------------------------------------------------------
+//! A table of a vcatalog schema. Owned by the implementation, like its schema.
+class CV2VCatalogTable final : public TableCatalogEntry {
+public:
+	CV2VCatalogTable(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info)
+	    : TableCatalogEntry(catalog, schema, info) {
+	}
+
+	const ColumnList &GetColumns() const override {
+		return columns;
+	}
+
+	unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, column_t column_id) override {
+		return nullptr;
+	}
+
+	TableFunction GetScanFunction(ClientContext &context, unique_ptr<FunctionData> &bind_data) override {
+		throw NotImplementedException("Reading tables of %s databases is not supported yet", catalog.GetCatalogType());
+	}
+
+	TableStorageInfo GetStorageInfo(ClientContext &context) override {
+		return TableStorageInfo();
+	}
+
+	void AddColumn(ColumnDefinition column) {
+		columns.AddColumn(std::move(column));
+	}
+
+	//! Throws unless the table can be handed to DuckDB as a table of `schema`.
+	void Verify(const CV2VCatalogSchema &schema) const {
+		if (&ParentSchema() != &schema) {
+			throw InvalidInputException("The table %s was created in a different schema.", name);
+		}
+		if (columns.LogicalColumnCount() == 0) {
+			throw InvalidInputException("The table %s has no columns.", name);
+		}
+	}
+
+public:
+	unique_ptr<CV2UserData> state;
+
+private:
+	ColumnList columns;
+};
+
+static auto Convert(duckdb_v2_vcatalog_table_handle table) -> CV2VCatalogTable * {
+	return reinterpret_cast<CV2VCatalogTable *>(table);
+}
+static auto Convert(CV2VCatalogTable *table) -> duckdb_v2_vcatalog_table_handle {
+	return reinterpret_cast<duckdb_v2_vcatalog_table_handle>(table);
+}
+
 class CV2VCatalogTransaction;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -159,6 +216,11 @@ public:
 	}
 
 	void ScanSchemas(ClientContext &context, std::function<void(SchemaCatalogEntry &)> callback) override;
+
+	optional_ptr<CatalogEntry> ResolveTable(CatalogTransaction transaction, CV2VCatalogSchema &schema,
+	                                        const string &name);
+	void ListTables(ClientContext &context, CV2VCatalogSchema &schema,
+	                const std::function<void(CatalogEntry &)> &callback);
 
 	PhysicalOperator &PlanCreateTableAs(ClientContext &context, PhysicalPlanGenerator &planner, LogicalCreateTable &op,
 	                                    PhysicalOperator &plan) override {
@@ -318,7 +380,7 @@ static auto Convert(duckdb_v2_vcatalog_transaction_rollback_info_handle info) ->
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// Schema Lookups
+// Finding and Listing Schemas
 //----------------------------------------------------------------------------------------------------------------------
 static void *GetTransactionState(optional_ptr<CV2VCatalogTransaction> transaction) {
 	return transaction ? GetState(transaction->transaction_state) : nullptr;
@@ -331,11 +393,11 @@ static void CheckSchemaOf(CV2VirtualCatalog &catalog, CV2VCatalogSchema &schema)
 	}
 }
 
-//! Backs the schema lookup info handle.
-class CV2VCatalogSchemaLookupInfo {
+//! Backs the schema find info handle.
+class CV2VCatalogSchemaFindInfo {
 public:
-	CV2VCatalogSchemaLookupInfo(CV2VirtualCatalog &catalog, optional_ptr<CV2VCatalogTransaction> transaction,
-	                            const string &name)
+	CV2VCatalogSchemaFindInfo(CV2VirtualCatalog &catalog, optional_ptr<CV2VCatalogTransaction> transaction,
+	                          const string &name)
 	    : catalog(catalog), transaction(transaction), name(name) {
 	}
 
@@ -345,17 +407,17 @@ public:
 	optional_ptr<CV2VCatalogSchema> result;
 };
 
-static auto Convert(duckdb_v2_vcatalog_schema_lookup_info_handle info) -> CV2VCatalogSchemaLookupInfo * {
-	return reinterpret_cast<CV2VCatalogSchemaLookupInfo *>(info);
+static auto Convert(duckdb_v2_vcatalog_schema_find_info_handle info) -> CV2VCatalogSchemaFindInfo * {
+	return reinterpret_cast<CV2VCatalogSchemaFindInfo *>(info);
 }
-static auto Convert(CV2VCatalogSchemaLookupInfo *info) -> duckdb_v2_vcatalog_schema_lookup_info_handle {
-	return reinterpret_cast<duckdb_v2_vcatalog_schema_lookup_info_handle>(info);
+static auto Convert(CV2VCatalogSchemaFindInfo *info) -> duckdb_v2_vcatalog_schema_find_info_handle {
+	return reinterpret_cast<duckdb_v2_vcatalog_schema_find_info_handle>(info);
 }
 
-//! Backs the schema scan info handle.
-class CV2VCatalogSchemaScanInfo {
+//! Backs the schema list info handle.
+class CV2VCatalogSchemaListInfo {
 public:
-	CV2VCatalogSchemaScanInfo(CV2VirtualCatalog &catalog, CV2VCatalogTransaction &transaction)
+	CV2VCatalogSchemaListInfo(CV2VirtualCatalog &catalog, CV2VCatalogTransaction &transaction)
 	    : catalog(catalog), transaction(transaction) {
 	}
 
@@ -373,11 +435,11 @@ private:
 	reference_set_t<CV2VCatalogSchema> added;
 };
 
-static auto Convert(duckdb_v2_vcatalog_schema_scan_info_handle info) -> CV2VCatalogSchemaScanInfo * {
-	return reinterpret_cast<CV2VCatalogSchemaScanInfo *>(info);
+static auto Convert(duckdb_v2_vcatalog_schema_list_info_handle info) -> CV2VCatalogSchemaListInfo * {
+	return reinterpret_cast<CV2VCatalogSchemaListInfo *>(info);
 }
-static auto Convert(CV2VCatalogSchemaScanInfo *info) -> duckdb_v2_vcatalog_schema_scan_info_handle {
-	return reinterpret_cast<duckdb_v2_vcatalog_schema_scan_info_handle>(info);
+static auto Convert(CV2VCatalogSchemaListInfo *info) -> duckdb_v2_vcatalog_schema_list_info_handle {
+	return reinterpret_cast<duckdb_v2_vcatalog_schema_list_info_handle>(info);
 }
 
 optional_ptr<CV2VCatalogTransaction> CV2VirtualCatalog::GetTransaction(CatalogTransaction transaction) {
@@ -391,30 +453,126 @@ optional_ptr<CV2VCatalogTransaction> CV2VirtualCatalog::GetTransaction(CatalogTr
 }
 
 optional_ptr<CatalogEntry> CV2VirtualCatalog::ResolveSchema(CatalogTransaction transaction, const string &name) {
-	auto lookup_cb = definition.schema_lookup_cb;
-	if (!lookup_cb) {
+	auto find_cb = definition.schema_find_cb;
+	if (!find_cb) {
 		return nullptr;
 	}
-	CV2VCatalogSchemaLookupInfo info(*this, GetTransaction(transaction), name);
+	CV2VCatalogSchemaFindInfo info(*this, GetTransaction(transaction), name);
 	InvokeCallback(transaction.context, [&](duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err) {
-		lookup_cb(Convert(&info), Convert(this), context, err);
+		find_cb(Convert(&info), Convert(this), context, err);
 	});
 	return info.result.get();
 }
 
 void CV2VirtualCatalog::ScanSchemas(ClientContext &context, std::function<void(SchemaCatalogEntry &)> callback) {
-	auto scan_cb = definition.schema_scan_cb;
-	if (!scan_cb) {
+	auto list_cb = definition.schema_list_cb;
+	if (!list_cb) {
 		return;
 	}
-	CV2VCatalogSchemaScanInfo info(*this, Transaction::Get(context, *this).Cast<CV2VCatalogTransaction>());
+	CV2VCatalogSchemaListInfo info(*this, Transaction::Get(context, *this).Cast<CV2VCatalogTransaction>());
 	InvokeCallback(&context, [&](duckdb_v2_context_handle callback_context, duckdb_v2_error_info_handle *err) {
-		scan_cb(Convert(&info), Convert(this), callback_context, err);
+		list_cb(Convert(&info), Convert(this), callback_context, err);
 	});
 	// Visited once the callback returned, so the engine's callback cannot run inside the implementation's
 	for (auto &schema : info.schemas) {
 		callback(schema.get());
 	}
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Finding and Listing Tables
+//----------------------------------------------------------------------------------------------------------------------
+//! Backs the table find info handle.
+class CV2VCatalogTableFindInfo {
+public:
+	CV2VCatalogTableFindInfo(optional_ptr<CV2VCatalogTransaction> transaction, CV2VCatalogSchema &schema,
+	                         const string &name)
+	    : transaction(transaction), schema(schema), name(name) {
+	}
+
+	optional_ptr<CV2VCatalogTransaction> transaction;
+	CV2VCatalogSchema &schema;
+	const string &name;
+	optional_ptr<CV2VCatalogTable> result;
+};
+
+static auto Convert(duckdb_v2_vcatalog_table_find_info_handle info) -> CV2VCatalogTableFindInfo * {
+	return reinterpret_cast<CV2VCatalogTableFindInfo *>(info);
+}
+static auto Convert(CV2VCatalogTableFindInfo *info) -> duckdb_v2_vcatalog_table_find_info_handle {
+	return reinterpret_cast<duckdb_v2_vcatalog_table_find_info_handle>(info);
+}
+
+//! Backs the table list info handle.
+class CV2VCatalogTableListInfo {
+public:
+	CV2VCatalogTableListInfo(CV2VCatalogTransaction &transaction, CV2VCatalogSchema &schema)
+	    : transaction(transaction), schema(schema) {
+	}
+
+	void AddTable(CV2VCatalogTable &table) {
+		if (added.insert(table).second) {
+			tables.push_back(table);
+		}
+	}
+
+	CV2VCatalogTransaction &transaction;
+	CV2VCatalogSchema &schema;
+	vector<reference<CV2VCatalogTable>> tables;
+
+private:
+	reference_set_t<CV2VCatalogTable> added;
+};
+
+static auto Convert(duckdb_v2_vcatalog_table_list_info_handle info) -> CV2VCatalogTableListInfo * {
+	return reinterpret_cast<CV2VCatalogTableListInfo *>(info);
+}
+static auto Convert(CV2VCatalogTableListInfo *info) -> duckdb_v2_vcatalog_table_list_info_handle {
+	return reinterpret_cast<duckdb_v2_vcatalog_table_list_info_handle>(info);
+}
+
+optional_ptr<CatalogEntry> CV2VirtualCatalog::ResolveTable(CatalogTransaction transaction, CV2VCatalogSchema &schema,
+                                                           const string &name) {
+	auto find_cb = definition.table_find_cb;
+	if (!find_cb) {
+		return nullptr;
+	}
+	CV2VCatalogTableFindInfo info(GetTransaction(transaction), schema, name);
+	InvokeCallback(transaction.context, [&](duckdb_v2_context_handle context, duckdb_v2_error_info_handle *err) {
+		find_cb(Convert(&info), Convert(this), context, err);
+	});
+	return info.result.get();
+}
+
+void CV2VirtualCatalog::ListTables(ClientContext &context, CV2VCatalogSchema &schema,
+                                   const std::function<void(CatalogEntry &)> &callback) {
+	auto list_cb = definition.table_list_cb;
+	if (!list_cb) {
+		return;
+	}
+	CV2VCatalogTableListInfo info(Transaction::Get(context, *this).Cast<CV2VCatalogTransaction>(), schema);
+	InvokeCallback(&context, [&](duckdb_v2_context_handle callback_context, duckdb_v2_error_info_handle *err) {
+		list_cb(Convert(&info), Convert(this), callback_context, err);
+	});
+	for (auto &table : info.tables) {
+		callback(table.get());
+	}
+}
+
+optional_ptr<CatalogEntry> CV2VCatalogSchema::LookupEntry(CatalogTransaction transaction,
+                                                          const EntryLookupInfo &lookup_info) {
+	if (lookup_info.GetCatalogType() != CatalogType::TABLE_ENTRY) {
+		return nullptr;
+	}
+	return ParentCatalog().Cast<CV2VirtualCatalog>().ResolveTable(transaction, *this, lookup_info.GetEntryName());
+}
+
+void CV2VCatalogSchema::Scan(ClientContext &context, CatalogType type,
+                             const std::function<void(CatalogEntry &)> &callback) {
+	if (type != CatalogType::TABLE_ENTRY) {
+		return;
+	}
+	ParentCatalog().Cast<CV2VirtualCatalog>().ListTables(context, *this, callback);
 }
 
 class CV2VCatalogTransactionManager final : public TransactionManager {
@@ -759,18 +917,18 @@ duckdb_v2_vcatalog_transaction_rollback_get_transaction_state(duckdb_v2_vcatalog
 	return WithErrorHandler(err, [&]() { *data = GetState(Convert(info)->transaction.transaction_state); });
 }
 
-DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_schema_lookup_callback(duckdb_v2_vcatalog_handle vcatalog,
-                                                              duckdb_v2_vcatalog_schema_lookup_callback_fn callback,
-                                                              duckdb_v2_error_info_handle *err) {
-	DUCKDB_CHECK_ARG(vcatalog);
-	return WithErrorHandler(err, [&]() { Convert(vcatalog)->definition.schema_lookup_cb = callback; });
-}
-
-DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_schema_scan_callback(duckdb_v2_vcatalog_handle vcatalog,
-                                                            duckdb_v2_vcatalog_schema_scan_callback_fn callback,
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_schema_find_callback(duckdb_v2_vcatalog_handle vcatalog,
+                                                            duckdb_v2_vcatalog_schema_find_callback_fn callback,
                                                             duckdb_v2_error_info_handle *err) {
 	DUCKDB_CHECK_ARG(vcatalog);
-	return WithErrorHandler(err, [&]() { Convert(vcatalog)->definition.schema_scan_cb = callback; });
+	return WithErrorHandler(err, [&]() { Convert(vcatalog)->definition.schema_find_cb = callback; });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_schema_list_callback(duckdb_v2_vcatalog_handle vcatalog,
+                                                            duckdb_v2_vcatalog_schema_list_callback_fn callback,
+                                                            duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(vcatalog);
+	return WithErrorHandler(err, [&]() { Convert(vcatalog)->definition.schema_list_cb = callback; });
 }
 
 DUCKDB_V2_ERROR duckdb_v2_vcatalog_database_get_user_data(duckdb_v2_vcatalog_database_handle database, void **data,
@@ -850,16 +1008,16 @@ DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_get_state(duckdb_v2_vcatalog_schema_ha
 }
 
 DUCKDB_V2_ERROR
-duckdb_v2_vcatalog_schema_lookup_get_transaction_state(duckdb_v2_vcatalog_schema_lookup_info_handle info, void **data,
-                                                       duckdb_v2_error_info_handle *err) {
+duckdb_v2_vcatalog_schema_find_get_transaction_state(duckdb_v2_vcatalog_schema_find_info_handle info, void **data,
+                                                     duckdb_v2_error_info_handle *err) {
 	DUCKDB_CHECK_ARG(info);
 	DUCKDB_CHECK_ARG(data);
 	return WithErrorHandler(err, [&]() { *data = GetTransactionState(Convert(info)->transaction); });
 }
 
-DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_lookup_get_name(duckdb_v2_vcatalog_schema_lookup_info_handle info,
-                                                          const char **name, idx_t *name_length,
-                                                          duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_find_get_name(duckdb_v2_vcatalog_schema_find_info_handle info,
+                                                        const char **name, idx_t *name_length,
+                                                        duckdb_v2_error_info_handle *err) {
 	DUCKDB_CHECK_ARG(info);
 	DUCKDB_CHECK_ARG(name);
 	DUCKDB_CHECK_ARG(name_length);
@@ -870,34 +1028,195 @@ DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_lookup_get_name(duckdb_v2_vcatalog_sch
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_lookup_set_schema(duckdb_v2_vcatalog_schema_lookup_info_handle info,
-                                                            duckdb_v2_vcatalog_schema_handle schema,
-                                                            duckdb_v2_error_info_handle *err) {
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_find_set_schema(duckdb_v2_vcatalog_schema_find_info_handle info,
+                                                          duckdb_v2_vcatalog_schema_handle schema,
+                                                          duckdb_v2_error_info_handle *err) {
 	DUCKDB_CHECK_ARG(info);
 	DUCKDB_CHECK_ARG(schema);
 	return WithErrorHandler(err, [&]() {
-		auto &lookup = *Convert(info);
-		CheckSchemaOf(lookup.catalog, *Convert(schema));
-		lookup.result = Convert(schema);
+		auto &request = *Convert(info);
+		CheckSchemaOf(request.catalog, *Convert(schema));
+		request.result = Convert(schema);
 	});
 }
 
-DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_scan_get_transaction_state(duckdb_v2_vcatalog_schema_scan_info_handle info,
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_list_get_transaction_state(duckdb_v2_vcatalog_schema_list_info_handle info,
                                                                      void **data, duckdb_v2_error_info_handle *err) {
 	DUCKDB_CHECK_ARG(info);
 	DUCKDB_CHECK_ARG(data);
 	return WithErrorHandler(err, [&]() { *data = GetTransactionState(&Convert(info)->transaction); });
 }
 
-DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_scan_add_schema(duckdb_v2_vcatalog_schema_scan_info_handle info,
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_list_add_schema(duckdb_v2_vcatalog_schema_list_info_handle info,
                                                           duckdb_v2_vcatalog_schema_handle schema,
                                                           duckdb_v2_error_info_handle *err) {
 	DUCKDB_CHECK_ARG(info);
 	DUCKDB_CHECK_ARG(schema);
 	return WithErrorHandler(err, [&]() {
-		auto &scan = *Convert(info);
-		CheckSchemaOf(scan.catalog, *Convert(schema));
-		scan.AddSchema(*Convert(schema));
+		auto &listing = *Convert(info);
+		CheckSchemaOf(listing.catalog, *Convert(schema));
+		listing.AddSchema(*Convert(schema));
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_table_find_callback(duckdb_v2_vcatalog_handle vcatalog,
+                                                           duckdb_v2_vcatalog_table_find_callback_fn callback,
+                                                           duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(vcatalog);
+	return WithErrorHandler(err, [&]() { Convert(vcatalog)->definition.table_find_cb = callback; });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_table_list_callback(duckdb_v2_vcatalog_handle vcatalog,
+                                                           duckdb_v2_vcatalog_table_list_callback_fn callback,
+                                                           duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(vcatalog);
+	return WithErrorHandler(err, [&]() { Convert(vcatalog)->definition.table_list_cb = callback; });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_create(duckdb_v2_vcatalog_schema_handle schema, const char *name,
+                                                idx_t name_length, duckdb_v2_vcatalog_table_handle *table,
+                                                duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(schema);
+	DUCKDB_CHECK_STR_ARG(name, name_length);
+	DUCKDB_CHECK_ARG(table);
+	*table = nullptr;
+	return WithErrorHandler(err, [&]() {
+		auto &parent = *Convert(schema);
+		duckdb::CreateTableInfo info(parent, duckdb::Identifier(ConvertIdentifierName(name, name_length)));
+		auto result = duckdb::make_uniq<CV2VCatalogTable>(parent.ParentCatalog(), parent, info);
+		*table = Convert(result.release());
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_destroy(duckdb_v2_vcatalog_table_handle *table) {
+	return WithErrorHandler(nullptr, [&]() {
+		if (!table) {
+			return;
+		}
+		if (*table) {
+			delete Convert(*table);
+			*table = nullptr;
+		}
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_add_column(duckdb_v2_vcatalog_table_handle table, const char *name,
+                                                    idx_t name_length, duckdb_v2_logical_type_handle type,
+                                                    duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(table);
+	DUCKDB_CHECK_STR_ARG(name, name_length);
+	DUCKDB_CHECK_ARG(type);
+	return WithErrorHandler(err, [&]() {
+		auto column_type_ref = Convert(type);
+		const auto &column_type = *column_type_ref;
+		if (!column_type.IsComplete()) {
+			throw duckdb::InvalidInputException("The type of a column must be a fully defined concrete type.");
+		}
+		Convert(table)->AddColumn(
+		    duckdb::ColumnDefinition(duckdb::Identifier(ConvertIdentifierName(name, name_length)), column_type));
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_get_name(duckdb_v2_vcatalog_table_handle table, const char **name,
+                                                  idx_t *name_length, duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(table);
+	DUCKDB_CHECK_ARG(name);
+	DUCKDB_CHECK_ARG(name_length);
+	return WithErrorHandler(err, [&]() {
+		auto &table_name = Convert(table)->name.GetIdentifierName();
+		*name = table_name.data();
+		*name_length = table_name.size();
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_get_schema(duckdb_v2_vcatalog_table_handle table,
+                                                    duckdb_v2_vcatalog_schema_handle *schema,
+                                                    duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(table);
+	DUCKDB_CHECK_ARG(schema);
+	return WithErrorHandler(err,
+	                        [&]() { *schema = Convert(&Convert(table)->ParentSchema().Cast<CV2VCatalogSchema>()); });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_set_state(duckdb_v2_vcatalog_table_handle table, duckdb_v2_opaque *data,
+                                                   duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(table);
+	DUCKDB_CHECK_ARG(data);
+	return WithErrorHandler(err, [&]() { SetState(Convert(table)->state, *data); });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_get_state(duckdb_v2_vcatalog_table_handle table, void **data,
+                                                   duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(table);
+	DUCKDB_CHECK_ARG(data);
+	return WithErrorHandler(err, [&]() { *data = GetState(Convert(table)->state); });
+}
+
+DUCKDB_V2_ERROR
+duckdb_v2_vcatalog_table_find_get_transaction_state(duckdb_v2_vcatalog_table_find_info_handle info, void **data,
+                                                    duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(info);
+	DUCKDB_CHECK_ARG(data);
+	return WithErrorHandler(err, [&]() { *data = GetTransactionState(Convert(info)->transaction); });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_find_get_schema(duckdb_v2_vcatalog_table_find_info_handle info,
+                                                         duckdb_v2_vcatalog_schema_handle *schema,
+                                                         duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(info);
+	DUCKDB_CHECK_ARG(schema);
+	return WithErrorHandler(err, [&]() { *schema = Convert(&Convert(info)->schema); });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_find_get_name(duckdb_v2_vcatalog_table_find_info_handle info,
+                                                       const char **name, idx_t *name_length,
+                                                       duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(info);
+	DUCKDB_CHECK_ARG(name);
+	DUCKDB_CHECK_ARG(name_length);
+	return WithErrorHandler(err, [&]() {
+		auto &lookup_name = Convert(info)->name;
+		*name = lookup_name.data();
+		*name_length = lookup_name.size();
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_find_set_table(duckdb_v2_vcatalog_table_find_info_handle info,
+                                                        duckdb_v2_vcatalog_table_handle table,
+                                                        duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(info);
+	DUCKDB_CHECK_ARG(table);
+	return WithErrorHandler(err, [&]() {
+		auto &request = *Convert(info);
+		Convert(table)->Verify(request.schema);
+		request.result = Convert(table);
+	});
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_list_get_transaction_state(duckdb_v2_vcatalog_table_list_info_handle info,
+                                                                    void **data, duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(info);
+	DUCKDB_CHECK_ARG(data);
+	return WithErrorHandler(err, [&]() { *data = GetTransactionState(&Convert(info)->transaction); });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_list_get_schema(duckdb_v2_vcatalog_table_list_info_handle info,
+                                                         duckdb_v2_vcatalog_schema_handle *schema,
+                                                         duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(info);
+	DUCKDB_CHECK_ARG(schema);
+	return WithErrorHandler(err, [&]() { *schema = Convert(&Convert(info)->schema); });
+}
+
+DUCKDB_V2_ERROR duckdb_v2_vcatalog_table_list_add_table(duckdb_v2_vcatalog_table_list_info_handle info,
+                                                        duckdb_v2_vcatalog_table_handle table,
+                                                        duckdb_v2_error_info_handle *err) {
+	DUCKDB_CHECK_ARG(info);
+	DUCKDB_CHECK_ARG(table);
+	return WithErrorHandler(err, [&]() {
+		auto &listing = *Convert(info);
+		Convert(table)->Verify(listing.schema);
+		listing.AddTable(*Convert(table));
 	});
 }
 
