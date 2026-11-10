@@ -5096,8 +5096,8 @@ typedef struct _duckdb_v2_vcatalog {
 
 /*!
  * A borrowed opaque handle to a database being attached, received by the attach callback and valid only for the
- * duration of that call. It gives access to the name, path and options of the `ATTACH` and to the user data, and sets
- * the catalog state of the database.
+ * duration of that call. It gives access to the name, path and options of the `ATTACH`, and sets the catalog state of
+ * the database.
  */
 typedef struct _duckdb_v2_vcatalog_attach_info {
 	void *internal_ptr;
@@ -5105,8 +5105,7 @@ typedef struct _duckdb_v2_vcatalog_attach_info {
 
 /*!
  * A borrowed opaque handle to a transaction beginning on an attached database, received by the begin callback and valid
- * only for the duration of that call. It gives access to the user data and the catalog state, and sets the transaction
- * state.
+ * only for the duration of that call. It tells whether the transaction is read-only, and sets the transaction state.
  */
 typedef struct _duckdb_v2_vcatalog_transaction_begin_info {
 	void *internal_ptr;
@@ -5114,8 +5113,7 @@ typedef struct _duckdb_v2_vcatalog_transaction_begin_info {
 
 /*!
  * A borrowed opaque handle to a transaction committing on an attached database, received by the commit callback and
- * valid only for the duration of that call. It gives access to the user data, the catalog state and the transaction
- * state.
+ * valid only for the duration of that call. It gives access to the transaction state.
  */
 typedef struct _duckdb_v2_vcatalog_transaction_commit_info {
 	void *internal_ptr;
@@ -5123,29 +5121,77 @@ typedef struct _duckdb_v2_vcatalog_transaction_commit_info {
 
 /*!
  * A borrowed opaque handle to a transaction rolling back on an attached database, received by the rollback callback and
- * valid only for the duration of that call. It gives access to the user data, the catalog state and the transaction
- * state.
+ * valid only for the duration of that call. It gives access to the transaction state.
  */
 typedef struct _duckdb_v2_vcatalog_transaction_rollback_info {
 	void *internal_ptr;
 } * duckdb_v2_vcatalog_transaction_rollback_info_handle;
+
+/*!
+ * A borrowed opaque handle to a database attached with a vcatalog, passed to every callback that runs on it, and valid
+ * for as long as the database stays attached. It gives access to the user data and the catalog state, and is what the
+ * schemas of the database are created in, with `duckdb_v2_vcatalog_schema_create()`.
+ */
+typedef struct _duckdb_v2_vcatalog_database {
+	void *internal_ptr;
+} * duckdb_v2_vcatalog_database_handle;
+
+/*!
+ * An owned opaque handle to a schema of a database attached with a vcatalog. Created with
+ * `duckdb_v2_vcatalog_schema_create()`, handed to DuckDB by the schema lookup and scan callbacks, and destroyed with
+ * `duckdb_v2_vcatalog_schema_destroy()` within the rules of the module notes. It carries a name and the
+ * implementation's own state.
+ */
+typedef struct _duckdb_v2_vcatalog_schema {
+	void *internal_ptr;
+} * duckdb_v2_vcatalog_schema_handle;
+
+/*!
+ * A borrowed opaque handle to the lookup of a schema by name, received by the schema lookup callback and valid only for
+ * the duration of that call. It gives access to the transaction state and the name, and resolves the lookup.
+ */
+typedef struct _duckdb_v2_vcatalog_schema_lookup_info {
+	void *internal_ptr;
+} * duckdb_v2_vcatalog_schema_lookup_info_handle;
+
+/*!
+ * A borrowed opaque handle to a scan of the schemas of a database, received by the schema scan callback and valid only
+ * for the duration of that call. It gives access to the transaction state, and receives the schemas.
+ */
+typedef struct _duckdb_v2_vcatalog_schema_scan_info {
+	void *internal_ptr;
+} * duckdb_v2_vcatalog_schema_scan_info_handle;
 
 /* --- Constants for vcatalog --- */
 
 /* --- Function pointer typedefs for vcatalog --- */
 
 typedef void (*duckdb_v2_vcatalog_attach_callback_fn)(duckdb_v2_vcatalog_attach_info_handle info,
+                                                      duckdb_v2_vcatalog_database_handle database,
                                                       duckdb_v2_context_handle context,
                                                       duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_vcatalog_transaction_begin_callback_fn)(duckdb_v2_vcatalog_transaction_begin_info_handle info,
+                                                                 duckdb_v2_vcatalog_database_handle database,
                                                                  duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_vcatalog_transaction_commit_callback_fn)(
-    duckdb_v2_vcatalog_transaction_commit_info_handle info, duckdb_v2_error_info_handle *err);
+    duckdb_v2_vcatalog_transaction_commit_info_handle info, duckdb_v2_vcatalog_database_handle database,
+    duckdb_v2_error_info_handle *err);
 
 typedef void (*duckdb_v2_vcatalog_transaction_rollback_callback_fn)(
-    duckdb_v2_vcatalog_transaction_rollback_info_handle info, duckdb_v2_error_info_handle *err);
+    duckdb_v2_vcatalog_transaction_rollback_info_handle info, duckdb_v2_vcatalog_database_handle database,
+    duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_vcatalog_schema_lookup_callback_fn)(duckdb_v2_vcatalog_schema_lookup_info_handle info,
+                                                             duckdb_v2_vcatalog_database_handle database,
+                                                             duckdb_v2_context_handle context,
+                                                             duckdb_v2_error_info_handle *err);
+
+typedef void (*duckdb_v2_vcatalog_schema_scan_callback_fn)(duckdb_v2_vcatalog_schema_scan_info_handle info,
+                                                           duckdb_v2_vcatalog_database_handle database,
+                                                           duckdb_v2_context_handle context,
+                                                           duckdb_v2_error_info_handle *err);
 
 /* --- Functions for vcatalog --- */
 
@@ -5216,8 +5262,8 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_name(duckdb_v2_vcatalog_hand
 /*!
  * Sets arbitrary user data on the vcatalog.
  *
- * Associates an opaque pointer with the vcatalog, retrievable from each of its callbacks through their info handles,
- * e.g. via `duckdb_v2_vcatalog_attach_get_user_data()`. Every database attached with the vcatalog shares it, so the
+ * Associates an opaque pointer with the vcatalog, retrievable in each of its callbacks from the database they run on,
+ * via `duckdb_v2_vcatalog_database_get_user_data()`. Every database attached with the vcatalog shares it, so the
  * callbacks must synchronize their own access to it. The opaque handle bundles the pointer with an optional destructor,
  * invoked when the data is no longer needed: once the vcatalog handle is destroyed and, if it was registered, the
  * instance is too.
@@ -5345,19 +5391,48 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_transaction_rollback_callbac
 
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
 /*!
- * Retrieves the user data set via `duckdb_v2_vcatalog_set_user_data()`.
+ * Sets the optional schema lookup callback of the vcatalog, invoked whenever DuckDB resolves a schema name in a
+ * database of its type: e.g. for `v.main.t`, for `USE v`, or for an unqualified name on the search path.
+ *
+ * The callback resolves the name with `duckdb_v2_vcatalog_schema_lookup_set_schema()`, or leaves it unresolved when
+ * there is no such schema. DuckDB keeps nothing between lookups, so a lookup runs every time DuckDB resolves the name,
+ * often several times per statement: keep it fast, e.g. by keeping the schemas in the catalog state. Without a lookup
+ * callback, no schema of a database of the type can be resolved by name.
  *
  * history:
  * - unstable: v2.0.0
  *
- * @param info The attach info handle.
- * @param data Receives the user data pointer, or null if none was set.
+ * @param vcatalog The vcatalog to set the schema lookup callback of.
+ * @param callback The schema lookup callback to set.
  * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
  * `duckdb_v2_error_info_destroy()`.
  * @return DUCKDB_V2_ERROR
  */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_attach_get_user_data(duckdb_v2_vcatalog_attach_info_handle info,
-                                                                     void **data, duckdb_v2_error_info_handle *err);
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_schema_lookup_callback(
+    duckdb_v2_vcatalog_handle vcatalog, duckdb_v2_vcatalog_schema_lookup_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Sets the optional schema scan callback of the vcatalog, invoked when DuckDB lists the schemas of a database of its
+ * type, e.g. for `duckdb_schemas()`.
+ *
+ * The callback adds every schema of the database with `duckdb_v2_vcatalog_schema_scan_add_schema()`. Without a scan
+ * callback, a database of the type lists no schemas.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param vcatalog The vcatalog to set the schema scan callback of.
+ * @param callback The schema scan callback to set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_set_schema_scan_callback(
+    duckdb_v2_vcatalog_handle vcatalog, duckdb_v2_vcatalog_schema_scan_callback_fn callback,
+    duckdb_v2_error_info_handle *err);
 #endif
 
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
@@ -5452,11 +5527,11 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_attach_get_option(duckdb_v2_vcat
 /*!
  * Sets the catalog state of the database being attached.
  *
- * The catalog state is retrievable from every other callback of the database through their info handles, e.g. via
- * `duckdb_v2_vcatalog_transaction_begin_get_catalog_state()`. Every connection using the database shares it, so the
- * callbacks must synchronize their own access to it. The opaque handle bundles the pointer with an optional destructor,
- * invoked when the database is detached, after every transaction state of the database was destroyed, or right away if
- * the `ATTACH` fails. Calling this again replaces the previous state, destroying it.
+ * The catalog state is retrievable in every callback of the database, from the database handle it receives, via
+ * `duckdb_v2_vcatalog_database_get_catalog_state()`. Every connection using the database shares it, so the callbacks
+ * must synchronize their own access to it. The opaque handle bundles the pointer with an optional destructor, invoked
+ * when the database is detached, after every transaction state of the database was destroyed, or right away if the
+ * `ATTACH` fails. Calling this again replaces the previous state, destroying it.
  *
  * history:
  * - unstable: v2.0.0
@@ -5470,40 +5545,6 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_attach_get_option(duckdb_v2_vcat
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_attach_set_catalog_state(duckdb_v2_vcatalog_attach_info_handle info,
                                                                          duckdb_v2_opaque *data,
                                                                          duckdb_v2_error_info_handle *err);
-#endif
-
-#if DUCKDB_V2_API_ALLOW_UNSTABLE
-/*!
- * Retrieves the user data set via `duckdb_v2_vcatalog_set_user_data()`.
- *
- * history:
- * - unstable: v2.0.0
- *
- * @param info The begin info handle.
- * @param data Receives the user data pointer, or null if none was set.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * `duckdb_v2_error_info_destroy()`.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_begin_get_user_data(
-    duckdb_v2_vcatalog_transaction_begin_info_handle info, void **data, duckdb_v2_error_info_handle *err);
-#endif
-
-#if DUCKDB_V2_API_ALLOW_UNSTABLE
-/*!
- * Retrieves the catalog state set via `duckdb_v2_vcatalog_attach_set_catalog_state()`.
- *
- * history:
- * - unstable: v2.0.0
- *
- * @param info The begin info handle.
- * @param data Receives the catalog state pointer, or null if none was set.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * `duckdb_v2_error_info_destroy()`.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_begin_get_catalog_state(
-    duckdb_v2_vcatalog_transaction_begin_info_handle info, void **data, duckdb_v2_error_info_handle *err);
 #endif
 
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
@@ -5548,40 +5589,6 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_begin_set_transactio
 
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
 /*!
- * Retrieves the user data set via `duckdb_v2_vcatalog_set_user_data()`.
- *
- * history:
- * - unstable: v2.0.0
- *
- * @param info The commit info handle.
- * @param data Receives the user data pointer, or null if none was set.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * `duckdb_v2_error_info_destroy()`.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_commit_get_user_data(
-    duckdb_v2_vcatalog_transaction_commit_info_handle info, void **data, duckdb_v2_error_info_handle *err);
-#endif
-
-#if DUCKDB_V2_API_ALLOW_UNSTABLE
-/*!
- * Retrieves the catalog state set via `duckdb_v2_vcatalog_attach_set_catalog_state()`.
- *
- * history:
- * - unstable: v2.0.0
- *
- * @param info The commit info handle.
- * @param data Receives the catalog state pointer, or null if none was set.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * `duckdb_v2_error_info_destroy()`.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_commit_get_catalog_state(
-    duckdb_v2_vcatalog_transaction_commit_info_handle info, void **data, duckdb_v2_error_info_handle *err);
-#endif
-
-#if DUCKDB_V2_API_ALLOW_UNSTABLE
-/*!
  * Retrieves the transaction state set via `duckdb_v2_vcatalog_transaction_begin_set_transaction_state()`.
  *
  * history:
@@ -5599,40 +5606,6 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_commit_get_transacti
 
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
 /*!
- * Retrieves the user data set via `duckdb_v2_vcatalog_set_user_data()`.
- *
- * history:
- * - unstable: v2.0.0
- *
- * @param info The rollback info handle.
- * @param data Receives the user data pointer, or null if none was set.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * `duckdb_v2_error_info_destroy()`.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_rollback_get_user_data(
-    duckdb_v2_vcatalog_transaction_rollback_info_handle info, void **data, duckdb_v2_error_info_handle *err);
-#endif
-
-#if DUCKDB_V2_API_ALLOW_UNSTABLE
-/*!
- * Retrieves the catalog state set via `duckdb_v2_vcatalog_attach_set_catalog_state()`.
- *
- * history:
- * - unstable: v2.0.0
- *
- * @param info The rollback info handle.
- * @param data Receives the catalog state pointer, or null if none was set.
- * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
- * `duckdb_v2_error_info_destroy()`.
- * @return DUCKDB_V2_ERROR
- */
-DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_rollback_get_catalog_state(
-    duckdb_v2_vcatalog_transaction_rollback_info_handle info, void **data, duckdb_v2_error_info_handle *err);
-#endif
-
-#if DUCKDB_V2_API_ALLOW_UNSTABLE
-/*!
  * Retrieves the transaction state set via `duckdb_v2_vcatalog_transaction_begin_set_transaction_state()`.
  *
  * history:
@@ -5646,6 +5619,261 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_rollback_get_catalog
  */
 DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_transaction_rollback_get_transaction_state(
     duckdb_v2_vcatalog_transaction_rollback_info_handle info, void **data, duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the user data set via `duckdb_v2_vcatalog_set_user_data()`.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param database The database.
+ * @param data Receives the user data pointer, or null if none was set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_database_get_user_data(duckdb_v2_vcatalog_database_handle database,
+                                                                       void **data, duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the catalog state the attach callback set via `duckdb_v2_vcatalog_attach_set_catalog_state()`. In the
+ * attach callback itself, this is null until the callback sets one.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param database The database.
+ * @param data Receives the catalog state pointer, or null if none was set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_database_get_catalog_state(duckdb_v2_vcatalog_database_handle database,
+                                                                           void **data,
+                                                                           duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Creates a schema of the database.
+ *
+ * The schema starts out with the given name and no state. Creating it does not make it visible: DuckDB only sees the
+ * schemas the lookup and scan callbacks hand it. The caller owns the returned handle and must destroy it with
+ * `duckdb_v2_vcatalog_schema_destroy()`, within the rules of the module notes.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param database The database to create the schema in.
+ * @param name The name of the schema. Borrowed and copied.
+ * @param name_length The length of `name` in bytes. `name` must be valid UTF-8, need not be null-terminated, and may be
+ * NULL only when this is 0.
+ * @param schema On success, receives the newly created schema. Owned by the caller.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_create(duckdb_v2_vcatalog_database_handle database,
+                                                              const char *name, idx_t name_length,
+                                                              duckdb_v2_vcatalog_schema_handle *schema,
+                                                              duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Destroys the schema and its state.
+ *
+ * Destroy a schema only once every transaction it was handed out in has ended, and after every entry created in it.
+ * Null-safe: passing a null pointer or null handle is a no-op. The handle is set to null on return to prevent
+ * double-destruction.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param schema The schema to destroy.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_destroy(duckdb_v2_vcatalog_schema_handle *schema);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the name of the schema. The name is borrowed and valid for as long as the schema is.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param schema The schema.
+ * @param name Receives a borrowed pointer to the name. Valid for as long as the schema is.
+ * @param name_length Receives the length of `*name` in bytes. `*name` is not guaranteed to be null-terminated.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_get_name(duckdb_v2_vcatalog_schema_handle schema,
+                                                                const char **name, idx_t *name_length,
+                                                                duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the database the schema was created in.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param schema The schema.
+ * @param database Receives the borrowed database handle.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_get_database(duckdb_v2_vcatalog_schema_handle schema,
+                                                                    duckdb_v2_vcatalog_database_handle *database,
+                                                                    duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Sets the implementation's own state of the schema, retrievable via `duckdb_v2_vcatalog_schema_get_state()`.
+ *
+ * DuckDB never reads the state itself. The opaque handle bundles the pointer with an optional destructor, invoked when
+ * the schema is destroyed. Calling this again replaces the previous state, destroying it.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param schema The schema to set the state of.
+ * @param data Opaque handle bundling the state pointer plus an optional destructor.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_set_state(duckdb_v2_vcatalog_schema_handle schema,
+                                                                 duckdb_v2_opaque *data,
+                                                                 duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the state set via `duckdb_v2_vcatalog_schema_set_state()`.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param schema The schema.
+ * @param data Receives the state pointer, or null if none was set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_get_state(duckdb_v2_vcatalog_schema_handle schema, void **data,
+                                                                 duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the transaction state of the transaction the lookup runs in, as set via
+ * `duckdb_v2_vcatalog_transaction_begin_set_transaction_state()`.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param info The lookup info handle.
+ * @param data Receives the transaction state pointer, or null if none was set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_lookup_get_transaction_state(
+    duckdb_v2_vcatalog_schema_lookup_info_handle info, void **data, duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the name to resolve, as written in the statement. How it is matched against the schemas of the database is
+ * up to the vcatalog; DuckDB's own databases match names case-insensitively. The name is borrowed and valid only for
+ * the duration of the callback.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param info The lookup info handle.
+ * @param name Receives a borrowed pointer to the name. Valid only for the duration of the callback.
+ * @param name_length Receives the length of `*name` in bytes. `*name` is not guaranteed to be null-terminated.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR
+duckdb_v2_vcatalog_schema_lookup_get_name(duckdb_v2_vcatalog_schema_lookup_info_handle info, const char **name,
+                                          idx_t *name_length, duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Resolves the lookup to the schema.
+ *
+ * The schema must have been created in the database the lookup runs on. It stays owned by the caller, which must keep
+ * it alive as the module notes describe. Calling this again replaces the previous schema. A lookup the callback does
+ * not resolve finds no schema.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param info The lookup info handle.
+ * @param schema The schema the name resolves to. Remains owned by the caller.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR
+duckdb_v2_vcatalog_schema_lookup_set_schema(duckdb_v2_vcatalog_schema_lookup_info_handle info,
+                                            duckdb_v2_vcatalog_schema_handle schema, duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Retrieves the transaction state of the transaction the scan runs in, as set via
+ * `duckdb_v2_vcatalog_transaction_begin_set_transaction_state()`.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param info The scan info handle.
+ * @param data Receives the transaction state pointer, or null if none was set.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_scan_get_transaction_state(
+    duckdb_v2_vcatalog_schema_scan_info_handle info, void **data, duckdb_v2_error_info_handle *err);
+#endif
+
+#if DUCKDB_V2_API_ALLOW_UNSTABLE
+/*!
+ * Adds a schema to the scan.
+ *
+ * The schema must have been created in the database the scan runs on. It stays owned by the caller, which must keep it
+ * alive as the module notes describe. DuckDB visits the schemas in the order they were added, once the callback has
+ * returned; a schema added twice is visited once.
+ *
+ * history:
+ * - unstable: v2.0.0
+ *
+ * @param info The scan info handle.
+ * @param schema The schema to add. Remains owned by the caller.
+ * @param err Optional. On failure, receives an opaque info handle the caller must destroy via
+ * `duckdb_v2_error_info_destroy()`.
+ * @return DUCKDB_V2_ERROR
+ */
+DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_vcatalog_schema_scan_add_schema(duckdb_v2_vcatalog_schema_scan_info_handle info,
+                                                                       duckdb_v2_vcatalog_schema_handle schema,
+                                                                       duckdb_v2_error_info_handle *err);
 #endif
 
 #if DUCKDB_V2_API_ALLOW_UNSTABLE
