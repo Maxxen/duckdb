@@ -151,7 +151,7 @@ ScalarFunction EnumLastFun::GetFunction() {
 }
 
 ScalarFunction EnumCodeFun::GetFunction() {
-	auto fun = ScalarFunction({}, LogicalType::ANY, EnumCodeFunction, BindEnumCodeFunction);
+	auto fun = ScalarFunction({}, ReturnType::ANY(), EnumCodeFunction, BindEnumCodeFunction);
 	fun.GetSignature().AddParameter("enum", LogicalType::ANY);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;

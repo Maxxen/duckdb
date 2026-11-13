@@ -1178,6 +1178,7 @@ static auto CV2TableGetPartitionInfo(ClientContext &context, TableFunctionPartit
 class CV2TableFunction {
 public:
 	explicit CV2TableFunction(DatabaseInstance &db) : db(db) {
+		signature.SetReturnType(ReturnType::TABLE());
 	}
 
 	//! Validates the configuration and builds the table function to register on `target`.
@@ -1197,7 +1198,7 @@ public:
 			throw InvalidInputException("Partition data callback must be set when the partitioning callback is set.");
 		}
 		// A table function declares the columns it returns from its bind callback, not through a return type.
-		if (signature.GetReturnType().id() != LogicalTypeId::INVALID) {
+		if (!signature.GetReturnType().IsTable()) {
 			throw InvalidInputException("A table function signature cannot set a return type.");
 		}
 

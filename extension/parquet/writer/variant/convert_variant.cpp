@@ -188,7 +188,7 @@ static void ToParquetVariantWriteFunction(DataChunk &input, ExpressionState &sta
 
 ScalarFunction VariantColumnWriter::GetTransformFunction(bool preserve_nulls) {
 	auto function = preserve_nulls ? ToParquetVariantWriteFunction : ToParquetVariantFunction;
-	ScalarFunction transform("variant_to_parquet_variant", {}, LogicalType::ANY, function, BindTransform);
+	ScalarFunction transform("variant_to_parquet_variant", {}, ReturnType::ANY(), function, BindTransform);
 	transform.GetSignature().AddParameter("variant", LogicalType::VARIANT());
 	transform.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// throws for values that are out of range for the parquet variant encoding

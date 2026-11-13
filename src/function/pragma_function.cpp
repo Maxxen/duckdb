@@ -10,6 +10,8 @@ PragmaFunctionInfo::~PragmaFunctionInfo() {
 //! no parameter stays an error rather than being absorbed
 static FunctionSignature PragmaSignature(vector<LogicalType> arguments, LogicalType varargs) {
 	FunctionSignature signature;
+	// a pragma returns nothing
+	signature.SetReturnType(LogicalType::INVALID);
 	for (auto &argument : arguments) {
 		signature.AddParameter(std::move(argument));
 	}
@@ -38,6 +40,8 @@ PragmaFunction PragmaFunction::PragmaCall(const Identifier &name, pragma_functio
 PragmaFunction::PragmaFunction(Identifier name, PragmaType pragma_type, pragma_query_t query,
                                pragma_function_t function, FunctionSignature signature)
     : SimpleFunction(std::move(name), std::move(signature)), type(pragma_type), query(query), function(function) {
+	// a pragma returns nothing
+	this->signature.SetReturnType(LogicalType::INVALID);
 }
 
 PragmaFunction PragmaFunction::PragmaCall(const Identifier &name, pragma_query_t query, FunctionSignature signature) {

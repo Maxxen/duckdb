@@ -442,7 +442,7 @@ public:
 		return GetProperties();
 	}
 	DUCKDB_API ScalarFunction(Identifier name, FunctionSignature sig, scalar_function_t function);
-	DUCKDB_API ScalarFunction(Identifier name, vector<LogicalType> arguments, LogicalType return_type,
+	DUCKDB_API ScalarFunction(Identifier name, vector<LogicalType> arguments, ReturnType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),
@@ -450,7 +450,7 @@ public:
 	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                          bind_lambda_function_t bind_lambda = nullptr);
 
-	DUCKDB_API ScalarFunction(vector<LogicalType> arguments, LogicalType return_type, scalar_function_t function,
+	DUCKDB_API ScalarFunction(vector<LogicalType> arguments, ReturnType return_type, scalar_function_t function,
 	                          bind_scalar_function_t bind = nullptr, function_statistics_t statistics = nullptr,
 	                          init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),
@@ -458,7 +458,7 @@ public:
 	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                          bind_lambda_function_t bind_lambda = nullptr);
 
-	DUCKDB_API ScalarFunction(Identifier name, std::initializer_list<FunctionParameter> params, LogicalType return_type,
+	DUCKDB_API ScalarFunction(Identifier name, std::initializer_list<FunctionParameter> params, ReturnType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),
@@ -466,7 +466,7 @@ public:
 	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                          bind_lambda_function_t bind_lambda = nullptr);
 
-	DUCKDB_API ScalarFunction(std::initializer_list<FunctionParameter> params, LogicalType return_type,
+	DUCKDB_API ScalarFunction(std::initializer_list<FunctionParameter> params, ReturnType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID),

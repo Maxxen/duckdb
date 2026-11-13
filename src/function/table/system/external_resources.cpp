@@ -288,7 +288,8 @@ void RegisterExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	                 FunctionSignature()
 	                     .AddPositionalOnly("type", LogicalType::VARCHAR)
 	                     .AddPositionalOnly("name", LogicalType::VARCHAR)
-	                     .AddPositionalOnly("handle", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)),
+	                     .AddPositionalOnly("handle", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR))
+	                     .SetReturnType(ReturnType::TABLE()),
 	                 RegisterExternalResourceFunction, RegisterExternalResourceBind, RegisterExternalResourceInit);
 	fn.GetSignature().WithTypedKwargs("options", [](TypedKwargs &options) {
 		options.Add("uri", LogicalType::VARCHAR)
@@ -349,7 +350,8 @@ static void DeregisterExternalResourceFunction(ClientContext &context, TableFunc
 
 void DeregisterExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction deregister_fun(
-	    "deregister_external_resource", FunctionSignature().AddPositionalOnly("name", LogicalType::VARCHAR),
+	    "deregister_external_resource",
+	    FunctionSignature().AddPositionalOnly("name", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
 	    DeregisterExternalResourceFunction, DeregisterExternalResourceBind, DeregisterExternalResourceInit);
 	// writes the external resource registry per execution
 	deregister_fun.stability = FunctionStability::VOLATILE;

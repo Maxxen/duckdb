@@ -1252,7 +1252,8 @@ ScalarFunctionSet OperatorMultiplyFun::GetFunctions() {
 	multiply.AddFunction(
 	    ScalarFunction({LogicalType::BIGNUM, LogicalType::BIGNUM}, LogicalType::BIGNUM, BignumMultiply));
 	multiply.ApplyToFunctions([](ScalarFunction &function) {
-		if (!function.GetReturnType().IsFloating()) {
+		auto &return_type = function.GetReturnType();
+		if (!return_type.IsType() || !return_type.GetType().IsFloating()) {
 			function.SetFallible();
 		}
 	});

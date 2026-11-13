@@ -68,7 +68,8 @@ void RepeatTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction repeat("repeat",
 	                     FunctionSignature()
 	                         .AddPositionalOnly("value", LogicalType::ANY)
-	                         .AddPositionalOnly("count", LogicalType::BIGINT),
+	                         .AddPositionalOnly("count", LogicalType::BIGINT)
+	                         .SetReturnType(ReturnType::TABLE()),
 	                     RepeatFunction, RepeatBind, RepeatInit);
 	repeat.cardinality = RepeatCardinality;
 	repeat.table_scan_progress = RepeatProgress;

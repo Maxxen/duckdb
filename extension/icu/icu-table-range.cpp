@@ -265,7 +265,8 @@ struct ICUTableRange {
 		const auto timestamps = FunctionSignature()
 		                            .AddPositionalOnly("start", LogicalType::TIMESTAMP_TZ)
 		                            .AddPositionalOnly("stop", LogicalType::TIMESTAMP_TZ)
-		                            .AddPositionalOnly("step", LogicalType::INTERVAL);
+		                            .AddPositionalOnly("step", LogicalType::INTERVAL)
+		                            .SetReturnType(ReturnType::TABLE());
 		TableFunctionSet range("range");
 		TableFunction range_function(timestamps, nullptr, Bind<false>, RangeDateTimeGlobalInit, RangeDateTimeLocalInit);
 		range_function.in_out_function = ICUTableRangeFunction<false>;

@@ -26,8 +26,8 @@ unique_ptr<BaseStatistics> BarrierStats(ClientContext &context, FunctionStatisti
 	return input.child_stats[0].ToUnique();
 }
 
-ScalarFunction GetBarrierFunction(const LogicalType &type) {
-	ScalarFunction fun(BarrierFun::Name, {}, type, BarrierFunction);
+ScalarFunction GetBarrierFunction(const LogicalType &type, ReturnType return_type) {
+	ScalarFunction fun(BarrierFun::Name, {}, std::move(return_type), BarrierFunction);
 	fun.GetSignature().AddParameter("arg", type);
 	fun.SetBindCallback(BarrierBind);
 	fun.SetStatisticsCallback(BarrierStats);
@@ -43,7 +43,7 @@ ScalarFunction GetBarrierFunction(const LogicalType &type) {
 } // namespace
 
 ScalarFunction BarrierFun::GetFunction() {
-	return GetBarrierFunction(LogicalType::ANY);
+	return GetBarrierFunction(LogicalType::ANY, ReturnType::ANY());
 }
 
 bool ExpressionBarrier::IsBarrier(const Expression &expr) {
@@ -68,7 +68,7 @@ bool ExpressionBarrier::Required(const Expression &expr) {
 
 unique_ptr<Expression> ExpressionBarrier::Wrap(unique_ptr<Expression> expr) {
 	auto return_type = expr->GetReturnType();
-	auto function = GetBarrierFunction(return_type);
+	auto function = GetBarrierFunction(return_type, return_type);
 
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(expr));

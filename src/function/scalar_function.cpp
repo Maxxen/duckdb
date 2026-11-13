@@ -64,7 +64,7 @@ ScalarFunction::ScalarFunction(Identifier name, FunctionSignature sig, scalar_fu
 	SetFunctionCallback(std::move(function));
 }
 
-ScalarFunction::ScalarFunction(Identifier name, vector<LogicalType> arguments, LogicalType return_type,
+ScalarFunction::ScalarFunction(Identifier name, vector<LogicalType> arguments, ReturnType return_type,
                                scalar_function_t function, bind_scalar_function_t bind,
                                function_statistics_t statistics, init_local_state_t init_local_state,
                                LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling,
@@ -80,7 +80,7 @@ ScalarFunction::ScalarFunction(Identifier name, vector<LogicalType> arguments, L
 	callbacks.bind_lambda = bind_lambda;
 }
 
-ScalarFunction::ScalarFunction(vector<LogicalType> arguments, LogicalType return_type, scalar_function_t function,
+ScalarFunction::ScalarFunction(vector<LogicalType> arguments, ReturnType return_type, scalar_function_t function,
                                bind_scalar_function_t bind, function_statistics_t statistics,
                                init_local_state_t init_local_state, LogicalType varargs, FunctionStability side_effects,
                                FunctionNullHandling null_handling, bind_lambda_function_t bind_lambda)
@@ -89,8 +89,8 @@ ScalarFunction::ScalarFunction(vector<LogicalType> arguments, LogicalType return
 }
 
 // (we take an initializer list to ensure that the function is not ambiguous with the other constructor)
-ScalarFunction::ScalarFunction(Identifier name, std::initializer_list<FunctionParameter> params,
-                               LogicalType return_type, scalar_function_t function, bind_scalar_function_t bind,
+ScalarFunction::ScalarFunction(Identifier name, std::initializer_list<FunctionParameter> params, ReturnType return_type,
+                               scalar_function_t function, bind_scalar_function_t bind,
                                function_statistics_t statistics, init_local_state_t init_local_state,
                                LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling,
                                bind_lambda_function_t bind_lambda)
@@ -108,7 +108,7 @@ ScalarFunction::ScalarFunction(Identifier name, std::initializer_list<FunctionPa
 	callbacks.bind_lambda = bind_lambda;
 }
 
-ScalarFunction::ScalarFunction(std::initializer_list<FunctionParameter> params, LogicalType return_type,
+ScalarFunction::ScalarFunction(std::initializer_list<FunctionParameter> params, ReturnType return_type,
                                scalar_function_t function, bind_scalar_function_t bind,
                                function_statistics_t statistics, init_local_state_t init_local_state,
                                LogicalType varargs, FunctionStability side_effects, FunctionNullHandling null_handling,
@@ -153,7 +153,7 @@ BoundScalarFunction::BoundScalarFunction(shared_ptr<const ScalarFunction> functi
 	auto &function = *definition;
 	qualified_name = function.GetQualifiedName();
 	extra_info = function.extra_info;
-	return_type = function.GetReturnType();
+	return_type = function.GetReturnType().GetUnboundType();
 	callbacks = function.GetCallbacks();
 	properties = function.GetProperties();
 	function_info = function.GetFunctionInfo();

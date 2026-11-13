@@ -285,6 +285,8 @@ static auto CV2ScalarStats(ClientContext &context, FunctionStatisticsInput &inpu
 class CV2ScalarFunction {
 public:
 	explicit CV2ScalarFunction(DatabaseInstance &db) : db(db) {
+		// no return type is declared until the signature sets one
+		signature.SetReturnType(LogicalType::INVALID);
 		// The exec callback's error slot makes failure part of the API contract, so the function defaults to fallible:
 		// a non-fallible function turns any execution error reported through the slot into an internal error.
 		properties.SetFallible();
@@ -304,16 +306,16 @@ public:
 
 		// ANY is allowed as a placeholder return type only when a resolve types callback is present to resolve the
 		// actual type.
-		if (return_type.id() == LogicalTypeId::ANY) {
+		if (return_type.IsAny()) {
 			if (info.resolve_types_cb == nullptr) {
 				throw InvalidInputException(
 				    "An ANY return type requires a resolve types callback to set the concrete return type.");
 			}
 		} else {
-			if (return_type.id() == LogicalTypeId::INVALID) {
+			if (!return_type.IsType() || return_type.GetType().id() == LogicalTypeId::INVALID) {
 				throw InvalidInputException("Return type must be set for the function.");
 			}
-			if (!return_type.IsComplete()) {
+			if (!return_type.GetType().IsComplete()) {
 				throw InvalidInputException("Return type must be a fully defined concrete type");
 			}
 		}

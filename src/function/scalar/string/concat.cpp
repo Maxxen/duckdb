@@ -373,7 +373,7 @@ ScalarFunction ListConcatFun::GetFunction() {
 // the concat function, however, treats NULL values as an empty string
 // i.e. concat(NULL, 'hello') = 'hello'
 ScalarFunction ConcatFun::GetFunction() {
-	ScalarFunction concat = ScalarFunction("concat", {}, LogicalType::ANY, ConcatFunction, BindConcatFunction);
+	ScalarFunction concat = ScalarFunction("concat", {}, ReturnType::ANY(), ConcatFunction, BindConcatFunction);
 	concat.GetSignature().AddParameter("value", LogicalType::ANY);
 	concat.GetSignature().AddArgs("args", LogicalType::ANY);
 	concat.SetResolveTypesCallback(ConcatFunctionResolveTypes);
@@ -382,7 +382,7 @@ ScalarFunction ConcatFun::GetFunction() {
 }
 
 ScalarFunction ConcatOperatorFun::GetFunction() {
-	ScalarFunction concat_op = ScalarFunction("||", {}, LogicalType::ANY, ConcatFunction, BindConcatOperator);
+	ScalarFunction concat_op = ScalarFunction("||", {}, ReturnType::ANY(), ConcatFunction, BindConcatOperator);
 	concat_op.GetSignature().AddParameter("arg1", LogicalType::ANY).AddParameter("arg2", LogicalType::ANY);
 	concat_op.SetResolveTypesCallback(ConcatOperatorResolveTypes);
 	return concat_op;

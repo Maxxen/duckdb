@@ -154,7 +154,8 @@ static void ExternalResourceTypesFunction(ClientContext &context, TableFunctionI
 
 void RegisterExternalResourceTypeFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction fn(
-	    "register_external_resource_type", FunctionSignature().AddPositionalOnly("name", LogicalType::VARCHAR),
+	    "register_external_resource_type",
+	    FunctionSignature().AddPositionalOnly("name", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
 	    RegisterExternalResourceTypeFunction, RegisterExternalResourceTypeBind, RegisterExternalResourceTypeInit);
 	fn.GetSignature()
 	    .AddKeywordOnly("kind", LogicalType::VARCHAR)

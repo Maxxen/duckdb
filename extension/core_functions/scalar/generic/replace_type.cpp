@@ -24,7 +24,7 @@ static unique_ptr<Expression> BindReplaceTypeFunction(FunctionBindExpressionInpu
 }
 
 ScalarFunction ReplaceTypeFun::GetFunction() {
-	auto fun = ScalarFunction({}, LogicalType::ANY, ReplaceTypeFunction);
+	auto fun = ScalarFunction({}, ReturnType::ANY(), ReplaceTypeFunction);
 	fun.GetSignature()
 	    .AddParameter("param", LogicalType::ANY)
 	    .AddParameter("type1", LogicalType::ANY)

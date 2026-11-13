@@ -493,16 +493,19 @@ static OperatorResultType RangeDateTimeFunction(ExecutionContext &context, Table
 void RangeTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	TableFunctionSet range("range");
 
-	const auto stop_only = FunctionSignature().AddPositionalOnly("stop", LogicalType::BIGINT);
+	const auto stop_only =
+	    FunctionSignature().AddPositionalOnly("stop", LogicalType::BIGINT).SetReturnType(ReturnType::TABLE());
 	const auto start_stop = FunctionSignature()
 	                            .AddPositionalOnly("start", LogicalType::BIGINT)
-	                            .AddPositionalOnly("stop", LogicalType::BIGINT);
+	                            .AddPositionalOnly("stop", LogicalType::BIGINT)
+	                            .SetReturnType(ReturnType::TABLE());
 	auto start_stop_step = start_stop;
 	start_stop_step.AddPositionalOnly("step", LogicalType::BIGINT);
 	const auto timestamps = FunctionSignature()
 	                            .AddPositionalOnly("start", LogicalType::TIMESTAMP)
 	                            .AddPositionalOnly("stop", LogicalType::TIMESTAMP)
-	                            .AddPositionalOnly("step", LogicalType::INTERVAL);
+	                            .AddPositionalOnly("step", LogicalType::INTERVAL)
+	                            .SetReturnType(ReturnType::TABLE());
 
 	TableFunction range_function(stop_only, nullptr, RangeFunctionBind<false>, RangeFunctionGlobalInit,
 	                             RangeFunctionLocalInit);

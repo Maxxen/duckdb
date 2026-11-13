@@ -486,7 +486,7 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 	for (idx_t i = 0; i < received_count; i++) {
 		binding.argument_to_parameters.push_back(get_parameter_index(i));
 	}
-	binding.return_type = sig.GetReturnType();
+	binding.return_type = sig.GetReturnType().GetUnboundType();
 	bool is_templated = binding.return_type.IsTemplated();
 	binding.parameter_types.reserve(sig.GetParameterCount());
 	for (auto &param : sig.GetParameters()) {
@@ -1172,7 +1172,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 	// Untyped NULLs never go through type resolution. For typed NULL constants, resolve the function's types only
 	// when needed to determine the return type. Preserve result collation without invoking bind callbacks.
 	if (bound_function.GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING) {
-		const auto &return_type = bound_function.GetReturnType();
+		const auto return_type = bound_function.GetReturnType().GetUnboundType();
 		if (HasUntypedNullArgument(regular_args, keyword_args)) {
 			return make_uniq<BoundConstantExpression>(Value(NullReturnType(return_type)), std::move(alias),
 			                                          query_location);

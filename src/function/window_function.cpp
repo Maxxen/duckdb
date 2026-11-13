@@ -30,7 +30,7 @@ BoundWindowFunction::BoundWindowFunction(shared_ptr<const WindowFunction> base_p
 	auto &base = *definition;
 	qualified_name = base.GetQualifiedName();
 	extra_info = base.extra_info;
-	return_type = base.GetReturnType();
+	return_type = base.GetReturnType().GetUnboundType();
 	callbacks = base.GetCallbacks();
 	properties = base.GetProperties();
 	function_info = base.GetFunctionInfo();

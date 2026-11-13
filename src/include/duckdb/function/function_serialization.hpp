@@ -172,8 +172,8 @@ public:
 	                                             const LogicalType &return_type) {
 		for (idx_t offset = 0; offset < functions.functions.size(); offset++) {
 			auto &signature = functions.functions[offset]->GetSignature();
-			if (signature.GetParameterCount() <= arguments.size() ||
-			    signature.GetReturnType().id() != return_type.id()) {
+			if (signature.GetParameterCount() <= arguments.size() || !signature.GetReturnType().IsType() ||
+			    signature.GetReturnType().GetType().id() != return_type.id()) {
 				continue;
 			}
 			bool leading = true;

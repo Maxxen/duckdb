@@ -540,7 +540,7 @@ public:
 		return nullptr;
 	}
 
-	AggregateFunction(const Identifier &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
+	AggregateFunction(const Identifier &name, const vector<LogicalType> &arguments, const ReturnType &return_type,
 	                  aggregate_size_t state_size, aggregate_initialize_t initialize, aggregate_update_t update,
 	                  aggregate_combine_t combine, aggregate_finalize_t finalize,
 	                  FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
@@ -565,7 +565,7 @@ public:
 		callbacks.deserialize = deserialize;
 	}
 
-	AggregateFunction(const Identifier &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
+	AggregateFunction(const Identifier &name, const vector<LogicalType> &arguments, const ReturnType &return_type,
 	                  aggregate_size_t state_size, aggregate_initialize_t initialize, aggregate_update_t update,
 	                  aggregate_combine_t combine, aggregate_finalize_t finalize,
 	                  aggregate_cluster_update_t cluster_update_p = nullptr, bind_aggregate_function_t bind = nullptr,
@@ -587,7 +587,7 @@ public:
 		callbacks.deserialize = deserialize;
 	}
 
-	AggregateFunction(const vector<LogicalType> &arguments, const LogicalType &return_type, aggregate_size_t state_size,
+	AggregateFunction(const vector<LogicalType> &arguments, const ReturnType &return_type, aggregate_size_t state_size,
 	                  aggregate_initialize_t initialize, aggregate_update_t update, aggregate_combine_t combine,
 	                  aggregate_finalize_t finalize,
 	                  FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
@@ -600,7 +600,7 @@ public:
 	                        deserialize) {
 	}
 
-	AggregateFunction(const vector<LogicalType> &arguments, const LogicalType &return_type, aggregate_size_t state_size,
+	AggregateFunction(const vector<LogicalType> &arguments, const ReturnType &return_type, aggregate_size_t state_size,
 	                  aggregate_initialize_t initialize, aggregate_update_t update, aggregate_combine_t combine,
 	                  aggregate_finalize_t finalize, aggregate_cluster_update_t cluster_update_p = nullptr,
 	                  bind_aggregate_function_t bind = nullptr, aggregate_destructor_t destructor = nullptr,
@@ -612,7 +612,7 @@ public:
 	}
 
 	// Window constructor
-	AggregateFunction(const vector<LogicalType> &arguments, const LogicalType &return_type, aggregate_size_t state_size,
+	AggregateFunction(const vector<LogicalType> &arguments, const ReturnType &return_type, aggregate_size_t state_size,
 	                  aggregate_initialize_t initialize, aggregate_wininit_t window_init,
 	                  aggregate_window_batch_t window_batch, bind_aggregate_function_t bind = nullptr,
 	                  aggregate_destructor_t destructor = nullptr, aggregate_statistics_t statistics = nullptr,

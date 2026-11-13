@@ -463,7 +463,7 @@ unique_ptr<ParsedExpression> ArraySliceUnbind(FunctionUnbindInput &input) {
 } // namespace
 ScalarFunctionSet ListSliceFun::GetFunctions() {
 	// the arguments and return types are actually set in the binder function
-	ScalarFunction fun({}, LogicalType::ANY, ArraySliceFunction, ArraySliceBind);
+	ScalarFunction fun({}, ReturnType::ANY(), ArraySliceFunction, ArraySliceBind);
 	fun.GetSignature()
 	    .AddParameter("list", LogicalType::ANY)
 	    .AddParameter("begin", LogicalType::ANY)

@@ -324,8 +324,10 @@ static void CSVSniffFunction(ClientContext &context, TableFunctionInput &data_p,
 }
 
 void CSVSnifferFunction::RegisterFunction(BuiltinFunctions &set) {
-	TableFunction csv_sniffer("sniff_csv", FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR),
-	                          CSVSniffFunction, CSVSniffBind, CSVSniffInitGlobal);
+	TableFunction csv_sniffer(
+	    "sniff_csv",
+	    FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    CSVSniffFunction, CSVSniffBind, CSVSniffInitGlobal);
 	// Accept same options as the actual csv reader
 	ReadCSVTableFunction::ReadCSVAddNamedParameters(csv_sniffer);
 	MultiFileReader::AddParameters(csv_sniffer);

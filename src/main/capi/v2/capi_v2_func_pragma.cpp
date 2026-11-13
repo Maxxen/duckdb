@@ -75,6 +75,8 @@ static auto CV2PragmaExec(ClientContext &context, const FunctionParameters &para
 class CV2PragmaFunction {
 public:
 	explicit CV2PragmaFunction(DatabaseInstance &db) : db(db) {
+		// no return type is declared until the signature sets one
+		signature.SetReturnType(LogicalType::INVALID);
 	}
 
 	//! Validates the configuration and builds the pragma function to register on `target`.
@@ -89,7 +91,7 @@ public:
 		if (!info.query_cb && !info.exec_cb) {
 			throw InvalidInputException("Either a query callback or an exec callback must be set for the function.");
 		}
-		if (signature.GetReturnType().id() != LogicalTypeId::INVALID) {
+		if (signature.GetReturnType() != LogicalType::INVALID) {
 			throw InvalidInputException("A pragma function signature cannot set a return type.");
 		}
 

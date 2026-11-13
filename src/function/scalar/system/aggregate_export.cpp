@@ -1000,8 +1000,8 @@ ScalarFunction FinalizeFun::GetFunction() {
 }
 
 ScalarFunction CombineFun::GetFunction() {
-	auto function = ScalarFunction("combine", {}, LogicalTypeId::ANY, AggregateStateCombine, BindAggregateState,
-	                               nullptr, InitCombineState);
+	auto function = ScalarFunction("combine", {}, ReturnType::ANY(), AggregateStateCombine, BindAggregateState, nullptr,
+	                               InitCombineState);
 	function.GetSignature().AddParameter("state1", LogicalTypeId::ANY).AddParameter("state2", LogicalTypeId::ANY);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return function;
@@ -1020,7 +1020,7 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 			// (e.g. [{'column': 1, 'order': 'DESC NULLS LAST'}])
 			arguments.emplace_back(LogicalTypeId::ANY);
 		}
-		ScalarFunction function("to_aggregate_state", arguments, LogicalTypeId::ANY, ToAggregateStateFunction,
+		ScalarFunction function("to_aggregate_state", arguments, ReturnType::ANY(), ToAggregateStateFunction,
 		                        ToAggregateStateBind);
 		function.SetResolveTypesCallback(ToAggregateStateResolveTypes);
 		auto &sig = function.GetSignature();
@@ -1040,7 +1040,7 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 }
 
 AggregateFunction CombineAggrFun::GetFunction() {
-	auto function = AggregateFunction("combine_aggr", {}, LogicalTypeId::ANY, nullptr, nullptr, CombineAggrUpdate,
+	auto function = AggregateFunction("combine_aggr", {}, ReturnType::ANY(), nullptr, nullptr, CombineAggrUpdate,
 	                                  nullptr, CombineAggrFinalize, FunctionNullHandling::SPECIAL_HANDLING, nullptr,
 	                                  CombineAggrBind, nullptr, nullptr, nullptr);
 	function.GetSignature().AddParameter("arg", LogicalTypeId::ANY);
@@ -1053,7 +1053,7 @@ AggregateFunction CombineAggrFun::GetFunction() {
 AggregateFunctionSet CombineAggrFun::GetFunctions() {
 	AggregateFunctionSet set("combine_aggr");
 	set.AddFunction(GetFunction());
-	auto repeated = AggregateFunction("combine_aggr", {}, LogicalTypeId::ANY, nullptr, nullptr, CombineAggrUpdate,
+	auto repeated = AggregateFunction("combine_aggr", {}, ReturnType::ANY(), nullptr, nullptr, CombineAggrUpdate,
 	                                  nullptr, CombineAggrFinalize, FunctionNullHandling::SPECIAL_HANDLING, nullptr,
 	                                  CombineAggrBind, nullptr, nullptr, nullptr);
 	repeated.GetSignature().AddParameter("arg", LogicalTypeId::ANY).AddParameter("multiplicities", LogicalType::BIGINT);

@@ -636,7 +636,7 @@ unique_ptr<FunctionData> BindModeAggregate(BindAggregateFunctionInput &input) {
 
 AggregateFunctionSet ModeFun::GetFunctions() {
 	AggregateFunctionSet mode("mode");
-	AggregateFunction fun({}, LogicalTypeId::ANY, nullptr, nullptr, nullptr, nullptr, nullptr,
+	AggregateFunction fun({}, ReturnType::ANY(), nullptr, nullptr, nullptr, nullptr, nullptr,
 	                      FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(),
 	                      BindModeAggregate);
 	fun.GetSignature().AddParameter("x", LogicalTypeId::ANY);

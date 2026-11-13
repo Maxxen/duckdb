@@ -141,7 +141,8 @@ void EnableProfilingFun::RegisterFunction(BuiltinFunctions &set) {
 	                                                                        .Add("format", LogicalType::VARCHAR)
 	                                                                        .Add("coverage", LogicalType::VARCHAR)
 	                                                                        .Add("save_location", LogicalType::VARCHAR)
-	                                                                        .Add("mode", LogicalType::VARCHAR)),
+	                                                                        .Add("mode", LogicalType::VARCHAR))
+	                                         .SetReturnType(ReturnType::TABLE()),
 	                                     EnableProfiling, BindEnableProfiling));
 
 	enable_set.AddFunction(TableFunction(FunctionSignature()
@@ -150,7 +151,8 @@ void EnableProfilingFun::RegisterFunction(BuiltinFunctions &set) {
 	                                                                        .Add("format", LogicalType::VARCHAR)
 	                                                                        .Add("coverage", LogicalType::VARCHAR)
 	                                                                        .Add("save_location", LogicalType::VARCHAR)
-	                                                                        .Add("mode", LogicalType::VARCHAR)),
+	                                                                        .Add("mode", LogicalType::VARCHAR))
+	                                         .SetReturnType(ReturnType::TABLE()),
 	                                     EnableProfiling, BindEnableProfiling));
 
 	// reconfigures profiling per execution

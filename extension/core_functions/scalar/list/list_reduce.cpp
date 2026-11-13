@@ -332,7 +332,7 @@ void LambdaFunctions::ListReduceFunction(DataChunk &args, ExpressionState &state
 }
 
 ScalarFunctionSet ListReduceFun::GetFunctions() {
-	ScalarFunction fun({}, LogicalType::ANY, LambdaFunctions::ListReduceFunction, ListReduceBind, nullptr, nullptr);
+	ScalarFunction fun({}, ReturnType::ANY(), LambdaFunctions::ListReduceFunction, ListReduceBind, nullptr, nullptr);
 	fun.GetSignature()
 	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
 	    .AddParameter("lambda", LogicalType::LAMBDA);

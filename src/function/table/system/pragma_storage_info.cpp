@@ -270,7 +270,8 @@ static OperatorPartitionData PragmaStorageInfoGetPartitionData(ClientContext &co
 
 void PragmaStorageInfo::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction storage_info(
-	    "pragma_storage_info", FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR),
+	    "pragma_storage_info",
+	    FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
 	    PragmaStorageInfoFunction, PragmaStorageInfoBind, PragmaStorageInfoInitGlobal, PragmaStorageInfoInitLocal);
 	storage_info.get_partition_data = PragmaStorageInfoGetPartitionData;
 	storage_info.table_scan_progress = PragmaStorageInfoProgress;

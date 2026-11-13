@@ -25,7 +25,7 @@ unique_ptr<FunctionData> TryRethrowBind(BindScalarFunctionInput &input) {
 } // namespace
 
 ScalarFunction TryRethrowFun::GetFunction() {
-	ScalarFunction fun(Name, {}, LogicalType::ANY, TryRethrowFunction);
+	ScalarFunction fun(Name, {}, ReturnType::ANY(), TryRethrowFunction);
 	fun.GetSignature().AddParameter("error", LogicalType::BOOLEAN);
 	fun.GetSignature().AddParameter("value", LogicalType::ANY);
 	fun.SetBindCallback(TryRethrowBind);

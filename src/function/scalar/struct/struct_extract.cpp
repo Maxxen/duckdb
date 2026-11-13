@@ -137,7 +137,7 @@ unique_ptr<FunctionData> StructExtractAtFun::GetBindData(idx_t index) {
 }
 
 ScalarFunction GetKeyExtractFunction() {
-	ScalarFunction fun("struct_extract", {}, LogicalType::ANY, StructExtractFunction, StructExtractBind,
+	ScalarFunction fun("struct_extract", {}, ReturnType::ANY(), StructExtractFunction, StructExtractBind,
 	                   PropagateStructExtractStats);
 	fun.GetSignature().AddParameter("struct", LogicalTypeId::STRUCT).AddParameter("entry", LogicalType::VARCHAR);
 	fun.SetResolveTypesCallback(StructExtractResolveTypes<StructExtractKey::NAME>);
@@ -145,7 +145,7 @@ ScalarFunction GetKeyExtractFunction() {
 }
 
 ScalarFunction GetIndexExtractFunction() {
-	ScalarFunction fun("struct_extract", {}, LogicalType::ANY, StructExtractFunction, StructExtractBindIndex,
+	ScalarFunction fun("struct_extract", {}, ReturnType::ANY(), StructExtractFunction, StructExtractBindIndex,
 	                   PropagateStructExtractStats);
 	fun.GetSignature().AddParameter("tuple", LogicalTypeId::TUPLE).AddParameter("index", LogicalType::BIGINT);
 	fun.SetResolveTypesCallback(StructExtractResolveTypes<StructExtractKey::INDEX>);
@@ -153,7 +153,7 @@ ScalarFunction GetIndexExtractFunction() {
 }
 
 ScalarFunction GetExtractAtFunction() {
-	ScalarFunction fun("struct_extract_at", {}, LogicalType::ANY, StructExtractFunction, StructExtractBindIndex,
+	ScalarFunction fun("struct_extract_at", {}, ReturnType::ANY(), StructExtractFunction, StructExtractBindIndex,
 	                   PropagateStructExtractStats);
 	fun.GetSignature().AddParameter("struct", LogicalTypeId::STRUCT).AddParameter("index", LogicalType::BIGINT);
 	fun.SetResolveTypesCallback(StructExtractResolveTypes<StructExtractKey::INDEX_AT>);

@@ -214,7 +214,7 @@ public:
 	};
 
 	DuckWeedFunction()
-	    : WindowFunction("duckweed", {LogicalType::ANY}, LogicalType::ANY, ExpressionType::WINDOW_FUNCTION, Bind,
+	    : WindowFunction("duckweed", {LogicalType::ANY}, ReturnType::ANY(), ExpressionType::WINDOW_FUNCTION, Bind,
 	                     GetBounds, GetSharing, GetGlobal, GetLocal, nullptr, Finalizer, GetData) {
 		//	Not implemented
 		SetCanOrderBy(false);

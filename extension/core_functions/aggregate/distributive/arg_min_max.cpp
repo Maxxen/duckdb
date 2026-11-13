@@ -403,7 +403,7 @@ template <class OP>
 AggregateFunction GetGenericArgMinMaxFunction(const ArgMinMaxNullHandling null_handling) {
 	using STATE = ArgMinMaxSortKeyState<OP::ORDER>;
 	auto bind = GetBindFunction<OP>(null_handling);
-	auto function = AggregateFunction({}, LogicalType::ANY, AggregateFunction::StateSize<STATE>,
+	auto function = AggregateFunction({}, ReturnType::ANY(), AggregateFunction::StateSize<STATE>,
 	                                  AggregateFunction::StateInitialize<STATE, OP>, OP::template Update<STATE>,
 	                                  AggregateFunction::StateCombine<STATE, OP>,
 	                                  AggregateFunction::StateVoidFinalize<STATE, OP>, nullptr, bind);

@@ -13,6 +13,8 @@ namespace duckdb::capiv2 {
 class CV2MacroFunction {
 public:
 	CV2MacroFunction(DatabaseInstance &db, MacroType type) : db(db), type(type) {
+		// no return type is declared until the signature sets one
+		signature.SetReturnType(LogicalType::INVALID);
 	}
 
 	//! Validates the configuration and builds the macro to register on `target`.
@@ -24,7 +26,7 @@ public:
 		if (body.empty()) {
 			throw InvalidInputException("A body must be set for the macro function.");
 		}
-		if (signature.GetReturnType().id() != LogicalTypeId::INVALID) {
+		if (signature.GetReturnType() != LogicalType::INVALID) {
 			throw InvalidInputException(
 			    "A macro function signature cannot set a return type: the result follows from the body.");
 		}

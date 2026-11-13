@@ -127,6 +127,18 @@ struct FunctionParameters {
 	optional_ptr<const PragmaFunction> function;
 };
 
+class TypeVariable {
+public:
+	TypeVariable(Identifier name_p) : name(std::move(name_p)) {
+	}
+	auto GetName() const -> const Identifier & {
+		return name;
+	}
+
+private:
+	Identifier name;
+};
+
 //! How a parameter receives its arguments, mirroring Python's parameter kinds, in the order a signature declares them
 //! POSITIONAL_ONLY -> declared before "/", can only be passed by position. Its name is invisible to a caller, so an
 //!                    argument of that name is unmatched and reaches "**kwargs" instead
@@ -272,14 +284,77 @@ private:
 	vector<TypedKwarg> options;
 };
 
+//! What a function returns: a concrete (or templated) type, a table, or a type that is only known after binding
+class ReturnType {
+public:
+	enum class Kind : uint8_t { ANY = 0, TYPE, TABLE };
+
+	ReturnType() : kind(Kind::ANY) {
+	}
+	// NOLINTNEXTLINE: allow implicit construction
+	ReturnType(LogicalType type_p) : kind(Kind::TYPE), type(std::move(type_p)) {
+		// a function declaring LogicalType::ANY declares ReturnType::ANY: the concrete type follows from binding
+		if (type.id() == LogicalTypeId::ANY) {
+			kind = Kind::ANY;
+			type = LogicalType();
+		}
+	}
+	// NOLINTNEXTLINE: allow implicit construction
+	ReturnType(LogicalTypeId type_id) : ReturnType(LogicalType(type_id)) {
+	}
+
+	static auto TYPE(LogicalType type) -> ReturnType {
+		return ReturnType(std::move(type));
+	}
+	static auto TABLE() -> ReturnType {
+		return ReturnType(Kind::TABLE);
+	}
+	static auto ANY() -> ReturnType {
+		return ReturnType(Kind::ANY);
+	}
+
+	auto GetKind() const -> Kind {
+		return kind;
+	}
+	auto GetType() const -> const LogicalType & {
+		D_ASSERT(kind == Kind::TYPE);
+		return type;
+	}
+
+	auto IsAny() const -> bool {
+		return kind == Kind::ANY;
+	}
+	auto IsType() const -> bool {
+		return kind == Kind::TYPE;
+	}
+	auto IsTable() const -> bool {
+		return kind == Kind::TABLE;
+	}
+
+	//! The type a function is bound with before its bind callback runs: ANY when it is only known after binding
+	DUCKDB_API auto GetUnboundType() const -> LogicalType;
+
+	DUCKDB_API auto ToString() const -> string;
+	DUCKDB_API auto Hash() const -> hash_t;
+	DUCKDB_API bool operator==(const ReturnType &other) const;
+	DUCKDB_API bool operator!=(const ReturnType &other) const;
+
+private:
+	explicit ReturnType(Kind kind) : kind(kind) {
+	}
+
+	Kind kind;
+	LogicalType type;
+};
+
 class FunctionSignature {
 public:
 	FunctionSignature() = default;
 
-	FunctionSignature(vector<FunctionParameter> parameters, LogicalType return_type)
+	FunctionSignature(vector<FunctionParameter> parameters, ReturnType return_type)
 	    : parameters(std::move(parameters)), return_type(std::move(return_type)) {
 	}
-	FunctionSignature(vector<LogicalType> arguments, LogicalType return_type) : return_type(std::move(return_type)) {
+	FunctionSignature(vector<LogicalType> arguments, ReturnType return_type) : return_type(std::move(return_type)) {
 		for (auto &arg : arguments) {
 			AddParameter(std::move(arg));
 		}
@@ -314,11 +389,12 @@ public:
 	auto GetParameterCount() const -> idx_t {
 		return parameters.size();
 	}
-	auto GetReturnType() const -> const LogicalType & {
+	auto GetReturnType() const -> const ReturnType & {
 		return return_type;
 	}
-	auto SetReturnType(LogicalType return_type_p) -> void {
+	auto SetReturnType(ReturnType return_type_p) -> FunctionSignature & {
 		return_type = std::move(return_type_p);
+		return *this;
 	}
 
 	auto IsVariadic() const -> bool {
@@ -438,7 +514,7 @@ public:
 private:
 	vector<FunctionParameter> parameters;
 	shared_ptr<TypedKwargs> typed_kwargs; // optional "schema" for the accepted **kwargs
-	LogicalType return_type;
+	ReturnType return_type;
 };
 
 //! Function is the base class used for any type of function (scalar, aggregate or simple function)
@@ -507,7 +583,7 @@ enum class FunctionKind : uint8_t { SCALAR, AGGREGATE, WINDOW, TABLE, PRAGMA, TY
 class SimpleFunction : public Function {
 public:
 	DUCKDB_API SimpleFunction(Identifier name, FunctionSignature signature);
-	DUCKDB_API SimpleFunction(Identifier name, vector<LogicalType> arguments, LogicalType return_type,
+	DUCKDB_API SimpleFunction(Identifier name, vector<LogicalType> arguments, ReturnType return_type,
 	                          LogicalType varargs = LogicalType(LogicalTypeId::INVALID));
 	DUCKDB_API ~SimpleFunction() override;
 
@@ -532,10 +608,10 @@ public:
 		return signature;
 	}
 
-	void SetReturnType(LogicalType return_type_p) {
+	void SetReturnType(ReturnType return_type_p) {
 		signature.SetReturnType(std::move(return_type_p));
 	}
-	const LogicalType &GetReturnType() const {
+	const ReturnType &GetReturnType() const {
 		return signature.GetReturnType();
 	}
 };

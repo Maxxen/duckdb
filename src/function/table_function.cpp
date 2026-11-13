@@ -37,14 +37,14 @@ TableFunction::TableFunction(Identifier name, const vector<LogicalType> &argumen
                              table_function_bind_t bind, table_function_init_global_t init_global,
                              table_function_init_local_t init_local)
     : BaseTableFunction(function_, bind, init_global, init_local),
-      SimpleFunction(std::move(name), arguments, LogicalType::INVALID) {
+      SimpleFunction(std::move(name), arguments, ReturnType::TABLE()) {
 }
 
 TableFunction::TableFunction(Identifier name, const vector<LogicalType> &arguments, std::nullptr_t,
                              table_function_bind_t bind, table_function_init_global_t init_global,
                              table_function_init_local_t init_local)
     : BaseTableFunction(nullptr, bind, init_global, init_local),
-      SimpleFunction(std::move(name), arguments, LogicalType::INVALID) {
+      SimpleFunction(std::move(name), arguments, ReturnType::TABLE()) {
 }
 
 TableFunction::TableFunction(Identifier name, FunctionSignature signature, table_function_t function_,
@@ -52,16 +52,22 @@ TableFunction::TableFunction(Identifier name, FunctionSignature signature, table
                              table_function_init_local_t init_local)
     : BaseTableFunction(function_, bind, init_global, init_local),
       SimpleFunction(std::move(name), std::move(signature)) {
+	// a table function always returns a table, whatever the signature declared
+	this->signature.SetReturnType(ReturnType::TABLE());
 }
 
 TableFunction::TableFunction(FunctionSignature signature, table_function_t function_, table_function_bind_t bind,
                              table_function_init_global_t init_global, table_function_init_local_t init_local)
     : BaseTableFunction(function_, bind, init_global, init_local), SimpleFunction("", std::move(signature)) {
+	// a table function always returns a table, whatever the signature declared
+	this->signature.SetReturnType(ReturnType::TABLE());
 }
 
 TableFunction::TableFunction(Identifier name, FunctionSignature signature, std::nullptr_t, table_function_bind_t bind,
                              table_function_init_global_t init_global, table_function_init_local_t init_local)
     : BaseTableFunction(nullptr, bind, init_global, init_local), SimpleFunction(std::move(name), std::move(signature)) {
+	// a table function always returns a table, whatever the signature declared
+	this->signature.SetReturnType(ReturnType::TABLE());
 }
 
 BoundTableFunction::BoundTableFunction() : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {

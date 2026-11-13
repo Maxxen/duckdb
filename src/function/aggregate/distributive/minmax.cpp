@@ -426,7 +426,7 @@ static unique_ptr<FunctionExpression> MinMaxUnbind(AggregateFunctionUnbindInput 
 
 template <class OP, class OP_STRING, class OP_VECTOR>
 AggregateFunction GetMinMaxOperator(const string &name) {
-	AggregateFunction fun(Identifier(name), {}, LogicalType::ANY, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+	AggregateFunction fun(Identifier(name), {}, ReturnType::ANY(), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                      BindMinMax<OP, OP_STRING, OP_VECTOR>);
 	fun.GetSignature().AddParameter("arg", LogicalTypeId::ANY);
 	fun.SetUnbindCallback(MinMaxUnbind);

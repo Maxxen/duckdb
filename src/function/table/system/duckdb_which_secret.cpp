@@ -70,7 +70,8 @@ void DuckDBWhichSecretFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction which_secret_fun("which_secret",
 	                               FunctionSignature()
 	                                   .AddPositionalOnly("path", LogicalType::VARCHAR)
-	                                   .AddPositionalOnly("type", LogicalType::VARCHAR),
+	                                   .AddPositionalOnly("type", LogicalType::VARCHAR)
+	                                   .SetReturnType(ReturnType::TABLE()),
 	                               DuckDBWhichSecretFunction, DuckDBWhichSecretBind, DuckDBWhichSecretInit);
 	// resolves against the live secret registry
 	which_secret_fun.stability = FunctionStability::VOLATILE;

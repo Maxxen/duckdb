@@ -93,9 +93,10 @@ static void DuckDBTableSampleFunction(ClientContext &context, TableFunctionInput
 }
 
 void DuckDBTableSample::RegisterFunction(BuiltinFunctions &set) {
-	TableFunction table_sample_fun("duckdb_table_sample",
-	                               FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR),
-	                               DuckDBTableSampleFunction, DuckDBTableSampleBind, DuckDBTableSampleInit);
+	TableFunction table_sample_fun(
+	    "duckdb_table_sample",
+	    FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    DuckDBTableSampleFunction, DuckDBTableSampleBind, DuckDBTableSampleInit);
 	// returns a random sample per execution
 	table_sample_fun.stability = FunctionStability::VOLATILE;
 	set.AddFunction(std::move(table_sample_fun));

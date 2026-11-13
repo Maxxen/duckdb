@@ -586,7 +586,7 @@ static WindowFunction GetLeadLagFunction(const char *name, const ExpressionType 
 	const auto finalize = WindowLeadLagLocalState::Finalizer;
 	const auto evaluate = WindowLeadLagExecutor::GetData;
 
-	WindowFunction func(name, {}, LogicalType::ANY, type, bind, bounds, sharing, global, local, sink, finalize,
+	WindowFunction func(name, {}, ReturnType::ANY(), type, bind, bounds, sharing, global, local, sink, finalize,
 	                    evaluate);
 	auto &sig = func.GetSignature();
 
@@ -887,7 +887,7 @@ void WindowFirstValueExecutor::StreamData(ExecutionContext &context, DataChunk &
 }
 
 WindowFunction FirstValueFun::GetFunction() {
-	WindowFunction fun(Name, {}, LogicalType::ANY, ExpressionType::WINDOW_FIRST_VALUE, WindowFirstValueExecutor::Bind,
+	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_FIRST_VALUE, WindowFirstValueExecutor::Bind,
 	                   WindowFirstValueExecutor::GetBounds, WindowFirstValueExecutor::GetSharing,
 	                   WindowFirstValueExecutor::GetGlobal, WindowFirstValueExecutor::GetLocal,
 	                   WindowValueLocalState::Sinker, WindowValueLocalState::Finalizer,
@@ -1012,7 +1012,7 @@ void WindowLastValueExecutor::StreamData(ExecutionContext &context, DataChunk &i
 }
 
 WindowFunction LastValueFun::GetFunction() {
-	WindowFunction fun(Name, {}, LogicalType::ANY, ExpressionType::WINDOW_LAST_VALUE, WindowLastValueExecutor::Bind,
+	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_LAST_VALUE, WindowLastValueExecutor::Bind,
 	                   WindowLastValueExecutor::GetBounds, WindowLastValueExecutor::GetSharing,
 	                   WindowLastValueExecutor::GetGlobal, WindowLastValueExecutor::GetLocal,
 	                   WindowValueLocalState::Sinker, WindowValueLocalState::Finalizer,
@@ -1192,7 +1192,7 @@ void WindowNthValueStreamingState::StreamData(ExecutionContext &context, DataChu
 }
 
 WindowFunction NthValueFun::GetFunction() {
-	WindowFunction fun(Name, {}, LogicalType::ANY, ExpressionType::WINDOW_NTH_VALUE, WindowNthValueExecutor::Bind,
+	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_NTH_VALUE, WindowNthValueExecutor::Bind,
 	                   WindowNthValueExecutor::GetBounds, WindowNthValueExecutor::GetSharing,
 	                   WindowNthValueExecutor::GetGlobal, WindowNthValueExecutor::GetLocal,
 	                   WindowValueLocalState::Sinker, WindowValueLocalState::Finalizer,
@@ -1733,7 +1733,7 @@ void WindowFillLocalState::Finalizer(ExecutionContext &context, CollectionPtr co
 }
 
 WindowFunction FillFun::GetFunction() {
-	WindowFunction fun(Name, {}, LogicalType::ANY, ExpressionType::WINDOW_FILL, WindowFillExecutor::Bind,
+	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_FILL, WindowFillExecutor::Bind,
 	                   WindowFillLocalState::GetBounds, WindowFillExecutor::GetSharing, WindowFillExecutor::GetGlobal,
 	                   WindowFillExecutor::GetLocal, WindowFillLocalState::Sinker, WindowFillLocalState::Finalizer,
 	                   WindowFillExecutor::GetData);

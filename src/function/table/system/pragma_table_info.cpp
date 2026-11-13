@@ -296,12 +296,15 @@ static void PragmaTableInfoFunction(ClientContext &context, TableFunctionInput &
 }
 
 void PragmaTableInfo::RegisterFunction(BuiltinFunctions &set) {
-	TableFunction table_info("pragma_table_info",
-	                         FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR),
-	                         PragmaTableInfoFunction, PragmaTableInfoBind<true>, PragmaTableInfoInit);
+	TableFunction table_info(
+	    "pragma_table_info",
+	    FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    PragmaTableInfoFunction, PragmaTableInfoBind<true>, PragmaTableInfoInit);
 	set.AddFunction(table_info);
-	TableFunction show("pragma_show", FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR),
-	                   PragmaTableInfoFunction, PragmaTableInfoBind<false>, PragmaTableInfoInit);
+	TableFunction show(
+	    "pragma_show",
+	    FunctionSignature().AddPositionalOnly("table_name", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    PragmaTableInfoFunction, PragmaTableInfoBind<false>, PragmaTableInfoInit);
 	set.AddFunction(show);
 }
 

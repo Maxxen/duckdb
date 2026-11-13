@@ -324,7 +324,7 @@ public:
 	auto GetFunctionProperties() const -> optional_ptr<const FunctionProperties> override {
 		return GetProperties();
 	}
-	WindowFunction(const Identifier &name, const vector<LogicalType> &arguments, const LogicalType &return_type,
+	WindowFunction(const Identifier &name, const vector<LogicalType> &arguments, const ReturnType &return_type,
 	               ExpressionType window_enum, window_bind_function_t bind = nullptr,
 	               window_bounds_function_t bounds = nullptr, window_sharing_function_t sharing = nullptr,
 	               window_global_function_t global = nullptr, window_local_function_t local = nullptr,
@@ -341,7 +341,7 @@ public:
 		callbacks.evaluate = evaluate;
 	}
 
-	WindowFunction(const vector<LogicalType> &arguments, const LogicalType &return_type, ExpressionType window_enum,
+	WindowFunction(const vector<LogicalType> &arguments, const ReturnType &return_type, ExpressionType window_enum,
 	               window_bind_function_t bind = nullptr, window_bounds_function_t bounds = nullptr,
 	               window_sharing_function_t sharing = nullptr, window_global_function_t global = nullptr,
 	               window_local_function_t local = nullptr, window_sink_function_t sink = nullptr,

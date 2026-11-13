@@ -1479,41 +1479,46 @@ double ParquetMetaDataOperator::Progress(ClientContext &context, const FunctionD
 }
 
 ParquetMetaDataFunction::ParquetMetaDataFunction()
-    : TableFunction("parquet_metadata", FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR),
-                    ParquetMetaDataOperator::Function,
-                    ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::META_DATA>,
-                    ParquetMetaDataOperator::InitGlobal,
-                    ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::META_DATA>) {
+    : TableFunction(
+          "parquet_metadata",
+          FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+          ParquetMetaDataOperator::Function, ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::META_DATA>,
+          ParquetMetaDataOperator::InitGlobal,
+          ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::META_DATA>) {
 	table_scan_progress = ParquetMetaDataOperator::Progress;
 	get_partition_data = ParquetMetaDataOperator::GetPartitionData;
 }
 
 ParquetSchemaFunction::ParquetSchemaFunction()
-    : TableFunction("parquet_schema", FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR),
-                    ParquetMetaDataOperator::Function,
-                    ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::SCHEMA>,
-                    ParquetMetaDataOperator::InitGlobal,
-                    ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::SCHEMA>) {
+    : TableFunction(
+          "parquet_schema",
+          FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+          ParquetMetaDataOperator::Function, ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::SCHEMA>,
+          ParquetMetaDataOperator::InitGlobal,
+          ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::SCHEMA>) {
 	table_scan_progress = ParquetMetaDataOperator::Progress;
 	get_partition_data = ParquetMetaDataOperator::GetPartitionData;
 }
 
 ParquetKeyValueMetadataFunction::ParquetKeyValueMetadataFunction()
-    : TableFunction("parquet_kv_metadata", FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR),
-                    ParquetMetaDataOperator::Function,
-                    ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::KEY_VALUE_META_DATA>,
-                    ParquetMetaDataOperator::InitGlobal,
-                    ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::KEY_VALUE_META_DATA>) {
+    : TableFunction(
+          "parquet_kv_metadata",
+          FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+          ParquetMetaDataOperator::Function,
+          ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::KEY_VALUE_META_DATA>,
+          ParquetMetaDataOperator::InitGlobal,
+          ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::KEY_VALUE_META_DATA>) {
 	table_scan_progress = ParquetMetaDataOperator::Progress;
 	get_partition_data = ParquetMetaDataOperator::GetPartitionData;
 }
 
 ParquetFileMetadataFunction::ParquetFileMetadataFunction()
-    : TableFunction("parquet_file_metadata", FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR),
-                    ParquetMetaDataOperator::Function,
-                    ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::FILE_META_DATA>,
-                    ParquetMetaDataOperator::InitGlobal,
-                    ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::FILE_META_DATA>) {
+    : TableFunction(
+          "parquet_file_metadata",
+          FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+          ParquetMetaDataOperator::Function, ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::FILE_META_DATA>,
+          ParquetMetaDataOperator::InitGlobal,
+          ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::FILE_META_DATA>) {
 	table_scan_progress = ParquetMetaDataOperator::Progress;
 	get_partition_data = ParquetMetaDataOperator::GetPartitionData;
 }
@@ -1523,7 +1528,8 @@ ParquetBloomProbeFunction::ParquetBloomProbeFunction()
                     FunctionSignature()
                         .AddPositionalOnly("path", LogicalType::VARCHAR)
                         .AddPositionalOnly("column_name", LogicalType::VARCHAR)
-                        .AddPositionalOnly("value", LogicalType::ANY),
+                        .AddPositionalOnly("value", LogicalType::ANY)
+                        .SetReturnType(ReturnType::TABLE()),
                     ParquetMetaDataOperator::Function,
                     ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::BLOOM_PROBE>,
                     ParquetMetaDataOperator::InitGlobal,
@@ -1533,21 +1539,23 @@ ParquetBloomProbeFunction::ParquetBloomProbeFunction()
 }
 
 ParquetPageIndexFunction::ParquetPageIndexFunction()
-    : TableFunction("parquet_page_index", FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR),
-                    ParquetMetaDataOperator::Function,
-                    ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::PAGE_INDEX>,
-                    ParquetMetaDataOperator::InitGlobal,
-                    ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::PAGE_INDEX>) {
+    : TableFunction(
+          "parquet_page_index",
+          FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+          ParquetMetaDataOperator::Function, ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::PAGE_INDEX>,
+          ParquetMetaDataOperator::InitGlobal,
+          ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::PAGE_INDEX>) {
 	table_scan_progress = ParquetMetaDataOperator::Progress;
 	get_partition_data = ParquetMetaDataOperator::GetPartitionData;
 }
 
 ParquetFullMetadataFunction::ParquetFullMetadataFunction()
-    : TableFunction("parquet_full_metadata", FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR),
-                    ParquetMetaDataOperator::Function,
-                    ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::FULL_METADATA>,
-                    ParquetMetaDataOperator::InitGlobal,
-                    ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::FULL_METADATA>) {
+    : TableFunction(
+          "parquet_full_metadata",
+          FunctionSignature().AddPositionalOnly("path", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+          ParquetMetaDataOperator::Function, ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::FULL_METADATA>,
+          ParquetMetaDataOperator::InitGlobal,
+          ParquetMetaDataOperator::InitLocal<ParquetMetadataOperatorType::FULL_METADATA>) {
 	table_scan_progress = ParquetMetaDataOperator::Progress;
 	get_partition_data = ParquetMetaDataOperator::GetPartitionData;
 }

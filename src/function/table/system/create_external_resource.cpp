@@ -384,8 +384,10 @@ static void CreateExternalResourceFunction(ClientContext &context, TableFunction
 }
 
 void CreateExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
-	TableFunction fn("create_external_resource", FunctionSignature().AddPositionalOnly("type", LogicalType::VARCHAR),
-	                 CreateExternalResourceFunction, CreateExternalResourceBind, CreateExternalResourceInit);
+	TableFunction fn(
+	    "create_external_resource",
+	    FunctionSignature().AddPositionalOnly("type", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    CreateExternalResourceFunction, CreateExternalResourceBind, CreateExternalResourceInit);
 	fn.GetSignature().WithTypedKwargs("options", [](TypedKwargs &options) {
 		options.Add("params", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR))
 		    .Add("resource_name", LogicalType::VARCHAR)
@@ -467,7 +469,8 @@ void DestroyExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction destroy_fun("destroy_external_resource",
 	                          FunctionSignature()
 	                              .AddPositionalOnly("deleter_function", LogicalType::VARCHAR)
-	                              .AddPositionalOnly("payload", LogicalType::ANY),
+	                              .AddPositionalOnly("payload", LogicalType::ANY)
+	                              .SetReturnType(ReturnType::TABLE()),
 	                          DestroyExternalResourceFunction, DestroyExternalResourceBind,
 	                          DestroyExternalResourceInit);
 	// tears down an external resource per execution

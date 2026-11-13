@@ -107,7 +107,7 @@ unique_ptr<FunctionData> UnionExtractBind(BindScalarFunctionInput &input) {
 
 ScalarFunction UnionExtractFun::GetFunction() {
 	// the arguments and return types are actually set in the binder function
-	ScalarFunction fun({}, LogicalType::ANY, UnionExtractFunction, UnionExtractBind, nullptr, nullptr);
+	ScalarFunction fun({}, ReturnType::ANY(), UnionExtractFunction, UnionExtractBind, nullptr, nullptr);
 	fun.GetSignature().AddParameter("union", LogicalTypeId::UNION).AddParameter("tag", LogicalType::VARCHAR);
 	fun.SetResolveTypesCallback(UnionExtractResolveTypes);
 	return fun;

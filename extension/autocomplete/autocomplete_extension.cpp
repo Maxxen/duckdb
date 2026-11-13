@@ -672,9 +672,10 @@ static void FormatSQLExecute(DataChunk &args, ExpressionState &state, Vector &re
 }
 
 static void LoadInternal(ExtensionLoader &loader) {
-	TableFunction auto_complete_fun("sql_auto_complete",
-	                                FunctionSignature().AddPositionalOnly("sql", LogicalType::VARCHAR),
-	                                SQLAutoCompleteFunction, SQLAutoCompleteBind, SQLAutoCompleteInit);
+	TableFunction auto_complete_fun(
+	    "sql_auto_complete",
+	    FunctionSignature().AddPositionalOnly("sql", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    SQLAutoCompleteFunction, SQLAutoCompleteBind, SQLAutoCompleteInit);
 	auto_complete_fun.GetSignature().WithTypedKwargs("options", [](TypedKwargs &options) {
 		options.Add("max_suggestion_count", LogicalType::UBIGINT)
 		    .Add("max_file_suggestion_count", LogicalType::UBIGINT)
@@ -684,13 +685,16 @@ static void LoadInternal(ExtensionLoader &loader) {
 	auto_complete_fun.stability = FunctionStability::VOLATILE;
 	loader.RegisterFunction(auto_complete_fun);
 
-	TableFunction check_peg_parser_fun("check_peg_parser",
-	                                   FunctionSignature().AddPositionalOnly("sql", LogicalType::VARCHAR),
-	                                   CheckPEGParserFunction, CheckPEGParserBind, nullptr);
+	TableFunction check_peg_parser_fun(
+	    "check_peg_parser",
+	    FunctionSignature().AddPositionalOnly("sql", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    CheckPEGParserFunction, CheckPEGParserBind, nullptr);
 	loader.RegisterFunction(check_peg_parser_fun);
 
-	TableFunction tokenize_fun("sql_tokenize", FunctionSignature().AddPositionalOnly("sql", LogicalType::VARCHAR),
-	                           SQLTokenizeFunction, SQLTokenizeBind, SQLTokenizeInit);
+	TableFunction tokenize_fun(
+	    "sql_tokenize",
+	    FunctionSignature().AddPositionalOnly("sql", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    SQLTokenizeFunction, SQLTokenizeBind, SQLTokenizeInit);
 
 	loader.RegisterFunction(tokenize_fun);
 

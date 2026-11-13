@@ -583,7 +583,7 @@ unique_ptr<FunctionData> ListAggregateBind(BindScalarFunctionInput &input) {
 } // namespace
 
 ScalarFunction ListAggregateFun::GetFunction() {
-	auto result = ScalarFunction({}, LogicalType::ANY, ListAggregateFunction, ListAggregateBind, nullptr,
+	auto result = ScalarFunction({}, ReturnType::ANY(), ListAggregateFunction, ListAggregateBind, nullptr,
 	                             ListAggregatesInitLocalState);
 	result.GetSignature()
 	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))

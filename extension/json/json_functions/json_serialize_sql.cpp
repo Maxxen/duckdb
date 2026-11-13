@@ -346,7 +346,9 @@ struct ExecuteSqlTableFunction {
 
 TableFunctionSet JSONFunctions::GetExecuteJsonSerializedSqlFunction() {
 	TableFunction func("json_execute_serialized_sql",
-	                   FunctionSignature().AddPositionalOnly("serialized_sql", LogicalType::VARCHAR),
+	                   FunctionSignature()
+	                       .AddPositionalOnly("serialized_sql", LogicalType::VARCHAR)
+	                       .SetReturnType(ReturnType::TABLE()),
 	                   ExecuteSqlTableFunction::Function, ExecuteSqlTableFunction::Bind, ExecuteSqlTableFunction::Init);
 	return TableFunctionSet(func);
 }

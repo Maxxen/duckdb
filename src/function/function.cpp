@@ -154,7 +154,7 @@ SimpleFunction::SimpleFunction(Identifier name_p, FunctionSignature signature_p)
     : Function(std::move(name_p)), signature(std::move(signature_p)) {
 }
 
-SimpleFunction::SimpleFunction(Identifier name_p, vector<LogicalType> arguments_p, LogicalType return_type,
+SimpleFunction::SimpleFunction(Identifier name_p, vector<LogicalType> arguments_p, ReturnType return_type,
                                LogicalType varargs_p)
     : Function(std::move(name_p)), signature(std::move(arguments_p), std::move(return_type)) {
 	if (varargs_p.id() != LogicalTypeId::INVALID) {
@@ -241,7 +241,8 @@ string FunctionSignature::ToString() const {
 		params.push_back("/");
 	}
 	auto head = StringUtil::Format("(%s)", StringUtil::Join(params, ", "));
-	if (return_type.IsValid()) {
+	// a table function prints no return type, and neither does a function that declares none (e.g. a pragma)
+	if (return_type.IsAny() || (return_type.IsType() && return_type.GetType().IsValid())) {
 		return head + " -> " + return_type.ToString();
 	}
 	return head;
@@ -273,6 +274,45 @@ void BuiltinFunctions::Initialize() {
 	AddCollation("nfc", NFCNormalizeFun::GetFunction());
 
 	RegisterExtensionOverloads();
+}
+
+LogicalType ReturnType::GetUnboundType() const {
+	switch (kind) {
+	case Kind::TYPE:
+		return type;
+	case Kind::ANY:
+		return LogicalType::ANY;
+	case Kind::TABLE:
+		return LogicalType::INVALID;
+	default:
+		throw InternalException("Unknown ReturnType kind");
+	}
+}
+
+string ReturnType::ToString() const {
+	switch (kind) {
+	case Kind::TYPE:
+		return type.ToString();
+	case Kind::ANY:
+		return "ANY";
+	case Kind::TABLE:
+		return "TABLE";
+	default:
+		throw InternalException("Unknown ReturnType kind");
+	}
+}
+
+hash_t ReturnType::Hash() const {
+	auto hash = duckdb::Hash(static_cast<uint8_t>(kind));
+	return kind == Kind::TYPE ? duckdb::CombineHash(hash, type.Hash()) : hash;
+}
+
+bool ReturnType::operator==(const ReturnType &other) const {
+	return kind == other.kind && (kind != Kind::TYPE || type == other.type);
+}
+
+bool ReturnType::operator!=(const ReturnType &other) const {
+	return !(*this == other);
 }
 
 hash_t FunctionSignature::Hash() const {

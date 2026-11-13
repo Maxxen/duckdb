@@ -90,9 +90,9 @@ void PragmaMetadataInfo::RegisterFunction(BuiltinFunctions &set) {
 	TableFunctionSet metadata_info("pragma_metadata_info");
 	metadata_info.AddFunction(
 	    TableFunction({}, PragmaMetadataInfoFunction, PragmaMetadataInfoBind, PragmaMetadataInfoInit));
-	metadata_info.AddFunction(TableFunction(FunctionSignature().AddPositionalOnly("database", LogicalType::VARCHAR),
-	                                        PragmaMetadataInfoFunction, PragmaMetadataInfoBind,
-	                                        PragmaMetadataInfoInit));
+	metadata_info.AddFunction(TableFunction(
+	    FunctionSignature().AddPositionalOnly("database", LogicalType::VARCHAR).SetReturnType(ReturnType::TABLE()),
+	    PragmaMetadataInfoFunction, PragmaMetadataInfoBind, PragmaMetadataInfoInit));
 	// reads live block usage of the database file, which concurrent checkpoints change
 	metadata_info.ApplyToFunctions([](TableFunction &function) { function.stability = FunctionStability::VOLATILE; });
 	set.AddFunction(metadata_info);

@@ -151,7 +151,7 @@ LogicalType LambdaInvokeBindParameters(ClientContext &context, const vector<Logi
 } // namespace
 
 ScalarFunction InvokeFun::GetFunction() {
-	ScalarFunction fun("invoke", {}, LogicalType::ANY, LambdaInvokeFunction);
+	ScalarFunction fun("invoke", {}, ReturnType::ANY(), LambdaInvokeFunction);
 	fun.GetSignature().AddParameter("lambda", LogicalType::LAMBDA).AddParameter("arg1", LogicalType::ANY);
 	fun.SetBindCallback(LambdaInvokeBind);
 	fun.GetSignature().AddArgs("args", LogicalType::ANY);

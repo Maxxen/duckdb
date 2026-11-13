@@ -126,7 +126,7 @@ BoundAggregateFunction::BoundAggregateFunction(shared_ptr<const AggregateFunctio
 	auto &function = *definition;
 	qualified_name = function.GetQualifiedName();
 	extra_info = function.extra_info;
-	return_type = function.GetReturnType();
+	return_type = function.GetReturnType().GetUnboundType();
 	properties = function.GetProperties();
 	callbacks = function.GetCallbacks();
 	function_info = function.GetFunctionInfo();
@@ -166,7 +166,7 @@ void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &func
 	if (!function.GetCatalogName().empty() || !function.GetSchemaName().empty()) {
 		qualified_name = function.GetQualifiedName();
 	}
-	this->return_type = function.GetReturnType();
+	this->return_type = function.GetReturnType().GetUnboundType();
 	this->properties = function.GetProperties();
 	this->callbacks = function.GetCallbacks();
 	this->function_info = function.GetFunctionInfo();

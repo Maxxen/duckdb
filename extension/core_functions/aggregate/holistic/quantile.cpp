@@ -888,7 +888,7 @@ struct ContinuousQuantileListFunction {
 };
 
 template <class OP>
-static AggregateFunction EmptyQuantileFunction(LogicalType input, const LogicalType &result,
+static AggregateFunction EmptyQuantileFunction(LogicalType input, const ReturnType &result,
                                                const LogicalType &extra_arg) {
 	AggregateFunction fun({std::move(input)}, result, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, OP::Bind);
 	fun.GetSignature().GetParameter(0).SetName("x");
@@ -904,19 +904,19 @@ static AggregateFunction EmptyQuantileFunction(LogicalType input, const LogicalT
 
 AggregateFunctionSet MedianFun::GetFunctions() {
 	AggregateFunctionSet set("median");
-	set.AddFunction(EmptyQuantileFunction<MedianFunction>(LogicalType::ANY, LogicalType::ANY, LogicalTypeId::INVALID));
+	set.AddFunction(EmptyQuantileFunction<MedianFunction>(LogicalType::ANY, ReturnType::ANY(), LogicalTypeId::INVALID));
 	return set;
 }
 
 AggregateFunctionSet QuantileDiscFun::GetFunctions() {
 	AggregateFunctionSet set("quantile_disc");
 	set.AddFunction(
-	    EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::ANY, LogicalType::ANY, LogicalType::DOUBLE));
-	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileListFunction>(LogicalType::ANY, LogicalType::ANY,
+	    EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::ANY, ReturnType::ANY(), LogicalType::DOUBLE));
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileListFunction>(LogicalType::ANY, ReturnType::ANY(),
 	                                                                    LogicalType::LIST(LogicalType::DOUBLE)));
 	// this function is here for deserialization - it cannot be called by users
 	set.AddFunction(
-	    EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::ANY, LogicalType::ANY, LogicalType::INVALID));
+	    EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::ANY, ReturnType::ANY(), LogicalType::INVALID));
 	return set;
 }
 

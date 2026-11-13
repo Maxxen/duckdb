@@ -42,8 +42,10 @@ static OperatorResultType SummaryFunction(ExecutionContext &context, TableFuncti
 }
 
 void SummaryTableFunction::RegisterFunction(BuiltinFunctions &set) {
-	TableFunction summary_function("summary", FunctionSignature().AddPositionalOnly("input", LogicalType::TABLE),
-	                               nullptr, SummaryFunctionBind);
+	TableFunction summary_function(
+	    "summary",
+	    FunctionSignature().AddPositionalOnly("input", LogicalType::TABLE).SetReturnType(ReturnType::TABLE()), nullptr,
+	    SummaryFunctionBind);
 	summary_function.in_out_function = SummaryFunction;
 	set.AddFunction(summary_function);
 }
