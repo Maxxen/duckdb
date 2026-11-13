@@ -495,13 +495,14 @@ unique_ptr<FunctionData> EquiWidthBinDeserialize(Deserializer &deserializer, Bou
 
 static void AddEquiWidthBinFunction(ScalarFunctionSet &functions, const LogicalType &min_max_type,
                                     scalar_function_t function) {
-	ScalarFunction fun({}, LogicalType::LIST(LogicalType::ANY), std::move(function));
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("min", min_max_type)
+	                       .AddParameter("max", min_max_type)
+	                       .AddParameter("bin_count", LogicalType::BIGINT)
+	                       .AddParameter("nice_rounding", LogicalType::BOOLEAN)
+	                       .SetReturnType(LogicalType::LIST(LogicalType::ANY)),
+	                   std::move(function));
 	fun.SetResolveTypesCallback(EquiWidthResolveTypes);
-	fun.GetSignature()
-	    .AddParameter("min", min_max_type)
-	    .AddParameter("max", min_max_type)
-	    .AddParameter("bin_count", LogicalType::BIGINT)
-	    .AddParameter("nice_rounding", LogicalType::BOOLEAN);
 	functions.AddFunction(std::move(fun));
 }
 

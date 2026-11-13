@@ -170,9 +170,11 @@ static unique_ptr<ParsedExpression> WriteLogUnbind(FunctionUnbindInput &input) {
 ScalarFunctionSet WriteLogFun::GetFunctions() {
 	ScalarFunctionSet set("write_log");
 
-	ScalarFunction fun({{"string", LogicalType::VARCHAR}}, ReturnType::ANY(), WriteLogFunction, WriteLogBind, nullptr,
-	                   nullptr, LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
-	fun.GetSignature().AddKwargs("kwargs", LogicalType::ANY);
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("string", LogicalType::VARCHAR)
+	                       .AddKwargs("kwargs", LogicalType::ANY)
+	                       .SetReturnType(ReturnType::ANY()),
+	                   WriteLogFunction, WriteLogBind, nullptr, nullptr, FunctionStability::VOLATILE);
 	fun.SetResolveTypesCallback(WriteLogResolveTypes);
 	fun.GetProperties().SetRequiresExpressionNames(true);
 	// an unknown scope is only detected while writing

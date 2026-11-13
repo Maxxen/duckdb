@@ -4,6 +4,8 @@
 #include "duckdb/function/function_set.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
 
 using namespace duckdb;
 
@@ -280,4 +282,73 @@ TEST_CASE("A named argument passed twice matches no overload", "[api][function_b
 	REQUIRE(selection.GetError().GetType() == FunctionBindError::Type::DUPLICATE_ARGUMENT);
 	REQUIRE(selection.GetError().Cast<FunctionBindError::DuplicateArgument>().argument == 1);
 	REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "Duplicate named argument"));
+}
+
+//! h(value ANY, depth BIGINT := 0, *args ANY) -> "value" nested in "depth" lists
+static LogicalType NestedReturnType(const ResolveReturnTypeInput &input) {
+	// the arguments are in the order of the signature, the default of a parameter the call leaves out included
+	REQUIRE(input.GetArgumentCount() >= 2);
+	REQUIRE(input.GetArgumentType(1) == LogicalType::BIGINT);
+	auto depth = input.TryGetConstant(1);
+	if (!depth || depth->IsNull()) {
+		return LogicalType::SQLNULL;
+	}
+	auto result = input.GetArgumentType(0);
+	for (int64_t i = 0; i < depth->GetValue<int64_t>(); i++) {
+		result = LogicalType::LIST(result);
+	}
+	return result;
+}
+
+TEST_CASE("A return type callback resolves the type from the arguments of the bound call", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	auto function = make_shared_ptr<ScalarFunction>("h",
+	                                                FunctionSignature()
+	                                                    .AddParameter("value", LogicalType::ANY)
+	                                                    .AddParameter("depth", LogicalType::BIGINT, Value::BIGINT(0))
+	                                                    .AddArgs("args", LogicalType::ANY)
+	                                                    .SetReturnType(ReturnType::ANY(NestedReturnType)),
+	                                                NoopExec);
+	REQUIRE(function->GetReturnType().IsAny());
+
+	// selecting the overload does not resolve the type - binding the call does
+	ScalarFunctionSet set("h");
+	set.AddFunction(*function);
+	auto selection = FunctionBinder::SelectFunction(*con.context, set, {LogicalType::DATE});
+	REQUIRE(selection.IsSuccess());
+	REQUIRE(selection.GetBinding().return_type == LogicalType::ANY);
+
+	con.BeginTransaction();
+	FunctionBinder binder(*con.context);
+	auto bind = [&](vector<unique_ptr<Expression>> children, vector<pair<Identifier, unique_ptr<Expression>>> named) {
+		return binder.BindScalarFunction(function, std::move(children), std::move(named), false, nullptr);
+	};
+
+	// an argument of a parameter that accepts any type has its own type
+	vector<unique_ptr<Expression>> children;
+	children.push_back(make_uniq<BoundConstantExpression>(Value::DATE(2020, 1, 1)));
+	REQUIRE(bind(std::move(children), {})->GetReturnType() == LogicalType::DATE);
+
+	// a constant argument can be read, here after it is cast to the type of its parameter
+	children.clear();
+	children.push_back(make_uniq<BoundConstantExpression>(Value("a")));
+	children.push_back(make_uniq<BoundConstantExpression>(Value::INTEGER(2)));
+	children.push_back(make_uniq<BoundConstantExpression>(Value::BOOLEAN(true)));
+	REQUIRE(bind(std::move(children), {})->GetReturnType() ==
+	        LogicalType::LIST(LogicalType::LIST(LogicalType::VARCHAR)));
+
+	// and so can an argument passed by name
+	children.clear();
+	children.push_back(make_uniq<BoundConstantExpression>(Value::DOUBLE(1)));
+	vector<pair<Identifier, unique_ptr<Expression>>> named;
+	named.emplace_back("depth", make_uniq<BoundConstantExpression>(Value::BIGINT(1)));
+	REQUIRE(bind(std::move(children), std::move(named))->GetReturnType() == LogicalType::LIST(LogicalType::DOUBLE));
+
+	// an argument that is not constant is not an error
+	children.clear();
+	children.push_back(make_uniq<BoundConstantExpression>(Value::DOUBLE(1)));
+	children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0U));
+	REQUIRE(bind(std::move(children), {})->GetReturnType() == LogicalType::SQLNULL);
+	con.Rollback();
 }

@@ -472,26 +472,30 @@ static void SetListSortSerialization(ScalarFunction &function) {
 
 ScalarFunctionSet ListSortFun::GetFunctions() {
 	// one parameter: list
-	ScalarFunction sort({}, LogicalType::LIST(LogicalType::ANY), ListSortFunction, ListNormalSortBind);
-	sort.GetSignature().AddParameter("list", LogicalType::LIST(LogicalType::ANY));
+	ScalarFunction sort(FunctionSignature()
+	                        .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
+	                        .SetReturnType(LogicalType::LIST(LogicalType::ANY)),
+	                    ListSortFunction, ListNormalSortBind);
 
 	// two parameters: list, order
-	ScalarFunction sort_order({}, LogicalType::LIST(LogicalType::ANY), ListSortFunction, ListNormalSortBind);
-	sort_order.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("sort_order", LogicalType::VARCHAR);
+	ScalarFunction sort_order(FunctionSignature()
+	                              .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
+	                              .AddParameter("sort_order", LogicalType::VARCHAR)
+	                              .SetReturnType(LogicalType::LIST(LogicalType::ANY)),
+	                          ListSortFunction, ListNormalSortBind);
 
 	// three parameters: list, order, null order
-	ScalarFunction sort_orders({}, LogicalType::LIST(LogicalType::ANY), ListSortFunction, ListNormalSortBind);
-	sort_orders.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("sort_order", LogicalType::VARCHAR)
-	    .AddParameter("null_order", LogicalType::VARCHAR);
+	ScalarFunction sort_orders(FunctionSignature()
+	                               .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
+	                               .AddParameter("sort_order", LogicalType::VARCHAR)
+	                               .AddParameter("null_order", LogicalType::VARCHAR)
+	                               .SetReturnType(LogicalType::LIST(LogicalType::ANY)),
+	                           ListSortFunction, ListNormalSortBind);
 	SetListSortSerialization(sort);
-	sort.SetResolveTypesCallback(ListSortResolveTypes);
 	SetListSortSerialization(sort_order);
-	sort_order.SetResolveTypesCallback(ListSortResolveTypes);
 	SetListSortSerialization(sort_orders);
+	sort.SetResolveTypesCallback(ListSortResolveTypes);
+	sort_order.SetResolveTypesCallback(ListSortResolveTypes);
 	sort_orders.SetResolveTypesCallback(ListSortResolveTypes);
 
 	ScalarFunctionSet list_sort;
@@ -531,18 +535,20 @@ ScalarFunctionSet ListGradeUpFun::GetFunctions() {
 
 ScalarFunctionSet ListReverseSortFun::GetFunctions() {
 	// one parameter: list
-	ScalarFunction sort_reverse({}, LogicalType::LIST(LogicalType::ANY), ListSortFunction, ListReverseSortBind);
-	sort_reverse.GetSignature().AddParameter("list", LogicalType::LIST(LogicalType::ANY));
+	ScalarFunction sort_reverse(FunctionSignature()
+	                                .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
+	                                .SetReturnType(LogicalType::LIST(LogicalType::ANY)),
+	                            ListSortFunction, ListReverseSortBind);
 
 	// two parameters: list, null order
-	ScalarFunction sort_reverse_null_order({}, LogicalType::LIST(LogicalType::ANY), ListSortFunction,
-	                                       ListReverseSortBind);
-	sort_reverse_null_order.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("null_order", LogicalType::VARCHAR);
+	ScalarFunction sort_reverse_null_order(FunctionSignature()
+	                                           .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
+	                                           .AddParameter("null_order", LogicalType::VARCHAR)
+	                                           .SetReturnType(LogicalType::LIST(LogicalType::ANY)),
+	                                       ListSortFunction, ListReverseSortBind);
 	SetListSortSerialization(sort_reverse);
-	sort_reverse.SetResolveTypesCallback(ListSortResolveTypes);
 	SetListSortSerialization(sort_reverse_null_order);
+	sort_reverse.SetResolveTypesCallback(ListSortResolveTypes);
 	sort_reverse_null_order.SetResolveTypesCallback(ListSortResolveTypes);
 
 	ScalarFunctionSet list_reverse_sort;

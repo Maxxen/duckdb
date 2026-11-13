@@ -350,6 +350,26 @@ public:
 	                     finalize, evaluate) {
 	}
 
+	//! The same constructors, taking the signature instead of the argument types and the return type
+	WindowFunction(const Identifier &name, FunctionSignature signature_p, ExpressionType window_enum,
+	               window_bind_function_t bind = nullptr, window_bounds_function_t bounds = nullptr,
+	               window_sharing_function_t sharing = nullptr, window_global_function_t global = nullptr,
+	               window_local_function_t local = nullptr, window_sink_function_t sink = nullptr,
+	               window_finalize_function_t finalize = nullptr, window_evaluate_function_t evaluate = nullptr)
+	    : WindowFunction(name, vector<LogicalType>(), ReturnType(), window_enum, bind, bounds, sharing, global, local,
+	                     sink, finalize, evaluate) {
+		signature = std::move(signature_p);
+	}
+
+	WindowFunction(FunctionSignature signature_p, ExpressionType window_enum, window_bind_function_t bind = nullptr,
+	               window_bounds_function_t bounds = nullptr, window_sharing_function_t sharing = nullptr,
+	               window_global_function_t global = nullptr, window_local_function_t local = nullptr,
+	               window_sink_function_t sink = nullptr, window_finalize_function_t finalize = nullptr,
+	               window_evaluate_function_t evaluate = nullptr)
+	    : WindowFunction(Identifier(), std::move(signature_p), window_enum, bind, bounds, sharing, global, local, sink,
+	                     finalize, evaluate) {
+	}
+
 public:
 	unique_ptr<BoundWindowExpression> Bind(ClientContext &context) const;
 	unique_ptr<BoundWindowExpression> Bind(ClientContext &context, vector<unique_ptr<Expression>> arguments) const;

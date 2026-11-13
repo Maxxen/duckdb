@@ -276,6 +276,20 @@ void BuiltinFunctions::Initialize() {
 	RegisterExtensionOverloads();
 }
 
+const LogicalType &ResolveReturnTypeInput::GetArgumentType(idx_t arg_idx) const {
+	auto &parameter_type = function.GetArguments()[arg_idx];
+	return parameter_type.IsComplete() ? parameter_type : arguments[arg_idx]->GetReturnType();
+}
+
+vector<LogicalType> ResolveReturnTypeInput::GetArgumentTypes() const {
+	vector<LogicalType> result;
+	result.reserve(arguments.size());
+	for (idx_t i = 0; i < arguments.size(); i++) {
+		result.push_back(GetArgumentType(i));
+	}
+	return result;
+}
+
 LogicalType ReturnType::GetUnboundType() const {
 	switch (kind) {
 	case Kind::TYPE:
@@ -308,7 +322,10 @@ hash_t ReturnType::Hash() const {
 }
 
 bool ReturnType::operator==(const ReturnType &other) const {
-	return kind == other.kind && (kind != Kind::TYPE || type == other.type);
+	if (kind != other.kind) {
+		return false;
+	}
+	return kind == Kind::TYPE ? type == other.type : resolver == other.resolver;
 }
 
 bool ReturnType::operator!=(const ReturnType &other) const {

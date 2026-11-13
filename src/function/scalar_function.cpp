@@ -59,9 +59,27 @@ FunctionLocalState::~FunctionLocalState() {
 ScalarFunctionInfo::~ScalarFunctionInfo() {
 }
 
-ScalarFunction::ScalarFunction(Identifier name, FunctionSignature sig, scalar_function_t function)
+ScalarFunction::ScalarFunction(Identifier name, FunctionSignature sig, scalar_function_t function,
+                               bind_scalar_function_t bind, function_statistics_t statistics,
+                               init_local_state_t init_local_state, FunctionStability stability,
+                               FunctionNullHandling null_handling, bind_lambda_function_t bind_lambda)
     : SimpleFunction(std::move(name), std::move(sig)) {
+	properties.stability = stability;
+	properties.null_handling = null_handling;
+
 	SetFunctionCallback(std::move(function));
+	callbacks.bind = bind;
+	callbacks.init_local_state = init_local_state;
+	callbacks.statistics = statistics;
+	callbacks.bind_lambda = bind_lambda;
+}
+
+ScalarFunction::ScalarFunction(FunctionSignature sig, scalar_function_t function, bind_scalar_function_t bind,
+                               function_statistics_t statistics, init_local_state_t init_local_state,
+                               FunctionStability stability, FunctionNullHandling null_handling,
+                               bind_lambda_function_t bind_lambda)
+    : ScalarFunction(Identifier(), std::move(sig), std::move(function), bind, statistics, init_local_state, stability,
+                     null_handling, bind_lambda) {
 }
 
 ScalarFunction::ScalarFunction(Identifier name, vector<LogicalType> arguments, ReturnType return_type,

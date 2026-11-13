@@ -1465,6 +1465,18 @@ static vector<LogicalType> CaptureLogicalArguments(const BoundSimpleFunction &fu
 	return result;
 }
 
+//! Let the signature resolve the return type from the resolved arguments of the call
+static void ResolveReturnType(ClientContext &context, const SimpleFunction &function,
+                              BoundSimpleFunction &bound_function, vector<unique_ptr<Expression>> &arguments) {
+	auto &signature = function.GetSignature();
+	auto resolver = signature.GetReturnType().GetResolver();
+	if (!resolver) {
+		return;
+	}
+	ResolveReturnTypeInput input(context, bound_function, signature, arguments);
+	bound_function.SetReturnType(resolver(input));
+}
+
 ResolvedScalarFunctionTypes
 FunctionBinder::ResolveScalarFunctionTypes(const FunctionBinding &binding, vector<unique_ptr<Expression>> &arguments,
                                            vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
@@ -1492,6 +1504,7 @@ FunctionBinder::ResolveScalarFunctionTypes(const FunctionBinding &binding, vecto
 	result.pushed_collation =
 	    PushArgumentCollations(context, bound_function, bound_function.GetProperties(), arguments, is_index_key);
 	CastToFunctionArguments(bound_function.GetName(), bound_function.GetArguments(), arguments);
+	ResolveReturnType(context, function, bound_function, arguments);
 	return result;
 }
 
@@ -1615,6 +1628,7 @@ FunctionBinder::ResolveAggregateFunction(const FunctionBinding &binding, vector<
 
 	unique_ptr<FunctionData> bind_info;
 
+	ResolveReturnType(context, function, bound_function, children);
 	if (bound_function.GetCallbacks().HasBindCallback()) {
 		BindAggregateFunctionInput input(context, bound_function, children);
 		bind_info = bound_function.GetCallbacks().GetBindCallback()(input);
@@ -1738,6 +1752,7 @@ FunctionBinder::ResolveWindowFunction(const FunctionBinding &binding, vector<uni
 
 	unique_ptr<FunctionData> bind_info;
 
+	ResolveReturnType(context, function, bound_function, children);
 	if (bound_function.HasBindCallback()) {
 		BindWindowFunctionInput input(context, bound_function, children, order_types, arg_order_types);
 		bind_info = bound_function.GetBindCallback()(input);

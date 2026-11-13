@@ -93,11 +93,14 @@ bool ConstantOrNull::IsConstantOrNull(BoundFunctionExpression &expr, const Value
 }
 
 ScalarFunction ConstantOrNullFun::GetFunction() {
-	auto fun = ScalarFunction("constant_or_null", {}, ReturnType::ANY(), ConstantOrNullFunction);
-	fun.GetSignature().AddParameter("arg1", LogicalType::ANY).AddParameter("arg2", LogicalType::ANY);
+	ScalarFunction fun("constant_or_null",
+	                   FunctionSignature()
+	                       .AddParameter("arg1", LogicalType::ANY)
+	                       .AddParameter("arg2", LogicalType::ANY)
+	                       .AddArgs("args", LogicalType::ANY)
+	                       .SetReturnType(ReturnType::ANY()),
+	                   ConstantOrNullFunction, ConstantOrNullBind);
 	fun.SetResolveTypesCallback(ConstantOrNullResolveTypes);
-	fun.SetBindCallback(ConstantOrNullBind);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY);
 	return fun;
 }
 

@@ -611,6 +611,55 @@ public:
 	                        window, serialize, deserialize) {
 	}
 
+	//! The same constructors, taking the signature instead of the argument types and the return type
+	AggregateFunction(const Identifier &name, FunctionSignature signature_p, aggregate_size_t state_size,
+	                  aggregate_initialize_t initialize, aggregate_update_t update, aggregate_combine_t combine,
+	                  aggregate_finalize_t finalize,
+	                  FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	                  aggregate_cluster_update_t cluster_update_p = nullptr, bind_aggregate_function_t bind = nullptr,
+	                  aggregate_destructor_t destructor = nullptr, aggregate_statistics_t statistics = nullptr,
+	                  aggregate_window_batch_t window_batch = nullptr, aggregate_serialize_t serialize = nullptr,
+	                  aggregate_deserialize_t deserialize = nullptr)
+	    : AggregateFunction(name, vector<LogicalType>(), ReturnType(), state_size, initialize, update, combine,
+	                        finalize, null_handling, cluster_update_p, bind, destructor, statistics, window_batch,
+	                        serialize, deserialize) {
+		signature = std::move(signature_p);
+	}
+
+	AggregateFunction(const Identifier &name, FunctionSignature signature_p, aggregate_size_t state_size,
+	                  aggregate_initialize_t initialize, aggregate_update_t update, aggregate_combine_t combine,
+	                  aggregate_finalize_t finalize, aggregate_cluster_update_t cluster_update_p,
+	                  bind_aggregate_function_t bind = nullptr, aggregate_destructor_t destructor = nullptr,
+	                  aggregate_statistics_t statistics = nullptr, aggregate_window_batch_t window_batch = nullptr,
+	                  aggregate_serialize_t serialize = nullptr, aggregate_deserialize_t deserialize = nullptr)
+	    : AggregateFunction(name, std::move(signature_p), state_size, initialize, update, combine, finalize,
+	                        FunctionNullHandling::DEFAULT_NULL_HANDLING, cluster_update_p, bind, destructor, statistics,
+	                        window_batch, serialize, deserialize) {
+	}
+
+	AggregateFunction(FunctionSignature signature_p, aggregate_size_t state_size, aggregate_initialize_t initialize,
+	                  aggregate_update_t update, aggregate_combine_t combine, aggregate_finalize_t finalize,
+	                  FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	                  aggregate_cluster_update_t cluster_update_p = nullptr, bind_aggregate_function_t bind = nullptr,
+	                  aggregate_destructor_t destructor = nullptr, aggregate_statistics_t statistics = nullptr,
+	                  aggregate_window_batch_t window_batch = nullptr, aggregate_serialize_t serialize = nullptr,
+	                  aggregate_deserialize_t deserialize = nullptr)
+	    : AggregateFunction(Identifier(), std::move(signature_p), state_size, initialize, update, combine, finalize,
+	                        null_handling, cluster_update_p, bind, destructor, statistics, window_batch, serialize,
+	                        deserialize) {
+	}
+
+	AggregateFunction(FunctionSignature signature_p, aggregate_size_t state_size, aggregate_initialize_t initialize,
+	                  aggregate_update_t update, aggregate_combine_t combine, aggregate_finalize_t finalize,
+	                  aggregate_cluster_update_t cluster_update_p, bind_aggregate_function_t bind = nullptr,
+	                  aggregate_destructor_t destructor = nullptr, aggregate_statistics_t statistics = nullptr,
+	                  aggregate_window_batch_t window_batch = nullptr, aggregate_serialize_t serialize = nullptr,
+	                  aggregate_deserialize_t deserialize = nullptr)
+	    : AggregateFunction(Identifier(), std::move(signature_p), state_size, initialize, update, combine, finalize,
+	                        FunctionNullHandling::DEFAULT_NULL_HANDLING, cluster_update_p, bind, destructor, statistics,
+	                        window_batch, serialize, deserialize) {
+	}
+
 	// Window constructor
 	AggregateFunction(const vector<LogicalType> &arguments, const ReturnType &return_type, aggregate_size_t state_size,
 	                  aggregate_initialize_t initialize, aggregate_wininit_t window_init,

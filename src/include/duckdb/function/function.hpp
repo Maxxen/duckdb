@@ -284,6 +284,13 @@ private:
 	vector<TypedKwarg> options;
 };
 
+class ResolveReturnTypeInput;
+
+//! Resolves the return type of a call from its arguments. It runs once the overload is selected and its arguments
+//! are resolved, before the bind callback, and is pure: it holds no bind data and changes nothing about the function
+//! or its arguments
+typedef LogicalType (*resolve_return_type_t)(const ResolveReturnTypeInput &input);
+
 //! What a function returns: a concrete (or templated) type, a table, or a type that is only known after binding
 class ReturnType {
 public:
@@ -312,6 +319,12 @@ public:
 	static auto ANY() -> ReturnType {
 		return ReturnType(Kind::ANY);
 	}
+	//! A return type the given callback resolves from the argument types, during overload resolution
+	static auto ANY(resolve_return_type_t resolver) -> ReturnType {
+		auto result = ReturnType(Kind::ANY);
+		result.resolver = resolver;
+		return result;
+	}
 
 	auto GetKind() const -> Kind {
 		return kind;
@@ -331,6 +344,11 @@ public:
 		return kind == Kind::TABLE;
 	}
 
+	//! The callback that resolves the type from the arguments of a call, if the function declares one
+	auto GetResolver() const -> resolve_return_type_t {
+		return resolver;
+	}
+
 	//! The type a function is bound with before its bind callback runs: ANY when it is only known after binding
 	DUCKDB_API auto GetUnboundType() const -> LogicalType;
 
@@ -345,6 +363,7 @@ private:
 
 	Kind kind;
 	LogicalType type;
+	resolve_return_type_t resolver = nullptr;
 };
 
 class FunctionSignature {
@@ -835,6 +854,37 @@ private:
 	const BoundSimpleFunction &function;
 	const FunctionSignature &signature;
 	vector<unique_ptr<Expression>> &arguments;
+};
+
+//! Input of the resolve_return_type callback: the arguments of the call, in the order the signature declares them -
+//! [standard | *args | keyword-only | **kwargs], defaults included. Everything is read-only
+class ResolveReturnTypeInput : private BindFunctionInput {
+public:
+	ResolveReturnTypeInput(ClientContext &context_p, const BoundSimpleFunction &function_p,
+	                       const FunctionSignature &signature_p, vector<unique_ptr<Expression>> &arguments_p)
+	    : BindFunctionInput(context_p, function_p, signature_p, arguments_p), function(function_p),
+	      arguments(arguments_p) {
+	}
+
+	using BindFunctionInput::GetArgumentName;
+	using BindFunctionInput::GetConstant;
+	using BindFunctionInput::GetNonNullConstant;
+	using BindFunctionInput::TryGetConstant;
+
+	idx_t GetArgumentCount() const {
+		return arguments.size();
+	}
+	const Expression &GetArgument(idx_t arg_idx) const {
+		return *arguments[arg_idx];
+	}
+	//! The type the function receives an argument as: the type of its parameter, or the type of the argument itself
+	//! if the parameter accepts any (e.g. ANY)
+	DUCKDB_API const LogicalType &GetArgumentType(idx_t arg_idx) const;
+	DUCKDB_API vector<LogicalType> GetArgumentTypes() const;
+
+private:
+	const BoundSimpleFunction &function;
+	const vector<unique_ptr<Expression>> &arguments;
 };
 
 } // namespace duckdb

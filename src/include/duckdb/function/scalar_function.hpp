@@ -441,7 +441,17 @@ public:
 	auto GetFunctionProperties() const -> optional_ptr<const FunctionProperties> override {
 		return GetProperties();
 	}
-	DUCKDB_API ScalarFunction(Identifier name, FunctionSignature sig, scalar_function_t function);
+	DUCKDB_API ScalarFunction(Identifier name, FunctionSignature sig, scalar_function_t function,
+	                          bind_scalar_function_t bind = nullptr, function_statistics_t statistics = nullptr,
+	                          init_local_state_t init_local_state = nullptr,
+	                          FunctionStability stability = FunctionStability::CONSISTENT,
+	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	                          bind_lambda_function_t bind_lambda = nullptr);
+	DUCKDB_API ScalarFunction(FunctionSignature sig, scalar_function_t function, bind_scalar_function_t bind = nullptr,
+	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
+	                          FunctionStability stability = FunctionStability::CONSISTENT,
+	                          FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	                          bind_lambda_function_t bind_lambda = nullptr);
 	DUCKDB_API ScalarFunction(Identifier name, vector<LogicalType> arguments, ReturnType return_type,
 	                          scalar_function_t function, bind_scalar_function_t bind = nullptr,
 	                          function_statistics_t statistics = nullptr, init_local_state_t init_local_state = nullptr,
