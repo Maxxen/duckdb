@@ -332,15 +332,6 @@ LogicalType DecimalTemplate(const string &name = "T") {
 	return LogicalType::TEMPLATE(name, LogicalTypeId::DECIMAL);
 }
 
-//! Casts an argument of a decimal operator to the type its kernel reads it as
-void CastDecimalArgument(BindScalarFunctionInput &input, idx_t arg_idx, const LogicalType &type) {
-	auto &argument = input.GetArguments()[arg_idx];
-	if (argument->GetReturnType() != type) {
-		argument = BoundCastExpression::AddCastToType(input.GetClientContext(), std::move(argument), type);
-	}
-	input.GetBoundFunction().GetArguments()[arg_idx] = type;
-}
-
 //! Whether adding or subtracting decimals of the given type can overflow: the result has no room for the carry
 bool DecimalAddSubtractOverflows(const LogicalType &argument_type) {
 	return DecimalType::GetWidth(argument_type) >= Decimal::MAX_WIDTH_DECIMAL;
@@ -370,8 +361,8 @@ unique_ptr<FunctionData> BindDecimalAddSubtract(BindScalarFunctionInput &input) 
 		bind_data->check_overflow = DecimalAddSubtractOverflows(argument_type);
 		if (argument_type.InternalType() != result_type.InternalType()) {
 			// the kernel computes in the physical type of the result
-			CastDecimalArgument(input, 0, result_type);
-			CastDecimalArgument(input, 1, result_type);
+			input.CastArgument(0, result_type);
+			input.CastArgument(1, result_type);
 		}
 	}
 
@@ -1163,8 +1154,8 @@ unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
 		    argument_type.InternalType() == result_type.InternalType()) {
 			continue;
 		}
-		CastDecimalArgument(
-		    input, i, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(argument_type)));
+		input.CastArgument(
+		    i, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(argument_type)));
 	}
 	// now select the physical function to execute
 	if (bind_data->check_overflow) {

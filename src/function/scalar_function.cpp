@@ -1,4 +1,5 @@
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/execution/expression_executor.hpp"
@@ -22,6 +23,14 @@ void ThrowNonFallibleFunctionError(const Identifier &name, std::exception &ex) {
 	throw InternalException("Scalar function %s threw an execution error, but the function is not marked as "
 	                        "fallible - the function must call SetFallible(). Error: %s",
 	                        name, error.RawMessage());
+}
+
+void BindScalarFunctionInput::CastArgument(idx_t arg_idx, const LogicalType &type) {
+	auto &argument = GetArguments()[arg_idx];
+	if (argument->GetReturnType() != type) {
+		argument = BoundCastExpression::AddCastToType(GetClientContext(), std::move(argument), type);
+	}
+	bound_function.GetArguments()[arg_idx] = type;
 }
 
 const Expression &ResolveScalarFunctionTypesInput::GetArgument(idx_t arg_idx) const {

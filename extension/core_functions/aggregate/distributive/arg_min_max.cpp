@@ -607,10 +607,11 @@ void AddDecimalArgMinMaxFunctionBy(AggregateFunctionSet &fun, const LogicalType 
 		bind = BindDecimalArgMinMax<OP, ArgMinMaxNullHandling::HANDLE_ANY_NULL>;
 		break;
 	}
-	AggregateFunction function({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, bind);
-	function.GetSignature()
-	    .AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
-	    .AddParameter("val", by_type);
+	// a decimal is returned as the decimal it is passed as
+	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
+	AggregateFunction function(
+	    FunctionSignature().AddParameter("arg", decimal_type).AddParameter("val", by_type).SetReturnType(decimal_type),
+	    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, bind);
 	fun.AddFunction(function);
 }
 

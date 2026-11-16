@@ -60,8 +60,9 @@ unique_ptr<ParsedExpression> UnionValueUnbind(FunctionUnbindInput &input) {
 } // namespace
 
 ScalarFunction UnionValueFun::GetFunction() {
-	ScalarFunction fun("union_value", {}, LogicalTypeId::UNION, UnionValueFunction, UnionValueBind, nullptr, nullptr);
-	fun.GetSignature().AddKwargs("kwargs", LogicalType::ANY);
+	ScalarFunction fun("union_value",
+	                   FunctionSignature().AddKwargs("kwargs", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
+	                   UnionValueFunction, UnionValueBind);
 	fun.GetProperties().SetRequiresExpressionNames(true);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(VariableReturnBindData::Serialize);

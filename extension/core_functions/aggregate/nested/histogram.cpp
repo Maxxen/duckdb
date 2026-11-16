@@ -291,18 +291,18 @@ unique_ptr<FunctionData> HistogramBindFunction(BindAggregateFunctionInput &input
 
 AggregateFunctionSet HistogramFun::GetFunctions() {
 	AggregateFunctionSet fun;
-	AggregateFunction histogram_function("histogram", {}, LogicalTypeId::MAP, nullptr, nullptr, nullptr, nullptr,
-	                                     nullptr, nullptr, HistogramBindFunction, nullptr);
-	histogram_function.GetSignature().AddParameter("arg", LogicalType::ANY);
+	AggregateFunction histogram_function(
+	    "histogram", FunctionSignature().AddParameter("arg", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
+	    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction, nullptr);
 	fun.AddFunction(HistogramFun::BinnedHistogramFunction());
 	fun.AddFunction(histogram_function);
 	return fun;
 }
 
 AggregateFunction HistogramFun::GetHistogramUnorderedMap(LogicalType &type) {
-	AggregateFunction function("histogram", {}, LogicalTypeId::MAP, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                           nullptr, HistogramBindFunction<false>, nullptr);
-	function.GetSignature().AddParameter("arg", LogicalType::ANY);
+	AggregateFunction function(
+	    "histogram", FunctionSignature().AddParameter("arg", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
+	    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction<false>, nullptr);
 	return function;
 }
 

@@ -642,11 +642,12 @@ unique_ptr<FunctionData> ApproxQuantileDecimalDeserialize(Deserializer &deserial
 
 AggregateFunction GetApproxQuantileDecimal() {
 	// stub function - the actual function is set during bind or deserialize
-	AggregateFunction fun({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                      BindApproxQuantileDecimal);
-	fun.GetSignature()
-	    .AddParameter("x", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
-	    .AddParameter("pos", LogicalType::FLOAT);
+	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
+	AggregateFunction fun(FunctionSignature()
+	                          .AddParameter("x", decimal_type)
+	                          .AddParameter("pos", LogicalType::FLOAT)
+	                          .SetReturnType(decimal_type),
+	                      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, BindApproxQuantileDecimal);
 	fun.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
 	fun.SetDeserializeCallback(ApproxQuantileDecimalDeserialize);
 	return fun;
@@ -685,11 +686,12 @@ AggregateFunction GetApproxQuantileWidenedTimestamp(const LogicalType &type) {
 
 AggregateFunction GetApproxQuantileDecimalList() {
 	// stub function - the actual function is set during bind or deserialize
-	AggregateFunction fun({}, LogicalType::LIST(LogicalTypeId::DECIMAL), nullptr, nullptr, nullptr, nullptr, nullptr,
-	                      nullptr, BindApproxQuantileDecimalList);
-	fun.GetSignature()
-	    .AddParameter("x", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
-	    .AddParameter("pos", LogicalType::LIST(LogicalType::FLOAT));
+	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
+	AggregateFunction fun(FunctionSignature()
+	                          .AddParameter("x", decimal_type)
+	                          .AddParameter("pos", LogicalType::LIST(LogicalType::FLOAT))
+	                          .SetReturnType(LogicalType::LIST(decimal_type)),
+	                      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, BindApproxQuantileDecimalList);
 	fun.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
 	fun.SetDeserializeCallback(ApproxQuantileDecimalDeserialize);
 	return fun;

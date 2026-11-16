@@ -616,10 +616,12 @@ struct ICUDatePart : public ICUDateFunc {
 
 	template <typename INPUT_TYPE>
 	static ScalarFunction GetStructFunction(const LogicalType &temporal_type) {
-		auto part_type = LogicalType::LIST(LogicalType::VARCHAR);
-		auto result_type = LogicalType::STRUCT({});
-		ScalarFunction result({}, result_type, StructFunction<INPUT_TYPE>, BindStruct);
-		result.GetSignature().AddParameter("part_list", part_type).AddParameter("ts", temporal_type);
+		// the bind builds the struct of the parts that are asked for
+		ScalarFunction result(FunctionSignature()
+		                          .AddParameter("part_list", LogicalType::LIST(LogicalType::VARCHAR))
+		                          .AddParameter("ts", temporal_type)
+		                          .SetReturnType(ReturnType::ANY()),
+		                      StructFunction<INPUT_TYPE>, BindStruct);
 		result.SetSerializeCallback(SerializeStructFunction);
 		result.SetDeserializeCallback(DeserializeStructFunction);
 		return result;

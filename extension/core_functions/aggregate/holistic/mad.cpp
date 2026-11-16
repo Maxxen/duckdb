@@ -348,10 +348,12 @@ unique_ptr<FunctionData> BindMedianAbsoluteDeviationDecimal(BindAggregateFunctio
 
 AggregateFunctionSet MadFun::GetFunctions() {
 	AggregateFunctionSet mad("mad");
-	AggregateFunction decimal_mad({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr,
+	// the deviation of decimals is of the decimal they are passed as
+	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
+	AggregateFunction decimal_mad(FunctionSignature().AddParameter("x", decimal_type).SetReturnType(decimal_type),
+	                              nullptr, nullptr, nullptr, nullptr, nullptr,
 	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(),
 	                              BindMedianAbsoluteDeviationDecimal);
-	decimal_mad.GetSignature().AddParameter("x", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
 	mad.AddFunction(decimal_mad);
 
 	const vector<LogicalType> MAD_TYPES = {LogicalType::FLOAT,     LogicalType::DOUBLE, LogicalType::DATE,

@@ -29,12 +29,12 @@ SELECT struct_extract_at('{"a":1}'::JSON::VARIANT, 1);
 statement error
 SELECT struct_extract(NULL::VARIANT, 'a');
 ----
-Binder Error: struct_extract can only be used on a STRUCT, not on VARIANT
+An argument of type VARIANT cannot be passed as STRUCT
 
 statement error
 SELECT struct_extract_at(NULL::VARIANT, 1);
 ----
-Binder Error: struct_extract can only be used on a STRUCT, not on VARIANT
+An argument of type VARIANT cannot be passed as STRUCT
 
 # the VARIANT-aware path still works
 query I

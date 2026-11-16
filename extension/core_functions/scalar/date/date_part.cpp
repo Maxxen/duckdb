@@ -2623,10 +2623,12 @@ struct StructDatePart {
 
 	template <typename INPUT_TYPE>
 	static ScalarFunction GetFunction(const LogicalType &temporal_type) {
-		auto part_type = LogicalType::LIST(LogicalType::VARCHAR);
-		auto result_type = LogicalType::STRUCT({});
-		ScalarFunction result({}, result_type, Function<INPUT_TYPE>, Bind);
-		result.GetSignature().AddParameter("part_list", part_type).AddParameter("ts", temporal_type);
+		// the bind builds the struct of the parts that are asked for
+		ScalarFunction result(FunctionSignature()
+		                          .AddParameter("part_list", LogicalType::LIST(LogicalType::VARCHAR))
+		                          .AddParameter("ts", temporal_type)
+		                          .SetReturnType(ReturnType::ANY()),
+		                      Function<INPUT_TYPE>, Bind);
 		result.SetSerializeCallback(SerializeFunction);
 		result.SetDeserializeCallback(DeserializeFunction);
 		return result;

@@ -172,8 +172,9 @@ static unique_ptr<FunctionData> ListZipBind(BindScalarFunctionInput &input) {
 }
 
 ScalarFunction ListZipFun::GetFunction() {
-	auto fun = ScalarFunction({}, LogicalType::LIST(LogicalTypeId::STRUCT), ListZipFunction, ListZipBind);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY);
+	// the bind builds the struct of the lists that are zipped
+	auto fun = ScalarFunction(FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
+	                          ListZipFunction, ListZipBind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

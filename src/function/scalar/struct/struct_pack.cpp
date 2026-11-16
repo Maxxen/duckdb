@@ -90,19 +90,21 @@ static unique_ptr<ParsedExpression> StructPackUnbind(FunctionUnbindInput &input)
 
 template <bool IS_STRUCT_PACK>
 static ScalarFunction GetStructPackFunction() {
-	ScalarFunction fun(IS_STRUCT_PACK ? "struct_pack" : "row", {},
-	                   IS_STRUCT_PACK ? LogicalTypeId::STRUCT : LogicalTypeId::TUPLE, StructPackFunction,
-	                   StructPackBind<IS_STRUCT_PACK>, StructPackStats);
-
+	// the bind builds the struct of the arguments. struct_pack derives its field names from argument aliases, so
+	// the binder must capture argument expression aliases as named-argument names. This also preserves the legacy
+	// behavior of allowing positional arguments after named ones (the positional arguments simply take their
+	// expression's name as the field name). row produces an unnamed TUPLE, so it ignores the names of its arguments
+	FunctionSignature signature;
 	if (IS_STRUCT_PACK) {
-		// struct_pack derives its field names from argument aliases, so the binder must capture argument expression
-		// aliases as named-argument names. This also preserves the legacy behavior of allowing positional arguments
-		// after named ones (the positional arguments simply take their expression's name as the field name).
-		fun.GetSignature().AddKwargs("kwargs", LogicalType::ANY);
-		fun.SetCaptureArgumentAliases(true);
+		signature.AddKwargs("kwargs", LogicalType::ANY);
 	} else {
-		// row produces an unnamed TUPLE, so it ignores the names of its arguments
-		fun.GetSignature().AddArgs("args", LogicalType::ANY);
+		signature.AddArgs("args", LogicalType::ANY);
+	}
+	signature.SetReturnType(ReturnType::ANY());
+	ScalarFunction fun(IS_STRUCT_PACK ? "struct_pack" : "row", std::move(signature), StructPackFunction,
+	                   StructPackBind<IS_STRUCT_PACK>, StructPackStats);
+	if (IS_STRUCT_PACK) {
+		fun.SetCaptureArgumentAliases(true);
 	}
 
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

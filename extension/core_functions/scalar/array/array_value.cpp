@@ -90,10 +90,10 @@ unique_ptr<BaseStatistics> ArrayValueStats(ClientContext &context, FunctionStati
 
 ScalarFunction ArrayValueFun::GetFunction() {
 	// the arguments and return types are actually set in the binder function
-	ScalarFunction fun("array_value", {}, LogicalTypeId::ARRAY, ArrayValueFunction, VariableReturnBindData::Bind,
-	                   ArrayValueStats);
+	ScalarFunction fun("array_value",
+	                   FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
+	                   ArrayValueFunction, VariableReturnBindData::Bind, ArrayValueStats);
 	fun.SetResolveTypesCallback(ArrayValueResolveTypes);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// casting the arguments to the common child type can fail, e.g. for arrays of different sizes
 	fun.SetFallible();

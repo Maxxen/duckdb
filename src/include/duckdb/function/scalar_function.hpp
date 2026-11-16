@@ -684,6 +684,8 @@ public:
 	BoundScalarFunction &GetBoundFunction() const {
 		return bound_function;
 	}
+	//! Casts an argument to the given type, which the bound function then receives it as
+	DUCKDB_API void CastArgument(idx_t arg_idx, const LogicalType &type);
 	bool HasBinder() const {
 		return binder != nullptr;
 	}

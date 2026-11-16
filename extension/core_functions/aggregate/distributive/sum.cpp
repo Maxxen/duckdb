@@ -375,10 +375,12 @@ AggregateFunction GetSumAggregateNoOverflow(PhysicalType type) {
 }
 
 AggregateFunction GetSumAggregateNoOverflowDecimal() {
-	AggregateFunction aggr({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                       FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(),
-	                       SumNoOverflowBind);
-	aggr.GetSignature().AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
+	// the bind selects the decimal the sum is returned as
+	AggregateFunction aggr(FunctionSignature()
+	                           .AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
+	                           .SetReturnType(ReturnType::ANY()),
+	                       nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	                       AggregateFunction::NoClusterUpdate(), SumNoOverflowBind);
 	aggr.SetSerializeCallback(SumNoOverflowSerialize);
 	aggr.SetDeserializeCallback(SumNoOverflowDeserialize);
 	return aggr;
@@ -671,9 +673,12 @@ struct BignumOperation {
 AggregateFunctionSet SumFun::GetFunctions() {
 	AggregateFunctionSet sum;
 	// decimal
-	AggregateFunction decimal_sum({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr,
+	// the bind selects the decimal the sum is returned as
+	AggregateFunction decimal_sum(FunctionSignature()
+	                                  .AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
+	                                  .SetReturnType(ReturnType::ANY()),
+	                              nullptr, nullptr, nullptr, nullptr, nullptr,
 	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalSum);
-	decimal_sum.GetSignature().AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
 	sum.AddFunction(decimal_sum);
 	sum.AddFunction(GetSumAggregate(PhysicalType::BOOL));
 	sum.AddFunction(GetSumAggregate(PhysicalType::INT16));

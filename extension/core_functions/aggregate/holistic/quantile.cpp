@@ -930,10 +930,9 @@ static vector<LogicalType> GetContinuousQuantileTypes() {
 AggregateFunctionSet QuantileContFun::GetFunctions() {
 	AggregateFunctionSet quantile_cont("quantile_cont");
 	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(
-	    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), LogicalTypeId::DECIMAL, LogicalType::DOUBLE));
+	    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), ReturnType::ANY(), LogicalType::DOUBLE));
 	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileListFunction>(
-	    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), LogicalTypeId::DECIMAL,
-	    LogicalType::LIST(LogicalType::DOUBLE)));
+	    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE)));
 	for (const auto &type : GetContinuousQuantileTypes()) {
 		quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(type, type, LogicalType::DOUBLE));
 		quantile_cont.AddFunction(

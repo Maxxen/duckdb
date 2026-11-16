@@ -325,10 +325,10 @@ ScalarFunctionSet ListValueFun::GetFunctions() {
 }
 
 ScalarFunction UnpivotListFun::GetFunction() {
-	ScalarFunction fun("unpivot_list", {}, LogicalTypeId::LIST, ListValueFunction, VariableReturnBindData::Bind,
-	                   ListValueStats);
+	ScalarFunction fun("unpivot_list",
+	                   FunctionSignature().AddArgs("args", LogicalTypeId::ANY).SetReturnType(ReturnType::ANY()),
+	                   ListValueFunction, VariableReturnBindData::Bind, ListValueStats);
 	fun.SetResolveTypesCallback(UnpivotResolveTypes);
-	fun.GetSignature().AddArgs("args", LogicalTypeId::ANY);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

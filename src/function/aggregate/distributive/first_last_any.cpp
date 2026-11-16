@@ -517,15 +517,16 @@ unique_ptr<FunctionData> BindFirst(BindAggregateFunctionInput &input) {
 
 template <bool LAST, bool SKIP_NULLS>
 void AddFirstOperator(AggregateFunctionSet &set) {
-	AggregateFunction decimal_fun({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
-	                              BindDecimalFirst<LAST, SKIP_NULLS>);
-	decimal_fun.GetSignature().AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
+	// a decimal is returned as the decimal it is passed as
+	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
+	AggregateFunction decimal_fun(
+	    FunctionSignature().AddParameter("arg", decimal_type).SetReturnType(decimal_type), nullptr, nullptr, nullptr,
+	    nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalFirst<LAST, SKIP_NULLS>);
 	set.AddFunction(decimal_fun);
 
-	AggregateFunction any_fun({}, ReturnType::ANY(), nullptr, nullptr, nullptr, nullptr, nullptr,
-	                          FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindFirst<LAST, SKIP_NULLS>);
-	any_fun.GetSignature().AddParameter("arg", LogicalTypeId::ANY);
+	AggregateFunction any_fun(
+	    FunctionSignature().AddParameter("arg", LogicalTypeId::ANY).SetReturnType(ReturnType::ANY()), nullptr, nullptr,
+	    nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindFirst<LAST, SKIP_NULLS>);
 	set.AddFunction(any_fun);
 }
 

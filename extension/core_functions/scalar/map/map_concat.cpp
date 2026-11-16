@@ -183,9 +183,11 @@ unique_ptr<FunctionData> MapConcatBind(BindScalarFunctionInput &input) {
 
 ScalarFunction MapConcatFun::GetFunction() {
 	//! the arguments and return types are actually set in the binder function
-	ScalarFunction fun("map_concat", {}, LogicalTypeId::LIST, MapConcatFunction, MapConcatBind);
+	// the bind builds the map of the maps that are concatenated
+	ScalarFunction fun("map_concat",
+	                   FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
+	                   MapConcatFunction, MapConcatBind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY);
 	return fun;
 }
 

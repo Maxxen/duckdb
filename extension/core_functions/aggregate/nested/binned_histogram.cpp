@@ -409,20 +409,24 @@ unique_ptr<FunctionData> HistogramBinBindFunction(BindAggregateFunctionInput &in
 } // namespace
 
 AggregateFunction HistogramFun::BinnedHistogramFunction() {
-	AggregateFunction function("histogram", {}, LogicalTypeId::MAP, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                           nullptr, HistogramBinBindFunction<HistogramRange>, nullptr);
-	function.GetSignature()
-	    .AddParameter("arg", LogicalType::TEMPLATE("T"))
-	    .AddParameter("bins", LogicalType::LIST(LogicalType::TEMPLATE("T")));
+	AggregateFunction function("histogram",
+	                           FunctionSignature()
+	                               .AddParameter("arg", LogicalType::TEMPLATE("T"))
+	                               .AddParameter("bins", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                               .SetReturnType(ReturnType::ANY()),
+	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+	                           HistogramBinBindFunction<HistogramRange>, nullptr);
 	return function;
 }
 
 AggregateFunction HistogramExactFun::GetFunction() {
-	AggregateFunction function("histogram_exact", {}, LogicalTypeId::MAP, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                           nullptr, HistogramBinBindFunction<HistogramExact>, nullptr);
-	function.GetSignature()
-	    .AddParameter("arg", LogicalType::TEMPLATE("T"))
-	    .AddParameter("bins", LogicalType::LIST(LogicalType::TEMPLATE("T")));
+	AggregateFunction function("histogram_exact",
+	                           FunctionSignature()
+	                               .AddParameter("arg", LogicalType::TEMPLATE("T"))
+	                               .AddParameter("bins", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                               .SetReturnType(ReturnType::ANY()),
+	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+	                           HistogramBinBindFunction<HistogramExact>, nullptr);
 	return function;
 }
 

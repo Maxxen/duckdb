@@ -12,10 +12,11 @@ SELECT avg(x := 1::TINYINT), avg(x := 1::UBIGINT), sum(arg := i::HUGEINT) FROM r
 ----
 1.0	1.0	3
 
+# a VARIANT is not passed as a decimal, so no overload computes its average
 statement error
 SELECT avg(x := 1::VARIANT) FROM range(3)
 ----
-Binder Error
+<REGEX>:.*(Binder|Conversion) Error.*
 
 query IIII
 SELECT avg(x := 1.5::DECIMAL(4,1)), sum(arg := 2.5), avg(i), sum(i) FROM range(3) t(i)

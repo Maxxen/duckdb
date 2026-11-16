@@ -172,8 +172,16 @@ public:
 	                                             const LogicalType &return_type) {
 		for (idx_t offset = 0; offset < functions.functions.size(); offset++) {
 			auto &signature = functions.functions[offset]->GetSignature();
-			if (signature.GetParameterCount() <= arguments.size() || !signature.GetReturnType().IsType() ||
-			    signature.GetReturnType().GetType().id() != return_type.id()) {
+			if (signature.GetParameterCount() <= arguments.size() || !signature.GetReturnType().IsType()) {
+				continue;
+			}
+			auto &signature_type = signature.GetReturnType().GetType();
+			// a constrained template is of the kind it stands for
+			auto signature_id =
+			    signature_type.id() == LogicalTypeId::TEMPLATE && TemplateType::HasConstraint(signature_type)
+			        ? TemplateType::GetConstraint(signature_type)
+			        : signature_type.id();
+			if (signature_id != return_type.id()) {
 				continue;
 			}
 			bool leading = true;

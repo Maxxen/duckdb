@@ -477,11 +477,11 @@ AggregateFunctionSet ReservoirQuantileFun::GetFunctions() {
 	// DECIMAL
 	GetReservoirQuantileDecimalFunction(reservoir_quantile,
 	                                    {LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), LogicalType::DOUBLE},
-	                                    LogicalTypeId::DECIMAL);
+	                                    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
 	GetReservoirQuantileDecimalFunction(
 	    reservoir_quantile,
 	    {LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), LogicalType::LIST(LogicalType::DOUBLE)},
-	    LogicalType::LIST(LogicalTypeId::DECIMAL));
+	    LogicalType::LIST(LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL)));
 
 	DefineReservoirQuantile(reservoir_quantile, LogicalTypeId::TINYINT);
 	DefineReservoirQuantile(reservoir_quantile, LogicalTypeId::SMALLINT);

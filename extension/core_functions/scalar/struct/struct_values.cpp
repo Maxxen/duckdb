@@ -52,33 +52,27 @@ static void StructValuesFunction(DataChunk &args, ExpressionState &state, Vector
 	}
 }
 
-// Ensure input is a STRUCT, set return type to an unnamed STRUCT with same child types
-static void StructValuesResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	const auto &arg_type = input.GetArgumentType(0);
-	if (arg_type == LogicalTypeId::UNKNOWN) {
-		throw ParameterNotResolvedException();
+//! The values of a struct are a tuple of the types of its children
+static LogicalType StructValuesReturnType(const ResolveReturnTypeInput &input) {
+	auto &struct_type = input.GetArgumentType(0);
+	if (struct_type.id() != LogicalTypeId::STRUCT) {
+		// the argument is NULL
+		return struct_type;
 	}
-
-	// Since the type of the argument we declared of in `GetFunction` doesn't contain the inner STRUCT type,
-	// we should take it from the arguments
-	bound_function.GetArguments()[0] = arg_type;
-
-	// Build unnamed TUPLE child list using only the types
 	vector<LogicalType> unnamed_children;
-	auto &children = StructType::GetChildTypes(arg_type);
+	auto &children = StructType::GetChildTypes(struct_type);
 	unnamed_children.reserve(children.size());
 	for (auto &child : children) {
 		unnamed_children.emplace_back(child.second);
 	}
-	bound_function.SetReturnType(LogicalType::TUPLE(std::move(unnamed_children)));
+	return LogicalType::TUPLE(std::move(unnamed_children));
 }
 
 ScalarFunction StructValuesFun::GetFunction() {
-	ScalarFunction func({}, LogicalTypeId::TUPLE, StructValuesFunction);
-	func.SetResolveTypesCallback(StructValuesResolveTypes);
-	func.GetSignature().AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT));
-	return func;
+	return ScalarFunction(FunctionSignature()
+	                          .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
+	                          .SetReturnType(ReturnType::ANY(StructValuesReturnType)),
+	                      StructValuesFunction);
 }
 
 } // namespace duckdb
