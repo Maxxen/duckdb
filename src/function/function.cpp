@@ -532,7 +532,9 @@ void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature, c
 	const auto positional_count = signature.GetPositionalParameterCount();
 	arguments.clear();
 	for (idx_t i = 0; i < positional_count; i++) {
-		arguments.push_back(signature.GetParameter(i).GetType());
+		// a template is of the type of the argument it is called with
+		auto &type = signature.GetParameter(i).GetType();
+		arguments.push_back(type.IsTemplated() && i < parameters.size() ? parameters[i].type() : type);
 	}
 	auto args = signature.GetArgs();
 	for (idx_t i = positional_count; i < parameters.size(); i++) {
@@ -555,7 +557,7 @@ void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature, c
 		auto &param = signature.GetParameter(param_idx.GetIndex());
 		if (!param.AcceptsPosition()) {
 			names.push_back(entry.first);
-			arguments.push_back(param.GetType());
+			arguments.push_back(param.GetType().IsTemplated() ? entry.second.type() : param.GetType());
 		}
 	}
 	SetNamedArguments(positional_argument_count, std::move(names));

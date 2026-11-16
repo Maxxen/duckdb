@@ -1329,7 +1329,7 @@ private:
 				continue;
 			}
 			auto &type = signature.GetParameter(0).GetType();
-			if (type == LogicalType::VARCHAR || type.id() == LogicalTypeId::ANY) {
+			if (type == LogicalType::VARCHAR || TableFunctionMultiFileWrapper::TakesFileWithOptions(type)) {
 				return *function;
 			}
 		}

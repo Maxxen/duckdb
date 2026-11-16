@@ -80,10 +80,10 @@ void TableFunctionFileReader::BindFunction(ClientContext &context, const TableFu
 		throw InternalException("Table function %s cannot be wrapped in a multi file function - it has no bind",
 		                        function.name);
 	}
-	// a function that takes the file as ANY gets it together with the options to open it with - one that takes a
-	// VARCHAR only gets its path
+	// a function that takes a file of any type gets it together with the options to open it with - one that takes
+	// a VARCHAR only gets its path
 	vector<Value> inputs;
-	if (function.GetSignature().GetParameter(0).GetType().id() == LogicalTypeId::ANY) {
+	if (TableFunctionMultiFileWrapper::TakesFileWithOptions(function.GetSignature().GetParameter(0).GetType())) {
 		inputs.emplace_back(file.ToValue());
 	} else {
 		inputs.emplace_back(file.path);
@@ -918,14 +918,22 @@ vector<PartitionStatistics> TableFunctionMultiFileWrapper::GetPartitionStats(Cli
 	return function.get_partition_stats(context, file_input);
 }
 
+bool TableFunctionMultiFileWrapper::TakesFileWithOptions(const LogicalType &file_parameter_type) {
+	if (file_parameter_type.id() == LogicalTypeId::TEMPLATE) {
+		return !TemplateType::HasConstraint(file_parameter_type);
+	}
+	return file_parameter_type.id() == LogicalTypeId::ANY;
+}
+
 TableFunction TableFunctionMultiFileWrapper::CreateFunction(TableFunction single_file_function, Identifier name,
                                                             TableFunctionMultiFileSettings settings,
                                                             table_function_bind_t bind) {
 	auto &wrapped_signature = single_file_function.GetSignature();
 	if (wrapped_signature.GetPositionalParameterCount() != 1 ||
 	    (wrapped_signature.GetParameter(0).GetType() != LogicalType::VARCHAR &&
-	     wrapped_signature.GetParameter(0).GetType().id() != LogicalTypeId::ANY)) {
-		throw InternalException("Only table functions taking a single file - an ANY file or a VARCHAR file path - can "
+	     !TakesFileWithOptions(wrapped_signature.GetParameter(0).GetType()))) {
+		throw InternalException("Only table functions taking a single file - a file of any type or a VARCHAR file "
+		                        "path - can "
 		                        "be wrapped in a multi file function, %s does not",
 		                        single_file_function.name);
 	}

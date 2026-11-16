@@ -359,6 +359,9 @@ public:
 	static TableFunction CreateFunction(TableFunction single_file_function, Identifier name,
 	                                    TableFunctionMultiFileSettings settings = TableFunctionMultiFileSettings(),
 	                                    table_function_bind_t bind = nullptr);
+	//! Whether a single-file function with a file parameter of this type receives the file together with the
+	//! options to open it with: one that takes any type does, one that takes a VARCHAR only receives the path
+	static bool TakesFileWithOptions(const LogicalType &file_parameter_type);
 	//! Wrap a single-file table function into a multi-file table function set (VARCHAR and LIST(VARCHAR) variants)
 	static TableFunctionSet
 	CreateFunctionSet(TableFunction single_file_function, Identifier name,

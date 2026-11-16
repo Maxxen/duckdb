@@ -1011,11 +1011,11 @@ TableFunctionSet MultiFileReader::CreateFunctionSet(TableFunction table_function
 	function_set.AddFunction(table_function);
 	D_ASSERT(table_function.GetSignature().GetPositionalParameterCount() > 0 &&
 	         table_function.GetSignature().GetParameter(0).GetType() == LogicalType::VARCHAR);
-	// the list variant takes ANY as its child type: a file is either a path (VARCHAR) or a STRUCT/VARIANT
-	// holding the path together with the options to open the file with
+	// the list variant takes files of any type: a file is either a path (VARCHAR) or a STRUCT/VARIANT holding the
+	// path together with the options to open the file with
 	auto list_function = table_function;
 	auto &list_parameter = list_function.GetSignature().GetParameter(0);
-	list_parameter.SetType(LogicalType::LIST(LogicalType::ANY));
+	list_parameter.SetType(LogicalType::LIST(LogicalType::TEMPLATE("T")));
 	if (list_parameter.GetName() == "path") {
 		list_parameter.SetName("paths");
 	}

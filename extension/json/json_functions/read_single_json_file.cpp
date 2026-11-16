@@ -320,7 +320,7 @@ TableFunction JSONFunctions::GetReadSingleJSONFileTableFunction(shared_ptr<JSONS
 	const auto scan_type = function_info->type;
 	TableFunction table_function(
 	    "read_single_json_file",
-	    FunctionSignature().AddPositionalOnly("file", LogicalType::ANY).SetReturnType(ReturnType::TABLE()),
+	    FunctionSignature().AddPositionalOnly("file", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::TABLE()),
 	    ReadSingleJSONFileFunction, ReadSingleJSONFileBind, ReadSingleJSONFileInitGlobal, ReadSingleJSONFileInitLocal);
 	JSONScan::TableFunctionDefaults(table_function);
 	if (scan_type != JSONScanType::READ_JSON_OBJECTS) {

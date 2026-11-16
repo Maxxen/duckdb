@@ -67,7 +67,7 @@ static unique_ptr<NodeStatistics> RepeatCardinality(ClientContext &context, cons
 void RepeatTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction repeat("repeat",
 	                     FunctionSignature()
-	                         .AddPositionalOnly("value", LogicalType::ANY)
+	                         .AddPositionalOnly("value", LogicalType::TEMPLATE("T"))
 	                         .AddPositionalOnly("count", LogicalType::BIGINT)
 	                         .SetReturnType(ReturnType::TABLE()),
 	                     RepeatFunction, RepeatBind, RepeatInit);
