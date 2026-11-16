@@ -20,7 +20,7 @@ the signature must be a list of types
 statement error
 SELECT finalize(to_aggregate_state(1::BIGINT, 'sum', 42));
 ----
-<REGEX>:Binder Error: No function matches.*
+the signature must be a list of types
 
 query I
 SELECT finalize(to_aggregate_state(1::BIGINT, 'sum', ['BIGINT']));

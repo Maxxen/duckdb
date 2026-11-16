@@ -272,7 +272,10 @@ struct CountFunction : public BaseCountFunction {
 AggregateStateLayout GetCountStateType(AggregateLayoutInput &input) {
 	auto &function = input.function;
 	AggregateStateInput state_input(function, input.bind_data.get());
-	return AggregateStateLayout(LogicalType::BIGINT, AlignValue(function.GetStateSizeCallback()(state_input)));
+	AggregateStateLayout layout(LogicalType::BIGINT, AlignValue(function.GetStateSizeCallback()(state_input)));
+	// a count is a count, whatever it counts
+	layout.independent_arguments.insert(0);
+	return layout;
 }
 
 unique_ptr<BaseStatistics> CountPropagateStats(ClientContext &context, BoundAggregateExpression &expr,
@@ -289,8 +292,7 @@ unique_ptr<BaseStatistics> CountPropagateStats(ClientContext &context, BoundAggr
 
 AggregateFunction CountFunctionBase::GetFunction() {
 	AggregateFunction fun(
-	    // the argument is not a template: a count keeps one state, whatever the type it counts
-	    FunctionSignature().AddParameter("arg", LogicalTypeId::ANY).SetReturnType(LogicalType::BIGINT),
+	    FunctionSignature().AddParameter("arg", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::BIGINT),
 	    AggregateFunction::StateSize<int64_t>, AggregateFunction::StateInitialize<int64_t, CountFunction>,
 	    CountFunction::CountScatter, AggregateFunction::StateCombine<int64_t, CountFunction>,
 	    AggregateFunction::StateFinalize<int64_t, int64_t, CountFunction>, FunctionNullHandling::SPECIAL_HANDLING,

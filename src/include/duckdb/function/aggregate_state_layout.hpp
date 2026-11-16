@@ -527,6 +527,9 @@ struct AggregateStateLayout {
 	idx_t total_state_size = 0;
 	//! Constant values for arguments that must be re-bound with a specific constant rather than only the type
 	unordered_map<idx_t, Value> constant_parameters;
+	//! The arguments the state does not depend on (e.g. what a count counts): states of the aggregate have one
+	//! signature whatever the types of these arguments, so they can be combined
+	unordered_set<idx_t> independent_arguments;
 	//! Checks the imported states for invariants the fields cannot express (e.g. between fields)
 	aggregate_validate_state_t validate_state = nullptr;
 };

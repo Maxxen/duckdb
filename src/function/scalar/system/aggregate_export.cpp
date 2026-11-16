@@ -314,6 +314,17 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(ClientContext &context
 	if (bound_aggr.HasGetStateTypeCallback() && !bound_aggr.GetStateType(bind_info.get()).type.IsComplete()) {
 		throw BinderException("Aggregate %s signature does not resolve a complete state type", function_name);
 	}
+	if (bound_aggr.HasGetStateTypeCallback()) {
+		// ANY stands for an argument the state does not depend on, not for a type that is yet to be chosen
+		auto layout = bound_aggr.GetStateType(bind_info.get());
+		for (idx_t arg_idx = 0; arg_idx < argument_types.size(); arg_idx++) {
+			if (argument_types[arg_idx].id() == LogicalTypeId::ANY &&
+			    layout.independent_arguments.find(arg_idx) == layout.independent_arguments.end()) {
+				throw BinderException("Aggregate %s requires a concrete type for signature argument %llu",
+				                      function_name, arg_idx + 1);
+			}
+		}
+	}
 	const auto state_size = bound_aggr.GetStateSize(bind_info.get());
 	return make_uniq<ExportAggregateBindData>(bound_aggr, std::move(bind_info), state_size);
 }
@@ -583,7 +594,13 @@ void CombineAggrFinalize(Vector &state, AggregateFinalizeInputData &aggr_input_d
 void EncodeStateParameters(ExtensionTypeInfo &ext_info, const BoundAggregateFunction &bound_function,
                            const AggregateStateLayout &layout) {
 	ext_info.properties.emplace("function_name", bound_function.GetName());
-	auto &call_arguments = bound_function.GetArguments();
+	// an argument the state does not depend on is recorded as ANY: the states have one signature for all its types
+	auto call_arguments = bound_function.GetArguments();
+	for (auto arg_idx : layout.independent_arguments) {
+		if (arg_idx < call_arguments.size()) {
+			call_arguments[arg_idx] = LogicalType::ANY;
+		}
+	}
 	vector<Value> arguments;
 	if (layout.constant_parameters.empty()) {
 		// all parameters are plain types - store the parameters as a list of types
@@ -996,48 +1013,48 @@ bool ExportAggregateFunctionBindData::Equals(const FunctionData &other_p) const 
 }
 
 ScalarFunction FinalizeFun::GetFunction() {
-	auto function = ScalarFunction("finalize", {}, LogicalTypeId::INVALID, AggregateStateFinalize, BindAggregateState,
-	                               nullptr, InitFinalizeState);
-	function.GetSignature().AddParameter("state", LogicalTypeId::ANY);
+	// the state determines what it is finalized to
+	auto function = ScalarFunction(
+	    "finalize",
+	    FunctionSignature().AddParameter("state", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()),
+	    AggregateStateFinalize, BindAggregateState, nullptr, InitFinalizeState);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 
 	return function;
 }
 
 ScalarFunction CombineFun::GetFunction() {
-	auto function = ScalarFunction("combine", {}, ReturnType::ANY(), AggregateStateCombine, BindAggregateState, nullptr,
-	                               InitCombineState);
-	function.GetSignature().AddParameter("state1", LogicalTypeId::ANY).AddParameter("state2", LogicalTypeId::ANY);
+	// the states are of templates of their own: the bind reports states that cannot be combined
+	auto function = ScalarFunction("combine",
+	                               FunctionSignature()
+	                                   .AddParameter("state1", LogicalType::TEMPLATE("T"))
+	                                   .AddParameter("state2", LogicalType::TEMPLATE("U"))
+	                                   .SetReturnType(ReturnType::ANY()),
+	                               AggregateStateCombine, BindAggregateState, nullptr, InitCombineState);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return function;
 }
 
 ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 	ScalarFunctionSet set("to_aggregate_state");
-	vector<LogicalType> arguments {LogicalTypeId::ANY, LogicalType::VARCHAR, LogicalType::LIST(LogicalType::ANY)};
+	// the signature is a list of types, or of their names - the bind reports what is not one
+	auto signature = FunctionSignature()
+	                     .AddPositionalOnly("data", LogicalType::TEMPLATE("T"))
+	                     .AddPositionalOnly("name", LogicalType::VARCHAR)
+	                     .AddPositionalOnly("signature", LogicalType::TEMPLATE("SIGNATURE"))
+	                     .SetReturnType(ReturnType::ANY());
 	for (idx_t optional_args = 0; optional_args < 3; optional_args++) {
 		if (optional_args == 1) {
 			// optional fourth argument: constant parameter values as a list with one entry per argument (e.g.
 			// [NULL, ','])
-			arguments.emplace_back(LogicalTypeId::ANY);
+			signature.AddPositionalOnly("constant_parameters", LogicalType::TEMPLATE("CONSTANTS"));
 		} else if (optional_args == 2) {
 			// optional fifth argument: the ORDER BY of an ordered aggregate, as a list of {column, order} structs
 			// (e.g. [{'column': 1, 'order': 'DESC NULLS LAST'}])
-			arguments.emplace_back(LogicalTypeId::ANY);
+			signature.AddPositionalOnly("order_by", LogicalType::TEMPLATE("ORDER_BY"));
 		}
-		ScalarFunction function("to_aggregate_state", arguments, ReturnType::ANY(), ToAggregateStateFunction,
-		                        ToAggregateStateBind);
+		ScalarFunction function("to_aggregate_state", signature, ToAggregateStateFunction, ToAggregateStateBind);
 		function.SetResolveTypesCallback(ToAggregateStateResolveTypes);
-		auto &sig = function.GetSignature();
-		sig.GetParameter(0).SetName("data");
-		sig.GetParameter(1).SetName("name");
-		sig.GetParameter(2).SetName("signature");
-		if (sig.GetParameterCount() > 3) {
-			sig.GetParameter(3).SetName("constant_parameters");
-		}
-		if (sig.GetParameterCount() > 4) {
-			sig.GetParameter(4).SetName("order_by");
-		}
 		function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 		set.AddFunction(std::move(function));
 	}
@@ -1045,10 +1062,12 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 }
 
 AggregateFunction CombineAggrFun::GetFunction() {
-	auto function = AggregateFunction("combine_aggr", {}, ReturnType::ANY(), nullptr, nullptr, CombineAggrUpdate,
-	                                  nullptr, CombineAggrFinalize, FunctionNullHandling::SPECIAL_HANDLING, nullptr,
-	                                  CombineAggrBind, nullptr, nullptr, nullptr);
-	function.GetSignature().AddParameter("arg", LogicalTypeId::ANY);
+	// the states that are combined determine the state that is returned
+	auto function = AggregateFunction(
+	    "combine_aggr",
+	    FunctionSignature().AddParameter("arg", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()), nullptr,
+	    nullptr, CombineAggrUpdate, nullptr, CombineAggrFinalize, FunctionNullHandling::SPECIAL_HANDLING, nullptr,
+	    CombineAggrBind, nullptr, nullptr, nullptr);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// importing states validates them, and the underlying combine can throw (e.g. mismatched approx_top_k k values)
 	function.SetFallible();
@@ -1058,10 +1077,14 @@ AggregateFunction CombineAggrFun::GetFunction() {
 AggregateFunctionSet CombineAggrFun::GetFunctions() {
 	AggregateFunctionSet set("combine_aggr");
 	set.AddFunction(GetFunction());
-	auto repeated = AggregateFunction("combine_aggr", {}, ReturnType::ANY(), nullptr, nullptr, CombineAggrUpdate,
-	                                  nullptr, CombineAggrFinalize, FunctionNullHandling::SPECIAL_HANDLING, nullptr,
-	                                  CombineAggrBind, nullptr, nullptr, nullptr);
-	repeated.GetSignature().AddParameter("arg", LogicalTypeId::ANY).AddParameter("multiplicities", LogicalType::BIGINT);
+	auto repeated =
+	    AggregateFunction("combine_aggr",
+	                      FunctionSignature()
+	                          .AddParameter("arg", LogicalType::TEMPLATE("T"))
+	                          .AddParameter("multiplicities", LogicalType::BIGINT)
+	                          .SetReturnType(ReturnType::ANY()),
+	                      nullptr, nullptr, CombineAggrUpdate, nullptr, CombineAggrFinalize,
+	                      FunctionNullHandling::SPECIAL_HANDLING, nullptr, CombineAggrBind, nullptr, nullptr, nullptr);
 	repeated.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// importing states validates them, and the repeated combine throws on multiplicity overflow
 	repeated.SetFallible();

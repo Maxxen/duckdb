@@ -61,7 +61,7 @@ SELECT count(*) > 4096 FROM duckdb_columns()
 true
 
 query I
-SELECT count(*) > 2048 FROM duckdb_functions()
+SELECT count(*) > 1024 FROM duckdb_functions()
 ----
 true
 

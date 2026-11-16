@@ -80,6 +80,8 @@ AggregateStateLayout ApproxCountDistinctGetStateType(AggregateLayoutInput &) {
 	AggregateStateLayout layout;
 	layout.type = ApproxCountDistinctExportType();
 	layout.total_state_size = AlignValue<idx_t>(sizeof(ApproxDistinctCountState));
+	// the sketch is of the hashes of the values, whatever their type
+	layout.independent_arguments.insert(0);
 	return layout;
 }
 
@@ -144,14 +146,14 @@ void ApproxCountDistinctImportState(AggregateImportInputData &input) {
 	}
 }
 
-AggregateFunction GetApproxCountDistinctFunction(const LogicalType &input_type) {
+AggregateFunction GetApproxCountDistinctFunction() {
 	auto fun = AggregateFunction(
-	    {}, LogicalTypeId::BIGINT, AggregateFunction::StateSize<ApproxDistinctCountState>,
+	    FunctionSignature().AddParameter("any", LogicalType::TEMPLATE("T")).SetReturnType(LogicalTypeId::BIGINT),
+	    AggregateFunction::StateSize<ApproxDistinctCountState>,
 	    AggregateFunction::StateInitialize<ApproxDistinctCountState, ApproxCountDistinctFunction>,
 	    ApproxCountDistinctUpdateFunction,
 	    AggregateFunction::StateCombine<ApproxDistinctCountState, ApproxCountDistinctFunction>,
 	    AggregateFunction::StateFinalize<ApproxDistinctCountState, int64_t, ApproxCountDistinctFunction>, nullptr);
-	fun.GetSignature().AddParameter("any", input_type);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetStateExportCallbacks(ApproxCountDistinctGetStateType, ApproxCountDistinctExportState,
 	                            ApproxCountDistinctImportState);
@@ -161,7 +163,7 @@ AggregateFunction GetApproxCountDistinctFunction(const LogicalType &input_type) 
 } // namespace
 
 AggregateFunction ApproxCountDistinctFun::GetFunction() {
-	return GetApproxCountDistinctFunction(LogicalType::ANY);
+	return GetApproxCountDistinctFunction();
 }
 
 } // namespace duckdb
