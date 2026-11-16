@@ -351,7 +351,7 @@ AggregateFunctionSet MadFun::GetFunctions() {
 	AggregateFunction decimal_mad({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(),
 	                              BindMedianAbsoluteDeviationDecimal);
-	decimal_mad.GetSignature().AddParameter("x", LogicalTypeId::DECIMAL);
+	decimal_mad.GetSignature().AddParameter("x", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
 	mad.AddFunction(decimal_mad);
 
 	const vector<LogicalType> MAD_TYPES = {LogicalType::FLOAT,     LogicalType::DOUBLE, LogicalType::DATE,

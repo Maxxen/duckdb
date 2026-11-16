@@ -644,7 +644,9 @@ AggregateFunction GetApproxQuantileDecimal() {
 	// stub function - the actual function is set during bind or deserialize
 	AggregateFunction fun({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                      BindApproxQuantileDecimal);
-	fun.GetSignature().AddParameter("x", LogicalTypeId::DECIMAL).AddParameter("pos", LogicalType::FLOAT);
+	fun.GetSignature()
+	    .AddParameter("x", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
+	    .AddParameter("pos", LogicalType::FLOAT);
 	fun.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
 	fun.SetDeserializeCallback(ApproxQuantileDecimalDeserialize);
 	return fun;
@@ -686,7 +688,7 @@ AggregateFunction GetApproxQuantileDecimalList() {
 	AggregateFunction fun({}, LogicalType::LIST(LogicalTypeId::DECIMAL), nullptr, nullptr, nullptr, nullptr, nullptr,
 	                      nullptr, BindApproxQuantileDecimalList);
 	fun.GetSignature()
-	    .AddParameter("x", LogicalTypeId::DECIMAL)
+	    .AddParameter("x", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
 	    .AddParameter("pos", LogicalType::LIST(LogicalType::FLOAT));
 	fun.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
 	fun.SetDeserializeCallback(ApproxQuantileDecimalDeserialize);

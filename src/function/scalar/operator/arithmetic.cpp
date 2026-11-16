@@ -25,6 +25,7 @@
 #include "duckdb/function/scalar/operator_functions.hpp"
 #include "duckdb/function/scalar/string_functions.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
 #include "duckdb/storage/statistics/numeric_stats.hpp"
@@ -326,83 +327,56 @@ unique_ptr<BaseStatistics> PropagateFloatingStats(ClientContext &context, Functi
 	return result.ToUnique();
 }
 
-//! Computes the result type of a decimal addition, subtraction or modulo over the given input types
-template <bool IS_MODULO>
-LogicalType DecimalArithmeticResultType(const vector<LogicalType> &input_types, bool &check_overflow) {
-	check_overflow = false;
-	// get the max width and scale of the input arguments
-	uint32_t max_width = 0, max_scale = 0, max_width_over_scale = 0;
-	for (auto &input_type : input_types) {
-		if (input_type.id() == LogicalTypeId::UNKNOWN) {
-			continue;
-		}
-		uint32_t width, scale;
-		auto can_convert = input_type.GetDecimalProperties(width, scale);
-		if (!can_convert) {
-			throw BinderException("Could not convert type %s to a decimal for the arithmetic operator - add an "
-			                      "explicit cast",
-			                      input_type.ToString());
-		}
-		if (width > max_width) {
-			max_width = width;
-		}
-		max_scale = MaxValue<uint32_t>(scale, max_scale);
-		max_width_over_scale = MaxValue<uint32_t>(width - scale, max_width_over_scale);
-	}
-	D_ASSERT(max_width > 0);
-	uint32_t required_width = MaxValue<uint32_t>(max_scale + max_width_over_scale, max_width);
-	if (!IS_MODULO) {
-		// for addition/subtraction, we add 1 to the width to ensure we don't overflow
-		required_width++;
-	}
-	if (required_width > Decimal::MAX_WIDTH_DECIMAL) {
-		// target width does not fit in decimal at all: truncate the scale and perform overflow detection
-		check_overflow = true;
-		required_width = Decimal::MAX_WIDTH_DECIMAL;
-	}
-	return LogicalType::DECIMAL(required_width, max_scale);
+//! A decimal of any width and scale. Arguments of the same template are cast to their common decimal
+LogicalType DecimalTemplate(const string &name = "T") {
+	return LogicalType::TEMPLATE(name, LogicalTypeId::DECIMAL);
 }
 
-//! Resolves the types of a decimal addition, subtraction or modulo, returns whether overflow checks are required
-template <bool IS_MODULO = false>
-bool ResolveDecimalArithmeticTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	bool check_overflow;
-	auto argument_types = input.GetArgumentTypes();
-	auto result_type = DecimalArithmeticResultType<IS_MODULO>(argument_types, check_overflow);
-	// we cast all input types to the specified type
-	for (idx_t i = 0; i < argument_types.size(); i++) {
-		// first check if the cast is necessary
-		// if the argument has a matching scale and internal type as the output type, no casting is necessary
-		auto &argument_type = argument_types[i];
-		uint32_t width, scale;
-		argument_type.GetDecimalProperties(width, scale);
-		if (scale == DecimalType::GetScale(result_type) && argument_type.InternalType() == result_type.InternalType()) {
-			bound_function.GetArguments()[i] = argument_type;
-		} else {
-			bound_function.GetArguments()[i] = result_type;
-		}
+//! Casts an argument of a decimal operator to the type its kernel reads it as
+void CastDecimalArgument(BindScalarFunctionInput &input, idx_t arg_idx, const LogicalType &type) {
+	auto &argument = input.GetArguments()[arg_idx];
+	if (argument->GetReturnType() != type) {
+		argument = BoundCastExpression::AddCastToType(input.GetClientContext(), std::move(argument), type);
 	}
-	bound_function.SetReturnType(result_type);
-	return check_overflow;
+	input.GetBoundFunction().GetArguments()[arg_idx] = type;
 }
 
-//! The overflow check is derived from the types the function was called with, before they were cast
-template <bool IS_MODULO = false>
-unique_ptr<FunctionData> BindDecimalArithmetic(BindScalarFunctionInput &input) {
-	auto bind_data = make_uniq<DecimalArithmeticBindData>();
-	DecimalArithmeticResultType<IS_MODULO>(input.GetBoundFunction().GetLogicalArguments(), bind_data->check_overflow);
-	return std::move(bind_data);
+//! Whether adding or subtracting decimals of the given type can overflow: the result has no room for the carry
+bool DecimalAddSubtractOverflows(const LogicalType &argument_type) {
+	return DecimalType::GetWidth(argument_type) >= Decimal::MAX_WIDTH_DECIMAL;
+}
+
+//! An addition or subtraction needs one more digit than its arguments, for the carry
+LogicalType DecimalAddSubtractReturnType(const ResolveReturnTypeInput &input) {
+	auto &argument_type = input.GetArgumentType(0);
+	if (argument_type.id() != LogicalTypeId::DECIMAL) {
+		// both arguments are NULL
+		return argument_type;
+	}
+	auto width = DecimalType::GetWidth(argument_type);
+	if (!DecimalAddSubtractOverflows(argument_type)) {
+		width++;
+	}
+	return LogicalType::DECIMAL(width, DecimalType::GetScale(argument_type));
 }
 
 template <class OP, class OPOVERFLOWCHECK, bool IS_SUBTRACT = false>
-void DecimalAddSubtractResolveTypes(ResolveScalarFunctionTypesInput &input) {
+unique_ptr<FunctionData> BindDecimalAddSubtract(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
-	auto check_overflow = ResolveDecimalArithmeticTypes(input);
+	auto bind_data = make_uniq<DecimalArithmeticBindData>();
+	auto &result_type = bound_function.GetReturnType();
+	auto argument_type = bound_function.GetArguments()[0];
+	if (argument_type.id() == LogicalTypeId::DECIMAL) {
+		bind_data->check_overflow = DecimalAddSubtractOverflows(argument_type);
+		if (argument_type.InternalType() != result_type.InternalType()) {
+			// the kernel computes in the physical type of the result
+			CastDecimalArgument(input, 0, result_type);
+			CastDecimalArgument(input, 1, result_type);
+		}
+	}
 
 	// now select the physical function to execute
-	auto &result_type = bound_function.GetReturnType();
-	if (check_overflow) {
+	if (bind_data->check_overflow) {
 		bound_function.SetFunctionCallback(GetScalarBinaryFunction<OPOVERFLOWCHECK>(result_type.InternalType()));
 	} else {
 		// the result type holds every result of the operation, so it cannot overflow
@@ -415,6 +389,7 @@ void DecimalAddSubtractResolveTypes(ResolveScalarFunctionTypesInput &input) {
 	} else {
 		bound_function.SetStatisticsCallback(PropagateNumericStats<TryDecimalAdd, AddPropagateStatistics, AddOperator>);
 	}
+	return std::move(bind_data);
 }
 
 void SerializeDecimalArithmetic(Serializer &serializer, const optional_ptr<FunctionData> bind_data_p,
@@ -447,21 +422,14 @@ unique_ptr<FunctionData> DeserializeDecimalArithmetic(Deserializer &deserializer
 	return std::move(bind_data);
 }
 
-void NopDecimalResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &decimal_type = input.GetArgumentType(0);
-	bound_function.SetReturnType(decimal_type);
-	bound_function.GetArguments()[0] = decimal_type;
-}
-
 } // namespace
 
 ScalarFunction AddFunction::GetFunction(const LogicalType &type) {
 	D_ASSERT(type.IsNumeric());
-	ScalarFunction fn("+", {type}, type, ScalarFunction::NopFunction);
-	if (type.id() == LogicalTypeId::DECIMAL) {
-		fn.SetResolveTypesCallback(NopDecimalResolveTypes);
-	}
+	// a decimal is returned as the decimal it is passed as
+	auto operand_type = type.id() == LogicalTypeId::DECIMAL ? DecimalTemplate() : type;
+	ScalarFunction fn("+", FunctionSignature().AddParameter(operand_type).SetReturnType(operand_type),
+	                  ScalarFunction::NopFunction);
 	fn.SetUnaryArgProperties(ArgProperties().StrictlyIncreasing());
 	return fn;
 }
@@ -511,8 +479,12 @@ ScalarFunction AddFunction::GetFunction(const LogicalType &left_type, const Logi
 	const auto unset = ArgProperties();
 	if (left_type.IsNumeric() && left_type.id() == right_type.id()) {
 		if (left_type.id() == LogicalTypeId::DECIMAL) {
-			auto function = ScalarFunction("+", {left_type, right_type}, left_type, nullptr, BindDecimalArithmetic);
-			function.SetResolveTypesCallback(DecimalAddSubtractResolveTypes<AddOperator, DecimalAddOverflowCheck>);
+			auto function = ScalarFunction("+",
+			                               FunctionSignature()
+			                                   .AddParameter(DecimalTemplate())
+			                                   .AddParameter(DecimalTemplate())
+			                                   .SetReturnType(ReturnType::ANY(DecimalAddSubtractReturnType)),
+			                               nullptr, BindDecimalAddSubtract<AddOperator, DecimalAddOverflowCheck>);
 			function.SetFallible();
 			function.SetSerializeCallback(SerializeDecimalArithmetic);
 			function.SetDeserializeCallback(DeserializeDecimalArithmetic<AddOperator, DecimalAddOverflowCheck>);
@@ -809,27 +781,25 @@ interval_t NegateOperator::Operation(interval_t input) {
 	return result;
 }
 
-static void DecimalNegateResolveTypes(ResolveScalarFunctionTypesInput &input) {
+static unique_ptr<FunctionData> DecimalNegateBind(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
-	auto &decimal_type = input.GetArgumentType(0);
-	auto width = DecimalType::GetWidth(decimal_type);
-	if (width <= Decimal::MAX_WIDTH_INT16) {
-		bound_function.SetFunctionCallback(
-		    ScalarFunction::GetScalarUnaryFunction<NegateOperator>(LogicalTypeId::SMALLINT));
-	} else if (width <= Decimal::MAX_WIDTH_INT32) {
-		bound_function.SetFunctionCallback(
-		    ScalarFunction::GetScalarUnaryFunction<NegateOperator>(LogicalTypeId::INTEGER));
-	} else if (width <= Decimal::MAX_WIDTH_INT64) {
-		bound_function.SetFunctionCallback(
-		    ScalarFunction::GetScalarUnaryFunction<NegateOperator>(LogicalTypeId::BIGINT));
+	auto &decimal_type = bound_function.GetArguments()[0];
+	LogicalTypeId kernel_type;
+	if (decimal_type.id() != LogicalTypeId::DECIMAL) {
+		// the argument is NULL
+		kernel_type = LogicalTypeId::INTEGER;
+	} else if (DecimalType::GetWidth(decimal_type) <= Decimal::MAX_WIDTH_INT16) {
+		kernel_type = LogicalTypeId::SMALLINT;
+	} else if (DecimalType::GetWidth(decimal_type) <= Decimal::MAX_WIDTH_INT32) {
+		kernel_type = LogicalTypeId::INTEGER;
+	} else if (DecimalType::GetWidth(decimal_type) <= Decimal::MAX_WIDTH_INT64) {
+		kernel_type = LogicalTypeId::BIGINT;
 	} else {
-		D_ASSERT(width <= Decimal::MAX_WIDTH_INT128);
-		bound_function.SetFunctionCallback(
-		    ScalarFunction::GetScalarUnaryFunction<NegateOperator>(LogicalTypeId::HUGEINT));
+		D_ASSERT(DecimalType::GetWidth(decimal_type) <= Decimal::MAX_WIDTH_INT128);
+		kernel_type = LogicalTypeId::HUGEINT;
 	}
-	decimal_type.Verify();
-	bound_function.GetArguments()[0] = decimal_type;
-	bound_function.SetReturnType(decimal_type);
+	bound_function.SetFunctionCallback(ScalarFunction::GetScalarUnaryFunction<NegateOperator>(kernel_type));
+	return nullptr;
 }
 
 static void IntegerNegateResolveTypes(ResolveScalarFunctionTypesInput &input) {
@@ -874,8 +844,9 @@ ScalarFunction SubtractFunction::GetFunction(const LogicalType &type) {
 		func.SetUnaryArgProperties(ArgProperties().StrictlyDecreasing());
 		return func;
 	} else if (type.id() == LogicalTypeId::DECIMAL) {
-		ScalarFunction func("-", {type}, type, nullptr);
-		func.SetResolveTypesCallback(DecimalNegateResolveTypes);
+		// a decimal is negated as the decimal it is passed as
+		ScalarFunction func("-", FunctionSignature().AddParameter(DecimalTemplate()).SetReturnType(DecimalTemplate()),
+		                    nullptr, DecimalNegateBind);
 		func.SetUnaryArgProperties(ArgProperties().StrictlyDecreasing());
 		return func;
 	} else if (type.id() == LogicalTypeId::BIGNUM) {
@@ -895,9 +866,13 @@ ScalarFunction SubtractFunction::GetFunction(const LogicalType &type) {
 ScalarFunction SubtractFunction::GetFunction(const LogicalType &left_type, const LogicalType &right_type) {
 	if (left_type.IsNumeric() && left_type.id() == right_type.id()) {
 		if (left_type.id() == LogicalTypeId::DECIMAL) {
-			ScalarFunction function("-", {left_type, right_type}, left_type, nullptr, BindDecimalArithmetic);
-			function.SetResolveTypesCallback(
-			    DecimalAddSubtractResolveTypes<SubtractOperator, DecimalSubtractOverflowCheck, true>);
+			ScalarFunction function("-",
+			                        FunctionSignature()
+			                            .AddParameter(DecimalTemplate())
+			                            .AddParameter(DecimalTemplate())
+			                            .SetReturnType(ReturnType::ANY(DecimalAddSubtractReturnType)),
+			                        nullptr,
+			                        BindDecimalAddSubtract<SubtractOperator, DecimalSubtractOverflowCheck, true>);
 			function.SetFallible();
 			function.SetSerializeCallback(SerializeDecimalArithmetic);
 			function.SetDeserializeCallback(
@@ -1168,31 +1143,31 @@ LogicalType DecimalMultiplyResultType(const vector<LogicalType> &input_types, bo
 	return LogicalType::DECIMAL(result_width, result_scale);
 }
 
-void DecimalMultiplyResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
+//! A product has the digits and the scale of both factors
+LogicalType DecimalMultiplyReturnType(const ResolveReturnTypeInput &input) {
 	bool check_overflow;
-	auto argument_types = input.GetArgumentTypes();
-	auto result_type = DecimalMultiplyResultType(argument_types, check_overflow);
-	auto result_width = DecimalType::GetWidth(result_type);
-	// since our scale is the summation of our input scales, we do not need to cast to the result scale
-	// however, we might need to cast to the correct internal type
+	return DecimalMultiplyResultType(input.GetArgumentTypes(), check_overflow);
+}
+
+unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
+	auto &bound_function = input.GetBoundFunction();
+	auto bind_data = make_uniq<DecimalArithmeticBindData>();
+	auto argument_types = bound_function.GetArguments();
+	auto &result_type = bound_function.GetReturnType();
+	DecimalMultiplyResultType(argument_types, bind_data->check_overflow);
+	// the scale of the result is the sum of the scales of the factors, so they keep their scale - the kernel
+	// computes in the physical type of the result
 	for (idx_t i = 0; i < argument_types.size(); i++) {
 		auto &argument_type = argument_types[i];
-		if (argument_type.InternalType() == result_type.InternalType()) {
-			bound_function.GetArguments()[i] = argument_type;
-		} else {
-			uint32_t width, scale;
-			if (!argument_type.GetDecimalProperties(width, scale)) {
-				scale = 0;
-			}
-
-			bound_function.GetArguments()[i] = LogicalType::DECIMAL(result_width, scale);
+		if (argument_type.id() != LogicalTypeId::DECIMAL ||
+		    argument_type.InternalType() == result_type.InternalType()) {
+			continue;
 		}
+		CastDecimalArgument(
+		    input, i, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(argument_type)));
 	}
-	result_type.Verify();
-	bound_function.SetReturnType(result_type);
 	// now select the physical function to execute
-	if (check_overflow) {
+	if (bind_data->check_overflow) {
 		bound_function.SetFunctionCallback(
 		    GetScalarBinaryFunction<DecimalMultiplyOverflowCheck>(result_type.InternalType()));
 	} else {
@@ -1202,12 +1177,6 @@ void DecimalMultiplyResolveTypes(ResolveScalarFunctionTypesInput &input) {
 	}
 	bound_function.SetStatisticsCallback(
 	    PropagateNumericStats<TryDecimalMultiply, MultiplyPropagateStatistics, MultiplyOperator>);
-}
-
-//! The overflow check is derived from the types the function was called with, before they were cast
-unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
-	auto bind_data = make_uniq<DecimalArithmeticBindData>();
-	DecimalMultiplyResultType(input.GetBoundFunction().GetLogicalArguments(), bind_data->check_overflow);
 	return std::move(bind_data);
 }
 
@@ -1217,8 +1186,12 @@ ScalarFunctionSet OperatorMultiplyFun::GetFunctions() {
 	ScalarFunctionSet multiply("*");
 	for (auto &type : LogicalType::Numeric()) {
 		if (type.id() == LogicalTypeId::DECIMAL) {
-			ScalarFunction function({type, type}, type, nullptr, BindDecimalMultiply);
-			function.SetResolveTypesCallback(DecimalMultiplyResolveTypes);
+			// the factors are not cast to a common decimal: each has a template of its own
+			ScalarFunction function(FunctionSignature()
+			                            .AddParameter(DecimalTemplate("T1"))
+			                            .AddParameter(DecimalTemplate("T2"))
+			                            .SetReturnType(ReturnType::ANY(DecimalMultiplyReturnType)),
+			                        nullptr, BindDecimalMultiply);
 			function.SetSerializeCallback(SerializeDecimalArithmetic);
 			function.SetDeserializeCallback(
 			    DeserializeDecimalArithmetic<MultiplyOperator, DecimalMultiplyOverflowCheck>);
@@ -1590,20 +1563,12 @@ ScalarFunctionSet OperatorIntegerDivideFun::GetFunctions() {
 // % [modulo]
 //===--------------------------------------------------------------------===//
 template <class OP>
-static void DecimalModuloResolveTypes(ResolveScalarFunctionTypesInput &input) {
+static unique_ptr<FunctionData> BindDecimalModulo(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
-	auto check_overflow = ResolveDecimalArithmeticTypes<true>(input);
-	// now select the physical function to execute
-	if (check_overflow) {
-		// fallback to DOUBLE if the decimal type is not guaranteed to fit within the max decimal width
-		for (auto &arg : bound_function.GetArguments()) {
-			arg = LogicalType::DOUBLE;
-		}
-		bound_function.SetReturnType(LogicalType::DOUBLE);
-	}
-	auto &result_type = bound_function.GetReturnType();
 	auto null_on_zero = !Settings::Get<ErrorOnDivisionByZeroSetting>(input.GetClientContext());
-	bound_function.SetFunctionCallback(GetBinaryFunctionZeroCheck<OP>(result_type.InternalType(), null_on_zero));
+	bound_function.SetFunctionCallback(
+	    GetBinaryFunctionZeroCheck<OP>(bound_function.GetReturnType().InternalType(), null_on_zero));
+	return make_uniq<DecimalArithmeticBindData>();
 }
 
 template <>
@@ -1866,8 +1831,12 @@ ScalarFunctionSet OperatorModuloFun::GetFunctions() {
 			modulo.AddFunction(ScalarFunction({type, type}, type, nullptr, BindBinaryFloatingPoint<ModuloOperator>,
 			                                  PropagateModuloStats));
 		} else if (type.id() == LogicalTypeId::DECIMAL) {
-			ScalarFunction function({type, type}, type, nullptr, BindDecimalArithmetic<true>, PropagateModuloStats);
-			function.SetResolveTypesCallback(DecimalModuloResolveTypes<ModuloOperator>);
+			// the remainder of two decimals is of their common decimal
+			ScalarFunction function(FunctionSignature()
+			                            .AddParameter(DecimalTemplate())
+			                            .AddParameter(DecimalTemplate())
+			                            .SetReturnType(DecimalTemplate()),
+			                        nullptr, BindDecimalModulo<ModuloOperator>, PropagateModuloStats);
 			modulo.AddFunction(std::move(function));
 		} else {
 			modulo.AddFunction(

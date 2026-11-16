@@ -209,11 +209,13 @@ unique_ptr<LogicalTypeInfo> StructTypeInfo::Deserialize(Deserializer &deserializ
 void TemplateTypeInfo::Serialize(Serializer &serializer) const {
 	LogicalTypeInfo::Serialize(serializer);
 	serializer.WritePropertyWithDefault<string>(200, "name", name);
+	serializer.WritePropertyWithDefault<LogicalTypeId>(201, "constraint", constraint, LogicalTypeId::INVALID);
 }
 
 unique_ptr<LogicalTypeInfo> TemplateTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto result = duckdb::unique_ptr<TemplateTypeInfo>(new TemplateTypeInfo());
 	deserializer.ReadPropertyWithDefault<string>(200, "name", result->name);
+	deserializer.ReadPropertyWithExplicitDefault<LogicalTypeId>(201, "constraint", result->constraint, LogicalTypeId::INVALID);
 	return std::move(result);
 }
 

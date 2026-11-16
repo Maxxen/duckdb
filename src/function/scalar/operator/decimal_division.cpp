@@ -330,15 +330,18 @@ ScalarFunctionSet DecimalDivisionFun::GetFunctions() {
 	ScalarFunctionSet set("decimal_division");
 
 	ScalarFunction two_arg({}, decimal_type, DecimalDivExecute<hugeint_t, hugeint_t, hugeint_t>, DecimalDivisionBind);
-	two_arg.GetSignature().AddParameter("x", decimal_type).AddParameter("y", decimal_type);
+	// each operand is a decimal of its own width and scale
+	auto x_type = LogicalType::TEMPLATE("T1", LogicalTypeId::DECIMAL);
+	auto y_type = LogicalType::TEMPLATE("T2", LogicalTypeId::DECIMAL);
+	two_arg.GetSignature().AddParameter("x", x_type).AddParameter("y", y_type);
 	two_arg.SetResolveTypesCallback(DecimalDivisionResolveTypes);
 	two_arg.SetFallible();
 	set.AddFunction(two_arg);
 
 	ScalarFunction three_arg({}, decimal_type, DecimalDivExecute<hugeint_t, hugeint_t, hugeint_t>, DecimalDivisionBind);
 	three_arg.GetSignature()
-	    .AddParameter("x", decimal_type)
-	    .AddParameter("y", decimal_type)
+	    .AddParameter("x", x_type)
+	    .AddParameter("y", y_type)
 	    .AddParameter("scale", LogicalType::INTEGER);
 	three_arg.SetResolveTypesCallback(DecimalDivisionResolveTypes);
 	three_arg.SetFallible();

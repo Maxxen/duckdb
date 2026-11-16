@@ -684,7 +684,9 @@ string LogicalType::ToString() const {
 				result += "T";
 				break;
 			}
-			result += TemplateType::GetName(type);
+			// a constrained template reads as the kind of type it stands for, e.g. DECIMAL
+			result += TemplateType::HasConstraint(type) ? LogicalType(TemplateType::GetConstraint(type)).ToString()
+			                                            : TemplateType::GetName(type);
 			break;
 		}
 		case LogicalTypeId::GEOMETRY: {
@@ -2052,6 +2054,26 @@ LogicalType LogicalType::TEMPLATE(const string &name) {
 	D_ASSERT(!name.empty());
 	auto type_info = make_uniq<TemplateTypeInfo>(name);
 	return LogicalType(LogicalTypeId::TEMPLATE, std::move(type_info));
+}
+
+LogicalType LogicalType::TEMPLATE(const string &name, LogicalTypeId constraint) {
+	D_ASSERT(!name.empty());
+	auto type_info = make_uniq<TemplateTypeInfo>(name, constraint);
+	return LogicalType(LogicalTypeId::TEMPLATE, std::move(type_info));
+}
+
+bool TemplateType::HasConstraint(const LogicalType &type) {
+	return GetConstraint(type) != LogicalTypeId::INVALID;
+}
+
+LogicalTypeId TemplateType::GetConstraint(const LogicalType &type) {
+	D_ASSERT(type.id() == LogicalTypeId::TEMPLATE);
+	if (!type.HasParameters()) {
+		return LogicalTypeId::INVALID;
+	}
+	auto &info = type.GetTypeInfo();
+	D_ASSERT(info.type == LogicalTypeInfoType::TEMPLATE_TYPE_INFO);
+	return info.Cast<TemplateTypeInfo>().constraint;
 }
 
 const string &TemplateType::GetName(const LogicalType &type) {

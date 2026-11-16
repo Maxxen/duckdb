@@ -187,10 +187,14 @@ private:
 
 struct TemplateTypeInfo : public LogicalTypeInfo {
 	explicit TemplateTypeInfo(string name_p);
+	TemplateTypeInfo(string name_p, LogicalTypeId constraint_p);
 
 	// The name of the template, e.g. `T`, or `KEY_TYPE`. Used to distinguish between different template types within
 	// the same function. The binder tries to resolve all templates with the same name to the same concrete type.
 	string name;
+	// The kind of type the template stands for, e.g. DECIMAL for a decimal of any width and scale - INVALID if the
+	// template stands for any type
+	LogicalTypeId constraint = LogicalTypeId::INVALID;
 
 public:
 	void Serialize(Serializer &serializer) const override;

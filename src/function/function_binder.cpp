@@ -108,8 +108,43 @@ vector<pair<Identifier, LogicalType>> FunctionCallArguments::GetNamedTypes() con
 	return result;
 }
 
+//! The type of the kind of the constraint that an argument of the given type is passed as, e.g. DECIMAL(10,0) for an
+//! INTEGER passed as a DECIMAL - nullopt if the argument determines none
+static optional<LogicalType> ConstrainType(LogicalTypeId constraint, const LogicalType &type) {
+	if (type.id() == constraint) {
+		return type;
+	}
+	const auto is_struct = [](LogicalTypeId id) {
+		return id == LogicalTypeId::STRUCT || id == LogicalTypeId::TUPLE;
+	};
+	if (is_struct(constraint) && is_struct(type.id())) {
+		// a struct with and without names are of one kind: which of the two a function takes is its to check
+		return type;
+	}
+	uint32_t width, scale;
+	if (constraint == LogicalTypeId::DECIMAL && type.id() != LogicalTypeId::SQLNULL &&
+	    type.GetDecimalProperties(width, scale)) {
+		return LogicalType::DECIMAL(width, scale);
+	}
+	return nullopt;
+}
+
 static int64_t ImplicitCastCost(optional_ptr<ClientContext> context, const LogicalType &source,
                                 const LogicalType &target) {
+	if (target.IsTemplated()) {
+		// an argument is cast to a constrained template as it is to the kind of type the template stands for
+		bool constrained = false;
+		auto cast_target = TypeVisitor::VisitReplace(target, [&](const LogicalType &type) -> LogicalType {
+			if (type.id() == LogicalTypeId::TEMPLATE && TemplateType::HasConstraint(type)) {
+				constrained = true;
+				return LogicalType(TemplateType::GetConstraint(type));
+			}
+			return type;
+		});
+		if (constrained) {
+			return ImplicitCastCost(context, source, cast_target);
+		}
+	}
 	if (context) {
 		return CastFunctionSet::ImplicitCastCost(*context, source, target);
 	}
@@ -141,6 +176,20 @@ static bool InferTemplateType(optional_ptr<ClientContext> context, const Logical
 			return false; // continue visiting
 		});
 		return true;
+	}
+
+	if (source.id() == LogicalTypeId::TEMPLATE && TemplateType::HasConstraint(source)) {
+		// a constrained template is deduced from the type of its kind the argument is passed as
+		auto constrained = ConstrainType(TemplateType::GetConstraint(source), target);
+		if (!constrained) {
+			failure.template_name = TemplateType::GetName(source);
+			failure.inferred_types = {target};
+			failure.constraint = TemplateType::GetConstraint(source);
+			return false;
+		}
+		// the arguments unify by their own types, the type they unify to is constrained when it is substituted
+		return InferTemplateType(context, LogicalType::TEMPLATE(TemplateType::GetName(source)), target, bindings,
+		                         failure);
 	}
 
 	// If the source is a template type, we bind it, or try to unify its existing binding with the target type.
@@ -267,7 +316,13 @@ static void SubstituteTemplateType(LogicalType &type, case_insensitive_map_t<vec
 			auto it = bindings.find(index);
 			if (it != bindings.end()) {
 				// found a binding, return the concrete type
-				return LogicalType::NormalizeType(it->second.back());
+				auto result = LogicalType::NormalizeType(it->second.back());
+				if (TemplateType::HasConstraint(t)) {
+					// e.g. the DECIMAL that integer arguments are passed as
+					auto constrained = ConstrainType(TemplateType::GetConstraint(t), result);
+					return constrained ? *constrained : result;
+				}
+				return result;
 			}
 		}
 		return t;
@@ -490,8 +545,8 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 	bool is_templated = binding.return_type.IsTemplated();
 	binding.parameter_types.reserve(sig.GetParameterCount());
 	for (auto &param : sig.GetParameters()) {
-		binding.parameter_types.push_back(param.GetType());
 		is_templated = is_templated || param.GetType().IsTemplated();
+		binding.parameter_types.push_back(param.GetType());
 	}
 	if (is_templated) {
 		// the shape and the casts match, so a template that cannot be deduced is the closest miss there is

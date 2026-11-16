@@ -56,7 +56,7 @@ void UnionTagFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 ScalarFunction UnionTagFun::GetFunction() {
 	// TODO: Statistics?
 	ScalarFunction fun({}, ReturnType::ANY(), UnionTagFunction, nullptr, nullptr, nullptr);
-	fun.GetSignature().AddParameter("union", LogicalTypeId::UNION);
+	fun.GetSignature().AddParameter("union", LogicalType::TEMPLATE("T", LogicalTypeId::UNION));
 	fun.SetResolveTypesCallback(UnionTagResolveTypes);
 	return fun;
 }

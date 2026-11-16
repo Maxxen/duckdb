@@ -520,7 +520,7 @@ void AddFirstOperator(AggregateFunctionSet &set) {
 	AggregateFunction decimal_fun({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
 	                              BindDecimalFirst<LAST, SKIP_NULLS>);
-	decimal_fun.GetSignature().AddParameter("arg", LogicalTypeId::DECIMAL);
+	decimal_fun.GetSignature().AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
 	set.AddFunction(decimal_fun);
 
 	AggregateFunction any_fun({}, ReturnType::ANY(), nullptr, nullptr, nullptr, nullptr, nullptr,

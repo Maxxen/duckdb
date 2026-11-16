@@ -23,11 +23,18 @@ select 12345678901234567890 % 123;
 ----
 78
 
-# if the required width exceeds the maximum decimal width we fallback to double
-query I
+# if the common decimal exceeds the maximum decimal width it keeps the integer digits
+query II
+SELECT 10000000000000000000000000000000000001::DECIMAL(38,0) % 3::DECIMAL(38,10),
+       typeof(10000000000000000000000000000000000001::DECIMAL(38,0) % 3::DECIMAL(38,10))
+----
+2	DECIMAL(38,0)
+
+# a divisor that only has digits beyond the common scale is rounded to zero
+statement error
 SELECT 10000000000000000000000000000000000001::DECIMAL(38,0) % 0.00000000000000000000000000000000004
 ----
-0.0
+<REGEX>:.*Division by zero.*
 
 query II
 SELECT typeof(10.0 % 2.0), typeof(10.0 % 2.0 % 2.0 % 2.0)

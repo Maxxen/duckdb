@@ -77,7 +77,7 @@ static void StructValuesResolveTypes(ResolveScalarFunctionTypesInput &input) {
 ScalarFunction StructValuesFun::GetFunction() {
 	ScalarFunction func({}, LogicalTypeId::TUPLE, StructValuesFunction);
 	func.SetResolveTypesCallback(StructValuesResolveTypes);
-	func.GetSignature().AddParameter("struct", LogicalTypeId::STRUCT);
+	func.GetSignature().AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT));
 	return func;
 }
 

@@ -145,13 +145,13 @@ TEST_CASE("A parameter declared without a name prints as its type", "[api][scala
 	FunctionSignature keyword_only;
 	keyword_only.AddParameter(LogicalType::VARCHAR);
 	keyword_only.AddKeywordOnly("kw", LogicalType::INTEGER);
-	REQUIRE(keyword_only.ToString() == "(VARCHAR, *, kw INTEGER)");
+	REQUIRE(keyword_only.ToString() == "(VARCHAR, *, kw INTEGER) -> ANY");
 
 	// a named positional-only parameter among them brings the "/" back
 	FunctionSignature mixed;
 	mixed.AddParameter(LogicalType::VARCHAR);
 	mixed.AddPositionalOnly("n", LogicalType::INTEGER);
-	REQUIRE(mixed.ToString() == "(VARCHAR, n INTEGER, /)");
+	REQUIRE(mixed.ToString() == "(VARCHAR, n INTEGER, /) -> ANY");
 
 	// naming the parameter afterwards shows the name
 	sig.GetParameter(0).SetName("path");

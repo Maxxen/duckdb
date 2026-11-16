@@ -170,7 +170,7 @@ AggregateFunctionSet DecimalAverageFun::GetFunctions() {
 	AggregateFunctionSet set("decimal_average");
 	AggregateFunction fun({}, LogicalType(LogicalTypeId::DECIMAL), nullptr, nullptr, nullptr, nullptr, nullptr,
 	                      FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalAverage);
-	fun.GetSignature().AddParameter("arg", LogicalTypeId::DECIMAL);
+	fun.GetSignature().AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
 	set.AddFunction(fun);
 	return set;
 }

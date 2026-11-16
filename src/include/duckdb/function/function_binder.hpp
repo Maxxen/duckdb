@@ -211,6 +211,8 @@ public:
 		//! The types the template was inferred to be, in the order they were inferred, followed by the type that
 		//! conflicts with them
 		vector<LogicalType> inferred_types;
+		//! The kind of type the template stands for, if the conflicting type is not of that kind
+		LogicalTypeId constraint = LogicalTypeId::INVALID;
 
 		string ToString(const SimpleFunction &function, const FunctionBindError &error) const;
 	};

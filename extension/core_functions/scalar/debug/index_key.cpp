@@ -310,7 +310,7 @@ void IndexKeyFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 
 ScalarFunction IndexKeyFun::GetFunction() {
 	ScalarFunction fun("index_key", {}, LogicalType::BLOB, IndexKeyFunction, IndexKeyBind<BindScalarFunctionInput>);
-	fun.GetSignature().AddParameter("path", LogicalTypeId::STRUCT);
+	fun.GetSignature().AddParameter("path", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT));
 	fun.GetSignature().AddArgs("args", LogicalTypeId::ANY);
 	fun.SetResolveTypesCallback(IndexKeyResolveTypes);
 	return fun;

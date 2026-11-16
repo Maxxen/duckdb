@@ -581,6 +581,9 @@ public:
 	// ANY but with special rules (default is LogicalType::ANY, 5)
 	DUCKDB_API static LogicalType ANY_PARAMS(LogicalType target, idx_t cast_score = 5); // NOLINT
 	DUCKDB_API static LogicalType TEMPLATE(const string &name);                         // NOLINT
+	//! A template that only stands for types of the kind of the constraint, e.g. DECIMAL for a decimal of any width
+	//! and scale. Arguments are cast to it as they are to the constraint
+	DUCKDB_API static LogicalType TEMPLATE(const string &name, LogicalTypeId constraint); // NOLINT
 	DUCKDB_API static LogicalType VARIANT();                                            // NOLINT
 	//! Integer literal of the specified value
 	DUCKDB_API static LogicalType INTEGER_LITERAL(const Value &constant); // NOLINT
@@ -699,6 +702,10 @@ struct IntegerLiteral {
 struct TemplateType {
 	// Get the name of the template type
 	DUCKDB_API static const string &GetName(const LogicalType &type);
+	//! Whether the template only stands for types of a kind
+	DUCKDB_API static bool HasConstraint(const LogicalType &type);
+	//! The kind of type the template stands for, e.g. DECIMAL
+	DUCKDB_API static LogicalTypeId GetConstraint(const LogicalType &type);
 };
 
 struct GeoType {

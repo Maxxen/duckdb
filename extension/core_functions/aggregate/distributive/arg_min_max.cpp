@@ -608,7 +608,9 @@ void AddDecimalArgMinMaxFunctionBy(AggregateFunctionSet &fun, const LogicalType 
 		break;
 	}
 	AggregateFunction function({}, LogicalTypeId::DECIMAL, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, bind);
-	function.GetSignature().AddParameter("arg", LogicalTypeId::DECIMAL).AddParameter("val", by_type);
+	function.GetSignature()
+	    .AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
+	    .AddParameter("val", by_type);
 	fun.AddFunction(function);
 }
 

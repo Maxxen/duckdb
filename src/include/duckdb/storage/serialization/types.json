@@ -226,6 +226,12 @@
         "id": 200,
         "name": "name",
         "type": "string"
+      },
+      {
+        "id": 201,
+        "name": "constraint",
+        "type": "LogicalTypeId",
+        "default": "LogicalTypeId::INVALID"
       }
     ]
   },

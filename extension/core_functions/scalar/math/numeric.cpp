@@ -42,14 +42,19 @@ static unique_ptr<FunctionData> BindIEEEFloatingBinary(BindScalarFunctionInput &
 }
 
 // Names the unary argument "x", shared by most math functions/operators in this file.
+//! A decimal parameter is a decimal of any width and scale, that its argument determines
+static LogicalType NumericParameterType(const LogicalType &type) {
+	return type.id() == LogicalTypeId::DECIMAL ? LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL) : type;
+}
+
 static ScalarFunction NameXArgument(ScalarFunction fun, const LogicalType &type) {
-	fun.GetSignature().AddParameter("x", type);
+	fun.GetSignature().AddParameter("x", NumericParameterType(type));
 	return fun;
 }
 
 // Names the "x,precision" pair shared by round/round_even/trunc's binary overloads.
 static ScalarFunction NameXPrecisionArguments(ScalarFunction fun, const LogicalType &type) {
-	fun.GetSignature().AddParameter("x", type).AddParameter("precision", LogicalType::INTEGER);
+	fun.GetSignature().AddParameter("x", NumericParameterType(type)).AddParameter("precision", LogicalType::INTEGER);
 	return fun;
 }
 

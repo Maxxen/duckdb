@@ -55,6 +55,10 @@ string FunctionMismatch::IncompatibleArgument::ToString(const SimpleFunction &, 
 
 string FunctionMismatch::TemplateDeduction::ToString(const SimpleFunction &function, const FunctionBindError &) const {
 	auto &steps = inferred_types;
+	if (constraint != LogicalTypeId::INVALID) {
+		return StringUtil::Format("An argument of type %s cannot be passed as %s", steps.back().ToString(),
+		                          LogicalType(constraint).ToString());
+	}
 	// the inferred types are the first one, then pairs of a type and what the template is promoted to with it
 	auto msg = StringUtil::Format("Cannot deduce template type '%s', it was inferred to be:\n", template_name);
 	msg += StringUtil::Format("  - '%s', from first occurrence\n", steps[0].ToString());
