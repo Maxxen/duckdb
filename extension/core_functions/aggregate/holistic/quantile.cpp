@@ -904,19 +904,20 @@ static AggregateFunction EmptyQuantileFunction(LogicalType input, const ReturnTy
 
 AggregateFunctionSet MedianFun::GetFunctions() {
 	AggregateFunctionSet set("median");
-	set.AddFunction(EmptyQuantileFunction<MedianFunction>(LogicalType::ANY, ReturnType::ANY(), LogicalTypeId::INVALID));
+	set.AddFunction(
+	    EmptyQuantileFunction<MedianFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(), LogicalTypeId::INVALID));
 	return set;
 }
 
 AggregateFunctionSet QuantileDiscFun::GetFunctions() {
 	AggregateFunctionSet set("quantile_disc");
-	set.AddFunction(
-	    EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::ANY, ReturnType::ANY(), LogicalType::DOUBLE));
-	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileListFunction>(LogicalType::ANY, ReturnType::ANY(),
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(),
+	                                                                LogicalType::DOUBLE));
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileListFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(),
 	                                                                    LogicalType::LIST(LogicalType::DOUBLE)));
 	// this function is here for deserialization - it cannot be called by users
-	set.AddFunction(
-	    EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::ANY, ReturnType::ANY(), LogicalType::INVALID));
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(),
+	                                                                LogicalType::INVALID));
 	return set;
 }
 

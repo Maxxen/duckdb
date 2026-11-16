@@ -70,12 +70,6 @@ static void ConstantOrNullFunction(DataChunk &args, ExpressionState &state, Vect
 	}
 }
 
-//! Resolves the type of the leading constant before binding, so that a call folded on a typed NULL keeps it
-void ConstantOrNullResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	D_ASSERT(input.GetArgumentCount() >= 2);
-	input.GetBoundFunction().SetReturnType(input.GetArgumentType(0));
-}
-
 unique_ptr<FunctionData> ConstantOrNullBind(BindScalarFunctionInput &input) {
 	return make_uniq<ConstantOrNullBindData>(input.GetConstant(0));
 }
@@ -95,12 +89,11 @@ bool ConstantOrNull::IsConstantOrNull(BoundFunctionExpression &expr, const Value
 ScalarFunction ConstantOrNullFun::GetFunction() {
 	ScalarFunction fun("constant_or_null",
 	                   FunctionSignature()
-	                       .AddParameter("arg1", LogicalType::ANY)
-	                       .AddParameter("arg2", LogicalType::ANY)
+	                       .AddParameter("arg1", LogicalType::TEMPLATE("T"))
+	                       .AddParameter("arg2", LogicalType::TEMPLATE("U"))
 	                       .AddArgs("args", LogicalType::ANY)
-	                       .SetReturnType(ReturnType::ANY()),
+	                       .SetReturnType(LogicalType::TEMPLATE("T")),
 	                   ConstantOrNullFunction, ConstantOrNullBind);
-	fun.SetResolveTypesCallback(ConstantOrNullResolveTypes);
 	return fun;
 }
 

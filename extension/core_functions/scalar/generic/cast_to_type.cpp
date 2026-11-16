@@ -24,8 +24,11 @@ unique_ptr<Expression> BindCastToTypeFunction(FunctionBindExpressionInput &input
 
 } // namespace
 ScalarFunction CastToTypeFun::GetFunction() {
-	auto fun = ScalarFunction({}, ReturnType::ANY(), CastToTypeFunction);
-	fun.GetSignature().AddParameter("param", LogicalType::ANY).AddParameter("type", LogicalType::ANY);
+	auto fun = ScalarFunction(FunctionSignature()
+	                              .AddParameter("param", LogicalType::TEMPLATE("T"))
+	                              .AddParameter("type", LogicalType::TEMPLATE("U"))
+	                              .SetReturnType(ReturnType::ANY()),
+	                          CastToTypeFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetBindExpressionCallback(BindCastToTypeFunction);
 	return fun;

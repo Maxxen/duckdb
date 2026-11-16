@@ -2,21 +2,21 @@
 # description: list_grade_up / list_sort should error (not crash) on non-LIST arguments
 # group: [list]
 
-# VARIANT is matched by the LIST(ANY) signature without a cast - must not segfault
+# VARIANT is not a list of some type, so no overload takes it - must not segfault
 statement error
 SELECT list_grade_up(CAST({'a': 1, 'z': regexp_matches('q', repeat(chr(81), 224) || chr(96)||chr(59)||chr(120)||chr(3)||chr(0)||chr(0)||chr(0))} AS VARIANT))
 ----
-list_grade_up can only operate on LISTs
+No function matches the given name and argument types 'list_grade_up(VARIANT)'
 
 statement error
 SELECT list_grade_up(CAST({'a': 1, 'z': 2} AS VARIANT))
 ----
-list_grade_up can only operate on LISTs
+No function matches the given name and argument types 'list_grade_up(VARIANT)'
 
 statement error
 SELECT list_sort(CAST({'a': 1, 'z': 2} AS VARIANT))
 ----
-list_sort can only operate on LISTs
+No function matches the given name and argument types 'list_sort(VARIANT)'
 
 # prepared parameters bind with an UNKNOWN type and must not segfault
 statement ok

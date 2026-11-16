@@ -685,7 +685,7 @@ string LogicalType::ToString() const {
 				break;
 			}
 			// a constrained template reads as the kind of type it stands for, e.g. DECIMAL
-			result += TemplateType::HasConstraint(type) ? LogicalType(TemplateType::GetConstraint(type)).ToString()
+			result += TemplateType::HasConstraint(type) ? EnumUtil::ToString(TemplateType::GetConstraint(type))
 			                                            : TemplateType::GetName(type);
 			break;
 		}
@@ -1985,32 +1985,6 @@ LogicalType LogicalType::ARRAY(const LogicalType &child, optional_idx size) {
 		auto info = make_uniq<ArrayTypeInfo>(child, NumericCast<uint32_t>(array_size));
 		return LogicalType(LogicalTypeId::ARRAY, std::move(info));
 	}
-}
-
-//===--------------------------------------------------------------------===//
-// Any Type
-//===--------------------------------------------------------------------===//
-LogicalType LogicalType::ANY_PARAMS(LogicalType target, idx_t cast_score) { // NOLINT
-	auto type_info = make_uniq<AnyTypeInfo>(std::move(target), cast_score);
-	return LogicalType(LogicalTypeId::ANY, std::move(type_info));
-}
-
-LogicalType AnyType::GetTargetType(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::ANY);
-	auto &info = type.GetTypeInfo();
-	if (info.type != LogicalTypeInfoType::ANY_TYPE_INFO) {
-		return LogicalType::ANY;
-	}
-	return info.Cast<AnyTypeInfo>().target_type;
-}
-
-idx_t AnyType::GetCastScore(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::ANY);
-	auto &info = type.GetTypeInfo();
-	if (info.type != LogicalTypeInfoType::ANY_TYPE_INFO) {
-		return 5;
-	}
-	return info.Cast<AnyTypeInfo>().cast_score;
 }
 
 //===--------------------------------------------------------------------===//

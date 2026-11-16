@@ -583,14 +583,15 @@ unique_ptr<FunctionData> ListAggregateBind(BindScalarFunctionInput &input) {
 } // namespace
 
 ScalarFunction ListAggregateFun::GetFunction() {
-	auto result = ScalarFunction({}, ReturnType::ANY(), ListAggregateFunction, ListAggregateBind, nullptr,
-	                             ListAggregatesInitLocalState);
-	result.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("function_name", LogicalType::VARCHAR);
+	// the aggregate that is named determines the type
+	auto result = ScalarFunction(FunctionSignature()
+	                                 .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                                 .AddParameter("function_name", LogicalType::VARCHAR)
+	                                 .AddArgs("args", LogicalType::ANY)
+	                                 .SetReturnType(ReturnType::ANY()),
+	                             ListAggregateFunction, ListAggregateBind, nullptr, ListAggregatesInitLocalState);
 	result.SetFallible();
 	result.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	result.GetSignature().AddArgs("args", LogicalType::ANY);
 	result.SetResolveTypesCallback(ListAggregatesResolveTypes<true>);
 	result.SetSerializeCallback(ListAggregatesBindData::SerializeFunction);
 	result.SetDeserializeCallback(ListAggregatesBindData::DeserializeFunction);
@@ -598,17 +599,18 @@ ScalarFunction ListAggregateFun::GetFunction() {
 }
 
 ScalarFunction ListDistinctFun::GetFunction() {
-	ScalarFunction fun({}, LogicalType::LIST(LogicalType::TEMPLATE("T")), ListDistinctFunction,
-	                   ListAggregatesBind<false>, nullptr, ListAggregatesInitLocalState);
-	fun.GetSignature().AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")));
+	auto list_type = LogicalType::LIST(LogicalType::TEMPLATE("T"));
+	ScalarFunction fun(FunctionSignature().AddParameter("list", list_type).SetReturnType(list_type),
+	                   ListDistinctFunction, ListAggregatesBind<false>, nullptr, ListAggregatesInitLocalState);
 	fun.SetResolveTypesCallback(ListAggregatesResolveTypes<false>);
 	return fun;
 }
 
 ScalarFunction ListUniqueFun::GetFunction() {
-	ScalarFunction fun({}, LogicalType::UBIGINT, ListUniqueFunction, ListAggregatesBind<false>, nullptr,
-	                   ListAggregatesInitLocalState);
-	fun.GetSignature().AddParameter("list", LogicalType::LIST(LogicalType::ANY));
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                       .SetReturnType(LogicalType::UBIGINT),
+	                   ListUniqueFunction, ListAggregatesBind<false>, nullptr, ListAggregatesInitLocalState);
 	fun.SetResolveTypesCallback(ListAggregatesResolveTypes<false>);
 	return fun;
 }

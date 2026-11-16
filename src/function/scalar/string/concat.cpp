@@ -356,9 +356,9 @@ unique_ptr<BaseStatistics> ListConcatStats(ClientContext &context, FunctionStati
 
 ScalarFunction ListConcatFun::GetFunction() {
 	// The arguments and return types are set in the binder function.
-	auto fun =
-	    ScalarFunction({}, LogicalType::LIST(LogicalType::ANY), ConcatFunction, BindConcatFunction, ListConcatStats);
-	fun.GetSignature().AddArgs("args", LogicalType::LIST(LogicalType::ANY));
+	auto fun = ScalarFunction(
+	    FunctionSignature().AddArgs("args", LogicalType::LIST(LogicalType::ANY)).SetReturnType(ReturnType::ANY()),
+	    ConcatFunction, BindConcatFunction, ListConcatStats);
 	fun.SetResolveTypesCallback(ConcatFunctionResolveTypes);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
@@ -373,17 +373,24 @@ ScalarFunction ListConcatFun::GetFunction() {
 // the concat function, however, treats NULL values as an empty string
 // i.e. concat(NULL, 'hello') = 'hello'
 ScalarFunction ConcatFun::GetFunction() {
-	ScalarFunction concat = ScalarFunction("concat", {}, ReturnType::ANY(), ConcatFunction, BindConcatFunction);
-	concat.GetSignature().AddParameter("value", LogicalType::ANY);
-	concat.GetSignature().AddArgs("args", LogicalType::ANY);
+	ScalarFunction concat("concat",
+	                      FunctionSignature()
+	                          .AddParameter("value", LogicalType::TEMPLATE("T"))
+	                          .AddArgs("args", LogicalType::ANY)
+	                          .SetReturnType(ReturnType::ANY()),
+	                      ConcatFunction, BindConcatFunction);
 	concat.SetResolveTypesCallback(ConcatFunctionResolveTypes);
 	concat.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return concat;
 }
 
 ScalarFunction ConcatOperatorFun::GetFunction() {
-	ScalarFunction concat_op = ScalarFunction("||", {}, ReturnType::ANY(), ConcatFunction, BindConcatOperator);
-	concat_op.GetSignature().AddParameter("arg1", LogicalType::ANY).AddParameter("arg2", LogicalType::ANY);
+	ScalarFunction concat_op("||",
+	                         FunctionSignature()
+	                             .AddParameter("arg1", LogicalType::TEMPLATE("T"))
+	                             .AddParameter("arg2", LogicalType::TEMPLATE("U"))
+	                             .SetReturnType(ReturnType::ANY()),
+	                         ConcatFunction, BindConcatOperator);
 	concat_op.SetResolveTypesCallback(ConcatOperatorResolveTypes);
 	return concat_op;
 }

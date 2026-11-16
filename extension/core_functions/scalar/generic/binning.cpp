@@ -478,10 +478,6 @@ void EquiWidthBinFunction(DataChunk &args, ExpressionState &state, Vector &resul
 	VectorOperations::Cast(state.GetContext(), intermediate_result, result, args.size());
 }
 
-void UnsupportedEquiWidth(DataChunk &args, ExpressionState &state, Vector &) {
-	throw BinderException(state.expr, "Unsupported type \"%s\" for equi_width_bins", args.data[0].GetType());
-}
-
 void EquiWidthBinSerialize(Serializer &, const optional_ptr<FunctionData>, const BoundScalarFunction &) {
 	return;
 }
@@ -492,6 +488,10 @@ unique_ptr<FunctionData> EquiWidthBinDeserialize(Deserializer &deserializer, Bou
 }
 
 } // namespace
+
+void UnsupportedEquiWidth(DataChunk &args, ExpressionState &state, Vector &) {
+	throw BinderException(state.expr, "Unsupported type \"%s\" for equi_width_bins", args.data[0].GetType());
+}
 
 static void AddEquiWidthBinFunction(ScalarFunctionSet &functions, const LogicalType &min_max_type,
                                     scalar_function_t function) {
@@ -512,7 +512,8 @@ ScalarFunctionSet EquiWidthBinsFun::GetFunctions() {
 	AddEquiWidthBinFunction(functions, LogicalType::DOUBLE, EquiWidthBinFunction<double, EquiWidthBinsDouble>);
 	AddEquiWidthBinFunction(functions, LogicalType::TIMESTAMP,
 	                        EquiWidthBinFunction<timestamp_t, EquiWidthBinsTimestamp>);
-	AddEquiWidthBinFunction(functions, LogicalType::ANY_PARAMS(LogicalType::ANY, 150), UnsupportedEquiWidth);
+	// a template is selected last: this overload is for the types that cast to none of the above
+	AddEquiWidthBinFunction(functions, LogicalType::TEMPLATE("T"), UnsupportedEquiWidth);
 	functions.ApplyToFunctions([](ScalarFunction &function) {
 		function.SetSerializeCallback(EquiWidthBinSerialize);
 		function.SetDeserializeCallback(EquiWidthBinDeserialize);

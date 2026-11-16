@@ -38,7 +38,7 @@ static unique_ptr<FunctionData> CardinalityBind(BindScalarFunctionInput &input) 
 	case LogicalTypeId::ARRAY: {
 		// a fixed-size array is read as a list
 		auto target_type = LogicalType::LIST(ArrayType::GetChildType(arguments[0]->GetReturnType()));
-		arguments[0] = BoundCastExpression::AddCastToType(context, std::move(arguments[0]), target_type);
+		input.CastArgument(0, target_type);
 		break;
 	}
 	default:
@@ -50,9 +50,11 @@ static unique_ptr<FunctionData> CardinalityBind(BindScalarFunctionInput &input) 
 }
 
 ScalarFunction CardinalityFun::GetFunction() {
-	ScalarFunction fun({}, LogicalType::UBIGINT, CardinalityFunction, CardinalityBind);
-	fun.GetSignature().AddParameter("map", LogicalType::ANY);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY);
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("map", LogicalType::TEMPLATE("T"))
+	                       .AddArgs("args", LogicalType::ANY)
+	                       .SetReturnType(LogicalType::UBIGINT),
+	                   CardinalityFunction, CardinalityBind);
 	fun.SetNullHandling(FunctionNullHandling::DEFAULT_NULL_HANDLING);
 	return fun;
 }

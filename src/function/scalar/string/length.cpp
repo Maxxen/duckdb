@@ -325,10 +325,12 @@ ScalarFunctionSet LengthFun::GetFunctions() {
 	bit_fun.GetSignature().AddParameter("bit", LogicalType::BIT);
 	length.AddFunction(bit_fun);
 
-	ScalarFunction list_fun({}, LogicalType::BIGINT, nullptr);
+	ScalarFunction list_fun(FunctionSignature()
+	                            .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                            .SetReturnType(LogicalType::BIGINT),
+	                        nullptr);
 	list_fun.SetResolveTypesCallback(ArrayOrListLengthResolveTypes);
 	list_fun.SetStatisticsCallback(ListLengthPropagateStats);
-	list_fun.GetSignature().AddParameter("list", LogicalType::LIST(LogicalType::ANY));
 	length.AddFunction(list_fun);
 
 	return (length);
@@ -346,16 +348,19 @@ ScalarFunctionSet LengthGraphemeFun::GetFunctions() {
 ScalarFunctionSet ArrayLengthFun::GetFunctions() {
 	ScalarFunctionSet array_length("array_length");
 
-	ScalarFunction unary({}, LogicalType::BIGINT, nullptr);
+	ScalarFunction unary(FunctionSignature()
+	                         .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                         .SetReturnType(LogicalType::BIGINT),
+	                     nullptr);
 	unary.SetResolveTypesCallback(ArrayOrListLengthResolveTypes);
 	unary.SetStatisticsCallback(ListLengthPropagateStats);
-	unary.GetSignature().AddParameter("list", LogicalType::LIST(LogicalType::ANY));
 	array_length.AddFunction(unary);
 
-	ScalarFunction binary({}, LogicalType::BIGINT, nullptr, ArrayOrListLengthBinaryBind);
-	binary.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("dimension", LogicalType::BIGINT);
+	ScalarFunction binary(FunctionSignature()
+	                          .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                          .AddParameter("dimension", LogicalType::BIGINT)
+	                          .SetReturnType(LogicalType::BIGINT),
+	                      nullptr, ArrayOrListLengthBinaryBind);
 	binary.SetResolveTypesCallback(ArrayOrListLengthBinaryResolveTypes);
 	array_length.AddFunction(binary);
 

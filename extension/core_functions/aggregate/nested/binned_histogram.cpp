@@ -346,11 +346,15 @@ AggregateFunction GetHistogramBinFunction(const LogicalType &type) {
 
 	auto struct_type = LogicalType::MAP(type, LogicalType::UBIGINT);
 	AggregateFunction function(
-	    function_name, {}, struct_type, AggregateFunction::StateSize<STATE_TYPE>,
-	    AggregateFunction::StateInitialize<STATE_TYPE, HistogramBinFunction>, HistogramBinUpdateFunction<OP, T, HIST>,
-	    AggregateFunction::StateCombine<STATE_TYPE, HistogramBinFunction>, HistogramBinFinalizeFunction<OP, T>, nullptr,
-	    nullptr, AggregateFunction::StateDestroy<STATE_TYPE, HistogramBinFunction>);
-	function.GetSignature().AddParameter("arg", type).AddParameter("bins", LogicalType::LIST(type));
+	    function_name,
+	    FunctionSignature()
+	        .AddParameter("arg", type)
+	        .AddParameter("bins", LogicalType::LIST(type))
+	        .SetReturnType(struct_type),
+	    AggregateFunction::StateSize<STATE_TYPE>, AggregateFunction::StateInitialize<STATE_TYPE, HistogramBinFunction>,
+	    HistogramBinUpdateFunction<OP, T, HIST>, AggregateFunction::StateCombine<STATE_TYPE, HistogramBinFunction>,
+	    HistogramBinFinalizeFunction<OP, T>, nullptr, nullptr,
+	    AggregateFunction::StateDestroy<STATE_TYPE, HistogramBinFunction>);
 	return function;
 }
 
@@ -431,8 +435,10 @@ AggregateFunction HistogramExactFun::GetFunction() {
 }
 
 ScalarFunction IsHistogramOtherBinFun::GetFunction() {
-	ScalarFunction fun("is_histogram_other_bin", {}, LogicalType::BOOLEAN, IsHistogramOtherBinFunction);
-	fun.GetSignature().AddParameter("val", LogicalType::ANY);
+	ScalarFunction fun(
+	    "is_histogram_other_bin",
+	    FunctionSignature().AddParameter("val", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::BOOLEAN),
+	    IsHistogramOtherBinFunction);
 	return fun;
 }
 

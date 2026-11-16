@@ -39,11 +39,13 @@ static LogicalType ListFilterBindLambda(ClientContext &context, const vector<Log
 }
 
 ScalarFunction ListFilterFun::GetFunction() {
-	ScalarFunction fun({}, LogicalType::LIST(LogicalType::ANY), LambdaFunctions::ListFilterFunction, ListFilterBind,
-	                   nullptr, nullptr);
-	fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalType::LAMBDA);
+	// the elements that pass the filter are a list of the type that goes in
+	auto list_type = LogicalType::LIST(LogicalType::TEMPLATE("T"));
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("list", list_type)
+	                       .AddParameter("lambda", LogicalType::LAMBDA)
+	                       .SetReturnType(list_type),
+	                   LambdaFunctions::ListFilterFunction, ListFilterBind);
 
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(ListLambdaBindData::Serialize);

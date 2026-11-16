@@ -85,9 +85,9 @@ struct_keys() expects a STRUCT argument
 statement error
 select struct_keys(42);
 ----
-struct_keys() expects a STRUCT argument
+cannot be implicitly cast to STRUCT
 
 statement error
 select struct_keys(['a', 'b']);
 ----
-struct_keys() expects a STRUCT argument
+cannot be implicitly cast to STRUCT

@@ -474,31 +474,7 @@ AggregateFunction GetFirstFunction(const LogicalType &type) {
 	}
 }
 
-template <bool LAST, bool SKIP_NULLS>
-unique_ptr<FunctionData> BindDecimalFirst(BindAggregateFunctionInput &input) {
-	auto &function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-
-	auto decimal_type = arguments[0]->GetReturnType();
-	auto name = function.GetName();
-	function.ReplaceImplementation(GetFirstFunction<LAST, SKIP_NULLS>(decimal_type));
-	function.SetName(std::move(name));
-	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
-	function.SetDirectRewriteCallback(RewriteOrderedFirst<LAST, SKIP_NULLS>);
-	function.SetSingleValueIdentity(true);
-	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-	function.SetReturnType(decimal_type);
-	return nullptr;
-}
-
-template <bool LAST, bool SKIP_NULLS>
-AggregateFunction GetFirstOperator(const LogicalType &type) {
-	if (type.id() == LogicalTypeId::DECIMAL) {
-		throw InternalException("FIXME: this shouldn't happen...");
-	}
-	return GetFirstFunction<LAST, SKIP_NULLS>(type);
-}
-
+//! Selects the implementation for the type the function is called with
 template <bool LAST, bool SKIP_NULLS>
 unique_ptr<FunctionData> BindFirst(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
@@ -506,28 +482,24 @@ unique_ptr<FunctionData> BindFirst(BindAggregateFunctionInput &input) {
 
 	auto input_type = arguments[0]->GetReturnType();
 	auto name = function.GetName();
-	function.ReplaceImplementation(GetFirstOperator<LAST, SKIP_NULLS>(input_type));
+	function.ReplaceImplementation(GetFirstFunction<LAST, SKIP_NULLS>(input_type));
 	function.SetName(std::move(name));
 	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
 	function.SetDirectRewriteCallback(RewriteOrderedFirst<LAST, SKIP_NULLS>);
 	function.SetSingleValueIdentity(true);
 	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
+	function.SetReturnType(input_type);
 	return nullptr;
 }
 
 template <bool LAST, bool SKIP_NULLS>
 void AddFirstOperator(AggregateFunctionSet &set) {
-	// a decimal is returned as the decimal it is passed as
-	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
-	AggregateFunction decimal_fun(
-	    FunctionSignature().AddParameter("arg", decimal_type).SetReturnType(decimal_type), nullptr, nullptr, nullptr,
-	    nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalFirst<LAST, SKIP_NULLS>);
-	set.AddFunction(decimal_fun);
-
-	AggregateFunction any_fun(
-	    FunctionSignature().AddParameter("arg", LogicalTypeId::ANY).SetReturnType(ReturnType::ANY()), nullptr, nullptr,
-	    nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindFirst<LAST, SKIP_NULLS>);
-	set.AddFunction(any_fun);
+	// the value is returned as it is passed
+	auto type = LogicalType::TEMPLATE("T");
+	AggregateFunction fun(FunctionSignature().AddParameter("arg", type).SetReturnType(type), nullptr, nullptr, nullptr,
+	                      nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
+	                      BindFirst<LAST, SKIP_NULLS>);
+	set.AddFunction(fun);
 }
 
 } // namespace

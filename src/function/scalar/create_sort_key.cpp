@@ -1487,10 +1487,12 @@ static void DecodeSortKeyFunction(DataChunk &args, ExpressionState &state, Vecto
 // Get Functions
 //===--------------------------------------------------------------------===//
 ScalarFunction CreateSortKeyFun::GetFunction() {
-	ScalarFunction sort_key_function("create_sort_key", {LogicalType::ANY}, LogicalType::BLOB, CreateSortKeyFunction,
-	                                 CreateSortKeyBind);
-	sort_key_function.GetSignature().GetParameter(0).SetName("key1");
-	sort_key_function.GetSignature().AddArgs("args", LogicalType::ANY);
+	ScalarFunction sort_key_function("create_sort_key",
+	                                 FunctionSignature()
+	                                     .AddPositionalOnly("key1", LogicalType::TEMPLATE("T"))
+	                                     .AddArgs("args", LogicalType::ANY)
+	                                     .SetReturnType(LogicalType::BLOB),
+	                                 CreateSortKeyFunction, CreateSortKeyBind);
 	sort_key_function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return sort_key_function;
 }

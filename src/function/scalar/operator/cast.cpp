@@ -157,8 +157,10 @@ static unique_ptr<FunctionData> CastFunctionDeserialize(Deserializer &deserializ
 }
 
 ScalarFunction CastFun::GetFunction() {
-	ScalarFunction cast_fun("__cast", {}, ReturnType::ANY(), CastFunction, BindCastFun);
-	cast_fun.GetSignature().AddParameter("value", LogicalType::ANY);
+	ScalarFunction cast_fun(
+	    "__cast",
+	    FunctionSignature().AddParameter("value", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()),
+	    CastFunction, BindCastFun);
 	cast_fun.SetToStringCallback(CastToString);
 	cast_fun.SetGetExpressionTypeCallback(CastGetExpressionType);
 	cast_fun.SetLegacySerializeCallback(CastLegacySerializeCallback);

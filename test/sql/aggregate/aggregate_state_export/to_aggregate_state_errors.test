@@ -161,7 +161,7 @@ Could not re-bind exported aggregate
 
 endloop
 
-foreach aggregate min max first last any_value list mode entropy histogram string_agg
+foreach aggregate min max first last any_value mode entropy histogram
 
 statement error
 SELECT to_aggregate_state(0::BIGINT, '{aggregate}', ['ANY']);
@@ -169,6 +169,18 @@ SELECT to_aggregate_state(0::BIGINT, '{aggregate}', ['ANY']);
 requires a concrete type for signature argument 1
 
 endloop
+
+# string_agg aggregates the strings its values are cast to
+statement error
+SELECT to_aggregate_state(0::BIGINT, 'string_agg', ['ANY']);
+----
+Type mismatch for exported aggregate string_agg
+
+# list can export its state, but ANY does not give it the type of its elements
+statement error
+SELECT to_aggregate_state(0::BIGINT, 'list', ['ANY']);
+----
+signature does not resolve a complete result type
 
 statement error
 SELECT to_aggregate_state(0::BIGINT, 'count', ['ANY', 'ANY']);

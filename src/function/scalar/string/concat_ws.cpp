@@ -146,12 +146,10 @@ static unique_ptr<FunctionData> BindConcatWSFunction(BindScalarFunctionInput &in
 				throw BinderException("concat_ws() does not support nested lists");
 			}
 			if (child_type.id() != LogicalTypeId::VARCHAR) {
-				args[i] = BoundCastExpression::AddCastToType(input.GetClientContext(), std::move(args[i]),
-				                                             LogicalType::LIST(LogicalType::VARCHAR));
+				input.CastArgument(i, LogicalType::LIST(LogicalType::VARCHAR));
 			}
 		} else if (arg_type.id() != LogicalTypeId::VARCHAR) {
-			args[i] =
-			    BoundCastExpression::AddCastToType(input.GetClientContext(), std::move(args[i]), LogicalType::VARCHAR);
+			input.CastArgument(i, LogicalType::VARCHAR);
 		}
 	}
 
@@ -167,10 +165,13 @@ ScalarFunction ConcatWsFun::GetFunction() {
 	// concat_ws(',', NULL, NULL) = ""
 	// concat_ws(',', '', '') = ","
 
-	ScalarFunction concat_ws =
-	    ScalarFunction("concat_ws", {}, LogicalType::VARCHAR, ConcatWSFunction, BindConcatWSFunction);
-	concat_ws.GetSignature().AddParameter("separator", LogicalType::VARCHAR).AddParameter("string", LogicalType::ANY);
-	concat_ws.GetSignature().AddArgs("args", LogicalType::ANY);
+	ScalarFunction concat_ws("concat_ws",
+	                         FunctionSignature()
+	                             .AddParameter("separator", LogicalType::VARCHAR)
+	                             .AddParameter("string", LogicalType::TEMPLATE("T"))
+	                             .AddArgs("args", LogicalType::ANY)
+	                             .SetReturnType(LogicalType::VARCHAR),
+	                         ConcatWSFunction, BindConcatWSFunction);
 	concat_ws.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return ScalarFunction(concat_ws);
 }

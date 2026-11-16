@@ -1154,17 +1154,17 @@ void WindowMatchRecognizeExecutor::GetData(ExecutionContext &context, DataChunk 
 }
 
 WindowFunction MatchRecognizeFun::GetFunction() {
-	// called with the columns the conditions read; everything else arrives as bind data
-	WindowFunction fun(Name, {LogicalType::ANY}, WindowMatchRecognizeExecutor::ResultType(),
+	// called with the columns the conditions read, which can be none; everything else arrives as bind data
+	WindowFunction fun(Name,
+	                   FunctionSignature()
+	                       .AddParameter("columns", LogicalType::TEMPLATE("T"), Value())
+	                       .AddArgs("args", LogicalType::ANY)
+	                       .SetReturnType(WindowMatchRecognizeExecutor::ResultType()),
 	                   ExpressionType::WINDOW_FUNCTION, WindowMatchRecognizeExecutor::Bind,
 	                   WindowMatchRecognizeExecutor::GetBounds, WindowMatchRecognizeExecutor::GetSharing,
 	                   WindowMatchRecognizeExecutor::GetGlobal, WindowMatchRecognizeExecutor::GetLocal,
 	                   WindowMatchRecognizeExecutor::Sink, WindowMatchRecognizeExecutor::Finalize,
 	                   WindowMatchRecognizeExecutor::GetData);
-	auto &signature = fun.GetSignature();
-	signature = FunctionSignature(vector<FunctionParameter>(), WindowMatchRecognizeExecutor::ResultType());
-	signature.AddParameter(Identifier("columns"), LogicalType::ANY);
-	signature.AddArgs("args", LogicalType::ANY);
 
 	fun.SetSerializeCallback(WindowMatchRecognizeExecutor::Serialize);
 	fun.SetDeserializeCallback(WindowMatchRecognizeExecutor::Deserialize);

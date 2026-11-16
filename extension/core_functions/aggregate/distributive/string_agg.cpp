@@ -121,6 +121,8 @@ struct StringAggFunction {
 //! along with the input - the update callback only consumes the leading input argument
 unique_ptr<FunctionData> StringAggBind(BindAggregateFunctionInput &input) {
 	auto &arguments = input.GetArguments();
+	// values of any type are aggregated as the strings they are cast to
+	input.GetBoundFunction().GetArguments()[0] = LogicalType::VARCHAR;
 	if (arguments.size() == 1) {
 		// single argument: default to comma
 		return make_uniq<StringAggBindData>(",");
@@ -172,7 +174,7 @@ AggregateStateLayout StringAggStateType(AggregateLayoutInput &input) {
 AggregateFunctionSet StringAggFun::GetFunctions() {
 	AggregateFunctionSet string_agg;
 	AggregateFunction string_agg_param(
-	    {LogicalType::ANY_PARAMS(LogicalType::VARCHAR)}, LogicalType::VARCHAR,
+	    FunctionSignature().AddParameter("str", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::VARCHAR),
 	    AggregateFunction::StateSize<StringAggState>,
 	    AggregateFunction::StateInitialize<StringAggState, StringAggFunction>,
 	    AggregateFunction::UnaryScatterUpdate<StringAggState, string_t, StringAggFunction>,
@@ -180,7 +182,6 @@ AggregateFunctionSet StringAggFun::GetFunctions() {
 	    AggregateFunction::StateFinalize<StringAggState, string_t, StringAggFunction>,
 	    FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(), StringAggBind);
 
-	string_agg_param.GetSignature().GetParameter(0).SetName("str");
 	string_agg_param.SetSerializeCallback(StringAggSerialize);
 	string_agg_param.SetDeserializeCallback(StringAggDeserialize);
 	string_agg_param.SetStructStateExport(StringAggStateType);

@@ -25,9 +25,12 @@ unique_ptr<FunctionData> TryRethrowBind(BindScalarFunctionInput &input) {
 } // namespace
 
 ScalarFunction TryRethrowFun::GetFunction() {
-	ScalarFunction fun(Name, {}, ReturnType::ANY(), TryRethrowFunction);
-	fun.GetSignature().AddParameter("error", LogicalType::BOOLEAN);
-	fun.GetSignature().AddParameter("value", LogicalType::ANY);
+	ScalarFunction fun(Name,
+	                   FunctionSignature()
+	                       .AddParameter("error", LogicalType::BOOLEAN)
+	                       .AddParameter("value", LogicalType::TEMPLATE("T"))
+	                       .SetReturnType(LogicalType::TEMPLATE("T")),
+	                   TryRethrowFunction);
 	fun.SetBindCallback(TryRethrowBind);
 	// a NULL flag (from an empty subquery) must reach the function unchanged, and the value must not
 	// be rewritten around it: the raise on flagged rows is the entire point of the function

@@ -184,7 +184,7 @@ static unique_ptr<ParsedExpression> StructUpdateUnbind(FunctionUnbindInput &inpu
 
 ScalarFunction StructUpdateFun::GetFunction() {
 	ScalarFunction fun(FunctionSignature()
-	                       .AddParameter("struct", LogicalType::ANY)
+	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
 	                       .AddKwargs("kwargs", LogicalType::ANY)
 	                       .SetReturnType(ReturnType::ANY()),
 	                   StructUpdateFunction, StructUpdateBind, StructUpdateStats);

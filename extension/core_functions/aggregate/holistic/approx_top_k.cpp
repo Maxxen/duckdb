@@ -596,11 +596,15 @@ unique_ptr<FunctionData> ApproxTopKBind(BindAggregateFunctionInput &input) {
 AggregateFunction ApproxTopKFun::GetFunction() {
 	using STATE = ApproxTopKState;
 	using OP = ApproxTopKOperation;
-	auto fun = AggregateFunction("approx_top_k", {}, LogicalType::LIST(LogicalType::ANY),
+	auto type = LogicalType::TEMPLATE("T");
+	auto fun = AggregateFunction("approx_top_k",
+	                             FunctionSignature()
+	                                 .AddParameter("val", type)
+	                                 .AddParameter("k", LogicalType::BIGINT)
+	                                 .SetReturnType(LogicalType::LIST(type)),
 	                             AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>,
 	                             ApproxTopKUpdate, AggregateFunction::StateCombine<STATE, OP>, ApproxTopKFinalize,
 	                             nullptr, ApproxTopKBind, AggregateFunction::StateDestroy<STATE, OP>);
-	fun.GetSignature().AddParameter("val", LogicalTypeId::ANY).AddParameter("k", LogicalType::BIGINT);
 	fun.SetStateExportCallbacks(ApproxTopKGetStateType, ApproxTopKExportState<HistogramGenericFunctor>,
 	                            ApproxTopKImportState<HistogramGenericFunctor>);
 	fun.SetFallible(); // the update callback rejects NULL and out-of-range k values at runtime

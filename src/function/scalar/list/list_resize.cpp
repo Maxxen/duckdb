@@ -123,20 +123,20 @@ static void ListResizeResolveTypes(ResolveScalarFunctionTypesInput &input) {
 }
 
 ScalarFunctionSet ListResizeFun::GetFunctions() {
-	ScalarFunction simple_fun({}, LogicalType::LIST(LogicalTypeId::ANY), ListResizeFunction,
-	                          VariableReturnBindData::Bind);
-	simple_fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalTypeId::ANY))
-	    .AddParameter("size", LogicalTypeId::ANY);
+	ScalarFunction simple_fun(FunctionSignature()
+	                              .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                              .AddParameter("size", LogicalType::TEMPLATE("SIZE"))
+	                              .SetReturnType(LogicalType::LIST(LogicalType::TEMPLATE("T"))),
+	                          ListResizeFunction, VariableReturnBindData::Bind);
 	simple_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	simple_fun.SetFallible();
 	simple_fun.SetResolveTypesCallback(ListResizeResolveTypes);
-	ScalarFunction default_value_fun({}, LogicalType::LIST(LogicalTypeId::ANY), ListResizeFunction,
-	                                 VariableReturnBindData::Bind);
-	default_value_fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalTypeId::ANY))
-	    .AddParameter("size", LogicalTypeId::ANY)
-	    .AddParameter("value", LogicalTypeId::ANY);
+	ScalarFunction default_value_fun(FunctionSignature()
+	                                     .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                                     .AddParameter("size", LogicalType::TEMPLATE("SIZE"))
+	                                     .AddParameter("value", LogicalType::TEMPLATE("VALUE"))
+	                                     .SetReturnType(LogicalType::LIST(LogicalType::TEMPLATE("T"))),
+	                                 ListResizeFunction, VariableReturnBindData::Bind);
 	default_value_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	default_value_fun.SetFallible();
 	default_value_fun.SetResolveTypesCallback(ListResizeResolveTypes);

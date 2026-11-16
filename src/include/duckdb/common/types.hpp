@@ -579,7 +579,6 @@ public:
 	DUCKDB_API static LogicalType GEOMETRY(const string &crs);
 	DUCKDB_API static LogicalType GEOMETRY(const CoordinateReferenceSystem &crs);
 	// ANY but with special rules (default is LogicalType::ANY, 5)
-	DUCKDB_API static LogicalType ANY_PARAMS(LogicalType target, idx_t cast_score = 5); // NOLINT
 	DUCKDB_API static LogicalType TEMPLATE(const string &name);                         // NOLINT
 	//! A template that only stands for types of the kind of the constraint, e.g. DECIMAL for a decimal of any width
 	//! and scale. Arguments are cast to it as they are to the constraint
@@ -685,11 +684,6 @@ struct ArrayType {
 	DUCKDB_API static constexpr idx_t MAX_ARRAY_SIZE = 100000; // 100k for now
 	//! Recursively replace all ARRAY types to LIST types within the given type
 	DUCKDB_API static LogicalType ConvertToList(const LogicalType &type);
-};
-
-struct AnyType {
-	DUCKDB_API static LogicalType GetTargetType(const LogicalType &type);
-	DUCKDB_API static idx_t GetCastScore(const LogicalType &type);
 };
 
 struct IntegerLiteral {

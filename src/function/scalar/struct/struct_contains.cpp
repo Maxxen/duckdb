@@ -301,20 +301,24 @@ static unique_ptr<FunctionData> StructContainsBind(BindScalarFunctionInput &inpu
 }
 
 ScalarFunction StructContainsFun::GetFunction() {
-	ScalarFunction fun("struct_contains", {}, LogicalType::BOOLEAN, StructSearchFunction<bool>);
-	fun.GetSignature()
-	    .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
-	    .AddParameter("entry", LogicalType::ANY);
+	ScalarFunction fun("struct_contains",
+	                   FunctionSignature()
+	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
+	                       .AddParameter("entry", LogicalType::TEMPLATE("U"))
+	                       .SetReturnType(LogicalType::BOOLEAN),
+	                   StructSearchFunction<bool>);
 	fun.SetResolveTypesCallback(StructContainsResolveTypes);
 	fun.SetBindCallback(StructContainsBind);
 	return fun;
 }
 
 ScalarFunction StructPositionFun::GetFunction() {
-	ScalarFunction fun("struct_contains", {}, LogicalType::INTEGER, StructSearchFunction<int32_t, true>);
-	fun.GetSignature()
-	    .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
-	    .AddParameter("entry", LogicalType::ANY);
+	ScalarFunction fun("struct_contains",
+	                   FunctionSignature()
+	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
+	                       .AddParameter("entry", LogicalType::TEMPLATE("U"))
+	                       .SetReturnType(LogicalType::INTEGER),
+	                   StructSearchFunction<int32_t, true>);
 	fun.SetResolveTypesCallback(StructContainsResolveTypes);
 	fun.SetBindCallback(StructContainsBind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

@@ -42,7 +42,7 @@ static int64_t TargetTypeCost(const LogicalType &type) {
 	case LogicalTypeId::ARRAY:
 		return 160;
 	case LogicalTypeId::ANY:
-		return int64_t(AnyType::GetCastScore(type));
+		return 5;
 	case LogicalTypeId::TEMPLATE:
 		// we can cast anything to a template type, but prefer to cast to anything else!
 		return 1000000;

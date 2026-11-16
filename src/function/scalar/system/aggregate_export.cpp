@@ -263,8 +263,13 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(ClientContext &context
 		                     ? optional_ptr<const FunctionParameter>(signature.GetParameter(arg_idx))
 		                     : signature.GetArgs();
 		// ANY must describe a state-capable implementation, not a placeholder for type specialization.
-		const bool canonical_any = parameter && parameter->GetType().id() == LogicalTypeId::ANY &&
-		                           AnyType::GetTargetType(parameter->GetType()) == LogicalType::ANY;
+		auto is_any_type = [](const LogicalType &type) {
+			if (type.id() == LogicalTypeId::TEMPLATE) {
+				return !TemplateType::HasConstraint(type);
+			}
+			return type.id() == LogicalTypeId::ANY;
+		};
+		const bool canonical_any = parameter && is_any_type(parameter->GetType());
 		if (!canonical_any || !aggr->HasGetStateTypeCallback()) {
 			throw BinderException("Aggregate %s requires a concrete type for signature argument %llu", function_name,
 			                      arg_idx + 1);

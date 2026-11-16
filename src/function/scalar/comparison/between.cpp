@@ -212,8 +212,14 @@ unique_ptr<Expression> BoundBetweenExpression::Create(unique_ptr<Expression> inp
 
 	auto function_data = make_uniq<BetweenFunctionData>(lower_inclusive, upper_inclusive);
 
-	auto result = make_uniq<BoundFunctionExpression>(BoundScalarFunction(BetweenFun::GetFunction()),
-	                                                 std::move(children), std::move(function_data), false);
+	// the function is bound to the types of the values it compares
+	BoundScalarFunction function(BetweenFun::GetFunction());
+	function.GetArguments().clear();
+	for (auto &child : children) {
+		function.GetArguments().push_back(child->GetReturnType());
+	}
+	auto result =
+	    make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), std::move(function_data), false);
 	return std::move(result);
 }
 
@@ -260,11 +266,13 @@ unique_ptr<FunctionData> BetweenFunctionDeserialize(Deserializer &deserializer, 
 }
 
 ScalarFunction BetweenFun::GetFunction() {
-	ScalarFunction between_fun("__between", {}, LogicalType::BOOLEAN, BetweenFunction, BindBetweenFun);
-	between_fun.GetSignature()
-	    .AddParameter("input", LogicalType::ANY)
-	    .AddParameter("lower", LogicalType::ANY)
-	    .AddParameter("upper", LogicalType::ANY);
+	ScalarFunction between_fun("__between",
+	                           FunctionSignature()
+	                               .AddParameter("input", LogicalType::TEMPLATE("T"))
+	                               .AddParameter("lower", LogicalType::TEMPLATE("U"))
+	                               .AddParameter("upper", LogicalType::TEMPLATE("V"))
+	                               .SetReturnType(LogicalType::BOOLEAN),
+	                           BetweenFunction, BindBetweenFun);
 	between_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	between_fun.SetToStringCallback(BetweenToString);
 	between_fun.SetGetExpressionTypeCallback(BetweenGetExpressionType);

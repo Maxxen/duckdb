@@ -18,8 +18,9 @@ unique_ptr<FunctionData> HasErrorBind(BindScalarFunctionInput &input) {
 } // namespace
 
 ScalarFunction HasErrorFun::GetFunction() {
-	ScalarFunction fun(Name, {}, LogicalType::BOOLEAN, HasErrorFunction);
-	fun.GetSignature().AddParameter("expr", LogicalType::ANY);
+	ScalarFunction fun(
+	    Name, FunctionSignature().AddParameter("expr", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::BOOLEAN),
+	    HasErrorFunction);
 	fun.SetBindCallback(HasErrorBind);
 	return fun;
 }

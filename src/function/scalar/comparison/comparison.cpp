@@ -85,10 +85,14 @@ static unique_ptr<FunctionData> ComparisonBind(BindScalarFunctionInput &input) {
 		throw BinderException("Cannot compare values of type %s and type %s - an explicit cast is required",
 		                      left_type.ToString(), right_type.ToString());
 	}
-	for (auto &argument : arguments) {
+	auto &bound_function = input.GetBoundFunction();
+	for (idx_t i = 0; i < arguments.size(); i++) {
+		auto &argument = arguments[i];
 		argument = BoundCastExpression::AddCastToType(context, std::move(argument), input_type,
 		                                              input_type.id() == LogicalTypeId::ENUM);
 		ExpressionBinder::PushCollation(context, argument, input_type);
+		// the function receives the arguments as what they are compared as
+		bound_function.GetArguments()[i] = argument->GetReturnType();
 	}
 	return nullptr;
 }
@@ -104,9 +108,12 @@ static unique_ptr<FunctionData> ComparisonDeserialize(Deserializer &deserializer
 
 template <ExpressionType TYPE>
 static ScalarFunction GetComparisonFunctionInternal(const string &name) {
-	ScalarFunction comparison_fun(Identifier(name), {}, LogicalType::BOOLEAN, ComparisonFunction<TYPE>,
-	                              ComparisonBind<TYPE>);
-	comparison_fun.GetSignature().AddParameter("left", LogicalType::ANY).AddParameter("right", LogicalType::ANY);
+	ScalarFunction comparison_fun(Identifier(name),
+	                              FunctionSignature()
+	                                  .AddParameter("left", LogicalType::TEMPLATE("T"))
+	                                  .AddParameter("right", LogicalType::TEMPLATE("U"))
+	                                  .SetReturnType(LogicalType::BOOLEAN),
+	                              ComparisonFunction<TYPE>, ComparisonBind<TYPE>);
 	comparison_fun.SetGetExpressionTypeCallback(ComparisonGetExpressionType<TYPE>);
 	comparison_fun.SetSerializeCallback(ComparisonSerialize);
 	comparison_fun.SetDeserializeCallback(ComparisonDeserialize);
@@ -184,8 +191,10 @@ unique_ptr<Expression> BoundComparisonExpression::Create(ExpressionType type, un
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
 
-	auto result = make_uniq<BoundFunctionExpression>(BoundScalarFunction(GetComparisonFunction(type)),
-	                                                 std::move(children), nullptr, true);
+	// the function is bound to the types of the values it compares
+	BoundScalarFunction function(GetComparisonFunction(type));
+	function.GetArguments() = {children[0]->GetReturnType(), children[1]->GetReturnType()};
+	auto result = make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), nullptr, true);
 	return std::move(result);
 }
 

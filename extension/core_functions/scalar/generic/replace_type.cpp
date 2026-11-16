@@ -24,11 +24,12 @@ static unique_ptr<Expression> BindReplaceTypeFunction(FunctionBindExpressionInpu
 }
 
 ScalarFunction ReplaceTypeFun::GetFunction() {
-	auto fun = ScalarFunction({}, ReturnType::ANY(), ReplaceTypeFunction);
-	fun.GetSignature()
-	    .AddParameter("param", LogicalType::ANY)
-	    .AddParameter("type1", LogicalType::ANY)
-	    .AddParameter("type2", LogicalType::ANY);
+	auto fun = ScalarFunction(FunctionSignature()
+	                              .AddParameter("param", LogicalType::TEMPLATE("T"))
+	                              .AddParameter("type1", LogicalType::TEMPLATE("U"))
+	                              .AddParameter("type2", LogicalType::TEMPLATE("V"))
+	                              .SetReturnType(ReturnType::ANY()),
+	                          ReplaceTypeFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetBindExpressionCallback(BindReplaceTypeFunction);
 	return fun;

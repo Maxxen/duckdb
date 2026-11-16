@@ -67,14 +67,14 @@ SELECT enum_range_boundary(NULL, NULL)
 statement error
 SELECT enum_last('bla')
 ----
-<REGEX>:.*Binder Error.*This function needs an ENUM.*
+<REGEX>:.*Binder Error.*cannot be passed as ENUM.*
 
 statement error
 SELECT enum_range_boundary('orange'::rainbow, 1)
 ----
-<REGEX>:.*Binder Error.*This function needs an ENUM.*
+<REGEX>:.*Binder Error.*cannot be implicitly cast to ENUM.*
 
 statement error
 SELECT enum_range_boundary(1, 'orange'::rainbow)
 ----
-<REGEX>:.*Binder Error.*This function needs an ENUM.*
+<REGEX>:.*Binder Error.*cannot be implicitly cast to ENUM.*

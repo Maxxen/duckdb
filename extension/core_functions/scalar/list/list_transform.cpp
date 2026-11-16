@@ -93,11 +93,12 @@ static unique_ptr<BaseStatistics> ListTransformStats(ClientContext &context, Fun
 }
 
 ScalarFunction ListTransformFun::GetFunction() {
-	ScalarFunction fun({}, LogicalType::LIST(LogicalType::ANY), LambdaFunctions::ListTransformFunction,
-	                   ListTransformBind, nullptr, nullptr);
-	fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalType::LAMBDA);
+	// the bind builds the list of what the lambda returns
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                       .AddParameter("lambda", LogicalType::LAMBDA)
+	                       .SetReturnType(ReturnType::ANY()),
+	                   LambdaFunctions::ListTransformFunction, ListTransformBind);
 
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(ListLambdaBindData::Serialize);

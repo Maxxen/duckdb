@@ -586,15 +586,15 @@ static WindowFunction GetLeadLagFunction(const char *name, const ExpressionType 
 	const auto finalize = WindowLeadLagLocalState::Finalizer;
 	const auto evaluate = WindowLeadLagExecutor::GetData;
 
-	WindowFunction func(name, {}, ReturnType::ANY(), type, bind, bounds, sharing, global, local, sink, finalize,
-	                    evaluate);
-	auto &sig = func.GetSignature();
-
-	// Type of the default value is not actually T, as it is force-cast to the return type - not unified.
-	sig.AddParameter("col", LogicalType::TEMPLATE("T"));
-	sig.AddParameter("offset", LogicalType::BIGINT, Value::BIGINT(1));
-	sig.AddParameter("default", LogicalTypeId::ANY, Value(LogicalTypeId::SQLNULL));
-	sig.SetReturnType(LogicalType::TEMPLATE("T"));
+	// The default value is of a template of its own: it is force-cast to the return type, not unified with it
+	auto value_type = LogicalType::TEMPLATE("T");
+	WindowFunction func(name,
+	                    FunctionSignature()
+	                        .AddParameter("col", value_type)
+	                        .AddParameter("offset", LogicalType::BIGINT, Value::BIGINT(1))
+	                        .AddParameter("default", LogicalType::TEMPLATE("D"), Value(LogicalTypeId::SQLNULL))
+	                        .SetReturnType(value_type),
+	                    type, bind, bounds, sharing, global, local, sink, finalize, evaluate);
 
 	func.SetCanStreamCallback(WindowLeadLagExecutor::CanStream);
 	func.SetStreamingStateCallback(WindowLeadLagExecutor::GetStreamingState);
@@ -887,12 +887,13 @@ void WindowFirstValueExecutor::StreamData(ExecutionContext &context, DataChunk &
 }
 
 WindowFunction FirstValueFun::GetFunction() {
-	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_FIRST_VALUE, WindowFirstValueExecutor::Bind,
-	                   WindowFirstValueExecutor::GetBounds, WindowFirstValueExecutor::GetSharing,
-	                   WindowFirstValueExecutor::GetGlobal, WindowFirstValueExecutor::GetLocal,
-	                   WindowValueLocalState::Sinker, WindowValueLocalState::Finalizer,
-	                   WindowFirstValueExecutor::GetData);
-	fun.GetSignature().AddParameter("expr", LogicalTypeId::ANY);
+	// the value is returned as it is passed
+	auto type = LogicalType::TEMPLATE("T");
+	WindowFunction fun(
+	    Name, FunctionSignature().AddParameter("expr", type).SetReturnType(type), ExpressionType::WINDOW_FIRST_VALUE,
+	    WindowFirstValueExecutor::Bind, WindowFirstValueExecutor::GetBounds, WindowFirstValueExecutor::GetSharing,
+	    WindowFirstValueExecutor::GetGlobal, WindowFirstValueExecutor::GetLocal, WindowValueLocalState::Sinker,
+	    WindowValueLocalState::Finalizer, WindowFirstValueExecutor::GetData);
 	fun.SetCanStreamCallback(WindowFirstValueExecutor::CanStream);
 	fun.SetStreamingStateCallback(WindowFirstValueExecutor::GetStreamingState);
 	fun.SetStreamingDataCallback(WindowFirstValueExecutor::StreamData);
@@ -1012,12 +1013,13 @@ void WindowLastValueExecutor::StreamData(ExecutionContext &context, DataChunk &i
 }
 
 WindowFunction LastValueFun::GetFunction() {
-	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_LAST_VALUE, WindowLastValueExecutor::Bind,
-	                   WindowLastValueExecutor::GetBounds, WindowLastValueExecutor::GetSharing,
-	                   WindowLastValueExecutor::GetGlobal, WindowLastValueExecutor::GetLocal,
-	                   WindowValueLocalState::Sinker, WindowValueLocalState::Finalizer,
-	                   WindowLastValueExecutor::GetData);
-	fun.GetSignature().AddParameter("expr", LogicalTypeId::ANY);
+	// the value is returned as it is passed
+	auto type = LogicalType::TEMPLATE("T");
+	WindowFunction fun(
+	    Name, FunctionSignature().AddParameter("expr", type).SetReturnType(type), ExpressionType::WINDOW_LAST_VALUE,
+	    WindowLastValueExecutor::Bind, WindowLastValueExecutor::GetBounds, WindowLastValueExecutor::GetSharing,
+	    WindowLastValueExecutor::GetGlobal, WindowLastValueExecutor::GetLocal, WindowValueLocalState::Sinker,
+	    WindowValueLocalState::Finalizer, WindowLastValueExecutor::GetData);
 	fun.SetCanStreamCallback(WindowLastValueExecutor::CanStream);
 	fun.SetStreamingStateCallback(WindowLastValueExecutor::GetStreamingState);
 	fun.SetStreamingDataCallback(WindowLastValueExecutor::StreamData);
@@ -1192,12 +1194,13 @@ void WindowNthValueStreamingState::StreamData(ExecutionContext &context, DataChu
 }
 
 WindowFunction NthValueFun::GetFunction() {
-	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_NTH_VALUE, WindowNthValueExecutor::Bind,
-	                   WindowNthValueExecutor::GetBounds, WindowNthValueExecutor::GetSharing,
-	                   WindowNthValueExecutor::GetGlobal, WindowNthValueExecutor::GetLocal,
-	                   WindowValueLocalState::Sinker, WindowValueLocalState::Finalizer,
-	                   WindowNthValueExecutor::GetData);
-	fun.GetSignature().AddParameter("expr", LogicalTypeId::ANY).AddParameter("n", LogicalType::BIGINT);
+	// the value is returned as it is passed
+	auto type = LogicalType::TEMPLATE("T");
+	WindowFunction fun(
+	    Name, FunctionSignature().AddParameter("expr", type).AddParameter("n", LogicalType::BIGINT).SetReturnType(type),
+	    ExpressionType::WINDOW_NTH_VALUE, WindowNthValueExecutor::Bind, WindowNthValueExecutor::GetBounds,
+	    WindowNthValueExecutor::GetSharing, WindowNthValueExecutor::GetGlobal, WindowNthValueExecutor::GetLocal,
+	    WindowValueLocalState::Sinker, WindowValueLocalState::Finalizer, WindowNthValueExecutor::GetData);
 	fun.SetCanStreamCallback(WindowNthValueExecutor::CanStream);
 	fun.SetStreamingStateCallback(WindowNthValueExecutor::GetStreamingState);
 	fun.SetStreamingDataCallback(WindowNthValueExecutor::StreamData);
@@ -1733,11 +1736,12 @@ void WindowFillLocalState::Finalizer(ExecutionContext &context, CollectionPtr co
 }
 
 WindowFunction FillFun::GetFunction() {
-	WindowFunction fun(Name, {}, ReturnType::ANY(), ExpressionType::WINDOW_FILL, WindowFillExecutor::Bind,
-	                   WindowFillLocalState::GetBounds, WindowFillExecutor::GetSharing, WindowFillExecutor::GetGlobal,
-	                   WindowFillExecutor::GetLocal, WindowFillLocalState::Sinker, WindowFillLocalState::Finalizer,
-	                   WindowFillExecutor::GetData);
-	fun.GetSignature().AddParameter("expr", LogicalTypeId::ANY);
+	// the value is returned as it is passed
+	auto type = LogicalType::TEMPLATE("T");
+	WindowFunction fun(Name, FunctionSignature().AddParameter("expr", type).SetReturnType(type),
+	                   ExpressionType::WINDOW_FILL, WindowFillExecutor::Bind, WindowFillLocalState::GetBounds,
+	                   WindowFillExecutor::GetSharing, WindowFillExecutor::GetGlobal, WindowFillExecutor::GetLocal,
+	                   WindowFillLocalState::Sinker, WindowFillLocalState::Finalizer, WindowFillExecutor::GetData);
 
 	//! Never ignore nulls (that's the point!)
 	fun.SetCanIgnoreNulls(false);

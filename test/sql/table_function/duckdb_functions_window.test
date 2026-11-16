@@ -9,13 +9,13 @@ order by all;
 ----
 cume_dist	[]	[]	window
 dense_rank	[]	[]	window
-fill	[expr]	[ANY]	window
-first_value	[expr]	[ANY]	window
-lag	[col, offset, default]	[T, BIGINT, ANY]	window
-last_value	[expr]	[ANY]	window
-lead	[col, offset, default]	[T, BIGINT, ANY]	window
-match_recognize	[columns]	[ANY]	window
-nth_value	[expr, n]	[ANY, BIGINT]	window
+fill	[expr]	[T]	window
+first_value	[expr]	[T]	window
+lag	[col, offset, default]	[T, BIGINT, D]	window
+last_value	[expr]	[T]	window
+lead	[col, offset, default]	[T, BIGINT, D]	window
+match_recognize	[columns]	[T]	window
+nth_value	[expr, n]	[T, BIGINT]	window
 ntile	[num_buckets]	[BIGINT]	window
 percent_rank	[]	[]	window
 rank	[]	[]	window

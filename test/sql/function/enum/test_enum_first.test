@@ -13,4 +13,4 @@ red
 statement error
 SELECT enum_first('bla')
 ----
-<REGEX>:.*Binder Error.*This function needs an ENUM.*
+<REGEX>:.*Binder Error.*cannot be passed as ENUM.*

@@ -403,11 +403,15 @@ template <class OP>
 AggregateFunction GetGenericArgMinMaxFunction(const ArgMinMaxNullHandling null_handling) {
 	using STATE = ArgMinMaxSortKeyState<OP::ORDER>;
 	auto bind = GetBindFunction<OP>(null_handling);
-	auto function = AggregateFunction({}, ReturnType::ANY(), AggregateFunction::StateSize<STATE>,
-	                                  AggregateFunction::StateInitialize<STATE, OP>, OP::template Update<STATE>,
-	                                  AggregateFunction::StateCombine<STATE, OP>,
-	                                  AggregateFunction::StateVoidFinalize<STATE, OP>, nullptr, bind);
-	function.GetSignature().AddParameter("arg", LogicalType::ANY).AddParameter("val", LogicalType::ANY);
+	// the argument is returned as it is passed, whatever the value it is selected by
+	auto type = LogicalType::TEMPLATE("T");
+	auto function = AggregateFunction(
+	    FunctionSignature()
+	        .AddParameter("arg", type)
+	        .AddParameter("val", LogicalType::TEMPLATE("BY"))
+	        .SetReturnType(type),
+	    AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>, OP::template Update<STATE>,
+	    AggregateFunction::StateCombine<STATE, OP>, AggregateFunction::StateVoidFinalize<STATE, OP>, nullptr, bind);
 	AggregateFunction::WireStructStateType<STATE>(function);
 	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
 	return function;
@@ -464,19 +468,6 @@ const vector<LogicalType> ArgMaxByTypes() {
 	return types;
 }
 
-template <class OP, class ARG_TYPE>
-void AddVectorArgMinMaxFunctionBy(AggregateFunctionSet &fun, const LogicalType &type,
-                                  const ArgMinMaxNullHandling null_handling) {
-	auto by_types = ArgMaxByTypes();
-	for (const auto &by_type : by_types) {
-#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
-		fun.AddFunction(GetVectorArgMinMaxFunctionBy<OP, ARG_TYPE>(by_type, type, null_handling));
-#else
-		fun.AddFunction(GetVectorArgMinMaxFunctionInternal<OP, string_t, string_t>(by_type, type, null_handling));
-#endif
-	}
-}
-
 template <class OP, class ARG_TYPE, class BY_TYPE>
 AggregateFunction GetArgMinMaxFunctionInternal(const LogicalType &by_type, const LogicalType &type,
                                                const ArgMinMaxNullHandling null_handling) {
@@ -517,18 +508,6 @@ AggregateFunction GetArgMinMaxFunctionBy(const LogicalType &by_type, const Logic
 }
 #endif
 
-template <class OP, class ARG_TYPE>
-void AddArgMinMaxFunctionBy(AggregateFunctionSet &fun, const LogicalType &type, ArgMinMaxNullHandling null_handling) {
-	auto by_types = ArgMaxByTypes();
-	for (const auto &by_type : by_types) {
-#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
-		fun.AddFunction(GetArgMinMaxFunctionBy<OP, ARG_TYPE>(by_type, type, null_handling));
-#else
-		fun.AddFunction(GetArgMinMaxFunctionInternal<OP, string_t, string_t>(by_type, type, null_handling));
-#endif
-	}
-}
-
 template <class OP>
 AggregateFunction GetDecimalArgMinMaxFunction(const LogicalType &by_type, const LogicalType &type,
                                               ArgMinMaxNullHandling null_handling) {
@@ -549,105 +528,81 @@ AggregateFunction GetDecimalArgMinMaxFunction(const LogicalType &by_type, const 
 #endif
 }
 
-template <class OP, ArgMinMaxNullHandling NULL_HANDLING>
-unique_ptr<FunctionData> BindDecimalArgMinMax(BindAggregateFunctionInput &input) {
-	auto &context = input.GetClientContext();
+//! Selects the implementation for the types the function is called with: a specialized one if there is one for
+//! exactly these types, the generic one over sort keys otherwise
+template <class COMPARATOR, OrderType ORDER_TYPE, ArgMinMaxNullHandling NULL_HANDLING>
+unique_ptr<FunctionData> BindArgMinMax(BindAggregateFunctionInput &input) {
+	// we always use LessThan when using sort keys because the ORDER_TYPE takes care of selecting the lowest or highest
+	using GENERIC_VECTOR_OP = VectorArgMinMaxBase<LessThan, ORDER_TYPE, GenericArgMinMaxState<ORDER_TYPE>>;
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
-	auto decimal_type = arguments[0]->GetReturnType();
+	auto arg_type = arguments[0]->GetReturnType();
 	auto by_type = arguments[1]->GetReturnType();
 
-	// To avoid a combinatorial explosion, cast the ordering argument to one from the list
-	auto by_types = ArgMaxByTypes();
-	idx_t best_target = DConstants::INVALID_INDEX;
-	int64_t lowest_cost = NumericLimits<int64_t>::Maximum();
-	for (idx_t i = 0; i < by_types.size(); ++i) {
-		// Before falling back to casting, check for a physical type match for the by_type
-		if (by_types[i].InternalType() == by_type.InternalType()) {
-			lowest_cost = 0;
-			best_target = DConstants::INVALID_INDEX;
+	bool specialized_by = false;
+	for (auto &specialized_type : ArgMaxByTypes()) {
+		specialized_by = specialized_by || specialized_type.id() == by_type.id();
+	}
+	auto implementation = GetGenericArgMinMaxFunction<GENERIC_VECTOR_OP>(NULL_HANDLING);
+#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
+	using OP = ArgMinMaxBase<COMPARATOR>;
+	using VECTOR_OP = VectorArgMinMaxBase<COMPARATOR, ORDER_TYPE>;
+	if (specialized_by) {
+		switch (arg_type.id()) {
+		case LogicalTypeId::INTEGER:
+			implementation = GetArgMinMaxFunctionBy<OP, int32_t>(by_type, arg_type, NULL_HANDLING);
+			break;
+		case LogicalTypeId::BIGINT:
+			implementation = GetArgMinMaxFunctionBy<OP, int64_t>(by_type, arg_type, NULL_HANDLING);
+			break;
+		case LogicalTypeId::DOUBLE:
+			implementation = GetArgMinMaxFunctionBy<OP, double>(by_type, arg_type, NULL_HANDLING);
+			break;
+		case LogicalTypeId::VARCHAR:
+		case LogicalTypeId::BLOB:
+			implementation = GetArgMinMaxFunctionBy<OP, string_t>(by_type, arg_type, NULL_HANDLING);
+			break;
+		case LogicalTypeId::DATE:
+			implementation = GetArgMinMaxFunctionBy<OP, date_t>(by_type, arg_type, NULL_HANDLING);
+			break;
+		case LogicalTypeId::TIMESTAMP:
+		case LogicalTypeId::TIMESTAMP_TZ:
+			implementation = GetArgMinMaxFunctionBy<OP, timestamp_t>(by_type, arg_type, NULL_HANDLING);
+			break;
+		case LogicalTypeId::DECIMAL:
+			implementation = GetDecimalArgMinMaxFunction<OP>(by_type, arg_type, NULL_HANDLING);
+			break;
+		default:
+			implementation = GetVectorArgMinMaxFunctionBy<VECTOR_OP, string_t>(by_type, arg_type, NULL_HANDLING);
 			break;
 		}
-
-		auto cast_cost = CastFunctionSet::ImplicitCastCost(context, by_type, by_types[i]);
-		if (cast_cost < 0) {
-			continue;
-		}
-		if (cast_cost < lowest_cost) {
-			best_target = i;
-		}
 	}
-
-	if (best_target != DConstants::INVALID_INDEX) {
-		by_type = by_types[best_target];
-	}
-
+#endif
 	auto name = function.GetName();
-	function.ReplaceImplementation(GetDecimalArgMinMaxFunction<OP>(by_type, decimal_type, NULL_HANDLING));
+	function.ReplaceImplementation(implementation);
 	function.SetName(std::move(name));
-	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-	function.SetReturnType(decimal_type);
-
-	auto function_data = make_uniq<ArgMinMaxFunctionData>(NULL_HANDLING);
-	return unique_ptr<FunctionData>(std::move(function_data));
-}
-
-template <class OP>
-void AddDecimalArgMinMaxFunctionBy(AggregateFunctionSet &fun, const LogicalType &by_type,
-                                   const ArgMinMaxNullHandling null_handling) {
-	bind_aggregate_function_t bind = BindDecimalArgMinMax<OP, ArgMinMaxNullHandling::IGNORE_ANY_NULL>;
-	switch (null_handling) {
-	case ArgMinMaxNullHandling::IGNORE_ANY_NULL:
-		bind = BindDecimalArgMinMax<OP, ArgMinMaxNullHandling::IGNORE_ANY_NULL>;
-		break;
-	case ArgMinMaxNullHandling::HANDLE_ARG_NULL:
-		bind = BindDecimalArgMinMax<OP, ArgMinMaxNullHandling::HANDLE_ARG_NULL>;
-		break;
-	case ArgMinMaxNullHandling::HANDLE_ANY_NULL:
-		bind = BindDecimalArgMinMax<OP, ArgMinMaxNullHandling::HANDLE_ANY_NULL>;
-		break;
-	}
-	// a decimal is returned as the decimal it is passed as
-	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
-	AggregateFunction function(
-	    FunctionSignature().AddParameter("arg", decimal_type).AddParameter("val", by_type).SetReturnType(decimal_type),
-	    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, bind);
-	fun.AddFunction(function);
-}
-
-template <class OP>
-void AddGenericArgMinMaxFunction(AggregateFunctionSet &fun, const ArgMinMaxNullHandling null_handling) {
-	fun.AddFunction(GetGenericArgMinMaxFunction<OP>(null_handling));
+	// the implementation resolves the types of its arguments and creates the bind data
+	return function.GetCallbacks().GetBindCallback()(input);
 }
 
 template <class COMPARATOR, OrderType ORDER_TYPE>
 void AddArgMinMaxFunctions(AggregateFunctionSet &fun, const ArgMinMaxNullHandling null_handling) {
-	using GENERIC_VECTOR_OP = VectorArgMinMaxBase<LessThan, ORDER_TYPE, GenericArgMinMaxState<ORDER_TYPE>>;
-#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
-	using OP = ArgMinMaxBase<COMPARATOR>;
-	using VECTOR_OP = VectorArgMinMaxBase<COMPARATOR, ORDER_TYPE>;
-#else
-	using OP = GENERIC_VECTOR_OP;
-	using VECTOR_OP = GENERIC_VECTOR_OP;
-#endif
-	AddArgMinMaxFunctionBy<OP, int32_t>(fun, LogicalType::INTEGER, null_handling);
-	AddArgMinMaxFunctionBy<OP, int64_t>(fun, LogicalType::BIGINT, null_handling);
-	AddArgMinMaxFunctionBy<OP, double>(fun, LogicalType::DOUBLE, null_handling);
-	AddArgMinMaxFunctionBy<OP, string_t>(fun, LogicalType::VARCHAR, null_handling);
-	AddArgMinMaxFunctionBy<OP, date_t>(fun, LogicalType::DATE, null_handling);
-	AddArgMinMaxFunctionBy<OP, timestamp_t>(fun, LogicalType::TIMESTAMP, null_handling);
-	AddArgMinMaxFunctionBy<OP, timestamp_t>(fun, LogicalType::TIMESTAMP_TZ, null_handling);
-	AddArgMinMaxFunctionBy<OP, string_t>(fun, LogicalType::BLOB, null_handling);
-
-	auto by_types = ArgMaxByTypes();
-	for (const auto &by_type : by_types) {
-		AddDecimalArgMinMaxFunctionBy<OP>(fun, by_type, null_handling);
+	bind_aggregate_function_t bind = BindArgMinMax<COMPARATOR, ORDER_TYPE, ArgMinMaxNullHandling::IGNORE_ANY_NULL>;
+	switch (null_handling) {
+	case ArgMinMaxNullHandling::IGNORE_ANY_NULL:
+		break;
+	case ArgMinMaxNullHandling::HANDLE_ARG_NULL:
+		bind = BindArgMinMax<COMPARATOR, ORDER_TYPE, ArgMinMaxNullHandling::HANDLE_ARG_NULL>;
+		break;
+	case ArgMinMaxNullHandling::HANDLE_ANY_NULL:
+		bind = BindArgMinMax<COMPARATOR, ORDER_TYPE, ArgMinMaxNullHandling::HANDLE_ANY_NULL>;
+		break;
 	}
-
-	AddVectorArgMinMaxFunctionBy<VECTOR_OP, string_t>(fun, LogicalType::ANY, null_handling);
-
-	// we always use LessThan when using sort keys because the ORDER_TYPE takes care of selecting the lowest or highest
-	AddGenericArgMinMaxFunction<GENERIC_VECTOR_OP>(fun, null_handling);
+	// the function is declared as the generic implementation over sort keys, the bind specializes it
+	using GENERIC_VECTOR_OP = VectorArgMinMaxBase<LessThan, ORDER_TYPE, GenericArgMinMaxState<ORDER_TYPE>>;
+	auto function = GetGenericArgMinMaxFunction<GENERIC_VECTOR_OP>(null_handling);
+	function.SetBindCallback(bind);
+	fun.AddFunction(function);
 }
 
 //------------------------------------------------------------------------------
@@ -894,6 +849,8 @@ unique_ptr<FunctionData> ArgMinMaxNBind(BindAggregateFunctionInput &input) {
 		}
 	}
 	ExpressionBinder::PushCollation(context, arguments[1], arguments[1]->GetReturnType());
+	// the value is replaced by its comparison key, which may be of another type
+	function.GetArguments()[1] = arguments[1]->GetReturnType();
 
 	const auto val_type = arguments[0]->GetReturnType().InternalType();
 	const auto arg_type = arguments[1]->GetReturnType().InternalType();
@@ -912,12 +869,14 @@ unique_ptr<FunctionData> ArgMinMaxNBind(BindAggregateFunctionInput &input) {
 
 template <ArgMinMaxNullHandling NULL_HANDLING, bool NULLS_LAST, class COMPARATOR>
 void AddArgMinMaxNFunction(AggregateFunctionSet &set) {
-	AggregateFunction function({}, LogicalType::LIST(LogicalType::ANY), nullptr, nullptr, nullptr, nullptr, nullptr,
-	                           nullptr, ArgMinMaxNBind<NULL_HANDLING, NULLS_LAST, COMPARATOR>);
-	function.GetSignature()
-	    .AddParameter("arg", LogicalTypeId::ANY)
-	    .AddParameter("val", LogicalTypeId::ANY)
-	    .AddParameter("N", LogicalType::BIGINT);
+	auto type = LogicalType::TEMPLATE("T");
+	AggregateFunction function(FunctionSignature()
+	                               .AddParameter("arg", type)
+	                               .AddParameter("val", LogicalType::TEMPLATE("BY"))
+	                               .AddParameter("N", LogicalType::BIGINT)
+	                               .SetReturnType(LogicalType::LIST(type)),
+	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+	                           ArgMinMaxNBind<NULL_HANDLING, NULLS_LAST, COMPARATOR>);
 	function.SetFallible(); // the update callback rejects NULL and out-of-range n values at runtime
 
 	set.AddFunction(function);

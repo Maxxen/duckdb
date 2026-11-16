@@ -35,7 +35,7 @@ SELECT struct_insert({a: 1, b: 2});
 statement error
 SELECT struct_insert(123, a := 1);
 ----
-<REGEX>:Invalid Input Error.*The first argument to struct_insert must be a STRUCT.*
+<REGEX>:Binder Error.*cannot be implicitly cast to STRUCT.*
 
 statement error
 SELECT struct_insert({a: 1, b: 2}, a := 2);
@@ -81,7 +81,7 @@ EXECUTE q({'x': 'y'}, [1, 2]);
 statement error
 EXECUTE q(1, 2);
 ----
-The first argument to struct_insert must be a STRUCT
+cannot be implicitly cast to STRUCT
 
 statement ok
 PREPARE q2 AS SELECT struct_insert({'a': 1}, b := $1) r;

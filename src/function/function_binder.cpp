@@ -188,8 +188,18 @@ static bool InferTemplateType(optional_ptr<ClientContext> context, const Logical
 			return false;
 		}
 		// the arguments unify by their own types, the type they unify to is constrained when it is substituted
-		return InferTemplateType(context, LogicalType::TEMPLATE(TemplateType::GetName(source)), target, bindings,
-		                         failure);
+		if (!InferTemplateType(context, LogicalType::TEMPLATE(TemplateType::GetName(source)), target, bindings,
+		                       failure)) {
+			return false;
+		}
+		// arguments of the kind can still unify to a type that is not of it, e.g. two enums to VARCHAR
+		auto &inferred_types = bindings[TemplateType::GetName(source)];
+		if (!ConstrainType(TemplateType::GetConstraint(source), LogicalType::NormalizeType(inferred_types.back()))) {
+			failure.template_name = TemplateType::GetName(source);
+			failure.inferred_types = inferred_types;
+			return false;
+		}
+		return true;
 	}
 
 	// If the source is a template type, we bind it, or try to unify its existing binding with the target type.
@@ -1003,33 +1013,6 @@ unique_ptr<BoundPragmaInfo> FunctionBinder::BindPragmaFunction(
 	return make_uniq<BoundPragmaInfo>(*definition, std::move(parameters), std::move(named_parameters));
 }
 
-static bool TypeRequiresPrepare(const LogicalType &type) {
-	if (type.id() == LogicalTypeId::ANY) {
-		return true;
-	}
-	if (type.id() == LogicalTypeId::LIST) {
-		return TypeRequiresPrepare(ListType::GetChildType(type));
-	}
-	return false;
-}
-
-static LogicalType PrepareTypeForCastRecursive(const LogicalType &type) {
-	if (type.id() == LogicalTypeId::ANY) {
-		return AnyType::GetTargetType(type);
-	}
-	if (type.id() == LogicalTypeId::LIST) {
-		return LogicalType::LIST(PrepareTypeForCastRecursive(ListType::GetChildType(type)));
-	}
-	return type;
-}
-
-static void PrepareTypeForCast(LogicalType &type) {
-	if (!TypeRequiresPrepare(type)) {
-		return;
-	}
-	type = PrepareTypeForCastRecursive(type);
-}
-
 //! Whether the type has no concrete type information (e.g. DECIMAL without width / scale) - ANY, UNKNOWN and INVALID
 //! are excluded, as casts to these have special meaning (e.g. for prepared statement parameters)
 static bool IsIncompleteCastTarget(const LogicalType &type) {
@@ -1044,10 +1027,6 @@ static bool IsIncompleteCastTarget(const LogicalType &type) {
 
 void FunctionBinder::CastToFunctionArguments(const Identifier &function_name, vector<LogicalType> &argument_types,
                                              vector<unique_ptr<Expression>> &children) {
-	for (auto &arg : argument_types) {
-		PrepareTypeForCast(arg);
-	}
-
 	// Varargs should be expanded by this point
 	// If not, the function has somehow added more argument expressions during binding, which is not allowed.
 	// There is one exception, count(*) which can be invoked internally with fewer arguments than the function
@@ -1480,7 +1459,6 @@ static void VerifyBindArgumentTypes(const BoundScalarFunction &bound_function,
 			continue;
 		}
 		auto target_type = argument_types[i];
-		PrepareTypeForCast(target_type);
 		if (target_type.id() == LogicalTypeId::UNKNOWN || target_type.id() == LogicalTypeId::INVALID) {
 			continue;
 		}
@@ -1514,7 +1492,6 @@ static vector<LogicalType> CaptureLogicalArguments(const BoundSimpleFunction &fu
 	result.reserve(arguments.size());
 	for (idx_t argument_index = 0; argument_index < arguments.size(); argument_index++) {
 		auto target_type = function.GetArguments()[argument_index];
-		PrepareTypeForCast(target_type);
 		result.push_back(target_type.IsComplete() ? target_type : arguments[argument_index]->GetReturnType());
 	}
 	return result;
@@ -1817,7 +1794,8 @@ FunctionBinder::ResolveWindowFunction(const FunctionBinding &binding, vector<uni
 	}
 
 	for (idx_t i = 0; i < argument_types.size() && i < bound_function.GetArguments().size(); i++) {
-		if (!argument_types[i].IsComplete() && bound_function.GetArguments()[i].IsComplete()) {
+		// an argument the bind callback gave another type is called with that type
+		if (argument_types[i] != bound_function.GetArguments()[i] && bound_function.GetArguments()[i].IsComplete()) {
 			logical_arguments[i] = bound_function.GetArguments()[i];
 		}
 	}

@@ -677,9 +677,14 @@ static unique_ptr<SelectNode> PlanPatternWindow(Binder &binder, ClientContext &c
                                                 TableIndex rows_index, MatchRecognizeWindowInputs inputs,
                                                 GeneratedNames &names, const string &spans_column,
                                                 const string &state_column, bool unmatched) {
-	auto bound_window = make_uniq<BoundWindowExpression>(
-	    WindowMatchRecognizeExecutor::ResultType(), nullptr,
-	    make_uniq<BoundWindowFunction>(MatchRecognizeFun::GetFunction()), std::move(inputs.match_data));
+	// the function is bound to the columns the conditions read
+	auto window_function = make_uniq<BoundWindowFunction>(MatchRecognizeFun::GetFunction());
+	window_function->GetArguments().clear();
+	for (auto &child : inputs.children) {
+		window_function->GetArguments().push_back(child->GetReturnType());
+	}
+	auto bound_window = make_uniq<BoundWindowExpression>(WindowMatchRecognizeExecutor::ResultType(), nullptr,
+	                                                     std::move(window_function), std::move(inputs.match_data));
 	bound_window->GetChildrenMutable() = std::move(inputs.children);
 	bound_window->WindowStartMutable() = WindowBoundary::UNBOUNDED_PRECEDING;
 	bound_window->WindowEndMutable() = WindowBoundary::UNBOUNDED_FOLLOWING;

@@ -35,7 +35,7 @@ SELECT struct_update({a: 1, b: 2});
 statement error
 SELECT struct_update(123, a := 1);
 ----
-<REGEX>:Invalid Input Error.*The first argument to struct_update must be a STRUCT.*
+<REGEX>:Binder Error.*cannot be implicitly cast to STRUCT.*
 
 statement error
 SELECT struct_update({a: 1, b: 2}, a := 2, a := 3);

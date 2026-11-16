@@ -23,8 +23,12 @@ void HivePartitionComponentFunction(DataChunk &args, ExpressionState &state, Vec
 } // namespace
 
 ScalarFunction HivePartitionComponentFun::GetFunction() {
-	ScalarFunction component(HivePartitionComponentFun::Name, {}, LogicalType::VARCHAR, HivePartitionComponentFunction);
-	component.GetSignature().AddParameter("name", LogicalType::VARCHAR).AddParameter("value", LogicalType::ANY);
+	ScalarFunction component(HivePartitionComponentFun::Name,
+	                         FunctionSignature()
+	                             .AddParameter("name", LogicalType::VARCHAR)
+	                             .AddParameter("value", LogicalType::TEMPLATE("T"))
+	                             .SetReturnType(LogicalType::VARCHAR),
+	                         HivePartitionComponentFunction);
 	// a NULL partition value has a directory of its own
 	component.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return component;

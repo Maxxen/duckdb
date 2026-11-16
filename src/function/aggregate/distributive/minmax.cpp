@@ -377,14 +377,12 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 		// to make sure the result's correctness.
 		vector<LogicalType> types {arguments[0]->GetReturnType(), collated_arg->GetReturnType()};
 		function.ReplaceImplementation(*GetCollatedMinMaxFunction(context, function.GetName(), types));
-		function.SetSingleValueIdentity(true);
 
-		// Bind function like arg_min/arg_max.
+		// Bind function like arg_min/arg_max: its bind selects the implementation for these types.
 		arguments.push_back(std::move(collated_arg));
-		function.GetArguments()[0] = arguments[0]->GetReturnType();
-		function.GetArguments()[1] = arguments[1]->GetReturnType();
-		function.SetReturnType(arguments[0]->GetReturnType());
-		return make_uniq<ArgMinMaxFunctionData>();
+		auto bind_data = function.GetCallbacks().GetBindCallback()(input);
+		function.SetSingleValueIdentity(true);
+		return bind_data;
 	}
 
 	if (input_type.id() == LogicalTypeId::UNKNOWN) {
@@ -426,9 +424,9 @@ static unique_ptr<FunctionExpression> MinMaxUnbind(AggregateFunctionUnbindInput 
 
 template <class OP, class OP_STRING, class OP_VECTOR>
 AggregateFunction GetMinMaxOperator(const string &name) {
-	AggregateFunction fun(Identifier(name), {}, ReturnType::ANY(), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                      BindMinMax<OP, OP_STRING, OP_VECTOR>);
-	fun.GetSignature().AddParameter("arg", LogicalTypeId::ANY);
+	auto type = LogicalType::TEMPLATE("T");
+	AggregateFunction fun(Identifier(name), FunctionSignature().AddParameter("arg", type).SetReturnType(type), nullptr,
+	                      nullptr, nullptr, nullptr, nullptr, nullptr, BindMinMax<OP, OP_STRING, OP_VECTOR>);
 	fun.SetUnbindCallback(MinMaxUnbind);
 	return fun;
 }
@@ -596,9 +594,13 @@ unique_ptr<FunctionData> MinMaxNBind(BindAggregateFunctionInput &input) {
 
 template <class COMPARATOR>
 AggregateFunction GetMinMaxNFunction() {
-	AggregateFunction fun({}, LogicalType::LIST(LogicalType::ANY), nullptr, nullptr, nullptr, nullptr, nullptr,
-	                      FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, MinMaxNBind<COMPARATOR>, nullptr);
-	fun.GetSignature().AddParameter("arg", LogicalTypeId::ANY).AddParameter("n", LogicalType::BIGINT);
+	auto type = LogicalType::TEMPLATE("T");
+	AggregateFunction fun(FunctionSignature()
+	                          .AddParameter("arg", type)
+	                          .AddParameter("n", LogicalType::BIGINT)
+	                          .SetReturnType(LogicalType::LIST(type)),
+	                      nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	                      nullptr, MinMaxNBind<COMPARATOR>, nullptr);
 	fun.SetUnbindCallback(MinMaxUnbind);
 	fun.SetFallible(); // the update callback rejects NULL and out-of-range n values at runtime
 	return fun;

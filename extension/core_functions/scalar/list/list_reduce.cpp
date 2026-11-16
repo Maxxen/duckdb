@@ -236,7 +236,7 @@ unique_ptr<FunctionData> ListReduceBind(BindScalarFunctionInput &input) {
 		auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
 		auto &lambda_return_type = bound_lambda_expr.LambdaExpr()->GetReturnType();
 		accumulator_type = ResolveReduceAccumulatorType(context, initial_value_type, lambda_return_type);
-		arguments[2] = BoundCastExpression::AddCastToType(context, std::move(arguments[2]), accumulator_type);
+		input.CastArgument(2, accumulator_type);
 	} else {
 		auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
 		auto list_child_type = LambdaFunctions::DetermineListChildType(arguments[0]->GetReturnType());
@@ -332,10 +332,12 @@ void LambdaFunctions::ListReduceFunction(DataChunk &args, ExpressionState &state
 }
 
 ScalarFunctionSet ListReduceFun::GetFunctions() {
-	ScalarFunction fun({}, ReturnType::ANY(), LambdaFunctions::ListReduceFunction, ListReduceBind, nullptr, nullptr);
-	fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::ANY))
-	    .AddParameter("lambda", LogicalType::LAMBDA);
+	// the bind determines what the lambda reduces the list to
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                       .AddParameter("lambda", LogicalType::LAMBDA)
+	                       .SetReturnType(ReturnType::ANY()),
+	                   LambdaFunctions::ListReduceFunction, ListReduceBind);
 
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(ListLambdaBindData::Serialize);
@@ -345,7 +347,8 @@ ScalarFunctionSet ListReduceFun::GetFunctions() {
 
 	ScalarFunctionSet set;
 	set.AddFunction(fun);
-	fun.GetSignature().AddParameter("initial_value", LogicalType::ANY);
+	// the initial value is of a template of its own: the bind casts it to what the lambda returns
+	fun.GetSignature().AddParameter("initial_value", LogicalType::TEMPLATE("INITIAL"));
 	set.AddFunction(fun);
 	return set;
 }
