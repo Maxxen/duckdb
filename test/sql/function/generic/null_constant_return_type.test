@@ -63,11 +63,11 @@ SELECT typeof(struct_extract(NULL::STRUCT(a DATE), 'a'))
 ----
 DATE
 
-# functions that only resolve their return type in the bind callback still fold to an untyped NULL
+# the member a constant tag extracts is known without binding the function
 query I
 SELECT typeof(union_extract(NULL::UNION(a DATE, b INT), 'a'))
 ----
-"NULL"
+DATE
 
 # constant_or_null has the type of its leading constant, also when a typed NULL argument folds it
 query IIIII

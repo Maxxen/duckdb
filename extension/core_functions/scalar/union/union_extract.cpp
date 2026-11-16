@@ -42,21 +42,20 @@ void UnionExtractFunction(DataChunk &args, ExpressionState &state, Vector &resul
 	result.Verify();
 }
 
-//! Validates the union argument - the extracted member and the return type are resolved in the bind
-void UnionExtractResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	D_ASSERT(bound_function.GetArguments().size() == 2);
+//! The type of the member that a constant tag extracts
+LogicalType UnionExtractReturnType(const ResolveReturnTypeInput &input) {
 	auto &union_type = input.GetArgumentType(0);
-	if (union_type.id() == LogicalTypeId::UNKNOWN) {
-		throw ParameterNotResolvedException();
+	auto tag = input.TryGetConstant(1);
+	if (union_type.id() == LogicalTypeId::UNION && tag && !tag->IsNull()) {
+		auto key = Identifier(tag->ToString());
+		for (idx_t i = 0; i < UnionType::GetMemberCount(union_type); i++) {
+			if (UnionType::GetMemberName(union_type, i) == key) {
+				return UnionType::GetMemberType(union_type, i);
+			}
+		}
 	}
-	if (union_type.id() != LogicalTypeId::UNION) {
-		throw BinderException("union_extract can only take a union parameter");
-	}
-	if (UnionType::GetMemberCount(union_type) == 0) {
-		throw InternalException("Can't extract something from an empty union");
-	}
-	bound_function.GetArguments()[0] = union_type;
+	// the bind reports a tag that is not a constant, or not a member of the union
+	return LogicalType::ANY;
 }
 
 unique_ptr<FunctionData> UnionExtractBind(BindScalarFunctionInput &input) {
@@ -106,12 +105,11 @@ unique_ptr<FunctionData> UnionExtractBind(BindScalarFunctionInput &input) {
 } // namespace
 
 ScalarFunction UnionExtractFun::GetFunction() {
-	// the arguments and return types are actually set in the binder function
-	ScalarFunction fun({}, ReturnType::ANY(), UnionExtractFunction, UnionExtractBind, nullptr, nullptr);
-	fun.GetSignature()
-	    .AddParameter("union", LogicalType::TEMPLATE("T", LogicalTypeId::UNION))
-	    .AddParameter("tag", LogicalType::VARCHAR);
-	fun.SetResolveTypesCallback(UnionExtractResolveTypes);
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("union", LogicalType::TEMPLATE("T", LogicalTypeId::UNION))
+	                       .AddParameter("tag", LogicalType::VARCHAR)
+	                       .SetReturnType(ReturnType::ANY(UnionExtractReturnType)),
+	                   UnionExtractFunction, UnionExtractBind);
 	return fun;
 }
 

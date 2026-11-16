@@ -46,12 +46,13 @@ SELECT list_filter(NULL, lambda x: x > 1), list_transform(NULL, lambda x: x + 1)
 ----
 NULL	NULL
 
-# argument types are verified before they are cast
-statement error
-SELECT current_schemas('true');
+# a string literal is cast to the boolean parameter
+query I
+SELECT current_schemas('false');
 ----
-current_schemas requires a boolean input
+[]
 
+# argument types are verified before they are cast
 statement error
 SELECT struct_extract(row(1, 2), 'a');
 ----

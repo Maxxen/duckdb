@@ -62,15 +62,10 @@ static idx_t ResolveStructEntryByIndex(const LogicalType &struct_type, int64_t i
 	return NumericCast<idx_t>(index - 1);
 }
 
-//! Validates the struct argument and resolves the extracted entry type when the key is a constant
+//! Validates the struct argument, and resolves the type of the entry that a constant key extracts
 template <StructExtractKey KEY>
-static void StructExtractResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	D_ASSERT(bound_function.GetArguments().size() == 2);
+static LogicalType StructExtractReturnType(const ResolveReturnTypeInput &input) {
 	auto &child_type = input.GetArgumentType(0);
-	if (child_type.id() == LogicalTypeId::UNKNOWN) {
-		throw ParameterNotResolvedException();
-	}
 	if (!StructType::IsStruct(child_type)) {
 		throw BinderException("struct_extract can only be used on a STRUCT, not on %s", child_type.ToString());
 	}
@@ -85,12 +80,11 @@ static void StructExtractResolveTypes(ResolveScalarFunctionTypesInput &input) {
 		throw BinderException(
 		    "struct_extract with an integer key can only be used on unnamed structs, use a string key instead");
 	}
-	bound_function.GetArguments()[0] = child_type;
-
-	// resolve the return type here, so that it is also known (and the key is validated) for NULL structs
+	// the type is resolved here, so that it is also known (and the key is validated) for NULL structs
 	auto key_val = input.TryGetConstant(1);
 	if (!key_val || key_val->IsNull()) {
-		return;
+		// the bind reports a key that is not a constant
+		return LogicalType::ANY;
 	}
 	LogicalType entry_type;
 	if (KEY == StructExtractKey::NAME) {
@@ -98,7 +92,7 @@ static void StructExtractResolveTypes(ResolveScalarFunctionTypesInput &input) {
 	} else {
 		ResolveStructEntryByIndex(child_type, key_val->GetValue<int64_t>(), entry_type);
 	}
-	bound_function.SetReturnType(std::move(entry_type));
+	return entry_type;
 }
 
 static unique_ptr<FunctionData> StructExtractBind(BindScalarFunctionInput &input) {
@@ -137,32 +131,32 @@ unique_ptr<FunctionData> StructExtractAtFun::GetBindData(idx_t index) {
 }
 
 ScalarFunction GetKeyExtractFunction() {
-	ScalarFunction fun("struct_extract", {}, ReturnType::ANY(), StructExtractFunction, StructExtractBind,
-	                   PropagateStructExtractStats);
-	fun.GetSignature()
-	    .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
-	    .AddParameter("entry", LogicalType::VARCHAR);
-	fun.SetResolveTypesCallback(StructExtractResolveTypes<StructExtractKey::NAME>);
+	ScalarFunction fun("struct_extract",
+	                   FunctionSignature()
+	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
+	                       .AddParameter("entry", LogicalType::VARCHAR)
+	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::NAME>)),
+	                   StructExtractFunction, StructExtractBind, PropagateStructExtractStats);
 	return fun;
 }
 
 ScalarFunction GetIndexExtractFunction() {
-	ScalarFunction fun("struct_extract", {}, ReturnType::ANY(), StructExtractFunction, StructExtractBindIndex,
-	                   PropagateStructExtractStats);
-	fun.GetSignature()
-	    .AddParameter("tuple", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
-	    .AddParameter("index", LogicalType::BIGINT);
-	fun.SetResolveTypesCallback(StructExtractResolveTypes<StructExtractKey::INDEX>);
+	ScalarFunction fun("struct_extract",
+	                   FunctionSignature()
+	                       .AddParameter("tuple", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
+	                       .AddParameter("index", LogicalType::BIGINT)
+	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::INDEX>)),
+	                   StructExtractFunction, StructExtractBindIndex, PropagateStructExtractStats);
 	return fun;
 }
 
 ScalarFunction GetExtractAtFunction() {
-	ScalarFunction fun("struct_extract_at", {}, ReturnType::ANY(), StructExtractFunction, StructExtractBindIndex,
-	                   PropagateStructExtractStats);
-	fun.GetSignature()
-	    .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
-	    .AddParameter("index", LogicalType::BIGINT);
-	fun.SetResolveTypesCallback(StructExtractResolveTypes<StructExtractKey::INDEX_AT>);
+	ScalarFunction fun("struct_extract_at",
+	                   FunctionSignature()
+	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
+	                       .AddParameter("index", LogicalType::BIGINT)
+	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::INDEX_AT>)),
+	                   StructExtractFunction, StructExtractBindIndex, PropagateStructExtractStats);
 	return fun;
 }
 

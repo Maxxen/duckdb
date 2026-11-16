@@ -47,25 +47,21 @@ public:
 	}
 };
 
-void WriteLogResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	if (input.GetArgumentCount() == 0) {
-		throw BinderException("write_log takes at least one argument");
+LogicalType WriteLogReturnType(const ResolveReturnTypeInput &input) {
+	for (idx_t i = 1; i < input.GetArgumentCount(); i++) {
+		if (input.GetArgumentName(i) == "return_value") {
+			return input.GetArgumentType(i);
+		}
 	}
-	if (input.GetArgumentType(0) != LogicalType::VARCHAR) {
-		throw InvalidTypeException("write_log first argument must be a VARCHAR");
-	}
+	return LogicalType::VARCHAR;
 }
 
 unique_ptr<FunctionData> WriteLogBind(BindScalarFunctionInput &input) {
 	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 
 	// Used to replace the actual log call with a nop: useful for benchmarking
 	auto result = make_uniq<WriteLogBindData>();
-
-	// Default return type
-	bound_function.SetReturnType(LogicalType::VARCHAR);
 
 	for (idx_t i = 1; i < arguments.size(); i++) {
 		auto &arg = arguments[i];
@@ -96,7 +92,6 @@ unique_ptr<FunctionData> WriteLogBind(BindScalarFunctionInput &input) {
 		} else if (name == "return_value") {
 			result->return_type = arg->GetReturnType();
 			result->output_col = i;
-			bound_function.SetReturnType(result->return_type);
 		} else {
 			throw BinderException(StringUtil::Format("write_log: Unknown argument %s", name));
 		}
@@ -173,9 +168,8 @@ ScalarFunctionSet WriteLogFun::GetFunctions() {
 	ScalarFunction fun(FunctionSignature()
 	                       .AddParameter("string", LogicalType::VARCHAR)
 	                       .AddKwargs("kwargs", LogicalType::ANY)
-	                       .SetReturnType(ReturnType::ANY()),
+	                       .SetReturnType(ReturnType::ANY(WriteLogReturnType)),
 	                   WriteLogFunction, WriteLogBind, nullptr, nullptr, FunctionStability::VOLATILE);
-	fun.SetResolveTypesCallback(WriteLogResolveTypes);
 	fun.GetProperties().SetRequiresExpressionNames(true);
 	// an unknown scope is only detected while writing
 	fun.SetFallible();
