@@ -1014,15 +1014,15 @@ TableFunctionSet MultiFileReader::CreateFunctionSet(TableFunction table_function
 	// the list variant takes files of any type: a file is either a path (VARCHAR) or a STRUCT/VARIANT holding the
 	// path together with the options to open the file with
 	auto list_function = table_function;
+	list_function.GetSignature().SetParameterType(0, LogicalType::LIST(LogicalType::TEMPLATE("T")));
 	auto &list_parameter = list_function.GetSignature().GetParameter(0);
-	list_parameter.SetType(LogicalType::LIST(LogicalType::TEMPLATE("T")));
 	if (list_parameter.GetName() == "path") {
 		list_parameter.SetName("paths");
 	}
 	function_set.AddFunction(std::move(list_function));
 	// a single file can also be passed as a VARIANT - without this overload it would implicitly cast to VARCHAR
 	// and the stringified variant would be read as a path
-	table_function.GetSignature().GetParameter(0).SetType(LogicalType::VARIANT());
+	table_function.GetSignature().SetParameterType(0, LogicalType::VARIANT());
 	function_set.AddFunction(std::move(table_function));
 	return function_set;
 }

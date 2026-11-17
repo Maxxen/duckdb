@@ -8,6 +8,8 @@
 #include "duckdb/function/scalar/string_functions.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
+#include "duckdb/common/type_visitor.hpp"
+#include "duckdb/common/enum_util.hpp"
 
 namespace duckdb {
 
@@ -212,6 +214,98 @@ auto FunctionSignature::ExtendTypedKwargs(const std::function<void(TypedKwargs &
 	}
 	configure(*typed_kwargs);
 	return *this;
+}
+
+string TypeVariable::ToString() const {
+	switch (kind) {
+	case Kind::INTEGER:
+		return name.GetIdentifierName() + ": INTEGER";
+	case Kind::STRING:
+		return name.GetIdentifierName() + ": STRING";
+	default:
+		return name.GetIdentifierName();
+	}
+}
+
+bool TypeVariable::operator==(const TypeVariable &other) const {
+	return name == other.name && kind == other.kind;
+}
+
+bool TypeVariable::operator!=(const TypeVariable &other) const {
+	return !(*this == other);
+}
+
+string TypeConstraint::ToString() const {
+	return variable.GetIdentifierName() + " IS " + EnumUtil::ToString(kind);
+}
+
+bool TypeConstraint::operator==(const TypeConstraint &other) const {
+	return variable == other.variable && kind == other.kind;
+}
+
+bool TypeConstraint::operator!=(const TypeConstraint &other) const {
+	return !(*this == other);
+}
+
+optional_ptr<const TypeVariable> FunctionSignature::FindVariable(const Identifier &name) const {
+	for (auto &variable : variables) {
+		if (variable.GetName() == name) {
+			return &variable;
+		}
+	}
+	return nullptr;
+}
+
+LogicalTypeId FunctionSignature::GetConstraint(const Identifier &variable) const {
+	for (auto &constraint : constraints) {
+		if (constraint.GetVariable() == variable) {
+			return constraint.GetKind();
+		}
+	}
+	return LogicalTypeId::INVALID;
+}
+
+FunctionSignature &FunctionSignature::AddVariable(Identifier name, TypeVariable::Kind kind) {
+	auto variable = FindVariable(name);
+	if (variable && variable->GetKind() != kind) {
+		throw InternalException("Variable %s is declared twice, as different kinds of variable",
+		                        name.GetIdentifierName());
+	}
+	if (!variable) {
+		variables.emplace_back(std::move(name), kind);
+	}
+	return *this;
+}
+
+FunctionSignature &FunctionSignature::AddConstraint(Identifier variable, LogicalTypeId kind) {
+	auto declared = FindVariable(variable);
+	if (!declared || declared->IsValue()) {
+		throw InternalException("Constraint on %s, which is not a type variable of the signature",
+		                        variable.GetIdentifierName());
+	}
+	auto constraint = GetConstraint(variable);
+	if (constraint == kind) {
+		return *this;
+	}
+	if (constraint != LogicalTypeId::INVALID) {
+		throw InternalException("Type variable %s is constrained to %s and to %s", variable.GetIdentifierName(),
+		                        EnumUtil::ToString(constraint), EnumUtil::ToString(kind));
+	}
+	constraints.emplace_back(std::move(variable), kind);
+	return *this;
+}
+
+void FunctionSignature::DeclareTemplates(const LogicalType &type) {
+	TypeVisitor::Contains(type, [&](const LogicalType &child) {
+		if (child.id() == LogicalTypeId::TEMPLATE) {
+			Identifier name(TemplateType::GetName(child));
+			AddVariable(name);
+			if (TemplateType::HasConstraint(child)) {
+				AddConstraint(std::move(name), TemplateType::GetConstraint(child));
+			}
+		}
+		return false;
+	});
 }
 
 string FunctionSignature::ToString() const {

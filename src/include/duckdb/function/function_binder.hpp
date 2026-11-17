@@ -412,6 +412,13 @@ public:
 	                                                    const BaseFunctionSet &functions,
 	                                                    const FunctionCallArguments &call, bool explicit_casts = false);
 
+	//! The type a type name of a signature stands for: a type variable of the signature, a type of the catalog, or
+	//! LAMBDA / TABLE. Without a ClientContext only the built-in types are found
+	DUCKDB_API static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
+	                                           const FunctionSignature &signature);
+	//! The same, for a name that is not declared by a signature
+	DUCKDB_API static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name);
+
 	//! How a call binds to a function it is known to call - the arguments are cast explicitly. Throws if the call does
 	//! not fit the signature of the function
 	DUCKDB_API static FunctionBinding MatchFunction(optional_ptr<ClientContext> context,

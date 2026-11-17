@@ -31,6 +31,8 @@ public:
 	DUCKDB_API static unique_ptr<TypeExpression> FromLogicalType(const LogicalType &type);
 	//! Whether the type ID has a SQL spelling
 	DUCKDB_API static bool IsSQLType(LogicalTypeId id);
+	//! The name a built-in type is spelled with, or nullptr for an ID that has none
+	DUCKDB_API static const char *GetBuiltinTypeName(LogicalTypeId id);
 	//! Whether the complete type can be written as a SQL type expression
 	DUCKDB_API static bool CanRepresent(const LogicalType &type);
 

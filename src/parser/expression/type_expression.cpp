@@ -261,6 +261,10 @@ const char *BuiltinTypeName(LogicalTypeId id) {
 
 } // namespace
 
+const char *TypeExpression::GetBuiltinTypeName(LogicalTypeId id) {
+	return BuiltinTypeName(id);
+}
+
 unique_ptr<TypeExpression> TypeExpression::FromLogicalType(const LogicalType &type) {
 	if (type.IsUnbound()) {
 		auto &expr = UnboundType::GetTypeExpression(type);

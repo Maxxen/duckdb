@@ -425,7 +425,7 @@ AggregateFunction GetFirstFunction(const LogicalType &type) {
 	if (type.id() == LogicalTypeId::DECIMAL) {
 		type.Verify();
 		AggregateFunction function = GetDecimalFirstFunction<LAST, SKIP_NULLS>(type);
-		function.GetSignature().GetParameter(0).SetType(type);
+		function.GetSignature().SetParameterType(0, type);
 		function.SetReturnType(type);
 		return function;
 	}

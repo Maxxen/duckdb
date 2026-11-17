@@ -18,6 +18,7 @@
 #include "duckdb/common/optional.hpp"
 #include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/parser/qualified_name.hpp"
+#include "duckdb/function/type_name.hpp"
 
 namespace duckdb {
 class CatalogEntry;
@@ -127,16 +128,54 @@ struct FunctionParameters {
 	optional_ptr<const PragmaFunction> function;
 };
 
+//! A variable a signature declares, written foo<T, N: INTEGER>(x T[N]). A type variable stands for a type the
+//! arguments of a call determine, an integer or string variable for a value, e.g. the size of an array
 class TypeVariable {
 public:
-	TypeVariable(Identifier name_p) : name(std::move(name_p)) {
+	enum class Kind : uint8_t { TYPE = 0, INTEGER, STRING };
+
+	explicit TypeVariable(Identifier name_p, Kind kind_p = Kind::TYPE) : name(std::move(name_p)), kind(kind_p) {
 	}
 	auto GetName() const -> const Identifier & {
 		return name;
 	}
+	auto GetKind() const -> Kind {
+		return kind;
+	}
+	//! Whether the variable stands for a value rather than a type
+	auto IsValue() const -> bool {
+		return kind != Kind::TYPE;
+	}
+
+	DUCKDB_API string ToString() const;
+	DUCKDB_API bool operator==(const TypeVariable &other) const;
+	DUCKDB_API bool operator!=(const TypeVariable &other) const;
 
 private:
 	Identifier name;
+	Kind kind;
+};
+
+//! A constraint a signature declares on a type variable, written WHERE T IS STRUCT: the variable only stands for
+//! types of that kind, e.g. DECIMAL for a decimal of any width and scale
+class TypeConstraint {
+public:
+	TypeConstraint(Identifier variable_p, LogicalTypeId kind_p) : variable(std::move(variable_p)), kind(kind_p) {
+	}
+	auto GetVariable() const -> const Identifier & {
+		return variable;
+	}
+	auto GetKind() const -> LogicalTypeId {
+		return kind;
+	}
+
+	DUCKDB_API string ToString() const;
+	DUCKDB_API bool operator==(const TypeConstraint &other) const;
+	DUCKDB_API bool operator!=(const TypeConstraint &other) const;
+
+private:
+	Identifier variable;
+	LogicalTypeId kind;
 };
 
 //! How a parameter receives its arguments, mirroring Python's parameter kinds, in the order a signature declares them
@@ -195,9 +234,6 @@ public:
 	auto GetType() const -> const LogicalType & {
 		return type;
 	}
-	auto SetType(LogicalType type_p) -> void {
-		type = std::move(type_p);
-	}
 
 	auto GetDefaultValue() const -> optional_ptr<Value> {
 		return default_value.get();
@@ -226,6 +262,8 @@ public:
 	}
 
 private:
+	friend class FunctionSignature;
+
 	Identifier name;
 	LogicalType type;
 	shared_ptr<Value> default_value;
@@ -370,13 +408,18 @@ class FunctionSignature {
 public:
 	FunctionSignature() = default;
 
-	FunctionSignature(vector<FunctionParameter> parameters, ReturnType return_type)
-	    : parameters(std::move(parameters)), return_type(std::move(return_type)) {
+	FunctionSignature(vector<FunctionParameter> parameters_p, ReturnType return_type_p)
+	    : parameters(std::move(parameters_p)) {
+		for (auto &param : parameters) {
+			DeclareTemplates(param.GetType());
+		}
+		SetReturnType(std::move(return_type_p));
 	}
-	FunctionSignature(vector<LogicalType> arguments, ReturnType return_type) : return_type(std::move(return_type)) {
+	FunctionSignature(vector<LogicalType> arguments, ReturnType return_type_p) {
 		for (auto &arg : arguments) {
 			AddParameter(std::move(arg));
 		}
+		SetReturnType(std::move(return_type_p));
 	}
 
 	string ToString() const;
@@ -413,8 +456,36 @@ public:
 	}
 	auto SetReturnType(ReturnType return_type_p) -> FunctionSignature & {
 		return_type = std::move(return_type_p);
+		if (return_type.IsType()) {
+			DeclareTemplates(return_type.GetType());
+		}
 		return *this;
 	}
+
+	//! Changes the type a parameter declares
+	auto SetParameterType(idx_t index, LogicalType type) -> void {
+		DeclareTemplates(type);
+		parameters[index].type = std::move(type);
+	}
+
+	//! The variables the signature declares
+	auto GetVariables() const -> const vector<TypeVariable> & {
+		return variables;
+	}
+	//! The constraints on its type variables
+	auto GetConstraints() const -> const vector<TypeConstraint> & {
+		return constraints;
+	}
+	//! The variable of that name, or nullptr if the signature declares none
+	DUCKDB_API auto FindVariable(const Identifier &name) const -> optional_ptr<const TypeVariable>;
+	//! The kind of type a type variable is constrained to, INVALID if it stands for any type
+	DUCKDB_API auto GetConstraint(const Identifier &variable) const -> LogicalTypeId;
+
+	//! Declares a variable - a type variable, unless it is of another kind
+	DUCKDB_API auto AddVariable(Identifier name, TypeVariable::Kind kind = TypeVariable::Kind::TYPE)
+	    -> FunctionSignature &;
+	//! Constrains a type variable to types of a kind
+	DUCKDB_API auto AddConstraint(Identifier variable, LogicalTypeId kind) -> FunctionSignature &;
 
 	auto IsVariadic() const -> bool {
 		for (auto &param : parameters) {
@@ -450,11 +521,13 @@ public:
 
 	auto AddParameter(Identifier name, LogicalType type, optional<Value> default_value = {},
 	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD) -> FunctionSignature & {
+		DeclareTemplates(type);
 		parameters.emplace_back(std::move(name), std::move(type), std::move(default_value), kind);
 		return *this;
 	}
 	//! Adds a positional-only parameter declared without a name, see FunctionParameter::Unnamed
 	auto AddParameter(LogicalType type) -> FunctionSignature & {
+		DeclareTemplates(type);
 		parameters.push_back(FunctionParameter::Unnamed(std::move(type), parameters.size()));
 		return *this;
 	}
@@ -531,9 +604,15 @@ public:
 	hash_t Hash() const;
 
 private:
+	//! Declares the type variable and the constraint of every template a type holds
+	DUCKDB_API void DeclareTemplates(const LogicalType &type);
+
+private:
 	vector<FunctionParameter> parameters;
 	shared_ptr<TypedKwargs> typed_kwargs; // optional "schema" for the accepted **kwargs
 	ReturnType return_type;
+	vector<TypeVariable> variables;
+	vector<TypeConstraint> constraints;
 };
 
 //! Function is the base class used for any type of function (scalar, aggregate or simple function)
