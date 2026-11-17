@@ -39,7 +39,8 @@ static auto CV2PragmaInvoke(ClientContext &context, const FunctionParameters &pa
 	// the binder places the arguments as it does for a table function, so the call is laid out the same way
 	BoundSimpleFunction bound_function;
 	bound_function.SetName(function.name);
-	bound_function.SetCallArguments(signature, parameters.values, parameters.named_parameters);
+	bound_function.SetCallArguments(signature, parameters.parameter_types, parameters.values,
+	                                parameters.named_parameters);
 	CV2ConstantBindInfo bind_info(bound_function, signature, info.user_data ? info.user_data->GetData() : nullptr,
 	                              parameters.values, parameters.named_parameters);
 	bind_info.bind_data_error = "Pragma functions have no bind data";

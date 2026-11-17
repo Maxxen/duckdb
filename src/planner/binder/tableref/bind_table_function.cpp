@@ -286,7 +286,7 @@ BoundStatement Binder::BindTableFunctionInternal(BoundTableFunction &table_funct
 	string ordinality_column_name = ordinality_name;
 	optional_idx ordinality_column_id;
 	// the function binder has placed them already, but a direct bind may not have done so
-	table_function.GetSignature().FillNamedDefaults(context, named_parameters);
+	table_function.FillNamedDefaults(context, named_parameters);
 	table_function.SetCallArguments(parameters, named_parameters);
 	// the arguments of a table in-out function are the columns of its input
 	auto &call_arguments = table_function.GetArguments();
@@ -459,7 +459,11 @@ BoundStatement Binder::BindTableFunction(TableFunction &function, vector<Value> 
 	TableFunctionRef ref;
 	ref.alias = function.name;
 	D_ASSERT(!ref.alias.empty());
-	auto bound_function = FunctionBinder::BindTableFunction(&context, function);
+	vector<LogicalType> parameter_types;
+	for (auto &parameter : parameters) {
+		parameter_types.push_back(parameter.type());
+	}
+	auto bound_function = FunctionBinder::BindTableFunction(&context, function, parameter_types);
 	return BindTableFunctionInternal(bound_function, ref, std::move(parameters), std::move(named_parameters),
 	                                 std::move(input_table_types), std::move(input_table_names), nullptr);
 }
@@ -556,13 +560,14 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		// the arguments are the columns of a subquery, so the declared types apply to those instead - the function
 		// binder casts the folded constants of every other call shape
 		const auto &signature = table_function.GetSignature();
-		auto args = signature.GetArgs();
+		auto &parameter_types = table_function.GetParameterTypes();
+		auto args_index = signature.GetArgsIndex();
 		for (idx_t i = 0; i < input_table_types.size(); i++) {
-			if (i >= signature.GetPositionalParameterCount() && !args) {
+			if (i >= signature.GetPositionalParameterCount() && !args_index.IsValid()) {
 				break;
 			}
-			auto target_type =
-			    i < signature.GetPositionalParameterCount() ? signature.GetParameter(i).GetType() : args->GetType();
+			auto &target_type = i < signature.GetPositionalParameterCount() ? parameter_types[i]
+			                                                                : parameter_types[args_index.GetIndex()];
 			if (target_type != LogicalType::ANY && !target_type.IsTemplated() && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST) {
 				input_table_types[i] = target_type;

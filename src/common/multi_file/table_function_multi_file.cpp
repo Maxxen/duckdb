@@ -89,12 +89,17 @@ void TableFunctionFileReader::BindFunction(ClientContext &context, const TableFu
 	} else {
 		inputs.emplace_back(file.path);
 	}
+	// the wrapped function is bound to the file and the options it is called with
+	vector<pair<Identifier, LogicalType>> option_types;
+	for (auto &option : named_parameters) {
+		option_types.emplace_back(option.first, option.second.type());
+	}
+	auto bound_function = FunctionBinder::BindTableFunction(&context, function, {{inputs[0].type()}, option_types});
 	auto parameters = named_parameters;
-	function.GetSignature().FillNamedDefaults(context, parameters);
+	bound_function.FillNamedDefaults(context, parameters);
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
 	TableFunctionRef empty_ref;
-	auto bound_function = FunctionBinder::BindTableFunction(&context, function);
 	TableFunctionBindInput bind_input(inputs, parameters, input_table_types, input_table_names,
 	                                  function.function_info.get(), nullptr, bound_function, empty_ref);
 	TableFunctionFileBindInput file_input;

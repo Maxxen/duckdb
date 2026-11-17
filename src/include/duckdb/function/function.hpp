@@ -126,6 +126,8 @@ struct FunctionParameters {
 	named_argument_map_t named_parameters;
 	//! The pragma function the parameters were bound for
 	optional_ptr<const PragmaFunction> function;
+	//! The type every parameter of that function is bound to
+	vector<LogicalType> parameter_types;
 };
 
 //! A variable a signature declares, written foo<T, N: INTEGER>(x T[N]). A type variable stands for a type the
@@ -505,6 +507,25 @@ public:
 		return nullptr;
 	}
 
+	//! The index of the "*args" parameter, if the signature has one
+	auto GetArgsIndex() const -> optional_idx {
+		for (idx_t i = 0; i < parameters.size(); i++) {
+			if (parameters[i].GetKind() == FunctionParameterKind::VAR_POSITIONAL) {
+				return i;
+			}
+		}
+		return optional_idx();
+	}
+	//! The index of the "**kwargs" parameter, if the signature has one
+	auto GetKwargsIndex() const -> optional_idx {
+		for (idx_t i = 0; i < parameters.size(); i++) {
+			if (parameters[i].GetKind() == FunctionParameterKind::VAR_KEYWORD) {
+				return i;
+			}
+		}
+		return optional_idx();
+	}
+
 	auto GetKwargs() const -> optional_ptr<const FunctionParameter> {
 		for (auto &param : parameters) {
 			if (param.GetKind() == FunctionParameterKind::VAR_KEYWORD) {
@@ -597,7 +618,9 @@ public:
 	//! Puts the named arguments in binding order: every keyword-only parameter in declaration order, with its default
 	//! if the call left it out, then the arguments "**kwargs" receives in the order they were passed
 	//! A default is cast to its parameter's type, as FunctionBinder::CastToParameterType casts an argument
-	DUCKDB_API void FillNamedDefaults(ClientContext &context, named_argument_map_t &named_parameters) const;
+	//! The types are those the parameters are bound to, one for every parameter of the signature
+	DUCKDB_API void FillNamedDefaults(ClientContext &context, const vector<LogicalType> &parameter_types,
+	                                  named_argument_map_t &named_parameters) const;
 
 	DUCKDB_API void Verify() const;
 
@@ -861,9 +884,10 @@ public:
 	DUCKDB_API auto GetKeywordOnlyArgumentCount(const FunctionSignature &signature) const -> idx_t;
 	DUCKDB_API auto GetKwargsCount(const FunctionSignature &signature) const -> idx_t;
 
-	//! Records the arguments of a call with constant arguments, as the function binder placed them for `signature`
-	DUCKDB_API void SetCallArguments(const FunctionSignature &signature, const vector<Value> &parameters,
-	                                 const named_argument_map_t &named_parameters);
+	//! Records the arguments of a call with constant arguments, as the function binder placed them for `signature`.
+	//! The types are those the parameters are bound to, one for every parameter of the signature
+	DUCKDB_API void SetCallArguments(const FunctionSignature &signature, const vector<LogicalType> &parameter_types,
+	                                 const vector<Value> &parameters, const named_argument_map_t &named_parameters);
 
 protected:
 	DUCKDB_API auto GetArgumentParameterKind(const FunctionSignature &signature, idx_t argument_index) const

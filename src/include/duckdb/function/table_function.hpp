@@ -689,15 +689,23 @@ public:
 	FunctionParameterKind GetArgumentParameterKind(idx_t argument_index) const {
 		return BoundSimpleFunction::GetArgumentParameterKind(definition->GetSignature(), argument_index);
 	}
+	//! The type every parameter of the signature is bound to, also those the call passes no argument
+	const vector<LogicalType> &GetParameterTypes() const {
+		return parameter_types;
+	}
+	//! Fills in the default of every keyword-only parameter the call leaves out, see FunctionSignature
+	DUCKDB_API void FillNamedDefaults(ClientContext &context, named_argument_map_t &named_parameters) const;
 	//! Records the arguments of the call this was bound to, laid out as [standard | *args | keyword-only | **kwargs].
 	//! Plan serialization writes them, so that deserialization selects the same overload the call did
 	DUCKDB_API void SetCallArguments(const vector<Value> &parameters, const named_argument_map_t &named_parameters);
 
 private:
 	//! Only FunctionBinder binds a function: it resolves the types the function is bound with
-	BoundTableFunction(shared_ptr<const TableFunction> definition, vector<LogicalType> arguments);
+	BoundTableFunction(shared_ptr<const TableFunction> definition, vector<LogicalType> arguments,
+	                   vector<LogicalType> parameter_types);
 
 	shared_ptr<const TableFunction> definition;
+	vector<LogicalType> parameter_types;
 
 	friend class FunctionSerializer;
 	friend class FunctionBinder;

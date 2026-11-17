@@ -443,6 +443,9 @@ public:
 	                                                                         vector<unique_ptr<Expression>> children,
 	                                                                         unique_ptr<FunctionData> bind_data,
 	                                                                         bool is_operator = false);
+	DUCKDB_API static BoundTableFunction BindTableFunction(optional_ptr<ClientContext> context,
+	                                                       const TableFunction &function,
+	                                                       const FunctionCallArguments &call);
 	//! Bind a table function that is used without a call, e.g. as the scan of a table: its arguments are of the
 	//! types its positional parameters declare
 	DUCKDB_API static BoundTableFunction BindTableFunction(optional_ptr<ClientContext> context,
@@ -636,6 +639,10 @@ private:
 	//! The function of a binding, bound to the types the binding resolved
 	template <class BOUND, class T>
 	static BOUND CreateBoundFunction(const FunctionBinding &binding);
+	//! The type every parameter of a signature declares - a type variable is the template a call determines. Matching
+	//! a call is what binds a signature: this is only for a function that is bound without one
+	static vector<LogicalType> BindParameterTypes(optional_ptr<ClientContext> context,
+	                                              const FunctionSignature &signature);
 };
 
 } // namespace duckdb

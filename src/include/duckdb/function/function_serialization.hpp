@@ -288,8 +288,9 @@ public:
 		}
 
 		// by index: a selection without named arguments binds to a relaxed copy of the overload
-		BoundTableFunction function(functions.GetFunctionByOffset(func_idx.GetBinding().GetOverloadIndex()),
-		                            std::move(arguments));
+		auto &binding = func_idx.GetBinding();
+		BoundTableFunction function(functions.GetFunctionByOffset(binding.GetOverloadIndex()), std::move(arguments),
+		                            binding.parameter_types);
 		function.SetNamedArguments(positional_count, std::move(named_arguments));
 		return make_pair(std::move(function), has_serialize);
 	}

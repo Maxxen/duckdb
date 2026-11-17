@@ -706,15 +706,30 @@ static vector<LogicalType> PositionalTypes(const FunctionSignature &signature, c
 	                                                              signature.GetPositionalParameterCount()));
 }
 
+vector<LogicalType> FunctionBinder::BindParameterTypes(optional_ptr<ClientContext> context,
+                                                       const FunctionSignature &signature) {
+	vector<LogicalType> result;
+	result.reserve(signature.GetParameterCount());
+	for (auto &param : signature.GetParameters()) {
+		result.push_back(param.GetType());
+	}
+	return result;
+}
+
+BoundTableFunction FunctionBinder::BindTableFunction(optional_ptr<ClientContext> context, const TableFunction &function,
+                                                     const FunctionCallArguments &call) {
+	auto binding = MatchFunction(context, make_shared_ptr<const TableFunction>(function), call);
+	auto definition = binding.GetFunction<TableFunction>();
+	auto arguments = PositionalTypes(definition->GetSignature(), binding.parameter_types);
+	return BoundTableFunction(std::move(definition), std::move(arguments), binding.parameter_types);
+}
+
 BoundTableFunction FunctionBinder::BindTableFunction(optional_ptr<ClientContext> context,
                                                      const TableFunction &function) {
 	auto definition = make_shared_ptr<const TableFunction>(function);
-	vector<LogicalType> declared_types;
-	for (auto &param : definition->GetSignature().GetParameters()) {
-		declared_types.push_back(param.GetType());
-	}
-	auto arguments = PositionalTypes(definition->GetSignature(), declared_types);
-	return BoundTableFunction(std::move(definition), std::move(arguments));
+	auto parameter_types = BindParameterTypes(context, definition->GetSignature());
+	auto arguments = PositionalTypes(definition->GetSignature(), parameter_types);
+	return BoundTableFunction(std::move(definition), std::move(arguments), std::move(parameter_types));
 }
 
 static bool AnyOverloadSupportsImplicitArgumentNames(const BaseFunctionSet &functions) {
@@ -1032,7 +1047,8 @@ FunctionBinder::BindTableFunction(const TableFunctionSet &functions,
 	FoldArguments(context, *definition, resolved, parameters, named_parameters);
 	// copied out of the set: binding the table function fills in the bound return types
 	return make_uniq<ResolvedTableFunction>(
-	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types)),
+	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types),
+	                       binding.parameter_types),
 	    std::move(parameters), std::move(named_parameters));
 }
 
@@ -1071,7 +1087,8 @@ FunctionBinder::BindTableInOutFunction(const TableFunctionSet &functions, const 
 	named_argument_map_t named_parameters;
 	FoldArguments(context, *definition, resolved, parameters, named_parameters);
 	return make_uniq<ResolvedTableFunction>(
-	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types)),
+	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types),
+	                       binding.parameter_types),
 	    std::move(parameters), std::move(named_parameters));
 }
 
@@ -1091,7 +1108,8 @@ unique_ptr<BoundPragmaInfo> FunctionBinder::BindPragmaFunction(
 	vector<Value> parameters;
 	named_argument_map_t named_parameters;
 	FoldArguments(context, *definition, resolved, parameters, named_parameters);
-	return make_uniq<BoundPragmaInfo>(*definition, std::move(parameters), std::move(named_parameters));
+	return make_uniq<BoundPragmaInfo>(*definition, std::move(parameters), std::move(named_parameters),
+	                                  binding.parameter_types);
 }
 
 //! Whether the type has no concrete type information (e.g. DECIMAL without width / scale) - ANY, UNKNOWN and INVALID

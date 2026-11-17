@@ -438,11 +438,14 @@ hash_t FunctionSignature::Hash() const {
 	return hash;
 }
 
-void FunctionSignature::FillNamedDefaults(ClientContext &context, named_argument_map_t &named_parameters) const {
+void FunctionSignature::FillNamedDefaults(ClientContext &context, const vector<LogicalType> &parameter_types,
+                                          named_argument_map_t &named_parameters) const {
+	D_ASSERT(parameter_types.size() == parameters.size());
 	// keyword-only parameters are slots, bound in the order they are declared - the arguments "**kwargs" receives
 	// follow them in the order they were passed
 	named_argument_map_t result;
-	for (auto &param : parameters) {
+	for (idx_t i = 0; i < parameters.size(); i++) {
+		auto &param = parameters[i];
 		if (param.GetKind() != FunctionParameterKind::KEYWORD_ONLY) {
 			continue;
 		}
@@ -451,7 +454,7 @@ void FunctionSignature::FillNamedDefaults(ClientContext &context, named_argument
 			result.insert(param.GetName(), std::move(entry->second));
 		} else if (param.HasDefaultValue()) {
 			result.insert(param.GetName(),
-			              FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(), param.GetType()));
+			              FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(), parameter_types[i]));
 		}
 	}
 	if (result.empty()) {
@@ -621,19 +624,21 @@ idx_t BoundSimpleFunction::GetKwargsCount(const FunctionSignature &signature) co
 	return result;
 }
 
-void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature, const vector<Value> &parameters,
+void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature,
+                                           const vector<LogicalType> &parameter_types, const vector<Value> &parameters,
                                            const named_argument_map_t &named_parameters) {
+	D_ASSERT(parameter_types.size() == signature.GetParameterCount());
 	const auto positional_count = signature.GetPositionalParameterCount();
 	arguments.clear();
 	for (idx_t i = 0; i < positional_count; i++) {
 		// a template is of the type of the argument it is called with
-		auto &type = signature.GetParameter(i).GetType();
+		auto &type = parameter_types[i];
 		arguments.push_back(type.IsTemplated() && i < parameters.size() ? parameters[i].type() : type);
 	}
-	auto args = signature.GetArgs();
+	auto args_index = signature.GetArgsIndex();
 	for (idx_t i = positional_count; i < parameters.size(); i++) {
-		auto is_typed = args && args->GetType().id() != LogicalTypeId::ANY;
-		arguments.push_back(is_typed ? args->GetType() : parameters[i].type());
+		auto is_typed = args_index.IsValid() && parameter_types[args_index.GetIndex()].id() != LogicalTypeId::ANY;
+		arguments.push_back(is_typed ? parameter_types[args_index.GetIndex()] : parameters[i].type());
 	}
 	const auto positional_argument_count = arguments.size();
 
@@ -650,8 +655,9 @@ void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature, c
 		}
 		auto &param = signature.GetParameter(param_idx.GetIndex());
 		if (!param.AcceptsPosition()) {
+			auto &type = parameter_types[param_idx.GetIndex()];
 			names.push_back(entry.first);
-			arguments.push_back(param.GetType().IsTemplated() ? entry.second.type() : param.GetType());
+			arguments.push_back(type.IsTemplated() ? entry.second.type() : type);
 		}
 	}
 	SetNamedArguments(positional_argument_count, std::move(names));

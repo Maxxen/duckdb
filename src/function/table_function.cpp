@@ -73,8 +73,9 @@ TableFunction::TableFunction(Identifier name, FunctionSignature signature, std::
 BoundTableFunction::BoundTableFunction() : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
 }
 
-BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p, vector<LogicalType> arguments_p)
-    : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
+BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p, vector<LogicalType> arguments_p,
+                                       vector<LogicalType> parameter_types_p)
+    : BaseTableFunction(nullptr, nullptr, nullptr, nullptr), parameter_types(std::move(parameter_types_p)) {
 	definition = std::move(function_p);
 	auto &function = *definition;
 	qualified_name = function.GetQualifiedName();
@@ -132,9 +133,13 @@ BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_
 	positional_arguments = arguments.size();
 }
 
+void BoundTableFunction::FillNamedDefaults(ClientContext &context, named_argument_map_t &named_parameters) const {
+	GetSignature().FillNamedDefaults(context, parameter_types, named_parameters);
+}
+
 void BoundTableFunction::SetCallArguments(const vector<Value> &parameters,
                                           const named_argument_map_t &named_parameters) {
-	BoundSimpleFunction::SetCallArguments(GetSignature(), parameters, named_parameters);
+	BoundSimpleFunction::SetCallArguments(GetSignature(), parameter_types, parameters, named_parameters);
 }
 
 bool BoundTableFunction::operator==(const BoundTableFunction &rhs) const {

@@ -115,9 +115,11 @@ Value CastArgument(const Identifier &type_name, const string &arg_name, const Va
 //! Reorder the call arguments into the constructor's declared parameter order, filling in defaults, and cast every
 //! value to the type its parameter declares. Any argument beyond the declared parameters is appended in call order
 //! with its name preserved.
-vector<TypeArgument> NormalizeArguments(const Identifier &type_name, const TypeConstructor &constructor,
+vector<TypeArgument> NormalizeArguments(const Identifier &type_name, const FunctionBinding &binding,
                                         const vector<TypeArgument> &arguments, QueryLocation type_location) {
-	const auto &sig = constructor.GetSignature();
+	const auto &sig = binding.GetFunction().GetSignature();
+	// the types the parameters of the constructor are bound to
+	auto &parameter_types = binding.parameter_types;
 	const auto param_count = sig.GetPositionalParameterCount();
 
 	vector<TypeArgument> result;
@@ -171,7 +173,7 @@ vector<TypeArgument> NormalizeArguments(const Identifier &type_name, const TypeC
 		}
 		auto arg_name = ArgumentName(param.GetName(), i);
 		result.emplace_back(param.GetName().GetIdentifierName(),
-		                    CastArgument(type_name, arg_name, *value, param.GetType(), location), location);
+		                    CastArgument(type_name, arg_name, *value, parameter_types[i], location), location);
 	}
 
 	for (auto &entry : varargs) {
@@ -179,8 +181,8 @@ vector<TypeArgument> NormalizeArguments(const Identifier &type_name, const TypeC
 		auto arg_name = ArgumentName(Identifier(arg.GetName()), entry.first);
 		auto location = arg.GetQueryLocation();
 		// a named modifier is received by "**kwargs", an unnamed one by "*args"
-		auto param = arg.HasName() ? sig.GetKwargs() : sig.GetArgs();
-		auto &target = param ? param->GetType() : LogicalType::ANY;
+		auto param_index = arg.HasName() ? sig.GetKwargsIndex() : sig.GetArgsIndex();
+		LogicalType target = param_index.IsValid() ? parameter_types[param_index.GetIndex()] : LogicalType::ANY;
 		result.emplace_back(arg.GetName(), CastArgument(type_name, arg_name, arg.GetValue(), target, location),
 		                    location);
 	}
@@ -232,10 +234,11 @@ LogicalType TypeConstructorSet::Bind(optional_ptr<ClientContext> context, const 
 		error.AddQueryLocation(query_location);
 		error.Throw();
 	}
-	auto constructor_ptr = selection.GetBinding().GetFunction<TypeConstructor>();
+	auto &binding = selection.GetBinding();
+	auto constructor_ptr = binding.GetFunction<TypeConstructor>();
 	auto &constructor = *constructor_ptr;
 
-	auto modifiers = NormalizeArguments(name, constructor, arguments, query_location);
+	auto modifiers = NormalizeArguments(name, binding, arguments, query_location);
 	BindLogicalTypeInput input {context, base_type, modifiers, query_location};
 	return constructor.GetBindFunction()(input);
 }
