@@ -921,9 +921,6 @@ public:
 
 class BoundAggregateFunction : public BaseAggregateFunction, public BoundSimpleFunction {
 public:
-	explicit BoundAggregateFunction(const AggregateFunction &function);
-	explicit BoundAggregateFunction(shared_ptr<const AggregateFunction> function);
-
 	//! Swap in a different implementation, keeping the definition this was bound from intact
 	void ReplaceImplementation(const AggregateFunction &function);
 	void ReplaceImplementation(const BoundAggregateFunction &function);
@@ -988,6 +985,10 @@ public:
 	}
 
 private:
+	//! Only FunctionBinder binds a function: it resolves the types the function is bound with
+	BoundAggregateFunction(shared_ptr<const AggregateFunction> definition, vector<LogicalType> arguments,
+	                       LogicalType return_type);
+
 	void SetLogicalArguments(vector<LogicalType> arguments_p) {
 		logical_arguments = std::move(arguments_p);
 	}

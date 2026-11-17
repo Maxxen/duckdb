@@ -9,6 +9,7 @@
 #include "duckdb/planner/filter/table_filter_functions.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
 #include "duckdb/storage/statistics/numeric_stats.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 using namespace duckdb;
 
@@ -103,8 +104,8 @@ TEST_CASE("Prefix range filter prune handles all-NULL and missing statistics", "
 	auto make_expr = [](optional_ptr<PrefixRangeFilter> prf, bool filters_null_values) {
 		vector<unique_ptr<Expression>> children;
 		children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0ULL));
-		return make_uniq<BoundFunctionExpression>(
-		    BoundScalarFunction(PrefixRangeScalarFun::GetFunction(LogicalType::BIGINT)), std::move(children),
+		return FunctionBinder::BindScalarFunction(
+		    nullptr, PrefixRangeScalarFun::GetFunction(LogicalType::BIGINT), std::move(children),
 		    make_uniq<PrefixRangeFunctionData>(prf, filters_null_values, "k", LogicalType::BIGINT, 0.0f, 0ULL));
 	};
 
@@ -353,8 +354,8 @@ TEST_CASE("Dense numeric prefix filters prune only contained non-NULL ranges", "
 
 	vector<unique_ptr<Expression>> children;
 	children.push_back(make_uniq<BoundReferenceExpression>(type, idx_t(0)));
-	auto expression = make_uniq<BoundFunctionExpression>(
-	    BoundScalarFunction(PrefixRangeScalarFun::GetFunction(type)), std::move(children),
+	auto expression = FunctionBinder::BindScalarFunction(
+	    nullptr, PrefixRangeScalarFun::GetFunction(type), std::move(children),
 	    make_uniq<PrefixRangeFunctionData>(filter.get(), true, "k", type, 0.0f, idx_t(0)));
 	auto stats = BaseStatistics::CreateEmpty(type);
 	stats.SetHasNoNull();

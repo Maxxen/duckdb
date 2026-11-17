@@ -5,6 +5,7 @@
 #include "duckdb/function/aggregate/distributive_functions.hpp"
 #include "duckdb/function/aggregate/distributive_function_utils.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -282,7 +283,8 @@ unique_ptr<BaseStatistics> CountPropagateStats(ClientContext &context, BoundAggr
                                                AggregateStatisticsInput &input) {
 	if (!expr.IsDistinct() && !input.child_stats[0].CanHaveNull()) {
 		// count on a column without null values: use count star
-		expr.FunctionMutable() = BoundAggregateFunction(CountStarFun::GetFunction());
+		expr.FunctionMutable() =
+		    FunctionBinder::BindAggregateFunction(&context, CountStarFun::GetFunction(), FunctionCallArguments());
 		expr.GetChildrenMutable().clear();
 	}
 	return nullptr;

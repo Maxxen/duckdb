@@ -136,8 +136,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarWindowFunction(BoundWindowExpre
 	//	NULLs in the input row do not imply a NULL result
 	scalar.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	auto bind_info = make_uniq<ScalarWindowBindData>(context, wexpr);
-	BoundScalarFunction bound(scalar);
-	return make_uniq<BoundFunctionExpression>(bound, std::move(children), std::move(bind_info));
+	return BindScalarFunction(&context, scalar, std::move(children), std::move(bind_info));
 }
 
 } // namespace duckdb

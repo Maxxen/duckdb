@@ -459,7 +459,7 @@ BoundStatement Binder::BindTableFunction(TableFunction &function, vector<Value> 
 	TableFunctionRef ref;
 	ref.alias = function.name;
 	D_ASSERT(!ref.alias.empty());
-	BoundTableFunction bound_function(function);
+	auto bound_function = FunctionBinder::BindTableFunction(&context, function);
 	return BindTableFunctionInternal(bound_function, ref, std::move(parameters), std::move(named_parameters),
 	                                 std::move(input_table_types), std::move(input_table_names), nullptr);
 }

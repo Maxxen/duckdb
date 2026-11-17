@@ -388,10 +388,6 @@ public:
 
 class BoundWindowFunction : public BaseWindowFunction, public BoundSimpleFunction {
 public:
-	explicit BoundWindowFunction(const WindowFunction &base);
-	explicit BoundWindowFunction(shared_ptr<const WindowFunction> base);
-
-public:
 	const ExpressionType window_enum;
 
 	DUCKDB_API bool operator==(const BoundWindowFunction &rhs) const;
@@ -498,6 +494,10 @@ public:
 	}
 
 private:
+	//! Only FunctionBinder binds a function: it resolves the types the function is bound with
+	BoundWindowFunction(shared_ptr<const WindowFunction> definition, vector<LogicalType> arguments,
+	                    LogicalType return_type);
+
 	void SetLogicalArguments(vector<LogicalType> arguments_p) {
 		logical_arguments = std::move(arguments_p);
 	}

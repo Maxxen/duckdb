@@ -10,6 +10,7 @@
 #include "duckdb/function/cast/cast_function_set.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -195,7 +196,7 @@ static unique_ptr<Expression> CreateCastExpression(unique_ptr<Expression> child,
 	scalar_function.SetStability(stability);
 	SetCastNullHandling(scalar_function, target_type);
 
-	BoundScalarFunction bound_function(scalar_function);
+	auto bound_function = FunctionBinder::BindScalarFunction(nullptr, scalar_function, children);
 	bound_function.GetArguments() = {source_type};
 
 	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children), std::move(function_data),

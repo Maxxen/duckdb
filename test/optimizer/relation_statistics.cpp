@@ -37,6 +37,7 @@
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/storage/statistics/node_statistics.hpp"
 #include "duckdb/storage/statistics/numeric_stats.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 #include <cmath>
 #include <limits>
@@ -1330,8 +1331,9 @@ static unique_ptr<LogicalGet> CreateCardinalityProvider(optional_idx estimate, o
 		}
 		return make_uniq<NodeStatistics>(data.statistics);
 	};
-	auto get = make_uniq<LogicalGet>(TableIndex(10), BoundTableFunction(function), std::move(data),
-	                                 vector<LogicalType> {LogicalType::INTEGER}, vector<Identifier> {"i"});
+	auto get =
+	    make_uniq<LogicalGet>(TableIndex(10), FunctionBinder::BindTableFunction(nullptr, function), std::move(data),
+	                          vector<LogicalType> {LogicalType::INTEGER}, vector<Identifier> {"i"});
 	get->AddColumnId(0);
 	return get;
 }

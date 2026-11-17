@@ -18,6 +18,7 @@
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -1512,18 +1513,20 @@ unique_ptr<Expression> DecodeSortKeyFun::Bind(unique_ptr<Expression> sort_key, c
 	bind_data->all_constant = all_constant;
 	ScalarFunction definition("decode_sort_key", {sort_key->GetReturnType()}, LogicalType::STRUCT(std::move(columns)),
 	                          DecodeSortKeyFunction);
-	BoundScalarFunction function(definition);
 	vector<unique_ptr<Expression>> children;
 	children.push_back(std::move(sort_key));
-	return make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), std::move(bind_data));
+	return FunctionBinder::BindScalarFunction(nullptr, definition, std::move(children), std::move(bind_data));
 }
 
 ScalarFunction DecodeSortKeyFun::GetFunction() {
-	ScalarFunction sort_key_function(
-	    "decode_sort_key",
-	    {{"sort_key", LogicalType::ANY}, {"col", LogicalType::VARCHAR}, {"sort_specifier", LogicalType::VARCHAR}},
-	    LogicalType::STRUCT({{"any", LogicalType::ANY}}), DecodeSortKeyFunction, DecodeSortKeyBind);
-	sort_key_function.GetSignature().AddArgs("args", LogicalType::VARCHAR);
+	ScalarFunction sort_key_function("decode_sort_key",
+	                                 FunctionSignature()
+	                                     .AddParameter("sort_key", LogicalType::TEMPLATE("T"))
+	                                     .AddParameter("col", LogicalType::VARCHAR)
+	                                     .AddParameter("sort_specifier", LogicalType::VARCHAR)
+	                                     .AddArgs("args", LogicalType::VARCHAR)
+	                                     .SetReturnType(ReturnType::ANY()),
+	                                 DecodeSortKeyFunction, DecodeSortKeyBind);
 	return sort_key_function;
 }
 

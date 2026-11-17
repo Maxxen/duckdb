@@ -12,6 +12,7 @@
 #include "duckdb/common/exception/binder_exception.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -69,8 +70,7 @@ static unique_ptr<Expression> CreateSingleArgumentFunctionExpression(const Scala
                                                                      unique_ptr<FunctionData> bind_data) {
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(make_uniq<BoundReferenceExpression>(target_type, storage_t(0)));
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
-	                                          std::move(bind_data));
+	return FunctionBinder::BindScalarFunction(nullptr, function, std::move(arguments), std::move(bind_data));
 }
 
 unique_ptr<Expression> CreateOptionalFilterExpression(unique_ptr<Expression> child_expr,
@@ -106,8 +106,7 @@ unique_ptr<Expression> CreateDynamicFilterExpression(shared_ptr<DynamicFilterDat
 	}
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(input));
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
-	                                          std::move(bind_data));
+	return FunctionBinder::BindScalarFunction(nullptr, function, std::move(arguments), std::move(bind_data));
 }
 
 void TableFilterFunctionSerialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data,

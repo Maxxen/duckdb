@@ -6,6 +6,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression_binder.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -192,10 +193,7 @@ unique_ptr<Expression> BoundComparisonExpression::Create(ExpressionType type, un
 	children.push_back(std::move(right));
 
 	// the function is bound to the types of the values it compares
-	BoundScalarFunction function(GetComparisonFunction(type));
-	function.GetArguments() = {children[0]->GetReturnType(), children[1]->GetReturnType()};
-	auto result = make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), nullptr, true);
-	return std::move(result);
+	return FunctionBinder::BindScalarFunction(nullptr, GetComparisonFunction(type), std::move(children), nullptr, true);
 }
 
 unique_ptr<Expression> BoundComparisonExpression::Bind(ClientContext &context, ExpressionType type,
@@ -204,7 +202,7 @@ unique_ptr<Expression> BoundComparisonExpression::Bind(ClientContext &context, E
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
 
-	BoundScalarFunction function(GetComparisonFunction(type));
+	auto function = FunctionBinder::BindScalarFunction(&context, GetComparisonFunction(type), children);
 	BindScalarFunctionInput input(context, function, children);
 	function.GetBindCallback()(input);
 	return make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), nullptr, true);
@@ -253,8 +251,8 @@ void BoundComparisonExpression::SetType(BoundFunctionExpression &comparison_expr
 	auto arguments = comparison_expr.FunctionMutable().GetArguments();
 
 	comparison_expr.SetExpressionTypeUnsafe(new_type);
-	comparison_expr.FunctionMutable() = BoundScalarFunction(GetComparisonFunction(new_type));
-	comparison_expr.FunctionMutable().GetArguments() = std::move(arguments);
+	comparison_expr.FunctionMutable() =
+	    FunctionBinder::BindScalarFunction(nullptr, GetComparisonFunction(new_type), arguments);
 	comparison_expr.BindInfoMutable().reset();
 	comparison_expr.IsOperatorMutable() = true;
 }

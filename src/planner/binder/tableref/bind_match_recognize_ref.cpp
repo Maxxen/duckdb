@@ -34,6 +34,7 @@
 #include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
 #include "duckdb/planner/operator/logical_window.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -678,11 +679,8 @@ static unique_ptr<SelectNode> PlanPatternWindow(Binder &binder, ClientContext &c
                                                 GeneratedNames &names, const string &spans_column,
                                                 const string &state_column, bool unmatched) {
 	// the function is bound to the columns the conditions read
-	auto window_function = make_uniq<BoundWindowFunction>(MatchRecognizeFun::GetFunction());
-	window_function->GetArguments().clear();
-	for (auto &child : inputs.children) {
-		window_function->GetArguments().push_back(child->GetReturnType());
-	}
+	auto window_function = make_uniq<BoundWindowFunction>(
+	    FunctionBinder::BindWindowFunction(&context, MatchRecognizeFun::GetFunction(), inputs.children));
 	auto bound_window = make_uniq<BoundWindowExpression>(WindowMatchRecognizeExecutor::ResultType(), nullptr,
 	                                                     std::move(window_function), std::move(inputs.match_data));
 	bound_window->GetChildrenMutable() = std::move(inputs.children);

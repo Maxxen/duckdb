@@ -288,8 +288,8 @@ public:
 		}
 
 		// by index: a selection without named arguments binds to a relaxed copy of the overload
-		BoundTableFunction function(functions.GetFunctionByOffset(func_idx.GetBinding().GetOverloadIndex()));
-		function.GetArguments() = std::move(arguments);
+		BoundTableFunction function(functions.GetFunctionByOffset(func_idx.GetBinding().GetOverloadIndex()),
+		                            std::move(arguments));
 		function.SetNamedArguments(positional_count, std::move(named_arguments));
 		return make_pair(std::move(function), has_serialize);
 	}
@@ -531,8 +531,7 @@ public:
 		}
 
 		// Otherwise, construct the bound function from its parts
-		FUNC bound_function(function);
-		bound_function.GetArguments() = std::move(arguments);
+		FUNC bound_function(function, std::move(arguments), function->GetReturnType().GetUnboundType());
 
 		bound_function.SetNamedArguments(positional_count, std::move(named_arguments));
 		RestoreLogicalSignature(bound_function, children, return_type);

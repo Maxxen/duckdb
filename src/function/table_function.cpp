@@ -73,12 +73,7 @@ TableFunction::TableFunction(Identifier name, FunctionSignature signature, std::
 BoundTableFunction::BoundTableFunction() : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
 }
 
-BoundTableFunction::BoundTableFunction(const TableFunction &function)
-    // the function does not come from a function set - copy it into a definition of its own
-    : BoundTableFunction(make_shared_ptr<const TableFunction>(function)) {
-}
-
-BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p)
+BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p, vector<LogicalType> arguments_p)
     : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
 	definition = std::move(function_p);
 	auto &function = *definition;
@@ -133,12 +128,7 @@ BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_
 	global_initialization = function.global_initialization;
 	parallelism = function.parallelism;
 
-	// the parameters a call fills by position - these are the types plan serialization records, so the named
-	// options that follow them take no part
-	auto &signature = function.GetSignature();
-	for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
-		arguments.push_back(signature.GetParameter(i).GetType());
-	}
+	arguments = std::move(arguments_p);
 	positional_arguments = arguments.size();
 }
 

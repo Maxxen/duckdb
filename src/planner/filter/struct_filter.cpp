@@ -4,6 +4,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/function/scalar/nested_functions.hpp"
 #include "duckdb/function/scalar/struct_functions.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -18,7 +19,7 @@ unique_ptr<Expression> LegacyStructFilter::ToExpression(const Expression &column
 	arguments.push_back(column.Copy());
 	arguments.push_back(make_uniq<BoundConstantExpression>(Value::BIGINT(NumericCast<int64_t>(child_idx + 1))));
 
-	BoundScalarFunction bound_func(GetExtractAtFunction());
+	auto bound_func = FunctionBinder::BindScalarFunction(nullptr, GetExtractAtFunction(), arguments);
 	bound_func.SetReturnType(StructType::GetChildType(column.GetReturnType(), child_idx));
 
 	auto child = make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments),

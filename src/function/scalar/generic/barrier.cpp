@@ -5,6 +5,7 @@
 #include "duckdb/function/scalar/nested_functions.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -72,7 +73,7 @@ unique_ptr<Expression> ExpressionBarrier::Wrap(unique_ptr<Expression> expr) {
 
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(expr));
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
+	return FunctionBinder::BindScalarFunction(nullptr, function, std::move(arguments),
 	                                          make_uniq<VariableReturnBindData>(return_type));
 }
 

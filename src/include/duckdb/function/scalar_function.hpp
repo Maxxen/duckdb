@@ -608,9 +608,6 @@ public:
 
 class BoundScalarFunction : public BaseScalarFunction<BoundScalarFunction>, public BoundSimpleFunction {
 public:
-	explicit BoundScalarFunction(const ScalarFunction &function);
-	explicit BoundScalarFunction(shared_ptr<const ScalarFunction> function);
-
 	bool operator==(const BoundScalarFunction &rhs) const;
 	bool operator!=(const BoundScalarFunction &rhs) const;
 
@@ -659,6 +656,10 @@ public:
 	}
 
 private:
+	//! Only FunctionBinder binds a function: it resolves the types the function is bound with
+	BoundScalarFunction(shared_ptr<const ScalarFunction> definition, vector<LogicalType> arguments,
+	                    LogicalType return_type);
+
 	void SetLogicalArguments(vector<LogicalType> arguments_p) {
 		logical_arguments = std::move(arguments_p);
 	}

@@ -417,7 +417,12 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 
 	auto reconstructed = FunctionBinder::BindSortedAggregateState(context, inner->aggr, std::move(inner->bind_data),
 	                                                              buffer_struct, orders, argument_count);
-	BoundAggregateFunction wrapper(reconstructed.first);
+	// the wrapper consumes the buffered columns
+	vector<LogicalType> buffer_types;
+	for (auto &child : StructType::GetChildTypes(buffer_struct)) {
+		buffer_types.push_back(child.second);
+	}
+	auto wrapper = FunctionBinder::BindAggregateFunction(&context, reconstructed.first, buffer_types);
 	const auto state_size = wrapper.GetStateSize(reconstructed.second.get());
 	return make_uniq<ExportAggregateBindData>(std::move(wrapper), std::move(reconstructed.second), state_size);
 }

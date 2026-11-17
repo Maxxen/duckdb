@@ -37,6 +37,7 @@
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/tableref/emptytableref.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 using namespace duckdb; // NOLINT
 
@@ -856,8 +857,7 @@ public:
 		vector<unique_ptr<Expression>> children;
 		children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0));
 
-		BoundScalarFunction bound_func(func);
-		auto expr = make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(children),
+		auto expr = FunctionBinder::BindScalarFunction(nullptr, func, std::move(children),
 		                                               make_uniq<RowIdFilterBindData>(vector<int64_t> {3, 4, 5, 7, 9}));
 
 		// Ensure ROW_ID is in the scan's column list

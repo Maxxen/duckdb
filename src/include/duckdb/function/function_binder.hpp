@@ -24,6 +24,7 @@ namespace duckdb {
 class AggregateFunctionCatalogEntry;
 
 class WindowFunctionCatalogEntry;
+class BoundFunctionExpression;
 struct BoundPragmaInfo;
 
 //! One ORDER BY key of an exported ordered aggregate state: the buffered struct column it sorts on and the modifiers.
@@ -73,6 +74,10 @@ struct FunctionBinding {
 		D_ASSERT(function->GetKind() == T::KIND);
 		return shared_ptr_cast<const SimpleFunction, const T>(function);
 	}
+
+	//! The type of every argument the function is bound with, in the order of its parameters: an argument of "*args"
+	//! or "**kwargs" has the type of that parameter, a parameter the call leaves out is filled by its default
+	DUCKDB_API vector<LogicalType> GetArgumentTypes() const;
 
 	//! The cost of casting the arguments to the parameters of the overload
 	idx_t cost = 0;
@@ -407,6 +412,35 @@ public:
 	                                                    const BaseFunctionSet &functions,
 	                                                    const FunctionCallArguments &call, bool explicit_casts = false);
 
+	//! How a call binds to a function it is known to call - the arguments are cast explicitly. Throws if the call does
+	//! not fit the signature of the function
+	DUCKDB_API static FunctionBinding MatchFunction(optional_ptr<ClientContext> context,
+	                                                shared_ptr<const SimpleFunction> function,
+	                                                const FunctionCallArguments &call);
+
+	//! Bind a function the caller knows it calls to the argument types of the call. Only the types are resolved: no
+	//! argument is cast and no callback of the function runs, the caller supplies what they would. A type only
+	//! unresolved parameters determine stays unknown. The function is copied into a definition of its own
+	DUCKDB_API static BoundScalarFunction BindScalarFunction(optional_ptr<ClientContext> context,
+	                                                         const ScalarFunction &function,
+	                                                         const FunctionCallArguments &call);
+	DUCKDB_API static BoundAggregateFunction BindAggregateFunction(optional_ptr<ClientContext> context,
+	                                                               const AggregateFunction &function,
+	                                                               const FunctionCallArguments &call);
+	DUCKDB_API static BoundWindowFunction BindWindowFunction(optional_ptr<ClientContext> context,
+	                                                         const WindowFunction &function,
+	                                                         const FunctionCallArguments &call);
+	//! The same, as the expression of the call with the bind data the caller supplies
+	DUCKDB_API static unique_ptr<BoundFunctionExpression> BindScalarFunction(optional_ptr<ClientContext> context,
+	                                                                         const ScalarFunction &function,
+	                                                                         vector<unique_ptr<Expression>> children,
+	                                                                         unique_ptr<FunctionData> bind_data,
+	                                                                         bool is_operator = false);
+	//! Bind a table function that is used without a call, e.g. as the scan of a table: its arguments are of the
+	//! types its positional parameters declare
+	DUCKDB_API static BoundTableFunction BindTableFunction(optional_ptr<ClientContext> context,
+	                                                       const TableFunction &function);
+
 	//! Bind a table function: select the overload, check the named arguments against its signature, and fold the
 	//! arguments to the constants it is called with, cast to the types it declares. Returns nullptr and sets the error
 	//! if no overload matches
@@ -592,11 +626,9 @@ private:
 	static std::variant<FunctionBinding, FunctionMismatch>
 	MatchOverload(optional_ptr<ClientContext> context, idx_t overload, shared_ptr<const SimpleFunction> function,
 	              const FunctionCallArguments &call, bool explicit_casts);
-	//! How a call binds to a function it is known to call - the arguments are cast explicitly. Throws if the call does
-	//! not fit the signature of the function
-	template <class T>
-	FunctionBinding MatchFunction(const shared_ptr<const T> &function, const vector<unique_ptr<Expression>> &arguments,
-	                              const vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments);
+	//! The function of a binding, bound to the types the binding resolved
+	template <class BOUND, class T>
+	static BOUND CreateBoundFunction(const FunctionBinding &binding);
 };
 
 } // namespace duckdb

@@ -20,28 +20,18 @@ unique_ptr<BoundWindowExpression> WindowFunction::Bind(ClientContext &context,
 	                                      arg_order_types);
 }
 
-BoundWindowFunction::BoundWindowFunction(const WindowFunction &base)
-    // the function does not come from a function set - copy it into a definition of its own
-    : BoundWindowFunction(make_shared_ptr<WindowFunction>(base)) {
-}
-
-BoundWindowFunction::BoundWindowFunction(shared_ptr<const WindowFunction> base_p)
+BoundWindowFunction::BoundWindowFunction(shared_ptr<const WindowFunction> base_p, vector<LogicalType> arguments_p,
+                                         LogicalType return_type_p)
     : window_enum(base_p->window_enum), definition(std::move(base_p)) {
 	auto &base = *definition;
 	qualified_name = base.GetQualifiedName();
 	extra_info = base.extra_info;
-	return_type = base.GetReturnType().GetUnboundType();
+	return_type = std::move(return_type_p);
 	callbacks = base.GetCallbacks();
 	properties = base.GetProperties();
 	function_info = base.GetFunctionInfo();
 
-	// Try to default bind the function, to fill in any missing information in the BoundScalarFunction (e.g. from the
-	// "bind" callback)
-	for (auto &param : base.GetSignature().GetParameters()) {
-		if (!param.IsVariadic()) {
-			arguments.push_back(param.GetType());
-		}
-	}
+	arguments = std::move(arguments_p);
 	positional_arguments = arguments.size();
 	logical_arguments = arguments;
 	logical_return_type = return_type;

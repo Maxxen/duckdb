@@ -4,6 +4,7 @@
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/filter/table_filter_functions.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -18,8 +19,7 @@ unique_ptr<Expression> LegacyPrefixRangeTableFilter::ToExpression(const Expressi
 	auto bind_data = make_uniq<PrefixRangeFunctionData>(filter, true, key_column_name, key_type, 0.0f, idx_t(0));
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(column.Copy());
-	return make_uniq<BoundFunctionExpression>(BoundScalarFunction(function), std::move(arguments),
-	                                          std::move(bind_data));
+	return FunctionBinder::BindScalarFunction(nullptr, function, std::move(arguments), std::move(bind_data));
 }
 
 void LegacyPrefixRangeTableFilter::Serialize(Serializer &serializer) const {

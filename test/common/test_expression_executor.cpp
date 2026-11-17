@@ -6,6 +6,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/filter/table_filter_functions.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 using namespace duckdb; // NOLINT
 
@@ -126,8 +127,7 @@ TEST_CASE("Default expression selection preserves Boolean representations and ro
 			REQUIRE(!identity.HasSelectCallback());
 			vector<unique_ptr<Expression>> arguments;
 			arguments.push_back(std::move(expression));
-			expression =
-			    make_uniq<BoundFunctionExpression>(BoundScalarFunction(identity), std::move(arguments), nullptr);
+			expression = FunctionBinder::BindScalarFunction(nullptr, identity, std::move(arguments), nullptr);
 		}
 		ExpressionExecutor executor(*con.context, *expression);
 		VerifyBooleanSelection(executor, input);

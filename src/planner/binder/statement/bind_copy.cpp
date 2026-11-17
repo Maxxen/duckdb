@@ -33,6 +33,7 @@
 #include "duckdb/common/algorithm.hpp"
 
 #include "duckdb/main/extension_entries.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -716,7 +717,8 @@ BoundStatement Binder::BindCopyFrom(CopyStatement &stmt, const CopyFunction &fun
 	auto copy_from_function = function.copy_from_function;
 	CopyFromFunctionBindInput input(*stmt.info, copy_from_function);
 	auto function_data = function.copy_from_bind(context, input, expected_names, expected_types);
-	auto get = make_uniq<LogicalGet>(source_bindings[0].table_index, BoundTableFunction(copy_from_function),
+	auto get = make_uniq<LogicalGet>(source_bindings[0].table_index,
+	                                 FunctionBinder::BindTableFunction(&context, copy_from_function),
 	                                 std::move(function_data), expected_types, expected_names);
 	for (idx_t i = 0; i < expected_types.size(); i++) {
 		get->AddColumnId(i);

@@ -19,6 +19,7 @@
 #include "duckdb/parser/query_node/cte_node.hpp"
 #include "duckdb/planner/operator/logical_dummy_scan.hpp"
 #include "duckdb/planner/operator/logical_secure_view.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -291,9 +292,9 @@ BoundStatement Binder::Bind(BaseTableRef &ref) {
 		} else {
 			virtual_columns = table.GetVirtualColumns();
 		}
-		auto logical_get =
-		    make_uniq<LogicalGet>(table_index, BoundTableFunction(scan_function), std::move(bind_data),
-		                          std::move(return_types), std::move(return_names), std::move(virtual_columns));
+		auto logical_get = make_uniq<LogicalGet>(
+		    table_index, FunctionBinder::BindTableFunction(&context, scan_function), std::move(bind_data),
+		    std::move(return_types), std::move(return_names), std::move(virtual_columns));
 		if (entry_at_clause) {
 			logical_get->at_clause = make_uniq<BoundAtClause>(entry_at_clause->Unit(), entry_at_clause->GetValue());
 		}

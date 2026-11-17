@@ -15,6 +15,7 @@
 #include "duckdb/planner/filter/table_filter_functions.hpp"
 #include "duckdb/planner/table_filter_state.hpp"
 #include "duckdb/storage/table/column_segment.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 using namespace duckdb;
 
@@ -56,8 +57,8 @@ TEST_CASE("Large flat scan filters preserve selected rows and NULL policy", "[dy
 	}
 	auto function = prefix ? PrefixRangeScalarFun::GetFunction(LogicalType::BIGINT)
 	                       : BloomFilterScalarFun::GetFunction(LogicalType::BIGINT);
-	unique_ptr<Expression> expression = make_uniq<BoundFunctionExpression>(BoundScalarFunction(std::move(function)),
-	                                                                       std::move(children), std::move(bind_data));
+	unique_ptr<Expression> expression =
+	    FunctionBinder::BindScalarFunction(nullptr, function, std::move(children), std::move(bind_data));
 	if (optional) {
 		expression = CreateSelectivityOptionalFilterExpression(std::move(expression), LogicalType::BIGINT, 1.0f, 8);
 	}
@@ -255,14 +256,15 @@ struct FilterGroupTest {
 	    : db(nullptr), con(db), plan(Allocator::Get(*con.context)),
 	      first(plan.Make<PhysicalDummyScan>(vector<LogicalType> {}, 1)),
 	      second(plan.Make<PhysicalDummyScan>(vector<LogicalType> {}, 1)),
-	      scan(plan.Make<PhysicalTableScan>(
-	                   vector<LogicalType> {LogicalType::INTEGER, LogicalType::INTEGER},
-	                   BoundTableFunction(TableFunction("filter_group", vector<LogicalType> {}, nullptr)), nullptr,
-	                   vector<LogicalType> {LogicalType::INTEGER, LogicalType::INTEGER},
-	                   vector<ColumnIndex> {ColumnIndex(0), ColumnIndex(1)}, vector<idx_t> {0, 1},
-	                   vector<string> {"a", "b"}, nullptr, 100, ExtraOperatorInfo(), vector<Value> {},
-	                   virtual_column_map_t {})
-	               .Cast<PhysicalTableScan>()) {
+	      scan(
+	          plan.Make<PhysicalTableScan>(vector<LogicalType> {LogicalType::INTEGER, LogicalType::INTEGER},
+	                                       FunctionBinder::BindTableFunction(
+	                                           nullptr, TableFunction("filter_group", vector<LogicalType> {}, nullptr)),
+	                                       nullptr, vector<LogicalType> {LogicalType::INTEGER, LogicalType::INTEGER},
+	                                       vector<ColumnIndex> {ColumnIndex(0), ColumnIndex(1)}, vector<idx_t> {0, 1},
+	                                       vector<string> {"a", "b"}, nullptr, 100, ExtraOperatorInfo(),
+	                                       vector<Value> {}, virtual_column_map_t {})
+	              .Cast<PhysicalTableScan>()) {
 	}
 
 	void Push(DynamicTableFilterSet &filters, const PhysicalOperator &producer, idx_t column, int32_t value) {

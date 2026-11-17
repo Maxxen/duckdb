@@ -116,28 +116,18 @@ unique_ptr<BoundAggregateExpression> AggregateFunction::Bind(ClientContext &cont
 	return func_binder.BindAggregateFunction(*this, std::move(arguments));
 }
 
-BoundAggregateFunction::BoundAggregateFunction(const AggregateFunction &function)
-    // the function does not come from a function set - copy it into a definition of its own
-    : BoundAggregateFunction(make_shared_ptr<AggregateFunction>(function)) {
-}
-
-BoundAggregateFunction::BoundAggregateFunction(shared_ptr<const AggregateFunction> function_p)
+BoundAggregateFunction::BoundAggregateFunction(shared_ptr<const AggregateFunction> function_p,
+                                               vector<LogicalType> arguments_p, LogicalType return_type_p)
     : definition(std::move(function_p)) {
 	auto &function = *definition;
 	qualified_name = function.GetQualifiedName();
 	extra_info = function.extra_info;
-	return_type = function.GetReturnType().GetUnboundType();
+	return_type = std::move(return_type_p);
 	properties = function.GetProperties();
 	callbacks = function.GetCallbacks();
 	function_info = function.GetFunctionInfo();
 
-	// Try to default bind the function, to fill in any missing information in the BoundScalarFunction (e.g. from the
-	// "bind" callback)
-	for (auto &param : function.GetSignature().GetParameters()) {
-		if (!param.IsVariadic()) {
-			arguments.push_back(param.GetType());
-		}
-	}
+	arguments = std::move(arguments_p);
 	positional_arguments = arguments.size();
 	logical_arguments = arguments;
 	logical_return_type = return_type;

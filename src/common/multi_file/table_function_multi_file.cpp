@@ -11,6 +11,7 @@
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -93,7 +94,7 @@ void TableFunctionFileReader::BindFunction(ClientContext &context, const TableFu
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
 	TableFunctionRef empty_ref;
-	BoundTableFunction bound_function(function);
+	auto bound_function = FunctionBinder::BindTableFunction(&context, function);
 	TableFunctionBindInput bind_input(inputs, parameters, input_table_types, input_table_names,
 	                                  function.function_info.get(), nullptr, bound_function, empty_ref);
 	TableFunctionFileBindInput file_input;
@@ -913,7 +914,7 @@ vector<PartitionStatistics> TableFunctionMultiFileWrapper::GetPartitionStats(Cli
 	if (!function.get_partition_stats || !file.bind_data) {
 		return result;
 	}
-	BoundTableFunction bound_function(function);
+	auto bound_function = FunctionBinder::BindTableFunction(&context, function);
 	GetPartitionStatsInput file_input(bound_function, file.bind_data.get());
 	return function.get_partition_stats(context, file_input);
 }

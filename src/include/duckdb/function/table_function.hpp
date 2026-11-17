@@ -658,8 +658,6 @@ public:
 class BoundTableFunction : public BaseTableFunction, public BoundSimpleFunction {
 public:
 	DUCKDB_API BoundTableFunction();
-	DUCKDB_API explicit BoundTableFunction(const TableFunction &function);
-	DUCKDB_API explicit BoundTableFunction(shared_ptr<const TableFunction> function);
 
 	//! The function this was bound from. For a function bound from a TableFunctionSet this is the set's own
 	//! overload, so it compares equal by pointer across binds. Functions bound outside of a set are copied into a
@@ -696,7 +694,13 @@ public:
 	DUCKDB_API void SetCallArguments(const vector<Value> &parameters, const named_argument_map_t &named_parameters);
 
 private:
+	//! Only FunctionBinder binds a function: it resolves the types the function is bound with
+	BoundTableFunction(shared_ptr<const TableFunction> definition, vector<LogicalType> arguments);
+
 	shared_ptr<const TableFunction> definition;
+
+	friend class FunctionSerializer;
+	friend class FunctionBinder;
 
 public:
 	DUCKDB_API bool operator==(const BoundTableFunction &rhs) const;

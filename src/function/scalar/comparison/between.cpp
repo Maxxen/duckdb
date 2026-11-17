@@ -9,6 +9,7 @@
 #include "duckdb/planner/expression/bound_between_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/legacy_bound_between_expression.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -213,14 +214,8 @@ unique_ptr<Expression> BoundBetweenExpression::Create(unique_ptr<Expression> inp
 	auto function_data = make_uniq<BetweenFunctionData>(lower_inclusive, upper_inclusive);
 
 	// the function is bound to the types of the values it compares
-	BoundScalarFunction function(BetweenFun::GetFunction());
-	function.GetArguments().clear();
-	for (auto &child : children) {
-		function.GetArguments().push_back(child->GetReturnType());
-	}
-	auto result =
-	    make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), std::move(function_data), false);
-	return std::move(result);
+	return FunctionBinder::BindScalarFunction(nullptr, BetweenFun::GetFunction(), std::move(children),
+	                                          std::move(function_data));
 }
 
 unique_ptr<FunctionData> BindBetweenFun(BindScalarFunctionInput &input) {

@@ -14,6 +14,7 @@
 #include "duckdb/common/types/variant.hpp"
 #include "duckdb/function/scalar/nested_functions.hpp"
 #include "duckdb/function/scalar/variant_utils.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb {
 
@@ -112,7 +113,7 @@ public:
 		vector<unique_ptr<Expression>> arguments;
 		arguments.push_back(unique_ptr_cast<BoundReferenceExpression, Expression>(std::move(expr)));
 
-		BoundScalarFunction bound_func(GetTransformFunction(true));
+		auto bound_func = FunctionBinder::BindScalarFunction(nullptr, GetTransformFunction(true), arguments);
 		bound_func.SetReturnType(TransformedType());
 
 		return make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments), nullptr);

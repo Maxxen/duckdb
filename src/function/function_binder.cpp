@@ -326,7 +326,10 @@ static void SubstituteTemplateType(LogicalType &type, case_insensitive_map_t<vec
 			auto it = bindings.find(index);
 			if (it != bindings.end()) {
 				// found a binding, return the concrete type
-				auto result = LogicalType::NormalizeType(it->second.back());
+				// a template only unresolved parameters are passed as stays unknown
+				auto &bound_type = it->second.back();
+				auto result =
+				    bound_type.id() == LogicalTypeId::UNKNOWN ? bound_type : LogicalType::NormalizeType(bound_type);
 				if (TemplateType::HasConstraint(t)) {
 					// e.g. the DECIMAL that integer arguments are passed as
 					auto constrained = ConstrainType(TemplateType::GetConstraint(t), result);
@@ -629,17 +632,89 @@ FunctionBindResult FunctionBinder::SelectFunction(optional_ptr<ClientContext> co
 	return FunctionBindError::CreateAmbiguousMatch(functions.GetName(), call, std::move(cheapest));
 }
 
-template <class T>
-FunctionBinding FunctionBinder::MatchFunction(const shared_ptr<const T> &function,
-                                              const vector<unique_ptr<Expression>> &arguments,
-                                              const vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
-	FunctionSet<T> functions(function->GetName());
-	functions.AddFunction(function);
-	auto selection = SelectFunction(context, functions, {arguments, named_arguments}, true);
-	if (!selection) {
-		selection.GetError().Throw();
+FunctionBinding FunctionBinder::MatchFunction(optional_ptr<ClientContext> context,
+                                              shared_ptr<const SimpleFunction> function,
+                                              const FunctionCallArguments &call) {
+	auto name = function->GetName();
+	auto match = MatchOverload(context, 0, std::move(function), call, true);
+	auto binding = std::get_if<FunctionBinding>(&match);
+	if (!binding) {
+		vector<FunctionMismatch> mismatches;
+		mismatches.push_back(std::move(std::get<FunctionMismatch>(match)));
+		FunctionBindError::CreateNoMatch(std::move(name), call, std::move(mismatches)).Throw();
 	}
-	return selection.GetBinding();
+	return std::move(*binding);
+}
+
+vector<LogicalType> FunctionBinding::GetArgumentTypes() const {
+	auto &sig = function->GetSignature();
+	vector<idx_t> received(sig.GetParameterCount(), 0);
+	for (auto param_idx : argument_to_parameters) {
+		received[param_idx]++;
+	}
+	vector<LogicalType> result;
+	for (idx_t param_idx = 0; param_idx < sig.GetParameterCount(); param_idx++) {
+		auto count = received[param_idx];
+		if (count == 0 && !sig.GetParameter(param_idx).IsVariadic()) {
+			// the call matches the function, so every parameter it leaves out has a default
+			count = 1;
+		}
+		result.insert(result.end(), count, parameter_types[param_idx]);
+	}
+	return result;
+}
+
+template <class BOUND, class T>
+BOUND FunctionBinder::CreateBoundFunction(const FunctionBinding &binding) {
+	return BOUND(binding.GetFunction<T>(), binding.GetArgumentTypes(), binding.return_type);
+}
+
+BoundScalarFunction FunctionBinder::BindScalarFunction(optional_ptr<ClientContext> context,
+                                                       const ScalarFunction &function,
+                                                       const FunctionCallArguments &call) {
+	auto binding = MatchFunction(context, make_shared_ptr<ScalarFunction>(function), call);
+	return CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding);
+}
+
+BoundAggregateFunction FunctionBinder::BindAggregateFunction(optional_ptr<ClientContext> context,
+                                                             const AggregateFunction &function,
+                                                             const FunctionCallArguments &call) {
+	auto binding = MatchFunction(context, make_shared_ptr<AggregateFunction>(function), call);
+	return CreateBoundFunction<BoundAggregateFunction, AggregateFunction>(binding);
+}
+
+BoundWindowFunction FunctionBinder::BindWindowFunction(optional_ptr<ClientContext> context,
+                                                       const WindowFunction &function,
+                                                       const FunctionCallArguments &call) {
+	auto binding = MatchFunction(context, make_shared_ptr<WindowFunction>(function), call);
+	return CreateBoundFunction<BoundWindowFunction, WindowFunction>(binding);
+}
+
+unique_ptr<BoundFunctionExpression> FunctionBinder::BindScalarFunction(optional_ptr<ClientContext> context,
+                                                                       const ScalarFunction &function,
+                                                                       vector<unique_ptr<Expression>> children,
+                                                                       unique_ptr<FunctionData> bind_data,
+                                                                       bool is_operator) {
+	auto bound_function = BindScalarFunction(context, function, FunctionCallArguments(children));
+	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children), std::move(bind_data),
+	                                          is_operator);
+}
+
+//! The types of the arguments a table function receives by position - the types plan serialization records
+static vector<LogicalType> PositionalTypes(const FunctionSignature &signature, const vector<LogicalType> &types) {
+	return vector<LogicalType>(types.begin(), types.begin() + NumericCast<vector<LogicalType>::difference_type>(
+	                                                              signature.GetPositionalParameterCount()));
+}
+
+BoundTableFunction FunctionBinder::BindTableFunction(optional_ptr<ClientContext> context,
+                                                     const TableFunction &function) {
+	auto definition = make_shared_ptr<const TableFunction>(function);
+	vector<LogicalType> declared_types;
+	for (auto &param : definition->GetSignature().GetParameters()) {
+		declared_types.push_back(param.GetType());
+	}
+	auto arguments = PositionalTypes(definition->GetSignature(), declared_types);
+	return BoundTableFunction(std::move(definition), std::move(arguments));
 }
 
 static bool AnyOverloadSupportsImplicitArgumentNames(const BaseFunctionSet &functions) {
@@ -859,7 +934,6 @@ static ResolvedArguments ResolveArguments(const SimpleFunction &function, const 
 	ResolvedArguments result;
 	for (idx_t param_idx = 0; param_idx < sig.GetParameterCount(); param_idx++) {
 		const auto &param = sig.GetParameter(param_idx);
-		auto &param_type = binding.parameter_types[param_idx];
 		for (auto i : received[param_idx]) {
 			if (param.GetKind() == FunctionParameterKind::VAR_KEYWORD) {
 				result.named_argument_names.push_back(named_arguments[i - received_positional_count].first);
@@ -867,16 +941,21 @@ static ResolvedArguments ResolveArguments(const SimpleFunction &function, const 
 			auto &argument =
 			    i < received_positional_count ? arguments[i] : named_arguments[i - received_positional_count].second;
 			result.arguments.push_back(std::move(argument));
-			result.types.push_back(param_type);
 		}
 		if (!param.IsVariadic() && received[param_idx].empty()) {
 			// the call matches the function, so every parameter it leaves out has a default
 			auto default_arg = make_uniq<BoundConstantExpression>(*param.GetDefaultValue(), param.GetName());
 			result.arguments.push_back(std::move(default_arg));
-			result.types.push_back(param_type);
 		}
 		if (param.GetKind() == FunctionParameterKind::KEYWORD_ONLY) {
 			result.named_argument_names.push_back(param.GetName());
+		}
+	}
+	result.types = binding.GetArgumentTypes();
+	for (auto &type : result.types) {
+		if (TypeVisitor::Contains(type, LogicalTypeId::UNKNOWN)) {
+			// no argument determines the type of an unresolved parameter - the call is bound again at EXECUTE
+			throw ParameterNotResolvedException();
 		}
 	}
 	result.positional_count = result.arguments.size() - result.named_argument_names.size();
@@ -952,8 +1031,9 @@ FunctionBinder::BindTableFunction(const TableFunctionSet &functions,
 	named_argument_map_t named_parameters;
 	FoldArguments(context, *definition, resolved, parameters, named_parameters);
 	// copied out of the set: binding the table function fills in the bound return types
-	return make_uniq<ResolvedTableFunction>(BoundTableFunction(definition), std::move(parameters),
-	                                        std::move(named_parameters));
+	return make_uniq<ResolvedTableFunction>(
+	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types)),
+	    std::move(parameters), std::move(named_parameters));
 }
 
 unique_ptr<ResolvedTableFunction>
@@ -990,8 +1070,9 @@ FunctionBinder::BindTableInOutFunction(const TableFunctionSet &functions, const 
 	vector<Value> parameters;
 	named_argument_map_t named_parameters;
 	FoldArguments(context, *definition, resolved, parameters, named_parameters);
-	return make_uniq<ResolvedTableFunction>(BoundTableFunction(definition), std::move(parameters),
-	                                        std::move(named_parameters));
+	return make_uniq<ResolvedTableFunction>(
+	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types)),
+	    std::move(parameters), std::move(named_parameters));
 }
 
 unique_ptr<BoundPragmaInfo> FunctionBinder::BindPragmaFunction(
@@ -1213,7 +1294,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 		}
 		if (HasNullConstantArgument(context, regular_args, keyword_args, binder)) {
 			if (return_type.IsComplete()) {
-				BoundScalarFunction null_function(std::move(selected_function));
+				auto null_function = CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding);
 				for (auto &child : keyword_args) {
 					regular_args.push_back(std::move(child.second));
 				}
@@ -1514,14 +1595,12 @@ FunctionBinder::ResolveScalarFunctionTypes(const FunctionBinding &binding, vecto
                                            vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
 	auto &function = binding.GetFunction();
 	// Make a BoundScalarFunction out of the ScalarFunction, so we can store bind info and other properties in it.
-	ResolvedScalarFunctionTypes result {BoundScalarFunction(binding.GetFunction<ScalarFunction>()), {}};
+	ResolvedScalarFunctionTypes result {CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding), {}};
 	auto &bound_function = result.bound_function;
 
 	// Reorder named args and expand the variadic arguments
 	auto resolved = ResolveArguments(function, binding, arguments, named_arguments);
 	bound_function.SetNamedArguments(resolved.positional_count, std::move(resolved.named_argument_names));
-	bound_function.GetArguments() = std::move(resolved.types);
-	bound_function.SetReturnType(binding.return_type);
 	arguments = std::move(resolved.arguments);
 
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, arguments));
@@ -1605,7 +1684,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const shared_ptr<const
                                                           vector<pair<Identifier, unique_ptr<Expression>>> keyword_args,
                                                           bool is_operator, optional_ptr<Binder> binder,
                                                           Identifier alias, QueryLocation query_location) {
-	auto binding = MatchFunction(function, children, keyword_args);
+	auto binding = MatchFunction(&context, function, {children, keyword_args});
 	return BindScalarFunction(binding, std::move(children), std::move(keyword_args), is_operator, binder,
 	                          std::move(alias), query_location);
 }
@@ -1647,13 +1726,11 @@ FunctionBinder::ResolveAggregateFunction(const FunctionBinding &binding, vector<
                                          vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
 	auto &function = binding.GetFunction();
 	// Make a BoundFunction out of the func
-	BoundAggregateFunction bound_function(binding.GetFunction<AggregateFunction>());
+	auto bound_function = CreateBoundFunction<BoundAggregateFunction, AggregateFunction>(binding);
 
 	// Reorder named args and expand the variadic arguments
 	auto resolved = ResolveArguments(function, binding, children, named_arguments);
 	bound_function.SetNamedArguments(resolved.positional_count, std::move(resolved.named_argument_names));
-	bound_function.GetArguments() = std::move(resolved.types);
-	bound_function.SetReturnType(binding.return_type);
 	children = std::move(resolved.arguments);
 
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, children));
@@ -1706,7 +1783,7 @@ FunctionBinder::BindAggregateFunction(const shared_ptr<const AggregateFunction> 
                                       vector<unique_ptr<Expression>> children,
                                       vector<pair<Identifier, unique_ptr<Expression>>> keyword_args,
                                       unique_ptr<Expression> filter, AggregateType aggr_type) {
-	auto binding = MatchFunction(function, children, keyword_args);
+	auto binding = MatchFunction(&context, function, {children, keyword_args});
 	return BindAggregateFunction(std::move(binding), std::move(children), std::move(keyword_args), std::move(filter),
 	                             aggr_type);
 }
@@ -1725,7 +1802,7 @@ FunctionBinder::BindAggregateFunction(FunctionBinding binding, vector<unique_ptr
 			ExpressionBinder::PushCollation(context, argument.second, argument.second->GetReturnType());
 		}
 		// the arguments are replaced by their comparison keys, which may be of other types
-		binding = MatchFunction(function, children, keyword_args);
+		binding = MatchFunction(&context, function, {children, keyword_args});
 	}
 	auto [bound_function, bind_info] = ResolveAggregateFunction(binding, children, keyword_args);
 
@@ -1770,13 +1847,11 @@ FunctionBinder::ResolveWindowFunction(const FunctionBinding &binding, vector<uni
                                       optional_ptr<vector<LogicalType>> order_types,
                                       optional_ptr<vector<LogicalType>> arg_order_types) {
 	auto &function = binding.GetFunction();
-	BoundWindowFunction bound_function(binding.GetFunction<WindowFunction>());
+	auto bound_function = CreateBoundFunction<BoundWindowFunction, WindowFunction>(binding);
 
 	// Reorder named args and expand the variadic arguments
 	auto resolved = ResolveArguments(function, binding, children, named_arguments);
 	bound_function.SetNamedArguments(resolved.positional_count, std::move(resolved.named_argument_names));
-	bound_function.GetArguments() = std::move(resolved.types);
-	bound_function.SetReturnType(binding.return_type);
 	children = std::move(resolved.arguments);
 
 	auto logical_arguments = CaptureLogicalArguments(bound_function, children);
@@ -1813,7 +1888,7 @@ FunctionBinder::BindWindowFunction(const shared_ptr<const WindowFunction> &funct
                                    vector<unique_ptr<Expression>> children,
                                    vector<pair<Identifier, unique_ptr<Expression>>> keyword_args,
                                    vector<LogicalType> &order_types, vector<LogicalType> &arg_order_types) {
-	auto binding = MatchFunction(function, children, keyword_args);
+	auto binding = MatchFunction(&context, function, {children, keyword_args});
 	return BindWindowFunction(binding, std::move(children), std::move(keyword_args), order_types, arg_order_types);
 }
 

@@ -8,6 +8,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/filter/table_filter_functions.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 #include <atomic>
 #include <thread>
@@ -152,9 +153,10 @@ TEST_CASE("Bloom filter selection preserves NULL policy and mapped rows", "[filt
 		for (bool filters_null_values : {false, true}) {
 			vector<unique_ptr<Expression>> children;
 			children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0ULL));
-			BoundFunctionExpression expr(
-			    BoundScalarFunction(BloomFilterScalarFun::GetFunction(LogicalType::BIGINT)), std::move(children),
+			auto bound_expr = FunctionBinder::BindScalarFunction(
+			    nullptr, BloomFilterScalarFun::GetFunction(LogicalType::BIGINT), std::move(children),
 			    make_uniq<BloomFilterFunctionData>(filter, filters_null_values, "k", LogicalType::BIGINT, 0.0f, 0ULL));
+			auto &expr = *bound_expr;
 			ExpressionExecutor executor(context, expr);
 
 			for (bool dictionary : {false, true}) {

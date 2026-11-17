@@ -170,29 +170,19 @@ unique_ptr<BoundFunctionExpression> ScalarFunction::Bind(ClientContext &context,
 	return unique_ptr_cast<Expression, BoundFunctionExpression>(std::move(expr));
 }
 
-BoundScalarFunction::BoundScalarFunction(const ScalarFunction &function)
-    // the function does not come from a function set - copy it into a definition of its own
-    : BoundScalarFunction(make_shared_ptr<ScalarFunction>(function)) {
-}
-
-BoundScalarFunction::BoundScalarFunction(shared_ptr<const ScalarFunction> function_p)
+BoundScalarFunction::BoundScalarFunction(shared_ptr<const ScalarFunction> function_p, vector<LogicalType> arguments_p,
+                                         LogicalType return_type_p)
     : definition(std::move(function_p)) {
 	auto &function = *definition;
 	qualified_name = function.GetQualifiedName();
 	extra_info = function.extra_info;
-	return_type = function.GetReturnType().GetUnboundType();
+	return_type = std::move(return_type_p);
 	callbacks = function.GetCallbacks();
 	properties = function.GetProperties();
 	function_info = function.GetFunctionInfo();
 	arg_props = function.GetAllArgProperties();
 
-	// Try to default bind the function, to fill in any missing information in the BoundScalarFunction (e.g. from the
-	// "bind" callback)
-	for (auto &param : function.GetSignature().GetParameters()) {
-		if (!param.IsVariadic()) {
-			arguments.push_back(param.GetType());
-		}
-	}
+	arguments = std::move(arguments_p);
 	positional_arguments = arguments.size();
 	logical_arguments = arguments;
 	logical_return_type = return_type;
