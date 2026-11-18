@@ -532,13 +532,9 @@ static void GenericRoundFunctionDecimal(DataChunk &input, ExpressionState &state
 }
 
 //! Rounding a decimal to an integer removes its scale
-static LogicalType DecimalRoundReturnType(const ResolveReturnTypeInput &input) {
-	auto &decimal_type = input.GetArgumentType(0);
-	if (decimal_type.id() != LogicalTypeId::DECIMAL) {
-		// the argument is NULL
-		return decimal_type;
-	}
-	return LogicalType::DECIMAL(DecimalType::GetWidth(decimal_type), 0);
+//! A decimal that is rounded to a whole number keeps its width
+static ReturnType DecimalRoundReturnType() {
+	return TypeName::DECIMAL(TypeName::VARIABLE("W"), Literal::Integer(0));
 }
 
 template <class OP>
@@ -603,7 +599,7 @@ ScalarFunctionSet CeilFun::GetFunctions() {
 			break;
 		case LogicalTypeId::DECIMAL:
 			bind_func = GenericRoundFunctionDecimalBind<CeilDecimalOperator>;
-			return_type = ReturnType::ANY(DecimalRoundReturnType);
+			return_type = DecimalRoundReturnType();
 			break;
 		default:
 			throw InternalException("Unimplemented numeric type for function \"ceil\"");
@@ -661,7 +657,7 @@ ScalarFunctionSet FloorFun::GetFunctions() {
 			break;
 		case LogicalTypeId::DECIMAL:
 			bind_func = GenericRoundFunctionDecimalBind<FloorDecimalOperator>;
-			return_type = ReturnType::ANY(DecimalRoundReturnType);
+			return_type = DecimalRoundReturnType();
 			break;
 		default:
 			throw InternalException("Unimplemented numeric type for function \"floor\"");
@@ -925,7 +921,7 @@ ScalarFunctionSet TruncFun::GetFunctions() {
 			break;
 		case LogicalTypeId::DECIMAL:
 			bind_func = GenericRoundFunctionDecimalBind<TruncDecimalOperator>;
-			return_type = ReturnType::ANY(DecimalRoundReturnType);
+			return_type = DecimalRoundReturnType();
 			bind_prec_func =
 			    BindDecimalRoundPrecision<TruncDecimalNegativePrecisionOperator, TruncDecimalPositivePrecisionOperator>;
 			prec_return_type = ReturnType::ANY(DecimalRoundPrecisionReturnType<false>);
@@ -1230,7 +1226,7 @@ ScalarFunctionSet RoundFun::GetFunctions() {
 			break;
 		case LogicalTypeId::DECIMAL:
 			bind_func = GenericRoundFunctionDecimalBind<RoundDecimalOperator>;
-			return_type = ReturnType::ANY(DecimalRoundReturnType);
+			return_type = DecimalRoundReturnType();
 			bind_prec_func =
 			    BindDecimalRoundPrecision<DecimalRoundNegativePrecisionOperator<RoundHalfAwayFromZero>,
 			                              DecimalRoundPositivePrecisionOperator<RoundHalfAwayFromZero>, true>;
