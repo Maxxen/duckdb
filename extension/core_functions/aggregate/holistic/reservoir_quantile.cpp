@@ -459,7 +459,7 @@ void DefineReservoirQuantile(AggregateFunctionSet &set, const LogicalType &type)
 //! The quantiles of decimals are of the decimal they are passed as, which the bind determines
 void GetReservoirQuantileDecimalFunction(AggregateFunctionSet &set, const LogicalType &quantile_type) {
 	const bool is_list = quantile_type.id() == LogicalTypeId::LIST;
-	auto decimal_type = TypeName::VARIABLE("T");
+	auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
 	auto fun = AggregateFunction::UnaryAggregate<ReservoirQuantileState<int64_t>, int64_t, int64_t,
 	                                             ReservoirQuantileScalarOperation>(LogicalType::DECIMAL(18, 0),
 	                                                                               LogicalType::DECIMAL(18, 0));
@@ -468,7 +468,8 @@ void GetReservoirQuantileDecimalFunction(AggregateFunctionSet &set, const Logica
 	fun.SetDeserializeCallback(DeserializeReservoirQuantileDecimal);
 
 	fun.GetSignature() = FunctionSignature()
-	                         .AddVariable("T", LogicalTypeId::DECIMAL)
+	                         .AddVariable("W", TypeVariable::Kind::INTEGER)
+	                         .AddVariable("S", TypeVariable::Kind::INTEGER)
 	                         .AddParameter("x", decimal_type)
 	                         .SetReturnType(is_list ? TypeName::LIST(decimal_type) : decimal_type);
 	if (is_list) {

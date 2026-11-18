@@ -593,12 +593,14 @@ AggregateFunctionSet AvgFun::GetFunctions() {
 	AggregateFunctionSet avg;
 
 	// The first is already opted-in during `BindDecimalAvg`
-	AggregateFunction decimal_avg(FunctionSignature()
-	                                  .AddVariable("T", LogicalTypeId::DECIMAL)
-	                                  .AddParameter("x", TypeName::VARIABLE("T"))
-	                                  .SetReturnType(ReturnType::ANY()),
-	                              nullptr, nullptr, nullptr, nullptr, nullptr,
-	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalAvg);
+	AggregateFunction decimal_avg(
+	    FunctionSignature()
+	        .AddVariable("W", TypeVariable::Kind::INTEGER)
+	        .AddVariable("S", TypeVariable::Kind::INTEGER)
+	        .AddParameter("x", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")))
+	        .SetReturnType(ReturnType::ANY()),
+	    nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
+	    BindDecimalAvg);
 	avg.AddFunction(decimal_avg);
 	avg.AddFunction(GetAverageAggregate(PhysicalType::INT16));
 	avg.AddFunction(GetAverageAggregate(PhysicalType::INT32));

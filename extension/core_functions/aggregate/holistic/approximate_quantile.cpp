@@ -647,9 +647,10 @@ unique_ptr<FunctionData> ApproxQuantileDecimalDeserialize(Deserializer &deserial
 
 AggregateFunction GetApproxQuantileDecimal() {
 	// stub function - the actual function is set during bind or deserialize
-	auto decimal_type = TypeName::VARIABLE("T");
+	auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
 	AggregateFunction fun(FunctionSignature()
-	                          .AddVariable("T", LogicalTypeId::DECIMAL)
+	                          .AddVariable("W", TypeVariable::Kind::INTEGER)
+	                          .AddVariable("S", TypeVariable::Kind::INTEGER)
 	                          .AddParameter("x", decimal_type)
 	                          .AddParameter("pos", LogicalType::FLOAT)
 	                          .SetReturnType(decimal_type),
@@ -692,9 +693,10 @@ AggregateFunction GetApproxQuantileWidenedTimestamp(const LogicalType &type) {
 
 AggregateFunction GetApproxQuantileDecimalList() {
 	// stub function - the actual function is set during bind or deserialize
-	auto decimal_type = TypeName::VARIABLE("T");
+	auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
 	AggregateFunction fun(FunctionSignature()
-	                          .AddVariable("T", LogicalTypeId::DECIMAL)
+	                          .AddVariable("W", TypeVariable::Kind::INTEGER)
+	                          .AddVariable("S", TypeVariable::Kind::INTEGER)
 	                          .AddParameter("x", decimal_type)
 	                          .AddParameter("pos", LogicalType::LIST(LogicalType::FLOAT))
 	                          .SetReturnType(TypeName::LIST(decimal_type)),

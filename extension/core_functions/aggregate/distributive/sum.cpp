@@ -377,8 +377,9 @@ AggregateFunction GetSumAggregateNoOverflow(PhysicalType type) {
 AggregateFunction GetSumAggregateNoOverflowDecimal() {
 	// the bind selects the decimal the sum is returned as
 	AggregateFunction aggr(FunctionSignature()
-	                           .AddVariable("T", LogicalTypeId::DECIMAL)
-	                           .AddParameter("arg", TypeName::VARIABLE("T"))
+	                           .AddVariable("W", TypeVariable::Kind::INTEGER)
+	                           .AddVariable("S", TypeVariable::Kind::INTEGER)
+	                           .AddParameter("arg", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")))
 	                           .SetReturnType(ReturnType::ANY()),
 	                       nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                       AggregateFunction::NoClusterUpdate(), SumNoOverflowBind);
@@ -676,12 +677,14 @@ AggregateFunctionSet SumFun::GetFunctions() {
 	AggregateFunctionSet sum;
 	// decimal
 	// the bind selects the decimal the sum is returned as
-	AggregateFunction decimal_sum(FunctionSignature()
-	                                  .AddVariable("T", LogicalTypeId::DECIMAL)
-	                                  .AddParameter("arg", TypeName::VARIABLE("T"))
-	                                  .SetReturnType(ReturnType::ANY()),
-	                              nullptr, nullptr, nullptr, nullptr, nullptr,
-	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalSum);
+	AggregateFunction decimal_sum(
+	    FunctionSignature()
+	        .AddVariable("W", TypeVariable::Kind::INTEGER)
+	        .AddVariable("S", TypeVariable::Kind::INTEGER)
+	        .AddParameter("arg", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")))
+	        .SetReturnType(ReturnType::ANY()),
+	    nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
+	    BindDecimalSum);
 	sum.AddFunction(decimal_sum);
 	sum.AddFunction(GetSumAggregate(PhysicalType::BOOL));
 	sum.AddFunction(GetSumAggregate(PhysicalType::INT16));

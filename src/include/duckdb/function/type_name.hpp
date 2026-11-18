@@ -42,6 +42,7 @@ public:
 	DUCKDB_API static TypeName ARRAY(TypeName child, TypeName size);
 	DUCKDB_API static TypeName ARRAY(TypeName child, idx_t size);
 	DUCKDB_API static TypeName MAP(TypeName key, TypeName value);
+	DUCKDB_API static TypeName DECIMAL(TypeName width, TypeName scale);
 	DUCKDB_API static TypeName STRUCT(vector<pair<string, TypeName>> children);
 	DUCKDB_API static TypeName TUPLE(vector<TypeName> children);
 

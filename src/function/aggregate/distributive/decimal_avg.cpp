@@ -174,8 +174,9 @@ AggregateFunctionSet DecimalAverageFun::GetFunctions() {
 	AggregateFunctionSet set("decimal_average");
 	// the bind selects the decimal the average is returned as
 	AggregateFunction fun(FunctionSignature()
-	                          .AddVariable("T", LogicalTypeId::DECIMAL)
-	                          .AddParameter("arg", TypeName::VARIABLE("T"))
+	                          .AddVariable("W", TypeVariable::Kind::INTEGER)
+	                          .AddVariable("S", TypeVariable::Kind::INTEGER)
+	                          .AddParameter("arg", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")))
 	                          .SetReturnType(ReturnType::ANY()),
 	                      nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                      nullptr, BindDecimalAverage);

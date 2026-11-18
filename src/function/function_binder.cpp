@@ -405,19 +405,6 @@ FindUndeterminedVariable(const FunctionSignature &signature, const TypeName &nam
 	return nullptr;
 }
 
-//! Bind every value variable a type name uses to an unknown value, unless it is bound already
-static void BindUnknownValues(const FunctionSignature &signature, const TypeName &name, FunctionVariables &variables) {
-	if (FindValueVariable(name, signature)) {
-		variables.values.emplace(name.GetName().GetIdentifierName(), Value());
-		return;
-	}
-	for (auto &argument : name.GetArguments()) {
-		if (argument.IsType()) {
-			BindUnknownValues(signature, argument.GetType(), variables);
-		}
-	}
-}
-
 //! Bind a value variable to a value, or check that it is bound to that value. An unknown value is replaced
 static bool UnifyValue(const Identifier &variable, Value value, FunctionVariables &variables,
                        FunctionMismatch::TemplateDeduction &failure) {
@@ -439,13 +426,8 @@ static bool UnifyValue(const Identifier &variable, Value value, FunctionVariable
 static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSignature &signature,
                            const TypeName &name, const LogicalType &type, FunctionVariables &variables,
                            FunctionMismatch::TemplateDeduction &failure) {
-	auto variable_use = GetVariableUse(signature, name);
-	if (!variable_use.UsesAny()) {
+	if (!GetVariableUse(signature, name).UsesAny()) {
 		return true;
-	}
-	if (variable_use.uses_value) {
-		// a value is unknown unless an argument determines it, e.g. a string literal passed as an array does not
-		BindUnknownValues(signature, name, variables);
 	}
 	if (type.id() == LogicalTypeId::UNKNOWN || type.id() == LogicalTypeId::SQLNULL) {
 		// The argument says nothing about the types, so the variables it would determine are UNKNOWN or SQLNULL,

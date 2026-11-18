@@ -254,6 +254,10 @@ TypeName TypeName::MAP(TypeName key, TypeName value) {
 	return TypeName(Identifier("MAP"), {std::move(key), std::move(value)});
 }
 
+TypeName TypeName::DECIMAL(TypeName width, TypeName scale) {
+	return TypeName(Identifier("DECIMAL"), {std::move(width), std::move(scale)});
+}
+
 TypeName TypeName::STRUCT(vector<pair<string, TypeName>> children) {
 	vector<TypeNameArgument> arguments;
 	for (auto &child : children) {

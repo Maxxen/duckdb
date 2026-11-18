@@ -932,11 +932,13 @@ static vector<LogicalType> GetContinuousQuantileTypes() {
 
 AggregateFunctionSet QuantileContFun::GetFunctions() {
 	AggregateFunctionSet quantile_cont("quantile_cont");
-	const auto any_decimal = FunctionSignature().AddVariable("T", LogicalTypeId::DECIMAL);
-	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(
-	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalType::DOUBLE, any_decimal));
+	const auto any_decimal =
+	    FunctionSignature().AddVariable("W", TypeVariable::Kind::INTEGER).AddVariable("S", TypeVariable::Kind::INTEGER);
+	const auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
+	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(decimal_type, ReturnType::ANY(),
+	                                                                            LogicalType::DOUBLE, any_decimal));
 	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileListFunction>(
-	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE), any_decimal));
+	    decimal_type, ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE), any_decimal));
 	for (const auto &type : GetContinuousQuantileTypes()) {
 		quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(type, type, LogicalType::DOUBLE));
 		quantile_cont.AddFunction(

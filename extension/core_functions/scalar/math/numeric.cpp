@@ -47,7 +47,9 @@ static unique_ptr<FunctionData> BindIEEEFloatingBinary(BindScalarFunctionInput &
 static FunctionSignature XSignature(const LogicalType &type, ReturnType return_type) {
 	FunctionSignature signature;
 	if (type.id() == LogicalTypeId::DECIMAL) {
-		signature.AddVariable("T", LogicalTypeId::DECIMAL).AddParameter("x", TypeName::VARIABLE("T"));
+		signature.AddVariable("W", TypeVariable::Kind::INTEGER)
+		    .AddVariable("S", TypeVariable::Kind::INTEGER)
+		    .AddParameter("x", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")));
 	} else {
 		signature.AddParameter("x", type);
 	}
@@ -265,7 +267,8 @@ ScalarFunctionSet AbsOperatorFun::GetFunctions() {
 		case LogicalTypeId::DECIMAL: {
 			// a decimal is returned as the decimal it is passed as
 			abs.AddFunction(
-			    ScalarFunction(XSignature(type, TypeName::VARIABLE("T")), nullptr, DecimalUnaryOpBind<AbsOperator>));
+			    ScalarFunction(XSignature(type, TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"))),
+			                   nullptr, DecimalUnaryOpBind<AbsOperator>));
 			break;
 		}
 		case LogicalTypeId::TINYINT:

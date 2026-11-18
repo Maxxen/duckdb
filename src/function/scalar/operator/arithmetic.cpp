@@ -327,18 +327,29 @@ unique_ptr<BaseStatistics> PropagateFloatingStats(ClientContext &context, Functi
 	return result.ToUnique();
 }
 
-//! A signature that declares the given type variables as decimals of any width and scale. Arguments of the same
-//! variable are cast to their common decimal
-FunctionSignature DecimalSignature(const vector<string> &names = {"T"}) {
+//! A signature that declares T as a decimal of any width and scale. Arguments passed as it are cast to their common
+//! decimal
+FunctionSignature DecimalSignature() {
+	return FunctionSignature().AddVariable("T", LogicalTypeId::DECIMAL);
+}
+
+TypeName DecimalTemplate() {
+	return TypeName::VARIABLE("T");
+}
+
+//! A signature that declares the widths and scales of the given number of decimals: W1, S1, W2, S2, ...
+FunctionSignature DecimalOperandSignature(idx_t count) {
 	FunctionSignature signature;
-	for (auto &name : names) {
-		signature.AddVariable(Identifier(name), LogicalTypeId::DECIMAL);
+	for (idx_t i = 1; i <= count; i++) {
+		signature.AddVariable(Identifier("W" + to_string(i)), TypeVariable::Kind::INTEGER);
+		signature.AddVariable(Identifier("S" + to_string(i)), TypeVariable::Kind::INTEGER);
 	}
 	return signature;
 }
 
-TypeName DecimalTemplate(const string &name = "T") {
-	return TypeName::VARIABLE(name);
+//! A decimal of the width and scale its argument is of
+TypeName DecimalOperand(idx_t index) {
+	return TypeName::DECIMAL(TypeName::VARIABLE("W" + to_string(index)), TypeName::VARIABLE("S" + to_string(index)));
 }
 
 //! Whether adding or subtracting decimals of the given type can overflow: the result has no room for the carry
@@ -428,8 +439,8 @@ ScalarFunction AddFunction::GetFunction(const LogicalType &type) {
 	D_ASSERT(type.IsNumeric());
 	// a decimal is returned as the decimal it is passed as
 	const bool is_decimal = type.id() == LogicalTypeId::DECIMAL;
-	auto operand_type = is_decimal ? DecimalTemplate() : TypeName(type);
-	auto signature = is_decimal ? DecimalSignature() : FunctionSignature();
+	auto operand_type = is_decimal ? DecimalOperand(1) : TypeName(type);
+	auto signature = is_decimal ? DecimalOperandSignature(1) : FunctionSignature();
 	ScalarFunction fn("+", signature.AddParameter(operand_type).SetReturnType(operand_type),
 	                  ScalarFunction::NopFunction);
 	fn.SetUnaryArgProperties(ArgProperties().StrictlyIncreasing());
@@ -847,7 +858,8 @@ ScalarFunction SubtractFunction::GetFunction(const LogicalType &type) {
 		return func;
 	} else if (type.id() == LogicalTypeId::DECIMAL) {
 		// a decimal is negated as the decimal it is passed as
-		ScalarFunction func("-", DecimalSignature().AddParameter(DecimalTemplate()).SetReturnType(DecimalTemplate()),
+		ScalarFunction func("-",
+		                    DecimalOperandSignature(1).AddParameter(DecimalOperand(1)).SetReturnType(DecimalOperand(1)),
 		                    nullptr, DecimalNegateBind);
 		func.SetUnaryArgProperties(ArgProperties().StrictlyDecreasing());
 		return func;
@@ -1188,10 +1200,10 @@ ScalarFunctionSet OperatorMultiplyFun::GetFunctions() {
 	ScalarFunctionSet multiply("*");
 	for (auto &type : LogicalType::Numeric()) {
 		if (type.id() == LogicalTypeId::DECIMAL) {
-			// the factors are not cast to a common decimal: each has a template of its own
-			ScalarFunction function(DecimalSignature({"T1", "T2"})
-			                            .AddParameter(DecimalTemplate("T1"))
-			                            .AddParameter(DecimalTemplate("T2"))
+			// the factors are not cast to a common decimal: each is of a width and scale of its own
+			ScalarFunction function(DecimalOperandSignature(2)
+			                            .AddParameter(DecimalOperand(1))
+			                            .AddParameter(DecimalOperand(2))
 			                            .SetReturnType(ReturnType::ANY(DecimalMultiplyReturnType)),
 			                        nullptr, BindDecimalMultiply);
 			function.SetSerializeCallback(SerializeDecimalArithmetic);

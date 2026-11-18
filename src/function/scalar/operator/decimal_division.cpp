@@ -322,12 +322,14 @@ static unique_ptr<FunctionData> DecimalDivisionBind(BindScalarFunctionInput &inp
 ScalarFunctionSet DecimalDivisionFun::GetFunctions() {
 	ScalarFunctionSet set("decimal_division");
 	// each operand is a decimal of its own width and scale
-	auto x_type = TypeName::VARIABLE("T1");
-	auto y_type = TypeName::VARIABLE("T2");
+	auto x_type = TypeName::DECIMAL(TypeName::VARIABLE("W1"), TypeName::VARIABLE("S1"));
+	auto y_type = TypeName::DECIMAL(TypeName::VARIABLE("W2"), TypeName::VARIABLE("S2"));
+	FunctionSignature operands;
+	for (auto variable : {"W1", "S1", "W2", "S2"}) {
+		operands.AddVariable(variable, TypeVariable::Kind::INTEGER);
+	}
 
-	ScalarFunction two_arg(FunctionSignature()
-	                           .AddVariable("T1", LogicalTypeId::DECIMAL)
-	                           .AddVariable("T2", LogicalTypeId::DECIMAL)
+	ScalarFunction two_arg(FunctionSignature(operands)
 	                           .AddParameter("x", x_type)
 	                           .AddParameter("y", y_type)
 	                           .SetReturnType(ReturnType::ANY(DecimalDivisionReturnType)),
@@ -335,9 +337,7 @@ ScalarFunctionSet DecimalDivisionFun::GetFunctions() {
 	two_arg.SetFallible();
 	set.AddFunction(two_arg);
 
-	ScalarFunction three_arg(FunctionSignature()
-	                             .AddVariable("T1", LogicalTypeId::DECIMAL)
-	                             .AddVariable("T2", LogicalTypeId::DECIMAL)
+	ScalarFunction three_arg(FunctionSignature(operands)
 	                             .AddParameter("x", x_type)
 	                             .AddParameter("y", y_type)
 	                             .AddParameter("scale", LogicalType::INTEGER)
