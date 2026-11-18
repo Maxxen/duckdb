@@ -15,15 +15,16 @@ SELECT * FROM test
 ----
 hello
 
+# an enum without values has no value to convert to
 statement error
 SELECT 'hello'::ENUM;
 ----
-ENUM type requires at least one argument
+Could not convert string 'hello' to ENUM()
 
 statement error
 SELECT ENUM 'a';
 ----
-ENUM type requires at least one argument
+Could not convert string 'a' to ENUM()
 
 statement error
 SELECT 'hello'::ENUM(42);

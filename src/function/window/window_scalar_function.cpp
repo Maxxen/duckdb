@@ -122,7 +122,13 @@ unique_ptr<Expression> FunctionBinder::BindScalarWindowFunction(BoundWindowExpre
 		children.emplace_back(make_uniq<BoundReferenceExpression>(input_types[col_idx], col_idx));
 	}
 	auto &aggr = wexpr.AggregateFunction();
-	ScalarFunction scalar(wexpr.GetName(), input_types, wexpr.GetReturnType(), WindowScalarFunc);
+	// the function takes the input row as it is: a column of any type each
+	FunctionSignature signature;
+	for (idx_t col_idx = 0; col_idx < input_types.size(); ++col_idx) {
+		signature.AddParameter(LogicalType::TEMPLATE("T" + to_string(col_idx)));
+	}
+	signature.SetReturnType(ReturnType::ANY());
+	ScalarFunction scalar(wexpr.GetName(), std::move(signature), WindowScalarFunc);
 	if (aggr) {
 		scalar.SetProperties(aggr->GetProperties());
 	} else {
@@ -136,7 +142,9 @@ unique_ptr<Expression> FunctionBinder::BindScalarWindowFunction(BoundWindowExpre
 	//	NULLs in the input row do not imply a NULL result
 	scalar.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	auto bind_info = make_uniq<ScalarWindowBindData>(context, wexpr);
-	return BindScalarFunction(&context, scalar, std::move(children), std::move(bind_info));
+	// the types are those of the row and of the window expression, whatever the function declares
+	BoundScalarFunction bound(make_shared_ptr<ScalarFunction>(scalar), input_types, wexpr.GetReturnType());
+	return make_uniq<BoundFunctionExpression>(std::move(bound), std::move(children), std::move(bind_info));
 }
 
 } // namespace duckdb

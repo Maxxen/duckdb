@@ -13,7 +13,7 @@
 
 namespace duckdb {
 
-TypedKwarg::TypedKwarg(Identifier name_p, LogicalType type_p) : name(std::move(name_p)), type(std::move(type_p)) {
+TypedKwarg::TypedKwarg(Identifier name_p, TypeName type_p) : name(std::move(name_p)), type(std::move(type_p)) {
 }
 
 bool TypedKwarg::operator==(const TypedKwarg &other) const {
@@ -29,7 +29,7 @@ string TypedKwarg::ToString() const {
 }
 
 TypedKwargs &TypedKwargs::Add(Identifier name, LogicalType type) {
-	options.emplace_back(std::move(name), std::move(type));
+	options.emplace_back(std::move(name), TypeName(type));
 	return *this;
 }
 
@@ -172,20 +172,21 @@ static bool RequiresCatalogAndSchemaNamePrefix(const Identifier &catalog_name, c
 	       schema_name != Identifier::DefaultSchema();
 }
 
-string FunctionParameter::ToString() const {
+string FunctionParameter::ToString(const FunctionSignature &signature) const {
+	auto type_string = signature.PrintType(type);
 	if (!named) {
-		return type.ToString();
+		return type_string;
 	}
 	if (kind == FunctionParameterKind::VAR_POSITIONAL) {
-		return StringUtil::Format("*%s %s", SQLIdentifier(name), type.ToString());
+		return StringUtil::Format("*%s %s", SQLIdentifier(name), type_string);
 	}
 	if (kind == FunctionParameterKind::VAR_KEYWORD) {
-		return StringUtil::Format("**%s %s", SQLIdentifier(name), type.ToString());
+		return StringUtil::Format("**%s %s", SQLIdentifier(name), type_string);
 	}
 	if (default_value) {
-		return StringUtil::Format("%s %s := %s", SQLIdentifier(name), type.ToString(), default_value->ToString());
+		return StringUtil::Format("%s %s := %s", SQLIdentifier(name), type_string, default_value->ToString());
 	}
-	return StringUtil::Format("%s %s", SQLIdentifier(name), type.ToString());
+	return StringUtil::Format("%s %s", SQLIdentifier(name), type_string);
 }
 
 // signatures are copied and moved freely - keep the move cheap
@@ -295,6 +296,59 @@ FunctionSignature &FunctionSignature::AddConstraint(Identifier variable, Logical
 	return *this;
 }
 
+string FunctionSignature::PrintType(const TypeName &type) const {
+	// a constrained type variable prints as the kind of type it stands for, a value variable as any value
+	return type.ToString([&](const TypeName &name) {
+		auto variable = FindVariable(name.GetName());
+		if (variable && variable->IsValue()) {
+			return string("ANY");
+		}
+		auto constraint = GetConstraint(name.GetName());
+		return constraint == LogicalTypeId::INVALID ? string() : EnumUtil::ToString(constraint);
+	});
+}
+
+bool FunctionSignature::AcceptsAnyType(const TypeName &type) const {
+	if (type.IsBuiltinType(LogicalTypeId::ANY)) {
+		return true;
+	}
+	if (type.HasArguments()) {
+		return false;
+	}
+	auto variable = FindVariable(type.GetName());
+	return variable && !variable->IsValue() && GetConstraint(type.GetName()) == LogicalTypeId::INVALID;
+}
+
+//! The constraints a signature declares on the type variables a type uses
+static void CollectConstraints(const FunctionSignature &signature, const TypeName &type,
+                               vector<LogicalTypeId> &constraints) {
+	if (!type.HasArguments()) {
+		auto variable = signature.FindVariable(type.GetName());
+		if (variable) {
+			constraints.push_back(signature.GetConstraint(type.GetName()));
+		}
+		return;
+	}
+	for (auto &argument : type.GetArguments()) {
+		if (argument.IsType()) {
+			CollectConstraints(signature, argument.GetType(), constraints);
+		}
+	}
+}
+
+bool FunctionSignature::IsSameType(const TypeName &type, const FunctionSignature &other,
+                                   const TypeName &other_type) const {
+	if (type != other_type) {
+		return false;
+	}
+	// the same name, so the same type unless the variables it uses are constrained differently
+	vector<LogicalTypeId> constraints;
+	vector<LogicalTypeId> other_constraints;
+	CollectConstraints(*this, type, constraints);
+	CollectConstraints(other, other_type, other_constraints);
+	return constraints == other_constraints;
+}
+
 void FunctionSignature::DeclareTemplates(const LogicalType &type) {
 	TypeVisitor::Contains(type, [&](const LogicalType &child) {
 		if (child.id() == LogicalTypeId::TEMPLATE) {
@@ -329,14 +383,17 @@ string FunctionSignature::ToString() const {
 			params.push_back("*");
 			needs_separator = false;
 		}
-		params.push_back(param.ToString());
+		params.push_back(param.ToString(*this));
 	}
 	if (close_positional_only && positional_only_count == parameters.size()) {
 		params.push_back("/");
 	}
 	auto head = StringUtil::Format("(%s)", StringUtil::Join(params, ", "));
 	// a table function prints no return type, and neither does a function that declares none (e.g. a pragma)
-	if (return_type.IsAny() || (return_type.IsType() && return_type.GetType().IsValid())) {
+	if (return_type.IsType()) {
+		return head + " -> " + PrintType(return_type.GetTypeName());
+	}
+	if (return_type.IsAny()) {
 		return head + " -> " + return_type.ToString();
 	}
 	return head;
@@ -384,27 +441,18 @@ vector<LogicalType> ResolveReturnTypeInput::GetArgumentTypes() const {
 	return result;
 }
 
-LogicalType ReturnType::GetUnboundType() const {
-	switch (kind) {
-	case Kind::TYPE:
-		return type;
-	case Kind::ANY:
-		return LogicalType::ANY;
-	case Kind::TABLE:
-		return LogicalType::INVALID;
-	default:
-		throw InternalException("Unknown ReturnType kind");
-	}
-}
-
 string ReturnType::ToString() const {
 	switch (kind) {
 	case Kind::TYPE:
-		return type.ToString();
+		return type->ToString();
 	case Kind::ANY:
 		return "ANY";
 	case Kind::TABLE:
 		return "TABLE";
+	case Kind::NONE:
+		return string();
+	case Kind::EXPRESSION:
+		throw NotImplementedException("A return type that is computed by an expression");
 	default:
 		throw InternalException("Unknown ReturnType kind");
 	}
@@ -412,14 +460,14 @@ string ReturnType::ToString() const {
 
 hash_t ReturnType::Hash() const {
 	auto hash = duckdb::Hash(static_cast<uint8_t>(kind));
-	return kind == Kind::TYPE ? duckdb::CombineHash(hash, type.Hash()) : hash;
+	return kind == Kind::TYPE ? duckdb::CombineHash(hash, type->Hash()) : hash;
 }
 
 bool ReturnType::operator==(const ReturnType &other) const {
 	if (kind != other.kind) {
 		return false;
 	}
-	return kind == Kind::TYPE ? type == other.type : resolver == other.resolver;
+	return kind == Kind::TYPE ? *type == *other.type : resolver == other.resolver;
 }
 
 bool ReturnType::operator!=(const ReturnType &other) const {
@@ -429,7 +477,7 @@ bool ReturnType::operator!=(const ReturnType &other) const {
 hash_t FunctionSignature::Hash() const {
 	hash_t hash = return_type.Hash();
 	for (auto &param : parameters) {
-		hash = duckdb::CombineHash(hash, param.GetType().Hash());
+		hash = duckdb::CombineHash(hash, param.GetTypeName().Hash());
 		hash = duckdb::CombineHash(hash, duckdb::Hash(static_cast<uint8_t>(param.GetKind())));
 	}
 	if (typed_kwargs) {
@@ -503,23 +551,23 @@ void FunctionSignature::Verify() const {
 	for (const auto &param : parameters) {
 		if (found_kwargs) {
 			throw InvalidInputException("Parameter '%s' follows '**kwargs', which must be the last parameter",
-			                            param.ToString());
+			                            param.ToString(*this));
 		}
 		if (param.IsVariadic() && param.HasDefaultValue()) {
-			throw InvalidInputException("Variadic parameter '%s' cannot have a default value", param.ToString());
+			throw InvalidInputException("Variadic parameter '%s' cannot have a default value", param.ToString(*this));
 		}
 		switch (param.GetKind()) {
 		case FunctionParameterKind::POSITIONAL_ONLY:
 			if (found_standard || found_args || found_keyword_only) {
 				throw InvalidInputException(
 				    "Positional-only parameter '%s' must be declared before every parameter that can be passed by name",
-				    param.ToString());
+				    param.ToString(*this));
 			}
 			break;
 		case FunctionParameterKind::STANDARD:
 			if (found_args || found_keyword_only) {
 				throw InvalidInputException("Parameter '%s' follows '*args' and must therefore be keyword-only",
-				                            param.ToString());
+				                            param.ToString(*this));
 			}
 			found_standard = true;
 			break;
@@ -528,7 +576,8 @@ void FunctionSignature::Verify() const {
 				throw InvalidInputException("A function signature can only have one '*args' parameter");
 			}
 			if (found_keyword_only) {
-				throw InvalidInputException("Parameter '%s' cannot follow a keyword-only parameter", param.ToString());
+				throw InvalidInputException("Parameter '%s' cannot follow a keyword-only parameter",
+				                            param.ToString(*this));
 			}
 			found_args = true;
 			break;
@@ -701,8 +750,8 @@ static bool OptionSchemasEqual(optional_ptr<const TypedKwargs> lhs, optional_ptr
 }
 
 bool FunctionSignature::operator==(const FunctionSignature &other) const {
-	return parameters == other.parameters && return_type == other.return_type &&
-	       OptionSchemasEqual(GetTypedKwargs(), other.GetTypedKwargs());
+	return parameters == other.parameters && return_type == other.return_type && variables == other.variables &&
+	       constraints == other.constraints && OptionSchemasEqual(GetTypedKwargs(), other.GetTypedKwargs());
 }
 
 bool FunctionSignature::operator!=(const FunctionSignature &other) const {
@@ -733,16 +782,16 @@ bool FunctionSignature::IsSameOverload(const FunctionSignature &other) const {
 		if (takes_position != rhs.AcceptsPosition() || (!takes_position && lhs.GetKind() != rhs.GetKind())) {
 			return false;
 		}
-		if (lhs.GetType() != rhs.GetType()) {
+		if (!IsSameType(lhs.GetTypeName(), other, rhs.GetTypeName())) {
 			return false;
 		}
 	}
 	// the keyword-only parameters, by name
 	auto keywords = [](const FunctionSignature &signature) {
-		identifier_map_t<LogicalType> result;
+		identifier_map_t<TypeName> result;
 		for (auto &param : signature.GetParameters()) {
 			if (param.GetKind() == FunctionParameterKind::KEYWORD_ONLY) {
-				result.emplace(param.GetName(), param.GetType());
+				result.emplace(param.GetName(), param.GetTypeName());
 			}
 		}
 		return result;
@@ -754,7 +803,7 @@ bool FunctionSignature::IsSameOverload(const FunctionSignature &other) const {
 	}
 	for (auto &entry : lhs_keywords) {
 		auto match = rhs_keywords.find(entry.first);
-		if (match == rhs_keywords.end() || match->second != entry.second) {
+		if (match == rhs_keywords.end() || !IsSameType(entry.second, other, match->second)) {
 			return false;
 		}
 	}
@@ -766,7 +815,7 @@ bool FunctionSignature::Equal(const FunctionSignature &other) const {
 		return false;
 	}
 	for (idx_t i = 0; i < parameters.size(); i++) {
-		if (parameters[i].GetType() != other.parameters[i].GetType() ||
+		if (!IsSameType(parameters[i].GetTypeName(), other, other.parameters[i].GetTypeName()) ||
 		    parameters[i].GetKind() != other.parameters[i].GetKind()) {
 			return false;
 		}

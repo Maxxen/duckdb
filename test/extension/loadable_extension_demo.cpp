@@ -509,12 +509,18 @@ struct BoundedType {
 		return Get(input.modifiers[0].GetValue().GetValue<int32_t>());
 	}
 
+	static LogicalType BindDefault(BindLogicalTypeInput &input) {
+		return GetDefault();
+	}
+
 	static TypeConstructorSet Constructors() {
 		auto signature = TypeConstructor::Signature();
 		signature.AddParameter("bound", LogicalType::INTEGER);
 
 		TypeConstructorSet result;
 		result.AddFunction(TypeConstructor(std::move(signature), Bind));
+		// a BOUNDED of any bound, as the functions over the type declare it
+		result.AddFunction(TypeConstructor(TypeConstructor::Signature(), BindDefault));
 		return result;
 	}
 

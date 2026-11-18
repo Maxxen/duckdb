@@ -361,7 +361,7 @@ public:
 	                                    table_function_bind_t bind = nullptr);
 	//! Whether a single-file function with a file parameter of this type receives the file together with the
 	//! options to open it with: one that takes any type does, one that takes a VARCHAR only receives the path
-	static bool TakesFileWithOptions(const LogicalType &file_parameter_type);
+	static bool TakesFileWithOptions(const FunctionSignature &signature);
 	//! Wrap a single-file table function into a multi-file table function set (VARCHAR and LIST(VARCHAR) variants)
 	static TableFunctionSet
 	CreateFunctionSet(TableFunction single_file_function, Identifier name,
@@ -447,7 +447,7 @@ private:
 	bool ParseNamedParameter(const Identifier &key, const Value &val, TableFunctionFileReaderOptions &options) const;
 	//! The name and type of the wrapped function's option of that name or alias - a keyword-only parameter or an
 	//! option its "**kwargs" declares - or empty if it declares none
-	optional<pair<Identifier, LogicalType>> GetDeclaredOption(const Identifier &key) const;
+	optional<pair<Identifier, TypeName>> GetDeclaredOption(const Identifier &key) const;
 	//! Release the per-file bind data that is only needed while combining schemas
 	static void ReleaseBindData(const vector<shared_ptr<BaseUnionData>> &union_data);
 

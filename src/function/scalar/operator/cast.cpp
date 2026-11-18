@@ -189,7 +189,6 @@ static unique_ptr<Expression> CreateCastExpression(unique_ptr<Expression> child,
 	    make_uniq<CastFunctionData>(source_type, target_type, std::move(bound_cast), try_cast, is_default_cast);
 
 	auto scalar_function = CastFun::GetFunction();
-	scalar_function.SetReturnType(target_type);
 	if (can_throw) {
 		scalar_function.SetErrorMode(FunctionErrors::CAN_THROW_RUNTIME_ERROR);
 	}
@@ -198,6 +197,7 @@ static unique_ptr<Expression> CreateCastExpression(unique_ptr<Expression> child,
 
 	auto bound_function = FunctionBinder::BindScalarFunction(nullptr, scalar_function, children);
 	bound_function.GetArguments() = {source_type};
+	bound_function.SetReturnType(target_type);
 
 	return make_uniq<BoundFunctionExpression>(std::move(bound_function), std::move(children), std::move(function_data),
 	                                          true, Identifier(), query_location);

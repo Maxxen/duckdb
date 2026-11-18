@@ -92,7 +92,7 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalGet &op) {
 		bool table_input = false;
 		const auto &signature = op.function.GetSignature();
 		for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
-			if (signature.GetParameter(i).GetType().id() == LogicalTypeId::TABLE) {
+			if (signature.GetParameter(i).GetTypeName().IsBuiltinType(LogicalTypeId::TABLE)) {
 				table_input = true;
 				break;
 			}

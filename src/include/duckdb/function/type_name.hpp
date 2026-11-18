@@ -14,6 +14,7 @@
 #include "duckdb/common/vector.hpp"
 #include "duckdb/parser/literal.hpp"
 
+#include <functional>
 #include <variant>
 
 namespace duckdb {
@@ -36,11 +37,25 @@ public:
 	DUCKDB_API const Identifier &GetName() const;
 	DUCKDB_API const vector<TypeNameArgument> &GetArguments() const;
 	DUCKDB_API bool HasArguments() const;
+	//! The built-in type a name without arguments stands for, INVALID if it is not the name of one
+	DUCKDB_API LogicalTypeId GetBuiltinType() const;
+	//! Whether this is the name of the given built-in type
+	bool IsBuiltinType(LogicalTypeId id) const {
+		return id != LogicalTypeId::INVALID && GetBuiltinType() == id;
+	}
+
+	//! Whether this name, or a type name it takes as an argument, is the given name
+	DUCKDB_API bool Contains(const Identifier &name) const;
 
 	DUCKDB_API string ToString() const;
+	//! The same, printing a name without arguments as the callback gives it - if it gives one
+	DUCKDB_API string ToString(const std::function<string(const TypeName &name)> &print_name) const;
 	DUCKDB_API hash_t Hash() const;
 	DUCKDB_API bool operator==(const TypeName &other) const;
 	DUCKDB_API bool operator!=(const TypeName &other) const;
+
+private:
+	explicit TypeName(shared_ptr<const TypeNameNode> node);
 
 private:
 	shared_ptr<const TypeNameNode> node;
@@ -78,11 +93,14 @@ private:
 };
 
 struct TypeNameNode {
-	TypeNameNode(Identifier name, vector<TypeNameArgument> arguments);
+	TypeNameNode(Identifier name, vector<TypeNameArgument> arguments,
+	             LogicalTypeId builtin_type = LogicalTypeId::INVALID);
 
 	const Identifier name;
 	const vector<TypeNameArgument> arguments;
 	const hash_t hash;
+	//! The built-in type the name stands for, if it is the name of one
+	const LogicalTypeId builtin_type;
 };
 
 } // namespace duckdb

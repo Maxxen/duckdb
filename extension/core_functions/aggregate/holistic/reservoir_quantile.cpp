@@ -344,29 +344,34 @@ unique_ptr<FunctionData> BindReservoirQuantile(BindAggregateFunctionInput &input
 static unique_ptr<FunctionData> DeserializeReservoirQuantileDecimal(Deserializer &deserializer,
                                                                     BoundAggregateFunction &function);
 
-static void SetDecimalImplementation(BoundAggregateFunction &function, const LogicalType &decimal_type, bool is_list) {
+static void SetDecimalImplementation(ClientContext &context, BoundAggregateFunction &function,
+                                     const LogicalType &decimal_type, bool is_list) {
 	auto declared_arguments = function.GetArguments();
 	if (is_list) {
-		function.ReplaceImplementation(GetReservoirQuantileListAggregateFunction(decimal_type));
+		function.ReplaceImplementation(context, GetReservoirQuantileListAggregateFunction(decimal_type));
 	} else {
 		switch (decimal_type.InternalType()) {
 		case PhysicalType::INT16:
 			function.ReplaceImplementation(
+			    context,
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<int16_t>, int16_t, int16_t,
 			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
 			break;
 		case PhysicalType::INT32:
 			function.ReplaceImplementation(
+			    context,
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<int32_t>, int32_t, int32_t,
 			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
 			break;
 		case PhysicalType::INT64:
 			function.ReplaceImplementation(
+			    context,
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<int64_t>, int64_t, int64_t,
 			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
 			break;
 		case PhysicalType::INT128:
 			function.ReplaceImplementation(
+			    context,
 			    AggregateFunction::UnaryAggregate<ReservoirQuantileState<hugeint_t>, hugeint_t, hugeint_t,
 			                                      ReservoirQuantileScalarOperation>(decimal_type, decimal_type));
 			break;
@@ -395,7 +400,7 @@ static unique_ptr<FunctionData> DeserializeReservoirQuantileDecimal(Deserializer
 	}
 
 	if (bind_data.decimal_type.id() != LogicalTypeId::INVALID) {
-		SetDecimalImplementation(function, bind_data.decimal_type, is_list);
+		SetDecimalImplementation(deserializer.Get<ClientContext &>(), function, bind_data.decimal_type, is_list);
 	}
 
 	return result;
@@ -412,7 +417,7 @@ unique_ptr<FunctionData> BindReservoirQuantileDecimal(BindAggregateFunctionInput
 	auto &bind_data = bind_data_ptr->Cast<ReservoirQuantileBindData>();
 	bind_data.decimal_type = decimal_type;
 
-	SetDecimalImplementation(function, decimal_type, is_list);
+	SetDecimalImplementation(input.GetClientContext(), function, decimal_type, is_list);
 	return bind_data_ptr;
 }
 

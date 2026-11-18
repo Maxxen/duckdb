@@ -174,10 +174,6 @@ void RegisterIntervalConstructors(TypeConstructorSet &set) {
 LogicalType BindEnumType(BindLogicalTypeInput &input) {
 	auto &arguments = input.modifiers;
 
-	if (arguments.empty()) {
-		throw BinderException(input.query_location, "ENUM type requires at least one argument");
-	}
-
 	Vector enum_vector(LogicalType::VARCHAR, NumericCast<idx_t>(arguments.size()));
 	auto string_data = FlatVector::Writer<string_t>(enum_vector, arguments.size());
 

@@ -72,7 +72,7 @@ TEST_CASE("Keyword-only parameters still accept a **kwargs after them", "[api][s
 	sig.SetReturnType(LogicalType::BIGINT);
 	REQUIRE_NOTHROW(sig.Verify());
 	REQUIRE(!sig.GetArgs());
-	REQUIRE(sig.GetKwargs()->GetType() == LogicalType::ANY);
+	REQUIRE(sig.GetKwargs()->GetTypeName().IsBuiltinType(LogicalTypeId::ANY));
 	REQUIRE(sig.ToString() == "(a INTEGER, *, kw INTEGER := NULL, **kwargs ANY) -> BIGINT");
 }
 
@@ -161,7 +161,7 @@ TEST_CASE("A parameter declared without a name prints as its type", "[api][scala
 
 TEST_CASE("Positional-only parameters must come first", "[api][scalar_function]") {
 	using Kind = FunctionParameterKind;
-	auto i32 = LogicalType::INTEGER;
+	LogicalType i32 = LogicalType::INTEGER;
 	auto verify = [&](vector<FunctionParameter> params) {
 		FunctionSignature(std::move(params), LogicalType::BIGINT).Verify();
 	};
@@ -174,7 +174,7 @@ TEST_CASE("Positional-only parameters must come first", "[api][scalar_function]"
 
 TEST_CASE("The order of the parameter kinds is verified", "[api][scalar_function]") {
 	using Kind = FunctionParameterKind;
-	auto i32 = LogicalType::INTEGER;
+	LogicalType i32 = LogicalType::INTEGER;
 	auto verify = [&](vector<FunctionParameter> params) {
 		FunctionSignature(std::move(params), LogicalType::BIGINT).Verify();
 	};
@@ -204,7 +204,8 @@ TEST_CASE("The order of the parameter kinds is verified", "[api][scalar_function
 	// the kinds are verified when the function is registered
 	DuckDB db(nullptr);
 	Connection con(db);
-	ScalarFunction fn("bad_kinds", {{"x", i32, {}, Kind::VAR_POSITIONAL}, {"a", i32}}, LogicalType::BIGINT,
+	ScalarFunction fn("bad_kinds",
+	                  FunctionSignature({{"x", i32, {}, Kind::VAR_POSITIONAL}, {"a", i32}}, LogicalType::BIGINT),
 	                  CountArgumentsExec);
 	REQUIRE_THROWS(CreateScalarFunctionInfo(fn));
 }

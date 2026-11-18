@@ -66,7 +66,7 @@ static TableFunctionBindType GetTableFunctionBindType(TableFunctionCatalogEntry 
 		for (idx_t function_idx = 0; function_idx < table_function.functions.Size(); function_idx++) {
 			const auto &function = *table_function.functions.GetFunctionByOffset(function_idx);
 			for (auto &param : function.GetSignature().GetParameters()) {
-				if (param.GetType().id() == LogicalTypeId::TABLE) {
+				if (param.GetTypeName().IsBuiltinType(LogicalTypeId::TABLE)) {
 					throw BinderException("Table function %s requires a subquery as its TABLE parameter",
 					                      table_function.name);
 				}
@@ -82,7 +82,7 @@ static TableFunctionBindType GetTableFunctionBindType(TableFunctionCatalogEntry 
 	for (idx_t function_idx = 0; function_idx < table_function.functions.Size(); function_idx++) {
 		const auto &function = *table_function.functions.GetFunctionByOffset(function_idx);
 		for (auto &param : function.GetSignature().GetParameters()) {
-			if (param.GetType().id() == LogicalTypeId::TABLE) {
+			if (param.GetTypeName().IsBuiltinType(LogicalTypeId::TABLE)) {
 				has_table_parameter = true;
 			}
 		}

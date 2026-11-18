@@ -69,7 +69,7 @@ bool ExpressionBarrier::Required(const Expression &expr) {
 
 unique_ptr<Expression> ExpressionBarrier::Wrap(unique_ptr<Expression> expr) {
 	auto return_type = expr->GetReturnType();
-	auto function = GetBarrierFunction(return_type, return_type);
+	auto function = GetBarrierFunction(LogicalType::TEMPLATE("T"), LogicalType::TEMPLATE("T"));
 
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(expr));

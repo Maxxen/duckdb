@@ -360,8 +360,9 @@ static optional<FunctionMismatch::Reason> DeduceTemplates(optional_ptr<ClientCon
 	}
 	for (idx_t i = 0; i < sig.GetParameterCount(); i++) {
 		auto &param = sig.GetParameter(i);
-		if (!filled[i] && param.HasDefaultValue() && param.GetType().IsTemplated() &&
-		    !InferTemplateType(context, param.GetType(), param.GetDefaultValue()->type(), bindings, deduction)) {
+		auto &param_type = binding.parameter_types[i];
+		if (!filled[i] && param.HasDefaultValue() && param_type.IsTemplated() &&
+		    !InferTemplateType(context, param_type, param.GetDefaultValue()->type(), bindings, deduction)) {
 			return FunctionMismatch::Reason(std::move(deduction));
 		}
 	}
@@ -522,6 +523,9 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 		return i < accepted_positional_count ? i : args_idx.GetIndex();
 	};
 
+	// the shape matches: bind the types the signature declares by name
+	auto parameter_types = BindParameterTypes(context, sig);
+
 	idx_t cost = 0;
 	bool has_unknown_argument = false;
 	for (idx_t i = 0; i < received_count; i++) {
@@ -535,9 +539,9 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 			continue;
 		}
 		auto param_idx = get_parameter_index(i);
-		int64_t cast_cost = ImplicitCastCost(context, arg_type, sig.GetParameter(param_idx).GetType());
+		int64_t cast_cost = ImplicitCastCost(context, arg_type, parameter_types[param_idx]);
 		if (cast_cost < 0) {
-			mismatch(FunctionMismatch::IncompatibleArgument {i, sig.GetParameter(param_idx).GetType()});
+			mismatch(FunctionMismatch::IncompatibleArgument {i, parameter_types[param_idx]});
 			continue;
 		}
 		cost += static_cast<idx_t>(cast_cost);
@@ -554,13 +558,12 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 	for (idx_t i = 0; i < received_count; i++) {
 		binding.argument_to_parameters.push_back(get_parameter_index(i));
 	}
-	binding.return_type = sig.GetReturnType().GetUnboundType();
+	binding.return_type = BindReturnType(context, sig);
 	bool is_templated = binding.return_type.IsTemplated();
-	binding.parameter_types.reserve(sig.GetParameterCount());
-	for (auto &param : sig.GetParameters()) {
-		is_templated = is_templated || param.GetType().IsTemplated();
-		binding.parameter_types.push_back(param.GetType());
+	for (auto &type : parameter_types) {
+		is_templated = is_templated || type.IsTemplated();
 	}
+	binding.parameter_types = std::move(parameter_types);
 	if (is_templated) {
 		// the shape and the casts match, so a template that cannot be deduced is the closest miss there is
 		vector<bool> filled(sig.GetParameterCount(), false);
@@ -683,6 +686,12 @@ BoundAggregateFunction FunctionBinder::BindAggregateFunction(optional_ptr<Client
 	return CreateBoundFunction<BoundAggregateFunction, AggregateFunction>(binding);
 }
 
+BoundAggregateFunction FunctionBinder::BindAggregateFunction(const AggregateFunction &function,
+                                                             vector<LogicalType> arguments, LogicalType return_type) {
+	return BoundAggregateFunction(make_shared_ptr<AggregateFunction>(function), std::move(arguments),
+	                              std::move(return_type));
+}
+
 BoundWindowFunction FunctionBinder::BindWindowFunction(optional_ptr<ClientContext> context,
                                                        const WindowFunction &function,
                                                        const FunctionCallArguments &call) {
@@ -711,9 +720,26 @@ vector<LogicalType> FunctionBinder::BindParameterTypes(optional_ptr<ClientContex
 	vector<LogicalType> result;
 	result.reserve(signature.GetParameterCount());
 	for (auto &param : signature.GetParameters()) {
-		result.push_back(param.GetType());
+		result.push_back(BindTypeName(context, param.GetTypeName(), signature));
 	}
 	return result;
+}
+
+LogicalType FunctionBinder::BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature) {
+	auto &return_type = signature.GetReturnType();
+	switch (return_type.GetKind()) {
+	case ReturnType::Kind::TYPE:
+		return BindTypeName(context, return_type.GetTypeName(), signature);
+	case ReturnType::Kind::ANY:
+		return LogicalType::ANY;
+	case ReturnType::Kind::TABLE:
+	case ReturnType::Kind::NONE:
+		return LogicalType::INVALID;
+	case ReturnType::Kind::EXPRESSION:
+		throw NotImplementedException("A return type that is computed by an expression");
+	default:
+		throw InternalException("Unknown ReturnType kind");
+	}
 }
 
 BoundTableFunction FunctionBinder::BindTableFunction(optional_ptr<ClientContext> context, const TableFunction &function,
@@ -835,9 +861,10 @@ static void VerifyNamedArgumentsAccepted(const BaseFunctionSet &functions,
 		// list every option any overload accepts, in name order
 		map<string, string> candidates;
 		for (idx_t i = 0; i < functions.GetOverloadCount(); i++) {
-			for (auto &param : functions.GetOverload(i).GetSignature().GetParameters()) {
+			auto &signature = functions.GetOverload(i).GetSignature();
+			for (auto &param : signature.GetParameters()) {
 				if (!param.IsVariadic() && param.HasDefaultValue()) {
-					candidates[param.GetName().GetIdentifierName()] = param.GetType().ToString();
+					candidates[param.GetName().GetIdentifierName()] = signature.PrintType(param.GetTypeName());
 				}
 			}
 		}
@@ -910,14 +937,15 @@ static Value FoldArgument(ClientContext &context, Expression &expr) {
 //! A failed cast names the option, as the cast alone cannot tell which one it was
 static Value PlaceOption(ClientContext &context, Expression &expr, const TypedKwarg &option) {
 	auto value = FoldArgument(context, expr);
-	if (RequiresCast(value.type(), option.type) != LogicalTypeComparisonResult::DIFFERENT_TYPES) {
+	auto option_type = FunctionBinder::BindTypeName(&context, option.type);
+	if (RequiresCast(value.type(), option_type) != LogicalTypeComparisonResult::DIFFERENT_TYPES) {
 		return value;
 	}
 	string error_message;
-	auto result = value.TryCastAs(context, option.type, &error_message);
+	auto result = value.TryCastAs(context, option_type, &error_message);
 	if (!result) {
 		throw InvalidInputException(expr, "Could not cast value %s to named parameter %s of type %s: %s",
-		                            value.ToSQLString(), option.name, option.type.ToString(), error_message);
+		                            value.ToSQLString(), option.name, option_type.ToString(), error_message);
 	}
 	return std::move(*result);
 }
@@ -1305,7 +1333,8 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 	// Untyped NULLs never go through type resolution. For typed NULL constants, resolve the function's types only
 	// when needed to determine the return type. Preserve result collation without invoking bind callbacks.
 	if (bound_function.GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING) {
-		const auto return_type = bound_function.GetReturnType().GetUnboundType();
+		// the type the function declares, whatever the arguments determine it to be
+		const auto return_type = BindReturnType(&context, bound_function.GetSignature());
 		if (HasUntypedNullArgument(regular_args, keyword_args)) {
 			return make_uniq<BoundConstantExpression>(Value(NullReturnType(return_type)), std::move(alias),
 			                                          query_location);

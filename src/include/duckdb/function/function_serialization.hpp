@@ -175,14 +175,16 @@ public:
 
 	//! Selects the overload of a v1.x aggregate whose bind lost the erased arguments, by its leading parameter types
 	template <class FUNCTION_SET>
-	static optional_idx SelectByLeadingArguments(const FUNCTION_SET &functions, vector<LogicalType> &arguments,
-	                                             const LogicalType &return_type) {
+	static optional_idx SelectByLeadingArguments(ClientContext &context, const FUNCTION_SET &functions,
+	                                             vector<LogicalType> &arguments, const LogicalType &return_type) {
 		for (idx_t offset = 0; offset < functions.functions.size(); offset++) {
 			auto &signature = functions.functions[offset]->GetSignature();
 			if (signature.GetParameterCount() <= arguments.size() || !signature.GetReturnType().IsType()) {
 				continue;
 			}
-			auto &signature_type = signature.GetReturnType().GetType();
+			// no call matches the overload, so the types it declares are compared as they are
+			auto signature_type = FunctionBinder::BindReturnType(&context, signature);
+			auto parameter_types = FunctionBinder::BindParameterTypes(&context, signature);
 			// a constrained template is of the kind it stands for
 			auto signature_id =
 			    signature_type.id() == LogicalTypeId::TEMPLATE && TemplateType::HasConstraint(signature_type)
@@ -193,11 +195,11 @@ public:
 			}
 			bool leading = true;
 			for (idx_t i = 0; i < arguments.size() && leading; i++) {
-				leading = signature.GetParameter(i).GetType().id() == arguments[i].id();
+				leading = parameter_types[i].id() == arguments[i].id();
 			}
 			if (leading) {
 				for (idx_t i = arguments.size(); i < signature.GetParameterCount(); i++) {
-					arguments.push_back(signature.GetParameter(i).GetType());
+					arguments.push_back(parameter_types[i]);
 				}
 				return offset;
 			}
@@ -481,7 +483,7 @@ public:
 			overload = func_idx.GetBinding().GetOverloadIndex();
 		} else if (catalog_type == CatalogType::AGGREGATE_FUNCTION_ENTRY && legacy_without_original_arguments &&
 		           named_arguments.empty() && !arguments.empty()) {
-			overload = SelectByLeadingArguments(functions, arguments, return_type);
+			overload = SelectByLeadingArguments(context, functions, arguments, return_type);
 			positional_count = arguments.size();
 		}
 
@@ -532,7 +534,8 @@ public:
 		}
 
 		// Otherwise, construct the bound function from its parts
-		FUNC bound_function(function, std::move(arguments), function->GetReturnType().GetUnboundType());
+		FUNC bound_function(function, std::move(arguments),
+		                    FunctionBinder::BindReturnType(&context, function->GetSignature()));
 
 		bound_function.SetNamedArguments(positional_count, std::move(named_arguments));
 		RestoreLogicalSignature(bound_function, children, return_type);

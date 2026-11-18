@@ -26,8 +26,9 @@ static hash_t HashTypeName(const Identifier &name, const vector<TypeNameArgument
 	return hash;
 }
 
-TypeNameNode::TypeNameNode(Identifier name_p, vector<TypeNameArgument> arguments_p)
-    : name(std::move(name_p)), arguments(std::move(arguments_p)), hash(HashTypeName(name, arguments)) {
+TypeNameNode::TypeNameNode(Identifier name_p, vector<TypeNameArgument> arguments_p, LogicalTypeId builtin_type_p)
+    : name(std::move(name_p)), arguments(std::move(arguments_p)), hash(HashTypeName(name, arguments)),
+      builtin_type(builtin_type_p) {
 }
 
 //===--------------------------------------------------------------------===//
@@ -65,35 +66,35 @@ bool TypeNameArgument::operator!=(const TypeNameArgument &other) const {
 //===--------------------------------------------------------------------===//
 namespace {
 
-//! The name of a type that takes no arguments. The names of the types of the catalog are shared, so that naming one
-//! allocates nothing
-TypeName BareTypeName(LogicalTypeId id) {
+//! The names of the built-in types, by type. They are shared, so that naming one allocates nothing
+const vector<shared_ptr<const TypeNameNode>> &BuiltinTypeNames() {
 	static const auto shared_names = [] {
-		vector<optional<TypeName>> names(NumericLimits<uint8_t>::Maximum() + 1);
-		auto add = [&](LogicalTypeId shared_id) {
+		vector<shared_ptr<const TypeNameNode>> names(NumericLimits<uint8_t>::Maximum() + 1);
+		auto add = [&](LogicalTypeId id) {
 			// the name the type prints as, if the catalog knows the type by it
-			Identifier name(EnumUtil::ToString(shared_id));
-			auto builtin_name = TypeExpression::GetBuiltinTypeName(shared_id);
-			if (builtin_name && DefaultTypeGenerator::GetDefaultType(name) != shared_id) {
+			Identifier name(EnumUtil::ToString(id));
+			auto builtin_name = TypeExpression::GetBuiltinTypeName(id);
+			if (builtin_name && DefaultTypeGenerator::GetDefaultType(name) != id) {
 				name = Identifier(builtin_name);
 			}
-			names[static_cast<uint8_t>(shared_id)] = TypeName(std::move(name));
+			names[static_cast<uint8_t>(id)] =
+			    make_shared_ptr<const TypeNameNode>(std::move(name), vector<TypeNameArgument>(), id);
 		};
 		for (auto &type : LogicalType::AllTypes()) {
 			add(type.id());
 		}
-		for (auto shared_id : {LogicalTypeId::SQLNULL, LogicalTypeId::ANY, LogicalTypeId::LAMBDA, LogicalTypeId::TABLE,
-		                       LogicalTypeId::TYPE}) {
-			add(shared_id);
+		for (auto id : {LogicalTypeId::SQLNULL, LogicalTypeId::ANY, LogicalTypeId::LAMBDA, LogicalTypeId::TABLE,
+		                LogicalTypeId::TYPE}) {
+			add(id);
 		}
 		return names;
 	}();
-	auto &shared_name = shared_names[static_cast<uint8_t>(id)];
-	if (shared_name) {
-		return *shared_name;
-	}
-	// an ID that is not a type of the catalog is named by itself, and does not bind
-	return TypeName(Identifier(EnumUtil::ToString(id)));
+	return shared_names;
+}
+
+//! The shared name of a type that takes no arguments, nullptr if it is not a built-in one
+shared_ptr<const TypeNameNode> BuiltinTypeName(LogicalTypeId id) {
+	return BuiltinTypeNames()[static_cast<uint8_t>(id)];
 }
 
 TypeNameArgument TypeArgumentOf(const LogicalType &type, Identifier label = Identifier()) {
@@ -109,10 +110,10 @@ TypeNameArgument LiteralArgumentOf(const Value &value, const string &label = str
 	return TypeNameArgument(Literal::String(value.ToString()), Identifier(label));
 }
 
-TypeName NameOfType(const LogicalType &type) {
+shared_ptr<const TypeNameNode> NameOfType(const LogicalType &type) {
 	if (type.id() == LogicalTypeId::TEMPLATE) {
 		// a template is the type variable of that name, which the signature declares
-		return TypeName(Identifier(TemplateType::GetName(type)));
+		return make_shared_ptr<const TypeNameNode>(Identifier(TemplateType::GetName(type)), vector<TypeNameArgument>());
 	}
 
 	vector<TypeNameArgument> arguments;
@@ -124,7 +125,7 @@ TypeName NameOfType(const LogicalType &type) {
 				arguments.push_back(LiteralArgumentOf(modifier.value));
 			}
 		}
-		return TypeName(Identifier(alias), std::move(arguments));
+		return make_shared_ptr<const TypeNameNode>(Identifier(alias), std::move(arguments));
 	}
 
 	switch (type.id()) {
@@ -160,10 +161,12 @@ TypeName NameOfType(const LogicalType &type) {
 		break;
 	case LogicalTypeId::ARRAY:
 		if (type.HasParameters()) {
-			arguments.push_back(TypeArgumentOf(ArrayType::GetChildType(type)));
-			if (!ArrayType::IsAnySize(type)) {
-				arguments.emplace_back(Literal::Integer(NumericCast<int64_t>(ArrayType::GetSize(type))));
+			if (ArrayType::IsAnySize(type)) {
+				throw InternalException("An array of any size has no name: declare its size as a value variable of "
+				                        "the signature, e.g. foo<N: INTEGER>(x FLOAT[N])");
 			}
+			arguments.push_back(TypeArgumentOf(ArrayType::GetChildType(type)));
+			arguments.emplace_back(Literal::Integer(NumericCast<int64_t>(ArrayType::GetSize(type))));
 		}
 		break;
 	case LogicalTypeId::STRUCT:
@@ -189,18 +192,23 @@ TypeName NameOfType(const LogicalType &type) {
 	case LogicalTypeId::UNION:
 		if (type.HasParameters()) {
 			for (idx_t i = 0; i < UnionType::GetMemberCount(type); i++) {
-				arguments.push_back(TypeArgumentOf(UnionType::GetMemberType(type, i), UnionType::GetMemberName(type, i)));
+				arguments.push_back(
+				    TypeArgumentOf(UnionType::GetMemberType(type, i), UnionType::GetMemberName(type, i)));
 			}
 		}
 		break;
 	default:
 		break;
 	}
-	auto bare_name = BareTypeName(type.id());
-	if (arguments.empty()) {
-		return bare_name;
+	auto builtin_name = BuiltinTypeName(type.id());
+	if (!builtin_name) {
+		// an ID that is not a type of the catalog is named by itself, and does not bind
+		return make_shared_ptr<const TypeNameNode>(Identifier(EnumUtil::ToString(type.id())), std::move(arguments));
 	}
-	return TypeName(bare_name.GetName(), std::move(arguments));
+	if (arguments.empty()) {
+		return builtin_name;
+	}
+	return make_shared_ptr<const TypeNameNode>(builtin_name->name, std::move(arguments));
 }
 
 } // namespace
@@ -208,14 +216,28 @@ TypeName NameOfType(const LogicalType &type) {
 //===--------------------------------------------------------------------===//
 // TypeName
 //===--------------------------------------------------------------------===//
-TypeName::TypeName(Identifier name) : TypeName(std::move(name), vector<TypeNameArgument>()) {
+//! A name without arguments that is the name of a built-in type is that type's shared name
+static shared_ptr<const TypeNameNode> NameOfIdentifier(Identifier name) {
+	auto builtin_type = DefaultTypeGenerator::GetDefaultType(name);
+	auto builtin_name = builtin_type == LogicalTypeId::INVALID ? nullptr : BuiltinTypeName(builtin_type);
+	if (builtin_name) {
+		return builtin_name;
+	}
+	return make_shared_ptr<const TypeNameNode>(std::move(name), vector<TypeNameArgument>());
+}
+
+TypeName::TypeName(shared_ptr<const TypeNameNode> node_p) : node(std::move(node_p)) {
+}
+
+TypeName::TypeName(Identifier name) : node(NameOfIdentifier(std::move(name))) {
 }
 
 TypeName::TypeName(Identifier name, vector<TypeNameArgument> arguments)
-    : node(make_shared_ptr<const TypeNameNode>(std::move(name), std::move(arguments))) {
+    : node(arguments.empty() ? NameOfIdentifier(std::move(name))
+                             : make_shared_ptr<const TypeNameNode>(std::move(name), std::move(arguments))) {
 }
 
-TypeName::TypeName(const LogicalType &type) : node(NameOfType(type).node) {
+TypeName::TypeName(const LogicalType &type) : node(NameOfType(type)) {
 }
 
 const Identifier &TypeName::GetName() const {
@@ -230,6 +252,22 @@ bool TypeName::HasArguments() const {
 	return !node->arguments.empty();
 }
 
+LogicalTypeId TypeName::GetBuiltinType() const {
+	return node->builtin_type;
+}
+
+bool TypeName::Contains(const Identifier &name) const {
+	if (node->name == name) {
+		return true;
+	}
+	for (auto &argument : node->arguments) {
+		if (argument.IsType() && argument.GetType().Contains(name)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 hash_t TypeName::Hash() const {
 	return node->hash;
 }
@@ -238,8 +276,7 @@ bool TypeName::operator==(const TypeName &other) const {
 	if (node == other.node) {
 		return true;
 	}
-	return node->hash == other.node->hash && node->name == other.node->name &&
-	       node->arguments == other.node->arguments;
+	return node->hash == other.node->hash && node->name == other.node->name && node->arguments == other.node->arguments;
 }
 
 bool TypeName::operator!=(const TypeName &other) const {
@@ -247,28 +284,43 @@ bool TypeName::operator!=(const TypeName &other) const {
 }
 
 string TypeName::ToString() const {
+	return ToString(nullptr);
+}
+
+string TypeName::ToString(const std::function<string(const TypeName &name)> &print_name) const {
 	auto &name = node->name;
 	auto &arguments = node->arguments;
+	auto print_argument = [&](const TypeNameArgument &argument) {
+		return argument.IsType() ? argument.GetType().ToString(print_name) : argument.GetLiteral().ToString();
+	};
 	if (arguments.empty()) {
-		return name.GetIdentifierName();
+		auto printed = print_name ? print_name(*this) : string();
+		if (!printed.empty()) {
+			return printed;
+		}
+		// a built-in type prints as the type does
+		return node->builtin_type == LogicalTypeId::INVALID ? name.GetIdentifierName()
+		                                                    : LogicalType(node->builtin_type).ToString();
 	}
 	// LIST and ARRAY are written as a suffix of their element
 	if (name == "LIST" && arguments.size() == 1) {
-		return arguments[0].ToString() + "[]";
+		return print_argument(arguments[0]) + "[]";
 	}
-	if (name == "ARRAY" && arguments.size() <= 2) {
-		return arguments[0].ToString() + "[" + (arguments.size() == 2 ? arguments[1].ToString() : "ANY") + "]";
+	if (name == "ARRAY" && arguments.size() == 2) {
+		return print_argument(arguments[0]) + "[" + print_argument(arguments[1]) + "]";
 	}
+	// a DECIMAL is written without a space, as the type prints
+	auto separator = name == "DECIMAL" ? "," : ", ";
 	string result = name.GetIdentifierName() + "(";
 	for (idx_t i = 0; i < arguments.size(); i++) {
 		if (i > 0) {
-			result += ", ";
+			result += separator;
 		}
 		auto &label = arguments[i].GetLabel();
 		if (!label.empty()) {
 			result += SQLIdentifier(label) + " ";
 		}
-		result += arguments[i].ToString();
+		result += print_argument(arguments[i]);
 	}
 	return result + ")";
 }
@@ -294,6 +346,14 @@ LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, co
                                          const FunctionSignature &signature) {
 	auto &identifier = name.GetName();
 	auto &arguments = name.GetArguments();
+	auto builtin_type = name.GetBuiltinType();
+	if (builtin_type != LogicalTypeId::INVALID) {
+		// the name of a built-in type that takes no arguments is that type, whatever else is called the same
+		LogicalType type(builtin_type);
+		if (type.IsComplete() || builtin_type == LogicalTypeId::ANY) {
+			return type;
+		}
+	}
 	if (arguments.empty()) {
 		auto variable = signature.FindVariable(identifier);
 		if (variable) {
@@ -305,9 +365,6 @@ LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, co
 			auto constraint = signature.GetConstraint(identifier);
 			return constraint == LogicalTypeId::INVALID ? LogicalType::TEMPLATE(variable_name)
 			                                            : LogicalType::TEMPLATE(variable_name, constraint);
-		}
-		if (identifier == "ANY") {
-			return LogicalType::ANY;
 		}
 	}
 	if (identifier == "ARRAY" && arguments.size() == 2 && FindValueVariable(arguments[1], signature)) {
@@ -327,8 +384,8 @@ LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, co
 	}
 
 	if (context) {
-		auto entry = Catalog::GetEntry<TypeCatalogEntry>(*context, QualifiedName(identifier),
-		                                                 OnEntryNotFound::RETURN_NULL);
+		auto entry =
+		    Catalog::GetEntry<TypeCatalogEntry>(*context, QualifiedName(identifier), OnEntryNotFound::RETURN_NULL);
 		if (entry) {
 			return entry->constructors.Bind(context, entry->user_type, bound_arguments);
 		}
@@ -344,11 +401,8 @@ LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, co
 		}
 	}
 
-	if (arguments.empty() && identifier == "LAMBDA") {
-		return LogicalType::LAMBDA;
-	}
-	if (arguments.empty() && identifier == "TABLE") {
-		return LogicalType::TABLE;
+	if (builtin_type == LogicalTypeId::LAMBDA || builtin_type == LogicalTypeId::TABLE) {
+		return LogicalType(builtin_type);
 	}
 	throw CatalogException("Type with name %s does not exist", identifier.GetIdentifierName());
 }

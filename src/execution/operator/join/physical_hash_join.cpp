@@ -794,8 +794,7 @@ unique_ptr<JoinHashTable> PhysicalHashJoin::InitializeHashTable(ClientContext &c
 			auto count_fun = GetBuiltinAggregateFunction(context, CountFun::Name, {LogicalType::BIGINT});
 			vector<unique_ptr<Expression>> children;
 			// this is a dummy but we need it to make the hash table understand whats going on
-			children.push_back(
-			    make_uniq_base<Expression, BoundReferenceExpression>(count_fun->GetReturnType().GetType(), 0U));
+			children.push_back(make_uniq_base<Expression, BoundReferenceExpression>(LogicalType::BIGINT, 0U));
 			aggr = function_binder.BindAggregateFunction(count_fun, std::move(children), nullptr,
 			                                             AggregateType::NON_DISTINCT);
 			correlated_aggregates.emplace_back(*aggr);

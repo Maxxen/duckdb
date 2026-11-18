@@ -32,37 +32,38 @@ struct MinMaxState {
 	bool is_set;
 };
 
+//! The implementation over a value of a fixed size
 template <class OP>
-static AggregateFunction GetUnaryAggregate(const LogicalType &type) {
-	switch (type.InternalType()) {
+static AggregateFunctionCallbacks GetUnaryCallbacks(PhysicalType type) {
+	switch (type) {
 	case PhysicalType::BOOL:
-		return AggregateFunction::UnaryAggregate<MinMaxState<int8_t>, int8_t, int8_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<int8_t>, int8_t, int8_t, OP>();
 	case PhysicalType::INT8:
-		return AggregateFunction::UnaryAggregate<MinMaxState<int8_t>, int8_t, int8_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<int8_t>, int8_t, int8_t, OP>();
 	case PhysicalType::INT16:
-		return AggregateFunction::UnaryAggregate<MinMaxState<int16_t>, int16_t, int16_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<int16_t>, int16_t, int16_t, OP>();
 	case PhysicalType::INT32:
-		return AggregateFunction::UnaryAggregate<MinMaxState<int32_t>, int32_t, int32_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<int32_t>, int32_t, int32_t, OP>();
 	case PhysicalType::INT64:
-		return AggregateFunction::UnaryAggregate<MinMaxState<int64_t>, int64_t, int64_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<int64_t>, int64_t, int64_t, OP>();
 	case PhysicalType::UINT8:
-		return AggregateFunction::UnaryAggregate<MinMaxState<uint8_t>, uint8_t, uint8_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<uint8_t>, uint8_t, uint8_t, OP>();
 	case PhysicalType::UINT16:
-		return AggregateFunction::UnaryAggregate<MinMaxState<uint16_t>, uint16_t, uint16_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<uint16_t>, uint16_t, uint16_t, OP>();
 	case PhysicalType::UINT32:
-		return AggregateFunction::UnaryAggregate<MinMaxState<uint32_t>, uint32_t, uint32_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<uint32_t>, uint32_t, uint32_t, OP>();
 	case PhysicalType::UINT64:
-		return AggregateFunction::UnaryAggregate<MinMaxState<uint64_t>, uint64_t, uint64_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<uint64_t>, uint64_t, uint64_t, OP>();
 	case PhysicalType::INT128:
-		return AggregateFunction::UnaryAggregate<MinMaxState<hugeint_t>, hugeint_t, hugeint_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<hugeint_t>, hugeint_t, hugeint_t, OP>();
 	case PhysicalType::UINT128:
-		return AggregateFunction::UnaryAggregate<MinMaxState<uhugeint_t>, uhugeint_t, uhugeint_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<uhugeint_t>, uhugeint_t, uhugeint_t, OP>();
 	case PhysicalType::FLOAT:
-		return AggregateFunction::UnaryAggregate<MinMaxState<float>, float, float, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<float>, float, float, OP>();
 	case PhysicalType::DOUBLE:
-		return AggregateFunction::UnaryAggregate<MinMaxState<double>, double, double, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<double>, double, double, OP>();
 	case PhysicalType::INTERVAL:
-		return AggregateFunction::UnaryAggregate<MinMaxState<interval_t>, interval_t, interval_t, OP>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxState<interval_t>, interval_t, interval_t, OP>();
 	default:
 		throw InternalException("Unimplemented type for min/max aggregate");
 	}
@@ -287,14 +288,6 @@ struct VectorMinMaxBase {
 			                                    OrderModifiers(ORDER_TYPE, OrderByNullType::NULLS_LAST));
 		}
 	}
-
-	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
-		auto &function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
-		function.GetArguments()[0] = arguments[0]->GetReturnType();
-		function.SetReturnType(arguments[0]->GetReturnType());
-		return nullptr;
-	}
 };
 
 struct MinOperationVector : VectorMinMaxBase<OrderType::ASCENDING> {};
@@ -306,30 +299,33 @@ struct MinMaxSortKeyState : BaseMinMaxStringState {
 	using STATE_TYPE = OptionalStateType<StateSortKey<StateReturnType, ORDER>>;
 };
 
+//! The implementation over the sort keys of the values, for the types that do not compare by their bytes
 template <typename OP>
-static AggregateFunction GetMinMaxFunction(const LogicalType &type) {
+static AggregateFunctionCallbacks GetSortKeyCallbacks() {
 	using STATE = MinMaxSortKeyState<OP::ORDER_TYPE>;
-	auto result = AggregateFunction(
-	    {type}, LogicalType::BLOB, AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>,
-	    AggregateSortKeyHelpers::UnaryUpdate<STATE, OP, OP::ORDER_TYPE, false>,
-	    AggregateFunction::StateCombine<STATE, OP>, AggregateFunction::StateVoidFinalize<STATE, OP>,
-	    FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(), OP::Bind, nullptr);
+	AggregateFunctionCallbacks result;
+	result.state_size = AggregateFunction::StateSize<STATE>;
+	result.initialize = AggregateFunction::StateInitialize<STATE, OP>;
+	result.update = AggregateSortKeyHelpers::UnaryUpdate<STATE, OP, OP::ORDER_TYPE, false>;
+	result.combine = AggregateFunction::StateCombine<STATE, OP>;
+	result.finalize = AggregateFunction::StateVoidFinalize<STATE, OP>;
 	AggregateFunction::WireStructStateType<STATE>(result);
 	return result;
 }
 
+//! The implementation for a type: it only depends on how the values of the type are stored
 template <class OP, class OP_STRING, class OP_VECTOR>
-static AggregateFunction GetMinMaxOperator(const LogicalType &type) {
+static AggregateFunctionCallbacks GetMinMaxCallbacks(const LogicalType &type) {
 	auto internal_type = type.InternalType();
 	switch (internal_type) {
 	case PhysicalType::VARCHAR:
-		return AggregateFunction::UnaryAggregate<MinMaxStringState, string_t, string_t, OP_STRING>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<MinMaxStringState, string_t, string_t, OP_STRING>();
 	case PhysicalType::LIST:
 	case PhysicalType::STRUCT:
 	case PhysicalType::ARRAY:
-		return GetMinMaxFunction<OP_VECTOR>(type);
+		return GetSortKeyCallbacks<OP_VECTOR>();
 	default:
-		return GetUnaryAggregate<OP>(type);
+		return GetUnaryCallbacks<OP>(internal_type);
 	}
 }
 
@@ -376,7 +372,8 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 		// If aggr function is min/max and uses collations, replace bound_function with arg_min/arg_max
 		// to make sure the result's correctness.
 		vector<LogicalType> types {arguments[0]->GetReturnType(), collated_arg->GetReturnType()};
-		function.ReplaceImplementation(*GetCollatedMinMaxFunction(context, function.GetName(), types));
+		function.ReplaceImplementation(input.GetClientContext(),
+		                               *GetCollatedMinMaxFunction(context, function.GetName(), types));
 
 		// Bind function like arg_min/arg_max: its bind selects the implementation for these types.
 		arguments.push_back(std::move(collated_arg));
@@ -388,25 +385,18 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 	if (input_type.id() == LogicalTypeId::UNKNOWN) {
 		throw ParameterNotResolvedException();
 	}
-	auto name = function.GetName();
-
+	// the function is bound to the type already: only its implementation depends on it
 	auto state_export_type = function.GetStateTypeCallback();
-	auto minmax_func = GetMinMaxOperator<OP, OP_STRING, OP_VECTOR>(input_type);
-
+	auto implementation = GetMinMaxCallbacks<OP, OP_STRING, OP_VECTOR>(input_type);
 	if (state_export_type) {
-		minmax_func.SetStructStateExport(state_export_type);
+		implementation.get_state_type = state_export_type;
 	}
-	minmax_func.SetName(std::move(name));
-	minmax_func.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
-	minmax_func.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
-	minmax_func.SetSingleValueIdentity(true);
-	minmax_func.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-
-	auto expr = minmax_func.Bind(context, std::move(arguments));
-	arguments = std::move(expr->GetChildrenMutable());
-
-	function.ReplaceImplementation(expr->Function());
-	return std::move(expr->BindInfoMutable());
+	implementation.statistics = AggregateFunction::PropagateInputValueStats;
+	function.SetCallbacks(implementation);
+	function.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
+	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
+	function.SetSingleValueIdentity(true);
+	return nullptr;
 }
 
 //! BindMinMax replaces a collated min/max with arg_min/arg_max over the collation key, so the bound call has one

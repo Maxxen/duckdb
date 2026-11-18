@@ -303,8 +303,12 @@ void LeastGreatestResolveTypes(ResolveScalarFunctionTypesInput &input) {
 
 template <class OP>
 ScalarFunction GetLeastGreatestFunction() {
-	ScalarFunction fun({{"arg1", LogicalType::ANY}}, ReturnType::ANY(), nullptr, nullptr,
-	                   PropagateLeastGreatestStats<OP>, nullptr, LogicalType::ANY, FunctionStability::CONSISTENT,
+	ScalarFunction fun(FunctionSignature()
+	                       .AddParameter("arg1", LogicalType::ANY)
+	                       .AddArgs("args", LogicalType::ANY)
+	                       .AddKwargs("kwargs", LogicalType::ANY)
+	                       .SetReturnType(ReturnType::ANY()),
+	                   nullptr, nullptr, PropagateLeastGreatestStats<OP>, nullptr, FunctionStability::CONSISTENT,
 	                   FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetResolveTypesCallback(LeastGreatestResolveTypes<OP>);
 	return fun;

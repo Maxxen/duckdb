@@ -225,7 +225,7 @@ TEST_CASE("Incremental scalar registration preserves live SQL identity",
 		idx_t index = 0;
 		for (auto &type : {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::SMALLINT, LogicalType::VARCHAR}) {
 			auto &definition = functions.GetFunctionByOffset(index++);
-			REQUIRE(definition->GetSignature().GetParameter(0).GetType() == type);
+			REQUIRE(definition->GetSignature().GetParameter(0).GetTypeName() == TypeName(type));
 			REQUIRE(definition->GetReturnType() == type);
 			REQUIRE(definition->GetName() == name);
 			REQUIRE(definition->GetCatalogName() == Identifier::SystemCatalog());

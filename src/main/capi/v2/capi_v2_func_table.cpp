@@ -1328,8 +1328,9 @@ private:
 			if (signature.GetRequiredParameterCount() != 1 || !signature.GetParameter(0).AcceptsPosition()) {
 				continue;
 			}
-			auto &type = signature.GetParameter(0).GetType();
-			if (type == LogicalType::VARCHAR || TableFunctionMultiFileWrapper::TakesFileWithOptions(type)) {
+			auto &type = signature.GetParameter(0).GetTypeName();
+			if (type.IsBuiltinType(LogicalTypeId::VARCHAR) ||
+			    TableFunctionMultiFileWrapper::TakesFileWithOptions(signature)) {
 				return *function;
 			}
 		}

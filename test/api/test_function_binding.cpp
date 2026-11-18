@@ -98,23 +98,25 @@ TEST_CASE("Argument mapping preserves defaults, templates and keyword restrictio
 TEST_CASE("Selecting a function maps every argument to the parameter that receives it", "[api][function_binding]") {
 	DuckDB db(nullptr);
 	Connection con(db);
-	auto set = GetTemplatedSet();
+	con.context->RunFunctionInTransaction([&]() {
+		auto set = GetTemplatedSet();
 
-	vector<LogicalType> positional {LogicalType::LIST(LogicalType::INTEGER), LogicalType::INTEGER, LogicalType::VARCHAR,
-	                                LogicalType::VARCHAR};
-	vector<pair<Identifier, LogicalType>> named {{"opt", LogicalType::BIGINT}, {"extra", LogicalType::BOOLEAN}};
-	auto selection = FunctionBinder::SelectFunction(*con.context, set, {positional, named});
-	REQUIRE(selection.IsSuccess());
-	REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		vector<LogicalType> positional {LogicalType::LIST(LogicalType::INTEGER), LogicalType::INTEGER,
+		                                LogicalType::VARCHAR, LogicalType::VARCHAR};
+		vector<pair<Identifier, LogicalType>> named {{"opt", LogicalType::BIGINT}, {"extra", LogicalType::BOOLEAN}};
+		auto selection = FunctionBinder::SelectFunction(*con.context, set, {positional, named});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
 
-	// list, value, the two arguments "*args" receives, the keyword-only parameter, and "**kwargs"
-	auto &binding = selection.GetBinding();
-	const vector<idx_t> expected_parameters {0, 1, 2, 2, 3, 4};
-	REQUIRE(binding.argument_to_parameters == expected_parameters);
-	const vector<LogicalType> expected_types {LogicalType::LIST(LogicalType::INTEGER), LogicalType::INTEGER,
-	                                          LogicalType::VARCHAR, LogicalType::BIGINT, LogicalType::ANY};
-	REQUIRE(binding.parameter_types == expected_types);
-	REQUIRE(binding.return_type == LogicalType::INTEGER);
+		// list, value, the two arguments "*args" receives, the keyword-only parameter, and "**kwargs"
+		auto &binding = selection.GetBinding();
+		const vector<idx_t> expected_parameters {0, 1, 2, 2, 3, 4};
+		REQUIRE(binding.argument_to_parameters == expected_parameters);
+		const vector<LogicalType> expected_types {LogicalType::LIST(LogicalType::INTEGER), LogicalType::INTEGER,
+		                                          LogicalType::VARCHAR, LogicalType::BIGINT, LogicalType::ANY};
+		REQUIRE(binding.parameter_types == expected_types);
+		REQUIRE(binding.return_type == LogicalType::INTEGER);
+	});
 }
 
 TEST_CASE("Overload selection keeps cheaper later matches and equal-cost ambiguities", "[api][function_binding]") {
@@ -145,41 +147,43 @@ TEST_CASE("Overload selection keeps cheaper later matches and equal-cost ambigui
 TEST_CASE("Selecting a function deduces the templates of the overload", "[api][function_binding]") {
 	DuckDB db(nullptr);
 	Connection con(db);
-	auto set = GetTemplatedSet();
+	con.context->RunFunctionInTransaction([&]() {
+		auto set = GetTemplatedSet();
 
-	// the template unifies the element type of the list with the value
-	auto selection = FunctionBinder::SelectFunction(*con.context, set,
-	                                                {LogicalType::LIST(LogicalType::INTEGER), LogicalType::BIGINT});
-	REQUIRE(selection.IsSuccess());
-	auto &parameter_types = selection.GetBinding().parameter_types;
-	REQUIRE(parameter_types[0] == LogicalType::LIST(LogicalType::BIGINT));
-	REQUIRE(parameter_types[1] == LogicalType::BIGINT);
-	REQUIRE(selection.GetBinding().return_type == LogicalType::BIGINT);
+		// the template unifies the element type of the list with the value
+		auto selection = FunctionBinder::SelectFunction(*con.context, set,
+		                                                {LogicalType::LIST(LogicalType::INTEGER), LogicalType::BIGINT});
+		REQUIRE(selection.IsSuccess());
+		auto &parameter_types = selection.GetBinding().parameter_types;
+		REQUIRE(parameter_types[0] == LogicalType::LIST(LogicalType::BIGINT));
+		REQUIRE(parameter_types[1] == LogicalType::BIGINT);
+		REQUIRE(selection.GetBinding().return_type == LogicalType::BIGINT);
 
-	// arguments that determine conflicting types for the template do not match the overload
-	vector<LogicalType> conflicting {LogicalType::LIST(LogicalType::DATE), LogicalType::BOOLEAN};
-	selection = FunctionBinder::SelectFunction(*con.context, set, conflicting);
-	auto &deduction = GetMismatches(selection)[0];
-	REQUIRE(deduction.GetType() == FunctionMismatch::Type::TEMPLATE_DEDUCTION);
-	REQUIRE(deduction.Cast<FunctionMismatch::TemplateDeduction>().template_name == "T");
-	REQUIRE(deduction.Cast<FunctionMismatch::TemplateDeduction>().argument.GetIndex() == 1);
-	REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "Cannot deduce template type 'T'"));
+		// arguments that determine conflicting types for the template do not match the overload
+		vector<LogicalType> conflicting {LogicalType::LIST(LogicalType::DATE), LogicalType::BOOLEAN};
+		selection = FunctionBinder::SelectFunction(*con.context, set, conflicting);
+		auto &deduction = GetMismatches(selection)[0];
+		REQUIRE(deduction.GetType() == FunctionMismatch::Type::TEMPLATE_DEDUCTION);
+		REQUIRE(deduction.Cast<FunctionMismatch::TemplateDeduction>().template_name == "T");
+		REQUIRE(deduction.Cast<FunctionMismatch::TemplateDeduction>().argument.GetIndex() == 1);
+		REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "Cannot deduce template type 'T'"));
 
-	// without a client context, the template is unified with the built-in implicit casts
-	selection =
-	    FunctionBinder::SelectFunction(nullptr, set, {LogicalType::LIST(LogicalType::INTEGER), LogicalType::BIGINT});
-	REQUIRE(selection.IsSuccess());
-	REQUIRE(selection.GetBinding().return_type == LogicalType::BIGINT);
+		// without a client context, the template is unified with the built-in implicit casts
+		selection = FunctionBinder::SelectFunction(nullptr, set,
+		                                           {LogicalType::LIST(LogicalType::INTEGER), LogicalType::BIGINT});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().return_type == LogicalType::BIGINT);
 
-	// a template that neither the arguments nor the defaults determine does not match either
-	FunctionSignature sig;
-	sig.AddParameter("value", LogicalType::INTEGER);
-	sig.SetReturnType(LogicalType::TEMPLATE("T"));
-	ScalarFunctionSet undetermined("u");
-	undetermined.AddFunction(ScalarFunction("u", std::move(sig), NoopExec));
-	selection = FunctionBinder::SelectFunction(*con.context, undetermined, {LogicalType::INTEGER});
-	REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
-	REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "is not determined by the arguments"));
+		// a template that neither the arguments nor the defaults determine does not match either
+		FunctionSignature sig;
+		sig.AddParameter("value", LogicalType::INTEGER);
+		sig.SetReturnType(LogicalType::TEMPLATE("T"));
+		ScalarFunctionSet undetermined("u");
+		undetermined.AddFunction(ScalarFunction("u", std::move(sig), NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, undetermined, {LogicalType::INTEGER});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
+		REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "is not determined by the arguments"));
+	});
 }
 
 TEST_CASE("A call no overload matches records why each overload fails", "[api][function_binding]") {

@@ -311,13 +311,13 @@ duckdb_state duckdb_register_table_function(duckdb_connection connection, duckdb
 		if (param.IsVariadic()) {
 			continue;
 		}
-		if (duckdb::TypeVisitor::Contains(param.GetType(), duckdb::LogicalTypeId::INVALID)) {
+		if (param.GetTypeName().Contains("INVALID")) {
 			return DuckDBError;
 		}
 	}
 	if (auto option_schema = tf.GetSignature().GetTypedKwargs()) {
 		for (auto &option : option_schema->GetOptions()) {
-			if (duckdb::TypeVisitor::Contains(option.type, duckdb::LogicalTypeId::INVALID)) {
+			if (option.type.Contains("INVALID")) {
 				return DuckDBError;
 			}
 		}

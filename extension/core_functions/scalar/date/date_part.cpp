@@ -2645,7 +2645,7 @@ ScalarFunctionSet GetCachedDatepartFunction() {
 void SetNonDecreasingExceptInterval(ScalarFunctionSet &functions) {
 	functions.ApplyToFunctions([](ScalarFunction &function) {
 		// Interval components need not preserve the normalized interval ordering.
-		if (function.GetSignature().GetParameter(0).GetType() != LogicalType::INTERVAL) {
+		if (!function.GetSignature().GetParameter(0).GetTypeName().IsBuiltinType(LogicalTypeId::INTERVAL)) {
 			function.SetUnaryArgProperties(ArgProperties().NonDecreasing());
 		}
 	});
@@ -2737,7 +2737,7 @@ ScalarFunctionSet TimezoneFun::GetFunctions() {
 //! timezone_hour and timezone_minute throw on every DATE and INTERVAL, but not on the other types
 static ScalarFunctionSet SetDateAndIntervalFallible(ScalarFunctionSet set) {
 	set.ApplyToFunctions([](ScalarFunction &function) {
-		auto type = function.GetSignature().GetParameter(0).GetType().id();
+		auto type = function.GetSignature().GetParameter(0).GetTypeName().GetBuiltinType();
 		if (type == LogicalTypeId::DATE || type == LogicalTypeId::INTERVAL) {
 			function.SetFallible();
 		}

@@ -263,13 +263,7 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(ClientContext &context
 		                     ? optional_ptr<const FunctionParameter>(signature.GetParameter(arg_idx))
 		                     : signature.GetArgs();
 		// ANY must describe a state-capable implementation, not a placeholder for type specialization.
-		auto is_any_type = [](const LogicalType &type) {
-			if (type.id() == LogicalTypeId::TEMPLATE) {
-				return !TemplateType::HasConstraint(type);
-			}
-			return type.id() == LogicalTypeId::ANY;
-		};
-		const bool canonical_any = parameter && is_any_type(parameter->GetType());
+		const bool canonical_any = parameter && signature.AcceptsAnyType(parameter->GetTypeName());
 		if (!canonical_any || !aggr->HasGetStateTypeCallback()) {
 			throw BinderException("Aggregate %s requires a concrete type for signature argument %llu", function_name,
 			                      arg_idx + 1);
@@ -422,7 +416,8 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 	for (auto &child : StructType::GetChildTypes(buffer_struct)) {
 		buffer_types.push_back(child.second);
 	}
-	auto wrapper = FunctionBinder::BindAggregateFunction(&context, reconstructed.first, buffer_types);
+	auto wrapper = FunctionBinder::BindAggregateFunction(reconstructed.first, std::move(buffer_types),
+	                                                     inner->aggr.GetReturnType());
 	const auto state_size = wrapper.GetStateSize(reconstructed.second.get());
 	return make_uniq<ExportAggregateBindData>(std::move(wrapper), std::move(reconstructed.second), state_size);
 }

@@ -736,22 +736,33 @@ public:
 		return result;
 	}
 
+	//! The implementation of an aggregate over one input: the callbacks alone, without a function that declares types
+	template <class STATE, class INPUT_TYPE, class RESULT_TYPE, class OP,
+	          AggregateDestructorType destructor_type = AggregateDestructorType::STANDARD>
+	static AggregateFunctionCallbacks UnaryAggregateCallbacks() {
+		AggregateFunctionCallbacks result;
+		result.state_size = AggregateFunction::StateSize<STATE>;
+		result.initialize = AggregateFunction::StateInitialize<STATE, OP, destructor_type>;
+		result.update = AggregateFunction::UnaryScatterUpdate<STATE, INPUT_TYPE, OP>;
+		result.combine = AggregateFunction::StateCombine<STATE, OP>;
+		result.finalize = AggregateFunction::StateFinalize<STATE, RESULT_TYPE, OP>;
+		result.cluster_update = UnaryClusterUpdateCallback<STATE, INPUT_TYPE, OP>();
+		// automatically wire up the destructor if the operation defines a Destroy method
+		if constexpr (OperationHasDestroy<STATE, OP>::value) {
+			result.destructor = AggregateFunction::StateDestroy<STATE, OP>;
+		}
+		WireStructStateType<STATE>(result);
+		return result;
+	}
+
 	template <class STATE, class INPUT_TYPE, class RESULT_TYPE, class OP,
 	          AggregateDestructorType destructor_type = AggregateDestructorType::STANDARD>
 	static AggregateFunction
 	UnaryAggregate(const LogicalType &input_type, const LogicalType &return_type,
 	               FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING) {
-		AggregateFunction result(Identifier(), {input_type}, return_type, AggregateFunction::StateSize<STATE>,
-		                         AggregateFunction::StateInitialize<STATE, OP, destructor_type>,
-		                         AggregateFunction::UnaryScatterUpdate<STATE, INPUT_TYPE, OP>,
-		                         AggregateFunction::StateCombine<STATE, OP>,
-		                         AggregateFunction::StateFinalize<STATE, RESULT_TYPE, OP>, null_handling,
-		                         UnaryClusterUpdateCallback<STATE, INPUT_TYPE, OP>());
-		// automatically wire up the destructor if the operation defines a Destroy method
-		if constexpr (OperationHasDestroy<STATE, OP>::value) {
-			result.callbacks.destructor = AggregateFunction::StateDestroy<STATE, OP>;
-		}
-		WireStructStateType<STATE>(result);
+		AggregateFunction result(Identifier(), {input_type}, return_type, nullptr, nullptr, nullptr, nullptr, nullptr,
+		                         null_handling);
+		result.callbacks = UnaryAggregateCallbacks<STATE, INPUT_TYPE, RESULT_TYPE, OP, destructor_type>();
 		return result;
 	}
 
@@ -770,11 +781,22 @@ public:
 	          AggregateDestructorType destructor_type = AggregateDestructorType::STANDARD>
 	static AggregateFunction BinaryAggregate(const LogicalType &a_type, const LogicalType &b_type,
 	                                         const LogicalType &return_type) {
-		AggregateFunction result({a_type, b_type}, return_type, AggregateFunction::StateSize<STATE>,
-		                         AggregateFunction::StateInitialize<STATE, OP, destructor_type>,
-		                         AggregateFunction::BinaryScatterUpdate<STATE, A_TYPE, B_TYPE, OP>,
-		                         AggregateFunction::StateCombine<STATE, OP>,
-		                         AggregateFunction::StateFinalize<STATE, RESULT_TYPE, OP>, nullptr);
+		AggregateFunction result(Identifier(), {a_type, b_type}, return_type, nullptr, nullptr, nullptr, nullptr,
+		                         nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING);
+		result.callbacks = BinaryAggregateCallbacks<STATE, A_TYPE, B_TYPE, RESULT_TYPE, OP, destructor_type>();
+		return result;
+	}
+
+	//! The implementation of an aggregate over two inputs: the callbacks alone, without a function that declares types
+	template <class STATE, class A_TYPE, class B_TYPE, class RESULT_TYPE, class OP,
+	          AggregateDestructorType destructor_type = AggregateDestructorType::STANDARD>
+	static AggregateFunctionCallbacks BinaryAggregateCallbacks() {
+		AggregateFunctionCallbacks result;
+		result.state_size = AggregateFunction::StateSize<STATE>;
+		result.initialize = AggregateFunction::StateInitialize<STATE, OP, destructor_type>;
+		result.update = AggregateFunction::BinaryScatterUpdate<STATE, A_TYPE, B_TYPE, OP>;
+		result.combine = AggregateFunction::StateCombine<STATE, OP>;
+		result.finalize = AggregateFunction::StateFinalize<STATE, RESULT_TYPE, OP>;
 		WireStructStateType<STATE>(result);
 		return result;
 	}
@@ -788,7 +810,11 @@ public:
 
 	//! Defined out-of-line (after BoundAggregateFunction is complete) so the lambda body can call GetReturnType().
 	template <class STATE>
-	static void WireStructStateType(AggregateFunction &result);
+	static void WireStructStateType(AggregateFunctionCallbacks &callbacks);
+	template <class STATE>
+	static void WireStructStateType(AggregateFunction &result) {
+		WireStructStateType<STATE>(result.callbacks);
+	}
 
 	//! The state layout of a STATE with a STATE_TYPE - defined out-of-line (after BoundAggregateFunction is complete)
 	template <class STATE>
@@ -922,7 +948,10 @@ public:
 class BoundAggregateFunction : public BaseAggregateFunction, public BoundSimpleFunction {
 public:
 	//! Swap in a different implementation, keeping the definition this was bound from intact
-	void ReplaceImplementation(const AggregateFunction &function);
+	void ReplaceImplementation(ClientContext &context, const AggregateFunction &function);
+	//! The same, bound to the types the caller resolved itself rather than to the ones the implementation declares
+	void ReplaceImplementation(const AggregateFunction &function, vector<LogicalType> arguments,
+	                           LogicalType return_type);
 	void ReplaceImplementation(const BoundAggregateFunction &function);
 
 	DUCKDB_API bool operator==(const BoundAggregateFunction &rhs) const;
@@ -1005,13 +1034,13 @@ private:
 
 // Defined here (after BoundAggregateFunction is complete) so the lambda body can call GetReturnType().
 template <class STATE>
-inline void AggregateFunction::WireStructStateType(AggregateFunction &result) {
+inline void AggregateFunction::WireStructStateType(AggregateFunctionCallbacks &callbacks) {
 	if constexpr (HasStructStateType<STATE>::value) {
-		result.SetStructStateExport(StructStateLayout<STATE>);
+		callbacks.get_state_type = StructStateLayout<STATE>;
 	} else if constexpr (HasPrimitiveLogicalType<STATE>::value) {
-		result.SetStructStateExport([](AggregateLayoutInput &) {
+		callbacks.get_state_type = [](AggregateLayoutInput &) {
 			return AggregateStateLayout(PrimitiveToLogicalType<STATE>(), AlignValue<idx_t>(sizeof(STATE)));
-		});
+		};
 	}
 }
 

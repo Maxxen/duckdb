@@ -148,7 +148,22 @@ void BoundAggregateFunction::ReplaceImplementation(const BoundAggregateFunction 
 	SetDefinition(definition);
 }
 
-void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &function) {
+void BoundAggregateFunction::ReplaceImplementation(ClientContext &context, const AggregateFunction &function) {
+	// the replacement is not called, so the types it declares are taken as they are
+	auto &replacement_signature = function.GetSignature();
+	auto parameter_types = FunctionBinder::BindParameterTypes(&context, replacement_signature);
+	vector<LogicalType> replacement_arguments;
+	for (idx_t i = 0; i < replacement_signature.GetParameterCount(); i++) {
+		if (!replacement_signature.GetParameter(i).IsVariadic()) {
+			replacement_arguments.push_back(parameter_types[i]);
+		}
+	}
+	ReplaceImplementation(function, std::move(replacement_arguments),
+	                      FunctionBinder::BindReturnType(&context, replacement_signature));
+}
+
+void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &function, vector<LogicalType> arguments_p,
+                                                   LogicalType return_type_p) {
 	SetName(function.GetName());
 	// The replacement is a specialized implementation of the function we were bound from, and is usually built by
 	// a factory rather than handed out by a catalog entry. Only take its qualification when it has one, so that
@@ -156,19 +171,11 @@ void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &func
 	if (!function.GetCatalogName().empty() || !function.GetSchemaName().empty()) {
 		qualified_name = function.GetQualifiedName();
 	}
-	this->return_type = function.GetReturnType().GetUnboundType();
+	this->return_type = std::move(return_type_p);
 	this->properties = function.GetProperties();
 	this->callbacks = function.GetCallbacks();
 	this->function_info = function.GetFunctionInfo();
-
-	// Try to default bind the function, to fill in any missing information in the BoundScalarFunction (e.g. from the
-	// "bind" callback)
-	arguments.clear();
-	for (auto &param : function.GetSignature().GetParameters()) {
-		if (!param.IsVariadic()) {
-			arguments.push_back(param.GetType());
-		}
-	}
+	this->arguments = std::move(arguments_p);
 }
 
 BindAggregateFunctionInput::BindAggregateFunctionInput(ClientContext &context_p,

@@ -146,7 +146,7 @@ Value VariadicTypeValue(const FunctionSignature &signature) {
 	if (!variadic) {
 		variadic = signature.GetKwargs();
 	}
-	return variadic ? Value(variadic->GetType().ToString()) : Value();
+	return variadic ? Value(signature.PrintType(variadic->GetTypeName())) : Value();
 }
 
 struct ScalarFunctionExtractor {
@@ -177,18 +177,18 @@ struct ScalarFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType().ToString());
+				results.emplace_back(fun.GetSignature().PrintType(fun.GetSignature().GetParameter(i).GetTypeName()));
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<TypeName> GetParameterLogicalTypes(ScalarFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
-		vector<LogicalType> results;
+		vector<TypeName> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType());
+				results.emplace_back(fun.GetSignature().GetParameter(i).GetTypeName());
 			}
 		}
 		return results;
@@ -240,18 +240,18 @@ struct WindowFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType().ToString());
+				results.emplace_back(fun.GetSignature().PrintType(fun.GetSignature().GetParameter(i).GetTypeName()));
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(WindowFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<TypeName> GetParameterLogicalTypes(WindowFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
-		vector<LogicalType> results;
+		vector<TypeName> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType());
+				results.emplace_back(fun.GetSignature().GetParameter(i).GetTypeName());
 			}
 		}
 		return results;
@@ -302,18 +302,18 @@ struct AggregateFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType().ToString());
+				results.emplace_back(fun.GetSignature().PrintType(fun.GetSignature().GetParameter(i).GetTypeName()));
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(AggregateFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<TypeName> GetParameterLogicalTypes(AggregateFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
-		vector<LogicalType> results;
+		vector<TypeName> results;
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().GetParameter(i).GetType());
+				results.emplace_back(fun.GetSignature().GetParameter(i).GetTypeName());
 			}
 		}
 		return results;
@@ -375,8 +375,8 @@ struct MacroExtractor {
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(ScalarMacroCatalogEntry &entry, idx_t offset) {
-		vector<LogicalType> results;
+	static vector<TypeName> GetParameterLogicalTypes(ScalarMacroCatalogEntry &entry, idx_t offset) {
+		vector<TypeName> results;
 		auto &macro_entry = *entry.macros[offset];
 		for (idx_t i = 0; i < macro_entry.parameters.size(); i++) {
 			results.emplace_back(macro_entry.types.empty() ? LogicalType::UNKNOWN : macro_entry.types[i]);
@@ -438,8 +438,8 @@ struct TableMacroExtractor {
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(TableMacroCatalogEntry &entry, idx_t offset) {
-		vector<LogicalType> results;
+	static vector<TypeName> GetParameterLogicalTypes(TableMacroCatalogEntry &entry, idx_t offset) {
+		vector<TypeName> results;
 		auto &macro_entry = *entry.macros[offset];
 		for (idx_t i = 0; i < macro_entry.parameters.size(); i++) {
 			results.emplace_back(macro_entry.types.empty() ? LogicalType::UNKNOWN : macro_entry.types[i]);
@@ -512,18 +512,18 @@ struct TableFunctionExtractor {
 
 		for (auto &param : fun.GetSignature().GetParameters()) {
 			if (!param.IsVariadic()) {
-				results.emplace_back(param.GetType().ToString());
+				results.emplace_back(fun.GetSignature().PrintType(param.GetTypeName()));
 			}
 		}
 		AddOptions(fun.GetSignature(), results, true);
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<TypeName> GetParameterLogicalTypes(TableFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &signature = entry.functions.GetFunctionByOffset(offset)->GetSignature();
-		vector<LogicalType> result;
+		vector<TypeName> result;
 		for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
-			result.push_back(signature.GetParameter(i).GetType());
+			result.push_back(signature.GetParameter(i).GetTypeName());
 		}
 		return result;
 	}
@@ -531,7 +531,7 @@ struct TableFunctionExtractor {
 	static Value GetVarArgs(TableFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		auto args = fun.GetSignature().GetArgs();
-		return args ? Value(args->GetType().ToString()) : Value();
+		return args ? Value(fun.GetSignature().PrintType(args->GetTypeName())) : Value();
 	}
 
 	static Value GetMacroDefinition(TableFunctionCatalogEntry &entry, idx_t offset) {
@@ -579,19 +579,19 @@ struct PragmaFunctionExtractor {
 
 		for (auto &param : fun.GetSignature().GetParameters()) {
 			if (!param.IsVariadic()) {
-				results.emplace_back(param.GetType().ToString());
+				results.emplace_back(fun.GetSignature().PrintType(param.GetTypeName()));
 			}
 		}
 		AddOptions(fun.GetSignature(), results, true);
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
 
-	static vector<LogicalType> GetParameterLogicalTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
+	static vector<TypeName> GetParameterLogicalTypes(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		const auto &signature = fun.GetSignature();
-		vector<LogicalType> result;
+		vector<TypeName> result;
 		for (idx_t i = 0; i < signature.GetPositionalParameterCount(); i++) {
-			result.push_back(signature.GetParameter(i).GetType());
+			result.push_back(signature.GetParameter(i).GetTypeName());
 		}
 		return result;
 	}
@@ -599,7 +599,7 @@ struct PragmaFunctionExtractor {
 	static Value GetVarArgs(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		auto args = fun.GetSignature().GetArgs();
-		return args ? Value(args->GetType().ToString()) : Value();
+		return args ? Value(fun.GetSignature().PrintType(args->GetTypeName())) : Value();
 	}
 
 	static Value GetMacroDefinition(PragmaFunctionCatalogEntry &entry, idx_t offset) {
@@ -647,13 +647,13 @@ static Value GetParameterNames(CatalogEntry &entry, idx_t function_idx, Function
 // returns values:
 // 0: exact type match; N: match using N <ANY> values; Invalid(): no match
 static optional_idx CalcDescriptionSpecificity(FunctionDescription &description,
-                                               const vector<LogicalType> &parameter_types) {
+                                               const vector<TypeName> &parameter_types) {
 	if (description.parameter_types.size() != parameter_types.size()) {
 		return optional_idx::Invalid();
 	}
 	idx_t any_count = 0;
 	for (idx_t i = 0; i < description.parameter_types.size(); i++) {
-		if (description.parameter_types[i].id() == LogicalTypeId::ANY) {
+		if (description.parameter_types[i].IsBuiltinType(LogicalTypeId::ANY)) {
 			any_count++;
 		} else if (description.parameter_types[i] != parameter_types[i]) {
 			return optional_idx::Invalid();
@@ -664,12 +664,13 @@ static optional_idx CalcDescriptionSpecificity(FunctionDescription &description,
 
 // Find FunctionDescription object with matching number of arguments and types
 static optional_idx GetFunctionDescriptionIndex(vector<FunctionDescription> &function_descriptions,
-                                                vector<LogicalType> &function_parameter_types) {
+                                                vector<TypeName> &function_parameter_types) {
 	if (function_descriptions.size() == 1) {
 		// one description, use it even if nr of parameters don't match
 		idx_t nr_function_parameters = function_parameter_types.size();
 		for (idx_t i = 0; i < function_descriptions[0].parameter_types.size(); i++) {
-			if (i < nr_function_parameters && function_descriptions[0].parameter_types[i] != LogicalTypeId::ANY &&
+			if (i < nr_function_parameters &&
+			    !function_descriptions[0].parameter_types[i].IsBuiltinType(LogicalTypeId::ANY) &&
 			    function_descriptions[0].parameter_types[i] != function_parameter_types[i]) {
 				return optional_idx::Invalid();
 			}
@@ -696,7 +697,7 @@ static optional_idx GetFunctionDescriptionIndex(vector<FunctionDescription> &fun
 template <class T, class OP>
 bool ExtractFunctionData(CatalogEntry &entry, idx_t function_idx, DataChunk &output) {
 	auto &function = entry.Cast<T>();
-	vector<LogicalType> parameter_types_vector = OP::GetParameterLogicalTypes(function, function_idx);
+	vector<TypeName> parameter_types_vector = OP::GetParameterLogicalTypes(function, function_idx);
 	Value parameter_types_value = OP::GetParameterTypes(function, function_idx);
 	optional_idx description_idx = GetFunctionDescriptionIndex(function.descriptions, parameter_types_vector);
 	FunctionDescription function_description =

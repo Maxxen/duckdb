@@ -7,6 +7,7 @@
 #include "duckdb/parser/parsed_data/create_macro_info.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/function/function_binder.hpp"
 
 namespace duckdb::capiv2 {
 
@@ -26,7 +27,7 @@ public:
 		if (body.empty()) {
 			throw InvalidInputException("A body must be set for the macro function.");
 		}
-		if (signature.GetReturnType() != LogicalType::INVALID) {
+		if (!signature.GetReturnType().IsNone()) {
 			throw InvalidInputException(
 			    "A macro function signature cannot set a return type: the result follows from the body.");
 		}
@@ -53,8 +54,9 @@ public:
 			}
 			auto &parameter_name = parameter.GetName();
 			// ANY leaves the parameter untyped, as a parameter declared without a type
-			auto parameter_type =
-			    parameter.GetType().id() == LogicalTypeId::ANY ? LogicalType::UNKNOWN : parameter.GetType();
+			auto parameter_type = parameter.GetTypeName().IsBuiltinType(LogicalTypeId::ANY)
+			                          ? LogicalType(LogicalType::UNKNOWN)
+			                          : FunctionBinder::BindTypeName(nullptr, parameter.GetTypeName(), signature);
 			if (parameter.HasDefaultValue()) {
 				auto default_value = *parameter.GetDefaultValue();
 				if (parameter_type.id() != LogicalTypeId::UNKNOWN) {

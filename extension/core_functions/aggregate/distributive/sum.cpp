@@ -394,7 +394,8 @@ unique_ptr<FunctionData> SumNoOverflowBind(BindAggregateFunctionInput &input) {
 	const auto parameter_type = function.GetArguments()[0];
 	auto logical = BindLogicalSum(input.GetClientContext(), arguments);
 	if (parameter_type.id() != LogicalTypeId::DECIMAL) {
-		logical.first.ReplaceImplementation(GetSumAggregateNoOverflow(parameter_type.InternalType()));
+		logical.first.ReplaceImplementation(input.GetClientContext(),
+		                                    GetSumAggregateNoOverflow(parameter_type.InternalType()));
 		// bound by name there is no statistics proof that the int64 accumulator cannot overflow
 		logical.first.SetFallible();
 	}
@@ -426,7 +427,7 @@ unique_ptr<BaseStatistics> SumPropagateStats(ClientContext &context, BoundAggreg
 	const bool sum_fits_in_int64 =
 	    bounds->min > NumericLimits<int64_t>::Minimum() && bounds->max < NumericLimits<int64_t>::Maximum();
 	if (has_no_overflow_variant && sum_fits_in_int64) {
-		expr.FunctionMutable().ReplaceImplementation(GetSumAggregateNoOverflow(internal_type));
+		expr.FunctionMutable().ReplaceImplementation(context, GetSumAggregateNoOverflow(internal_type));
 	}
 
 	// Propagate stats.
@@ -523,7 +524,7 @@ unique_ptr<FunctionData> BindDecimalSum(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 	auto decimal_type = BindDecimalArgument(input.GetClientContext(), arguments[0], "sum");
-	function.ReplaceImplementation(GetDecimalSumAggregate(decimal_type.InternalType()));
+	function.ReplaceImplementation(input.GetClientContext(), GetDecimalSumAggregate(decimal_type.InternalType()));
 	function.SetName("sum");
 	function.GetArguments()[0] = decimal_type;
 	function.SetReturnType(LogicalType::DECIMAL(Decimal::MAX_WIDTH_DECIMAL, DecimalType::GetScale(decimal_type)));

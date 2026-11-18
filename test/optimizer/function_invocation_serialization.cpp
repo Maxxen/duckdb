@@ -466,14 +466,15 @@ struct KeywordScanBindData : public TableFunctionData {
 };
 
 //! Returns the option it was called with, typed as the overload it was bound to declares it
-static unique_ptr<FunctionData> KeywordScanBind(ClientContext &, TableFunctionBindInput &input,
+static unique_ptr<FunctionData> KeywordScanBind(ClientContext &context, TableFunctionBindInput &input,
                                                 vector<LogicalType> &types, vector<Identifier> &names) {
 	// "opt" is a keyword-only parameter, or an option of the overload's "**kwargs"
 	auto &signature = input.table_function.GetSignature();
 	auto param_idx = signature.GetParameterIndexByName("opt");
 	auto option = signature.GetTypedKwargs() ? signature.GetTypedKwargs()->Find("opt") : nullptr;
 	REQUIRE((param_idx.IsValid() || option));
-	auto &type = param_idx.IsValid() ? signature.GetParameter(param_idx.GetIndex()).GetType() : option->type;
+	auto type = param_idx.IsValid() ? input.table_function.GetParameterTypes()[param_idx.GetIndex()]
+	                                : FunctionBinder::BindTypeName(&context, option->type);
 	auto entry = input.named_parameters.find("opt");
 	types.push_back(type);
 	names.emplace_back("opt");

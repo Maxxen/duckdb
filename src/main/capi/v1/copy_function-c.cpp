@@ -732,14 +732,14 @@ void duckdb_copy_function_set_copy_from_function(duckdb_copy_function copy_funct
 		if (param.IsVariadic()) {
 			continue;
 		}
-		if (duckdb::TypeVisitor::Contains(param.GetType(), duckdb::LogicalTypeId::INVALID)) {
+		if (param.GetTypeName().Contains("INVALID")) {
 			return;
 		}
 	}
 	auto option_schema = tf.GetSignature().GetTypedKwargs();
 	if (option_schema) {
 		for (auto &option : option_schema->GetOptions()) {
-			if (duckdb::TypeVisitor::Contains(option.type, duckdb::LogicalTypeId::INVALID)) {
+			if (option.type.Contains("INVALID")) {
 				return;
 			}
 		}

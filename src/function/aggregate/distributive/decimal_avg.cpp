@@ -144,18 +144,22 @@ static unique_ptr<FunctionData> BindDecimalAverage(BindAggregateFunctionInput &i
 	switch (input_type.InternalType()) {
 	case PhysicalType::INT16:
 		function.ReplaceImplementation(
+		    input.GetClientContext(),
 		    MakeDecimalAvgFunction<int16_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT16, scale), return_type));
 		break;
 	case PhysicalType::INT32:
 		function.ReplaceImplementation(
+		    input.GetClientContext(),
 		    MakeDecimalAvgFunction<int32_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT32, scale), return_type));
 		break;
 	case PhysicalType::INT64:
 		function.ReplaceImplementation(
+		    input.GetClientContext(),
 		    MakeDecimalAvgFunction<int64_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT64, scale), return_type));
 		break;
 	case PhysicalType::INT128:
 		function.ReplaceImplementation(
+		    input.GetClientContext(),
 		    MakeDecimalAvgFunction<hugeint_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_DECIMAL, scale), return_type));
 		break;
 	default:

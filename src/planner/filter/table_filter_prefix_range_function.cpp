@@ -758,7 +758,7 @@ static idx_t PrefixRangeSelect(DataChunk &args, ExpressionState &state, optional
 }
 
 ScalarFunction PrefixRangeScalarFun::GetFunction(const LogicalType &input_type) {
-	ScalarFunction func(NAME, {input_type}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
+	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
 	func.GetSignature().GetParameter(0).SetName("col");
 	func.SetInitStateCallback(PrefixRangeInitLocalState);
 	func.SetSelectCallback(PrefixRangeSelect);

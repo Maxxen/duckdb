@@ -11,11 +11,12 @@
 #include "duckdb/parser/parsed_data/create_info.hpp"
 
 #include "duckdb/common/identifier.hpp"
+#include "duckdb/function/type_name.hpp"
 namespace duckdb {
 
 struct FunctionDescription {
-	//! Parameter types (if any)
-	vector<LogicalType> parameter_types;
+	//! The names of the types the parameters declare (if any)
+	vector<TypeName> parameter_types;
 	//! Parameter names (if any)
 	vector<string> parameter_names;
 	//! The description (if any)

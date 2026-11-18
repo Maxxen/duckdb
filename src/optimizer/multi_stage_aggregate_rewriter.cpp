@@ -2,6 +2,8 @@
 
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/aggregate/distributive_function_utils.hpp"
+#include "duckdb/function/aggregate/distributive_functions.hpp"
+#include "duckdb/function/builtin_function_lookup.hpp"
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/optimizer/aggregate_rewrite_helper.hpp"
 #include "duckdb/optimizer/aggregate_rewrite.hpp"
@@ -211,9 +213,10 @@ static BranchResult CreateDistinctBranch(Optimizer &optimizer, LogicalAggregate 
 		if (!Expression::Equals(*child, *key)) {
 			vector<unique_ptr<Expression>> first_children;
 			first_children.push_back(AggregateRewriteHelper::CopyAndRebind(*child, input_replacements));
-			auto first_aggregate =
-			    function_binder.BindAggregateFunction(FirstFunctionGetter::GetFunction(child->GetReturnType()),
-			                                          std::move(first_children), nullptr, AggregateType::NON_DISTINCT);
+			auto first_function =
+			    GetBuiltinAggregateFunction(optimizer.GetContext(), FirstFun::Name, {child->GetReturnType()});
+			auto first_aggregate = function_binder.BindAggregateFunction(first_function, std::move(first_children),
+			                                                             nullptr, AggregateType::NON_DISTINCT);
 			value_binding = ColumnBinding(distinct_aggregate_index, ProjectionIndex(distinct_aggregates.size()));
 			distinct_aggregates.push_back(std::move(first_aggregate));
 		}

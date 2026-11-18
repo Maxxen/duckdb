@@ -395,6 +395,10 @@ private:
 
 //! The FunctionBinder class is responsible for binding functions
 class FunctionBinder {
+	//! These bind a function that no call is matched to, from the types it declares
+	friend class FunctionSerializer;
+	friend class BoundAggregateFunction;
+
 public:
 	DUCKDB_API explicit FunctionBinder(Binder &binder);
 	DUCKDB_API explicit FunctionBinder(ClientContext &context);
@@ -437,6 +441,9 @@ public:
 	DUCKDB_API static BoundWindowFunction BindWindowFunction(optional_ptr<ClientContext> context,
 	                                                         const WindowFunction &function,
 	                                                         const FunctionCallArguments &call);
+	//! Bind an aggregate to types the caller resolved itself: nothing the function declares is bound
+	DUCKDB_API static BoundAggregateFunction
+	BindAggregateFunction(const AggregateFunction &function, vector<LogicalType> arguments, LogicalType return_type);
 	//! The same, as the expression of the call with the bind data the caller supplies
 	DUCKDB_API static unique_ptr<BoundFunctionExpression> BindScalarFunction(optional_ptr<ClientContext> context,
 	                                                                         const ScalarFunction &function,
@@ -643,6 +650,8 @@ private:
 	//! a call is what binds a signature: this is only for a function that is bound without one
 	static vector<LogicalType> BindParameterTypes(optional_ptr<ClientContext> context,
 	                                              const FunctionSignature &signature);
+	//! The type a signature declares to return, as BindParameterTypes: ANY if it is only known after binding
+	static LogicalType BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature);
 };
 
 } // namespace duckdb

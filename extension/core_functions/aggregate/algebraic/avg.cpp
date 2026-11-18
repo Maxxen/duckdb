@@ -550,7 +550,7 @@ unique_ptr<FunctionData> BindDecimalAvg(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 	auto decimal_type = BindDecimalArgument(input.GetClientContext(), arguments[0], "avg");
-	function.ReplaceImplementation(GetAverageAggregate(decimal_type.InternalType()));
+	function.ReplaceImplementation(input.GetClientContext(), GetAverageAggregate(decimal_type.InternalType()));
 	function.SetName("avg");
 	function.GetArguments()[0] = decimal_type;
 	function.SetReturnType(LogicalType::DOUBLE);
@@ -570,7 +570,7 @@ AggregateFunction GetTimestampAverage() {
 //! Averages the argument as a TIMESTAMP, whose range holds every ordinary date of the lower precisions
 unique_ptr<FunctionData> BindWidenedTimestampAvg(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
-	function.ReplaceImplementation(GetTimestampAverage());
+	function.ReplaceImplementation(input.GetClientContext(), GetTimestampAverage());
 	function.SetName("avg");
 	function.GetArguments()[0] = LogicalType::TIMESTAMP;
 	function.SetReturnType(LogicalType::TIMESTAMP);

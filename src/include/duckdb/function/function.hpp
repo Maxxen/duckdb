@@ -195,9 +195,11 @@ enum class FunctionParameterKind : uint8_t {
 	VAR_KEYWORD = 4
 };
 
+class FunctionSignature;
+
 class FunctionParameter {
 public:
-	FunctionParameter(Identifier name, LogicalType type, optional<Value> value = {},
+	FunctionParameter(Identifier name, TypeName type, optional<Value> value = {},
 	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD)
 	    : name(std::move(name)), type(std::move(type)), kind(kind) {
 		if (value) {
@@ -209,14 +211,15 @@ public:
 
 	//! A positional-only parameter declared without a name. It is named "col<index>" internally, as every parameter
 	//! needs one, but prints as its bare type: the name was never declared, so a caller cannot use it
-	static FunctionParameter Unnamed(LogicalType type, idx_t index) {
+	static FunctionParameter Unnamed(TypeName type, idx_t index) {
 		FunctionParameter result(Identifier(StringUtil::Format("col%d", index)), std::move(type), {},
 		                         FunctionParameterKind::POSITIONAL_ONLY);
 		result.named = false;
 		return result;
 	}
 
-	string ToString() const;
+	//! The type prints as the signature the parameter is part of declares it, see FunctionSignature::PrintType
+	string ToString(const FunctionSignature &signature) const;
 
 	bool operator==(const FunctionParameter &other) const;
 	bool operator!=(const FunctionParameter &other) const;
@@ -233,7 +236,8 @@ public:
 		return named;
 	}
 
-	auto GetType() const -> const LogicalType & {
+	//! The name of the type the parameter declares - it is bound to a type when a call is bound to the function
+	auto GetTypeName() const -> const TypeName & {
 		return type;
 	}
 
@@ -267,7 +271,7 @@ private:
 	friend class FunctionSignature;
 
 	Identifier name;
-	LogicalType type;
+	TypeName type;
 	shared_ptr<Value> default_value;
 	FunctionParameterKind kind;
 	bool named = true;
@@ -276,14 +280,14 @@ private:
 //! An option a function receives through its "**kwargs" parameter
 class TypedKwarg {
 public:
-	TypedKwarg(Identifier name, LogicalType type);
+	TypedKwarg(Identifier name, TypeName type);
 
 	//! The name the function receives the option under
 	Identifier name;
 	//! Other names a caller can pass the option by
 	vector<Identifier> aliases;
-	//! The type a passed value is cast to - ANY passes it through as-is, for the function to check
-	LogicalType type;
+	//! The name of the type a passed value is cast to - ANY passes it through as-is, for the function to check
+	TypeName type;
 
 public:
 	DUCKDB_API bool operator==(const TypedKwarg &other) const;
@@ -331,30 +335,44 @@ class ResolveReturnTypeInput;
 //! or its arguments
 typedef LogicalType (*resolve_return_type_t)(const ResolveReturnTypeInput &input);
 
-//! What a function returns: a concrete (or templated) type, a table, or a type that is only known after binding
+//! What a function returns: a type it declares by name, a table, or a type that is only known after binding
 class ReturnType {
 public:
-	enum class Kind : uint8_t { ANY = 0, TYPE, TABLE };
+	//! ANY        -> the type follows from binding, or from the resolver
+	//! TYPE       -> the type of the given name, which can use the variables of the signature
+	//! TABLE      -> a table
+	//! EXPRESSION -> the type an expression over the variables of the signature computes (not implemented)
+	//! NONE       -> nothing, e.g. a pragma
+	enum class Kind : uint8_t { ANY = 0, TYPE, TABLE, EXPRESSION, NONE };
 
 	ReturnType() : kind(Kind::ANY) {
 	}
 	// NOLINTNEXTLINE: allow implicit construction
-	ReturnType(LogicalType type_p) : kind(Kind::TYPE), type(std::move(type_p)) {
-		// a function declaring LogicalType::ANY declares ReturnType::ANY: the concrete type follows from binding
-		if (type.id() == LogicalTypeId::ANY) {
+	ReturnType(const LogicalType &type_p) : kind(Kind::TYPE) {
+		if (type_p.id() == LogicalTypeId::ANY) {
+			// a function declaring LogicalType::ANY declares ReturnType::ANY: the concrete type follows from binding
 			kind = Kind::ANY;
-			type = LogicalType();
+		} else if (type_p.id() == LogicalTypeId::INVALID) {
+			kind = Kind::NONE;
+		} else {
+			type = TypeName(type_p);
 		}
 	}
 	// NOLINTNEXTLINE: allow implicit construction
 	ReturnType(LogicalTypeId type_id) : ReturnType(LogicalType(type_id)) {
 	}
+	// NOLINTNEXTLINE: allow implicit construction
+	ReturnType(TypeName type_p) : kind(Kind::TYPE), type(std::move(type_p)) {
+	}
 
-	static auto TYPE(LogicalType type) -> ReturnType {
+	static auto TYPE(TypeName type) -> ReturnType {
 		return ReturnType(std::move(type));
 	}
 	static auto TABLE() -> ReturnType {
 		return ReturnType(Kind::TABLE);
+	}
+	static auto NONE() -> ReturnType {
+		return ReturnType(Kind::NONE);
 	}
 	static auto ANY() -> ReturnType {
 		return ReturnType(Kind::ANY);
@@ -369,9 +387,10 @@ public:
 	auto GetKind() const -> Kind {
 		return kind;
 	}
-	auto GetType() const -> const LogicalType & {
+	//! The name of the type the function declares - it is bound to a type when a call is bound to the function
+	auto GetTypeName() const -> const TypeName & {
 		D_ASSERT(kind == Kind::TYPE);
-		return type;
+		return *type;
 	}
 
 	auto IsAny() const -> bool {
@@ -383,14 +402,14 @@ public:
 	auto IsTable() const -> bool {
 		return kind == Kind::TABLE;
 	}
+	auto IsNone() const -> bool {
+		return kind == Kind::NONE;
+	}
 
 	//! The callback that resolves the type from the arguments of a call, if the function declares one
 	auto GetResolver() const -> resolve_return_type_t {
 		return resolver;
 	}
-
-	//! The type a function is bound with before its bind callback runs: ANY when it is only known after binding
-	DUCKDB_API auto GetUnboundType() const -> LogicalType;
 
 	DUCKDB_API auto ToString() const -> string;
 	DUCKDB_API auto Hash() const -> hash_t;
@@ -402,7 +421,7 @@ private:
 	}
 
 	Kind kind;
-	LogicalType type;
+	optional<TypeName> type;
 	resolve_return_type_t resolver = nullptr;
 };
 
@@ -411,11 +430,7 @@ public:
 	FunctionSignature() = default;
 
 	FunctionSignature(vector<FunctionParameter> parameters_p, ReturnType return_type_p)
-	    : parameters(std::move(parameters_p)) {
-		for (auto &param : parameters) {
-			DeclareTemplates(param.GetType());
-		}
-		SetReturnType(std::move(return_type_p));
+	    : parameters(std::move(parameters_p)), return_type(std::move(return_type_p)) {
 	}
 	FunctionSignature(vector<LogicalType> arguments, ReturnType return_type_p) {
 		for (auto &arg : arguments) {
@@ -458,17 +473,27 @@ public:
 	}
 	auto SetReturnType(ReturnType return_type_p) -> FunctionSignature & {
 		return_type = std::move(return_type_p);
-		if (return_type.IsType()) {
-			DeclareTemplates(return_type.GetType());
-		}
 		return *this;
+	}
+	//! The same, declaring the type by what it is: a template declares its type variable
+	auto SetReturnType(const LogicalType &type) -> FunctionSignature & {
+		DeclareTemplates(type);
+		return SetReturnType(ReturnType(type));
+	}
+	auto SetReturnType(LogicalTypeId type_id) -> FunctionSignature & {
+		return SetReturnType(ReturnType(type_id));
 	}
 
 	//! Changes the type a parameter declares
-	auto SetParameterType(idx_t index, LogicalType type) -> void {
+	auto SetParameterType(idx_t index, const LogicalType &type) -> void {
 		DeclareTemplates(type);
+		parameters[index].type = TypeName(type);
+	}
+	auto SetParameterType(idx_t index, TypeName type) -> void {
 		parameters[index].type = std::move(type);
 	}
+	//! The declared type of a parameter as it prints
+	DUCKDB_API auto PrintType(const TypeName &type) const -> string;
 
 	//! The variables the signature declares
 	auto GetVariables() const -> const vector<TypeVariable> & {
@@ -488,6 +513,10 @@ public:
 	    -> FunctionSignature &;
 	//! Constrains a type variable to types of a kind
 	DUCKDB_API auto AddConstraint(Identifier variable, LogicalTypeId kind) -> FunctionSignature &;
+	//! Whether a type of this signature takes an argument of any type as it is: ANY, or an unconstrained type variable
+	DUCKDB_API bool AcceptsAnyType(const TypeName &type) const;
+	//! Whether a type of this signature and a type of another one declare the same type
+	DUCKDB_API bool IsSameType(const TypeName &type, const FunctionSignature &other, const TypeName &other_type) const;
 
 	auto IsVariadic() const -> bool {
 		for (auto &param : parameters) {
@@ -540,17 +569,26 @@ public:
 		return typed_kwargs.get();
 	}
 
-	auto AddParameter(Identifier name, LogicalType type, optional<Value> default_value = {},
+	//! Adds a parameter of the type of the given name
+	auto AddParameter(Identifier name, TypeName type, optional<Value> default_value = {},
 	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD) -> FunctionSignature & {
-		DeclareTemplates(type);
 		parameters.emplace_back(std::move(name), std::move(type), std::move(default_value), kind);
 		return *this;
 	}
-	//! Adds a positional-only parameter declared without a name, see FunctionParameter::Unnamed
-	auto AddParameter(LogicalType type) -> FunctionSignature & {
+	//! The same, declaring the type by what it is: a template declares its type variable
+	auto AddParameter(Identifier name, const LogicalType &type, optional<Value> default_value = {},
+	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD) -> FunctionSignature & {
 		DeclareTemplates(type);
+		return AddParameter(std::move(name), TypeName(type), std::move(default_value), kind);
+	}
+	//! Adds a positional-only parameter declared without a name, see FunctionParameter::Unnamed
+	auto AddParameter(TypeName type) -> FunctionSignature & {
 		parameters.push_back(FunctionParameter::Unnamed(std::move(type), parameters.size()));
 		return *this;
+	}
+	auto AddParameter(const LogicalType &type) -> FunctionSignature & {
+		DeclareTemplates(type);
+		return AddParameter(TypeName(type));
 	}
 	auto AddKeywordOnly(Identifier name, LogicalType type, optional<Value> default_value = {}) -> FunctionSignature & {
 		return AddParameter(std::move(name), std::move(type), std::move(default_value),

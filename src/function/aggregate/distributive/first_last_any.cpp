@@ -362,15 +362,6 @@ struct FirstVectorFunction : FirstFunctionStringBase<LAST, SKIP_NULLS> {
 			                                    OrderModifiers(OrderType::ASCENDING, OrderByNullType::NULLS_LAST));
 		}
 	}
-
-	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
-		auto &function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
-
-		function.GetArguments()[0] = arguments[0]->GetReturnType();
-		function.SetReturnType(arguments[0]->GetReturnType());
-		return nullptr;
-	}
 };
 
 template <class T, bool LAST, bool SKIP_NULLS>
@@ -390,86 +381,67 @@ void FirstFunctionClusterUpdate(Vector inputs[], AggregateInputData &aggregate_i
 	}
 }
 
+//! The implementation over a value of a fixed size
 template <class T, bool LAST, bool SKIP_NULLS>
-AggregateFunction GetFirstAggregateTemplated(const LogicalType &type) {
-	auto result =
-	    AggregateFunction({type}, type, AggregateFunction::StateSize<FirstState<T>>,
-	                      AggregateFunction::StateInitialize<FirstState<T>, FirstFunction<LAST, SKIP_NULLS>>,
-	                      AggregateFunction::UnaryScatterUpdate<FirstState<T>, T, FirstFunction<LAST, SKIP_NULLS>>,
-	                      AggregateFunction::StateCombine<FirstState<T>, FirstFunction<LAST, SKIP_NULLS>>,
-	                      AggregateFunction::StateFinalize<FirstState<T>, T, FirstFunction<LAST, SKIP_NULLS>>,
-	                      FunctionNullHandling::DEFAULT_NULL_HANDLING, FirstFunctionClusterUpdate<T, LAST, SKIP_NULLS>);
-	AggregateFunction::WireStructStateType<FirstState<T>>(result);
+AggregateFunctionCallbacks GetFirstCallbacksTemplated() {
+	using STATE = FirstState<T>;
+	using OP = FirstFunction<LAST, SKIP_NULLS>;
+	AggregateFunctionCallbacks result;
+	result.state_size = AggregateFunction::StateSize<STATE>;
+	result.initialize = AggregateFunction::StateInitialize<STATE, OP>;
+	result.update = AggregateFunction::UnaryScatterUpdate<STATE, T, OP>;
+	result.combine = AggregateFunction::StateCombine<STATE, OP>;
+	result.finalize = AggregateFunction::StateFinalize<STATE, T, OP>;
+	result.cluster_update = FirstFunctionClusterUpdate<T, LAST, SKIP_NULLS>;
+	AggregateFunction::WireStructStateType<STATE>(result);
 	return result;
 }
 
+//! The implementation for a type: it only depends on how the values of the type are stored
 template <bool LAST, bool SKIP_NULLS>
-AggregateFunction GetFirstFunction(const LogicalType &type);
-
-template <bool LAST, bool SKIP_NULLS>
-AggregateFunction GetDecimalFirstFunction(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::DECIMAL);
-	switch (type.InternalType()) {
-	case PhysicalType::INT16:
-		return GetFirstFunction<LAST, SKIP_NULLS>(LogicalType::SMALLINT);
-	case PhysicalType::INT32:
-		return GetFirstFunction<LAST, SKIP_NULLS>(LogicalType::INTEGER);
-	case PhysicalType::INT64:
-		return GetFirstFunction<LAST, SKIP_NULLS>(LogicalType::BIGINT);
-	default:
-		return GetFirstFunction<LAST, SKIP_NULLS>(LogicalType::HUGEINT);
-	}
-}
-template <bool LAST, bool SKIP_NULLS>
-AggregateFunction GetFirstFunction(const LogicalType &type) {
-	if (type.id() == LogicalTypeId::DECIMAL) {
-		type.Verify();
-		AggregateFunction function = GetDecimalFirstFunction<LAST, SKIP_NULLS>(type);
-		function.GetSignature().SetParameterType(0, type);
-		function.SetReturnType(type);
-		return function;
-	}
+AggregateFunctionCallbacks GetFirstCallbacks(const LogicalType &type) {
 	switch (type.InternalType()) {
 	case PhysicalType::BOOL:
 	case PhysicalType::INT8:
-		return GetFirstAggregateTemplated<int8_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<int8_t, LAST, SKIP_NULLS>();
 	case PhysicalType::INT16:
-		return GetFirstAggregateTemplated<int16_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<int16_t, LAST, SKIP_NULLS>();
 	case PhysicalType::INT32:
-		return GetFirstAggregateTemplated<int32_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<int32_t, LAST, SKIP_NULLS>();
 	case PhysicalType::INT64:
-		return GetFirstAggregateTemplated<int64_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<int64_t, LAST, SKIP_NULLS>();
 	case PhysicalType::UINT8:
-		return GetFirstAggregateTemplated<uint8_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<uint8_t, LAST, SKIP_NULLS>();
 	case PhysicalType::UINT16:
-		return GetFirstAggregateTemplated<uint16_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<uint16_t, LAST, SKIP_NULLS>();
 	case PhysicalType::UINT32:
-		return GetFirstAggregateTemplated<uint32_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<uint32_t, LAST, SKIP_NULLS>();
 	case PhysicalType::UINT64:
-		return GetFirstAggregateTemplated<uint64_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<uint64_t, LAST, SKIP_NULLS>();
 	case PhysicalType::INT128:
-		return GetFirstAggregateTemplated<hugeint_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<hugeint_t, LAST, SKIP_NULLS>();
 	case PhysicalType::UINT128:
-		return GetFirstAggregateTemplated<uhugeint_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<uhugeint_t, LAST, SKIP_NULLS>();
 	case PhysicalType::FLOAT:
-		return GetFirstAggregateTemplated<float, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<float, LAST, SKIP_NULLS>();
 	case PhysicalType::DOUBLE:
-		return GetFirstAggregateTemplated<double, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<double, LAST, SKIP_NULLS>();
 	case PhysicalType::INTERVAL:
-		return GetFirstAggregateTemplated<interval_t, LAST, SKIP_NULLS>(type);
+		return GetFirstCallbacksTemplated<interval_t, LAST, SKIP_NULLS>();
 	case PhysicalType::VARCHAR:
-		return AggregateFunction::UnaryAggregate<FirstStringState, string_t, string_t,
-		                                         FirstFunctionString<LAST, SKIP_NULLS>>(type, type);
+		return AggregateFunction::UnaryAggregateCallbacks<FirstStringState, string_t, string_t,
+		                                                  FirstFunctionString<LAST, SKIP_NULLS>>();
 	default: {
 		using OP = FirstVectorFunction<LAST, SKIP_NULLS>;
 		using STATE = FirstSortKeyState;
-		auto fun = AggregateFunction(
-		    {type}, type, AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>,
-		    OP::Update, AggregateFunction::StateCombine<STATE, OP>, AggregateFunction::StateVoidFinalize<STATE, OP>,
-		    FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(), OP::Bind, nullptr,
-		    nullptr, nullptr);
-		AggregateFunction::WireStructStateType<STATE>(fun);
-		return fun;
+		AggregateFunctionCallbacks result;
+		result.state_size = AggregateFunction::StateSize<STATE>;
+		result.initialize = AggregateFunction::StateInitialize<STATE, OP>;
+		result.update = OP::Update;
+		result.combine = AggregateFunction::StateCombine<STATE, OP>;
+		result.finalize = AggregateFunction::StateVoidFinalize<STATE, OP>;
+		AggregateFunction::WireStructStateType<STATE>(result);
+		return result;
 	}
 	}
 }
@@ -480,15 +452,11 @@ unique_ptr<FunctionData> BindFirst(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 
-	auto input_type = arguments[0]->GetReturnType();
-	auto name = function.GetName();
-	function.ReplaceImplementation(GetFirstFunction<LAST, SKIP_NULLS>(input_type));
-	function.SetName(std::move(name));
+	function.SetCallbacks(GetFirstCallbacks<LAST, SKIP_NULLS>(arguments[0]->GetReturnType()));
 	function.SetDistinctDependent(AggregateDistinctDependent::NOT_DISTINCT_DEPENDENT);
 	function.SetDirectRewriteCallback(RewriteOrderedFirst<LAST, SKIP_NULLS>);
 	function.SetSingleValueIdentity(true);
 	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-	function.SetReturnType(input_type);
 	return nullptr;
 }
 
@@ -503,24 +471,6 @@ void AddFirstOperator(AggregateFunctionSet &set) {
 }
 
 } // namespace
-
-AggregateFunction FirstFunctionGetter::GetFunction(const LogicalType &type) {
-	auto fun = GetFirstFunction<false, false>(type);
-	fun.SetName("first");
-	fun.SetDirectRewriteCallback(RewriteOrderedFirst<false, false>);
-	fun.SetSingleValueIdentity(true);
-	fun.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-	return fun;
-}
-
-AggregateFunction LastFunctionGetter::GetFunction(const LogicalType &type) {
-	auto fun = GetFirstFunction<true, false>(type);
-	fun.SetName("last");
-	fun.SetDirectRewriteCallback(RewriteOrderedFirst<true, false>);
-	fun.SetSingleValueIdentity(true);
-	fun.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-	return fun;
-}
 
 AggregateFunctionSet FirstFun::GetFunctions() {
 	AggregateFunctionSet first("first");

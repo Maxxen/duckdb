@@ -9,9 +9,12 @@ statement error
 CREATE TYPE "ENUM" AS ENUM('ALL');
 ----
 
-statement error
+# an ENUM without values is a type
+statement ok
 CREATE TABLE "SCHEMA"."TABLE"("COLUMN" "ENUM");
-----
+
+statement ok
+DROP TABLE "SCHEMA"."TABLE";
 
 statement ok
 CREATE TYPE E AS ENUM('ALL');

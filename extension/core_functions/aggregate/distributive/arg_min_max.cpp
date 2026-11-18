@@ -399,67 +399,21 @@ bind_aggregate_function_t GetBindFunction(const ArgMinMaxNullHandling null_handl
 	}
 }
 
+//! The implementation over the sort keys of the values it is selected by, for a value and a key of any type
 template <class OP>
-AggregateFunction GetGenericArgMinMaxFunction(const ArgMinMaxNullHandling null_handling) {
+AggregateFunctionCallbacks GetGenericArgMinMaxCallbacks(const ArgMinMaxNullHandling null_handling) {
 	using STATE = ArgMinMaxSortKeyState<OP::ORDER>;
-	auto bind = GetBindFunction<OP>(null_handling);
-	// the argument is returned as it is passed, whatever the value it is selected by
-	auto type = LogicalType::TEMPLATE("T");
-	auto function = AggregateFunction(
-	    FunctionSignature()
-	        .AddParameter("arg", type)
-	        .AddParameter("val", LogicalType::TEMPLATE("BY"))
-	        .SetReturnType(type),
-	    AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>, OP::template Update<STATE>,
-	    AggregateFunction::StateCombine<STATE, OP>, AggregateFunction::StateVoidFinalize<STATE, OP>, nullptr, bind);
-	AggregateFunction::WireStructStateType<STATE>(function);
-	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-	return function;
+	AggregateFunctionCallbacks result;
+	result.state_size = AggregateFunction::StateSize<STATE>;
+	result.initialize = AggregateFunction::StateInitialize<STATE, OP>;
+	result.update = OP::template Update<STATE>;
+	result.combine = AggregateFunction::StateCombine<STATE, OP>;
+	result.finalize = AggregateFunction::StateVoidFinalize<STATE, OP>;
+	result.bind = GetBindFunction<OP>(null_handling);
+	result.statistics = AggregateFunction::PropagateInputValueStats;
+	AggregateFunction::WireStructStateType<STATE>(result);
+	return result;
 }
-
-template <class OP, class ARG_TYPE, class BY_TYPE>
-AggregateFunction GetVectorArgMinMaxFunctionInternal(const LogicalType &by_type, const LogicalType &type,
-                                                     const ArgMinMaxNullHandling null_handling) {
-#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
-	using STATE = ArgMinMaxVectorState<OP::ORDER, BY_TYPE>;
-	auto bind = GetBindFunction<OP>(null_handling);
-	auto function =
-	    AggregateFunction({}, type, AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>,
-	                      OP::template Update<STATE>, AggregateFunction::StateCombine<STATE, OP>,
-	                      AggregateFunction::StateVoidFinalize<STATE, OP>, nullptr, bind);
-	function.GetSignature().AddParameter("arg", type).AddParameter("val", by_type);
-	AggregateFunction::WireStructStateType<STATE>(function);
-	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-	return function;
-#else
-	auto function = GetGenericArgMinMaxFunction<OP>(null_handling);
-	function.GetSignature().SetParameterType(0, type);
-	function.GetSignature().SetParameterType(1, by_type);
-	function.SetReturnType(type);
-	return function;
-#endif
-}
-
-#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
-template <class OP, class ARG_TYPE>
-AggregateFunction GetVectorArgMinMaxFunctionBy(const LogicalType &by_type, const LogicalType &type,
-                                               const ArgMinMaxNullHandling null_handling) {
-	switch (by_type.InternalType()) {
-	case PhysicalType::INT32:
-		return GetVectorArgMinMaxFunctionInternal<OP, ARG_TYPE, int32_t>(by_type, type, null_handling);
-	case PhysicalType::INT64:
-		return GetVectorArgMinMaxFunctionInternal<OP, ARG_TYPE, int64_t>(by_type, type, null_handling);
-	case PhysicalType::INT128:
-		return GetVectorArgMinMaxFunctionInternal<OP, ARG_TYPE, hugeint_t>(by_type, type, null_handling);
-	case PhysicalType::DOUBLE:
-		return GetVectorArgMinMaxFunctionInternal<OP, ARG_TYPE, double>(by_type, type, null_handling);
-	case PhysicalType::VARCHAR:
-		return GetVectorArgMinMaxFunctionInternal<OP, ARG_TYPE, string_t>(by_type, type, null_handling);
-	default:
-		throw InternalException("Unimplemented arg_min/arg_max aggregate");
-	}
-}
-#endif
 
 const vector<LogicalType> ArgMaxByTypes() {
 	vector<LogicalType> types = {LogicalType::INTEGER,   LogicalType::BIGINT,       LogicalType::HUGEINT,
@@ -468,65 +422,88 @@ const vector<LogicalType> ArgMaxByTypes() {
 	return types;
 }
 
-template <class OP, class ARG_TYPE, class BY_TYPE>
-AggregateFunction GetArgMinMaxFunctionInternal(const LogicalType &by_type, const LogicalType &type,
-                                               const ArgMinMaxNullHandling null_handling) {
 #if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
-	using STATE = ArgMinMaxState<ARG_TYPE, BY_TYPE>;
-	auto function = AggregateFunction::BinaryAggregate<STATE, ARG_TYPE, BY_TYPE, ARG_TYPE, OP>(type, by_type, type);
-	function.GetSignature().GetParameter(0).SetName("arg");
-	function.GetSignature().GetParameter(1).SetName("val");
-	function.SetBindCallback(GetBindFunction<OP>(null_handling));
-	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
-#else
-	auto function = GetGenericArgMinMaxFunction<OP>(null_handling);
-	function.GetSignature().SetParameterType(0, type);
-	function.GetSignature().SetParameterType(1, by_type);
-	function.SetReturnType(type);
-#endif
-	return function;
+//! The implementation for a value of any type, selected by a key of a fixed size
+template <class OP, class BY_TYPE>
+AggregateFunctionCallbacks GetVectorArgMinMaxCallbacks(const ArgMinMaxNullHandling null_handling) {
+	using STATE = ArgMinMaxVectorState<OP::ORDER, BY_TYPE>;
+	AggregateFunctionCallbacks result;
+	result.state_size = AggregateFunction::StateSize<STATE>;
+	result.initialize = AggregateFunction::StateInitialize<STATE, OP>;
+	result.update = OP::template Update<STATE>;
+	result.combine = AggregateFunction::StateCombine<STATE, OP>;
+	result.finalize = AggregateFunction::StateVoidFinalize<STATE, OP>;
+	result.bind = GetBindFunction<OP>(null_handling);
+	result.statistics = AggregateFunction::PropagateInputValueStats;
+	AggregateFunction::WireStructStateType<STATE>(result);
+	return result;
 }
 
-#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
-template <class OP, class ARG_TYPE>
-AggregateFunction GetArgMinMaxFunctionBy(const LogicalType &by_type, const LogicalType &type,
-                                         const ArgMinMaxNullHandling null_handling) {
+template <class OP>
+AggregateFunctionCallbacks GetVectorArgMinMaxCallbacksBy(const LogicalType &by_type,
+                                                         const ArgMinMaxNullHandling null_handling) {
 	switch (by_type.InternalType()) {
 	case PhysicalType::INT32:
-		return GetArgMinMaxFunctionInternal<OP, ARG_TYPE, int32_t>(by_type, type, null_handling);
+		return GetVectorArgMinMaxCallbacks<OP, int32_t>(null_handling);
 	case PhysicalType::INT64:
-		return GetArgMinMaxFunctionInternal<OP, ARG_TYPE, int64_t>(by_type, type, null_handling);
+		return GetVectorArgMinMaxCallbacks<OP, int64_t>(null_handling);
 	case PhysicalType::INT128:
-		return GetArgMinMaxFunctionInternal<OP, ARG_TYPE, hugeint_t>(by_type, type, null_handling);
+		return GetVectorArgMinMaxCallbacks<OP, hugeint_t>(null_handling);
 	case PhysicalType::DOUBLE:
-		return GetArgMinMaxFunctionInternal<OP, ARG_TYPE, double>(by_type, type, null_handling);
+		return GetVectorArgMinMaxCallbacks<OP, double>(null_handling);
 	case PhysicalType::VARCHAR:
-		return GetArgMinMaxFunctionInternal<OP, ARG_TYPE, string_t>(by_type, type, null_handling);
+		return GetVectorArgMinMaxCallbacks<OP, string_t>(null_handling);
+	default:
+		throw InternalException("Unimplemented arg_min/arg_max aggregate");
+	}
+}
+
+//! The implementation for a value and a key of a fixed size each
+template <class OP, class ARG_TYPE, class BY_TYPE>
+AggregateFunctionCallbacks GetArgMinMaxCallbacks(const ArgMinMaxNullHandling null_handling) {
+	using STATE = ArgMinMaxState<ARG_TYPE, BY_TYPE>;
+	auto result = AggregateFunction::BinaryAggregateCallbacks<STATE, ARG_TYPE, BY_TYPE, ARG_TYPE, OP>();
+	result.bind = GetBindFunction<OP>(null_handling);
+	result.statistics = AggregateFunction::PropagateInputValueStats;
+	return result;
+}
+
+template <class OP, class ARG_TYPE>
+AggregateFunctionCallbacks GetArgMinMaxCallbacksBy(const LogicalType &by_type,
+                                                   const ArgMinMaxNullHandling null_handling) {
+	switch (by_type.InternalType()) {
+	case PhysicalType::INT32:
+		return GetArgMinMaxCallbacks<OP, ARG_TYPE, int32_t>(null_handling);
+	case PhysicalType::INT64:
+		return GetArgMinMaxCallbacks<OP, ARG_TYPE, int64_t>(null_handling);
+	case PhysicalType::INT128:
+		return GetArgMinMaxCallbacks<OP, ARG_TYPE, hugeint_t>(null_handling);
+	case PhysicalType::DOUBLE:
+		return GetArgMinMaxCallbacks<OP, ARG_TYPE, double>(null_handling);
+	case PhysicalType::VARCHAR:
+		return GetArgMinMaxCallbacks<OP, ARG_TYPE, string_t>(null_handling);
 	default:
 		throw InternalException("Unimplemented arg_min/arg_max by aggregate");
 	}
 }
-#endif
 
+//! A DECIMAL value is selected as the integer it is stored as
 template <class OP>
-AggregateFunction GetDecimalArgMinMaxFunction(const LogicalType &by_type, const LogicalType &type,
-                                              ArgMinMaxNullHandling null_handling) {
+AggregateFunctionCallbacks GetDecimalArgMinMaxCallbacks(const LogicalType &by_type, const LogicalType &type,
+                                                        ArgMinMaxNullHandling null_handling) {
 	D_ASSERT(type.id() == LogicalTypeId::DECIMAL);
-#if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
 	switch (type.InternalType()) {
 	case PhysicalType::INT16:
-		return GetArgMinMaxFunctionBy<OP, int16_t>(by_type, type, null_handling);
+		return GetArgMinMaxCallbacksBy<OP, int16_t>(by_type, null_handling);
 	case PhysicalType::INT32:
-		return GetArgMinMaxFunctionBy<OP, int32_t>(by_type, type, null_handling);
+		return GetArgMinMaxCallbacksBy<OP, int32_t>(by_type, null_handling);
 	case PhysicalType::INT64:
-		return GetArgMinMaxFunctionBy<OP, int64_t>(by_type, type, null_handling);
+		return GetArgMinMaxCallbacksBy<OP, int64_t>(by_type, null_handling);
 	default:
-		return GetArgMinMaxFunctionBy<OP, hugeint_t>(by_type, type, null_handling);
+		return GetArgMinMaxCallbacksBy<OP, hugeint_t>(by_type, null_handling);
 	}
-#else
-	return GetArgMinMaxFunctionInternal<OP, string_t, string_t>(by_type, type, null_handling);
-#endif
 }
+#endif
 
 //! Selects the implementation for the types the function is called with: a specialized one if there is one for
 //! exactly these types, the generic one over sort keys otherwise
@@ -543,46 +520,45 @@ unique_ptr<FunctionData> BindArgMinMax(BindAggregateFunctionInput &input) {
 	for (auto &specialized_type : ArgMaxByTypes()) {
 		specialized_by = specialized_by || specialized_type.id() == by_type.id();
 	}
-	auto implementation = GetGenericArgMinMaxFunction<GENERIC_VECTOR_OP>(NULL_HANDLING);
+	auto implementation = GetGenericArgMinMaxCallbacks<GENERIC_VECTOR_OP>(NULL_HANDLING);
 #if !DUCKDB_SMALLER_BINARY(arg_min_max_types)
 	using OP = ArgMinMaxBase<COMPARATOR>;
 	using VECTOR_OP = VectorArgMinMaxBase<COMPARATOR, ORDER_TYPE>;
 	if (specialized_by) {
 		switch (arg_type.id()) {
 		case LogicalTypeId::INTEGER:
-			implementation = GetArgMinMaxFunctionBy<OP, int32_t>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetArgMinMaxCallbacksBy<OP, int32_t>(by_type, NULL_HANDLING);
 			break;
 		case LogicalTypeId::BIGINT:
-			implementation = GetArgMinMaxFunctionBy<OP, int64_t>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetArgMinMaxCallbacksBy<OP, int64_t>(by_type, NULL_HANDLING);
 			break;
 		case LogicalTypeId::DOUBLE:
-			implementation = GetArgMinMaxFunctionBy<OP, double>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetArgMinMaxCallbacksBy<OP, double>(by_type, NULL_HANDLING);
 			break;
 		case LogicalTypeId::VARCHAR:
 		case LogicalTypeId::BLOB:
-			implementation = GetArgMinMaxFunctionBy<OP, string_t>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetArgMinMaxCallbacksBy<OP, string_t>(by_type, NULL_HANDLING);
 			break;
 		case LogicalTypeId::DATE:
-			implementation = GetArgMinMaxFunctionBy<OP, date_t>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetArgMinMaxCallbacksBy<OP, date_t>(by_type, NULL_HANDLING);
 			break;
 		case LogicalTypeId::TIMESTAMP:
 		case LogicalTypeId::TIMESTAMP_TZ:
-			implementation = GetArgMinMaxFunctionBy<OP, timestamp_t>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetArgMinMaxCallbacksBy<OP, timestamp_t>(by_type, NULL_HANDLING);
 			break;
 		case LogicalTypeId::DECIMAL:
-			implementation = GetDecimalArgMinMaxFunction<OP>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetDecimalArgMinMaxCallbacks<OP>(by_type, arg_type, NULL_HANDLING);
 			break;
 		default:
-			implementation = GetVectorArgMinMaxFunctionBy<VECTOR_OP, string_t>(by_type, arg_type, NULL_HANDLING);
+			implementation = GetVectorArgMinMaxCallbacksBy<VECTOR_OP>(by_type, NULL_HANDLING);
 			break;
 		}
 	}
 #endif
-	auto name = function.GetName();
-	function.ReplaceImplementation(implementation);
-	function.SetName(std::move(name));
-	// the implementation resolves the types of its arguments and creates the bind data
-	return function.GetCallbacks().GetBindCallback()(input);
+	// the function is bound to the types already: only its implementation depends on them
+	function.SetCallbacks(implementation);
+	// the implementation pushes the collation of the key and creates the bind data
+	return implementation.bind(input);
 }
 
 template <class COMPARATOR, OrderType ORDER_TYPE>
@@ -598,9 +574,16 @@ void AddArgMinMaxFunctions(AggregateFunctionSet &fun, const ArgMinMaxNullHandlin
 		bind = BindArgMinMax<COMPARATOR, ORDER_TYPE, ArgMinMaxNullHandling::HANDLE_ANY_NULL>;
 		break;
 	}
-	// the function is declared as the generic implementation over sort keys, the bind specializes it
+	// the function is declared as the generic implementation over sort keys, the bind specializes it: the argument
+	// is returned as it is passed, whatever the value it is selected by
 	using GENERIC_VECTOR_OP = VectorArgMinMaxBase<LessThan, ORDER_TYPE, GenericArgMinMaxState<ORDER_TYPE>>;
-	auto function = GetGenericArgMinMaxFunction<GENERIC_VECTOR_OP>(null_handling);
+	auto type = LogicalType::TEMPLATE("T");
+	AggregateFunction function(FunctionSignature()
+	                               .AddParameter("arg", type)
+	                               .AddParameter("val", LogicalType::TEMPLATE("BY"))
+	                               .SetReturnType(type),
+	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, bind);
+	function.SetCallbacks(GetGenericArgMinMaxCallbacks<GENERIC_VECTOR_OP>(null_handling));
 	function.SetBindCallback(bind);
 	fun.AddFunction(function);
 }

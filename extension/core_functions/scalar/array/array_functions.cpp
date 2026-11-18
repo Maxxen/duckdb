@@ -233,12 +233,16 @@ static scalar_function_t GetArrayFoldFunction(const LogicalType &type) {
 
 template <class OP>
 static void AddArrayFoldFunction(ScalarFunctionSet &set, const LogicalType &type) {
-	ScalarFunction func({}, type, GetArrayFoldFunction<OP>(type), nullptr, ArrayGenericFoldStats);
+	// both arrays are of one size, whatever it is
+	TypeName array(Identifier("ARRAY"), {TypeName(type), TypeName(Identifier("N"))});
+	ScalarFunction func(FunctionSignature()
+	                        .AddVariable("N", TypeVariable::Kind::INTEGER)
+	                        .AddParameter("array1", array)
+	                        .AddParameter("array2", array)
+	                        .SetReturnType(type),
+	                    GetArrayFoldFunction<OP>(type), nullptr, ArrayGenericFoldStats);
 	func.SetResolveTypesCallback(ArrayGenericBinaryResolveTypes);
-	auto array = LogicalType::ARRAY(type, optional_idx());
-
 	func.SetFallible();
-	func.GetSignature().AddParameter("array1", array).AddParameter("array2", array);
 
 	set.AddFunction(func);
 }

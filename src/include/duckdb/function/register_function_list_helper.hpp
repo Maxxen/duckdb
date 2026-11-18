@@ -18,7 +18,7 @@ static void FillFunctionParameters(FunctionDescription &function_description, co
 		vector<string> parameter_name_type = StringUtil::Split(parameter, "::");
 		if (parameter_name_type.size() == 1) {
 			function_description.parameter_names.push_back(std::move(parameter_name_type[0]));
-			function_description.parameter_types.push_back(LogicalType::ANY);
+			function_description.parameter_types.push_back(TypeName(LogicalType::ANY));
 		} else if (parameter_name_type.size() == 2) {
 			function_description.parameter_names.push_back(std::move(parameter_name_type[0]));
 			function_description.parameter_types.push_back(DBConfig::ParseLogicalType(parameter_name_type[1]));

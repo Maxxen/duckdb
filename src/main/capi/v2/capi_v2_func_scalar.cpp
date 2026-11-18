@@ -312,10 +312,12 @@ public:
 				    "An ANY return type requires a resolve types callback to set the concrete return type.");
 			}
 		} else {
-			if (!return_type.IsType() || return_type.GetType().id() == LogicalTypeId::INVALID) {
+			if (!return_type.IsType()) {
 				throw InvalidInputException("Return type must be set for the function.");
 			}
-			if (!return_type.GetType().IsComplete()) {
+			auto &return_type_name = return_type.GetTypeName();
+			if (return_type_name.Contains("ANY") || return_type_name.Contains("UNKNOWN") ||
+			    return_type_name.Contains("INVALID") || signature.FindVariable(return_type_name.GetName())) {
 				throw InvalidInputException("Return type must be a fully defined concrete type");
 			}
 		}

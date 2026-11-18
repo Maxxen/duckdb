@@ -96,7 +96,11 @@ TEST_CASE("Source SQL callbacks preserve centrally applied scan modifiers",
 	ExtensionLoader loader(*db.instance, "sql_export_wrapper");
 	auto register_wrapper = [&](const Identifier &original, const Identifier &name, const LogicalType &argument) {
 		auto &entry = loader.GetTableFunction(original);
-		auto function = *entry.functions.GetFunctionByArguments(*connection.context, {argument});
+		// selecting an overload binds the types it declares, which runs in a transaction
+		optional<TableFunction> selected;
+		connection.context->RunFunctionInTransaction(
+		    [&]() { selected = *entry.functions.GetFunctionByArguments(*connection.context, {argument}); });
+		auto function = std::move(*selected);
 		function.name = name;
 		function.to_sql = [](ClientContext &, const LogicalGet &get) -> TableFunctionToSQLResult {
 			vector<unique_ptr<ParsedExpression>> arguments;

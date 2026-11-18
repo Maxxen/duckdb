@@ -324,13 +324,12 @@ duckdb_state duckdb_register_aggregate_function_set(duckdb_connection connection
 			return DuckDBError;
 		}
 		auto &return_type = aggregate_function.GetReturnType();
-		if (!return_type.IsType() ||
-		    duckdb::TypeVisitor::Contains(return_type.GetType(), duckdb::LogicalTypeId::INVALID) ||
-		    duckdb::TypeVisitor::Contains(return_type.GetType(), duckdb::LogicalTypeId::ANY)) {
+		if (!return_type.IsType() || return_type.GetTypeName().Contains("INVALID") ||
+		    return_type.GetTypeName().Contains("ANY")) {
 			return DuckDBError;
 		}
 		for (const auto &argument : aggregate_function.GetSignature().GetParameters()) {
-			if (duckdb::TypeVisitor::Contains(argument.GetType(), duckdb::LogicalTypeId::INVALID)) {
+			if (argument.GetTypeName().Contains("INVALID")) {
 				return DuckDBError;
 			}
 		}

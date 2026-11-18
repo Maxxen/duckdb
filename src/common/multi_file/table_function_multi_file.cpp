@@ -84,7 +84,7 @@ void TableFunctionFileReader::BindFunction(ClientContext &context, const TableFu
 	// a function that takes a file of any type gets it together with the options to open it with - one that takes
 	// a VARCHAR only gets its path
 	vector<Value> inputs;
-	if (TableFunctionMultiFileWrapper::TakesFileWithOptions(function.GetSignature().GetParameter(0).GetType())) {
+	if (TableFunctionMultiFileWrapper::TakesFileWithOptions(function.GetSignature())) {
 		inputs.emplace_back(file.ToValue());
 	} else {
 		inputs.emplace_back(file.path);
@@ -458,7 +458,7 @@ unique_ptr<BaseFileReaderOptions> TableFunctionMultiFileWrapper::InitializeOptio
 	return make_uniq<TableFunctionFileReaderOptions>();
 }
 
-optional<pair<Identifier, LogicalType>> TableFunctionMultiFileWrapper::GetDeclaredOption(const Identifier &key) const {
+optional<pair<Identifier, TypeName>> TableFunctionMultiFileWrapper::GetDeclaredOption(const Identifier &key) const {
 	auto &signature = function.GetSignature();
 	auto index = signature.GetParameterIndexByName(key);
 	if (index.IsValid()) {
@@ -466,7 +466,7 @@ optional<pair<Identifier, LogicalType>> TableFunctionMultiFileWrapper::GetDeclar
 		if (param.GetKind() != FunctionParameterKind::KEYWORD_ONLY) {
 			return {};
 		}
-		return make_pair(param.GetName(), param.GetType());
+		return make_pair(param.GetName(), param.GetTypeName());
 	}
 	auto option_schema = signature.GetTypedKwargs();
 	auto option = option_schema ? option_schema->Find(key) : nullptr;
@@ -509,7 +509,8 @@ bool TableFunctionMultiFileWrapper::ParseCopyOption(ClientContext &context, cons
 	if (!declared_option) {
 		return false;
 	}
-	auto &type = declared_option->second;
+	// an option declares a type of the catalog
+	auto type = FunctionBinder::BindTypeName(&context, declared_option->second);
 	Value val;
 	if (type.id() == LogicalTypeId::LIST || (type.id() == LogicalTypeId::ANY && values.size() != 1)) {
 		// COPY passes the elements of a list-valued option as separate values - an option that takes any value is
@@ -924,11 +925,8 @@ vector<PartitionStatistics> TableFunctionMultiFileWrapper::GetPartitionStats(Cli
 	return function.get_partition_stats(context, file_input);
 }
 
-bool TableFunctionMultiFileWrapper::TakesFileWithOptions(const LogicalType &file_parameter_type) {
-	if (file_parameter_type.id() == LogicalTypeId::TEMPLATE) {
-		return !TemplateType::HasConstraint(file_parameter_type);
-	}
-	return file_parameter_type.id() == LogicalTypeId::ANY;
+bool TableFunctionMultiFileWrapper::TakesFileWithOptions(const FunctionSignature &signature) {
+	return signature.AcceptsAnyType(signature.GetParameter(0).GetTypeName());
 }
 
 TableFunction TableFunctionMultiFileWrapper::CreateFunction(TableFunction single_file_function, Identifier name,
@@ -936,8 +934,8 @@ TableFunction TableFunctionMultiFileWrapper::CreateFunction(TableFunction single
                                                             table_function_bind_t bind) {
 	auto &wrapped_signature = single_file_function.GetSignature();
 	if (wrapped_signature.GetPositionalParameterCount() != 1 ||
-	    (wrapped_signature.GetParameter(0).GetType() != LogicalType::VARCHAR &&
-	     !TakesFileWithOptions(wrapped_signature.GetParameter(0).GetType()))) {
+	    (!wrapped_signature.GetParameter(0).GetTypeName().IsBuiltinType(LogicalTypeId::VARCHAR) &&
+	     !TakesFileWithOptions(wrapped_signature))) {
 		throw InternalException("Only table functions taking a single file - a file of any type or a VARCHAR file "
 		                        "path - can "
 		                        "be wrapped in a multi file function, %s does not",

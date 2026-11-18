@@ -14,6 +14,7 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
 #include "duckdb/common/atomic.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 
 using namespace duckdb;
 
@@ -655,6 +656,10 @@ TEST_CASE("Test Arrow extension type with nested storage", "[arrow]") {
 	                             make_shared_ptr<ArrowTypeExtensionData>(PairLogicalType(), PairStorageType(),
 	                                                                     PairArrowToDuck, PairDuckToArrow)});
 	Connection con(db);
+
+	// the alias names a type of the catalog, as the type of an extension does
+	ExtensionLoader loader(*db.instance, "arrow_test");
+	loader.RegisterType("arrow_test_pair", PairLogicalType());
 
 	// values reach the boundary through a function whose RETURN type carries the registered alias
 	ScalarFunction fn("pair_typed", {PairStorageMemberType()}, PairLogicalType(), PairTypedFunction);

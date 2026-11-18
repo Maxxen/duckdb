@@ -406,7 +406,7 @@ unique_ptr<FunctionData> HistogramBinBindFunction(BindAggregateFunctionInput &in
 	}
 
 	// the template signature resolved both parameters to the deduced bin type
-	function.ReplaceImplementation(GetHistogramBinFunction<HIST>(function.GetArguments()[0]));
+	function.ReplaceImplementation(input.GetClientContext(), GetHistogramBinFunction<HIST>(function.GetArguments()[0]));
 	return nullptr;
 }
 
