@@ -406,8 +406,12 @@ static FilterPropagateResult TemplatedBloomFilterPrune(const BloomFilter &bf, co
 }
 
 ScalarFunction BloomFilterScalarFun::GetFunction() {
-	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
-	func.GetSignature().GetParameter(0).SetName("col");
+	ScalarFunction func(NAME,
+	                    FunctionSignature()
+	                        .AddVariable("T")
+	                        .AddParameter("col", TypeName::VARIABLE("T"))
+	                        .SetReturnType(LogicalType::BOOLEAN),
+	                    nullptr, TableFilterFunctions::Bind);
 	func.SetInitStateCallback(BloomFilterInitLocalState);
 	func.SetSelectCallback(BloomFilterSelect);
 	func.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

@@ -166,8 +166,9 @@ static void ListHasAllFunction(DataChunk &args, ExpressionState &state, Vector &
 ScalarFunction ListHasAnyFun::GetFunction() {
 	ScalarFunction fun({}, LogicalType::BOOLEAN, ListHasAnyFunction);
 	fun.GetSignature()
-	    .AddParameter("list1", LogicalType::LIST(LogicalType::TEMPLATE("T")))
-	    .AddParameter("list2", LogicalType::LIST(LogicalType::TEMPLATE("T")));
+	    .AddVariable("T")
+	    .AddParameter("list1", TypeName::LIST(TypeName::VARIABLE("T")))
+	    .AddParameter("list2", TypeName::LIST(TypeName::VARIABLE("T")));
 	fun.SetCollationHandling(FunctionCollationHandling::PUSH_COMBINABLE_COLLATIONS);
 	return fun;
 }
@@ -175,8 +176,9 @@ ScalarFunction ListHasAnyFun::GetFunction() {
 ScalarFunction ListHasAllFun::GetFunction() {
 	ScalarFunction fun({}, LogicalType::BOOLEAN, ListHasAllFunction);
 	fun.GetSignature()
-	    .AddParameter("list1", LogicalType::LIST(LogicalType::TEMPLATE("T")))
-	    .AddParameter("list2", LogicalType::LIST(LogicalType::TEMPLATE("T")));
+	    .AddVariable("T")
+	    .AddParameter("list1", TypeName::LIST(TypeName::VARIABLE("T")))
+	    .AddParameter("list2", TypeName::LIST(TypeName::VARIABLE("T")));
 	fun.SetCollationHandling(FunctionCollationHandling::PUSH_COMBINABLE_COLLATIONS);
 	return fun;
 }

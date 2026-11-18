@@ -292,20 +292,26 @@ unique_ptr<FunctionData> HistogramBindFunction(BindAggregateFunctionInput &input
 
 AggregateFunctionSet HistogramFun::GetFunctions() {
 	AggregateFunctionSet fun;
-	AggregateFunction histogram_function(
-	    "histogram",
-	    FunctionSignature().AddParameter("arg", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()), nullptr,
-	    nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction, nullptr);
+	AggregateFunction histogram_function("histogram",
+	                                     FunctionSignature()
+	                                         .AddVariable("T")
+	                                         .AddParameter("arg", TypeName::VARIABLE("T"))
+	                                         .SetReturnType(ReturnType::ANY()),
+	                                     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction,
+	                                     nullptr);
 	fun.AddFunction(HistogramFun::BinnedHistogramFunction());
 	fun.AddFunction(histogram_function);
 	return fun;
 }
 
 AggregateFunction HistogramFun::GetHistogramUnorderedMap(LogicalType &type) {
-	AggregateFunction function(
-	    "histogram",
-	    FunctionSignature().AddParameter("arg", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()), nullptr,
-	    nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction<false>, nullptr);
+	AggregateFunction function("histogram",
+	                           FunctionSignature()
+	                               .AddVariable("T")
+	                               .AddParameter("arg", TypeName::VARIABLE("T"))
+	                               .SetReturnType(ReturnType::ANY()),
+	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction<false>,
+	                           nullptr);
 	return function;
 }
 

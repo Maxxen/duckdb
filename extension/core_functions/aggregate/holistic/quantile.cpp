@@ -889,10 +889,10 @@ struct ContinuousQuantileListFunction {
 };
 
 template <class OP>
-static AggregateFunction EmptyQuantileFunction(LogicalType input, const ReturnType &result,
-                                               const LogicalType &extra_arg) {
-	AggregateFunction fun({std::move(input)}, result, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, OP::Bind);
-	fun.GetSignature().GetParameter(0).SetName("x");
+static AggregateFunction EmptyQuantileFunction(TypeName input, const ReturnType &result, const LogicalType &extra_arg,
+                                               FunctionSignature signature = FunctionSignature()) {
+	AggregateFunction fun(signature.AddParameter("x", std::move(input)).SetReturnType(result), nullptr, nullptr,
+	                      nullptr, nullptr, nullptr, nullptr, OP::Bind);
 	if (extra_arg.id() != LogicalTypeId::INVALID) {
 		fun.GetSignature().AddParameter("quantile", extra_arg);
 	}
@@ -905,20 +905,21 @@ static AggregateFunction EmptyQuantileFunction(LogicalType input, const ReturnTy
 
 AggregateFunctionSet MedianFun::GetFunctions() {
 	AggregateFunctionSet set("median");
-	set.AddFunction(
-	    EmptyQuantileFunction<MedianFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(), LogicalTypeId::INVALID));
+	set.AddFunction(EmptyQuantileFunction<MedianFunction>(
+	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalTypeId::INVALID, FunctionSignature().AddVariable("T")));
 	return set;
 }
 
 AggregateFunctionSet QuantileDiscFun::GetFunctions() {
 	AggregateFunctionSet set("quantile_disc");
-	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(),
-	                                                                LogicalType::DOUBLE));
-	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileListFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(),
-	                                                                    LogicalType::LIST(LogicalType::DOUBLE)));
+	const auto any_type = FunctionSignature().AddVariable("T");
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(TypeName::VARIABLE("T"), ReturnType::ANY(),
+	                                                                LogicalType::DOUBLE, any_type));
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileListFunction>(
+	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE), any_type));
 	// this function is here for deserialization - it cannot be called by users
-	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(LogicalType::TEMPLATE("T"), ReturnType::ANY(),
-	                                                                LogicalType::INVALID));
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(TypeName::VARIABLE("T"), ReturnType::ANY(),
+	                                                                LogicalType::INVALID, any_type));
 	return set;
 }
 
@@ -931,10 +932,11 @@ static vector<LogicalType> GetContinuousQuantileTypes() {
 
 AggregateFunctionSet QuantileContFun::GetFunctions() {
 	AggregateFunctionSet quantile_cont("quantile_cont");
+	const auto any_decimal = FunctionSignature().AddVariable("T", LogicalTypeId::DECIMAL);
 	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(
-	    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), ReturnType::ANY(), LogicalType::DOUBLE));
+	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalType::DOUBLE, any_decimal));
 	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileListFunction>(
-	    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE)));
+	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE), any_decimal));
 	for (const auto &type : GetContinuousQuantileTypes()) {
 		quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(type, type, LogicalType::DOUBLE));
 		quantile_cont.AddFunction(

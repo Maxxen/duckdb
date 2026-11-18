@@ -43,7 +43,8 @@ unique_ptr<BaseStatistics> StatsPropagateStats(ClientContext &context, FunctionS
 
 ScalarFunction StatsFun::GetFunction() {
 	ScalarFunction stats(FunctionSignature()
-	                         .AddParameter("expression", LogicalType::TEMPLATE("T"))
+	                         .AddVariable("T")
+	                         .AddParameter("expression", TypeName::VARIABLE("T"))
 	                         .SetReturnType(LogicalType::VARIANT()),
 	                     StatsFunction, StatsBind, StatsPropagateStats);
 	stats.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

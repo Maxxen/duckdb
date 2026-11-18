@@ -415,8 +415,9 @@ unique_ptr<FunctionData> HistogramBinBindFunction(BindAggregateFunctionInput &in
 AggregateFunction HistogramFun::BinnedHistogramFunction() {
 	AggregateFunction function("histogram",
 	                           FunctionSignature()
-	                               .AddParameter("arg", LogicalType::TEMPLATE("T"))
-	                               .AddParameter("bins", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                               .AddVariable("T")
+	                               .AddParameter("arg", TypeName::VARIABLE("T"))
+	                               .AddParameter("bins", TypeName::LIST(TypeName::VARIABLE("T")))
 	                               .SetReturnType(ReturnType::ANY()),
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                           HistogramBinBindFunction<HistogramRange>, nullptr);
@@ -426,8 +427,9 @@ AggregateFunction HistogramFun::BinnedHistogramFunction() {
 AggregateFunction HistogramExactFun::GetFunction() {
 	AggregateFunction function("histogram_exact",
 	                           FunctionSignature()
-	                               .AddParameter("arg", LogicalType::TEMPLATE("T"))
-	                               .AddParameter("bins", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                               .AddVariable("T")
+	                               .AddParameter("arg", TypeName::VARIABLE("T"))
+	                               .AddParameter("bins", TypeName::LIST(TypeName::VARIABLE("T")))
 	                               .SetReturnType(ReturnType::ANY()),
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                           HistogramBinBindFunction<HistogramExact>, nullptr);
@@ -435,10 +437,12 @@ AggregateFunction HistogramExactFun::GetFunction() {
 }
 
 ScalarFunction IsHistogramOtherBinFun::GetFunction() {
-	ScalarFunction fun(
-	    "is_histogram_other_bin",
-	    FunctionSignature().AddParameter("val", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::BOOLEAN),
-	    IsHistogramOtherBinFunction);
+	ScalarFunction fun("is_histogram_other_bin",
+	                   FunctionSignature()
+	                       .AddVariable("T")
+	                       .AddParameter("val", TypeName::VARIABLE("T"))
+	                       .SetReturnType(LogicalType::BOOLEAN),
+	                   IsHistogramOtherBinFunction);
 	return fun;
 }
 

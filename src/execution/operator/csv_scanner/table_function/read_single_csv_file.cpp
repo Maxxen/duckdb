@@ -495,10 +495,13 @@ static unique_ptr<NodeStatistics> ReadSingleCSVFileCardinality(ClientContext &co
 }
 
 TableFunction ReadCSVTableFunction::GetSingleFileFunction() {
-	TableFunction read_csv(
-	    "read_single_csv_file",
-	    FunctionSignature().AddPositionalOnly("file", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::TABLE()),
-	    ReadSingleCSVFileFunction, ReadSingleCSVFileBind, ReadSingleCSVFileInitGlobal, ReadSingleCSVFileInitLocal);
+	TableFunction read_csv("read_single_csv_file",
+	                       FunctionSignature()
+	                           .AddVariable("T")
+	                           .AddPositionalOnly("file", TypeName::VARIABLE("T"))
+	                           .SetReturnType(ReturnType::TABLE()),
+	                       ReadSingleCSVFileFunction, ReadSingleCSVFileBind, ReadSingleCSVFileInitGlobal,
+	                       ReadSingleCSVFileInitLocal);
 	read_csv.table_scan_progress = ReadSingleCSVFileProgress;
 	read_csv.cardinality = ReadSingleCSVFileCardinality;
 	read_csv.get_metrics = ReadSingleCSVFileGetMetrics;

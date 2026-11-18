@@ -950,9 +950,6 @@ TEST_CASE("Normal column binding resolution preserves matching incomplete types"
 	SECTION("ANY") {
 		ResolveMatchingType(LogicalType::ANY);
 	}
-	SECTION("TEMPLATE") {
-		ResolveMatchingType(LogicalType::TEMPLATE("T"));
-	}
 	SECTION("nested incomplete type") {
 		ResolveMatchingType(LogicalType::LIST(LogicalType::ANY));
 	}
@@ -978,9 +975,6 @@ TEST_CASE("Logical plan verification structures incomplete expression types", "[
 
 	SECTION("ANY") {
 		VerifyIncompleteType(LogicalType::ANY, "incomplete_any");
-	}
-	SECTION("TEMPLATE") {
-		VerifyIncompleteType(LogicalType::TEMPLATE("T"), "incomplete_template");
 	}
 	SECTION("nested incomplete type") {
 		VerifyIncompleteType(LogicalType::LIST(LogicalType::ANY), "incomplete_nested");
@@ -1083,13 +1077,12 @@ TEST_CASE("Logical plan verification result records enforce their structural con
 	    LogicalPlanVerificationConstructIdentity::BindingTypeMismatch(LogicalType::INTEGER, LogicalType::ANY);
 	REQUIRE_FALSE(incomplete_actual_mismatch.IsValid());
 	REQUIRE_FALSE(LogicalPlanVerificationConstructIdentity::LogicalTypeValue(LogicalType::ANY).IsValid());
-	REQUIRE_FALSE(LogicalPlanVerificationConstructIdentity::LogicalTypeValue(LogicalType::TEMPLATE("T")).IsValid());
 	auto incomplete_nested_type =
 	    LogicalPlanVerificationConstructIdentity::LogicalTypeValue(LogicalType::LIST(LogicalType::ANY));
 	REQUIRE_FALSE(incomplete_nested_type.IsValid());
 	LogicalPlanVerificationFunctionIdentity incomplete_argument_function;
 	incomplete_argument_function.name = "incomplete_argument";
-	incomplete_argument_function.arguments = {LogicalType::TEMPLATE("T")};
+	incomplete_argument_function.arguments = {LogicalType::ANY};
 	incomplete_argument_function.return_type = LogicalType::INTEGER;
 	REQUIRE_FALSE(incomplete_argument_function.IsValid());
 	LogicalPlanVerificationFunctionIdentity incomplete_return_function;
@@ -1148,7 +1141,6 @@ TEST_CASE("Logical plan verification result records enforce their structural con
 	};
 	RequireInvalidFact("nested_fact", Value::LIST(LogicalType::INTEGER, {Value::INTEGER(1)}));
 	RequireInvalidFact("any_fact", Value(LogicalType::ANY));
-	RequireInvalidFact("template_fact", Value(LogicalType::TEMPLATE("T")));
 	RequireInvalidFact("type_fact", Value::TYPE(LogicalType::INTEGER));
 	RequireInvalidFact("validity_fact", Value(LogicalType(LogicalTypeId::VALIDITY)));
 	RequireInvalidFact("lambda_fact", Value(LogicalType::LAMBDA));

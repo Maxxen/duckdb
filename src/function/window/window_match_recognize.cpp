@@ -1157,7 +1157,8 @@ WindowFunction MatchRecognizeFun::GetFunction() {
 	// called with the columns the conditions read, which can be none; everything else arrives as bind data
 	WindowFunction fun(Name,
 	                   FunctionSignature()
-	                       .AddParameter("columns", LogicalType::TEMPLATE("T"), Value())
+	                       .AddVariable("T")
+	                       .AddParameter("columns", TypeName::VARIABLE("T"), Value())
 	                       .AddArgs("args", LogicalType::ANY)
 	                       .SetReturnType(WindowMatchRecognizeExecutor::ResultType()),
 	                   ExpressionType::WINDOW_FUNCTION, WindowMatchRecognizeExecutor::Bind,

@@ -349,8 +349,11 @@ unique_ptr<FunctionData> BindMedianAbsoluteDeviationDecimal(BindAggregateFunctio
 AggregateFunctionSet MadFun::GetFunctions() {
 	AggregateFunctionSet mad("mad");
 	// the deviation of decimals is of the decimal they are passed as
-	auto decimal_type = LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL);
-	AggregateFunction decimal_mad(FunctionSignature().AddParameter("x", decimal_type).SetReturnType(decimal_type),
+	auto decimal_type = TypeName::VARIABLE("T");
+	AggregateFunction decimal_mad(FunctionSignature()
+	                                  .AddVariable("T", LogicalTypeId::DECIMAL)
+	                                  .AddParameter("x", decimal_type)
+	                                  .SetReturnType(decimal_type),
 	                              nullptr, nullptr, nullptr, nullptr, nullptr,
 	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, AggregateFunction::NoClusterUpdate(),
 	                              BindMedianAbsoluteDeviationDecimal);

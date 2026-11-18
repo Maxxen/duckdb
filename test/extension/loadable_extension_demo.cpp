@@ -1253,8 +1253,9 @@ static void RegisterNamedArgumentFunction(ExtensionLoader &loader) {
 	// All variadic arguments are unified to a single type.
 	{
 		FunctionSignature sig;
-		sig.AddArgs("args", LogicalType::TEMPLATE("T"));
-		sig.AddKwargs("kwargs", LogicalType::TEMPLATE("T"));
+		sig.AddVariable("T");
+		sig.AddArgs("args", TypeName::VARIABLE("T"));
+		sig.AddKwargs("kwargs", TypeName::VARIABLE("T"));
 		sig.SetReturnType(LogicalType::VARCHAR);
 		ScalarFunction fn("test_args_template", std::move(sig), TestFunctionArgs<23>);
 		fn.SetNullHandling(NH::SPECIAL_HANDLING);

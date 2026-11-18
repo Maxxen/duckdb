@@ -312,12 +312,14 @@ ScalarFunctionSet ListValueFun::GetFunctions() {
 	set.AddFunction(empty_fun);
 
 	// Overload for 1 + N arguments, which returns a list of the arguments.
-	auto element_type = LogicalType::TEMPLATE("T");
-	ScalarFunction value_fun({element_type}, LogicalType::LIST(element_type), ListValueFunction, nullptr,
-	                         ListValueStats);
+	auto element_type = TypeName::VARIABLE("T");
+	ScalarFunction value_fun(FunctionSignature()
+	                             .AddVariable("T")
+	                             .AddPositionalOnly("value", element_type)
+	                             .AddArgs("args", element_type)
+	                             .SetReturnType(TypeName::LIST(element_type)),
+	                         ListValueFunction, nullptr, ListValueStats);
 	value_fun.SetResolveTypesCallback(ListValueResolveTypes);
-	value_fun.GetSignature().GetParameter(0).SetName("value");
-	value_fun.GetSignature().AddArgs("args", element_type);
 	value_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(value_fun);
 

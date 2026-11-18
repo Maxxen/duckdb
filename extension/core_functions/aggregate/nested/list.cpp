@@ -26,10 +26,10 @@ void ListFinalize(Vector &states_vector, AggregateFinalizeInputData &aggr_input_
 
 AggregateFunction ListFun::GetFunction() {
 	auto func = AggregateFunction(
-	    {}, LogicalType::LIST(LogicalType::TEMPLATE("T")), AggregateFunction::StateSize<ListAggState>,
+	    {}, TypeName::LIST(TypeName::VARIABLE("T")), AggregateFunction::StateSize<ListAggState>,
 	    AggregateFunction::StateInitialize<ListAggState, ListFunction>, ListUpdateFunction<>,
 	    ListCombineFunction<ListFunction>, ListFinalize, ListClusterUpdate<>, nullptr, nullptr, nullptr);
-	func.GetSignature().AddParameter("arg", LogicalType::TEMPLATE("T"));
+	func.GetSignature().AddVariable("T").AddParameter("arg", TypeName::VARIABLE("T"));
 	AggregateFunction::WireStructStateType<ListAggState>(func);
 
 	return func;

@@ -138,7 +138,8 @@ static unique_ptr<FunctionData> BindEnumRangeBoundaryFunction(BindScalarFunction
 
 ScalarFunction EnumFirstFun::GetFunction() {
 	auto fun = ScalarFunction(FunctionSignature()
-	                              .AddParameter("enum", LogicalType::TEMPLATE("T", LogicalTypeId::ENUM))
+	                              .AddVariable("T", LogicalTypeId::ENUM)
+	                              .AddParameter("enum", TypeName::VARIABLE("T"))
 	                              .SetReturnType(LogicalType::VARCHAR),
 	                          EnumFirstFunction, BindEnumFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
@@ -147,7 +148,8 @@ ScalarFunction EnumFirstFun::GetFunction() {
 
 ScalarFunction EnumLastFun::GetFunction() {
 	auto fun = ScalarFunction(FunctionSignature()
-	                              .AddParameter("enum", LogicalType::TEMPLATE("T", LogicalTypeId::ENUM))
+	                              .AddVariable("T", LogicalTypeId::ENUM)
+	                              .AddParameter("enum", TypeName::VARIABLE("T"))
 	                              .SetReturnType(LogicalType::VARCHAR),
 	                          EnumLastFunction, BindEnumFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
@@ -156,7 +158,8 @@ ScalarFunction EnumLastFun::GetFunction() {
 
 ScalarFunction EnumCodeFun::GetFunction() {
 	auto fun = ScalarFunction(FunctionSignature()
-	                              .AddParameter("enum", LogicalType::TEMPLATE("T", LogicalTypeId::ENUM))
+	                              .AddVariable("T", LogicalTypeId::ENUM)
+	                              .AddParameter("enum", TypeName::VARIABLE("T"))
 	                              .SetReturnType(ReturnType::ANY()),
 	                          EnumCodeFunction, BindEnumCodeFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
@@ -165,7 +168,8 @@ ScalarFunction EnumCodeFun::GetFunction() {
 
 ScalarFunction EnumRangeFun::GetFunction() {
 	auto fun = ScalarFunction(FunctionSignature()
-	                              .AddParameter("enum", LogicalType::TEMPLATE("T", LogicalTypeId::ENUM))
+	                              .AddVariable("T", LogicalTypeId::ENUM)
+	                              .AddParameter("enum", TypeName::VARIABLE("T"))
 	                              .SetReturnType(LogicalType::LIST(LogicalType::VARCHAR)),
 	                          EnumRangeFunction, BindEnumFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
@@ -174,8 +178,10 @@ ScalarFunction EnumRangeFun::GetFunction() {
 
 ScalarFunction EnumRangeBoundaryFun::GetFunction() {
 	auto fun = ScalarFunction(FunctionSignature()
-	                              .AddParameter("start", LogicalType::TEMPLATE("T", LogicalTypeId::ENUM))
-	                              .AddParameter("end", LogicalType::TEMPLATE("U", LogicalTypeId::ENUM))
+	                              .AddVariable("T", LogicalTypeId::ENUM)
+	                              .AddVariable("U", LogicalTypeId::ENUM)
+	                              .AddParameter("start", TypeName::VARIABLE("T"))
+	                              .AddParameter("end", TypeName::VARIABLE("U"))
 	                              .SetReturnType(LogicalType::LIST(LogicalType::VARCHAR)),
 	                          EnumRangeBoundaryFunction, BindEnumRangeBoundaryFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

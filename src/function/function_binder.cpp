@@ -85,12 +85,16 @@ FunctionCallArguments::FunctionCallArguments(vector<LogicalType> positional,
 FunctionCallArguments::FunctionCallArguments(const vector<unique_ptr<Expression>> &positional,
                                              const vector<pair<Identifier, unique_ptr<Expression>>> &named) {
 	for (auto &arg : positional) {
-		AddArgument(FunctionCallArgument(ExpressionBinder::GetExpressionReturnType(*arg), Identifier(),
-		                                 arg->GetQueryLocation()));
+		FunctionCallArgument argument(ExpressionBinder::GetExpressionReturnType(*arg), Identifier(),
+		                              arg->GetQueryLocation());
+		argument.expression = arg.get();
+		AddArgument(std::move(argument));
 	}
 	for (auto &arg : named) {
-		AddArgument(FunctionCallArgument(ExpressionBinder::GetExpressionReturnType(*arg.second), arg.first,
-		                                 arg.second->GetQueryLocation()));
+		FunctionCallArgument argument(ExpressionBinder::GetExpressionReturnType(*arg.second), arg.first,
+		                              arg.second->GetQueryLocation());
+		argument.expression = arg.second.get();
+		AddArgument(std::move(argument));
 	}
 }
 
@@ -143,20 +147,32 @@ static int64_t ImplicitCastCost(optional_ptr<ClientContext> context, const Logic
 //===--------------------------------------------------------------------===//
 // Binding type names
 //===--------------------------------------------------------------------===//
-//! The value variable of the signature an argument of a type name refers to, if it refers to one
-static optional_ptr<const TypeVariable> FindValueVariable(const TypeNameArgument &argument,
-                                                          const FunctionSignature &signature) {
-	if (!argument.IsType() || argument.GetType().HasArguments()) {
+//! The value variable of the signature a type name is, if it is one
+static optional_ptr<const TypeVariable> FindValueVariable(const TypeName &name, const FunctionSignature &signature) {
+	if (name.HasArguments()) {
 		return nullptr;
 	}
-	auto variable = signature.FindVariable(argument.GetType().GetName());
+	auto variable = signature.FindVariable(name.GetName());
 	return variable && variable->IsValue() ? variable : nullptr;
 }
 
-//! Binds a type name. What a type variable of the signature stands for is up to the caller
-template <class BIND_VARIABLE>
+//! The value variable of the signature an argument of a type name refers to, if it refers to one
+static optional_ptr<const TypeVariable> FindValueVariable(const TypeNameArgument &argument,
+                                                          const FunctionSignature &signature) {
+	return argument.IsType() ? FindValueVariable(argument.GetType(), signature) : nullptr;
+}
+
+//! The type of the values a value variable stands for
+static LogicalType ValueVariableType(const TypeVariable &variable) {
+	return variable.GetKind() == TypeVariable::Kind::INTEGER ? LogicalType::BIGINT : LogicalType::VARCHAR;
+}
+
+//! Binds a type name. What a variable of the signature stands for is up to the caller: bind_variable gives the
+//! type of a type variable, bind_value the value of a value variable - NULL if it is not known
+template <class BIND_VARIABLE, class BIND_VALUE>
 static LogicalType BindTypeNameInternal(optional_ptr<ClientContext> context, const TypeName &name,
-                                        const FunctionSignature &signature, const BIND_VARIABLE &bind_variable) {
+                                        const FunctionSignature &signature, const BIND_VARIABLE &bind_variable,
+                                        const BIND_VALUE &bind_value) {
 	auto &identifier = name.GetName();
 	auto &arguments = name.GetArguments();
 	auto builtin_type = name.GetBuiltinType();
@@ -171,27 +187,38 @@ static LogicalType BindTypeNameInternal(optional_ptr<ClientContext> context, con
 		auto variable = signature.FindVariable(identifier);
 		if (variable) {
 			if (variable->IsValue()) {
-				throw BinderException("Value variable '%s' is used as a type", identifier.GetIdentifierName());
+				// a parameter that takes the value of the variable
+				return ValueVariableType(*variable);
 			}
 			return bind_variable(identifier, signature.GetConstraint(identifier));
 		}
 	}
-	if (identifier == "ARRAY" && arguments.size() == 2 && FindValueVariable(arguments[1], signature)) {
-		// the size of an array is the only value a call determines so far: an array of any size
-		return LogicalType::ARRAY(BindTypeNameInternal(context, arguments[0].GetType(), signature, bind_variable),
-		                          optional_idx());
-	}
 
 	vector<TypeArgument> bound_arguments;
+	bool has_unknown_value = false;
 	for (auto &argument : arguments) {
+		Value value;
 		if (FindValueVariable(argument, signature)) {
-			throw NotImplementedException("Value variable %s can only be the size of an array",
-			                              argument.GetType().GetName().GetIdentifierName());
+			value = bind_value(argument.GetType().GetName());
+			has_unknown_value = has_unknown_value || value.IsNull();
+		} else if (argument.IsType()) {
+			value =
+			    Value::TYPE(BindTypeNameInternal(context, argument.GetType(), signature, bind_variable, bind_value));
+		} else {
+			value = argument.GetLiteral().ToValue();
 		}
-		auto value = argument.IsType()
-		                 ? Value::TYPE(BindTypeNameInternal(context, argument.GetType(), signature, bind_variable))
-		                 : argument.GetLiteral().ToValue();
 		bound_arguments.emplace_back(argument.GetLabel().GetIdentifierName(), std::move(value));
+	}
+	if (has_unknown_value) {
+		// until its values are known the type is of a kind: an array of any size, a decimal of any width and scale
+		auto kind = DefaultTypeGenerator::GetDefaultType(identifier);
+		if (kind == LogicalTypeId::ARRAY && arguments.size() == 2 && arguments[0].IsType()) {
+			return LogicalType::ARRAY(TypeValue::GetType(bound_arguments[0].GetValue()), optional_idx());
+		}
+		if (kind == LogicalTypeId::INVALID) {
+			throw NotImplementedException("Type %s cannot take a value variable", identifier.GetIdentifierName());
+		}
+		return LogicalType(kind);
 	}
 
 	if (context) {
@@ -223,34 +250,55 @@ static LogicalType BindVariablePattern(const Identifier &, LogicalTypeId constra
 	return constraint == LogicalTypeId::INVALID ? LogicalType(LogicalType::ANY) : LogicalType(constraint);
 }
 
+//! A value variable whose value is not known
+static Value BindValuePattern(const Identifier &) {
+	return Value();
+}
+
+//! The type a call determines a type variable to be
+static LogicalType GetVariableType(const Identifier &variable, LogicalTypeId constraint,
+                                   const FunctionVariables &variables) {
+	auto entry = variables.types.find(variable.GetIdentifierName());
+	if (entry == variables.types.end()) {
+		throw BinderException("Cannot deduce type variable '%s', it is not determined by the arguments",
+		                      variable.GetIdentifierName());
+	}
+	// a variable only unresolved parameters are passed as stays unknown
+	auto &inferred_type = entry->second.back();
+	auto type =
+	    inferred_type.id() == LogicalTypeId::UNKNOWN ? inferred_type : LogicalType::NormalizeType(inferred_type);
+	if (constraint == LogicalTypeId::INVALID) {
+		return type;
+	}
+	// e.g. the DECIMAL that integer arguments are passed as
+	auto constrained = ConstrainType(constraint, type);
+	return constrained ? *constrained : type;
+}
+
 LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, const TypeName &name) {
-	return BindTypeNameInternal(context, name, FunctionSignature(), BindVariablePattern);
+	return BindTypeNameInternal(context, name, FunctionSignature(), BindVariablePattern, BindValuePattern);
 }
 
 LogicalType FunctionBinder::BindTypePattern(optional_ptr<ClientContext> context, const TypeName &name,
                                             const FunctionSignature &signature) {
-	return BindTypeNameInternal(context, name, signature, BindVariablePattern);
+	return BindTypeNameInternal(context, name, signature, BindVariablePattern, BindValuePattern);
 }
 
 LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
-                                         const FunctionSignature &signature, const variable_types_t &variable_types) {
-	return BindTypeNameInternal(context, name, signature, [&](const Identifier &variable, LogicalTypeId constraint) {
-		auto entry = variable_types.find(variable.GetIdentifierName());
-		if (entry == variable_types.end()) {
-			throw BinderException("Cannot deduce type variable '%s', it is not determined by the arguments",
-			                      variable.GetIdentifierName());
-		}
-		// a variable only unresolved parameters are passed as stays unknown
-		auto &inferred_type = entry->second.back();
-		auto type =
-		    inferred_type.id() == LogicalTypeId::UNKNOWN ? inferred_type : LogicalType::NormalizeType(inferred_type);
-		if (constraint == LogicalTypeId::INVALID) {
-			return type;
-		}
-		// e.g. the DECIMAL that integer arguments are passed as
-		auto constrained = ConstrainType(constraint, type);
-		return constrained ? *constrained : type;
-	});
+                                         const FunctionSignature &signature, const FunctionVariables &variables) {
+	return BindTypeNameInternal(
+	    context, name, signature,
+	    [&](const Identifier &variable, LogicalTypeId constraint) {
+		    return GetVariableType(variable, constraint, variables);
+	    },
+	    [&](const Identifier &variable) {
+		    auto entry = variables.values.find(variable.GetIdentifierName());
+		    if (entry == variables.values.end()) {
+			    throw BinderException("Cannot deduce value '%s', it is not determined by the arguments",
+			                          variable.GetIdentifierName());
+		    }
+		    return entry->second;
+	    });
 }
 
 //===--------------------------------------------------------------------===//
@@ -267,12 +315,22 @@ struct VariableUse {
 	//! Whether it uses one that stands for any type, and how deep the outermost such use is nested
 	bool unconstrained = false;
 	idx_t depth = 0;
+	//! Whether it uses a value variable
+	bool uses_value = false;
+
+	bool UsesAny() const {
+		return uses_variable || uses_value;
+	}
 };
 
 static void FindVariableUse(const FunctionSignature &signature, const TypeName &name, idx_t depth, VariableUse &use) {
 	if (!name.HasArguments()) {
 		auto variable = signature.FindVariable(name.GetName());
-		if (!variable || variable->IsValue()) {
+		if (!variable) {
+			return;
+		}
+		if (variable->IsValue()) {
+			use.uses_value = true;
 			return;
 		}
 		use.uses_variable = true;
@@ -298,61 +356,109 @@ static VariableUse GetVariableUse(const FunctionSignature &signature, const Type
 	return use;
 }
 
-//! Bind every type variable a type name uses to a type, unless it is bound already
+//! Bind every variable a type name uses that is not bound already: a type variable to a type, a value variable to
+//! an unknown value
 static void BindUndeterminedVariables(const FunctionSignature &signature, const TypeName &name, const LogicalType &type,
-                                      variable_types_t &variable_types) {
+                                      FunctionVariables &variables) {
 	if (!name.HasArguments()) {
 		auto variable = signature.FindVariable(name.GetName());
 		auto &variable_name = name.GetName().GetIdentifierName();
-		if (variable && !variable->IsValue() && variable_types.find(variable_name) == variable_types.end()) {
-			variable_types[variable_name] = {type};
+		if (!variable) {
+			return;
+		}
+		if (variable->IsValue()) {
+			variables.values.emplace(variable_name, Value());
+		} else if (variables.types.find(variable_name) == variables.types.end()) {
+			variables.types[variable_name] = {type};
 		}
 		return;
 	}
 	for (auto &argument : name.GetArguments()) {
 		if (argument.IsType()) {
-			BindUndeterminedVariables(signature, argument.GetType(), type, variable_types);
+			BindUndeterminedVariables(signature, argument.GetType(), type, variables);
 		}
 	}
 }
 
-//! The type variable a type name uses that no argument determines, empty if there is none
-static string FindUndeterminedVariable(const FunctionSignature &signature, const TypeName &name,
-                                       const variable_types_t &variable_types) {
+//! The variable a type name uses that no argument determines, if there is one
+static optional_ptr<const TypeVariable>
+FindUndeterminedVariable(const FunctionSignature &signature, const TypeName &name, const FunctionVariables &variables) {
 	if (!name.HasArguments()) {
 		auto variable = signature.FindVariable(name.GetName());
 		auto &variable_name = name.GetName().GetIdentifierName();
-		if (variable && !variable->IsValue() && variable_types.find(variable_name) == variable_types.end()) {
-			return variable_name;
+		if (!variable) {
+			return nullptr;
 		}
-		return string();
+		const bool determined = variable->IsValue() ? variables.values.find(variable_name) != variables.values.end()
+		                                            : variables.types.find(variable_name) != variables.types.end();
+		return determined ? nullptr : variable;
 	}
 	for (auto &argument : name.GetArguments()) {
 		if (!argument.IsType()) {
 			continue;
 		}
-		auto variable_name = FindUndeterminedVariable(signature, argument.GetType(), variable_types);
-		if (!variable_name.empty()) {
-			return variable_name;
+		auto variable = FindUndeterminedVariable(signature, argument.GetType(), variables);
+		if (variable) {
+			return variable;
 		}
 	}
-	return string();
+	return nullptr;
 }
 
-//! Infer the type variables a type name uses from the type of the argument that is passed as it
-static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSignature &signature,
-                           const TypeName &name, const LogicalType &type, variable_types_t &variable_types,
-                           FunctionMismatch::TemplateDeduction &failure) {
-	if (!GetVariableUse(signature, name).uses_variable) {
+//! Bind every value variable a type name uses to an unknown value, unless it is bound already
+static void BindUnknownValues(const FunctionSignature &signature, const TypeName &name, FunctionVariables &variables) {
+	if (FindValueVariable(name, signature)) {
+		variables.values.emplace(name.GetName().GetIdentifierName(), Value());
+		return;
+	}
+	for (auto &argument : name.GetArguments()) {
+		if (argument.IsType()) {
+			BindUnknownValues(signature, argument.GetType(), variables);
+		}
+	}
+}
+
+//! Bind a value variable to a value, or check that it is bound to that value. An unknown value is replaced
+static bool UnifyValue(const Identifier &variable, Value value, FunctionVariables &variables,
+                       FunctionMismatch::TemplateDeduction &failure) {
+	auto &variable_name = variable.GetIdentifierName();
+	auto entry = variables.values.find(variable_name);
+	if (entry == variables.values.end() || entry->second.IsNull()) {
+		variables.values[variable_name] = std::move(value);
 		return true;
+	}
+	if (Value::NotDistinctFrom(entry->second, value)) {
+		return true;
+	}
+	failure.template_name = variable_name;
+	failure.inferred_values = {entry->second, std::move(value)};
+	return false;
+}
+
+//! Infer the variables a type name uses from the type of the argument that is passed as it
+static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSignature &signature,
+                           const TypeName &name, const LogicalType &type, FunctionVariables &variables,
+                           FunctionMismatch::TemplateDeduction &failure) {
+	auto variable_use = GetVariableUse(signature, name);
+	if (!variable_use.UsesAny()) {
+		return true;
+	}
+	if (variable_use.uses_value) {
+		// a value is unknown unless an argument determines it, e.g. a string literal passed as an array does not
+		BindUnknownValues(signature, name, variables);
 	}
 	if (type.id() == LogicalTypeId::UNKNOWN || type.id() == LogicalTypeId::SQLNULL) {
 		// The argument says nothing about the types, so the variables it would determine are UNKNOWN or SQLNULL,
 		// unless another argument determines them. Nested functions propagate these types: the binder replaces
 		// a function that returns one by a NULL, or binds it again once the parameter is resolved
-		BindUndeterminedVariables(signature, name, LogicalType(type.id()), variable_types);
+		BindUndeterminedVariables(signature, name, LogicalType(type.id()), variables);
 		return true;
 	}
+	if (FindValueVariable(name, signature)) {
+		// the value of the argument determines the variable, not its type
+		return true;
+	}
+	auto &variable_types = variables.types;
 
 	if (!name.HasArguments()) {
 		// a type variable: bind it, or unify what it is bound to with the type of the argument
@@ -396,23 +502,37 @@ static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSi
 		return true;
 	}
 
+	auto &arguments = name.GetArguments();
+	auto infer_argument = [&](idx_t index, const LogicalType &argument_type) {
+		return index >= arguments.size() || !arguments[index].IsType() ||
+		       InferVariables(context, signature, arguments[index].GetType(), argument_type, variables, failure);
+	};
+	// the value an argument of the type name stands for, if that argument is a value variable
+	auto infer_value = [&](idx_t index, idx_t value) {
+		return index >= arguments.size() || !FindValueVariable(arguments[index], signature) ||
+		       UnifyValue(arguments[index].GetType().GetName(), Value::BIGINT(NumericCast<int64_t>(value)), variables,
+		                  failure);
+	};
+	const auto kind = DefaultTypeGenerator::GetDefaultType(name.GetName());
+	if (kind == LogicalTypeId::DECIMAL) {
+		// the width and scale of a decimal, or of the decimal a number is passed as
+		uint32_t width, scale;
+		return !type.GetDecimalProperties(width, scale) || (infer_value(0, width) && infer_value(1, scale));
+	}
+
 	// a nested type: infer the variables of the types it is made of from those the argument is made of
 	if (!type.IsNested() || !type.HasParameters()) {
 		return true;
 	}
-	auto &arguments = name.GetArguments();
-	auto infer_argument = [&](idx_t index, const LogicalType &argument_type) {
-		return index >= arguments.size() || !arguments[index].IsType() ||
-		       InferVariables(context, signature, arguments[index].GetType(), argument_type, variable_types, failure);
-	};
-	switch (DefaultTypeGenerator::GetDefaultType(name.GetName())) {
+	switch (kind) {
 	case LogicalTypeId::LIST:
 	case LogicalTypeId::ARRAY:
 		if (type.id() == LogicalTypeId::LIST) {
 			return infer_argument(0, ListType::GetChildType(type));
 		}
 		if (type.id() == LogicalTypeId::ARRAY) {
-			return infer_argument(0, ArrayType::GetChildType(type));
+			return infer_argument(0, ArrayType::GetChildType(type)) &&
+			       (ArrayType::IsAnySize(type) || infer_value(1, ArrayType::GetSize(type)));
 		}
 		return true;
 	case LogicalTypeId::MAP:
@@ -448,43 +568,113 @@ static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSi
 	}
 }
 
-//! Infer the type variables of a signature, as the arguments and the defaults of the parameters they leave out
+//! The value of an argument, if it is known when the call is bound
+static optional<Value> GetArgumentConstant(optional_ptr<ClientContext> context, const FunctionCallArgument &argument) {
+	if (argument.constant) {
+		return argument.constant;
+	}
+	if (!argument.expression) {
+		return nullopt;
+	}
+	auto &expression = *argument.expression;
+	if (expression.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+		return expression.Cast<BoundConstantExpression>().GetValue();
+	}
+	Value result;
+	if (!context || !expression.IsFoldable() || !ExpressionExecutor::TryEvaluateScalar(*context, expression, result)) {
+		return nullopt;
+	}
+	return result;
+}
+
+//! Determine the value variable a parameter is declared as by the value that is passed to it. "argument" is the
+//! argument that passes it, invalid if it is the default of the parameter
+static optional<FunctionMismatch::Reason> InferValue(const TypeVariable &variable, optional<Value> constant,
+                                                     optional_idx argument, FunctionVariables &variables) {
+	auto &variable_name = variable.GetName().GetIdentifierName();
+	if (!constant) {
+		return FunctionMismatch::Reason(FunctionMismatch::ConstantRequired {argument.GetIndex(), variable_name});
+	}
+	if (constant->IsNull()) {
+		// says nothing about the value, unless another argument determines it
+		variables.values.emplace(variable_name, Value());
+		return nullopt;
+	}
+	auto value = constant->DefaultTryCastAs(ValueVariableType(variable));
+	if (!value) {
+		if (!argument.IsValid()) {
+			throw InternalException("The default of a parameter cannot be the value of %s", variable.ToString());
+		}
+		return FunctionMismatch::Reason(FunctionMismatch::IncompatibleArgument {argument.GetIndex(), variable_name});
+	}
+	FunctionMismatch::TemplateDeduction deduction;
+	if (!UnifyValue(variable.GetName(), std::move(*value), variables, deduction)) {
+		deduction.argument = argument;
+		return FunctionMismatch::Reason(std::move(deduction));
+	}
+	return nullopt;
+}
+
+//! Infer the variables of a signature, as the arguments and the defaults of the parameters they leave out
 //! determine them. Returns why not, if they do not determine every variable of the types the call uses
 static optional<FunctionMismatch::Reason>
 DeduceVariables(optional_ptr<ClientContext> context, const FunctionSignature &sig, const FunctionCallArguments &call,
-                const vector<bool> &filled, const FunctionBinding &binding, variable_types_t &variable_types) {
+                const vector<bool> &filled, const FunctionBinding &binding, FunctionVariables &variables) {
 	FunctionMismatch::TemplateDeduction deduction;
 	for (idx_t i = 0; i < binding.argument_to_parameters.size(); i++) {
 		auto &param_type = sig.GetParameter(binding.argument_to_parameters[i]).GetTypeName();
-		if (!InferVariables(context, sig, param_type, call.GetArgument(i).type, variable_types, deduction)) {
+		auto &argument = call.GetArgument(i);
+		auto value_variable = FindValueVariable(param_type, sig);
+		if (value_variable && argument.type.id() != LogicalTypeId::UNKNOWN &&
+		    argument.type.id() != LogicalTypeId::SQLNULL) {
+			auto value_mismatch = InferValue(*value_variable, GetArgumentConstant(context, argument), i, variables);
+			if (value_mismatch) {
+				return value_mismatch;
+			}
+			continue;
+		}
+		if (!InferVariables(context, sig, param_type, argument.type, variables, deduction)) {
 			deduction.argument = i;
 			return FunctionMismatch::Reason(std::move(deduction));
 		}
 	}
 	for (idx_t i = 0; i < sig.GetParameterCount(); i++) {
 		auto &param = sig.GetParameter(i);
-		if (!filled[i] && param.HasDefaultValue() &&
-		    !InferVariables(context, sig, param.GetTypeName(), param.GetDefaultValue()->type(), variable_types,
-		                    deduction)) {
+		if (filled[i] || !param.HasDefaultValue()) {
+			continue;
+		}
+		auto value_variable = FindValueVariable(param.GetTypeName(), sig);
+		if (value_variable) {
+			auto value_mismatch = InferValue(*value_variable, *param.GetDefaultValue(), optional_idx(), variables);
+			if (value_mismatch) {
+				return value_mismatch;
+			}
+			continue;
+		}
+		if (!InferVariables(context, sig, param.GetTypeName(), param.GetDefaultValue()->type(), variables, deduction)) {
 			return FunctionMismatch::Reason(std::move(deduction));
 		}
 	}
 
 	// every variable of the types the call uses has to be determined by the arguments and defaults
+	auto unresolved = [](const TypeVariable &variable) {
+		return FunctionMismatch::Reason(
+		    FunctionMismatch::TemplateUnresolved {variable.GetName().GetIdentifierName(), variable.IsValue()});
+	};
 	for (idx_t i = 0; i < sig.GetParameterCount(); i++) {
 		if (sig.GetParameter(i).IsVariadic() && !filled[i]) {
 			// a variadic parameter the call passes nothing to is not used
 			continue;
 		}
-		auto variable_name = FindUndeterminedVariable(sig, sig.GetParameter(i).GetTypeName(), variable_types);
-		if (!variable_name.empty()) {
-			return FunctionMismatch::Reason(FunctionMismatch::TemplateUnresolved {std::move(variable_name)});
+		auto variable = FindUndeterminedVariable(sig, sig.GetParameter(i).GetTypeName(), variables);
+		if (variable) {
+			return unresolved(*variable);
 		}
 	}
 	if (sig.GetReturnType().IsType()) {
-		auto variable_name = FindUndeterminedVariable(sig, sig.GetReturnType().GetTypeName(), variable_types);
-		if (!variable_name.empty()) {
-			return FunctionMismatch::Reason(FunctionMismatch::TemplateUnresolved {std::move(variable_name)});
+		auto variable = FindUndeterminedVariable(sig, sig.GetReturnType().GetTypeName(), variables);
+		if (variable) {
+			return unresolved(*variable);
 		}
 	}
 	return nullopt;
@@ -655,12 +845,13 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 		int64_t cast_cost;
 		if (unconstrained && arg_type.id() == LogicalTypeId::STRING_LITERAL) {
 			// a string literal can be cast to a type whatever its variables are determined to be
-			auto literal_target = BindTypeNameInternal(context, sig.GetParameter(param_idx).GetTypeName(), sig,
-			                                           [](const Identifier &, LogicalTypeId constraint) {
-				                                           return constraint == LogicalTypeId::INVALID
-				                                                      ? LogicalType(LogicalType::VARCHAR)
-				                                                      : LogicalType(constraint);
-			                                           });
+			auto literal_target = BindTypeNameInternal(
+			    context, sig.GetParameter(param_idx).GetTypeName(), sig,
+			    [](const Identifier &, LogicalTypeId constraint) {
+				    return constraint == LogicalTypeId::INVALID ? LogicalType(LogicalType::VARCHAR)
+				                                                : LogicalType(constraint);
+			    },
+			    BindValuePattern);
 			cast_cost = ImplicitCastCost(context, arg_type, literal_target);
 		} else {
 			cast_cost = ImplicitCastCost(context, arg_type, parameter_types[param_idx]);
@@ -687,20 +878,20 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 	for (idx_t i = 0; i < received_count; i++) {
 		binding.argument_to_parameters.push_back(get_parameter_index(i));
 	}
-	variable_types_t variable_types;
+	FunctionVariables variables;
 	if (has_variables) {
 		// the shape and the casts match, so a variable that cannot be determined is the closest miss there is
 		vector<bool> filled(sig.GetParameterCount(), false);
 		for (auto param_idx : binding.argument_to_parameters) {
 			filled[param_idx] = true;
 		}
-		auto variable_mismatch = DeduceVariables(context, sig, call, filled, binding, variable_types);
+		auto variable_mismatch = DeduceVariables(context, sig, call, filled, binding, variables);
 		if (variable_mismatch) {
 			return FunctionMismatch(overload, std::move(function), 0, std::move(*variable_mismatch));
 		}
 		// only the types that use a variable are rebuilt, the others keep their aliases and extension info
 		for (idx_t param_idx = 0; param_idx < sig.GetParameterCount(); param_idx++) {
-			if (!variable_uses[param_idx].uses_variable) {
+			if (!variable_uses[param_idx].UsesAny()) {
 				continue;
 			}
 			if (sig.GetParameter(param_idx).IsVariadic() && !filled[param_idx]) {
@@ -708,7 +899,7 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 				continue;
 			}
 			parameter_types[param_idx] =
-			    BindTypeName(context, sig.GetParameter(param_idx).GetTypeName(), sig, variable_types);
+			    BindTypeName(context, sig.GetParameter(param_idx).GetTypeName(), sig, variables);
 		}
 		// An argument passed as a type variable is cast to the type the variable is determined to be. An overload
 		// that takes any type is selected last, the more so the less the parameter says about the type
@@ -720,7 +911,19 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 			cost += TYPE_VARIABLE_COST - variable_uses[param_idx].depth;
 		}
 	}
-	binding.return_type = BindReturnType(context, sig, variable_types);
+	binding.return_type = BindReturnType(context, sig, variables);
+	for (auto &variable : sig.GetVariables()) {
+		auto &variable_name = variable.GetName().GetIdentifierName();
+		if (variable.IsValue()) {
+			auto entry = variables.values.find(variable_name);
+			if (entry != variables.values.end()) {
+				binding.variable_values[variable_name] = entry->second;
+			}
+		} else if (variables.types.find(variable_name) != variables.types.end()) {
+			binding.variable_types[variable_name] =
+			    GetVariableType(variable.GetName(), sig.GetConstraint(variable.GetName()), variables);
+		}
+	}
 	binding.parameter_types = std::move(parameter_types);
 
 	// all arguments are implicitly castable - with a parameter of an unknown type, the cost is 0
@@ -875,15 +1078,15 @@ vector<LogicalType> FunctionBinder::BindParameterPatterns(optional_ptr<ClientCon
 LogicalType FunctionBinder::BindReturnPattern(optional_ptr<ClientContext> context, const FunctionSignature &signature) {
 	auto &return_type = signature.GetReturnType();
 	return return_type.IsType() ? BindTypePattern(context, return_type.GetTypeName(), signature)
-	                            : BindReturnType(context, signature, variable_types_t());
+	                            : BindReturnType(context, signature, FunctionVariables());
 }
 
 LogicalType FunctionBinder::BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature,
-                                           const variable_types_t &variable_types) {
+                                           const FunctionVariables &variables) {
 	auto &return_type = signature.GetReturnType();
 	switch (return_type.GetKind()) {
 	case ReturnType::Kind::TYPE:
-		return BindTypeName(context, return_type.GetTypeName(), signature, variable_types);
+		return BindTypeName(context, return_type.GetTypeName(), signature, variables);
 	case ReturnType::Kind::ANY:
 		return LogicalType::ANY;
 	case ReturnType::Kind::TABLE:

@@ -337,19 +337,6 @@ bool FunctionSignature::IsSameType(const TypeName &type, const FunctionSignature
 	return constraints == other_constraints;
 }
 
-void FunctionSignature::DeclareTemplates(const LogicalType &type) {
-	TypeVisitor::Contains(type, [&](const LogicalType &child) {
-		if (child.id() == LogicalTypeId::TEMPLATE) {
-			Identifier name(TemplateType::GetName(child));
-			AddVariable(name);
-			if (TemplateType::HasConstraint(child)) {
-				AddConstraint(std::move(name), TemplateType::GetConstraint(child));
-			}
-		}
-		return false;
-	});
-}
-
 string FunctionSignature::ToString() const {
 	vector<string> params;
 	params.reserve(parameters.size());
@@ -667,9 +654,7 @@ void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature,
 	const auto positional_count = signature.GetPositionalParameterCount();
 	arguments.clear();
 	for (idx_t i = 0; i < positional_count; i++) {
-		// a template is of the type of the argument it is called with
-		auto &type = parameter_types[i];
-		arguments.push_back(type.IsTemplated() && i < parameters.size() ? parameters[i].type() : type);
+		arguments.push_back(parameter_types[i]);
 	}
 	auto args_index = signature.GetArgsIndex();
 	for (idx_t i = positional_count; i < parameters.size(); i++) {
@@ -691,9 +676,8 @@ void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature,
 		}
 		auto &param = signature.GetParameter(param_idx.GetIndex());
 		if (!param.AcceptsPosition()) {
-			auto &type = parameter_types[param_idx.GetIndex()];
 			names.push_back(entry.first);
-			arguments.push_back(type.IsTemplated() ? entry.second.type() : type);
+			arguments.push_back(parameter_types[param_idx.GetIndex()]);
 		}
 	}
 	SetNamedArguments(positional_argument_count, std::move(names));

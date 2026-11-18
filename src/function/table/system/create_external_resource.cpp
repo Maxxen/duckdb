@@ -468,8 +468,9 @@ static void DestroyExternalResourceFunction(ClientContext &context, TableFunctio
 void DestroyExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction destroy_fun("destroy_external_resource",
 	                          FunctionSignature()
+	                              .AddVariable("T")
 	                              .AddPositionalOnly("deleter_function", LogicalType::VARCHAR)
-	                              .AddPositionalOnly("payload", LogicalType::TEMPLATE("T"))
+	                              .AddPositionalOnly("payload", TypeName::VARIABLE("T"))
 	                              .SetReturnType(ReturnType::TABLE()),
 	                          DestroyExternalResourceFunction, DestroyExternalResourceBind,
 	                          DestroyExternalResourceInit);

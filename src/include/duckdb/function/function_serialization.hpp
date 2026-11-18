@@ -77,13 +77,6 @@ public:
 	template <class FUNC>
 	static void Serialize(Serializer &serializer, const FUNC &function, optional_ptr<FunctionData> bind_info) {
 		D_ASSERT(!function.GetName().empty());
-		for (auto &argument : function.GetArguments()) {
-			if (argument.IsTemplated()) {
-				throw InternalException("Function %s is bound to the template type %s - templates are resolved "
-				                        "when a function is bound",
-				                        function.GetName(), argument.ToString());
-			}
-		}
 		if (!serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
 			serializer.WriteProperty(500, "name", function.GetName());
 		}
@@ -317,10 +310,6 @@ public:
 	}
 
 	static bool TypeRequiresAssignment(const LogicalType &type) {
-		if (type.IsTemplated()) {
-			// the type the template was deduced to is the one that was serialized
-			return true;
-		}
 		switch (type.id()) {
 		case LogicalTypeId::SQLNULL:
 		case LogicalTypeId::ANY:

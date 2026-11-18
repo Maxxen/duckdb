@@ -106,7 +106,8 @@ unique_ptr<FunctionData> UnionExtractBind(BindScalarFunctionInput &input) {
 
 ScalarFunction UnionExtractFun::GetFunction() {
 	ScalarFunction fun(FunctionSignature()
-	                       .AddParameter("union", LogicalType::TEMPLATE("T", LogicalTypeId::UNION))
+	                       .AddVariable("T", LogicalTypeId::UNION)
+	                       .AddParameter("union", TypeName::VARIABLE("T"))
 	                       .AddParameter("tag", LogicalType::VARCHAR)
 	                       .SetReturnType(ReturnType::ANY(UnionExtractReturnType)),
 	                   UnionExtractFunction, UnionExtractBind);

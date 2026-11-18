@@ -218,24 +218,6 @@
     ]
   },
   {
-    "class": "TemplateTypeInfo",
-    "base": "LogicalTypeInfo",
-    "enum": "TEMPLATE_TYPE_INFO",
-    "members": [
-      {
-        "id": 200,
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "id": 201,
-        "name": "constraint",
-        "type": "LogicalTypeId",
-        "default": "LogicalTypeId::INVALID"
-      }
-    ]
-  },
-  {
     "class": "GeoTypeInfo",
     "base": "LogicalTypeInfo",
     "enum": "GEO_TYPE_INFO",

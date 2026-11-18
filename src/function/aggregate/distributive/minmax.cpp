@@ -414,8 +414,9 @@ static unique_ptr<FunctionExpression> MinMaxUnbind(AggregateFunctionUnbindInput 
 
 template <class OP, class OP_STRING, class OP_VECTOR>
 AggregateFunction GetMinMaxOperator(const string &name) {
-	auto type = LogicalType::TEMPLATE("T");
-	AggregateFunction fun(Identifier(name), FunctionSignature().AddParameter("arg", type).SetReturnType(type), nullptr,
+	auto type = TypeName::VARIABLE("T");
+	AggregateFunction fun(Identifier(name),
+	                      FunctionSignature().AddVariable("T").AddParameter("arg", type).SetReturnType(type), nullptr,
 	                      nullptr, nullptr, nullptr, nullptr, nullptr, BindMinMax<OP, OP_STRING, OP_VECTOR>);
 	fun.SetUnbindCallback(MinMaxUnbind);
 	return fun;
@@ -584,11 +585,12 @@ unique_ptr<FunctionData> MinMaxNBind(BindAggregateFunctionInput &input) {
 
 template <class COMPARATOR>
 AggregateFunction GetMinMaxNFunction() {
-	auto type = LogicalType::TEMPLATE("T");
+	auto type = TypeName::VARIABLE("T");
 	AggregateFunction fun(FunctionSignature()
+	                          .AddVariable("T")
 	                          .AddParameter("arg", type)
 	                          .AddParameter("n", LogicalType::BIGINT)
-	                          .SetReturnType(LogicalType::LIST(type)),
+	                          .SetReturnType(TypeName::LIST(type)),
 	                      nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                      nullptr, MinMaxNBind<COMPARATOR>, nullptr);
 	fun.SetUnbindCallback(MinMaxUnbind);

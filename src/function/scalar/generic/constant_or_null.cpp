@@ -89,10 +89,12 @@ bool ConstantOrNull::IsConstantOrNull(BoundFunctionExpression &expr, const Value
 ScalarFunction ConstantOrNullFun::GetFunction() {
 	ScalarFunction fun("constant_or_null",
 	                   FunctionSignature()
-	                       .AddParameter("arg1", LogicalType::TEMPLATE("T"))
-	                       .AddParameter("arg2", LogicalType::TEMPLATE("U"))
+	                       .AddVariable("T")
+	                       .AddVariable("U")
+	                       .AddParameter("arg1", TypeName::VARIABLE("T"))
+	                       .AddParameter("arg2", TypeName::VARIABLE("U"))
 	                       .AddArgs("args", LogicalType::ANY)
-	                       .SetReturnType(LogicalType::TEMPLATE("T")),
+	                       .SetReturnType(TypeName::VARIABLE("T")),
 	                   ConstantOrNullFunction, ConstantOrNullBind);
 	return fun;
 }

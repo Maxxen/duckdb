@@ -585,7 +585,8 @@ unique_ptr<FunctionData> ListAggregateBind(BindScalarFunctionInput &input) {
 ScalarFunction ListAggregateFun::GetFunction() {
 	// the aggregate that is named determines the type
 	auto result = ScalarFunction(FunctionSignature()
-	                                 .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                                 .AddVariable("T")
+	                                 .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                                 .AddParameter("function_name", LogicalType::VARCHAR)
 	                                 .AddArgs("args", LogicalType::ANY)
 	                                 .SetReturnType(ReturnType::ANY()),
@@ -599,8 +600,8 @@ ScalarFunction ListAggregateFun::GetFunction() {
 }
 
 ScalarFunction ListDistinctFun::GetFunction() {
-	auto list_type = LogicalType::LIST(LogicalType::TEMPLATE("T"));
-	ScalarFunction fun(FunctionSignature().AddParameter("list", list_type).SetReturnType(list_type),
+	auto list_type = TypeName::LIST(TypeName::VARIABLE("T"));
+	ScalarFunction fun(FunctionSignature().AddVariable("T").AddParameter("list", list_type).SetReturnType(list_type),
 	                   ListDistinctFunction, ListAggregatesBind<false>, nullptr, ListAggregatesInitLocalState);
 	fun.SetResolveTypesCallback(ListAggregatesResolveTypes<false>);
 	return fun;
@@ -608,7 +609,8 @@ ScalarFunction ListDistinctFun::GetFunction() {
 
 ScalarFunction ListUniqueFun::GetFunction() {
 	ScalarFunction fun(FunctionSignature()
-	                       .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                       .AddVariable("T")
+	                       .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                       .SetReturnType(LogicalType::UBIGINT),
 	                   ListUniqueFunction, ListAggregatesBind<false>, nullptr, ListAggregatesInitLocalState);
 	fun.SetResolveTypesCallback(ListAggregatesResolveTypes<false>);

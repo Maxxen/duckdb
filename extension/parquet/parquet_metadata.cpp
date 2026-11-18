@@ -1526,9 +1526,10 @@ ParquetFileMetadataFunction::ParquetFileMetadataFunction()
 ParquetBloomProbeFunction::ParquetBloomProbeFunction()
     : TableFunction("parquet_bloom_probe",
                     FunctionSignature()
+                        .AddVariable("T")
                         .AddPositionalOnly("path", LogicalType::VARCHAR)
                         .AddPositionalOnly("column_name", LogicalType::VARCHAR)
-                        .AddPositionalOnly("value", LogicalType::TEMPLATE("T"))
+                        .AddPositionalOnly("value", TypeName::VARIABLE("T"))
                         .SetReturnType(ReturnType::TABLE()),
                     ParquetMetaDataOperator::Function,
                     ParquetMetaDataOperator::Bind<ParquetMetadataOperatorType::BLOOM_PROBE>,

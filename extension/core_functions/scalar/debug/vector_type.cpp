@@ -14,9 +14,11 @@ static void VectorTypeFunction(DataChunk &input, ExpressionState &state, Vector 
 }
 
 ScalarFunction VectorTypeFun::GetFunction() {
-	auto vector_type_fun = ScalarFunction(
-	    FunctionSignature().AddParameter("col", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::VARCHAR),
-	    VectorTypeFunction);
+	auto vector_type_fun = ScalarFunction(FunctionSignature()
+	                                          .AddVariable("T")
+	                                          .AddParameter("col", TypeName::VARIABLE("T"))
+	                                          .SetReturnType(LogicalType::VARCHAR),
+	                                      VectorTypeFunction);
 	vector_type_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	vector_type_fun.SetStability(FunctionStability::VOLATILE);
 	return vector_type_fun;

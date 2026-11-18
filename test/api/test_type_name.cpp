@@ -23,10 +23,9 @@ TEST_CASE("Type names compare, hash and print", "[api][type_name]") {
 	REQUIRE(TypeName(LogicalType::LIST(LogicalType::INTEGER)) != TypeName(LogicalType::LIST(LogicalType::BIGINT)));
 	REQUIRE(TypeName(LogicalType::LIST(LogicalType::INTEGER)).Contains("INTEGER"));
 	REQUIRE(!TypeName(LogicalType::LIST(LogicalType::INTEGER)).Contains("BIGINT"));
-	REQUIRE(TypeName(LogicalType::LIST(LogicalType::TEMPLATE("T"))).ToString() == "T[]");
+	REQUIRE(TypeName::LIST(TypeName::VARIABLE("T")).ToString() == "T[]");
 	REQUIRE(TypeName(LogicalType::DECIMAL(18, 3)).ToString() == "DECIMAL(18,3)");
-	REQUIRE(TypeName(LogicalType::MAP(LogicalType::VARCHAR, LogicalType::TEMPLATE("V"))).ToString() ==
-	        "MAP(VARCHAR, V)");
+	REQUIRE(TypeName::MAP(LogicalType::VARCHAR, TypeName::VARIABLE("V")).ToString() == "MAP(VARCHAR, V)");
 	REQUIRE(TypeName(LogicalType::STRUCT({{"a", LogicalType::INTEGER}})).ToString() == "STRUCT(a INTEGER)");
 }
 

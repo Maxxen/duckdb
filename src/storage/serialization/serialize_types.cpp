@@ -59,9 +59,6 @@ unique_ptr<LogicalTypeInfo> LogicalTypeInfo::Deserialize(Deserializer &deseriali
 	case LogicalTypeInfoType::STRUCT_TYPE_INFO:
 		result = StructTypeInfo::Deserialize(deserializer);
 		break;
-	case LogicalTypeInfoType::TEMPLATE_TYPE_INFO:
-		result = TemplateTypeInfo::Deserialize(deserializer);
-		break;
 	case LogicalTypeInfoType::UNBOUND_TYPE_INFO:
 		result = UnboundTypeInfo::Deserialize(deserializer);
 		break;
@@ -203,19 +200,6 @@ void StructTypeInfo::Serialize(Serializer &serializer) const {
 unique_ptr<LogicalTypeInfo> StructTypeInfo::Deserialize(Deserializer &deserializer) {
 	auto result = duckdb::unique_ptr<StructTypeInfo>(new StructTypeInfo());
 	deserializer.ReadPropertyWithDefault<child_list_t<LogicalType>>(200, "child_types", result->child_types);
-	return std::move(result);
-}
-
-void TemplateTypeInfo::Serialize(Serializer &serializer) const {
-	LogicalTypeInfo::Serialize(serializer);
-	serializer.WritePropertyWithDefault<string>(200, "name", name);
-	serializer.WritePropertyWithDefault<LogicalTypeId>(201, "constraint", constraint, LogicalTypeId::INVALID);
-}
-
-unique_ptr<LogicalTypeInfo> TemplateTypeInfo::Deserialize(Deserializer &deserializer) {
-	auto result = duckdb::unique_ptr<TemplateTypeInfo>(new TemplateTypeInfo());
-	deserializer.ReadPropertyWithDefault<string>(200, "name", result->name);
-	deserializer.ReadPropertyWithExplicitDefault<LogicalTypeId>(201, "constraint", result->constraint, LogicalTypeId::INVALID);
 	return std::move(result);
 }
 

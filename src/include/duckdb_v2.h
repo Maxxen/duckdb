@@ -9533,8 +9533,8 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_log_sink_destroy(duckdb_v2_log_sink_handl
 
 /*!
  * Logical type identifier. The values are the same integers DuckDB uses internally, so round-tripping is lossless. The
- * bind- and UDF-only ids (UNKNOWN, ANY, TEMPLATE) appear here for completeness; they do not show up in result column
- * types in practice.
+ * bind- and UDF-only ids (UNKNOWN, ANY) appear here for completeness; they do not show up in result column types in
+ * practice.
  */
 typedef enum DUCKDB_V2_LOGICAL_TYPE_ID {
 	//! Invalid / unset.

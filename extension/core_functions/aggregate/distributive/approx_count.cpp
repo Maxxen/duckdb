@@ -148,7 +148,10 @@ void ApproxCountDistinctImportState(AggregateImportInputData &input) {
 
 AggregateFunction GetApproxCountDistinctFunction() {
 	auto fun = AggregateFunction(
-	    FunctionSignature().AddParameter("any", LogicalType::TEMPLATE("T")).SetReturnType(LogicalTypeId::BIGINT),
+	    FunctionSignature()
+	        .AddVariable("T")
+	        .AddParameter("any", TypeName::VARIABLE("T"))
+	        .SetReturnType(LogicalTypeId::BIGINT),
 	    AggregateFunction::StateSize<ApproxDistinctCountState>,
 	    AggregateFunction::StateInitialize<ApproxDistinctCountState, ApproxCountDistinctFunction>,
 	    ApproxCountDistinctUpdateFunction,

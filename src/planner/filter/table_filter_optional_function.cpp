@@ -56,9 +56,12 @@ static idx_t OptionalFilterSelect(DataChunk &args, ExpressionState &state, optio
 }
 
 ScalarFunction OptionalFilterScalarFun::GetFunction() {
-	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, OptionalFilterFunction,
-	                    TableFilterFunctions::Bind);
-	func.GetSignature().GetParameter(0).SetName("col");
+	ScalarFunction func(NAME,
+	                    FunctionSignature()
+	                        .AddVariable("T")
+	                        .AddParameter("col", TypeName::VARIABLE("T"))
+	                        .SetReturnType(LogicalType::BOOLEAN),
+	                    OptionalFilterFunction, TableFilterFunctions::Bind);
 	func.SetSelectCallback(OptionalFilterSelect);
 	func.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	func.SetFilterPruneCallback(OptionalFilterScalarFun::FilterPrune);

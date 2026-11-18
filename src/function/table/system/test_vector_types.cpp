@@ -343,10 +343,12 @@ static double TestVectorTypesProgress(ClientContext &context, const FunctionData
 }
 
 void TestVectorTypesFun::RegisterFunction(BuiltinFunctions &set) {
-	TableFunction test_vector_types(
-	    "test_vector_types",
-	    FunctionSignature().AddPositionalOnly("column", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::TABLE()),
-	    TestVectorTypesFunction, TestVectorTypesBind, TestVectorTypesInit);
+	TableFunction test_vector_types("test_vector_types",
+	                                FunctionSignature()
+	                                    .AddVariable("T")
+	                                    .AddPositionalOnly("column", TypeName::VARIABLE("T"))
+	                                    .SetReturnType(ReturnType::TABLE()),
+	                                TestVectorTypesFunction, TestVectorTypesBind, TestVectorTypesInit);
 	test_vector_types.GetSignature()
 	    .AddArgs("args", LogicalType::ANY)
 	    .WithTypedKwargs("options", [](TypedKwargs &options) { options.Add("all_flat", LogicalType::BOOLEAN); });

@@ -168,11 +168,12 @@ ScalarFunctionSet ListExtractFun::GetFunctions() {
 	ScalarFunctionSet list_extract_set("list_extract");
 
 	// the arguments and return types are actually set in the binder function
-	ScalarFunction lfun({LogicalType::LIST(LogicalType::TEMPLATE("T")), LogicalType::BIGINT},
-	                    LogicalType::TEMPLATE("T"), ListExtractFunction, ListExtractBind, ListExtractStats);
-
-	lfun.GetSignature().GetParameter(0).SetName("list");
-	lfun.GetSignature().GetParameter(1).SetName("index");
+	ScalarFunction lfun(FunctionSignature()
+	                        .AddVariable("T")
+	                        .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
+	                        .AddParameter("index", LogicalType::BIGINT)
+	                        .SetReturnType(TypeName::VARIABLE("T")),
+	                    ListExtractFunction, ListExtractBind, ListExtractStats);
 
 	ScalarFunction sfun({LogicalType::VARCHAR, LogicalType::BIGINT}, LogicalType::VARCHAR, ListExtractFunction,
 	                    StringExtractBind);
@@ -189,11 +190,12 @@ ScalarFunctionSet ArrayExtractFun::GetFunctions() {
 	ScalarFunctionSet array_extract_set("array_extract");
 
 	// the arguments and return types are actually set in the binder function
-	ScalarFunction lfun({LogicalType::LIST(LogicalType::TEMPLATE("T")), LogicalType::BIGINT},
-	                    LogicalType::TEMPLATE("T"), ListExtractFunction, ListExtractBind, ListExtractStats);
-
-	lfun.GetSignature().GetParameter(0).SetName("list");
-	lfun.GetSignature().GetParameter(1).SetName("index");
+	ScalarFunction lfun(FunctionSignature()
+	                        .AddVariable("T")
+	                        .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
+	                        .AddParameter("index", LogicalType::BIGINT)
+	                        .SetReturnType(TypeName::VARIABLE("T")),
+	                    ListExtractFunction, ListExtractBind, ListExtractStats);
 
 	ScalarFunction sfun({}, LogicalType::VARCHAR, ListExtractFunction, StringExtractBind);
 	sfun.GetSignature().AddParameter("string", LogicalType::VARCHAR).AddParameter("index", LogicalType::BIGINT);

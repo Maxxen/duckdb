@@ -20,13 +20,13 @@ static void MapEntriesFunction(DataChunk &args, ExpressionState &state, Vector &
 }
 
 ScalarFunction MapEntriesFun::GetFunction() {
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
-	auto map_type = LogicalType::MAP(key_type, val_type);
-	auto row_type = LogicalType::STRUCT({{"key", key_type}, {"value", val_type}});
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
+	auto map_type = TypeName::MAP(key_type, val_type);
+	auto row_type = TypeName::STRUCT({{"key", key_type}, {"value", val_type}});
 
-	ScalarFunction fun({}, LogicalType::LIST(row_type), MapEntriesFunction);
-	fun.GetSignature().AddParameter("map", map_type);
+	ScalarFunction fun({}, TypeName::LIST(row_type), MapEntriesFunction);
+	fun.GetSignature().AddVariable("K").AddVariable("V").AddParameter("map", map_type);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

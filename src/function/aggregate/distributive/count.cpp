@@ -293,12 +293,15 @@ unique_ptr<BaseStatistics> CountPropagateStats(ClientContext &context, BoundAggr
 } // namespace
 
 AggregateFunction CountFunctionBase::GetFunction() {
-	AggregateFunction fun(
-	    FunctionSignature().AddParameter("arg", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::BIGINT),
-	    AggregateFunction::StateSize<int64_t>, AggregateFunction::StateInitialize<int64_t, CountFunction>,
-	    CountFunction::CountScatter, AggregateFunction::StateCombine<int64_t, CountFunction>,
-	    AggregateFunction::StateFinalize<int64_t, int64_t, CountFunction>, FunctionNullHandling::SPECIAL_HANDLING,
-	    CountFunction::CountClusterUpdate);
+	AggregateFunction fun(FunctionSignature()
+	                          .AddVariable("T")
+	                          .AddParameter("arg", TypeName::VARIABLE("T"))
+	                          .SetReturnType(LogicalType::BIGINT),
+	                      AggregateFunction::StateSize<int64_t>,
+	                      AggregateFunction::StateInitialize<int64_t, CountFunction>, CountFunction::CountScatter,
+	                      AggregateFunction::StateCombine<int64_t, CountFunction>,
+	                      AggregateFunction::StateFinalize<int64_t, int64_t, CountFunction>,
+	                      FunctionNullHandling::SPECIAL_HANDLING, CountFunction::CountClusterUpdate);
 	fun.SetName("count");
 	fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 	fun.SetCollationHandling(FunctionCollationHandling::PUSH_DISTINCT_COLLATIONS);

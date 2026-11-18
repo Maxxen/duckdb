@@ -327,9 +327,18 @@ unique_ptr<BaseStatistics> PropagateFloatingStats(ClientContext &context, Functi
 	return result.ToUnique();
 }
 
-//! A decimal of any width and scale. Arguments of the same template are cast to their common decimal
-LogicalType DecimalTemplate(const string &name = "T") {
-	return LogicalType::TEMPLATE(name, LogicalTypeId::DECIMAL);
+//! A signature that declares the given type variables as decimals of any width and scale. Arguments of the same
+//! variable are cast to their common decimal
+FunctionSignature DecimalSignature(const vector<string> &names = {"T"}) {
+	FunctionSignature signature;
+	for (auto &name : names) {
+		signature.AddVariable(Identifier(name), LogicalTypeId::DECIMAL);
+	}
+	return signature;
+}
+
+TypeName DecimalTemplate(const string &name = "T") {
+	return TypeName::VARIABLE(name);
 }
 
 //! Whether adding or subtracting decimals of the given type can overflow: the result has no room for the carry
@@ -418,8 +427,10 @@ unique_ptr<FunctionData> DeserializeDecimalArithmetic(Deserializer &deserializer
 ScalarFunction AddFunction::GetFunction(const LogicalType &type) {
 	D_ASSERT(type.IsNumeric());
 	// a decimal is returned as the decimal it is passed as
-	auto operand_type = type.id() == LogicalTypeId::DECIMAL ? DecimalTemplate() : type;
-	ScalarFunction fn("+", FunctionSignature().AddParameter(operand_type).SetReturnType(operand_type),
+	const bool is_decimal = type.id() == LogicalTypeId::DECIMAL;
+	auto operand_type = is_decimal ? DecimalTemplate() : TypeName(type);
+	auto signature = is_decimal ? DecimalSignature() : FunctionSignature();
+	ScalarFunction fn("+", signature.AddParameter(operand_type).SetReturnType(operand_type),
 	                  ScalarFunction::NopFunction);
 	fn.SetUnaryArgProperties(ArgProperties().StrictlyIncreasing());
 	return fn;
@@ -471,7 +482,7 @@ ScalarFunction AddFunction::GetFunction(const LogicalType &left_type, const Logi
 	if (left_type.IsNumeric() && left_type.id() == right_type.id()) {
 		if (left_type.id() == LogicalTypeId::DECIMAL) {
 			auto function = ScalarFunction("+",
-			                               FunctionSignature()
+			                               DecimalSignature()
 			                                   .AddParameter(DecimalTemplate())
 			                                   .AddParameter(DecimalTemplate())
 			                                   .SetReturnType(ReturnType::ANY(DecimalAddSubtractReturnType)),
@@ -836,7 +847,7 @@ ScalarFunction SubtractFunction::GetFunction(const LogicalType &type) {
 		return func;
 	} else if (type.id() == LogicalTypeId::DECIMAL) {
 		// a decimal is negated as the decimal it is passed as
-		ScalarFunction func("-", FunctionSignature().AddParameter(DecimalTemplate()).SetReturnType(DecimalTemplate()),
+		ScalarFunction func("-", DecimalSignature().AddParameter(DecimalTemplate()).SetReturnType(DecimalTemplate()),
 		                    nullptr, DecimalNegateBind);
 		func.SetUnaryArgProperties(ArgProperties().StrictlyDecreasing());
 		return func;
@@ -858,7 +869,7 @@ ScalarFunction SubtractFunction::GetFunction(const LogicalType &left_type, const
 	if (left_type.IsNumeric() && left_type.id() == right_type.id()) {
 		if (left_type.id() == LogicalTypeId::DECIMAL) {
 			ScalarFunction function("-",
-			                        FunctionSignature()
+			                        DecimalSignature()
 			                            .AddParameter(DecimalTemplate())
 			                            .AddParameter(DecimalTemplate())
 			                            .SetReturnType(ReturnType::ANY(DecimalAddSubtractReturnType)),
@@ -1178,7 +1189,7 @@ ScalarFunctionSet OperatorMultiplyFun::GetFunctions() {
 	for (auto &type : LogicalType::Numeric()) {
 		if (type.id() == LogicalTypeId::DECIMAL) {
 			// the factors are not cast to a common decimal: each has a template of its own
-			ScalarFunction function(FunctionSignature()
+			ScalarFunction function(DecimalSignature({"T1", "T2"})
 			                            .AddParameter(DecimalTemplate("T1"))
 			                            .AddParameter(DecimalTemplate("T2"))
 			                            .SetReturnType(ReturnType::ANY(DecimalMultiplyReturnType)),
@@ -1823,7 +1834,7 @@ ScalarFunctionSet OperatorModuloFun::GetFunctions() {
 			                                  PropagateModuloStats));
 		} else if (type.id() == LogicalTypeId::DECIMAL) {
 			// the remainder of two decimals is of their common decimal
-			ScalarFunction function(FunctionSignature()
+			ScalarFunction function(DecimalSignature()
 			                            .AddParameter(DecimalTemplate())
 			                            .AddParameter(DecimalTemplate())
 			                            .SetReturnType(DecimalTemplate()),

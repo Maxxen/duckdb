@@ -596,12 +596,13 @@ unique_ptr<FunctionData> ApproxTopKBind(BindAggregateFunctionInput &input) {
 AggregateFunction ApproxTopKFun::GetFunction() {
 	using STATE = ApproxTopKState;
 	using OP = ApproxTopKOperation;
-	auto type = LogicalType::TEMPLATE("T");
+	auto type = TypeName::VARIABLE("T");
 	auto fun = AggregateFunction("approx_top_k",
 	                             FunctionSignature()
+	                                 .AddVariable("T")
 	                                 .AddParameter("val", type)
 	                                 .AddParameter("k", LogicalType::BIGINT)
-	                                 .SetReturnType(LogicalType::LIST(type)),
+	                                 .SetReturnType(TypeName::LIST(type)),
 	                             AggregateFunction::StateSize<STATE>, AggregateFunction::StateInitialize<STATE, OP>,
 	                             ApproxTopKUpdate, AggregateFunction::StateCombine<STATE, OP>, ApproxTopKFinalize,
 	                             nullptr, ApproxTopKBind, AggregateFunction::StateDestroy<STATE, OP>);

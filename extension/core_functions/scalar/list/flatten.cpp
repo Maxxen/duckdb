@@ -158,9 +158,9 @@ unique_ptr<BaseStatistics> ListFlattenStats(ClientContext &context, FunctionStat
 } // namespace
 
 ScalarFunction ListFlattenFun::GetFunction() {
-	ScalarFunction fun({}, LogicalType::LIST(LogicalType::TEMPLATE("T")), ListFlattenFunction, nullptr,
-	                   ListFlattenStats);
-	fun.GetSignature().AddParameter("nested_list", LogicalType::LIST(LogicalType::LIST(LogicalType::TEMPLATE("T"))));
+	ScalarFunction fun({}, TypeName::LIST(TypeName::VARIABLE("T")), ListFlattenFunction, nullptr, ListFlattenStats);
+	fun.GetSignature().AddVariable("T").AddParameter("nested_list",
+	                                                 TypeName::LIST(TypeName::LIST(TypeName::VARIABLE("T"))));
 	return fun;
 }
 

@@ -25,8 +25,9 @@ void HivePartitionComponentFunction(DataChunk &args, ExpressionState &state, Vec
 ScalarFunction HivePartitionComponentFun::GetFunction() {
 	ScalarFunction component(HivePartitionComponentFun::Name,
 	                         FunctionSignature()
+	                             .AddVariable("T")
 	                             .AddParameter("name", LogicalType::VARCHAR)
-	                             .AddParameter("value", LogicalType::TEMPLATE("T"))
+	                             .AddParameter("value", TypeName::VARIABLE("T"))
 	                             .SetReturnType(LogicalType::VARCHAR),
 	                         HivePartitionComponentFunction);
 	// a NULL partition value has a directory of its own

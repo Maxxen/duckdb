@@ -124,18 +124,23 @@ static void ListResizeResolveTypes(ResolveScalarFunctionTypesInput &input) {
 
 ScalarFunctionSet ListResizeFun::GetFunctions() {
 	ScalarFunction simple_fun(FunctionSignature()
-	                              .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
-	                              .AddParameter("size", LogicalType::TEMPLATE("SIZE"))
-	                              .SetReturnType(LogicalType::LIST(LogicalType::TEMPLATE("T"))),
+	                              .AddVariable("T")
+	                              .AddVariable("SIZE")
+	                              .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
+	                              .AddParameter("size", TypeName::VARIABLE("SIZE"))
+	                              .SetReturnType(TypeName::LIST(TypeName::VARIABLE("T"))),
 	                          ListResizeFunction, VariableReturnBindData::Bind);
 	simple_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	simple_fun.SetFallible();
 	simple_fun.SetResolveTypesCallback(ListResizeResolveTypes);
 	ScalarFunction default_value_fun(FunctionSignature()
-	                                     .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
-	                                     .AddParameter("size", LogicalType::TEMPLATE("SIZE"))
-	                                     .AddParameter("value", LogicalType::TEMPLATE("VALUE"))
-	                                     .SetReturnType(LogicalType::LIST(LogicalType::TEMPLATE("T"))),
+	                                     .AddVariable("T")
+	                                     .AddVariable("SIZE")
+	                                     .AddVariable("VALUE")
+	                                     .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
+	                                     .AddParameter("size", TypeName::VARIABLE("SIZE"))
+	                                     .AddParameter("value", TypeName::VARIABLE("VALUE"))
+	                                     .SetReturnType(TypeName::LIST(TypeName::VARIABLE("T"))),
 	                                 ListResizeFunction, VariableReturnBindData::Bind);
 	default_value_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	default_value_fun.SetFallible();

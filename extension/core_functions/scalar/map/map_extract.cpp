@@ -109,22 +109,30 @@ static unique_ptr<BaseStatistics> MapExtractValueStats(ClientContext &, Function
 }
 
 ScalarFunction MapExtractValueFun::GetFunction() {
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
 
 	ScalarFunction fun({}, val_type, MapExtractValueFunc);
-	fun.GetSignature().AddParameter("map", LogicalType::MAP(key_type, val_type)).AddParameter("key", key_type);
+	fun.GetSignature()
+	    .AddVariable("K")
+	    .AddVariable("V")
+	    .AddParameter("map", TypeName::MAP(key_type, val_type))
+	    .AddParameter("key", key_type);
 	fun.SetStatisticsCallback(MapExtractValueStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }
 
 ScalarFunction MapExtractFun::GetFunction() {
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
 
-	ScalarFunction fun({}, LogicalType::LIST(val_type), MapExtractListFunc);
-	fun.GetSignature().AddParameter("map", LogicalType::MAP(key_type, val_type)).AddParameter("key", key_type);
+	ScalarFunction fun({}, TypeName::LIST(val_type), MapExtractListFunc);
+	fun.GetSignature()
+	    .AddVariable("K")
+	    .AddVariable("V")
+	    .AddParameter("map", TypeName::MAP(key_type, val_type))
+	    .AddParameter("key", key_type);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

@@ -594,7 +594,8 @@ AggregateFunctionSet AvgFun::GetFunctions() {
 
 	// The first is already opted-in during `BindDecimalAvg`
 	AggregateFunction decimal_avg(FunctionSignature()
-	                                  .AddParameter("x", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
+	                                  .AddVariable("T", LogicalTypeId::DECIMAL)
+	                                  .AddParameter("x", TypeName::VARIABLE("T"))
 	                                  .SetReturnType(ReturnType::ANY()),
 	                              nullptr, nullptr, nullptr, nullptr, nullptr,
 	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalAvg);

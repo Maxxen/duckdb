@@ -133,8 +133,12 @@ static idx_t DynamicFilterSelect(DataChunk &args, ExpressionState &state, option
 }
 
 ScalarFunction DynamicFilterScalarFun::GetFunction() {
-	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
-	func.GetSignature().GetParameter(0).SetName("col");
+	ScalarFunction func(NAME,
+	                    FunctionSignature()
+	                        .AddVariable("T")
+	                        .AddParameter("col", TypeName::VARIABLE("T"))
+	                        .SetReturnType(LogicalType::BOOLEAN),
+	                    nullptr, TableFilterFunctions::Bind);
 	func.SetSelectCallback(DynamicFilterSelect);
 	func.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	func.SetFilterPruneCallback(DynamicFilterScalarFun::FilterPrune);

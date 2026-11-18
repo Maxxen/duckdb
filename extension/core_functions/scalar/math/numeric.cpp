@@ -42,22 +42,24 @@ static unique_ptr<FunctionData> BindIEEEFloatingBinary(BindScalarFunctionInput &
 }
 
 // Names the unary argument "x", shared by most math functions/operators in this file.
-//! A decimal parameter is a decimal of any width and scale, that its argument determines
-static LogicalType NumericParameterType(const LogicalType &type) {
-	return type.id() == LogicalTypeId::DECIMAL ? LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL) : type;
-}
-
-//! The signature of a function over a number "x"
+//! The signature of a function over a number "x". A decimal parameter is a decimal of any width and scale, that its
+//! argument determines
 static FunctionSignature XSignature(const LogicalType &type, ReturnType return_type) {
-	return FunctionSignature().AddParameter("x", NumericParameterType(type)).SetReturnType(std::move(return_type));
+	FunctionSignature signature;
+	if (type.id() == LogicalTypeId::DECIMAL) {
+		signature.AddVariable("T", LogicalTypeId::DECIMAL).AddParameter("x", TypeName::VARIABLE("T"));
+	} else {
+		signature.AddParameter("x", type);
+	}
+	signature.SetReturnType(std::move(return_type));
+	return signature;
 }
 
 //! The signature of a function over a number "x" and a "precision", shared by round, round_even and trunc
 static FunctionSignature XPrecisionSignature(const LogicalType &type, ReturnType return_type) {
-	return FunctionSignature()
-	    .AddParameter("x", NumericParameterType(type))
-	    .AddParameter("precision", LogicalType::INTEGER)
-	    .SetReturnType(std::move(return_type));
+	auto signature = XSignature(type, std::move(return_type));
+	signature.AddParameter("precision", LogicalType::INTEGER);
+	return signature;
 }
 
 static ScalarFunction NameXArgument(ScalarFunction fun, const LogicalType &type) {
@@ -263,7 +265,7 @@ ScalarFunctionSet AbsOperatorFun::GetFunctions() {
 		case LogicalTypeId::DECIMAL: {
 			// a decimal is returned as the decimal it is passed as
 			abs.AddFunction(
-			    ScalarFunction(XSignature(type, NumericParameterType(type)), nullptr, DecimalUnaryOpBind<AbsOperator>));
+			    ScalarFunction(XSignature(type, TypeName::VARIABLE("T")), nullptr, DecimalUnaryOpBind<AbsOperator>));
 			break;
 		}
 		case LogicalTypeId::TINYINT:

@@ -456,19 +456,25 @@ void DefineReservoirQuantile(AggregateFunctionSet &set, const LogicalType &type)
 	set.AddFunction(fun);
 }
 
-void GetReservoirQuantileDecimalFunction(AggregateFunctionSet &set, const vector<LogicalType> &arguments,
-                                         const LogicalType &return_value) {
+//! The quantiles of decimals are of the decimal they are passed as, which the bind determines
+void GetReservoirQuantileDecimalFunction(AggregateFunctionSet &set, const LogicalType &quantile_type) {
+	const bool is_list = quantile_type.id() == LogicalTypeId::LIST;
+	auto decimal_type = TypeName::VARIABLE("T");
 	auto fun = AggregateFunction::UnaryAggregate<ReservoirQuantileState<int64_t>, int64_t, int64_t,
-	                                             ReservoirQuantileScalarOperation>(arguments[0], return_value);
+	                                             ReservoirQuantileScalarOperation>(LogicalType::DECIMAL(18, 0),
+	                                                                               LogicalType::DECIMAL(18, 0));
 	fun.SetBindCallback(BindReservoirQuantileDecimal);
 	fun.SetSerializeCallback(ReservoirQuantileBindData::Serialize);
 	fun.SetDeserializeCallback(DeserializeReservoirQuantileDecimal);
 
-	fun.GetSignature().GetParameter(0).SetName("x");
-	if (arguments[1].id() == LogicalTypeId::LIST) {
-		fun.GetSignature().AddParameter("quantile", arguments[1]);
+	fun.GetSignature() = FunctionSignature()
+	                         .AddVariable("T", LogicalTypeId::DECIMAL)
+	                         .AddParameter("x", decimal_type)
+	                         .SetReturnType(is_list ? TypeName::LIST(decimal_type) : decimal_type);
+	if (is_list) {
+		fun.GetSignature().AddParameter("quantile", quantile_type);
 	} else {
-		fun.GetSignature().AddParameter("quantile", arguments[1], Value::DOUBLE(DEFAULT_QUANTILE));
+		fun.GetSignature().AddParameter("quantile", quantile_type, Value::DOUBLE(DEFAULT_QUANTILE));
 	}
 	fun.GetSignature().AddParameter("sample_size", LogicalType::INTEGER, Value::INTEGER(DEFAULT_SAMPLE_SIZE));
 	set.AddFunction(fun);
@@ -480,13 +486,8 @@ AggregateFunctionSet ReservoirQuantileFun::GetFunctions() {
 	AggregateFunctionSet reservoir_quantile;
 
 	// DECIMAL
-	GetReservoirQuantileDecimalFunction(reservoir_quantile,
-	                                    {LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), LogicalType::DOUBLE},
-	                                    LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL));
-	GetReservoirQuantileDecimalFunction(
-	    reservoir_quantile,
-	    {LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL), LogicalType::LIST(LogicalType::DOUBLE)},
-	    LogicalType::LIST(LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL)));
+	GetReservoirQuantileDecimalFunction(reservoir_quantile, LogicalType::DOUBLE);
+	GetReservoirQuantileDecimalFunction(reservoir_quantile, LogicalType::LIST(LogicalType::DOUBLE));
 
 	DefineReservoirQuantile(reservoir_quantile, LogicalTypeId::TINYINT);
 	DefineReservoirQuantile(reservoir_quantile, LogicalTypeId::SMALLINT);

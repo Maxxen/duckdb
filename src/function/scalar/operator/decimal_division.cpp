@@ -322,10 +322,12 @@ static unique_ptr<FunctionData> DecimalDivisionBind(BindScalarFunctionInput &inp
 ScalarFunctionSet DecimalDivisionFun::GetFunctions() {
 	ScalarFunctionSet set("decimal_division");
 	// each operand is a decimal of its own width and scale
-	auto x_type = LogicalType::TEMPLATE("T1", LogicalTypeId::DECIMAL);
-	auto y_type = LogicalType::TEMPLATE("T2", LogicalTypeId::DECIMAL);
+	auto x_type = TypeName::VARIABLE("T1");
+	auto y_type = TypeName::VARIABLE("T2");
 
 	ScalarFunction two_arg(FunctionSignature()
+	                           .AddVariable("T1", LogicalTypeId::DECIMAL)
+	                           .AddVariable("T2", LogicalTypeId::DECIMAL)
 	                           .AddParameter("x", x_type)
 	                           .AddParameter("y", y_type)
 	                           .SetReturnType(ReturnType::ANY(DecimalDivisionReturnType)),
@@ -334,6 +336,8 @@ ScalarFunctionSet DecimalDivisionFun::GetFunctions() {
 	set.AddFunction(two_arg);
 
 	ScalarFunction three_arg(FunctionSignature()
+	                             .AddVariable("T1", LogicalTypeId::DECIMAL)
+	                             .AddVariable("T2", LogicalTypeId::DECIMAL)
 	                             .AddParameter("x", x_type)
 	                             .AddParameter("y", y_type)
 	                             .AddParameter("scale", LogicalType::INTEGER)

@@ -288,13 +288,6 @@ BoundStatement Binder::BindTableFunctionInternal(BoundTableFunction &table_funct
 	// the function binder has placed them already, but a direct bind may not have done so
 	table_function.FillNamedDefaults(context, named_parameters);
 	table_function.SetCallArguments(parameters, named_parameters);
-	// the arguments of a table in-out function are the columns of its input
-	auto &call_arguments = table_function.GetArguments();
-	for (idx_t i = 0; i < call_arguments.size() && i < input_table_types.size(); i++) {
-		if (call_arguments[i].IsTemplated()) {
-			call_arguments[i] = input_table_types[i];
-		}
-	}
 	if (table_function.bind || table_function.bind_replace || table_function.bind_operator) {
 		TableFunctionBindInput bind_input(parameters, named_parameters, input_table_types, input_table_names,
 		                                  table_function.function_info.get(), this, table_function, ref, input_plan);
@@ -568,7 +561,7 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 			}
 			auto &target_type = i < signature.GetPositionalParameterCount() ? parameter_types[i]
 			                                                                : parameter_types[args_index.GetIndex()];
-			if (target_type != LogicalType::ANY && !target_type.IsTemplated() && target_type != LogicalType::POINTER &&
+			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
 			    target_type.id() != LogicalTypeId::LIST) {
 				input_table_types[i] = target_type;
 			}

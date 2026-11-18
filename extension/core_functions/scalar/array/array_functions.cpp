@@ -32,9 +32,8 @@ static void ArrayGenericBinaryResolveTypes(ResolveScalarFunctionTypesInput &inpu
 	const auto lhs_size = ArrayType::GetSize(bound_function.GetArguments()[0]);
 	const auto rhs_size = ArrayType::GetSize(bound_function.GetArguments()[1]);
 
-	if (lhs_size != rhs_size) {
-		throw BinderException("%s: Array arguments must be of the same size", SQLIdentifier(bound_function.GetName()));
-	}
+	// the signature declares both arrays to be of one size
+	D_ASSERT(lhs_size == rhs_size);
 
 	const auto &lhs_element_type = ArrayType::GetChildType(bound_function.GetArguments()[0]);
 	const auto &rhs_element_type = ArrayType::GetChildType(bound_function.GetArguments()[1]);

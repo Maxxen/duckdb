@@ -125,7 +125,8 @@ unique_ptr<Expression> FunctionBinder::BindScalarWindowFunction(BoundWindowExpre
 	// the function takes the input row as it is: a column of any type each
 	FunctionSignature signature;
 	for (idx_t col_idx = 0; col_idx < input_types.size(); ++col_idx) {
-		signature.AddParameter(LogicalType::TEMPLATE("T" + to_string(col_idx)));
+		auto variable = "T" + to_string(col_idx);
+		signature.AddVariable(Identifier(variable)).AddParameter(TypeName::VARIABLE(variable));
 	}
 	signature.SetReturnType(ReturnType::ANY());
 	ScalarFunction scalar(wexpr.GetName(), std::move(signature), WindowScalarFunc);

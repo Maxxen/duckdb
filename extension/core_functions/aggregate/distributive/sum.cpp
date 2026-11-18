@@ -377,7 +377,8 @@ AggregateFunction GetSumAggregateNoOverflow(PhysicalType type) {
 AggregateFunction GetSumAggregateNoOverflowDecimal() {
 	// the bind selects the decimal the sum is returned as
 	AggregateFunction aggr(FunctionSignature()
-	                           .AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
+	                           .AddVariable("T", LogicalTypeId::DECIMAL)
+	                           .AddParameter("arg", TypeName::VARIABLE("T"))
 	                           .SetReturnType(ReturnType::ANY()),
 	                       nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                       AggregateFunction::NoClusterUpdate(), SumNoOverflowBind);
@@ -676,7 +677,8 @@ AggregateFunctionSet SumFun::GetFunctions() {
 	// decimal
 	// the bind selects the decimal the sum is returned as
 	AggregateFunction decimal_sum(FunctionSignature()
-	                                  .AddParameter("arg", LogicalType::TEMPLATE("T", LogicalTypeId::DECIMAL))
+	                                  .AddVariable("T", LogicalTypeId::DECIMAL)
+	                                  .AddParameter("arg", TypeName::VARIABLE("T"))
 	                                  .SetReturnType(ReturnType::ANY()),
 	                              nullptr, nullptr, nullptr, nullptr, nullptr,
 	                              FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindDecimalSum);

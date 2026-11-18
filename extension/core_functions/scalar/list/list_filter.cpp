@@ -40,8 +40,9 @@ static LogicalType ListFilterBindLambda(ClientContext &context, const vector<Log
 
 ScalarFunction ListFilterFun::GetFunction() {
 	// the elements that pass the filter are a list of the type that goes in
-	auto list_type = LogicalType::LIST(LogicalType::TEMPLATE("T"));
+	auto list_type = TypeName::LIST(TypeName::VARIABLE("T"));
 	ScalarFunction fun(FunctionSignature()
+	                       .AddVariable("T")
 	                       .AddParameter("list", list_type)
 	                       .AddParameter("lambda", LogicalType::LAMBDA)
 	                       .SetReturnType(list_type),

@@ -303,8 +303,10 @@ static unique_ptr<FunctionData> StructContainsBind(BindScalarFunctionInput &inpu
 ScalarFunction StructContainsFun::GetFunction() {
 	ScalarFunction fun("struct_contains",
 	                   FunctionSignature()
-	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
-	                       .AddParameter("entry", LogicalType::TEMPLATE("U"))
+	                       .AddVariable("T", LogicalTypeId::TUPLE)
+	                       .AddVariable("U")
+	                       .AddParameter("struct", TypeName::VARIABLE("T"))
+	                       .AddParameter("entry", TypeName::VARIABLE("U"))
 	                       .SetReturnType(LogicalType::BOOLEAN),
 	                   StructSearchFunction<bool>);
 	fun.SetResolveTypesCallback(StructContainsResolveTypes);
@@ -315,8 +317,10 @@ ScalarFunction StructContainsFun::GetFunction() {
 ScalarFunction StructPositionFun::GetFunction() {
 	ScalarFunction fun("struct_contains",
 	                   FunctionSignature()
-	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
-	                       .AddParameter("entry", LogicalType::TEMPLATE("U"))
+	                       .AddVariable("T", LogicalTypeId::TUPLE)
+	                       .AddVariable("U")
+	                       .AddParameter("struct", TypeName::VARIABLE("T"))
+	                       .AddParameter("entry", TypeName::VARIABLE("U"))
 	                       .SetReturnType(LogicalType::INTEGER),
 	                   StructSearchFunction<int32_t, true>);
 	fun.SetResolveTypesCallback(StructContainsResolveTypes);

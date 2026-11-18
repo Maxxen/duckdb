@@ -70,7 +70,8 @@ static LogicalType StructValuesReturnType(const ResolveReturnTypeInput &input) {
 
 ScalarFunction StructValuesFun::GetFunction() {
 	return ScalarFunction(FunctionSignature()
-	                          .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
+	                          .AddVariable("T", LogicalTypeId::STRUCT)
+	                          .AddParameter("struct", TypeName::VARIABLE("T"))
 	                          .SetReturnType(ReturnType::ANY(StructValuesReturnType)),
 	                      StructValuesFunction);
 }

@@ -15,13 +15,13 @@ static void MapFromEntriesFunction(DataChunk &args, ExpressionState &state, Vect
 }
 
 ScalarFunction MapFromEntriesFun::GetFunction() {
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
-	auto map_type = LogicalType::MAP(key_type, val_type);
-	auto row_type = LogicalType::TUPLE({key_type, val_type});
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
+	auto map_type = TypeName::MAP(key_type, val_type);
+	auto row_type = TypeName::TUPLE({key_type, val_type});
 
 	ScalarFunction fun({}, map_type, MapFromEntriesFunction);
-	fun.GetSignature().AddParameter("map", LogicalType::LIST(row_type));
+	fun.GetSignature().AddVariable("K").AddVariable("V").AddParameter("map", TypeName::LIST(row_type));
 	fun.SetNullHandling(FunctionNullHandling::DEFAULT_NULL_HANDLING);
 
 	fun.SetFallible();

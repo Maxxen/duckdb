@@ -117,9 +117,10 @@ ScalarFunctionSet RepeatFun::GetFunctions() {
 	blob_fun.GetSignature().AddParameter("blob", LogicalType::BLOB).AddParameter("count", LogicalType::BIGINT);
 	repeat.AddFunction(blob_fun);
 
-	ScalarFunction list_fun({}, LogicalType::LIST(LogicalType::TEMPLATE("T")), RepeatListFunction);
+	ScalarFunction list_fun({}, TypeName::LIST(TypeName::VARIABLE("T")), RepeatListFunction);
 	list_fun.GetSignature()
-	    .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	    .AddVariable("T")
+	    .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	    .AddParameter("count", LogicalType::BIGINT);
 	repeat.AddFunction(list_fun);
 

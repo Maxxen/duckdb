@@ -577,10 +577,12 @@ void AddArgMinMaxFunctions(AggregateFunctionSet &fun, const ArgMinMaxNullHandlin
 	// the function is declared as the generic implementation over sort keys, the bind specializes it: the argument
 	// is returned as it is passed, whatever the value it is selected by
 	using GENERIC_VECTOR_OP = VectorArgMinMaxBase<LessThan, ORDER_TYPE, GenericArgMinMaxState<ORDER_TYPE>>;
-	auto type = LogicalType::TEMPLATE("T");
+	auto type = TypeName::VARIABLE("T");
 	AggregateFunction function(FunctionSignature()
+	                               .AddVariable("T")
+	                               .AddVariable("BY")
 	                               .AddParameter("arg", type)
-	                               .AddParameter("val", LogicalType::TEMPLATE("BY"))
+	                               .AddParameter("val", TypeName::VARIABLE("BY"))
 	                               .SetReturnType(type),
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, bind);
 	function.SetCallbacks(GetGenericArgMinMaxCallbacks<GENERIC_VECTOR_OP>(null_handling));
@@ -852,12 +854,14 @@ unique_ptr<FunctionData> ArgMinMaxNBind(BindAggregateFunctionInput &input) {
 
 template <ArgMinMaxNullHandling NULL_HANDLING, bool NULLS_LAST, class COMPARATOR>
 void AddArgMinMaxNFunction(AggregateFunctionSet &set) {
-	auto type = LogicalType::TEMPLATE("T");
+	auto type = TypeName::VARIABLE("T");
 	AggregateFunction function(FunctionSignature()
+	                               .AddVariable("T")
+	                               .AddVariable("BY")
 	                               .AddParameter("arg", type)
-	                               .AddParameter("val", LogicalType::TEMPLATE("BY"))
+	                               .AddParameter("val", TypeName::VARIABLE("BY"))
 	                               .AddParameter("N", LogicalType::BIGINT)
-	                               .SetReturnType(LogicalType::LIST(type)),
+	                               .SetReturnType(TypeName::LIST(type)),
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                           ArgMinMaxNBind<NULL_HANDLING, NULLS_LAST, COMPARATOR>);
 	function.SetFallible(); // the update callback rejects NULL and out-of-range n values at runtime

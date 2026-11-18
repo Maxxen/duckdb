@@ -27,8 +27,8 @@ enums:
     description: |
       Logical type identifier. The values are the same integers DuckDB uses
       internally, so round-tripping is lossless. The bind- and UDF-only ids
-      (UNKNOWN, ANY, TEMPLATE) appear here for completeness; they do not show
-      up in result column types in practice.
+      (UNKNOWN, ANY) appear here for completeness; they do not show up in
+      result column types in practice.
     values:
       LOGICAL_TYPE_ID_INVALID:
         value: 0

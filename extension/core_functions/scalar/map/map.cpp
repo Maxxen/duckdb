@@ -162,12 +162,14 @@ ScalarFunctionSet MapFun::GetFunctions() {
 	ScalarFunction empty_func({}, LogicalType::MAP(LogicalType::SQLNULL, LogicalType::SQLNULL), MapFunction);
 	empty_func.SetFallible();
 
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
-	ScalarFunction value_func({}, LogicalType::MAP(key_type, val_type), MapFunction);
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
+	ScalarFunction value_func({}, TypeName::MAP(key_type, val_type), MapFunction);
 	value_func.GetSignature()
-	    .AddParameter("keys", LogicalType::LIST(key_type))
-	    .AddParameter("values", LogicalType::LIST(val_type));
+	    .AddVariable("K")
+	    .AddVariable("V")
+	    .AddParameter("keys", TypeName::LIST(key_type))
+	    .AddParameter("values", TypeName::LIST(val_type));
 	value_func.SetFallible();
 	value_func.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 

@@ -318,10 +318,13 @@ static void ReadSingleJSONFileGetMetrics(TableFunctionGetMetricsInput &input) {
 
 TableFunction JSONFunctions::GetReadSingleJSONFileTableFunction(shared_ptr<JSONScanInfo> function_info) {
 	const auto scan_type = function_info->type;
-	TableFunction table_function(
-	    "read_single_json_file",
-	    FunctionSignature().AddPositionalOnly("file", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::TABLE()),
-	    ReadSingleJSONFileFunction, ReadSingleJSONFileBind, ReadSingleJSONFileInitGlobal, ReadSingleJSONFileInitLocal);
+	TableFunction table_function("read_single_json_file",
+	                             FunctionSignature()
+	                                 .AddVariable("T")
+	                                 .AddPositionalOnly("file", TypeName::VARIABLE("T"))
+	                                 .SetReturnType(ReturnType::TABLE()),
+	                             ReadSingleJSONFileFunction, ReadSingleJSONFileBind, ReadSingleJSONFileInitGlobal,
+	                             ReadSingleJSONFileInitLocal);
 	JSONScan::TableFunctionDefaults(table_function);
 	if (scan_type != JSONScanType::READ_JSON_OBJECTS) {
 		// read_json_objects always emits a single JSON column - it has no schema options

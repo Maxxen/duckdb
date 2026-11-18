@@ -68,7 +68,8 @@ static unique_ptr<FunctionData> StructKeysBind(BindScalarFunctionInput &input) {
 
 ScalarFunction StructKeysFun::GetFunction() {
 	ScalarFunction func(FunctionSignature()
-	                        .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
+	                        .AddVariable("T", LogicalTypeId::STRUCT)
+	                        .AddParameter("struct", TypeName::VARIABLE("T"))
 	                        .SetReturnType(LogicalType::LIST(LogicalType::VARCHAR)),
 	                    StructKeysFunction, StructKeysBind);
 	return func;

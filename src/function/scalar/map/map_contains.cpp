@@ -56,11 +56,15 @@ static unique_ptr<Expression> BindMapContainsExpression(FunctionBindExpressionIn
 }
 
 ScalarFunction MapContainsFun::GetFunction() {
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
 
 	ScalarFunction fun("map_contains", {}, LogicalType::BOOLEAN, MapContainsFunction);
-	fun.GetSignature().AddParameter("map", LogicalType::MAP(key_type, val_type)).AddParameter("key", key_type);
+	fun.GetSignature()
+	    .AddVariable("K")
+	    .AddVariable("V")
+	    .AddParameter("map", TypeName::MAP(key_type, val_type))
+	    .AddParameter("key", key_type);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetBindExpressionCallback(BindMapContainsExpression);
 	return fun;

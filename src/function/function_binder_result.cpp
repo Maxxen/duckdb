@@ -54,6 +54,10 @@ string FunctionMismatch::IncompatibleArgument::ToString(const SimpleFunction &, 
 }
 
 string FunctionMismatch::TemplateDeduction::ToString(const SimpleFunction &function, const FunctionBindError &) const {
+	if (!inferred_values.empty()) {
+		return StringUtil::Format("Cannot deduce value '%s', it is determined to be both %s and %s", template_name,
+		                          inferred_values[0].ToString(), inferred_values[1].ToString());
+	}
 	auto &steps = inferred_types;
 	if (constraint != LogicalTypeId::INVALID) {
 		return StringUtil::Format("An argument of type %s cannot be passed as %s", steps.back().ToString(),
@@ -72,7 +76,20 @@ string FunctionMismatch::TemplateDeduction::ToString(const SimpleFunction &funct
 }
 
 string FunctionMismatch::TemplateUnresolved::ToString(const SimpleFunction &function, const FunctionBindError &) const {
+	if (is_value) {
+		return StringUtil::Format("Cannot deduce value '%s', it is not determined by the arguments", template_name);
+	}
 	return StringUtil::Format("Cannot deduce template type '%s', it is not determined by the arguments", template_name);
+}
+
+string FunctionMismatch::ConstantRequired::ToString(const SimpleFunction &, const FunctionBindError &error) const {
+	auto &name = error.GetCall().GetArgument(argument).name;
+	if (name.empty()) {
+		return StringUtil::Format("Argument %llu has to be a constant, it determines the value '%s'", argument + 1,
+		                          variable_name);
+	}
+	return StringUtil::Format("Argument \"%s\" has to be a constant, it determines the value '%s'",
+	                          name.GetIdentifierName(), variable_name);
 }
 
 //! The argument a mismatch is about, if it is about a single one
@@ -88,6 +105,8 @@ static optional_idx GetMismatchArgument(const FunctionMismatch &mismatch) {
 		return mismatch.Cast<FunctionMismatch::IncompatibleArgument>().argument;
 	case FunctionMismatch::Type::TEMPLATE_DEDUCTION:
 		return mismatch.Cast<FunctionMismatch::TemplateDeduction>().argument;
+	case FunctionMismatch::Type::CONSTANT_REQUIRED:
+		return mismatch.Cast<FunctionMismatch::ConstantRequired>().argument;
 	case FunctionMismatch::Type::MISSING_PARAMETER:
 	case FunctionMismatch::Type::TEMPLATE_UNRESOLVED:
 		return optional_idx();

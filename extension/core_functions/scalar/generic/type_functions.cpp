@@ -28,9 +28,11 @@ static unique_ptr<Expression> BindTypeOfFunctionExpression(FunctionBindExpressio
 }
 
 ScalarFunction TypeOfFun::GetFunction() {
-	auto fun = ScalarFunction(
-	    FunctionSignature().AddParameter("expression", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::VARCHAR),
-	    TypeOfFunction);
+	auto fun = ScalarFunction(FunctionSignature()
+	                              .AddVariable("T")
+	                              .AddParameter("expression", TypeName::VARIABLE("T"))
+	                              .SetReturnType(LogicalType::VARCHAR),
+	                          TypeOfFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetBindExpressionCallback(BindTypeOfFunctionExpression);
 	return fun;
@@ -67,9 +69,11 @@ static unique_ptr<Expression> BindGetTypeFunctionExpression(FunctionBindExpressi
 }
 
 ScalarFunction GetTypeFun::GetFunction() {
-	auto fun = ScalarFunction(
-	    FunctionSignature().AddParameter("expression", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::TYPE()),
-	    GetTypeFunction, BindGetTypeFunction);
+	auto fun = ScalarFunction(FunctionSignature()
+	                              .AddVariable("T")
+	                              .AddParameter("expression", TypeName::VARIABLE("T"))
+	                              .SetReturnType(LogicalType::TYPE()),
+	                          GetTypeFunction, BindGetTypeFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetBindExpressionCallback(BindGetTypeFunctionExpression);
 	return fun;

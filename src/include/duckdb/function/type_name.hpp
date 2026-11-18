@@ -29,8 +29,21 @@ class TypeName {
 public:
 	DUCKDB_API explicit TypeName(Identifier name);
 	DUCKDB_API TypeName(Identifier name, vector<TypeNameArgument> arguments);
-	//! The name a type is declared by - a template is named by its type variable
+	//! The name a type is declared by
 	DUCKDB_API TypeName(const LogicalType &type); // NOLINT: allow implicit conversion
+	//! For the type constants, e.g. LogicalType::INTEGER
+	DUCKDB_API TypeName(LogicalTypeId type_id); // NOLINT: allow implicit conversion
+
+public:
+	//! The name of a variable of a signature, which the signature declares: FunctionSignature::AddVariable
+	DUCKDB_API static TypeName VARIABLE(const string &name);
+	//! The names of nested types, as LogicalType::LIST etc. build the types
+	DUCKDB_API static TypeName LIST(TypeName child);
+	DUCKDB_API static TypeName ARRAY(TypeName child, TypeName size);
+	DUCKDB_API static TypeName ARRAY(TypeName child, idx_t size);
+	DUCKDB_API static TypeName MAP(TypeName key, TypeName value);
+	DUCKDB_API static TypeName STRUCT(vector<pair<string, TypeName>> children);
+	DUCKDB_API static TypeName TUPLE(vector<TypeName> children);
 
 public:
 	DUCKDB_API const Identifier &GetName() const;

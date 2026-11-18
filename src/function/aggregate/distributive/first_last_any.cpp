@@ -463,9 +463,9 @@ unique_ptr<FunctionData> BindFirst(BindAggregateFunctionInput &input) {
 template <bool LAST, bool SKIP_NULLS>
 void AddFirstOperator(AggregateFunctionSet &set) {
 	// the value is returned as it is passed
-	auto type = LogicalType::TEMPLATE("T");
-	AggregateFunction fun(FunctionSignature().AddParameter("arg", type).SetReturnType(type), nullptr, nullptr, nullptr,
-	                      nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
+	auto type = TypeName::VARIABLE("T");
+	AggregateFunction fun(FunctionSignature().AddVariable("T").AddParameter("arg", type).SetReturnType(type), nullptr,
+	                      nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
 	                      BindFirst<LAST, SKIP_NULLS>);
 	set.AddFunction(fun);
 }

@@ -43,7 +43,7 @@ right argument can not contain NULL values
 statement error
 SELECT array_cosine_distance([1, 2, 3]::{type}[3], [1, 2, 3, 4]::{type}[4]);
 ----
-array_cosine_distance: Array arguments must be of the same size
+Cannot deduce value 'N', it is determined to be both 3 and 4
 
 
 

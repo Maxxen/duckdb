@@ -1014,7 +1014,7 @@ TableFunctionSet MultiFileReader::CreateFunctionSet(TableFunction table_function
 	// the list variant takes files of any type: a file is either a path (VARCHAR) or a STRUCT/VARIANT holding the
 	// path together with the options to open the file with
 	auto list_function = table_function;
-	list_function.GetSignature().SetParameterType(0, LogicalType::LIST(LogicalType::TEMPLATE("T")));
+	list_function.GetSignature().AddVariable("T").SetParameterType(0, TypeName::LIST(TypeName::VARIABLE("T")));
 	auto &list_parameter = list_function.GetSignature().GetParameter(0);
 	if (list_parameter.GetName() == "path") {
 		list_parameter.SetName("paths");

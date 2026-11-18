@@ -1490,7 +1490,8 @@ static void DecodeSortKeyFunction(DataChunk &args, ExpressionState &state, Vecto
 ScalarFunction CreateSortKeyFun::GetFunction() {
 	ScalarFunction sort_key_function("create_sort_key",
 	                                 FunctionSignature()
-	                                     .AddPositionalOnly("key1", LogicalType::TEMPLATE("T"))
+	                                     .AddVariable("T")
+	                                     .AddPositionalOnly("key1", TypeName::VARIABLE("T"))
 	                                     .AddArgs("args", LogicalType::ANY)
 	                                     .SetReturnType(LogicalType::BLOB),
 	                                 CreateSortKeyFunction, CreateSortKeyBind);
@@ -1513,7 +1514,7 @@ unique_ptr<Expression> DecodeSortKeyFun::Bind(unique_ptr<Expression> sort_key, c
 	bind_data->all_constant = all_constant;
 	ScalarFunction definition(
 	    "decode_sort_key",
-	    FunctionSignature().AddParameter(LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()),
+	    FunctionSignature().AddVariable("T").AddParameter(TypeName::VARIABLE("T")).SetReturnType(ReturnType::ANY()),
 	    DecodeSortKeyFunction);
 	vector<unique_ptr<Expression>> children;
 	children.push_back(std::move(sort_key));
@@ -1525,7 +1526,8 @@ unique_ptr<Expression> DecodeSortKeyFun::Bind(unique_ptr<Expression> sort_key, c
 ScalarFunction DecodeSortKeyFun::GetFunction() {
 	ScalarFunction sort_key_function("decode_sort_key",
 	                                 FunctionSignature()
-	                                     .AddParameter("sort_key", LogicalType::TEMPLATE("T"))
+	                                     .AddVariable("T")
+	                                     .AddParameter("sort_key", TypeName::VARIABLE("T"))
 	                                     .AddParameter("col", LogicalType::VARCHAR)
 	                                     .AddParameter("sort_specifier", LogicalType::VARCHAR)
 	                                     .AddArgs("args", LogicalType::VARCHAR)

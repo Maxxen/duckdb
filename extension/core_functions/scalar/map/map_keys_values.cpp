@@ -59,11 +59,11 @@ static unique_ptr<BaseStatistics> MapValuesStats(ClientContext &, FunctionStatis
 
 ScalarFunction MapKeysFun::GetFunction() {
 	//! the arguments and return types are actually set in the binder function
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
 
-	ScalarFunction function({}, LogicalType::LIST(key_type), MapKeysFunction);
-	function.GetSignature().AddParameter("map", LogicalType::MAP(key_type, val_type));
+	ScalarFunction function({}, TypeName::LIST(key_type), MapKeysFunction);
+	function.GetSignature().AddVariable("K").AddVariable("V").AddParameter("map", TypeName::MAP(key_type, val_type));
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 
 	function.SetFallible();
@@ -71,11 +71,11 @@ ScalarFunction MapKeysFun::GetFunction() {
 }
 
 ScalarFunction MapValuesFun::GetFunction() {
-	auto key_type = LogicalType::TEMPLATE("K");
-	auto val_type = LogicalType::TEMPLATE("V");
+	auto key_type = TypeName::VARIABLE("K");
+	auto val_type = TypeName::VARIABLE("V");
 
-	ScalarFunction function({}, LogicalType::LIST(val_type), MapValuesFunction);
-	function.GetSignature().AddParameter("map", LogicalType::MAP(key_type, val_type));
+	ScalarFunction function({}, TypeName::LIST(val_type), MapValuesFunction);
+	function.GetSignature().AddVariable("K").AddVariable("V").AddParameter("map", TypeName::MAP(key_type, val_type));
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	function.SetStatisticsCallback(MapValuesStats);
 

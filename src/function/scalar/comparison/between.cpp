@@ -263,9 +263,12 @@ unique_ptr<FunctionData> BetweenFunctionDeserialize(Deserializer &deserializer, 
 ScalarFunction BetweenFun::GetFunction() {
 	ScalarFunction between_fun("__between",
 	                           FunctionSignature()
-	                               .AddParameter("input", LogicalType::TEMPLATE("T"))
-	                               .AddParameter("lower", LogicalType::TEMPLATE("U"))
-	                               .AddParameter("upper", LogicalType::TEMPLATE("V"))
+	                               .AddVariable("T")
+	                               .AddVariable("U")
+	                               .AddVariable("V")
+	                               .AddParameter("input", TypeName::VARIABLE("T"))
+	                               .AddParameter("lower", TypeName::VARIABLE("U"))
+	                               .AddParameter("upper", TypeName::VARIABLE("V"))
 	                               .SetReturnType(LogicalType::BOOLEAN),
 	                           BetweenFunction, BindBetweenFun);
 	between_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

@@ -111,8 +111,10 @@ template <ExpressionType TYPE>
 static ScalarFunction GetComparisonFunctionInternal(const string &name) {
 	ScalarFunction comparison_fun(Identifier(name),
 	                              FunctionSignature()
-	                                  .AddParameter("left", LogicalType::TEMPLATE("T"))
-	                                  .AddParameter("right", LogicalType::TEMPLATE("U"))
+	                                  .AddVariable("T")
+	                                  .AddVariable("U")
+	                                  .AddParameter("left", TypeName::VARIABLE("T"))
+	                                  .AddParameter("right", TypeName::VARIABLE("U"))
 	                                  .SetReturnType(LogicalType::BOOLEAN),
 	                              ComparisonFunction<TYPE>, ComparisonBind<TYPE>);
 	comparison_fun.SetGetExpressionTypeCallback(ComparisonGetExpressionType<TYPE>);

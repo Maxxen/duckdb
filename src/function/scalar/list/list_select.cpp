@@ -171,10 +171,10 @@ void ListSelectFunction(const DataChunk &args, ExpressionState &state, Vector &r
 } // namespace
 
 ScalarFunction ListWhereFun::GetFunction() {
-	auto fun =
-	    ScalarFunction({}, LogicalType::LIST(LogicalType::TEMPLATE("T")), ListSelectFunction<SetSelectionVectorWhere>);
+	auto fun = ScalarFunction({}, TypeName::LIST(TypeName::VARIABLE("T")), ListSelectFunction<SetSelectionVectorWhere>);
 	fun.GetSignature()
-	    .AddParameter("value_list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	    .AddVariable("T")
+	    .AddParameter("value_list", TypeName::LIST(TypeName::VARIABLE("T")))
 	    .AddParameter("mask_list", LogicalType::LIST(LogicalType::BOOLEAN));
 	// throws if the selection list contains NULL values
 	fun.SetFallible();
@@ -183,9 +183,10 @@ ScalarFunction ListWhereFun::GetFunction() {
 
 ScalarFunction ListSelectFun::GetFunction() {
 	auto fun =
-	    ScalarFunction({}, LogicalType::LIST(LogicalType::TEMPLATE("T")), ListSelectFunction<SetSelectionVectorSelect>);
+	    ScalarFunction({}, TypeName::LIST(TypeName::VARIABLE("T")), ListSelectFunction<SetSelectionVectorSelect>);
 	fun.GetSignature()
-	    .AddParameter("value_list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	    .AddVariable("T")
+	    .AddParameter("value_list", TypeName::LIST(TypeName::VARIABLE("T")))
 	    .AddParameter("index_list", LogicalType::LIST(LogicalType::BIGINT));
 	// throws if the selection list contains NULL values
 	fun.SetFallible();

@@ -174,7 +174,10 @@ AggregateStateLayout StringAggStateType(AggregateLayoutInput &input) {
 AggregateFunctionSet StringAggFun::GetFunctions() {
 	AggregateFunctionSet string_agg;
 	AggregateFunction string_agg_param(
-	    FunctionSignature().AddParameter("str", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::VARCHAR),
+	    FunctionSignature()
+	        .AddVariable("T")
+	        .AddParameter("str", TypeName::VARIABLE("T"))
+	        .SetReturnType(LogicalType::VARCHAR),
 	    AggregateFunction::StateSize<StringAggState>,
 	    AggregateFunction::StateInitialize<StringAggState, StringAggFunction>,
 	    AggregateFunction::UnaryScatterUpdate<StringAggState, string_t, StringAggFunction>,

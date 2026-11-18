@@ -153,8 +153,9 @@ LogicalType LambdaInvokeBindParameters(ClientContext &context, const vector<Logi
 ScalarFunction InvokeFun::GetFunction() {
 	ScalarFunction fun("invoke",
 	                   FunctionSignature()
+	                       .AddVariable("T")
 	                       .AddParameter("lambda", LogicalType::LAMBDA)
-	                       .AddParameter("arg1", LogicalType::TEMPLATE("T"))
+	                       .AddParameter("arg1", TypeName::VARIABLE("T"))
 	                       .SetReturnType(ReturnType::ANY()),
 	                   LambdaInvokeFunction);
 	fun.SetBindCallback(LambdaInvokeBind);

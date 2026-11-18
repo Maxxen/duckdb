@@ -133,7 +133,8 @@ unique_ptr<FunctionData> StructExtractAtFun::GetBindData(idx_t index) {
 ScalarFunction GetKeyExtractFunction() {
 	ScalarFunction fun("struct_extract",
 	                   FunctionSignature()
-	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
+	                       .AddVariable("T", LogicalTypeId::STRUCT)
+	                       .AddParameter("struct", TypeName::VARIABLE("T"))
 	                       .AddParameter("entry", LogicalType::VARCHAR)
 	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::NAME>)),
 	                   StructExtractFunction, StructExtractBind, PropagateStructExtractStats);
@@ -143,7 +144,8 @@ ScalarFunction GetKeyExtractFunction() {
 ScalarFunction GetIndexExtractFunction() {
 	ScalarFunction fun("struct_extract",
 	                   FunctionSignature()
-	                       .AddParameter("tuple", LogicalType::TEMPLATE("T", LogicalTypeId::TUPLE))
+	                       .AddVariable("T", LogicalTypeId::TUPLE)
+	                       .AddParameter("tuple", TypeName::VARIABLE("T"))
 	                       .AddParameter("index", LogicalType::BIGINT)
 	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::INDEX>)),
 	                   StructExtractFunction, StructExtractBindIndex, PropagateStructExtractStats);
@@ -153,7 +155,8 @@ ScalarFunction GetIndexExtractFunction() {
 ScalarFunction GetExtractAtFunction() {
 	ScalarFunction fun("struct_extract_at",
 	                   FunctionSignature()
-	                       .AddParameter("struct", LogicalType::TEMPLATE("T", LogicalTypeId::STRUCT))
+	                       .AddVariable("T", LogicalTypeId::STRUCT)
+	                       .AddParameter("struct", TypeName::VARIABLE("T"))
 	                       .AddParameter("index", LogicalType::BIGINT)
 	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::INDEX_AT>)),
 	                   StructExtractFunction, StructExtractBindIndex, PropagateStructExtractStats);

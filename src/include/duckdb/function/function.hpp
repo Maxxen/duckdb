@@ -474,9 +474,7 @@ public:
 		return_type = std::move(return_type_p);
 		return *this;
 	}
-	//! The same, declaring the type by what it is: a template declares its type variable
 	auto SetReturnType(const LogicalType &type) -> FunctionSignature & {
-		DeclareTemplates(type);
 		return SetReturnType(ReturnType(type));
 	}
 	auto SetReturnType(LogicalTypeId type_id) -> FunctionSignature & {
@@ -484,10 +482,6 @@ public:
 	}
 
 	//! Changes the type a parameter declares
-	auto SetParameterType(idx_t index, const LogicalType &type) -> void {
-		DeclareTemplates(type);
-		parameters[index].type = TypeName(type);
-	}
 	auto SetParameterType(idx_t index, TypeName type) -> void {
 		parameters[index].type = std::move(type);
 	}
@@ -508,6 +502,11 @@ public:
 	//! Declares a variable - a type variable, unless it is of another kind
 	DUCKDB_API auto AddVariable(Identifier name, TypeVariable::Kind kind = TypeVariable::Kind::TYPE)
 	    -> FunctionSignature &;
+	//! Declares a type variable that stands for a type of the given kind, e.g. "T IS STRUCT"
+	auto AddVariable(Identifier name, LogicalTypeId constraint) -> FunctionSignature & {
+		AddVariable(name);
+		return AddConstraint(std::move(name), constraint);
+	}
 	//! Constrains a type variable to types of a kind
 	DUCKDB_API auto AddConstraint(Identifier variable, LogicalTypeId kind) -> FunctionSignature &;
 	//! Whether a type of this signature takes an argument of any type as it is: ANY, or an unconstrained type variable
@@ -572,32 +571,22 @@ public:
 		parameters.emplace_back(std::move(name), std::move(type), std::move(default_value), kind);
 		return *this;
 	}
-	//! The same, declaring the type by what it is: a template declares its type variable
-	auto AddParameter(Identifier name, const LogicalType &type, optional<Value> default_value = {},
-	                  FunctionParameterKind kind = FunctionParameterKind::STANDARD) -> FunctionSignature & {
-		DeclareTemplates(type);
-		return AddParameter(std::move(name), TypeName(type), std::move(default_value), kind);
-	}
 	//! Adds a positional-only parameter declared without a name, see FunctionParameter::Unnamed
 	auto AddParameter(TypeName type) -> FunctionSignature & {
 		parameters.push_back(FunctionParameter::Unnamed(std::move(type), parameters.size()));
 		return *this;
 	}
-	auto AddParameter(const LogicalType &type) -> FunctionSignature & {
-		DeclareTemplates(type);
-		return AddParameter(TypeName(type));
-	}
-	auto AddKeywordOnly(Identifier name, LogicalType type, optional<Value> default_value = {}) -> FunctionSignature & {
+	auto AddKeywordOnly(Identifier name, TypeName type, optional<Value> default_value = {}) -> FunctionSignature & {
 		return AddParameter(std::move(name), std::move(type), std::move(default_value),
 		                    FunctionParameterKind::KEYWORD_ONLY);
 	}
-	auto AddPositionalOnly(Identifier name, LogicalType type) -> FunctionSignature & {
+	auto AddPositionalOnly(Identifier name, TypeName type) -> FunctionSignature & {
 		return AddParameter(std::move(name), std::move(type), {}, FunctionParameterKind::POSITIONAL_ONLY);
 	}
-	auto AddArgs(Identifier name, LogicalType type) -> FunctionSignature & {
+	auto AddArgs(Identifier name, TypeName type) -> FunctionSignature & {
 		return AddParameter(std::move(name), std::move(type), {}, FunctionParameterKind::VAR_POSITIONAL);
 	}
-	auto AddKwargs(Identifier name, LogicalType type) -> FunctionSignature & {
+	auto AddKwargs(Identifier name, TypeName type) -> FunctionSignature & {
 		return AddParameter(std::move(name), std::move(type), {}, FunctionParameterKind::VAR_KEYWORD);
 	}
 
@@ -662,9 +651,6 @@ public:
 	hash_t Hash() const;
 
 private:
-	//! Declares the type variable and the constraint of every template a type holds
-	DUCKDB_API void DeclareTemplates(const LogicalType &type);
-
 private:
 	vector<FunctionParameter> parameters;
 	shared_ptr<TypedKwargs> typed_kwargs; // optional "schema" for the accepted **kwargs

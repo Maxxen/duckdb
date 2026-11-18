@@ -326,7 +326,8 @@ ScalarFunctionSet LengthFun::GetFunctions() {
 	length.AddFunction(bit_fun);
 
 	ScalarFunction list_fun(FunctionSignature()
-	                            .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                            .AddVariable("T")
+	                            .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                            .SetReturnType(LogicalType::BIGINT),
 	                        nullptr);
 	list_fun.SetResolveTypesCallback(ArrayOrListLengthResolveTypes);
@@ -349,7 +350,8 @@ ScalarFunctionSet ArrayLengthFun::GetFunctions() {
 	ScalarFunctionSet array_length("array_length");
 
 	ScalarFunction unary(FunctionSignature()
-	                         .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                         .AddVariable("T")
+	                         .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                         .SetReturnType(LogicalType::BIGINT),
 	                     nullptr);
 	unary.SetResolveTypesCallback(ArrayOrListLengthResolveTypes);
@@ -357,7 +359,8 @@ ScalarFunctionSet ArrayLengthFun::GetFunctions() {
 	array_length.AddFunction(unary);
 
 	ScalarFunction binary(FunctionSignature()
-	                          .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                          .AddVariable("T")
+	                          .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                          .AddParameter("dimension", LogicalType::BIGINT)
 	                          .SetReturnType(LogicalType::BIGINT),
 	                      nullptr, ArrayOrListLengthBinaryBind);

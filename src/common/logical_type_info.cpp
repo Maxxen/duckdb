@@ -524,29 +524,6 @@ unique_ptr<LogicalTypeInfo> IntegerLiteralTypeInfo::Copy() const {
 }
 
 //===--------------------------------------------------------------------===//
-// Template Type Info
-//===--------------------------------------------------------------------===//
-TemplateTypeInfo::TemplateTypeInfo() : LogicalTypeInfo(LogicalTypeInfoType::TEMPLATE_TYPE_INFO) {
-}
-
-TemplateTypeInfo::TemplateTypeInfo(string name_p)
-    : LogicalTypeInfo(LogicalTypeInfoType::TEMPLATE_TYPE_INFO), name(std::move(name_p)) {
-}
-
-TemplateTypeInfo::TemplateTypeInfo(string name_p, LogicalTypeId constraint_p)
-    : LogicalTypeInfo(LogicalTypeInfoType::TEMPLATE_TYPE_INFO), name(std::move(name_p)), constraint(constraint_p) {
-}
-
-bool TemplateTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
-	auto &other = other_p->Cast<TemplateTypeInfo>();
-	return name == other.name && constraint == other.constraint;
-}
-
-unique_ptr<LogicalTypeInfo> TemplateTypeInfo::Copy() const {
-	return make_uniq<TemplateTypeInfo>(*this);
-}
-
-//===--------------------------------------------------------------------===//
 // Geo Type Info
 //===--------------------------------------------------------------------===//
 GeoTypeInfo::GeoTypeInfo() : LogicalTypeInfo(LogicalTypeInfoType::GEO_TYPE_INFO) {

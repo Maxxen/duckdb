@@ -51,7 +51,8 @@ static unique_ptr<FunctionData> CardinalityBind(BindScalarFunctionInput &input) 
 
 ScalarFunction CardinalityFun::GetFunction() {
 	ScalarFunction fun(FunctionSignature()
-	                       .AddParameter("map", LogicalType::TEMPLATE("T"))
+	                       .AddVariable("T")
+	                       .AddParameter("map", TypeName::VARIABLE("T"))
 	                       .AddArgs("args", LogicalType::ANY)
 	                       .SetReturnType(LogicalType::UBIGINT),
 	                   CardinalityFunction, CardinalityBind);

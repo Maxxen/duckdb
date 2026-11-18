@@ -137,7 +137,6 @@ static bool TryGetBuiltinPhysicalType(LogicalTypeId id, PhysicalType &result) no
 	case LogicalTypeId::UNKNOWN:
 	case LogicalTypeId::STRING_LITERAL:
 	case LogicalTypeId::INTEGER_LITERAL:
-	case LogicalTypeId::TEMPLATE:
 		result = PhysicalType::INVALID;
 		return true;
 	case LogicalTypeId::UNBOUND:
@@ -294,8 +293,6 @@ bool LogicalType::HasParameters() const {
 		return info_type == LogicalTypeInfoType::ANY_TYPE_INFO;
 	case LogicalTypeId::INTEGER_LITERAL:
 		return info_type == LogicalTypeInfoType::INTEGER_LITERAL_TYPE_INFO;
-	case LogicalTypeId::TEMPLATE:
-		return info_type == LogicalTypeInfoType::TEMPLATE_TYPE_INFO;
 	case LogicalTypeId::GEOMETRY:
 		return info_type == LogicalTypeInfoType::GEO_TYPE_INFO;
 	case LogicalTypeId::UNBOUND:
@@ -679,16 +676,6 @@ string LogicalType::ToString() const {
 			result += "\"NULL\"";
 			break;
 		}
-		case LogicalTypeId::TEMPLATE: {
-			if (!type.HasParameters()) {
-				result += "T";
-				break;
-			}
-			// a constrained template reads as the kind of type it stands for, e.g. DECIMAL
-			result += TemplateType::HasConstraint(type) ? EnumUtil::ToString(TemplateType::GetConstraint(type))
-			                                            : TemplateType::GetName(type);
-			break;
-		}
 		case LogicalTypeId::GEOMETRY: {
 			if (!GeoType::HasCRS(type)) {
 				result += "GEOMETRY";
@@ -843,7 +830,6 @@ bool LogicalType::IsComplete() const {
 		case LogicalTypeId::INVALID:
 		case LogicalTypeId::UNKNOWN:
 		case LogicalTypeId::ANY:
-		case LogicalTypeId::TEMPLATE:
 			return true; // These are incomplete by default
 		case LogicalTypeId::LIST:
 		case LogicalTypeId::MAP:
@@ -882,10 +868,6 @@ bool LogicalType::IsComplete() const {
 			return false; // Nested types are checked by TypeVisitor recursion
 		}
 	});
-}
-
-bool LogicalType::IsTemplated() const {
-	return TypeVisitor::Contains(*this, LogicalTypeId::TEMPLATE);
 }
 
 bool LogicalType::SupportsRegularUpdate() const {
@@ -1208,7 +1190,6 @@ static idx_t GetLogicalTypeScore(const LogicalType &type) {
 	case LogicalTypeId::SQLNULL:
 	case LogicalTypeId::UNKNOWN:
 	case LogicalTypeId::ANY:
-	case LogicalTypeId::TEMPLATE:
 	case LogicalTypeId::STRING_LITERAL:
 	case LogicalTypeId::INTEGER_LITERAL:
 		return 0;
@@ -2019,42 +2000,6 @@ LogicalType LogicalType::INTEGER_LITERAL(const Value &constant) { // NOLINT
 	}
 	auto type_info = make_uniq<IntegerLiteralTypeInfo>(constant);
 	return LogicalType(LogicalTypeId::INTEGER_LITERAL, std::move(type_info));
-}
-
-//===--------------------------------------------------------------------===//
-// Template Type
-//===--------------------------------------------------------------------===//
-LogicalType LogicalType::TEMPLATE(const string &name) {
-	D_ASSERT(!name.empty());
-	auto type_info = make_uniq<TemplateTypeInfo>(name);
-	return LogicalType(LogicalTypeId::TEMPLATE, std::move(type_info));
-}
-
-LogicalType LogicalType::TEMPLATE(const string &name, LogicalTypeId constraint) {
-	D_ASSERT(!name.empty());
-	auto type_info = make_uniq<TemplateTypeInfo>(name, constraint);
-	return LogicalType(LogicalTypeId::TEMPLATE, std::move(type_info));
-}
-
-bool TemplateType::HasConstraint(const LogicalType &type) {
-	return GetConstraint(type) != LogicalTypeId::INVALID;
-}
-
-LogicalTypeId TemplateType::GetConstraint(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::TEMPLATE);
-	if (!type.HasParameters()) {
-		return LogicalTypeId::INVALID;
-	}
-	auto &info = type.GetTypeInfo();
-	D_ASSERT(info.type == LogicalTypeInfoType::TEMPLATE_TYPE_INFO);
-	return info.Cast<TemplateTypeInfo>().constraint;
-}
-
-const string &TemplateType::GetName(const LogicalType &type) {
-	D_ASSERT(type.id() == LogicalTypeId::TEMPLATE);
-	auto &info = type.GetTypeInfo();
-	D_ASSERT(info.type == LogicalTypeInfoType::TEMPLATE_TYPE_INFO);
-	return info.Cast<TemplateTypeInfo>().name;
 }
 
 //===--------------------------------------------------------------------===//

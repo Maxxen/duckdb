@@ -636,9 +636,9 @@ unique_ptr<FunctionData> BindModeAggregate(BindAggregateFunctionInput &input) {
 
 AggregateFunctionSet ModeFun::GetFunctions() {
 	AggregateFunctionSet mode("mode");
-	auto type = LogicalType::TEMPLATE("T");
-	AggregateFunction fun(FunctionSignature().AddParameter("x", type).SetReturnType(type), nullptr, nullptr, nullptr,
-	                      nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	auto type = TypeName::VARIABLE("T");
+	AggregateFunction fun(FunctionSignature().AddVariable("T").AddParameter("x", type).SetReturnType(type), nullptr,
+	                      nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                      AggregateFunction::NoClusterUpdate(), BindModeAggregate);
 	mode.AddFunction(fun);
 	return mode;
@@ -781,10 +781,12 @@ unique_ptr<FunctionData> BindEntropyAggregate(BindAggregateFunctionInput &input)
 
 AggregateFunctionSet EntropyFun::GetFunctions() {
 	AggregateFunctionSet entropy("entropy");
-	AggregateFunction fun(
-	    FunctionSignature().AddParameter("x", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::DOUBLE), nullptr,
-	    nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
-	    AggregateFunction::NoClusterUpdate(), BindEntropyAggregate);
+	AggregateFunction fun(FunctionSignature()
+	                          .AddVariable("T")
+	                          .AddParameter("x", TypeName::VARIABLE("T"))
+	                          .SetReturnType(LogicalType::DOUBLE),
+	                      nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
+	                      AggregateFunction::NoClusterUpdate(), BindEntropyAggregate);
 	entropy.AddFunction(fun);
 	return entropy;
 }

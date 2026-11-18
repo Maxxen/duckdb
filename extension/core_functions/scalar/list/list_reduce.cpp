@@ -334,7 +334,8 @@ void LambdaFunctions::ListReduceFunction(DataChunk &args, ExpressionState &state
 ScalarFunctionSet ListReduceFun::GetFunctions() {
 	// the bind determines what the lambda reduces the list to
 	ScalarFunction fun(FunctionSignature()
-	                       .AddParameter("list", LogicalType::LIST(LogicalType::TEMPLATE("T")))
+	                       .AddVariable("T")
+	                       .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                       .AddParameter("lambda", LogicalType::LAMBDA)
 	                       .SetReturnType(ReturnType::ANY()),
 	                   LambdaFunctions::ListReduceFunction, ListReduceBind);
@@ -348,7 +349,7 @@ ScalarFunctionSet ListReduceFun::GetFunctions() {
 	ScalarFunctionSet set;
 	set.AddFunction(fun);
 	// the initial value is of a template of its own: the bind casts it to what the lambda returns
-	fun.GetSignature().AddParameter("initial_value", LogicalType::TEMPLATE("INITIAL"));
+	fun.GetSignature().AddVariable("INITIAL").AddParameter("initial_value", TypeName::VARIABLE("INITIAL"));
 	set.AddFunction(fun);
 	return set;
 }

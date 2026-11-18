@@ -63,9 +63,11 @@ static void AliasFunction(DataChunk &args, ExpressionState &state, Vector &resul
 }
 
 ScalarFunction AliasFun::GetFunction() {
-	auto fun = ScalarFunction(
-	    FunctionSignature().AddParameter("expr", LogicalType::TEMPLATE("T")).SetReturnType(LogicalType::VARCHAR),
-	    AliasFunction, AliasBind);
+	auto fun = ScalarFunction(FunctionSignature()
+	                              .AddVariable("T")
+	                              .AddParameter("expr", TypeName::VARIABLE("T"))
+	                              .SetReturnType(LogicalType::VARCHAR),
+	                          AliasFunction, AliasBind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.GetProperties().SetRequiresExpressionNames(true);
 	fun.SetSerializeCallback(AliasSerialize);

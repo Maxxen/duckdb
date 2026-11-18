@@ -1014,10 +1014,12 @@ bool ExportAggregateFunctionBindData::Equals(const FunctionData &other_p) const 
 
 ScalarFunction FinalizeFun::GetFunction() {
 	// the state determines what it is finalized to
-	auto function = ScalarFunction(
-	    "finalize",
-	    FunctionSignature().AddParameter("state", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()),
-	    AggregateStateFinalize, BindAggregateState, nullptr, InitFinalizeState);
+	auto function = ScalarFunction("finalize",
+	                               FunctionSignature()
+	                                   .AddVariable("T")
+	                                   .AddParameter("state", TypeName::VARIABLE("T"))
+	                                   .SetReturnType(ReturnType::ANY()),
+	                               AggregateStateFinalize, BindAggregateState, nullptr, InitFinalizeState);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 
 	return function;
@@ -1027,8 +1029,10 @@ ScalarFunction CombineFun::GetFunction() {
 	// the states are of templates of their own: the bind reports states that cannot be combined
 	auto function = ScalarFunction("combine",
 	                               FunctionSignature()
-	                                   .AddParameter("state1", LogicalType::TEMPLATE("T"))
-	                                   .AddParameter("state2", LogicalType::TEMPLATE("U"))
+	                                   .AddVariable("T")
+	                                   .AddVariable("U")
+	                                   .AddParameter("state1", TypeName::VARIABLE("T"))
+	                                   .AddParameter("state2", TypeName::VARIABLE("U"))
 	                                   .SetReturnType(ReturnType::ANY()),
 	                               AggregateStateCombine, BindAggregateState, nullptr, InitCombineState);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
@@ -1039,19 +1043,22 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 	ScalarFunctionSet set("to_aggregate_state");
 	// the signature is a list of types, or of their names - the bind reports what is not one
 	auto signature = FunctionSignature()
-	                     .AddPositionalOnly("data", LogicalType::TEMPLATE("T"))
+	                     .AddVariable("T")
+	                     .AddVariable("SIGNATURE")
+	                     .AddPositionalOnly("data", TypeName::VARIABLE("T"))
 	                     .AddPositionalOnly("name", LogicalType::VARCHAR)
-	                     .AddPositionalOnly("signature", LogicalType::TEMPLATE("SIGNATURE"))
+	                     .AddPositionalOnly("signature", TypeName::VARIABLE("SIGNATURE"))
 	                     .SetReturnType(ReturnType::ANY());
 	for (idx_t optional_args = 0; optional_args < 3; optional_args++) {
 		if (optional_args == 1) {
 			// optional fourth argument: constant parameter values as a list with one entry per argument (e.g.
 			// [NULL, ','])
-			signature.AddPositionalOnly("constant_parameters", LogicalType::TEMPLATE("CONSTANTS"));
+			signature.AddVariable("CONSTANTS")
+			    .AddPositionalOnly("constant_parameters", TypeName::VARIABLE("CONSTANTS"));
 		} else if (optional_args == 2) {
 			// optional fifth argument: the ORDER BY of an ordered aggregate, as a list of {column, order} structs
 			// (e.g. [{'column': 1, 'order': 'DESC NULLS LAST'}])
-			signature.AddPositionalOnly("order_by", LogicalType::TEMPLATE("ORDER_BY"));
+			signature.AddVariable("ORDER_BY").AddPositionalOnly("order_by", TypeName::VARIABLE("ORDER_BY"));
 		}
 		ScalarFunction function("to_aggregate_state", signature, ToAggregateStateFunction, ToAggregateStateBind);
 		function.SetResolveTypesCallback(ToAggregateStateResolveTypes);
@@ -1063,11 +1070,14 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 
 AggregateFunction CombineAggrFun::GetFunction() {
 	// the states that are combined determine the state that is returned
-	auto function = AggregateFunction(
-	    "combine_aggr",
-	    FunctionSignature().AddParameter("arg", LogicalType::TEMPLATE("T")).SetReturnType(ReturnType::ANY()), nullptr,
-	    nullptr, CombineAggrUpdate, nullptr, CombineAggrFinalize, FunctionNullHandling::SPECIAL_HANDLING, nullptr,
-	    CombineAggrBind, nullptr, nullptr, nullptr);
+	auto function =
+	    AggregateFunction("combine_aggr",
+	                      FunctionSignature()
+	                          .AddVariable("T")
+	                          .AddParameter("arg", TypeName::VARIABLE("T"))
+	                          .SetReturnType(ReturnType::ANY()),
+	                      nullptr, nullptr, CombineAggrUpdate, nullptr, CombineAggrFinalize,
+	                      FunctionNullHandling::SPECIAL_HANDLING, nullptr, CombineAggrBind, nullptr, nullptr, nullptr);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// importing states validates them, and the underlying combine can throw (e.g. mismatched approx_top_k k values)
 	function.SetFallible();
@@ -1080,7 +1090,8 @@ AggregateFunctionSet CombineAggrFun::GetFunctions() {
 	auto repeated =
 	    AggregateFunction("combine_aggr",
 	                      FunctionSignature()
-	                          .AddParameter("arg", LogicalType::TEMPLATE("T"))
+	                          .AddVariable("T")
+	                          .AddParameter("arg", TypeName::VARIABLE("T"))
 	                          .AddParameter("multiplicities", LogicalType::BIGINT)
 	                          .SetReturnType(ReturnType::ANY()),
 	                      nullptr, nullptr, CombineAggrUpdate, nullptr, CombineAggrFinalize,

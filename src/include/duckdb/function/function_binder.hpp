@@ -58,6 +58,15 @@ struct ResolvedTableFunction {
 //! be, in the order they were inferred - the last one is the type it stands for
 using variable_types_t = case_insensitive_map_t<vector<LogicalType>>;
 
+//! What a call determines the variables of a signature to be
+struct FunctionVariables {
+	//! The types of the type variables
+	variable_types_t types;
+	//! The values of the value variables. NULL if the arguments that determine one say nothing, as an unresolved
+	//! parameter does
+	case_insensitive_map_t<Value> values;
+};
+
 //! An overload that matches a call, and how the arguments of the call are passed to it
 struct FunctionBinding {
 	//! The index of the overload in the function set
@@ -93,6 +102,10 @@ struct FunctionBinding {
 	vector<LogicalType> parameter_types;
 	//! The return type of the overload, with the templates substituted
 	LogicalType return_type;
+	//! What the call determines the variables of the overload to be: the type of every type variable, and the
+	//! value of every value variable
+	case_insensitive_map_t<LogicalType> variable_types;
+	case_insensitive_map_t<Value> variable_values;
 
 private:
 	friend class FunctionBinder;
@@ -111,9 +124,20 @@ struct FunctionCallArgument {
 	    : FunctionCallArgument(LogicalType(id)) {
 	}
 
+	//! An argument whose value is known, e.g. to determine a value variable of a signature
+	static FunctionCallArgument Constant(Value value, Identifier name = Identifier()) {
+		FunctionCallArgument result(value.type(), std::move(name));
+		result.constant = std::move(value);
+		return result;
+	}
+
 	LogicalType type;
 	Identifier name;
 	QueryLocation location;
+	//! The value of the argument, if the caller knows it
+	optional<Value> constant;
+	//! The expression of the argument, if it has one: its value is used if it is constant
+	optional_ptr<const Expression> expression;
 };
 
 //! The arguments of a call to select an overload for - the positional arguments, followed by the named ones
@@ -165,7 +189,8 @@ public:
 		ALREADY_PASSED_BY_POSITION,
 		INCOMPATIBLE_ARGUMENT,
 		TEMPLATE_DEDUCTION,
-		TEMPLATE_UNRESOLVED
+		TEMPLATE_UNRESOLVED,
+		CONSTANT_REQUIRED
 	};
 
 	//! A parameter without a default is not filled by the call
@@ -222,6 +247,8 @@ public:
 		vector<LogicalType> inferred_types;
 		//! The kind of type the template stands for, if the conflicting type is not of that kind
 		LogicalTypeId constraint = LogicalTypeId::INVALID;
+		//! For a value variable: the value it was determined to be, and the value that conflicts with it
+		vector<Value> inferred_values;
 
 		string ToString(const SimpleFunction &function, const FunctionBindError &error) const;
 	};
@@ -229,13 +256,23 @@ public:
 	struct TemplateUnresolved {
 		static constexpr auto TYPE = Type::TEMPLATE_UNRESOLVED;
 		string template_name;
+		//! Whether the variable stands for a value rather than a type
+		bool is_value = false;
+
+		string ToString(const SimpleFunction &function, const FunctionBindError &error) const;
+	};
+	//! An argument that determines a value variable of the overload is not a constant
+	struct ConstantRequired {
+		static constexpr auto TYPE = Type::CONSTANT_REQUIRED;
+		idx_t argument;
+		string variable_name;
 
 		string ToString(const SimpleFunction &function, const FunctionBindError &error) const;
 	};
 
 	//! The alternatives are in the order of Type
 	using Reason = std::variant<MissingParameter, TooManyArguments, UnknownNamedArgument, AlreadyPassedByPosition,
-	                            IncompatibleArgument, TemplateDeduction, TemplateUnresolved>;
+	                            IncompatibleArgument, TemplateDeduction, TemplateUnresolved, ConstantRequired>;
 
 	FunctionMismatch(idx_t overload, shared_ptr<const SimpleFunction> function, idx_t distance, Reason reason)
 	    : overload(overload), function(std::move(function)), distance(distance), reason(std::move(reason)) {
@@ -649,7 +686,7 @@ private:
 	static BOUND CreateBoundFunction(const FunctionBinding &binding);
 	//! The type a type name of a signature stands for, given what a call determines its type variables to be
 	static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
-	                                const FunctionSignature &signature, const variable_types_t &variable_types);
+	                                const FunctionSignature &signature, const FunctionVariables &variables);
 	//! The patterns of the parameters of a signature and of its return type, see BindTypePattern. Matching a call
 	//! is what binds a signature: these are for the check before it does, and for a function bound without one
 	static vector<LogicalType> BindParameterPatterns(optional_ptr<ClientContext> context,
@@ -657,7 +694,7 @@ private:
 	static LogicalType BindReturnPattern(optional_ptr<ClientContext> context, const FunctionSignature &signature);
 	//! The type a signature returns for a call: ANY if it is only known after binding
 	static LogicalType BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature,
-	                                  const variable_types_t &variable_types);
+	                                  const FunctionVariables &variables);
 };
 
 } // namespace duckdb

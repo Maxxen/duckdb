@@ -107,11 +107,6 @@ TypeNameArgument LiteralArgumentOf(const Value &value, const string &label = str
 }
 
 shared_ptr<const TypeNameNode> NameOfType(const LogicalType &type) {
-	if (type.id() == LogicalTypeId::TEMPLATE) {
-		// a template is the type variable of that name, which the signature declares
-		return make_shared_ptr<const TypeNameNode>(Identifier(TemplateType::GetName(type)), vector<TypeNameArgument>());
-	}
-
 	vector<TypeNameArgument> arguments;
 	auto alias = type.GetAlias();
 	if (!alias.empty()) {
@@ -234,6 +229,45 @@ TypeName::TypeName(Identifier name, vector<TypeNameArgument> arguments)
 }
 
 TypeName::TypeName(const LogicalType &type) : node(NameOfType(type)) {
+}
+
+TypeName::TypeName(LogicalTypeId type_id) : TypeName(LogicalType(type_id)) {
+}
+
+TypeName TypeName::VARIABLE(const string &name) {
+	return TypeName(Identifier(name));
+}
+
+TypeName TypeName::LIST(TypeName child) {
+	return TypeName(Identifier("LIST"), {std::move(child)});
+}
+
+TypeName TypeName::ARRAY(TypeName child, TypeName size) {
+	return TypeName(Identifier("ARRAY"), {std::move(child), std::move(size)});
+}
+
+TypeName TypeName::ARRAY(TypeName child, idx_t size) {
+	return TypeName(Identifier("ARRAY"), {std::move(child), Literal::Integer(NumericCast<int64_t>(size))});
+}
+
+TypeName TypeName::MAP(TypeName key, TypeName value) {
+	return TypeName(Identifier("MAP"), {std::move(key), std::move(value)});
+}
+
+TypeName TypeName::STRUCT(vector<pair<string, TypeName>> children) {
+	vector<TypeNameArgument> arguments;
+	for (auto &child : children) {
+		arguments.emplace_back(std::move(child.second), Identifier(child.first));
+	}
+	return TypeName(Identifier("STRUCT"), std::move(arguments));
+}
+
+TypeName TypeName::TUPLE(vector<TypeName> children) {
+	vector<TypeNameArgument> arguments;
+	for (auto &child : children) {
+		arguments.emplace_back(std::move(child));
+	}
+	return TypeName(Identifier("TUPLE"), std::move(arguments));
 }
 
 const Identifier &TypeName::GetName() const {

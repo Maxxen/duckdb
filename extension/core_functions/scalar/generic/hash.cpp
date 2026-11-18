@@ -8,7 +8,8 @@ static void HashFunction(DataChunk &args, ExpressionState &state, Vector &result
 
 ScalarFunction HashFun::GetFunction() {
 	auto hash_fun = ScalarFunction(FunctionSignature()
-	                                   .AddParameter("value", LogicalType::TEMPLATE("T"))
+	                                   .AddVariable("T")
+	                                   .AddParameter("value", TypeName::VARIABLE("T"))
 	                                   .AddArgs("args", LogicalType::ANY)
 	                                   .SetReturnType(LogicalType::HASH),
 	                               HashFunction);

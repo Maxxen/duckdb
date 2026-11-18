@@ -659,10 +659,14 @@ unique_ptr<FunctionData> RemapStructBind(BindScalarFunctionInput &input) {
 ScalarFunction RemapStructFun::GetFunction() {
 	ScalarFunction remap("remap_struct",
 	                     FunctionSignature()
-	                         .AddParameter("input", LogicalType::TEMPLATE("T"))
-	                         .AddParameter("target_type", LogicalType::TEMPLATE("U"))
-	                         .AddParameter("mapping", LogicalType::TEMPLATE("V"))
-	                         .AddParameter("defaults", LogicalType::TEMPLATE("W"))
+	                         .AddVariable("T")
+	                         .AddVariable("U")
+	                         .AddVariable("V")
+	                         .AddVariable("W")
+	                         .AddParameter("input", TypeName::VARIABLE("T"))
+	                         .AddParameter("target_type", TypeName::VARIABLE("U"))
+	                         .AddParameter("mapping", TypeName::VARIABLE("V"))
+	                         .AddParameter("defaults", TypeName::VARIABLE("W"))
 	                         .SetReturnType(ReturnType::ANY()),
 	                     RemapStructFunction, RemapStructBind);
 	remap.SetResolveTypesCallback(RemapStructResolveTypes);

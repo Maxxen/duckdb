@@ -375,7 +375,8 @@ ScalarFunction ListConcatFun::GetFunction() {
 ScalarFunction ConcatFun::GetFunction() {
 	ScalarFunction concat("concat",
 	                      FunctionSignature()
-	                          .AddParameter("value", LogicalType::TEMPLATE("T"))
+	                          .AddVariable("T")
+	                          .AddParameter("value", TypeName::VARIABLE("T"))
 	                          .AddArgs("args", LogicalType::ANY)
 	                          .SetReturnType(ReturnType::ANY()),
 	                      ConcatFunction, BindConcatFunction);
@@ -387,8 +388,10 @@ ScalarFunction ConcatFun::GetFunction() {
 ScalarFunction ConcatOperatorFun::GetFunction() {
 	ScalarFunction concat_op("||",
 	                         FunctionSignature()
-	                             .AddParameter("arg1", LogicalType::TEMPLATE("T"))
-	                             .AddParameter("arg2", LogicalType::TEMPLATE("U"))
+	                             .AddVariable("T")
+	                             .AddVariable("U")
+	                             .AddParameter("arg1", TypeName::VARIABLE("T"))
+	                             .AddParameter("arg2", TypeName::VARIABLE("U"))
 	                             .SetReturnType(ReturnType::ANY()),
 	                         ConcatFunction, BindConcatOperator);
 	concat_op.SetResolveTypesCallback(ConcatOperatorResolveTypes);
