@@ -54,6 +54,10 @@ struct ResolvedTableFunction {
 	named_argument_map_t named_parameters;
 };
 
+//! What a call determines the type variables of a signature to be: for each variable the types it was inferred to
+//! be, in the order they were inferred - the last one is the type it stands for
+using variable_types_t = case_insensitive_map_t<vector<LogicalType>>;
+
 //! An overload that matches a call, and how the arguments of the call are passed to it
 struct FunctionBinding {
 	//! The index of the overload in the function set
@@ -202,8 +206,8 @@ public:
 	struct IncompatibleArgument {
 		static constexpr auto TYPE = Type::INCOMPATIBLE_ARGUMENT;
 		idx_t argument;
-		//! The type of the parameter that receives the argument
-		LogicalType parameter_type;
+		//! The type of the parameter that receives the argument, as it reads
+		string parameter_type;
 
 		string ToString(const SimpleFunction &function, const FunctionBindError &error) const;
 	};
@@ -416,12 +420,13 @@ public:
 	                                                    const BaseFunctionSet &functions,
 	                                                    const FunctionCallArguments &call, bool explicit_casts = false);
 
-	//! The type a type name of a signature stands for: a type variable of the signature, a type of the catalog, or
-	//! LAMBDA / TABLE. Without a ClientContext only the built-in types are found
-	DUCKDB_API static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
-	                                           const FunctionSignature &signature);
-	//! The same, for a name that is not declared by a signature
+	//! The type a type name stands for: a type of the catalog, or LAMBDA / TABLE. Without a ClientContext only the
+	//! built-in types are found
 	DUCKDB_API static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name);
+	//! The type an argument is matched against before a call determines the type variables of a signature: a type
+	//! variable stands for any type (ANY), or for any type of the kind it is constrained to
+	DUCKDB_API static LogicalType BindTypePattern(optional_ptr<ClientContext> context, const TypeName &name,
+	                                              const FunctionSignature &signature);
 
 	//! How a call binds to a function it is known to call - the arguments are cast explicitly. Throws if the call does
 	//! not fit the signature of the function
@@ -453,10 +458,6 @@ public:
 	DUCKDB_API static BoundTableFunction BindTableFunction(optional_ptr<ClientContext> context,
 	                                                       const TableFunction &function,
 	                                                       const FunctionCallArguments &call);
-	//! Bind a table function that is used without a call, e.g. as the scan of a table: its arguments are of the
-	//! types its positional parameters declare
-	DUCKDB_API static BoundTableFunction BindTableFunction(optional_ptr<ClientContext> context,
-	                                                       const TableFunction &function);
 
 	//! Bind a table function: select the overload, check the named arguments against its signature, and fold the
 	//! arguments to the constants it is called with, cast to the types it declares. Returns nullptr and sets the error
@@ -646,12 +647,17 @@ private:
 	//! The function of a binding, bound to the types the binding resolved
 	template <class BOUND, class T>
 	static BOUND CreateBoundFunction(const FunctionBinding &binding);
-	//! The type every parameter of a signature declares - a type variable is the template a call determines. Matching
-	//! a call is what binds a signature: this is only for a function that is bound without one
-	static vector<LogicalType> BindParameterTypes(optional_ptr<ClientContext> context,
-	                                              const FunctionSignature &signature);
-	//! The type a signature declares to return, as BindParameterTypes: ANY if it is only known after binding
-	static LogicalType BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature);
+	//! The type a type name of a signature stands for, given what a call determines its type variables to be
+	static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
+	                                const FunctionSignature &signature, const variable_types_t &variable_types);
+	//! The patterns of the parameters of a signature and of its return type, see BindTypePattern. Matching a call
+	//! is what binds a signature: these are for the check before it does, and for a function bound without one
+	static vector<LogicalType> BindParameterPatterns(optional_ptr<ClientContext> context,
+	                                                 const FunctionSignature &signature);
+	static LogicalType BindReturnPattern(optional_ptr<ClientContext> context, const FunctionSignature &signature);
+	//! The type a signature returns for a call: ANY if it is only known after binding
+	static LogicalType BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature,
+	                                  const variable_types_t &variable_types);
 };
 
 } // namespace duckdb

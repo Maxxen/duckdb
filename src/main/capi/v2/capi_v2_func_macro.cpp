@@ -56,7 +56,7 @@ public:
 			// ANY leaves the parameter untyped, as a parameter declared without a type
 			auto parameter_type = parameter.GetTypeName().IsBuiltinType(LogicalTypeId::ANY)
 			                          ? LogicalType(LogicalType::UNKNOWN)
-			                          : FunctionBinder::BindTypeName(nullptr, parameter.GetTypeName(), signature);
+			                          : FunctionBinder::BindTypePattern(nullptr, parameter.GetTypeName(), signature);
 			if (parameter.HasDefaultValue()) {
 				auto default_value = *parameter.GetDefaultValue();
 				if (parameter_type.id() != LogicalTypeId::UNKNOWN) {

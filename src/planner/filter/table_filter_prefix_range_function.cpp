@@ -757,7 +757,7 @@ static idx_t PrefixRangeSelect(DataChunk &args, ExpressionState &state, optional
 	return approved_count;
 }
 
-ScalarFunction PrefixRangeScalarFun::GetFunction(const LogicalType &input_type) {
+ScalarFunction PrefixRangeScalarFun::GetFunction() {
 	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
 	func.GetSignature().GetParameter(0).SetName("col");
 	func.SetInitStateCallback(PrefixRangeInitLocalState);
@@ -823,7 +823,7 @@ FilterPropagateResult PrefixRangeScalarFun::FilterPrune(const FunctionStatistics
 }
 
 ScalarFunction TableFilterPrefixRangeFun::GetFunction() {
-	return PrefixRangeScalarFun::GetFunction(LogicalType::ANY);
+	return PrefixRangeScalarFun::GetFunction();
 }
 
 } // namespace duckdb

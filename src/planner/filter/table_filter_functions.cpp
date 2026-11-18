@@ -75,7 +75,7 @@ static unique_ptr<Expression> CreateSingleArgumentFunctionExpression(const Scala
 
 unique_ptr<Expression> CreateOptionalFilterExpression(unique_ptr<Expression> child_expr,
                                                       const LogicalType &target_type) {
-	auto function = OptionalFilterScalarFun::GetFunction(target_type);
+	auto function = OptionalFilterScalarFun::GetFunction();
 	auto bind_data = make_uniq<OptionalFilterFunctionData>(std::move(child_expr));
 	return CreateSingleArgumentFunctionExpression(function, target_type, std::move(bind_data));
 }
@@ -84,7 +84,7 @@ unique_ptr<Expression> CreateSelectivityOptionalFilterExpression(unique_ptr<Expr
                                                                  const LogicalType &target_type,
                                                                  float selectivity_threshold,
                                                                  idx_t n_vectors_to_check) {
-	auto function = SelectivityOptionalFilterScalarFun::GetFunction(target_type);
+	auto function = SelectivityOptionalFilterScalarFun::GetFunction();
 	auto bind_data = make_uniq<SelectivityOptionalFilterFunctionData>(std::move(child_expr), selectivity_threshold,
 	                                                                  n_vectors_to_check);
 	return CreateSingleArgumentFunctionExpression(function, target_type, std::move(bind_data));
@@ -97,7 +97,7 @@ unique_ptr<Expression> CreateDynamicFilterExpression(shared_ptr<DynamicFilterDat
 
 unique_ptr<Expression> CreateDynamicFilterExpression(shared_ptr<DynamicFilterData> filter_data,
                                                      const LogicalType &target_type, unique_ptr<Expression> input) {
-	auto function = DynamicFilterScalarFun::GetFunction(target_type);
+	auto function = DynamicFilterScalarFun::GetFunction();
 	auto bind_data = make_uniq<DynamicFilterFunctionData>(std::move(filter_data));
 	if (!input) {
 		input = make_uniq<BoundReferenceExpression>(target_type, storage_t(0));

@@ -173,38 +173,45 @@ public:
 		}
 	}
 
-	//! Selects the overload of a v1.x aggregate whose bind lost the erased arguments, by its leading parameter types
+	//! Selects the overload of a v1.x aggregate whose bind lost the erased arguments: the one with the fewest
+	//! parameters that the recorded arguments lead, bound to them. The erased arguments are left unresolved
 	template <class FUNCTION_SET>
-	static optional_idx SelectByLeadingArguments(ClientContext &context, const FUNCTION_SET &functions,
-	                                             vector<LogicalType> &arguments, const LogicalType &return_type) {
-		for (idx_t offset = 0; offset < functions.functions.size(); offset++) {
-			auto &signature = functions.functions[offset]->GetSignature();
-			if (signature.GetParameterCount() <= arguments.size() || !signature.GetReturnType().IsType()) {
+	static optional<FunctionBinding> SelectByLeadingArguments(ClientContext &context, const FUNCTION_SET &functions,
+	                                                          vector<LogicalType> &arguments,
+	                                                          const LogicalType &return_type) {
+		optional<FunctionBinding> result;
+		for (idx_t offset = 0; offset < functions.GetOverloadCount(); offset++) {
+			auto &signature = functions.GetOverload(offset).GetSignature();
+			auto parameter_count = signature.GetParameterCount();
+			if (parameter_count <= arguments.size() || !signature.GetReturnType().IsType()) {
 				continue;
 			}
-			// no call matches the overload, so the types it declares are compared as they are
-			auto signature_type = FunctionBinder::BindReturnType(&context, signature);
-			auto parameter_types = FunctionBinder::BindParameterTypes(&context, signature);
-			// a constrained template is of the kind it stands for
-			auto signature_id =
-			    signature_type.id() == LogicalTypeId::TEMPLATE && TemplateType::HasConstraint(signature_type)
-			        ? TemplateType::GetConstraint(signature_type)
-			        : signature_type.id();
-			if (signature_id != return_type.id()) {
+			if (result && result->parameter_types.size() <= parameter_count) {
 				continue;
 			}
+			vector<LogicalType> call_types = arguments;
+			call_types.resize(parameter_count, LogicalType::UNKNOWN);
+			auto match = FunctionBinder::MatchOverload(&context, offset, functions.GetSharedOverload(offset),
+			                                           {call_types}, false);
+			auto binding = std::get_if<FunctionBinding>(&match);
+			if (!binding || binding->return_type.id() != return_type.id()) {
+				continue;
+			}
+			// the plan recorded the types the function was bound to, so they are not cast
 			bool leading = true;
 			for (idx_t i = 0; i < arguments.size() && leading; i++) {
-				leading = parameter_types[i].id() == arguments[i].id();
+				leading = binding->parameter_types[i].id() == arguments[i].id();
 			}
 			if (leading) {
-				for (idx_t i = arguments.size(); i < signature.GetParameterCount(); i++) {
-					arguments.push_back(parameter_types[i]);
-				}
-				return offset;
+				result = std::move(*binding);
 			}
 		}
-		return optional_idx();
+		if (result) {
+			for (idx_t i = arguments.size(); i < result->parameter_types.size(); i++) {
+				arguments.push_back(result->parameter_types[i]);
+			}
+		}
+		return result;
 	}
 
 	//! Splits the argument types a plan recorded into those passed by position and those passed by name
@@ -478,22 +485,22 @@ public:
 		FunctionBinder binder(context);
 		binder.arguments_collated = true;
 		const auto func_idx = FunctionBinder::SelectFunction(context, functions, {positional_types, keyword_types});
-		optional_idx overload;
+		optional<FunctionBinding> binding;
 		if (func_idx.IsSuccess()) {
-			overload = func_idx.GetBinding().GetOverloadIndex();
+			binding = func_idx.GetBinding();
 		} else if (catalog_type == CatalogType::AGGREGATE_FUNCTION_ENTRY && legacy_without_original_arguments &&
 		           named_arguments.empty() && !arguments.empty()) {
-			overload = SelectByLeadingArguments(context, functions, arguments, return_type);
+			binding = SelectByLeadingArguments(context, functions, arguments, return_type);
 			positional_count = arguments.size();
 		}
 
 		// Ensure the function overload was found
-		if (!overload.IsValid()) {
+		if (!binding) {
 			throw SerializationException("Failed to find function %s(%s)\n%s", qualified_name.ToString(),
 			                             StringUtil::ToString(arguments, ","), func_idx.GetError().RawMessage());
 		}
 
-		const auto function = functions.GetFunctionByOffset(overload.GetIndex());
+		const auto function = functions.GetFunctionByOffset(binding->GetOverloadIndex());
 
 		// Does this function support serializing its bound data?
 		if (!has_serialize) {
@@ -534,8 +541,8 @@ public:
 		}
 
 		// Otherwise, construct the bound function from its parts
-		FUNC bound_function(function, std::move(arguments),
-		                    FunctionBinder::BindReturnType(&context, function->GetSignature()));
+		// the type the signature returns for the recorded arguments - ANY if only the function itself knows it
+		FUNC bound_function(function, std::move(arguments), binding->return_type);
 
 		bound_function.SetNamedArguments(positional_count, std::move(named_arguments));
 		RestoreLogicalSignature(bound_function, children, return_type);

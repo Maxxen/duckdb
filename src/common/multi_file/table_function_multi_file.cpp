@@ -94,14 +94,14 @@ void TableFunctionFileReader::BindFunction(ClientContext &context, const TableFu
 	for (auto &option : named_parameters) {
 		option_types.emplace_back(option.first, option.second.type());
 	}
-	auto bound_function = FunctionBinder::BindTableFunction(&context, function, {{inputs[0].type()}, option_types});
+	auto file_function = FunctionBinder::BindTableFunction(&context, function, {{inputs[0].type()}, option_types});
 	auto parameters = named_parameters;
-	bound_function.FillNamedDefaults(context, parameters);
+	file_function.FillNamedDefaults(context, parameters);
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
 	TableFunctionRef empty_ref;
 	TableFunctionBindInput bind_input(inputs, parameters, input_table_types, input_table_names,
-	                                  function.function_info.get(), nullptr, bound_function, empty_ref);
+	                                  function.function_info.get(), nullptr, file_function, empty_ref);
 	TableFunctionFileBindInput file_input;
 	file_input.multi_file_options = file_options;
 	file_input.multi_file_scan = options.multi_file_scan;
@@ -117,6 +117,7 @@ void TableFunctionFileReader::BindFunction(ClientContext &context, const TableFu
 	names.clear();
 	types.clear();
 	bind_data = function.bind(context, bind_input, types, names);
+	bound_function = make_shared_ptr<const BoundTableFunction>(std::move(file_function));
 	// a function can describe what it bound in more detail than its names and types - e.g. with the field ids of its
 	// columns, and options that describe the file, which are exposed as the metadata of the reader of the file
 	optional<BindInfo> bind_info;
@@ -194,6 +195,7 @@ shared_ptr<BaseUnionData> TableFunctionFileReader::GetUnionData(idx_t file_idx) 
 	result->types = types;
 	result->cardinality = cardinality;
 	result->bind_data = bind_data;
+	result->bound_function = bound_function;
 	result->statistics = function.statistics_extended;
 	if (file_idx == 0) {
 		// keep the first reader around so we don't need to bind it again
@@ -917,11 +919,10 @@ vector<PartitionStatistics> TableFunctionMultiFileWrapper::GetPartitionStats(Cli
 	DynamicCastCheck<TableFunctionMultiFileWrapper>(bind_data.interface.get());
 	auto &wrapper = static_cast<const TableFunctionMultiFileWrapper &>(*bind_data.interface);
 	auto &function = wrapper.function;
-	if (!function.get_partition_stats || !file.bind_data) {
+	if (!function.get_partition_stats || !file.bind_data || !file.bound_function) {
 		return result;
 	}
-	auto bound_function = FunctionBinder::BindTableFunction(&context, function);
-	GetPartitionStatsInput file_input(bound_function, file.bind_data.get());
+	GetPartitionStatsInput file_input(*file.bound_function, file.bind_data.get());
 	return function.get_partition_stats(context, file_input);
 }
 

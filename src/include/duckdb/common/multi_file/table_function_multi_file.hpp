@@ -232,6 +232,8 @@ public:
 	//! The bind data of the wrapped function for this file. It is used to combine the schemas of several files, and
 	//! kept afterwards so that the bind that reads the file can reuse what this one read from it
 	shared_ptr<FunctionData> bind_data;
+	//! The wrapped function, as it was bound to this file
+	shared_ptr<const BoundTableFunction> bound_function;
 	//! The statistics callback of the wrapped function, which reads the statistics of this file from its bind data
 	table_statistics_extended_t statistics = nullptr;
 
@@ -293,6 +295,8 @@ public:
 	TableFunction function;
 	//! The bind data of the wrapped function for this file
 	shared_ptr<FunctionData> bind_data;
+	//! The wrapped function, as it was bound to this file
+	shared_ptr<const BoundTableFunction> bound_function;
 	//! The names/types the wrapped function bound to for this file
 	vector<Identifier> names;
 	vector<LogicalType> types;

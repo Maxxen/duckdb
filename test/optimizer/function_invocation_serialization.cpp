@@ -63,8 +63,9 @@ TEST_CASE("Serialize-only table functions retain rebinding inputs in legacy plan
 	}
 	CreateTableFunctionInfo info(function);
 	Catalog::GetSystemCatalog(context).CreateFunction(context, info);
-	LogicalGet get(TableIndex(0), FunctionBinder::BindTableFunction(&context, function), make_uniq<TableFunctionData>(),
-	               {LogicalType::BIGINT}, {Identifier("result")});
+	vector<LogicalType> argument_types {LogicalType::VARCHAR};
+	LogicalGet get(TableIndex(0), FunctionBinder::BindTableFunction(&context, function, {argument_types}),
+	               make_uniq<TableFunctionData>(), {LogicalType::BIGINT}, {Identifier("result")});
 	get.parameters = {Value("scan_source")};
 	get.named_parameters["option"] = Value::INTEGER(42);
 	get.input_table_types = {LogicalType::BIGINT};
@@ -142,8 +143,8 @@ TEST_CASE("Table function bind data remains readable after removing its serializ
 	}
 	CreateTableFunctionInfo info(reader);
 	Catalog::GetSystemCatalog(context).CreateFunction(context, info);
-	LogicalGet get(TableIndex(0), FunctionBinder::BindTableFunction(&context, writer),
-	               make_uniq<LegacyScanBindData>(42), {LogicalType::BIGINT}, {Identifier("result")});
+	LogicalGet get(TableIndex(0), BoundTableFunction(writer), make_uniq<LegacyScanBindData>(42), {LogicalType::BIGINT},
+	               {Identifier("result")});
 	for (const auto &version : {"v1.4.0", "v1.5.0", "latest"}) {
 		CAPTURE(version);
 		SerializationOptions options;
@@ -664,9 +665,8 @@ TEST_CASE("Plans written for older versions select overloads with required keywo
 	}
 	for (auto &function : functions) {
 		CAPTURE(function.GetName().GetIdentifierName());
-		LogicalGet get(TableIndex(0), FunctionBinder::BindTableFunction(&context, function),
-		               make_uniq<KeywordScanBindData>(Value::BIGINT(3)), {LogicalType::BIGINT},
-		               {Identifier("num_rows")});
+		LogicalGet get(TableIndex(0), BoundTableFunction(function), make_uniq<KeywordScanBindData>(Value::BIGINT(3)),
+		               {LogicalType::BIGINT}, {Identifier("num_rows")});
 		get.parameters = {Value::INTEGER(1)};
 		if (pass_num_rows) {
 			get.named_parameters["num_rows"] = Value::BIGINT(3);

@@ -68,15 +68,15 @@ string ConstructorToString(const Identifier &type_name, const TypeConstructor &c
 	for (auto &param : sig.GetParameters()) {
 		switch (param.GetKind()) {
 		case FunctionParameterKind::VAR_POSITIONAL:
-			parts.push_back(sig.PrintType(param.GetTypeName()) + "...");
+			parts.push_back(param.GetTypeName().ToString() + "...");
 			continue;
 		case FunctionParameterKind::VAR_KEYWORD:
-			parts.push_back(param.GetName().GetIdentifierName() + " := " + sig.PrintType(param.GetTypeName()) + "...");
+			parts.push_back(param.GetName().GetIdentifierName() + " := " + param.GetTypeName().ToString() + "...");
 			continue;
 		default:
 			break;
 		}
-		string part = param.GetName().GetIdentifierName() + " " + sig.PrintType(param.GetTypeName());
+		string part = param.GetName().GetIdentifierName() + " " + param.GetTypeName().ToString();
 		if (param.HasDefaultValue()) {
 			part += " := " + param.GetDefaultValue()->ToString();
 		}

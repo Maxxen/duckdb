@@ -132,7 +132,7 @@ static idx_t DynamicFilterSelect(DataChunk &args, ExpressionState &state, option
 	return TranslateSelection(count, sel, result_true_sel, approved_count, true_sel, false_sel);
 }
 
-ScalarFunction DynamicFilterScalarFun::GetFunction(const LogicalType &input_type) {
+ScalarFunction DynamicFilterScalarFun::GetFunction() {
 	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
 	func.GetSignature().GetParameter(0).SetName("col");
 	func.SetSelectCallback(DynamicFilterSelect);
@@ -171,7 +171,7 @@ string DynamicFilterScalarFun::ToString(const string &column_name, bool has_filt
 }
 
 ScalarFunction TableFilterDynamicFun::GetFunction() {
-	return DynamicFilterScalarFun::GetFunction(LogicalType::ANY);
+	return DynamicFilterScalarFun::GetFunction();
 }
 
 } // namespace duckdb

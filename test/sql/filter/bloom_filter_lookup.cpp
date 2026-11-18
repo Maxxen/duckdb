@@ -154,7 +154,7 @@ TEST_CASE("Bloom filter selection preserves NULL policy and mapped rows", "[filt
 			vector<unique_ptr<Expression>> children;
 			children.push_back(make_uniq<BoundReferenceExpression>(LogicalType::BIGINT, 0ULL));
 			auto bound_expr = FunctionBinder::BindScalarFunction(
-			    nullptr, BloomFilterScalarFun::GetFunction(LogicalType::BIGINT), std::move(children),
+			    nullptr, BloomFilterScalarFun::GetFunction(), std::move(children),
 			    make_uniq<BloomFilterFunctionData>(filter, filters_null_values, "k", LogicalType::BIGINT, 0.0f, 0ULL));
 			auto &expr = *bound_expr;
 			ExpressionExecutor executor(context, expr);

@@ -283,7 +283,7 @@ struct SelectivityOptionalFilterFunctionData : public FunctionData {
 struct BloomFilterScalarFun : public TableFilterBloomFilterFun {
 	using TableFilterBloomFilterFun::GetFunction;
 	static constexpr const char *NAME = TableFilterBloomFilterFun::Name;
-	static ScalarFunction GetFunction(const LogicalType &input_type);
+	static ScalarFunction GetFunction();
 	static FilterPropagateResult FilterPrune(const FunctionStatisticsPruneInput &input);
 	static string ToString(const string &column_name, const string &key_column_name);
 };
@@ -292,7 +292,7 @@ struct BloomFilterScalarFun : public TableFilterBloomFilterFun {
 struct PrefixRangeScalarFun : public TableFilterPrefixRangeFun {
 	using TableFilterPrefixRangeFun::GetFunction;
 	static constexpr const char *NAME = TableFilterPrefixRangeFun::Name;
-	static ScalarFunction GetFunction(const LogicalType &input_type);
+	static ScalarFunction GetFunction();
 	static FilterPropagateResult FilterPrune(const FunctionStatisticsPruneInput &input);
 	static string ToString(const string &column_name, const string &key_column_name);
 };
@@ -301,7 +301,7 @@ struct PrefixRangeScalarFun : public TableFilterPrefixRangeFun {
 struct DynamicFilterScalarFun : public TableFilterDynamicFun {
 	using TableFilterDynamicFun::GetFunction;
 	static constexpr const char *NAME = TableFilterDynamicFun::Name;
-	static ScalarFunction GetFunction(const LogicalType &input_type);
+	static ScalarFunction GetFunction();
 	static FilterPropagateResult FilterPrune(const FunctionStatisticsPruneInput &input);
 	static string ToString(const string &column_name, bool has_filter_data);
 };
@@ -310,7 +310,7 @@ struct DynamicFilterScalarFun : public TableFilterDynamicFun {
 struct OptionalFilterScalarFun : public TableFilterOptionalFun {
 	using TableFilterOptionalFun::GetFunction;
 	static constexpr const char *NAME = TableFilterOptionalFun::Name;
-	static ScalarFunction GetFunction(const LogicalType &input_type);
+	static ScalarFunction GetFunction();
 	static FilterPropagateResult FilterPrune(const FunctionStatisticsPruneInput &input);
 	static string ToString(const string &child_filter_string);
 };
@@ -319,7 +319,7 @@ struct OptionalFilterScalarFun : public TableFilterOptionalFun {
 struct SelectivityOptionalFilterScalarFun : public TableFilterSelectivityOptionalFun {
 	using TableFilterSelectivityOptionalFun::GetFunction;
 	static constexpr const char *NAME = TableFilterSelectivityOptionalFun::Name;
-	static ScalarFunction GetFunction(const LogicalType &input_type);
+	static ScalarFunction GetFunction();
 	static FilterPropagateResult FilterPrune(const FunctionStatisticsPruneInput &input);
 	static string ToString(const string &child_filter_string);
 };

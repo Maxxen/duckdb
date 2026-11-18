@@ -658,6 +658,9 @@ public:
 class BoundTableFunction : public BaseTableFunction, public BoundSimpleFunction {
 public:
 	DUCKDB_API BoundTableFunction();
+	//! A function that is not called, e.g. the scan of a table: its bind data is produced separately, so it is bound
+	//! to no arguments
+	DUCKDB_API explicit BoundTableFunction(const TableFunction &function);
 
 	//! The function this was bound from. For a function bound from a TableFunctionSet this is the set's own
 	//! overload, so it compares equal by pointer across binds. Functions bound outside of a set are copied into a

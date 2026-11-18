@@ -1696,7 +1696,7 @@ static unique_ptr<Expression> CreateRuntimeFilterExpression(ClientContext &conte
 		// the filter escapes to probe-side scans here, so a later recursive iteration must not reuse it
 		bloom_filter->MarkPublished();
 		filter_expr = FunctionBinder::BindScalarFunction(
-		    nullptr, BloomFilterScalarFun::GetFunction(filter_input_type), std::move(children),
+		    nullptr, BloomFilterScalarFun::GetFunction(), std::move(children),
 		    make_uniq<BloomFilterFunctionData>(std::move(bloom_filter), filters_null_values, key_name, key_type,
 		                                       selectivity_threshold, n_vectors_to_check));
 		break;
@@ -1708,7 +1708,7 @@ static unique_ptr<Expression> CreateRuntimeFilterExpression(ClientContext &conte
 			return nullptr;
 		}
 		filter_expr = FunctionBinder::BindScalarFunction(
-		    nullptr, PrefixRangeScalarFun::GetFunction(filter_input_type), std::move(children),
+		    nullptr, PrefixRangeScalarFun::GetFunction(), std::move(children),
 		    make_uniq<PrefixRangeFunctionData>(prefix_range_filter, filters_null_values, key_name, key_type,
 		                                       selectivity_threshold, n_vectors_to_check));
 		break;

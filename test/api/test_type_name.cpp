@@ -79,7 +79,7 @@ TEST_CASE("Every type a registered function declares binds", "[api][type_name]")
 	idx_t parameter_count = 0;
 	auto check_type = [&](const SimpleFunction &function, const TypeName &name) {
 		try {
-			FunctionBinder::BindTypeName(&context, name, function.GetSignature());
+			FunctionBinder::BindTypePattern(&context, name, function.GetSignature());
 		} catch (std::exception &ex) {
 			failures.push_back(function.ToString() + ": " + name.ToString() + ": " + ErrorData(ex).RawMessage());
 		}

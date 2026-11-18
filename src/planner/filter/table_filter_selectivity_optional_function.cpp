@@ -154,7 +154,7 @@ static idx_t SelectivityOptionalFilterSelect(DataChunk &args, ExpressionState &s
 	return approved_count;
 }
 
-ScalarFunction SelectivityOptionalFilterScalarFun::GetFunction(const LogicalType &input_type) {
+ScalarFunction SelectivityOptionalFilterScalarFun::GetFunction() {
 	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
 	func.GetSignature().GetParameter(0).SetName("col");
 	func.SetInitStateCallback(SelectivityOptionalFilterInitLocalState);
@@ -186,7 +186,7 @@ string SelectivityOptionalFilterScalarFun::ToString(const string &child_filter_s
 }
 
 ScalarFunction TableFilterSelectivityOptionalFun::GetFunction() {
-	return SelectivityOptionalFilterScalarFun::GetFunction(LogicalType::ANY);
+	return SelectivityOptionalFilterScalarFun::GetFunction();
 }
 
 } // namespace duckdb

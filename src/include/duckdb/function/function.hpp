@@ -218,8 +218,7 @@ public:
 		return result;
 	}
 
-	//! The type prints as the signature the parameter is part of declares it, see FunctionSignature::PrintType
-	string ToString(const FunctionSignature &signature) const;
+	string ToString() const;
 
 	bool operator==(const FunctionParameter &other) const;
 	bool operator!=(const FunctionParameter &other) const;
@@ -492,8 +491,6 @@ public:
 	auto SetParameterType(idx_t index, TypeName type) -> void {
 		parameters[index].type = std::move(type);
 	}
-	//! The declared type of a parameter as it prints
-	DUCKDB_API auto PrintType(const TypeName &type) const -> string;
 
 	//! The variables the signature declares
 	auto GetVariables() const -> const vector<TypeVariable> & {

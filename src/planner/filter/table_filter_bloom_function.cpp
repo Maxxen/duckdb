@@ -405,7 +405,7 @@ static FilterPropagateResult TemplatedBloomFilterPrune(const BloomFilter &bf, co
 	return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 }
 
-ScalarFunction BloomFilterScalarFun::GetFunction(const LogicalType &input_type) {
+ScalarFunction BloomFilterScalarFun::GetFunction() {
 	ScalarFunction func(NAME, {LogicalType::TEMPLATE("T")}, LogicalType::BOOLEAN, nullptr, TableFilterFunctions::Bind);
 	func.GetSignature().GetParameter(0).SetName("col");
 	func.SetInitStateCallback(BloomFilterInitLocalState);
@@ -465,7 +465,7 @@ FilterPropagateResult BloomFilterScalarFun::FilterPrune(const FunctionStatistics
 }
 
 ScalarFunction TableFilterBloomFilterFun::GetFunction() {
-	return BloomFilterScalarFun::GetFunction(LogicalType::ANY);
+	return BloomFilterScalarFun::GetFunction();
 }
 
 } // namespace duckdb

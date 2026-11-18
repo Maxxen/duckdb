@@ -1,15 +1,11 @@
 #include "duckdb/function/type_name.hpp"
 
-#include "duckdb/catalog/catalog.hpp"
-#include "duckdb/catalog/catalog_entry/type_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_types.hpp"
 #include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/extension_type_info.hpp"
 #include "duckdb/common/optional.hpp"
 #include "duckdb/common/sql_identifier.hpp"
 #include "duckdb/common/types/hash.hpp"
-#include "duckdb/function/function_binder.hpp"
-#include "duckdb/function/type_constructor.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/type_expression.hpp"
 
@@ -284,30 +280,19 @@ bool TypeName::operator!=(const TypeName &other) const {
 }
 
 string TypeName::ToString() const {
-	return ToString(nullptr);
-}
-
-string TypeName::ToString(const std::function<string(const TypeName &name)> &print_name) const {
 	auto &name = node->name;
 	auto &arguments = node->arguments;
-	auto print_argument = [&](const TypeNameArgument &argument) {
-		return argument.IsType() ? argument.GetType().ToString(print_name) : argument.GetLiteral().ToString();
-	};
 	if (arguments.empty()) {
-		auto printed = print_name ? print_name(*this) : string();
-		if (!printed.empty()) {
-			return printed;
-		}
 		// a built-in type prints as the type does
 		return node->builtin_type == LogicalTypeId::INVALID ? name.GetIdentifierName()
 		                                                    : LogicalType(node->builtin_type).ToString();
 	}
 	// LIST and ARRAY are written as a suffix of their element
 	if (name == "LIST" && arguments.size() == 1) {
-		return print_argument(arguments[0]) + "[]";
+		return arguments[0].ToString() + "[]";
 	}
 	if (name == "ARRAY" && arguments.size() == 2) {
-		return print_argument(arguments[0]) + "[" + print_argument(arguments[1]) + "]";
+		return arguments[0].ToString() + "[" + arguments[1].ToString() + "]";
 	}
 	// a DECIMAL is written without a space, as the type prints
 	auto separator = name == "DECIMAL" ? "," : ", ";
@@ -320,91 +305,9 @@ string TypeName::ToString(const std::function<string(const TypeName &name)> &pri
 		if (!label.empty()) {
 			result += SQLIdentifier(label) + " ";
 		}
-		result += print_argument(arguments[i]);
+		result += arguments[i].ToString();
 	}
 	return result + ")";
-}
-
-//===--------------------------------------------------------------------===//
-// TypeName -> LogicalType
-//===--------------------------------------------------------------------===//
-//! The value variable of the signature an argument of a type name refers to, if it refers to one
-static optional_ptr<const TypeVariable> FindValueVariable(const TypeNameArgument &argument,
-                                                          const FunctionSignature &signature) {
-	if (!argument.IsType() || argument.GetType().HasArguments()) {
-		return nullptr;
-	}
-	auto variable = signature.FindVariable(argument.GetType().GetName());
-	return variable && variable->IsValue() ? variable : nullptr;
-}
-
-LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, const TypeName &name) {
-	return BindTypeName(context, name, FunctionSignature());
-}
-
-LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
-                                         const FunctionSignature &signature) {
-	auto &identifier = name.GetName();
-	auto &arguments = name.GetArguments();
-	auto builtin_type = name.GetBuiltinType();
-	if (builtin_type != LogicalTypeId::INVALID) {
-		// the name of a built-in type that takes no arguments is that type, whatever else is called the same
-		LogicalType type(builtin_type);
-		if (type.IsComplete() || builtin_type == LogicalTypeId::ANY) {
-			return type;
-		}
-	}
-	if (arguments.empty()) {
-		auto variable = signature.FindVariable(identifier);
-		if (variable) {
-			if (variable->IsValue()) {
-				throw InternalException("Value variable %s is used as a type", identifier.GetIdentifierName());
-			}
-			// a type variable is passed on as the template it declares, which the call then determines
-			auto &variable_name = identifier.GetIdentifierName();
-			auto constraint = signature.GetConstraint(identifier);
-			return constraint == LogicalTypeId::INVALID ? LogicalType::TEMPLATE(variable_name)
-			                                            : LogicalType::TEMPLATE(variable_name, constraint);
-		}
-	}
-	if (identifier == "ARRAY" && arguments.size() == 2 && FindValueVariable(arguments[1], signature)) {
-		// the size of an array is the only value a call determines so far: an array of any size
-		return LogicalType::ARRAY(BindTypeName(context, arguments[0].GetType(), signature), optional_idx());
-	}
-
-	vector<TypeArgument> bound_arguments;
-	for (auto &argument : arguments) {
-		if (FindValueVariable(argument, signature)) {
-			throw NotImplementedException("Value variable %s can only be the size of an array",
-			                              argument.GetType().GetName().GetIdentifierName());
-		}
-		auto value = argument.IsType() ? Value::TYPE(BindTypeName(context, argument.GetType(), signature))
-		                               : argument.GetLiteral().ToValue();
-		bound_arguments.emplace_back(argument.GetLabel().GetIdentifierName(), std::move(value));
-	}
-
-	if (context) {
-		auto entry =
-		    Catalog::GetEntry<TypeCatalogEntry>(*context, QualifiedName(identifier), OnEntryNotFound::RETURN_NULL);
-		if (entry) {
-			return entry->constructors.Bind(context, entry->user_type, bound_arguments);
-		}
-	} else {
-		// without a context only the built-in types are found
-		vector<pair<string, Value>> parameters;
-		for (auto &argument : bound_arguments) {
-			parameters.emplace_back(argument.GetName(), argument.GetValue());
-		}
-		auto type = DefaultTypeGenerator::TryDefaultBind(identifier.GetIdentifierName(), parameters);
-		if (type.id() != LogicalTypeId::INVALID) {
-			return type;
-		}
-	}
-
-	if (builtin_type == LogicalTypeId::LAMBDA || builtin_type == LogicalTypeId::TABLE) {
-		return LogicalType(builtin_type);
-	}
-	throw CatalogException("Type with name %s does not exist", identifier.GetIdentifierName());
 }
 
 } // namespace duckdb

@@ -146,7 +146,7 @@ Value VariadicTypeValue(const FunctionSignature &signature) {
 	if (!variadic) {
 		variadic = signature.GetKwargs();
 	}
-	return variadic ? Value(signature.PrintType(variadic->GetTypeName())) : Value();
+	return variadic ? Value(variadic->GetTypeName().ToString()) : Value();
 }
 
 struct ScalarFunctionExtractor {
@@ -177,7 +177,7 @@ struct ScalarFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().PrintType(fun.GetSignature().GetParameter(i).GetTypeName()));
+				results.emplace_back(fun.GetSignature().GetParameter(i).GetTypeName().ToString());
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
@@ -240,7 +240,7 @@ struct WindowFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().PrintType(fun.GetSignature().GetParameter(i).GetTypeName()));
+				results.emplace_back(fun.GetSignature().GetParameter(i).GetTypeName().ToString());
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
@@ -302,7 +302,7 @@ struct AggregateFunctionExtractor {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		for (idx_t i = 0; i < fun.GetSignature().GetParameterCount(); i++) {
 			if (!fun.GetSignature().GetParameter(i).IsVariadic()) {
-				results.emplace_back(fun.GetSignature().PrintType(fun.GetSignature().GetParameter(i).GetTypeName()));
+				results.emplace_back(fun.GetSignature().GetParameter(i).GetTypeName().ToString());
 			}
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
@@ -512,7 +512,7 @@ struct TableFunctionExtractor {
 
 		for (auto &param : fun.GetSignature().GetParameters()) {
 			if (!param.IsVariadic()) {
-				results.emplace_back(fun.GetSignature().PrintType(param.GetTypeName()));
+				results.emplace_back(param.GetTypeName().ToString());
 			}
 		}
 		AddOptions(fun.GetSignature(), results, true);
@@ -531,7 +531,7 @@ struct TableFunctionExtractor {
 	static Value GetVarArgs(TableFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		auto args = fun.GetSignature().GetArgs();
-		return args ? Value(fun.GetSignature().PrintType(args->GetTypeName())) : Value();
+		return args ? Value(args->GetTypeName().ToString()) : Value();
 	}
 
 	static Value GetMacroDefinition(TableFunctionCatalogEntry &entry, idx_t offset) {
@@ -579,7 +579,7 @@ struct PragmaFunctionExtractor {
 
 		for (auto &param : fun.GetSignature().GetParameters()) {
 			if (!param.IsVariadic()) {
-				results.emplace_back(fun.GetSignature().PrintType(param.GetTypeName()));
+				results.emplace_back(param.GetTypeName().ToString());
 			}
 		}
 		AddOptions(fun.GetSignature(), results, true);
@@ -599,7 +599,7 @@ struct PragmaFunctionExtractor {
 	static Value GetVarArgs(PragmaFunctionCatalogEntry &entry, idx_t offset) {
 		const auto &fun = *entry.functions.GetFunctionByOffset(offset);
 		auto args = fun.GetSignature().GetArgs();
-		return args ? Value(fun.GetSignature().PrintType(args->GetTypeName())) : Value();
+		return args ? Value(args->GetTypeName().ToString()) : Value();
 	}
 
 	static Value GetMacroDefinition(PragmaFunctionCatalogEntry &entry, idx_t offset) {

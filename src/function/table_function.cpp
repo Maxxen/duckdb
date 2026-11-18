@@ -73,6 +73,10 @@ TableFunction::TableFunction(Identifier name, FunctionSignature signature, std::
 BoundTableFunction::BoundTableFunction() : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
 }
 
+BoundTableFunction::BoundTableFunction(const TableFunction &function)
+    : BoundTableFunction(make_shared_ptr<const TableFunction>(function), vector<LogicalType>(), vector<LogicalType>()) {
+}
+
 BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p, vector<LogicalType> arguments_p,
                                        vector<LogicalType> parameter_types_p)
     : BaseTableFunction(nullptr, nullptr, nullptr, nullptr), parameter_types(std::move(parameter_types_p)) {

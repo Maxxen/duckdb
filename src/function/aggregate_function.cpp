@@ -151,7 +151,7 @@ void BoundAggregateFunction::ReplaceImplementation(const BoundAggregateFunction 
 void BoundAggregateFunction::ReplaceImplementation(ClientContext &context, const AggregateFunction &function) {
 	// the replacement is not called, so the types it declares are taken as they are
 	auto &replacement_signature = function.GetSignature();
-	auto parameter_types = FunctionBinder::BindParameterTypes(&context, replacement_signature);
+	auto parameter_types = FunctionBinder::BindParameterPatterns(&context, replacement_signature);
 	vector<LogicalType> replacement_arguments;
 	for (idx_t i = 0; i < replacement_signature.GetParameterCount(); i++) {
 		if (!replacement_signature.GetParameter(i).IsVariadic()) {
@@ -159,7 +159,7 @@ void BoundAggregateFunction::ReplaceImplementation(ClientContext &context, const
 		}
 	}
 	ReplaceImplementation(function, std::move(replacement_arguments),
-	                      FunctionBinder::BindReturnType(&context, replacement_signature));
+	                      FunctionBinder::BindReturnPattern(&context, replacement_signature));
 }
 
 void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &function, vector<LogicalType> arguments_p,

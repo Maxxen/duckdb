@@ -47,10 +47,10 @@ string FunctionMismatch::IncompatibleArgument::ToString(const SimpleFunction &, 
 	auto &argument_type = error.GetCall().GetArgument(argument).type;
 	if (name.empty()) {
 		return StringUtil::Format("Argument %llu of type %s cannot be implicitly cast to %s", argument + 1,
-		                          argument_type.ToString(), parameter_type.ToString());
+		                          argument_type.ToString(), parameter_type);
 	}
 	return StringUtil::Format("Argument \"%s\" of type %s cannot be implicitly cast to %s", name.GetIdentifierName(),
-	                          argument_type.ToString(), parameter_type.ToString());
+	                          argument_type.ToString(), parameter_type);
 }
 
 string FunctionMismatch::TemplateDeduction::ToString(const SimpleFunction &function, const FunctionBindError &) const {

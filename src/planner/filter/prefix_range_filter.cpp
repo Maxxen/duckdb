@@ -15,7 +15,7 @@ LegacyPrefixRangeTableFilter::LegacyPrefixRangeTableFilter(optional_ptr<PrefixRa
 }
 
 unique_ptr<Expression> LegacyPrefixRangeTableFilter::ToExpression(const Expression &column) const {
-	auto function = PrefixRangeScalarFun::GetFunction(column.GetReturnType());
+	auto function = PrefixRangeScalarFun::GetFunction();
 	auto bind_data = make_uniq<PrefixRangeFunctionData>(filter, true, key_column_name, key_type, 0.0f, idx_t(0));
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(column.Copy());

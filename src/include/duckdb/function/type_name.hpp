@@ -14,7 +14,6 @@
 #include "duckdb/common/vector.hpp"
 #include "duckdb/parser/literal.hpp"
 
-#include <functional>
 #include <variant>
 
 namespace duckdb {
@@ -48,8 +47,6 @@ public:
 	DUCKDB_API bool Contains(const Identifier &name) const;
 
 	DUCKDB_API string ToString() const;
-	//! The same, printing a name without arguments as the callback gives it - if it gives one
-	DUCKDB_API string ToString(const std::function<string(const TypeName &name)> &print_name) const;
 	DUCKDB_API hash_t Hash() const;
 	DUCKDB_API bool operator==(const TypeName &other) const;
 	DUCKDB_API bool operator!=(const TypeName &other) const;

@@ -172,8 +172,8 @@ static bool RequiresCatalogAndSchemaNamePrefix(const Identifier &catalog_name, c
 	       schema_name != Identifier::DefaultSchema();
 }
 
-string FunctionParameter::ToString(const FunctionSignature &signature) const {
-	auto type_string = signature.PrintType(type);
+string FunctionParameter::ToString() const {
+	auto type_string = type.ToString();
 	if (!named) {
 		return type_string;
 	}
@@ -296,18 +296,6 @@ FunctionSignature &FunctionSignature::AddConstraint(Identifier variable, Logical
 	return *this;
 }
 
-string FunctionSignature::PrintType(const TypeName &type) const {
-	// a constrained type variable prints as the kind of type it stands for, a value variable as any value
-	return type.ToString([&](const TypeName &name) {
-		auto variable = FindVariable(name.GetName());
-		if (variable && variable->IsValue()) {
-			return string("ANY");
-		}
-		auto constraint = GetConstraint(name.GetName());
-		return constraint == LogicalTypeId::INVALID ? string() : EnumUtil::ToString(constraint);
-	});
-}
-
 bool FunctionSignature::AcceptsAnyType(const TypeName &type) const {
 	if (type.IsBuiltinType(LogicalTypeId::ANY)) {
 		return true;
@@ -383,7 +371,7 @@ string FunctionSignature::ToString() const {
 			params.push_back("*");
 			needs_separator = false;
 		}
-		params.push_back(param.ToString(*this));
+		params.push_back(param.ToString());
 	}
 	if (close_positional_only && positional_only_count == parameters.size()) {
 		params.push_back("/");
@@ -391,7 +379,7 @@ string FunctionSignature::ToString() const {
 	auto head = StringUtil::Format("(%s)", StringUtil::Join(params, ", "));
 	// a table function prints no return type, and neither does a function that declares none (e.g. a pragma)
 	if (return_type.IsType()) {
-		return head + " -> " + PrintType(return_type.GetTypeName());
+		return head + " -> " + return_type.ToString();
 	}
 	if (return_type.IsAny()) {
 		return head + " -> " + return_type.ToString();
@@ -551,23 +539,23 @@ void FunctionSignature::Verify() const {
 	for (const auto &param : parameters) {
 		if (found_kwargs) {
 			throw InvalidInputException("Parameter '%s' follows '**kwargs', which must be the last parameter",
-			                            param.ToString(*this));
+			                            param.ToString());
 		}
 		if (param.IsVariadic() && param.HasDefaultValue()) {
-			throw InvalidInputException("Variadic parameter '%s' cannot have a default value", param.ToString(*this));
+			throw InvalidInputException("Variadic parameter '%s' cannot have a default value", param.ToString());
 		}
 		switch (param.GetKind()) {
 		case FunctionParameterKind::POSITIONAL_ONLY:
 			if (found_standard || found_args || found_keyword_only) {
 				throw InvalidInputException(
 				    "Positional-only parameter '%s' must be declared before every parameter that can be passed by name",
-				    param.ToString(*this));
+				    param.ToString());
 			}
 			break;
 		case FunctionParameterKind::STANDARD:
 			if (found_args || found_keyword_only) {
 				throw InvalidInputException("Parameter '%s' follows '*args' and must therefore be keyword-only",
-				                            param.ToString(*this));
+				                            param.ToString());
 			}
 			found_standard = true;
 			break;
@@ -576,8 +564,7 @@ void FunctionSignature::Verify() const {
 				throw InvalidInputException("A function signature can only have one '*args' parameter");
 			}
 			if (found_keyword_only) {
-				throw InvalidInputException("Parameter '%s' cannot follow a keyword-only parameter",
-				                            param.ToString(*this));
+				throw InvalidInputException("Parameter '%s' cannot follow a keyword-only parameter", param.ToString());
 			}
 			found_args = true;
 			break;

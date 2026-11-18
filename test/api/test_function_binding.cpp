@@ -208,7 +208,7 @@ TEST_CASE("A call no overload matches records why each overload fails", "[api][f
 	REQUIRE(failed[2].GetOverloadIndex() == 1);
 	REQUIRE(failed[0].GetDistance() < failed[1].GetDistance());
 	REQUIRE(failed[1].GetDistance() == failed[2].GetDistance());
-	REQUIRE(failed[0].Cast<FunctionMismatch::IncompatibleArgument>().parameter_type == LogicalType::VARCHAR);
+	REQUIRE(failed[0].Cast<FunctionMismatch::IncompatibleArgument>().parameter_type == "VARCHAR");
 	REQUIRE(selection.GetError().Cast<FunctionBindError::NoMatch>().GetClosest()->GetOverloadIndex() == 2);
 	REQUIRE(StringUtil::Contains(message, "Candidates:\n    g(a VARCHAR) -> INTEGER\n        Argument 1 of type DATE "
 	                                      "cannot be implicitly cast to VARCHAR"));
