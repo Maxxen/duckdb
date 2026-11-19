@@ -359,11 +359,10 @@ void ParseStateParameters(const Value &parameters, vector<LogicalType> &argument
 // parses an ORDER BY spec (a list of {column, order} structs) - shared by the re-bind path and to_aggregate_state
 void ParseOrderBys(const Value &order_value, idx_t column_count, vector<SortedAggregateStateOrder> &orders);
 
-unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &context, BoundSimpleFunction &function,
-                                                               vector<unique_ptr<Expression>> &arguments) {
-	auto &arg_return_type = arguments[0]->GetReturnType();
+unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &context, const Identifier &name,
+                                                               const LogicalType &arg_return_type) {
 	if (!arg_return_type.IsAggregateState()) {
-		throw BinderException("Can only %s %s, not AGGREGATE_STATE", function.GetName(), arg_return_type.ToString());
+		throw BinderException("Can only %s %s, not AGGREGATE_STATE", name, arg_return_type.ToString());
 	}
 	//
 	// now we can look up the function in the catalog again and bind it
@@ -422,11 +421,17 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 	return make_uniq<ExportAggregateBindData>(std::move(wrapper), std::move(reconstructed.second), state_size);
 }
 
-unique_ptr<FunctionData> BindAggregateState(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
+//! A state is finalized to what its aggregate returns
+LogicalType FinalizeReturnType(ResolveReturnTypeInput &input) {
 	auto bind_data =
-	    BindAggregateStateInternal(input.GetClientContext(), input.GetBoundFunction(), input.GetArguments());
+	    BindAggregateStateInternal(input.GetClientContext(), input.GetFunctionName(), input.GetArgumentType(0));
+	return bind_data->aggr.GetReturnType();
+}
+
+unique_ptr<FunctionData> BindAggregateState(BindScalarFunctionInput &input) {
+	auto &arguments = input.GetArguments();
+	auto bind_data = BindAggregateStateInternal(input.GetClientContext(), input.GetBoundFunction().GetName(),
+	                                            arguments[0]->GetReturnType());
 
 	// combine - both arguments must be aggregate states of the same function with the same signature
 	if (arguments.size() == 2 && arguments[0]->GetReturnType() != arguments[1]->GetReturnType()) {
@@ -454,14 +459,8 @@ unique_ptr<FunctionData> BindAggregateState(BindScalarFunctionInput &input) {
 		                      left_type.ToString(), right_type.ToString());
 	}
 
-	if (bound_function.GetName() == "finalize") {
-		bound_function.SetReturnType(bind_data->aggr.GetReturnType());
-	} else {
-		D_ASSERT(bound_function.GetName() == "combine");
-		bound_function.SetReturnType(arguments[0]->GetReturnType());
-	}
 	// these run the finalize/combine of the underlying aggregate, which can throw, e.g. skewness of a large sum
-	bound_function.SetFallible();
+	input.GetBoundFunction().SetFallible();
 
 	return std::move(bind_data);
 }
@@ -511,7 +510,8 @@ unique_ptr<FunctionData> CombineAggrBind(BindAggregateFunctionInput &input) {
 	auto &arguments = input.GetArguments();
 
 	D_ASSERT(arguments.size() == 1 || arguments.size() == 2);
-	auto bind_data = BindAggregateStateInternal(input.GetClientContext(), function, arguments);
+	auto bind_data =
+	    BindAggregateStateInternal(input.GetClientContext(), function.GetName(), arguments[0]->GetReturnType());
 
 	// Copy underlying aggregate's callbacks into this function (same pattern as `ExportAggregateFunction::Bind`)
 	function.SetStateSizeCallback(bind_data->aggr.GetStateSizeCallback());
@@ -520,8 +520,6 @@ unique_ptr<FunctionData> CombineAggrBind(BindAggregateFunctionInput &input) {
 	if (bind_data->aggr.HasStateDestructorCallback()) {
 		function.SetStateDestructorCallback(CombineAggrStateDestroy);
 	}
-
-	function.SetReturnType(arguments[0]->GetReturnType());
 
 	return std::move(bind_data);
 }
@@ -1042,7 +1040,7 @@ ScalarFunction FinalizeFun::GetFunction() {
 	                               FunctionSignature()
 	                                   .AddVariable("T")
 	                                   .AddParameter("state", TypeName::VARIABLE("T"))
-	                                   .SetReturnType(ReturnType::ANY()),
+	                                   .SetReturnType(ReturnType::ANY(FinalizeReturnType)),
 	                               AggregateStateFinalize, BindAggregateState, nullptr, InitFinalizeState);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 
@@ -1057,7 +1055,7 @@ ScalarFunction CombineFun::GetFunction() {
 	                                   .AddVariable("U")
 	                                   .AddParameter("state1", TypeName::VARIABLE("T"))
 	                                   .AddParameter("state2", TypeName::VARIABLE("U"))
-	                                   .SetReturnType(ReturnType::ANY()),
+	                                   .SetReturnType(TypeName::VARIABLE("T")),
 	                               AggregateStateCombine, BindAggregateState, nullptr, InitCombineState);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return function;
@@ -1098,7 +1096,7 @@ AggregateFunction CombineAggrFun::GetFunction() {
 	                      FunctionSignature()
 	                          .AddVariable("T")
 	                          .AddParameter("arg", TypeName::VARIABLE("T"))
-	                          .SetReturnType(ReturnType::ANY()),
+	                          .SetReturnType(TypeName::VARIABLE("T")),
 	                      nullptr, nullptr, CombineAggrUpdate, nullptr, CombineAggrFinalize,
 	                      FunctionNullHandling::SPECIAL_HANDLING, nullptr, CombineAggrBind, nullptr, nullptr, nullptr);
 	function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
@@ -1116,7 +1114,7 @@ AggregateFunctionSet CombineAggrFun::GetFunctions() {
 	                          .AddVariable("T")
 	                          .AddParameter("arg", TypeName::VARIABLE("T"))
 	                          .AddParameter("multiplicities", LogicalType::BIGINT)
-	                          .SetReturnType(ReturnType::ANY()),
+	                          .SetReturnType(TypeName::VARIABLE("T")),
 	                      nullptr, nullptr, CombineAggrUpdate, nullptr, CombineAggrFinalize,
 	                      FunctionNullHandling::SPECIAL_HANDLING, nullptr, CombineAggrBind, nullptr, nullptr, nullptr);
 	repeated.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

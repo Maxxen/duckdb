@@ -24,16 +24,22 @@ struct GetVariableBindData : FunctionData {
 	}
 };
 
-unique_ptr<FunctionData> GetVariableBind(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &function = input.GetBoundFunction();
-	auto variable_name = input.GetConstant(0);
+//! The value of the variable that is named - NULL if there is none
+Value GetVariableValue(ClientContext &context, const Value &variable_name) {
 	Value value;
 	if (!variable_name.IsNull()) {
 		ClientConfig::GetConfig(context).GetUserVariable(variable_name.ToString(), value);
 	}
-	function.SetReturnType(value.type());
-	return make_uniq<GetVariableBindData>(std::move(value));
+	return value;
+}
+
+//! A variable is returned as the type of its value
+LogicalType GetVariableReturnType(ResolveReturnTypeInput &input) {
+	return GetVariableValue(input.GetClientContext(), input.GetConstant(0)).type();
+}
+
+unique_ptr<FunctionData> GetVariableBind(BindScalarFunctionInput &input) {
+	return make_uniq<GetVariableBindData>(GetVariableValue(input.GetClientContext(), input.GetConstant(0)));
 }
 
 unique_ptr<Expression> BindGetVariableExpression(FunctionBindExpressionInput &input) {
@@ -49,7 +55,7 @@ unique_ptr<Expression> BindGetVariableExpression(FunctionBindExpressionInput &in
 } // namespace
 
 ScalarFunction GetVariableFun::GetFunction() {
-	ScalarFunction getvar("getvariable", {}, ReturnType::ANY(), nullptr, GetVariableBind, nullptr);
+	ScalarFunction getvar("getvariable", {}, ReturnType::ANY(GetVariableReturnType), nullptr, GetVariableBind, nullptr);
 	getvar.GetSignature().AddParameter("variable_name", LogicalType::VARCHAR);
 	getvar.SetBindExpressionCallback(BindGetVariableExpression);
 	// the value of the variable can change between queries

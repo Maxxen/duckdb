@@ -63,9 +63,18 @@ static void VerifyDecodeSortKeyType(const LogicalType &sort_key_type, bool all_c
 	}
 }
 
+//! A sort key over fixed-size keys that fit in 8 bytes is a BIGINT, any other one a BLOB
+LogicalType CreateSortKeyReturnType(ResolveReturnTypeInput &input) {
+	bool all_constant = true;
+	idx_t constant_size = 0;
+	for (idx_t i = 0; i < input.GetArgumentCount(); i += 2) {
+		AccumulateSortKeyWidth(input.GetArgumentType(i), all_constant, constant_size);
+	}
+	return all_constant && constant_size <= sizeof(int64_t) ? LogicalType::BIGINT : LogicalType::BLOB;
+}
+
 unique_ptr<FunctionData> CreateSortKeyBind(BindScalarFunctionInput &input) {
 	auto &arguments = input.GetArguments();
-	auto &function = input.GetBoundFunction();
 
 	if (arguments.size() % 2 != 0) {
 		throw BinderException(
@@ -82,11 +91,6 @@ unique_ptr<FunctionData> CreateSortKeyBind(BindScalarFunctionInput &input) {
 	idx_t constant_size = 0;
 	for (idx_t i = 0; i < arguments.size(); i += 2) {
 		AccumulateSortKeyWidth(arguments[i]->GetReturnType(), all_constant, constant_size);
-	}
-	if (all_constant) {
-		if (constant_size <= sizeof(int64_t)) {
-			function.SetReturnType(LogicalType::BIGINT);
-		}
 	}
 	result->all_constant = all_constant;
 	return std::move(result);
@@ -1032,20 +1036,18 @@ static void CreateSortKeyFunction(DataChunk &args, ExpressionState &state, Vecto
 //===--------------------------------------------------------------------===//
 namespace {
 
-unique_ptr<FunctionData> DecodeSortKeyBind(BindScalarFunctionInput &input) {
+//! A struct of the columns the constant column definitions describe
+LogicalType DecodeSortKeyReturnType(ResolveReturnTypeInput &input) {
 	auto &context = input.GetClientContext();
-	auto &arguments = input.GetArguments();
-	auto &function = input.GetBoundFunction();
-
-	if ((arguments.size() - 1) % 2 != 0) {
+	const auto argument_count = input.GetArgumentCount();
+	if ((argument_count - 1) % 2 != 0) {
 		throw BinderException(
 		    "Arguments to decode_sort_key must be [sort_key, col1, sort_specifier1, col2, sort_specifier2, ...]");
 	}
 	bool all_constant = true;
 	idx_t constant_size = 0;
 	child_list_t<LogicalType> children;
-	auto result = make_uniq<SortKeyBindData>();
-	for (idx_t i = 1; i < arguments.size(); i += 2) {
+	for (idx_t i = 1; i < argument_count; i += 2) {
 		// Parse column definition
 		Value col = input.GetConstant(i);
 		const auto col_list = Parser(context).ParseColumnList(col.ToString());
@@ -1065,16 +1067,21 @@ unique_ptr<FunctionData> DecodeSortKeyBind(BindScalarFunctionInput &input) {
 
 		// Add name/type to create a struct
 		children.emplace_back(col_name, col_type);
+	}
 
+	VerifyDecodeSortKeyType(input.GetArgumentType(0), all_constant, constant_size);
+	return LogicalType::STRUCT(std::move(children));
+}
+
+unique_ptr<FunctionData> DecodeSortKeyBind(BindScalarFunctionInput &input) {
+	auto &arguments = input.GetArguments();
+	auto result = make_uniq<SortKeyBindData>();
+	for (idx_t i = 1; i < arguments.size(); i += 2) {
 		// Parse sort specifier
 		auto sort_specifier = input.GetNonNullConstant(i + 1);
 		const auto sort_specifier_str = sort_specifier.ToString();
 		result->modifiers.push_back(OrderModifiers::Parse(sort_specifier_str));
 	}
-
-	VerifyDecodeSortKeyType(arguments[0]->GetReturnType(), all_constant, constant_size);
-	function.SetReturnType(LogicalType::STRUCT(std::move(children)));
-
 	return std::move(result);
 }
 
@@ -1493,7 +1500,7 @@ ScalarFunction CreateSortKeyFun::GetFunction() {
 	                                     .AddVariable("T")
 	                                     .AddPositionalOnly("key1", TypeName::VARIABLE("T"))
 	                                     .AddArgs("args", LogicalType::ANY)
-	                                     .SetReturnType(LogicalType::BLOB),
+	                                     .SetReturnType(ReturnType::ANY(CreateSortKeyReturnType)),
 	                                 CreateSortKeyFunction, CreateSortKeyBind);
 	sort_key_function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return sort_key_function;
@@ -1531,7 +1538,7 @@ ScalarFunction DecodeSortKeyFun::GetFunction() {
 	                                     .AddParameter("col", LogicalType::VARCHAR)
 	                                     .AddParameter("sort_specifier", LogicalType::VARCHAR)
 	                                     .AddArgs("args", LogicalType::VARCHAR)
-	                                     .SetReturnType(ReturnType::ANY()),
+	                                     .SetReturnType(ReturnType::ANY(DecodeSortKeyReturnType)),
 	                                 DecodeSortKeyFunction, DecodeSortKeyBind);
 	return sort_key_function;
 }

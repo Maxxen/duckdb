@@ -14,6 +14,7 @@
 #include "duckdb/function/scalar/nested_functions.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/function/function_binder.hpp"
 #include "duckdb/optimizer/statistics_propagator.hpp"
 
 namespace duckdb {
@@ -2165,200 +2166,23 @@ void DatePartFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	                                             });
 }
 
-template <typename RESULT_TYPE, typename OP>
-static scalar_function_t DatePartUnaryCallback(LogicalTypeId type) {
-	scalar_function_t result = nullptr;
-	switch (type) {
-	case LogicalType::TIMESTAMP:
-	case LogicalType::TIMESTAMP_S:
-	case LogicalType::TIMESTAMP_MS:
-		result = DatePart::UnaryFunction<timestamp_t, RESULT_TYPE, OP>;
-		break;
-	case LogicalType::TIMESTAMP_NS:
-		result = DatePart::UnaryFunction<timestamp_ns_t, RESULT_TYPE, OP>;
-		break;
-	case LogicalType::DATE:
-		result = DatePart::UnaryFunction<date_t, RESULT_TYPE, OP>;
-		break;
-	case LogicalType::INTERVAL:
-		result = DatePart::UnaryFunction<interval_t, RESULT_TYPE, OP>;
-		break;
-	case LogicalType::TIME:
-		result = DatePart::UnaryFunction<dtime_t, RESULT_TYPE, OP>;
-		break;
-	case LogicalType::TIME_NS:
-		result = DatePart::UnaryFunction<dtime_ns_t, RESULT_TYPE, OP>;
-		break;
-	case LogicalType::TIME_TZ:
-		result = DatePart::UnaryFunction<dtime_tz_t, RESULT_TYPE, OP>;
-		break;
-	default:
-		throw NotImplementedException("Unsupported temporal type for DATE_PART");
-	}
-	return result;
-}
-
-static scalar_function_t DatePartUnaryCallback(DatePartSpecifier part_code, LogicalTypeId type) {
-	switch (part_code) {
-	case DatePartSpecifier::YEAR:
-		return DatePartUnaryCallback<int64_t, DatePart::YearOperator>(type);
-	case DatePartSpecifier::MONTH:
-		return DatePartUnaryCallback<int64_t, DatePart::MonthOperator>(type);
-	case DatePartSpecifier::DAY:
-		return DatePartUnaryCallback<int64_t, DatePart::DayOperator>(type);
-	case DatePartSpecifier::DECADE:
-		return DatePartUnaryCallback<int64_t, DatePart::DecadeOperator>(type);
-	case DatePartSpecifier::CENTURY:
-		return DatePartUnaryCallback<int64_t, DatePart::CenturyOperator>(type);
-	case DatePartSpecifier::MILLENNIUM:
-		return DatePartUnaryCallback<int64_t, DatePart::MillenniumOperator>(type);
-	case DatePartSpecifier::QUARTER:
-		return DatePartUnaryCallback<int64_t, DatePart::QuarterOperator>(type);
-	case DatePartSpecifier::DOW:
-		return DatePartUnaryCallback<int64_t, DatePart::DayOfWeekOperator>(type);
-	case DatePartSpecifier::ISODOW:
-		return DatePartUnaryCallback<int64_t, DatePart::ISODayOfWeekOperator>(type);
-	case DatePartSpecifier::DOY:
-		return DatePartUnaryCallback<int64_t, DatePart::DayOfYearOperator>(type);
-	case DatePartSpecifier::WEEK:
-		return DatePartUnaryCallback<int64_t, DatePart::WeekOperator>(type);
-	case DatePartSpecifier::ISOYEAR:
-		return DatePartUnaryCallback<int64_t, DatePart::ISOYearOperator>(type);
-	case DatePartSpecifier::YEARWEEK:
-		return DatePartUnaryCallback<int64_t, DatePart::YearWeekOperator>(type);
-	case DatePartSpecifier::MICROSECONDS:
-		return DatePartUnaryCallback<int64_t, DatePart::MicrosecondsOperator>(type);
-	case DatePartSpecifier::MILLISECONDS:
-		return DatePartUnaryCallback<int64_t, DatePart::MillisecondsOperator>(type);
-	case DatePartSpecifier::SECOND:
-		return DatePartUnaryCallback<int64_t, DatePart::SecondsOperator>(type);
-	case DatePartSpecifier::MINUTE:
-		return DatePartUnaryCallback<int64_t, DatePart::MinutesOperator>(type);
-	case DatePartSpecifier::HOUR:
-		return DatePartUnaryCallback<int64_t, DatePart::HoursOperator>(type);
-	case DatePartSpecifier::ERA:
-		return DatePartUnaryCallback<int64_t, DatePart::EraOperator>(type);
-	case DatePartSpecifier::TIMEZONE:
-		return DatePartUnaryCallback<int64_t, DatePart::TimezoneOperator>(type);
-	case DatePartSpecifier::TIMEZONE_HOUR:
-		return DatePartUnaryCallback<int64_t, DatePart::TimezoneHourOperator>(type);
-	case DatePartSpecifier::TIMEZONE_MINUTE:
-		return DatePartUnaryCallback<int64_t, DatePart::TimezoneMinuteOperator>(type);
-	case DatePartSpecifier::JULIAN_DAY:
-		return DatePartUnaryCallback<double, DatePart::JulianDayOperator>(type);
-	case DatePartSpecifier::EPOCH:
-		return DatePartUnaryCallback<double, DatePart::EpochOperator>(type);
-	case DatePartSpecifier::INVALID:
-		throw NotImplementedException("Specifier type not implemented for DATEPART");
-	}
-	throw InternalException("Unrecognized DatePartSpecifier in DatePartUnaryCallback");
-}
-
-template <typename OP>
-static function_statistics_t DatePartUnaryStatistics(LogicalTypeId type) {
-	switch (type) {
-	case LogicalType::TIMESTAMP:
-	case LogicalType::TIMESTAMP_S:
-	case LogicalType::TIMESTAMP_MS:
-	case LogicalType::TIMESTAMP_NS:
-		return OP::template PropagateStatistics<timestamp_t>;
-	case LogicalType::DATE:
-		return OP::template PropagateStatistics<date_t>;
-	case LogicalType::INTERVAL:
-		//	Interval part statistics are not supported.
-		return nullptr;
-	case LogicalType::TIME:
-		return OP::template PropagateStatistics<dtime_t>;
-	case LogicalType::TIME_NS:
-		return OP::template PropagateStatistics<dtime_ns_t>;
-	case LogicalType::TIME_TZ:
-		return OP::template PropagateStatistics<dtime_tz_t>;
-	default:
-		throw NotImplementedException("Unsupported temporal type for DATE_PART");
-	}
-}
-
-static function_statistics_t DatePartUnaryStatistics(DatePartSpecifier part_code, LogicalTypeId type) {
-	switch (part_code) {
-	case DatePartSpecifier::YEAR:
-		return DatePartUnaryStatistics<DatePart::YearOperator>(type);
-	case DatePartSpecifier::MONTH:
-		return DatePartUnaryStatistics<DatePart::MonthOperator>(type);
-	case DatePartSpecifier::DAY:
-		return DatePartUnaryStatistics<DatePart::DayOperator>(type);
-	case DatePartSpecifier::DECADE:
-		return DatePartUnaryStatistics<DatePart::DecadeOperator>(type);
-	case DatePartSpecifier::CENTURY:
-		return DatePartUnaryStatistics<DatePart::CenturyOperator>(type);
-	case DatePartSpecifier::MILLENNIUM:
-		return DatePartUnaryStatistics<DatePart::MillenniumOperator>(type);
-	case DatePartSpecifier::QUARTER:
-		return DatePartUnaryStatistics<DatePart::QuarterOperator>(type);
-	case DatePartSpecifier::DOW:
-		return DatePartUnaryStatistics<DatePart::DayOfWeekOperator>(type);
-	case DatePartSpecifier::ISODOW:
-		return DatePartUnaryStatistics<DatePart::ISODayOfWeekOperator>(type);
-	case DatePartSpecifier::DOY:
-		return DatePartUnaryStatistics<DatePart::DayOfYearOperator>(type);
-	case DatePartSpecifier::WEEK:
-		return DatePartUnaryStatistics<DatePart::WeekOperator>(type);
-	case DatePartSpecifier::ISOYEAR:
-		return DatePartUnaryStatistics<DatePart::ISOYearOperator>(type);
-	case DatePartSpecifier::YEARWEEK:
-		return DatePartUnaryStatistics<DatePart::YearWeekOperator>(type);
-	case DatePartSpecifier::MICROSECONDS:
-		return DatePartUnaryStatistics<DatePart::MicrosecondsOperator>(type);
-	case DatePartSpecifier::MILLISECONDS:
-		return DatePartUnaryStatistics<DatePart::MillisecondsOperator>(type);
-	case DatePartSpecifier::SECOND:
-		return DatePartUnaryStatistics<DatePart::SecondsOperator>(type);
-	case DatePartSpecifier::MINUTE:
-		return DatePartUnaryStatistics<DatePart::MinutesOperator>(type);
-	case DatePartSpecifier::HOUR:
-		return DatePartUnaryStatistics<DatePart::HoursOperator>(type);
-	case DatePartSpecifier::ERA:
-		return DatePartUnaryStatistics<DatePart::EraOperator>(type);
-	case DatePartSpecifier::TIMEZONE:
-		return DatePartUnaryStatistics<DatePart::TimezoneOperator>(type);
-	case DatePartSpecifier::TIMEZONE_HOUR:
-		return DatePartUnaryStatistics<DatePart::TimezoneHourOperator>(type);
-	case DatePartSpecifier::TIMEZONE_MINUTE:
-		return DatePartUnaryStatistics<DatePart::TimezoneMinuteOperator>(type);
-	case DatePartSpecifier::JULIAN_DAY:
-		return DatePartUnaryStatistics<DatePart::JulianDayOperator>(type);
-	case DatePartSpecifier::EPOCH:
-		return DatePartUnaryStatistics<DatePart::EpochOperator>(type);
-	case DatePartSpecifier::INVALID:
-		throw NotImplementedException("Specifier type not implemented for DATEPART");
-	}
-	throw InternalException("Unrecognized DatePartSpecifier in DatePartUnaryStatistics");
-}
-
-unique_ptr<FunctionData> DatePartBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	auto part_constant = input.TryGetConstant(0);
-	if (!part_constant) {
+//! A call with a constant part is the unary function of that part, e.g. date_part('year', ts) is year(ts)
+unique_ptr<Expression> DatePartBindExpression(FunctionBindExpressionInput &input) {
+	auto &children = input.children;
+	if (children.size() != 2 || !children[0]->IsFoldable()) {
 		return nullptr;
 	}
-
-	//	Replace constant parts with unary function equivalents.
-	const auto part_name = part_constant->ToString();
-	arguments.erase(arguments.begin());
-	bound_function.GetArguments().erase(bound_function.GetArguments().begin());
-	const auto type = (arguments[0]->GetReturnType().id());
-	const auto part_code = GetDateTypePartSpecifier(part_name, type);
-	bound_function.SetName(Identifier(StringUtil::Lower(DatePartUnaryFunctionName(part_code))));
-
-	if (IsBigintDatepart(part_code)) {
-		bound_function.SetReturnType(LogicalType::BIGINT);
-	} else {
-		bound_function.SetReturnType(LogicalType::DOUBLE);
+	Value part;
+	if (!ExpressionExecutor::TryEvaluateScalar(input.context, *children[0], part)) {
+		return nullptr;
 	}
-	bound_function.SetFunctionCallback(DatePartUnaryCallback(part_code, type));
-	bound_function.SetStatisticsCallback(DatePartUnaryStatistics(part_code, type));
-
-	return nullptr;
+	const auto part_code = GetDateTypePartSpecifier(part.ToString(), children[1]->GetReturnType().id());
+	vector<unique_ptr<Expression>> unary_children;
+	unary_children.push_back(std::move(children[1]));
+	FunctionBinder function_binder(input.context);
+	return function_binder.BindScalarFunction(Identifier::DefaultSchema(),
+	                                          Identifier(StringUtil::Lower(DatePartUnaryFunctionName(part_code))),
+	                                          std::move(unary_children));
 }
 
 template <init_local_state_t DATE_CACHE = nullptr>
@@ -2479,29 +2303,25 @@ struct StructDatePart {
 		}
 	};
 
-	static unique_ptr<FunctionData> Bind(BindScalarFunctionInput &input) {
-		auto &bound_function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
+	//! The struct of the parts the constant list names, and the code of every part
+	static LogicalType GetStructType(const Identifier &function_name, const Value &parts_list,
+	                                 const LogicalType &temporal_type, part_codes_t &part_codes) {
 		// collect names and deconflict, construct return type
-		auto parts_list = input.GetConstant(0);
-
 		case_insensitive_set_t name_collision_set;
 		child_list_t<LogicalType> struct_children;
-		part_codes_t part_codes;
 		if (parts_list.type().id() == LogicalTypeId::LIST) {
 			auto &list_children = ListValue::GetChildren(parts_list);
 			if (list_children.empty()) {
-				throw BinderException("%s requires non-empty lists of part names", bound_function.GetName());
+				throw BinderException("%s requires non-empty lists of part names", function_name);
 			}
 			for (const auto &part_value : list_children) {
 				if (part_value.IsNull()) {
-					throw BinderException("NULL struct entry name in %s", bound_function.GetName());
+					throw BinderException("NULL struct entry name in %s", function_name);
 				}
 				const auto part_name = part_value.ToString();
-				const auto part_code = GetDateTypePartSpecifier(part_name, arguments[1]->GetReturnType());
+				const auto part_code = GetDateTypePartSpecifier(part_name, temporal_type);
 				if (name_collision_set.find(part_name) != name_collision_set.end()) {
-					throw BinderException("Duplicate struct entry name \"%s\" in %s", part_name,
-					                      bound_function.GetName());
+					throw BinderException("Duplicate struct entry name \"%s\" in %s", part_name, function_name);
 				}
 				name_collision_set.insert(part_name);
 				part_codes.emplace_back(part_code);
@@ -2509,10 +2329,21 @@ struct StructDatePart {
 				struct_children.emplace_back(make_pair(part_name, part_type));
 			}
 		} else {
-			throw BinderException("%s can only take constant lists of part names", bound_function.GetName());
+			throw BinderException("%s can only take constant lists of part names", function_name);
 		}
+		return LogicalType::STRUCT(struct_children);
+	}
 
-		bound_function.SetReturnType(LogicalType::STRUCT(struct_children));
+	static LogicalType ResolveStructType(ResolveReturnTypeInput &input) {
+		part_codes_t part_codes;
+		return GetStructType(input.GetFunctionName(), input.GetConstant(0), input.GetArgumentType(1), part_codes);
+	}
+
+	static unique_ptr<FunctionData> Bind(BindScalarFunctionInput &input) {
+		auto &bound_function = input.GetBoundFunction();
+		part_codes_t part_codes;
+		GetStructType(bound_function.GetName(), input.GetConstant(0), input.GetArguments()[1]->GetReturnType(),
+		              part_codes);
 		return make_uniq<BindData>(bound_function.GetReturnType(), part_codes);
 	}
 
@@ -2623,11 +2454,11 @@ struct StructDatePart {
 
 	template <typename INPUT_TYPE>
 	static ScalarFunction GetFunction(const LogicalType &temporal_type) {
-		// the bind builds the struct of the parts that are asked for
+		// a struct of the parts that are asked for
 		ScalarFunction result(FunctionSignature()
 		                          .AddParameter("part_list", LogicalType::LIST(LogicalType::VARCHAR))
 		                          .AddParameter("ts", temporal_type)
-		                          .SetReturnType(ReturnType::ANY()),
+		                          .SetReturnType(ReturnType::ANY(ResolveStructType)),
 		                      Function<INPUT_TYPE>, Bind);
 		result.SetSerializeCallback(SerializeFunction);
 		result.SetDeserializeCallback(DeserializeFunction);
@@ -2961,27 +2792,27 @@ static unique_ptr<ParsedExpression> DatePartUnbind(FunctionUnbindInput &input) {
 // Names the "part,ts" pair shared by date_part's per-type overloads.
 static ScalarFunction NamePartTsArguments(ScalarFunction fun, const LogicalType &type) {
 	fun.GetSignature().AddParameter("part", LogicalType::VARCHAR).AddParameter("ts", type);
+	fun.SetBindExpressionCallback(DatePartBindExpression);
 	fun.SetUnbindCallback(DatePartUnbind);
 	return fun;
 }
 
 ScalarFunctionSet DatePartFun::GetFunctions() {
 	ScalarFunctionSet date_part;
-	date_part.AddFunction(NamePartTsArguments(
-	    ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<date_t>, DatePartBind), LogicalType::DATE));
-	date_part.AddFunction(NamePartTsArguments(
-	    ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<timestamp_t>, DatePartBind), LogicalType::TIMESTAMP));
 	date_part.AddFunction(
-	    NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<timestamp_ns_t>, DatePartBind),
-	                        LogicalType::TIMESTAMP_NS));
-	date_part.AddFunction(NamePartTsArguments(
-	    ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<dtime_t>, DatePartBind), LogicalType::TIME));
-	date_part.AddFunction(NamePartTsArguments(
-	    ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<dtime_ns_t>, DatePartBind), LogicalType::TIME_NS));
-	date_part.AddFunction(NamePartTsArguments(
-	    ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<interval_t>, DatePartBind), LogicalType::INTERVAL));
-	date_part.AddFunction(NamePartTsArguments(
-	    ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<dtime_tz_t>, DatePartBind), LogicalType::TIME_TZ));
+	    NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<date_t>), LogicalType::DATE));
+	date_part.AddFunction(NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<timestamp_t>),
+	                                          LogicalType::TIMESTAMP));
+	date_part.AddFunction(NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<timestamp_ns_t>),
+	                                          LogicalType::TIMESTAMP_NS));
+	date_part.AddFunction(
+	    NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<dtime_t>), LogicalType::TIME));
+	date_part.AddFunction(NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<dtime_ns_t>),
+	                                          LogicalType::TIME_NS));
+	date_part.AddFunction(NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<interval_t>),
+	                                          LogicalType::INTERVAL));
+	date_part.AddFunction(NamePartTsArguments(ScalarFunction({}, LogicalType::DOUBLE, DatePartFunction<dtime_tz_t>),
+	                                          LogicalType::TIME_TZ));
 
 	// struct variants
 	date_part.AddFunction(StructDatePart::GetFunction<date_t>(LogicalType::DATE));

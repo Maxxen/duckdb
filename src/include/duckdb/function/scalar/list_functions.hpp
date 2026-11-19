@@ -107,10 +107,10 @@ struct ListZipFun {
 	static constexpr const char *Name = "list_zip";
 	static constexpr const char *Parameters = "list_1,...,truncate";
 	static constexpr const char *Description = "Zips n `LIST`s to a new `LIST` whose length will be that of the longest list. Its elements are structs of n elements from each list `list_1`, …, `list_n`, missing elements are replaced with `NULL`. If `truncate` is set, all lists are truncated to the smallest list length.";
-	static constexpr const char *Example = "list_zip([1, 2], [3, 4], [5, 6])\002list_zip([1, 2], [3, 4], [5, 6, 7])\002list_zip([1, 2], [3, 4], [5, 6, 7], true)";
+	static constexpr const char *Example = "list_zip([1, 2], [3, 4], [5, 6])\002list_zip([1, 2], [3, 4], [5, 6, 7])\002list_zip([1, 2], [3, 4], [5, 6, 7], truncate := true)";
 	static constexpr const char *Categories = "list";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct ArrayZipFun {

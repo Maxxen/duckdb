@@ -32,11 +32,8 @@ void CurrentSettingFunction(DataChunk &args, ExpressionState &state, Vector &res
 	result.Reference(info.value, count_t(args.size()));
 }
 
-unique_ptr<FunctionData> CurrentSettingBind(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-
-	auto key_val = input.GetNonNullConstant(0);
+//! The value of the setting that is named - its extension is loaded if it has to be
+Value GetSettingValue(ClientContext &context, const Value &key_val) {
 	auto key = key_val.GetValue<Identifier>();
 	if (key.empty()) {
 		throw ParserException("Key name for current_setting must not be empty");
@@ -48,15 +45,23 @@ unique_ptr<FunctionData> CurrentSettingBind(BindScalarFunctionInput &input) {
 		// If autoloader didn't throw, the config is now available
 		context.TryGetCurrentSetting(key, val);
 	}
+	return val;
+}
 
-	bound_function.SetReturnType(val.type());
-	return make_uniq<CurrentSettingBindData>(val);
+//! A setting is returned as the type of its value
+LogicalType CurrentSettingReturnType(ResolveReturnTypeInput &input) {
+	return GetSettingValue(input.GetClientContext(), input.GetNonNullConstant(0)).type();
+}
+
+unique_ptr<FunctionData> CurrentSettingBind(BindScalarFunctionInput &input) {
+	return make_uniq<CurrentSettingBindData>(GetSettingValue(input.GetClientContext(), input.GetNonNullConstant(0)));
 }
 
 } // namespace
 
 ScalarFunction CurrentSettingFun::GetFunction() {
-	auto fun = ScalarFunction({}, ReturnType::ANY(), CurrentSettingFunction, CurrentSettingBind);
+	auto fun =
+	    ScalarFunction({}, ReturnType::ANY(CurrentSettingReturnType), CurrentSettingFunction, CurrentSettingBind);
 	fun.GetSignature().AddParameter("setting_name", LogicalType::VARCHAR);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// the value of the setting can change between queries

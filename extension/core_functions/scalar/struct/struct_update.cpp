@@ -97,29 +97,30 @@ static void StructUpdateFunction(DataChunk &args, ExpressionState &state, Vector
 	}
 }
 
-static unique_ptr<FunctionData> StructUpdateBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	if (arguments.empty()) {
+//! The struct with the named fields updated or added - the first type is the struct, the others are the fields.
+//! Also reports the index of the field every other argument becomes
+static LogicalType GetUpdatedStruct(const vector<LogicalType> &types, const vector<Identifier> &names,
+                                    vector<idx_t> &field_indexes) {
+	if (types.empty()) {
 		throw InvalidInputException("Missing required arguments for struct_update function.");
 	}
-	if (LogicalTypeId::STRUCT != arguments[0]->GetReturnType().id()) {
+	if (LogicalTypeId::STRUCT != types[0].id()) {
 		throw InvalidInputException("The first argument to struct_update must be a STRUCT");
 	}
-	if (arguments.size() < 2) {
+	if (types.size() < 2) {
 		throw InvalidInputException("Can't update nothing into a STRUCT");
 	}
 
 	child_list_t<LogicalType> new_children;
-	auto &existing_children = StructType::GetChildTypes(arguments[0]->GetReturnType());
+	auto &existing_children = StructType::GetChildTypes(types[0]);
 
 	auto incoming_children = identifier_tree_t<idx_t>();
-	auto is_new_field = vector<bool>(arguments.size(), true);
-	vector<idx_t> field_indexes(arguments.size() - 1);
+	auto is_new_field = vector<bool>(types.size(), true);
+	field_indexes.resize(types.size() - 1);
 
 	// Record the names of the fields that are updated
-	for (idx_t arg_idx = 1; arg_idx < arguments.size(); arg_idx++) {
-		incoming_children.emplace(input.GetArgumentName(arg_idx), arg_idx);
+	for (idx_t arg_idx = 1; arg_idx < types.size(); arg_idx++) {
+		incoming_children.emplace(names[arg_idx], arg_idx);
 	}
 
 	for (idx_t field_idx = 0; field_idx < existing_children.size(); field_idx++) {
@@ -131,22 +132,41 @@ static unique_ptr<FunctionData> StructUpdateBind(BindScalarFunctionInput &input)
 		} else {
 			// Update the struct with the new data of the same name
 			auto arg_idx = update->second;
-			new_children.emplace_back(make_pair(input.GetArgumentName(arg_idx), arguments[arg_idx]->GetReturnType()));
+			new_children.emplace_back(make_pair(names[arg_idx], types[arg_idx]));
 			is_new_field[arg_idx] = false;
 			field_indexes[arg_idx - 1] = field_idx;
 		}
 	}
 
 	// Loop through the additional arguments (name/value pairs)
-	for (idx_t arg_idx = 1; arg_idx < arguments.size(); arg_idx++) {
+	for (idx_t arg_idx = 1; arg_idx < types.size(); arg_idx++) {
 		if (is_new_field[arg_idx]) {
 			field_indexes[arg_idx - 1] = new_children.size();
-			new_children.emplace_back(make_pair(input.GetArgumentName(arg_idx), arguments[arg_idx]->GetReturnType()));
+			new_children.emplace_back(make_pair(names[arg_idx], types[arg_idx]));
 		}
 	}
+	return LogicalType::STRUCT(new_children);
+}
 
-	bound_function.SetReturnType(LogicalType::STRUCT(new_children));
-	return make_uniq<StructUpdateBindData>(bound_function.GetReturnType(), std::move(field_indexes));
+static LogicalType StructUpdateReturnType(ResolveReturnTypeInput &input) {
+	vector<Identifier> names;
+	for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
+		names.push_back(input.GetArgumentName(i));
+	}
+	vector<idx_t> field_indexes;
+	return GetUpdatedStruct(input.GetArgumentTypes(), names, field_indexes);
+}
+
+static unique_ptr<FunctionData> StructUpdateBind(BindScalarFunctionInput &input) {
+	vector<LogicalType> types;
+	vector<Identifier> names;
+	for (idx_t i = 0; i < input.GetArguments().size(); i++) {
+		types.push_back(input.GetArguments()[i]->GetReturnType());
+		names.push_back(input.GetArgumentName(i));
+	}
+	vector<idx_t> field_indexes;
+	GetUpdatedStruct(types, names, field_indexes);
+	return make_uniq<StructUpdateBindData>(input.GetBoundFunction().GetReturnType(), std::move(field_indexes));
 }
 
 static unique_ptr<BaseStatistics> StructUpdateStats(ClientContext &context, FunctionStatisticsInput &input) {
@@ -187,7 +207,7 @@ ScalarFunction StructUpdateFun::GetFunction() {
 	                       .AddVariable("T", LogicalTypeId::STRUCT)
 	                       .AddParameter("struct", TypeName::VARIABLE("T"))
 	                       .AddKwargs("kwargs", LogicalType::ANY)
-	                       .SetReturnType(ReturnType::ANY()),
+	                       .SetReturnType(ReturnType::ANY(StructUpdateReturnType)),
 	                   StructUpdateFunction, StructUpdateBind, StructUpdateStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.GetProperties().SetRequiresExpressionNames(true);

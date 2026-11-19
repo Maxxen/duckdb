@@ -63,13 +63,13 @@ select map_concat(
 statement error
 select map_concat();
 ----
-Invalid Input Error: The provided amount of arguments is incorrect, please provide 2 or more maps
+No function matches the given name and argument types
 
 # Less than 2 inputs
 statement error
 select map_concat(map([], []));
 ----
-Invalid Input Error: The provided amount of arguments is incorrect, please provide 2 or more maps
+No function matches the given name and argument types
 
 statement ok
 create table tbl(

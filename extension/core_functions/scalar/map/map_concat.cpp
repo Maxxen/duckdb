@@ -115,78 +115,20 @@ void MapConcatFunction(DataChunk &args, ExpressionState &state, Vector &result) 
 	}
 }
 
-bool IsEmptyMap(const LogicalType &map) {
-	D_ASSERT(map.id() == LogicalTypeId::MAP);
-	auto &key_type = MapType::KeyType(map);
-	auto &value_type = MapType::ValueType(map);
-	return key_type.id() == LogicalType::SQLNULL && value_type.id() == LogicalType::SQLNULL;
-}
-
-unique_ptr<FunctionData> MapConcatBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	auto arg_count = arguments.size();
-	if (arg_count < 2) {
-		throw InvalidInputException("The provided amount of arguments is incorrect, please provide 2 or more maps");
-	}
-
-	if (arguments[0]->GetReturnType().id() == LogicalTypeId::UNKNOWN) {
-		// Prepared statement
-		bound_function.GetArguments().emplace_back(LogicalTypeId::UNKNOWN);
-		bound_function.SetReturnType(LogicalTypeId::SQLNULL);
-		return nullptr;
-	}
-
-	LogicalType expected = LogicalType::SQLNULL;
-
-	bool is_null = true;
-	// Check and verify that all the maps are of the same type
-	for (idx_t i = 0; i < arg_count; i++) {
-		auto &arg = arguments[i];
-		auto &map = arg->GetReturnType();
-		if (map.id() == LogicalTypeId::UNKNOWN) {
-			// Prepared statement
-			bound_function.GetArguments().emplace_back(LogicalTypeId::UNKNOWN);
-			bound_function.SetReturnType(LogicalTypeId::SQLNULL);
-			return nullptr;
-		}
-		if (map.id() == LogicalTypeId::SQLNULL) {
-			// The maps are allowed to be NULL
-			continue;
-		}
-		if (map.id() != LogicalTypeId::MAP) {
-			throw InvalidInputException("MAP_CONCAT only takes map arguments");
-		}
-		is_null = false;
-		if (IsEmptyMap(map)) {
-			// Map is allowed to be empty
-			continue;
-		}
-
-		if (expected.id() == LogicalTypeId::SQLNULL) {
-			expected = map;
-		} else if (map != expected) {
-			throw InvalidInputException(
-			    "'value' type of map differs between arguments, expected '%s', found '%s' instead", expected.ToString(),
-			    map.ToString());
-		}
-	}
-
-	if (expected.id() == LogicalTypeId::SQLNULL && is_null == false) {
-		expected = LogicalType::MAP(LogicalType::SQLNULL, LogicalType::SQLNULL);
-	}
-	bound_function.SetReturnType(expected);
-	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
-}
-
 } // namespace
 
 ScalarFunction MapConcatFun::GetFunction() {
-	//! the arguments and return types are actually set in the binder function
-	// the bind builds the map of the maps that are concatenated
+	// two or more maps of one type are concatenated to a map of that type
+	auto map_type = TypeName::MAP(TypeName::VARIABLE("K"), TypeName::VARIABLE("V"));
 	ScalarFunction fun("map_concat",
-	                   FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
-	                   MapConcatFunction, MapConcatBind);
+	                   FunctionSignature()
+	                       .AddVariable("K")
+	                       .AddVariable("V")
+	                       .AddPositionalOnly("map1", map_type)
+	                       .AddPositionalOnly("map2", map_type)
+	                       .AddArgs("args", map_type)
+	                       .SetReturnType(map_type),
+	                   MapConcatFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

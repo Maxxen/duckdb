@@ -518,33 +518,27 @@ struct ICUDatePart : public ICUDateFunc {
 		bound_function.SetStability(FunctionStability::CONSISTENT);
 	}
 
-	static duckdb::unique_ptr<FunctionData> BindStruct(BindScalarFunctionInput &input) {
-		auto &bound_function = input.GetBoundFunction();
-		auto &context = input.GetClientContext();
-		auto &arguments = input.GetArguments();
-
+	//! The struct of the parts the constant list names, and the code of every part
+	static LogicalType GetStructType(const Identifier &function_name, const Value &parts_list,
+	                                 BindStructData::part_codes_t &part_codes) {
 		// collect names and deconflict, construct return type
-		auto parts_list = input.GetConstant(0);
-
 		case_insensitive_set_t name_collision_set;
 		child_list_t<LogicalType> struct_children;
-		BindStructData::part_codes_t part_codes;
 		if (parts_list.type().id() == LogicalTypeId::LIST) {
 			auto &list_children = ListValue::GetChildren(parts_list);
 			if (list_children.empty()) {
-				throw BinderException("%s requires non-empty lists of part names", bound_function.GetName());
+				throw BinderException("%s requires non-empty lists of part names", function_name);
 			}
 
 			for (size_t col = 0; col < list_children.size(); ++col) {
 				const auto &part_value = list_children[col];
 				if (part_value.IsNull()) {
-					throw BinderException("NULL struct entry name in %s", bound_function.GetName());
+					throw BinderException("NULL struct entry name in %s", function_name);
 				}
 				const auto part_name = part_value.ToString();
 				const auto part_code = GetDatePartSpecifier(part_name);
 				if (name_collision_set.find(part_name) != name_collision_set.end()) {
-					throw BinderException("Duplicate struct entry name \"%s\" in %s", part_name,
-					                      bound_function.GetName());
+					throw BinderException("Duplicate struct entry name \"%s\" in %s", part_name, function_name);
 				}
 				name_collision_set.insert(part_name);
 				part_codes.emplace_back(part_code);
@@ -555,12 +549,22 @@ struct ICUDatePart : public ICUDateFunc {
 				}
 			}
 		} else {
-			throw BinderException("%s can only take constant lists of part names", bound_function.GetName());
+			throw BinderException("%s can only take constant lists of part names", function_name);
 		}
+		return LogicalType::STRUCT(std::move(struct_children));
+	}
 
-		bound_function.SetReturnType(LogicalType::STRUCT(std::move(struct_children)));
+	static LogicalType ResolveStructType(ResolveReturnTypeInput &input) {
+		BindStructData::part_codes_t part_codes;
+		return GetStructType(input.GetFunctionName(), input.GetConstant(0), part_codes);
+	}
+
+	static duckdb::unique_ptr<FunctionData> BindStruct(BindScalarFunctionInput &input) {
+		auto &bound_function = input.GetBoundFunction();
+		BindStructData::part_codes_t part_codes;
+		GetStructType(bound_function.GetName(), input.GetConstant(0), part_codes);
 		SetPartCodesStability(bound_function, part_codes);
-		return make_uniq<BindStructData>(context, std::move(part_codes));
+		return make_uniq<BindStructData>(input.GetClientContext(), std::move(part_codes));
 	}
 
 	static void SerializeStructFunction(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
@@ -620,7 +624,7 @@ struct ICUDatePart : public ICUDateFunc {
 		ScalarFunction result(FunctionSignature()
 		                          .AddParameter("part_list", LogicalType::LIST(LogicalType::VARCHAR))
 		                          .AddParameter("ts", temporal_type)
-		                          .SetReturnType(ReturnType::ANY()),
+		                          .SetReturnType(ReturnType::ANY(ResolveStructType)),
 		                      StructFunction<INPUT_TYPE>, BindStruct);
 		result.SetSerializeCallback(SerializeStructFunction);
 		result.SetDeserializeCallback(DeserializeStructFunction);

@@ -42,7 +42,7 @@ SELECT list_zip([1,2,3], [1,2])
 [(1, 1), (2, 2), (3, NULL)]
 
 query I
-SELECT list_zip([1, 2, 3]::int[3], [1, 2]::int[2], true)
+SELECT list_zip([1, 2, 3]::int[3], [1, 2]::int[2], truncate := true)
 ----
 [(1, 1), (2, 2)]
 
@@ -72,17 +72,17 @@ SELECT list_zip([1,2,3], [])
 [(1, NULL), (2, NULL), (3, NULL)]
 
 query I
-SELECT list_zip([1,2,3], NULL, true)
+SELECT list_zip([1,2,3], NULL, truncate := true)
 ----
 []
 
 query I
-SELECT list_zip([1,2,3], [], true)
+SELECT list_zip([1,2,3], [], truncate := true)
 ----
 []
 
 query I
-SELECT list_zip([1,2,3], [2,3,4], [3,4,5], [], true);
+SELECT list_zip([1,2,3], [2,3,4], [3,4,5], [], truncate := true);
 ----
 []
 
@@ -103,27 +103,27 @@ SELECT list_zip(a.i, b.i, b.i) FROM integers AS a, integers AS b order by all
 [(4, 4, 4), (5, 5, 5), (6, 6, 6)]
 
 query I
-SELECT list_zip([1,2,3], true)
+SELECT list_zip([1,2,3], truncate := true)
 ----
 [(1,), (2,), (3,)]
 
 query I
-SELECT list_zip([1,2,3], [1,2,3], true)
+SELECT list_zip([1,2,3], [1,2,3], truncate := true)
 ----
 [(1, 1), (2, 2), (3, 3)]
 
 query I
-SELECT list_zip([1,2,3], [1,2], true)
+SELECT list_zip([1,2,3], [1,2], truncate := true)
 ----
 [(1, 1), (2, 2)]
 
 query I
-SELECT list_zip([1,2], [1,2,3], true)
+SELECT list_zip([1,2], [1,2,3], truncate := true)
 ----
 [(1, 1), (2, 2)]
 
 query I
-SELECT list_zip(i, j, b) FROM integers, integers2, bools order by all desc
+SELECT list_zip(i, j, truncate := b) FROM integers, integers2, bools order by all desc
 ----
 [(4, NULL), (5, NULL), (6, NULL)]
 [(4, NULL), (5, NULL), (6, NULL)]
@@ -140,7 +140,7 @@ statement ok
 CREATE TABLE lists AS SELECT range % 4 g, list(range) l FROM range(10000) GROUP BY range % 4;
 
 statement ok
-select g, list_zip(l, b) l from lists, bools
+select g, list_zip(l, truncate := b) l from lists, bools
 
 statement ok
 SELECT list_zip([1,2,3], [true, false, NULL], [{'list_1': 1}, {'list_1': 2}, {'list_1': 3}],  ['a', 'b', 'c'], ['2021-08-20'::DATE, '2021-08-21'::DATE, '2021-08-22'::DATE], [1.0, 2.0, 3.0], [NULL, NULL, NULL])
@@ -354,3 +354,19 @@ statement error
 SELECT list_zip(TRUE)
 ----
 
+# the truncate flag by position is deprecated
+statement ok
+SET enable_logging=true;
+
+statement ok
+SET warnings_as_errors=true;
+
+statement error
+SELECT list_zip([1,2,3], [1,2], true)
+----
+Passing the truncate flag of list_zip by position is deprecated
+
+query I
+SELECT list_zip([1,2,3], [1,2], truncate := true)
+----
+[(1, 1), (2, 2)]

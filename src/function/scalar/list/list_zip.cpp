@@ -10,6 +10,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_parameter_expression.hpp"
 #include "duckdb/common/to_string.hpp"
+#include "duckdb/logging/logger.hpp"
 
 namespace duckdb {
 
@@ -134,31 +135,22 @@ static void ListZipFunction(DataChunk &args, ExpressionState &state, Vector &res
 	}
 }
 
-static unique_ptr<FunctionData> ListZipBind(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
+//! A list of tuples with one member for each of the leading lists
+static LogicalType GetListZipType(ResolveReturnTypeInput &input, idx_t list_count) {
+	if (list_count == 0) {
+		throw BinderException("Provide at least one list argument to " + input.GetFunctionName());
+	}
 	child_list_t<LogicalType> struct_children;
-
-	// The last argument could be a flag to be set if we want a minimal list or a maximal list
-	idx_t size = arguments.size();
-	if (size == 0) {
-		throw BinderException("Provide at least one argument to " + bound_function.GetName());
-	}
-	if (arguments[size - 1]->GetReturnType().id() == LogicalTypeId::BOOLEAN) {
-		if (--size == 0) {
-			throw BinderException("Provide at least one list argument to " + bound_function.GetName());
-		}
-	}
-
-	identifier_set_t struct_names;
-	for (idx_t i = 0; i < size; i++) {
-		auto &child = arguments[i];
-		switch (child->GetReturnType().id()) {
-		case LogicalTypeId::LIST:
+	for (idx_t i = 0; i < list_count; i++) {
+		auto child_type = input.GetArgumentType(i);
+		switch (child_type.id()) {
 		case LogicalTypeId::ARRAY:
-			child = BoundCastExpression::AddArrayCastToList(context, std::move(child));
-			struct_children.emplace_back(make_pair(string(), ListType::GetChildType(child->GetReturnType())));
+			// arrays are zipped as lists
+			child_type = LogicalType::LIST(ArrayType::GetChildType(child_type));
+			input.CastArgument(i, child_type);
+			DUCKDB_EXPLICIT_FALLTHROUGH;
+		case LogicalTypeId::LIST:
+			struct_children.emplace_back(make_pair(string(), ListType::GetChildType(child_type)));
 			break;
 		case LogicalTypeId::SQLNULL:
 			struct_children.emplace_back(make_pair(string(), LogicalTypeId::SQLNULL));
@@ -167,16 +159,58 @@ static unique_ptr<FunctionData> ListZipBind(BindScalarFunctionInput &input) {
 			throw BinderException("Parameter type needs to be List");
 		}
 	}
-	bound_function.SetReturnType(LogicalType::LIST(LogicalType::TUPLE(struct_children)));
-	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
+	return LogicalType::LIST(LogicalType::TUPLE(struct_children));
 }
 
-ScalarFunction ListZipFun::GetFunction() {
-	// the bind builds the struct of the lists that are zipped
-	auto fun = ScalarFunction(FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
-	                          ListZipFunction, ListZipBind);
+//! The lists, followed by the truncate flag
+static LogicalType ListZipReturnType(ResolveReturnTypeInput &input) {
+	D_ASSERT(input.GetArgumentCount() >= 2);
+	return GetListZipType(input, input.GetArgumentCount() - 1);
+}
+
+//! Deprecated: the lists, optionally followed by a truncate flag that is passed by position
+static LogicalType ListZipPositionalFlagReturnType(ResolveReturnTypeInput &input) {
+	idx_t size = input.GetArgumentCount();
+	if (size == 0) {
+		throw BinderException("Provide at least one argument to " + input.GetFunctionName());
+	}
+	if (input.GetArgumentType(size - 1).id() == LogicalTypeId::BOOLEAN) {
+		size--;
+	}
+	return GetListZipType(input, size);
+}
+
+static unique_ptr<FunctionData> ListZipPositionalFlagBind(BindScalarFunctionInput &input) {
+	auto &arguments = input.GetArguments();
+	if (!arguments.empty() && arguments.back()->GetReturnType().id() == LogicalTypeId::BOOLEAN) {
+		DUCKDB_LOG_WARNING(input.GetClientContext(),
+		                   "Passing the truncate flag of %s by position is deprecated and will be removed in a "
+		                   "future release - pass it by name instead: \"truncate := true\".",
+		                   input.GetBoundFunction().GetName().GetIdentifierName());
+	}
+	return VariableReturnBindData::Bind(input);
+}
+
+ScalarFunctionSet ListZipFun::GetFunctions() {
+	ScalarFunctionSet set("list_zip");
+	// one or more lists are zipped, truncated to the shortest one if the flag is set
+	ScalarFunction fun(FunctionSignature()
+	                       .AddPositionalOnly("list", LogicalType::LIST(LogicalType::ANY))
+	                       .AddArgs("lists", LogicalType::LIST(LogicalType::ANY))
+	                       .AddKeywordOnly("truncate", LogicalType::BOOLEAN, Value::BOOLEAN(false))
+	                       .SetReturnType(ReturnType::ANY(ListZipReturnType)),
+	                   ListZipFunction, VariableReturnBindData::Bind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	return fun;
+	set.AddFunction(fun);
+
+	// deprecated: the truncate flag is the last positional argument
+	ScalarFunction positional_flag_fun(FunctionSignature()
+	                                       .AddArgs("args", LogicalType::ANY)
+	                                       .SetReturnType(ReturnType::ANY(ListZipPositionalFlagReturnType)),
+	                                   ListZipFunction, ListZipPositionalFlagBind);
+	positional_flag_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+	set.AddFunction(positional_flag_fun);
+	return set;
 }
 
 } // namespace duckdb

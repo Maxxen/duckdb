@@ -409,7 +409,6 @@ static unique_ptr<FunctionData> RegexExtractBind(BindScalarFunctionInput &input)
 			child_list_t<LogicalType> struct_children;
 			regexp_util::ParseGroupNameList(bound_function.GetName().GetIdentifierName(), group_or_options,
 			                                constant_string, options, constant_pattern, dummy_names, struct_children);
-			bound_function.SetReturnType(LogicalType::STRUCT(struct_children));
 		} else if (group_or_options.type() == LogicalType::VARCHAR) {
 			ParseRegexOptions(group_or_options, options, nullptr, &no_match_returns_input);
 		} else if (group_or_options.IsNull()) {
@@ -439,7 +438,35 @@ static unique_ptr<FunctionData> RegexExtractBind(BindScalarFunctionInput &input)
 
 // Constructs a regex-family ScalarFunction and names its (up to 4) parameters via the builder pattern, since these
 // functions share the same string/regex/group/options/name_list/replacement parameter names across many overloads.
-static ScalarFunction MakeRegexFunction(const vector<pair<Identifier, LogicalType>> &params, LogicalType return_type,
+//! The struct of the groups the constant name list names: one struct for regexp_extract, a list of them for
+//! regexp_extract_all. The pattern has to be constant, it is what the groups are numbered in
+template <bool EXTRACT_ALL>
+static LogicalType RegexExtractStructReturnType(ResolveReturnTypeInput &input) {
+	D_ASSERT(input.GetArgumentCount() >= 3);
+	string constant_string;
+	bool constant_pattern = TryParseConstantPattern(input.TryGetConstant(1), constant_string);
+	if (!constant_pattern) {
+		if (EXTRACT_ALL) {
+			throw BinderException("%s with LIST requires a constant pattern", input.GetFunctionName());
+		}
+		throw BinderException("%s with LIST of group names requires a constant pattern", input.GetFunctionName());
+	}
+	duckdb_re2::RE2::Options options;
+	if (input.GetArgumentCount() >= 4) {
+		ParseRegexOptions(input.GetConstant(3), options);
+	}
+	if (EXTRACT_ALL) {
+		options.set_log_errors(false);
+	}
+	vector<string> group_names;
+	child_list_t<LogicalType> struct_children;
+	regexp_util::ParseGroupNameList(input.GetFunctionName().GetIdentifierName(), input.GetConstant(2), constant_string,
+	                                options, true, group_names, struct_children);
+	auto struct_type = LogicalType::STRUCT(struct_children);
+	return EXTRACT_ALL ? LogicalType::LIST(struct_type) : struct_type;
+}
+
+static ScalarFunction MakeRegexFunction(const vector<pair<Identifier, LogicalType>> &params, ReturnType return_type,
                                         scalar_function_t function, bind_scalar_function_t bind,
                                         init_local_state_t init_state = nullptr) {
 	ScalarFunction fun({}, std::move(return_type), std::move(function), bind, nullptr, init_state, LogicalType::INVALID,
@@ -511,15 +538,15 @@ ScalarFunctionSet RegexpExtractFun::GetFunctions() {
 	regexp_extract.AddFunction(MakeRegexFunction({{"string", LogicalType::VARCHAR},
 	                                              {"regex", LogicalType::VARCHAR},
 	                                              {"name_list", LogicalType::LIST(LogicalType::VARCHAR)}},
-	                                             LogicalType::VARCHAR, RegexExtractStructFunction, RegexExtractBind,
-	                                             RegexInitLocalState));
+	                                             ReturnType::ANY(RegexExtractStructReturnType<false>),
+	                                             RegexExtractStructFunction, RegexExtractBind, RegexInitLocalState));
 	// REGEXP_EXTRACT(<string>, <pattern>, [<group 1 name>[, <group n name>]...], <options>)
 	regexp_extract.AddFunction(MakeRegexFunction({{"string", LogicalType::VARCHAR},
 	                                              {"regex", LogicalType::VARCHAR},
 	                                              {"name_list", LogicalType::LIST(LogicalType::VARCHAR)},
 	                                              {"options", LogicalType::VARCHAR}},
-	                                             LogicalType::VARCHAR, RegexExtractStructFunction, RegexExtractBind,
-	                                             RegexInitLocalState));
+	                                             ReturnType::ANY(RegexExtractStructReturnType<false>),
+	                                             RegexExtractStructFunction, RegexExtractBind, RegexInitLocalState));
 	// throws when \C splits a character
 	regexp_extract.SetFallible();
 	return (regexp_extract);
@@ -541,18 +568,17 @@ ScalarFunctionSet RegexpExtractAllFun::GetFunctions() {
 	                                                 LogicalType::LIST(LogicalType::VARCHAR), RegexpExtractAll::Execute,
 	                                                 RegexpExtractAll::Bind, RegexpExtractAll::InitLocalState));
 	// Struct multi-match variant(s): pattern must be constant due to bind-time struct shape inference
-	// return type is temporary, replaced in bind
 	regexp_extract_all.AddFunction(MakeRegexFunction({{"string", LogicalType::VARCHAR},
 	                                                  {"regex", LogicalType::VARCHAR},
 	                                                  {"name_list", LogicalType::LIST(LogicalType::VARCHAR)}},
-	                                                 LogicalType::LIST(LogicalType::VARCHAR),
+	                                                 ReturnType::ANY(RegexExtractStructReturnType<true>),
 	                                                 RegexpExtractAllStruct::Execute, RegexpExtractAllStruct::Bind,
 	                                                 RegexpExtractAllStruct::InitLocalState));
 	regexp_extract_all.AddFunction(MakeRegexFunction({{"string", LogicalType::VARCHAR},
 	                                                  {"regex", LogicalType::VARCHAR},
 	                                                  {"name_list", LogicalType::LIST(LogicalType::VARCHAR)},
 	                                                  {"options", LogicalType::VARCHAR}},
-	                                                 LogicalType::LIST(LogicalType::VARCHAR),
+	                                                 ReturnType::ANY(RegexExtractStructReturnType<true>),
 	                                                 RegexpExtractAllStruct::Execute, RegexpExtractAllStruct::Bind,
 	                                                 RegexpExtractAllStruct::InitLocalState));
 	// throws when accessing a group that the pattern does not have

@@ -5,12 +5,12 @@
 statement error
 SELECT map_concat(42, 42);
 ----
-only takes map arguments
+No function matches the given name and argument types
 
 statement error
 SELECT map_concat(map { 'a': 42 }, 42);
 ----
-only takes map arguments
+No function matches the given name and argument types
 
 query I
 SELECT map_concat(map { 'a': 42 }, NULL);

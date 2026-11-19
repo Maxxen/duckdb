@@ -39,9 +39,9 @@
         "name": "list_zip",
         "parameters": "list_1,...,truncate",
         "description": "Zips n `LIST`s to a new `LIST` whose length will be that of the longest list. Its elements are structs of n elements from each list `list_1`, …, `list_n`, missing elements are replaced with `NULL`. If `truncate` is set, all lists are truncated to the smallest list length.",
-        "examples": ["list_zip([1, 2], [3, 4], [5, 6])", "list_zip([1, 2], [3, 4], [5, 6, 7])", "list_zip([1, 2], [3, 4], [5, 6, 7], true)"],
+        "examples": ["list_zip([1, 2], [3, 4], [5, 6])", "list_zip([1, 2], [3, 4], [5, 6, 7])", "list_zip([1, 2], [3, 4], [5, 6, 7], truncate := true)"],
         "categories": ["list"],
-        "type": "scalar_function",
+        "type": "scalar_function_set",
         "aliases": ["array_zip"]
     },
     {
