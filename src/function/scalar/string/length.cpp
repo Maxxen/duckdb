@@ -192,25 +192,6 @@ unique_ptr<BaseStatistics> ListLengthPropagateStats(ClientContext &context, Func
 	return result.ToUnique();
 }
 
-void ArrayOrListLengthResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &argument = input.GetArgument(0);
-	if (argument.HasParameter() || argument.GetReturnType().id() == LogicalTypeId::UNKNOWN) {
-		throw ParameterNotResolvedException();
-	}
-
-	const auto &arg_type = argument.GetReturnType().id();
-	if (arg_type == LogicalTypeId::ARRAY) {
-		bound_function.SetFunctionCallback(ArrayLengthFunction);
-	} else if (arg_type == LogicalTypeId::LIST) {
-		bound_function.SetFunctionCallback(ListLengthFunction);
-	} else {
-		// Unreachable
-		throw BinderException("length can only be used on arrays or lists");
-	}
-	bound_function.GetArguments()[0] = argument.GetReturnType();
-}
-
 //------------------------------------------------------------------
 // ARRAY / LIST WITH DIMENSION
 //------------------------------------------------------------------
@@ -271,42 +252,35 @@ void ArrayLengthBinaryFunction(DataChunk &args, ExpressionState &state, Vector &
 	}
 }
 
-void ArrayOrListLengthBinaryResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &argument = input.GetArgument(0);
-	if (argument.HasParameter() || argument.GetReturnType().id() == LogicalTypeId::UNKNOWN) {
-		throw ParameterNotResolvedException();
+//! The dimensions of an array are part of its type
+unique_ptr<FunctionData> ArrayLengthBinaryBind(BindScalarFunctionInput &input) {
+	auto type = input.GetBoundFunction().GetArguments()[0];
+	auto data = make_uniq<ArrayLengthBinaryFunctionData>();
+	while (type.id() == LogicalTypeId::ARRAY) {
+		data->dimensions.push_back(UnsafeNumericCast<int64_t>(ArrayType::GetSize(type)));
+		type = ArrayType::GetChildType(type);
 	}
-	auto &type = argument.GetReturnType();
-	if (type.id() == LogicalTypeId::ARRAY) {
-		bound_function.SetFunctionCallback(ArrayLengthBinaryFunction);
-	} else if (type.id() == LogicalTypeId::LIST) {
-		bound_function.SetFunctionCallback(ListLengthBinaryFunction);
-	} else {
-		// Unreachable
-		throw BinderException("array_length can only be used on arrays or lists");
-	}
-	bound_function.GetArguments()[0] = type;
+	return std::move(data);
 }
 
-unique_ptr<FunctionData> ArrayOrListLengthBinaryBind(BindScalarFunctionInput &input) {
-	auto type = input.GetBoundFunction().GetArguments()[0];
-	if (type.id() == LogicalTypeId::ARRAY) {
-		// If the input is an array, the dimensions are constant, so we can calculate them at bind time
-		vector<int64_t> dimensions;
-		while (true) {
-			if (type.id() == LogicalTypeId::ARRAY) {
-				dimensions.push_back(UnsafeNumericCast<int64_t>(ArrayType::GetSize(type)));
-				type = ArrayType::GetChildType(type);
-			} else {
-				break;
-			}
-		}
-		auto data = make_uniq<ArrayLengthBinaryFunctionData>();
-		data->dimensions = dimensions;
-		return std::move(data);
-	}
-	return nullptr;
+//! The length of a list and of an array of any size - an array is not cast to a list
+void AddListLengthFunctions(ScalarFunctionSet &set) {
+	auto element_type = TypeName::VARIABLE("T");
+	ScalarFunction list_fun(FunctionSignature()
+	                            .AddVariable("T")
+	                            .AddParameter("list", TypeName::LIST(element_type))
+	                            .SetReturnType(LogicalType::BIGINT),
+	                        ListLengthFunction);
+	list_fun.SetStatisticsCallback(ListLengthPropagateStats);
+	set.AddFunction(list_fun);
+
+	ScalarFunction array_fun(FunctionSignature()
+	                             .AddVariable("T")
+	                             .AddVariable("N", TypeVariable::Kind::INTEGER)
+	                             .AddParameter("list", TypeName::ARRAY(element_type, TypeName::VARIABLE("N")))
+	                             .SetReturnType(LogicalType::BIGINT),
+	                         ArrayLengthFunction);
+	set.AddFunction(array_fun);
 }
 
 } // namespace
@@ -325,14 +299,7 @@ ScalarFunctionSet LengthFun::GetFunctions() {
 	bit_fun.GetSignature().AddParameter("bit", LogicalType::BIT);
 	length.AddFunction(bit_fun);
 
-	ScalarFunction list_fun(FunctionSignature()
-	                            .AddVariable("T")
-	                            .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
-	                            .SetReturnType(LogicalType::BIGINT),
-	                        nullptr);
-	list_fun.SetResolveTypesCallback(ArrayOrListLengthResolveTypes);
-	list_fun.SetStatisticsCallback(ListLengthPropagateStats);
-	length.AddFunction(list_fun);
+	AddListLengthFunctions(length);
 
 	return (length);
 }
@@ -349,23 +316,25 @@ ScalarFunctionSet LengthGraphemeFun::GetFunctions() {
 ScalarFunctionSet ArrayLengthFun::GetFunctions() {
 	ScalarFunctionSet array_length("array_length");
 
-	ScalarFunction unary(FunctionSignature()
-	                         .AddVariable("T")
-	                         .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
-	                         .SetReturnType(LogicalType::BIGINT),
-	                     nullptr);
-	unary.SetResolveTypesCallback(ArrayOrListLengthResolveTypes);
-	unary.SetStatisticsCallback(ListLengthPropagateStats);
-	array_length.AddFunction(unary);
+	AddListLengthFunctions(array_length);
 
-	ScalarFunction binary(FunctionSignature()
-	                          .AddVariable("T")
-	                          .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
-	                          .AddParameter("dimension", LogicalType::BIGINT)
-	                          .SetReturnType(LogicalType::BIGINT),
-	                      nullptr, ArrayOrListLengthBinaryBind);
-	binary.SetResolveTypesCallback(ArrayOrListLengthBinaryResolveTypes);
-	array_length.AddFunction(binary);
+	auto element_type = TypeName::VARIABLE("T");
+	ScalarFunction list_fun(FunctionSignature()
+	                            .AddVariable("T")
+	                            .AddParameter("list", TypeName::LIST(element_type))
+	                            .AddParameter("dimension", LogicalType::BIGINT)
+	                            .SetReturnType(LogicalType::BIGINT),
+	                        ListLengthBinaryFunction);
+	array_length.AddFunction(list_fun);
+
+	ScalarFunction array_fun(FunctionSignature()
+	                             .AddVariable("T")
+	                             .AddVariable("N", TypeVariable::Kind::INTEGER)
+	                             .AddParameter("list", TypeName::ARRAY(element_type, TypeName::VARIABLE("N")))
+	                             .AddParameter("dimension", LogicalType::BIGINT)
+	                             .SetReturnType(LogicalType::BIGINT),
+	                         ArrayLengthBinaryFunction, ArrayLengthBinaryBind);
+	array_length.AddFunction(array_fun);
 
 	array_length.SetFallible();
 	return (array_length);

@@ -23,40 +23,24 @@ static void CardinalityFunction(DataChunk &args, ExpressionState &state, Vector 
 	}
 }
 
-static unique_ptr<FunctionData> CardinalityBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	if (arguments.size() != 1) {
-		throw BinderException("Cardinality must have exactly one arguments");
-	}
-
-	auto &context = input.GetClientContext();
-	switch (arguments[0]->GetReturnType().id()) {
-	case LogicalTypeId::MAP:
-	case LogicalTypeId::LIST:
-		break;
-	case LogicalTypeId::ARRAY: {
-		// a fixed-size array is read as a list
-		auto target_type = LogicalType::LIST(ArrayType::GetChildType(arguments[0]->GetReturnType()));
-		input.CastArgument(0, target_type);
-		break;
-	}
-	default:
-		throw BinderException("Cardinality can only operate on MAPs, LISTs and ARRAYs");
-	}
-
-	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
-}
-
-ScalarFunction CardinalityFun::GetFunction() {
-	ScalarFunction fun(FunctionSignature()
-	                       .AddVariable("T")
-	                       .AddParameter("map", TypeName::VARIABLE("T"))
-	                       .AddArgs("args", LogicalType::ANY)
-	                       .SetReturnType(LogicalType::UBIGINT),
-	                   CardinalityFunction, CardinalityBind);
-	fun.SetNullHandling(FunctionNullHandling::DEFAULT_NULL_HANDLING);
-	return fun;
+ScalarFunctionSet CardinalityFun::GetFunctions() {
+	ScalarFunctionSet set("cardinality");
+	// the entries of a map
+	ScalarFunction map_fun(FunctionSignature()
+	                           .AddVariable("K")
+	                           .AddVariable("V")
+	                           .AddParameter("map", TypeName::MAP(TypeName::VARIABLE("K"), TypeName::VARIABLE("V")))
+	                           .SetReturnType(LogicalType::UBIGINT),
+	                       CardinalityFunction);
+	set.AddFunction(map_fun);
+	// the elements of a list - a fixed-size array is cast to a list
+	ScalarFunction list_fun(FunctionSignature()
+	                            .AddVariable("T")
+	                            .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
+	                            .SetReturnType(LogicalType::UBIGINT),
+	                        CardinalityFunction);
+	set.AddFunction(list_fun);
+	return set;
 }
 
 } // namespace duckdb

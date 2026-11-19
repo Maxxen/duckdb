@@ -139,12 +139,11 @@ LogicalType VariantColumnWriter::GetParquetVariantType(optional_ptr<LogicalType>
 }
 
 //! The parquet variant, shredded to the type the constant second argument names
-static LogicalType TransformReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType TransformReturnType(ResolveReturnTypeInput &input) {
 	if (input.GetArgumentCount() != 2) {
 		return VariantColumnWriter::GetParquetVariantType();
 	}
-	auto expr_return_type = ExpressionBinder::GetExpressionReturnType(input.GetArgument(1));
-	expr_return_type = LogicalType::NormalizeType(expr_return_type);
+	auto &expr_return_type = input.GetArgumentType(1);
 	if (expr_return_type.id() != LogicalTypeId::VARCHAR) {
 		throw BinderException("Optional second argument 'shredding' has to be of type VARCHAR, i.e: "
 		                      "'STRUCT(my_field BOOLEAN)', found type: '%s' instead",

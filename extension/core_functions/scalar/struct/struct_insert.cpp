@@ -31,8 +31,8 @@ static void StructInsertFunction(DataChunk &args, ExpressionState &state, Vector
 }
 
 //! The struct with the named arguments added as fields
-static LogicalType StructInsertReturnType(const ResolveReturnTypeInput &input) {
-	auto &struct_type = input.GetArgument(0).GetReturnType();
+static LogicalType StructInsertReturnType(ResolveReturnTypeInput &input) {
+	auto &struct_type = input.GetArgumentType(0);
 	if (LogicalTypeId::STRUCT != struct_type.id()) {
 		throw InvalidInputException("The first argument to struct_insert must be a STRUCT");
 	}
@@ -57,7 +57,7 @@ static LogicalType StructInsertReturnType(const ResolveReturnTypeInput &input) {
 			throw BinderException("Duplicate struct entry name %s", name);
 		}
 		name_collision_set.insert(name);
-		new_children.emplace_back(make_pair(name, input.GetArgument(i).GetReturnType()));
+		new_children.emplace_back(make_pair(name, input.GetArgumentType(i)));
 	}
 	return LogicalType::STRUCT(new_children);
 }

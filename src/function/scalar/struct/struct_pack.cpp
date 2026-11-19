@@ -46,17 +46,17 @@ static void StructPackFunction(DataChunk &args, ExpressionState &state, Vector &
 
 //! The struct of the arguments: struct_pack names its fields after them, row leaves them unnamed
 template <bool IS_STRUCT_PACK>
-static LogicalType StructPackReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType StructPackReturnType(ResolveReturnTypeInput &input) {
 	if (IS_STRUCT_PACK) {
 		child_list_t<LogicalType> fields;
 		for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
-			fields.emplace_back(input.GetArgumentName(i), input.GetArgument(i).GetReturnType());
+			fields.emplace_back(input.GetArgumentName(i), input.GetArgumentType(i));
 		}
 		return LogicalType::STRUCT(std::move(fields));
 	}
 	vector<LogicalType> fields;
 	for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
-		fields.push_back(input.GetArgument(i).GetReturnType());
+		fields.push_back(input.GetArgumentType(i));
 	}
 	return LogicalType::TUPLE(std::move(fields));
 }

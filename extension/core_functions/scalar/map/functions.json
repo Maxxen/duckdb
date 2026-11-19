@@ -4,7 +4,7 @@
         "parameters": "map",
         "description": "Returns the size of the map (or the number of entries in the map)",
         "example": "cardinality( map([4, 2], ['a', 'b']) );",
-        "type": "scalar_function"
+        "type": "scalar_function_set"
     },
     {
         "name": "map",

@@ -18,7 +18,7 @@ static void ManyTypeFunction(DataChunk &args, ExpressionState &state, Vector &re
 	JSONExecutors::ExecuteMany<string_t>(args, state, result, GetType);
 }
 
-static LogicalType TypeReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType TypeReturnType(ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::VARCHAR);
 }
 
@@ -27,11 +27,9 @@ static void GetTypeFunctionsInternal(ScalarFunctionSet &set, const LogicalType &
 	                         JSONFunctionLocalState::Init);
 	unary_fun.GetSignature().AddParameter("json", input_type);
 	set.AddFunction(unary_fun);
-	ScalarFunction path_fun({}, ReturnType::ANY(TypeReturnType), BinaryTypeFunction, JSONReadFunctionData::Bind, nullptr,
-	                        JSONFunctionLocalState::Init);
-	path_fun.GetSignature().AddParameter("json", input_type).AddParameter("path", LogicalType::VARCHAR);
-	path_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
-	set.AddFunction(path_fun);
+	ScalarFunction path_fun({}, ReturnType::ANY(TypeReturnType), BinaryTypeFunction, JSONReadFunctionData::Bind,
+	                        nullptr, JSONFunctionLocalState::Init);
+	JSONReadFunctionData::AddPathFunctions(set, path_fun, input_type);
 	ScalarFunction many_fun({}, LogicalType::LIST(LogicalType::VARCHAR), ManyTypeFunction,
 	                        JSONReadManyFunctionData::Bind, nullptr, JSONFunctionLocalState::Init);
 	many_fun.GetSignature()

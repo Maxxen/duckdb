@@ -299,9 +299,10 @@ functions:
     description: |
       Sets the optional resolve types callback of the scalar function.
 
-      The resolve types callback is invoked during query planning for each call site of the function, before the
-      arguments are cast to the parameter types of the signature. Through its `[[function_bind_info]]` it can
-      inspect the argument types as they were passed and constant argument values. Through its
+      The resolve types callback is invoked during query planning for each call site of the function, after the
+      arguments are cast to the parameter types of the signature and before the bind callback. Through its
+      `[[function_bind_info]]` it can inspect the argument types the function receives and constant argument values:
+      an argument of a parameter declared as ANY has the type it was passed as. Through its
       `[[scalar_function_resolve_types_info]]` it can set a concrete return type. It cannot set "bind data", use the
       bind callback for that.
     parameters:

@@ -11161,9 +11161,10 @@ DUCKDB_C_API DUCKDB_V2_ERROR duckdb_v2_scalar_function_set_property(duckdb_v2_sc
 /*!
  * Sets the optional resolve types callback of the scalar function.
  *
- * The resolve types callback is invoked during query planning for each call site of the function, before the arguments
- * are cast to the parameter types of the signature. Through its `duckdb_v2_function_bind_info_handle` it can inspect
- * the argument types as they were passed and constant argument values. Through its
+ * The resolve types callback is invoked during query planning for each call site of the function, after the arguments
+ * are cast to the parameter types of the signature and before the bind callback. Through its
+ * `duckdb_v2_function_bind_info_handle` it can inspect the argument types the function receives and constant argument
+ * values: an argument of a parameter declared as ANY has the type it was passed as. Through its
  * `duckdb_v2_scalar_function_resolve_types_info_handle` it can set a concrete return type. It cannot set "bind data",
  * use the bind callback for that.
  *

@@ -10,7 +10,7 @@ namespace duckdb {
 namespace {
 
 //! The tag of a union is an enum of the names of its members
-LogicalType UnionTagReturnType(const ResolveReturnTypeInput &input) {
+LogicalType UnionTagReturnType(ResolveReturnTypeInput &input) {
 	auto &union_type = input.GetArgumentType(0);
 	if (union_type.id() != LogicalTypeId::UNION) {
 		// the argument is NULL

@@ -711,7 +711,6 @@ unique_ptr<FunctionData> ResolveDecimalRoundPrecision(BoundScalarFunction &bound
 	auto width = DecimalType::GetWidth(decimal_type);
 	auto scale = DecimalType::GetScale(decimal_type);
 	auto result_width = width;
-	auto argument_type = decimal_type;
 	bool check_overflow = false;
 	if (round_value < 0) {
 		target_scale = 0;
@@ -737,9 +736,6 @@ unique_ptr<FunctionData> ResolveDecimalRoundPrecision(BoundScalarFunction &bound
 			bound_function.SetFunctionCallback(GenericRoundPrecisionDecimal<hugeint_t, Hugeint, NEGOP>);
 			break;
 		}
-		if (result_type.InternalType() != decimal_type.InternalType()) {
-			argument_type = LogicalType::DECIMAL(result_width, scale);
-		}
 	} else {
 		if (round_value >= (int32_t)scale) {
 			// if round_value is bigger than or equal to scale we do nothing
@@ -763,15 +759,13 @@ unique_ptr<FunctionData> ResolveDecimalRoundPrecision(BoundScalarFunction &bound
 			}
 		}
 	}
-	bound_function.GetArguments()[0] = argument_type;
-	bound_function.SetReturnType(LogicalType::DECIMAL(result_width, target_scale));
 	return make_uniq<RoundPrecisionFunctionData>(round_value, width, check_overflow);
 }
 
 //! Rounding a decimal to a precision gives it that scale, and one more digit if it can carry into a new one
 template <bool CAN_CARRY = false>
-LogicalType DecimalRoundPrecisionReturnType(const ResolveReturnTypeInput &input) {
-	auto &decimal_type = input.GetArgumentType(0);
+LogicalType DecimalRoundPrecisionReturnType(ResolveReturnTypeInput &input) {
+	auto decimal_type = input.GetArgumentType(0);
 	if (decimal_type.id() != LogicalTypeId::DECIMAL) {
 		// the argument is NULL
 		return decimal_type;
@@ -785,19 +779,21 @@ LogicalType DecimalRoundPrecisionReturnType(const ResolveReturnTypeInput &input)
 	if (CAN_CARRY && scale == 0 && round_value >= -int32_t(width) && width < Decimal::MAX_WIDTH_DECIMAL) {
 		width++;
 	}
-	return LogicalType::DECIMAL(width, 0);
+	auto result_type = LogicalType::DECIMAL(width, 0);
+	if (result_type.InternalType() != decimal_type.InternalType()) {
+		// the kernel reads the argument in the physical type of the result
+		input.CastArgument(0, LogicalType::DECIMAL(width, scale));
+	}
+	return result_type;
 }
 
 template <typename NEGOP, typename POSOP, bool CAN_CARRY = false>
 unique_ptr<FunctionData> BindDecimalRoundPrecision(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
 	auto val = input.GetNonNullConstant(1).CastAs(input.GetClientContext(), LogicalType::INTEGER);
-	auto decimal_type = bound_function.GetArguments()[0];
-	auto result =
-	    ResolveDecimalRoundPrecision<NEGOP, POSOP, CAN_CARRY>(bound_function, decimal_type, IntegerValue::Get(val));
-	// the kernel reads the argument in the physical type of the result
-	input.CastArgument(0, bound_function.GetArguments()[0]);
-	return result;
+	// the type of the decimal before it was cast to the physical type of the result
+	auto &decimal_type = bound_function.GetLogicalArguments()[0];
+	return ResolveDecimalRoundPrecision<NEGOP, POSOP, CAN_CARRY>(bound_function, decimal_type, IntegerValue::Get(val));
 }
 
 struct TruncOperatorPrecision {

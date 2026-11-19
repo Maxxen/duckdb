@@ -1680,12 +1680,13 @@ void FunctionBinder::CastToFunctionArguments(const Identifier &function_name, ve
 		if (cast_result == LogicalTypeComparisonResult::DIFFERENT_TYPES) {
 			if (target_has_any) {
 				// a type that is not concrete cannot be cast to (e.g. a NULL or a VARIANT passed to LIST(ANY)) - the
-				// function has to handle the argument as-is
+				// function receives the argument as it is
+				target_type = children[i]->GetReturnType();
 				continue;
 			}
 			if (IsIncompleteCastTarget(target_type)) {
-				throw InternalException("Function %s has incomplete argument type %s - concrete argument types must "
-				                        "be resolved in the resolve_types callback",
+				throw InternalException("Function %s has incomplete argument type %s - an argument cannot be cast "
+				                        "to it",
 				                        function_name, target_type);
 			}
 			children[i] = BoundCastExpression::AddCastToType(context, std::move(children[i]), target_type);
@@ -2067,9 +2068,7 @@ static void VerifyBindArgumentTypes(const BoundScalarFunction &bound_function,
                                     const vector<unique_ptr<Expression>> &arguments) {
 	auto &argument_types = bound_function.GetArguments();
 	if (arguments.size() > argument_types.size()) {
-		throw InternalException("Function %s added arguments in its bind callback - argument types must be "
-		                        "resolved in the resolve_types callback",
-		                        bound_function.GetName());
+		throw InternalException("Function %s added arguments in its bind callback", bound_function.GetName());
 	}
 	for (idx_t i = 0; i < arguments.size(); i++) {
 		auto &source_type = arguments[i]->GetReturnType();
@@ -2082,7 +2081,7 @@ static void VerifyBindArgumentTypes(const BoundScalarFunction &bound_function,
 		}
 		if (RequiresCast(source_type, target_type) == LogicalTypeComparisonResult::DIFFERENT_TYPES) {
 			throw InternalException("Function %s changed the type of argument %llu from %s to %s in its bind "
-			                        "callback - argument types must be resolved in the resolve_types callback",
+			                        "callback - an argument is cast when the return type is resolved",
 			                        bound_function.GetName(), i + 1, source_type, target_type);
 		}
 	}
@@ -2143,11 +2142,6 @@ FunctionBinder::ResolveScalarFunctionTypes(const FunctionBinding &binding, vecto
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, arguments));
 	ResolveIncompleteArgumentTypes(bound_function, arguments);
 
-	if (bound_function.HasResolveTypesCallback()) {
-		ResolveScalarFunctionTypesInput input(context, bound_function, arguments);
-		bound_function.GetResolveTypesCallback()(input);
-		VerifyArgumentCount(bound_function, arguments.size());
-	}
 	const bool is_index_key = arguments_collated || (binder && binder->IsBindingIndexKey());
 	result.pushed_collation =
 	    PushArgumentCollations(context, bound_function, bound_function.GetProperties(), arguments, is_index_key);

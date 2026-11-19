@@ -254,7 +254,7 @@ ScalarFunctionSet StCrsFun::GetFunctions() {
 }
 
 //! The geometry of the coordinate reference system the constant second argument names
-static LogicalType SetCRSReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType SetCRSReturnType(ResolveReturnTypeInput &input) {
 	const auto crs_val = input.GetConstant(1);
 	if (crs_val.IsNull()) {
 		return LogicalType::GEOMETRY();

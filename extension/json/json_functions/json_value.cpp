@@ -10,21 +10,14 @@ static void ValueManyFunction(DataChunk &args, ExpressionState &state, Vector &r
 	JSONExecutors::ExecuteMany<string_t>(args, state, result, JSONCommon::JSONValue);
 }
 
-static LogicalType ValueReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType ValueReturnType(ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::VARCHAR);
 }
 
 static void GetValueFunctionsInternal(ScalarFunctionSet &set, const LogicalType &input_type) {
-	ScalarFunction index_fun({}, ReturnType::ANY(ValueReturnType), ValueFunction, JSONReadFunctionData::Bind, nullptr,
-	                         JSONFunctionLocalState::Init);
-	index_fun.GetSignature().AddParameter("json", input_type).AddParameter("index", LogicalType::BIGINT);
-	index_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
-	set.AddFunction(index_fun);
 	ScalarFunction path_fun({}, ReturnType::ANY(ValueReturnType), ValueFunction, JSONReadFunctionData::Bind, nullptr,
 	                        JSONFunctionLocalState::Init);
-	path_fun.GetSignature().AddParameter("json", input_type).AddParameter("path", LogicalType::VARCHAR);
-	path_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
-	set.AddFunction(path_fun);
+	JSONReadFunctionData::AddPathFunctions(set, path_fun, input_type);
 	ScalarFunction many_fun({}, LogicalType::LIST(LogicalType::VARCHAR), ValueManyFunction,
 	                        JSONReadManyFunctionData::Bind, nullptr, JSONFunctionLocalState::Init);
 	many_fun.GetSignature()

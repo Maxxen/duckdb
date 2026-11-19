@@ -1,6 +1,7 @@
 #include "duckdb/main/capi_v2/capi_v2_internal.hpp"
 #include "duckdb/main/capi_v2/capi_v2_function_internal.hpp"
 #include "duckdb/catalog/catalog.hpp"
+#include "duckdb/function/function_binder.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 
@@ -31,11 +32,10 @@ public:
 static constexpr const char *SCALAR_BIND_DATA_ERROR =
     "Scalar functions set the bind data through duckdb_v2_scalar_function_bind_set_bind_data";
 
-//! The arguments of a scalar call before they are cast to the parameter types - the bind data cannot be set
+//! The arguments of a scalar call as the function receives them - the bind data cannot be set
 class CV2ResolveTypesBindInfo final : public CV2FunctionBindInfo {
 public:
-	CV2ResolveTypesBindInfo(const BoundScalarFunction &function, void *user_data,
-	                        const ResolveScalarFunctionTypesInput &input)
+	CV2ResolveTypesBindInfo(const BoundScalarFunction &function, void *user_data, const ResolveReturnTypeInput &input)
 	    : CV2FunctionBindInfo(function, user_data), input(input) {
 		D_ASSERT(GetArgCount() == input.GetArgumentCount());
 		bind_data_error = SCALAR_BIND_DATA_ERROR;
@@ -49,7 +49,7 @@ public:
 	}
 
 private:
-	const ResolveScalarFunctionTypesInput &input;
+	const ResolveReturnTypeInput &input;
 };
 
 class CV2BindInfo {
@@ -67,10 +67,8 @@ static auto Convert(CV2BindInfo *info) -> duckdb_v2_scalar_function_bind_info_ha
 
 class CV2ResolveTypesInfo {
 public:
-	explicit CV2ResolveTypesInfo(BoundScalarFunction &bound_function) : bound_function(bound_function) {
-	}
-
-	BoundScalarFunction &bound_function;
+	//! The return type the callback set, if it set one
+	optional<LogicalType> return_type;
 };
 
 static auto Convert(duckdb_v2_scalar_function_resolve_types_info_handle info) -> CV2ResolveTypesInfo * {
@@ -144,14 +142,16 @@ public:
 	duckdb_v2_scalar_function_exec_callback_fn exec_cb = nullptr;
 	duckdb_v2_scalar_function_stats_callback_fn stats_cb = nullptr;
 	shared_ptr<CV2UserData> user_data = nullptr;
+	//! The return type the signature declares - what the resolve types callback returns unless it sets another one
+	optional<TypeName> declared_return_type;
 };
 
-static auto CV2ScalarResolveTypes(ResolveScalarFunctionTypesInput &input) -> void {
-	auto &bound_function = input.GetBoundFunction();
+static auto CV2ScalarResolveTypes(ResolveReturnTypeInput &input) -> LogicalType {
+	auto &bound_function = static_cast<const BoundScalarFunction &>(input.GetBoundFunction());
 	const auto &info = bound_function.GetExtraFunctionInfo().Cast<CV2ScalarFunctionInfo>();
 
 	CV2ResolveTypesBindInfo bind_info(bound_function, info.user_data ? info.user_data->GetData() : nullptr, input);
-	CV2ResolveTypesInfo result_info(bound_function);
+	CV2ResolveTypesInfo result_info;
 
 	CV2ErrorInfo err = {};
 	auto err_ptr = Convert(&err);
@@ -161,6 +161,14 @@ static auto CV2ScalarResolveTypes(ResolveScalarFunctionTypesInput &input) -> voi
 	if (err.HasError()) {
 		err.ThrowAsException();
 	}
+	if (result_info.return_type) {
+		return *result_info.return_type;
+	}
+	if (!info.declared_return_type) {
+		throw BinderException("The resolve types callback of function %s did not set a return type",
+		                      input.GetFunctionName());
+	}
+	return FunctionBinder::BindTypeName(&input.GetClientContext(), *info.declared_return_type);
 }
 
 static auto CV2ScalarBind(BindScalarFunctionInput &input) -> unique_ptr<FunctionData> {
@@ -329,7 +337,11 @@ public:
 		function.GetSignature() = signature;
 
 		if (info.resolve_types_cb) {
-			function.SetResolveTypesCallback(CV2ScalarResolveTypes);
+			// the callback resolves the return type of every call
+			if (return_type.IsType()) {
+				info.declared_return_type = return_type.GetTypeName();
+			}
+			function.GetSignature().SetReturnType(ReturnType::ANY(CV2ScalarResolveTypes));
 		}
 		if (info.bind_cb) {
 			function.SetBindCallback(CV2ScalarBind);
@@ -468,7 +480,7 @@ duckdb_v2_scalar_function_resolve_types_set_return_type(duckdb_v2_scalar_functio
 	DUCKDB_CHECK_ARG(return_type);
 	return WithErrorHandler(err, [&]() {
 		auto type = Convert(return_type);
-		Convert(info)->bound_function.SetReturnType(*type);
+		Convert(info)->return_type = *type;
 	});
 }
 

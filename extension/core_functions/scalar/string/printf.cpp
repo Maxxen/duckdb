@@ -23,52 +23,52 @@ struct FMTFormat {
 	}
 };
 
-static void PrintfResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
+//! Casts every argument to the type it is formatted as
+static LogicalType PrintfResolveTypes(ResolveReturnTypeInput &input) {
 	for (idx_t i = 1; i < input.GetArgumentCount(); i++) {
 		switch (input.GetArgumentType(i).id()) {
 		case LogicalTypeId::BOOLEAN:
-			bound_function.GetArguments()[i] = LogicalType::BOOLEAN;
+			input.CastArgument(i, LogicalType::BOOLEAN);
 			break;
 		case LogicalTypeId::TINYINT:
 		case LogicalTypeId::SMALLINT:
 		case LogicalTypeId::INTEGER:
 		case LogicalTypeId::BIGINT:
-			bound_function.GetArguments()[i] = LogicalType::BIGINT;
+			input.CastArgument(i, LogicalType::BIGINT);
 			break;
 		case LogicalTypeId::UTINYINT:
 		case LogicalTypeId::USMALLINT:
 		case LogicalTypeId::UINTEGER:
 		case LogicalTypeId::UBIGINT:
-			bound_function.GetArguments()[i] = LogicalType::UBIGINT;
+			input.CastArgument(i, LogicalType::UBIGINT);
 			break;
 		case LogicalTypeId::HUGEINT:
-			bound_function.GetArguments()[i] = LogicalType::HUGEINT;
+			input.CastArgument(i, LogicalType::HUGEINT);
 			break;
 		case LogicalTypeId::UHUGEINT:
-			bound_function.GetArguments()[i] = LogicalType::UHUGEINT;
+			input.CastArgument(i, LogicalType::UHUGEINT);
 			break;
 		case LogicalTypeId::FLOAT:
 		case LogicalTypeId::DOUBLE:
-			bound_function.GetArguments()[i] = LogicalType::DOUBLE;
+			input.CastArgument(i, LogicalType::DOUBLE);
 			break;
 		case LogicalTypeId::VARCHAR:
-			bound_function.GetArguments()[i] = LogicalType::VARCHAR;
+			input.CastArgument(i, LogicalType::VARCHAR);
 			break;
 		case LogicalTypeId::DECIMAL:
 			// decimal type: add cast to double
-			bound_function.GetArguments()[i] = LogicalType::DOUBLE;
+			input.CastArgument(i, LogicalType::DOUBLE);
 			break;
 		case LogicalTypeId::UNKNOWN:
 			// parameter: accept any input and rebind later
-			bound_function.GetArguments()[i] = LogicalType::ANY;
 			break;
 		default:
 			// all other types: add cast to string
-			bound_function.GetArguments()[i] = LogicalType::VARCHAR;
+			input.CastArgument(i, LogicalType::VARCHAR);
 			break;
 		}
 	}
+	return LogicalType::VARCHAR;
 }
 
 struct StandardConstructArgument {
@@ -186,8 +186,8 @@ static void PrintfFunction(DataChunk &args, ExpressionState &state, Vector &resu
 
 ScalarFunction PrintfFun::GetFunction() {
 	// duckdb_fmt::printf_context, duckdb_fmt::vsprintf
-	ScalarFunction printf_fun({}, LogicalType::VARCHAR, PrintfFunction<FMTPrintf, duckdb_fmt::printf_context>);
-	printf_fun.SetResolveTypesCallback(PrintfResolveTypes);
+	ScalarFunction printf_fun({}, ReturnType::ANY(PrintfResolveTypes),
+	                          PrintfFunction<FMTPrintf, duckdb_fmt::printf_context>);
 	printf_fun.GetSignature().AddParameter("format", LogicalType::VARCHAR);
 	printf_fun.GetSignature().AddArgs("args", LogicalType::ANY);
 	printf_fun.SetFallible();
@@ -196,8 +196,8 @@ ScalarFunction PrintfFun::GetFunction() {
 
 ScalarFunction FormatFun::GetFunction() {
 	// duckdb_fmt::format_context, duckdb_fmt::vformat
-	ScalarFunction format_fun({}, LogicalType::VARCHAR, PrintfFunction<FMTFormat, duckdb_fmt::format_context>);
-	format_fun.SetResolveTypesCallback(PrintfResolveTypes);
+	ScalarFunction format_fun({}, ReturnType::ANY(PrintfResolveTypes),
+	                          PrintfFunction<FMTFormat, duckdb_fmt::format_context>);
 	format_fun.GetSignature().AddParameter("format", LogicalType::VARCHAR);
 	format_fun.GetSignature().AddArgs("args", LogicalType::ANY);
 	format_fun.SetFallible();

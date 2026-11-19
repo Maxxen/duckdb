@@ -6,6 +6,7 @@
 #include "duckdb/common/types/time.hpp"
 #include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/common/vector_operations/generic_executor.hpp"
+#include "duckdb/function/function_binder.hpp"
 #include "core_functions/scalar/generic_functions.hpp"
 
 namespace duckdb {
@@ -414,27 +415,6 @@ struct EquiWidthBinsTimestamp {
 	}
 };
 
-void EquiWidthResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &max_type = input.GetArgumentType(1);
-	// while internally the bins are computed over a unified type
-	// the equi_width_bins function returns the same type as the input MAX
-	LogicalType child_type;
-	switch (max_type.id()) {
-	case LogicalTypeId::UNKNOWN:
-	case LogicalTypeId::SQLNULL:
-		return;
-	case LogicalTypeId::DECIMAL:
-		// for decimals we promote to double because
-		child_type = LogicalType::DOUBLE;
-		break;
-	default:
-		child_type = max_type;
-		break;
-	}
-	bound_function.SetReturnType(LogicalType::LIST(child_type));
-}
-
 template <class T, class OP>
 void EquiWidthBinFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	static constexpr int64_t MAX_BIN_COUNT = 1000000;
@@ -478,47 +458,100 @@ void EquiWidthBinFunction(DataChunk &args, ExpressionState &state, Vector &resul
 	VectorOperations::Cast(state.GetContext(), intermediate_result, result, args.size());
 }
 
+void UnsupportedEquiWidth(DataChunk &args, ExpressionState &state, Vector &) {
+	throw BinderException(state.expr, "Unsupported type \"%s\" for equi_width_bins", args.data[0].GetType());
+}
+
+//! The types the bins can be computed as - the last one is for the types that cast to none of the others
+ScalarFunctionSet GetBinTypeOverloads() {
+	ScalarFunctionSet overloads("equi_width_bins");
+	for (auto &bin_type : {LogicalType::BIGINT, LogicalType::DOUBLE, LogicalType::TIMESTAMP}) {
+		overloads.AddFunction(ScalarFunction({bin_type, bin_type}, LogicalType::SQLNULL, UnsupportedEquiWidth));
+	}
+	auto any_type = TypeName::VARIABLE("T");
+	overloads.AddFunction(ScalarFunction(FunctionSignature()
+	                                         .AddVariable("T")
+	                                         .AddParameter("min", any_type)
+	                                         .AddParameter("max", any_type)
+	                                         .SetReturnType(LogicalType::SQLNULL),
+	                                     UnsupportedEquiWidth));
+	return overloads;
+}
+
+//! MIN and MAX are cast to the type the bins are computed as: the bin type they match best, selected like an overload.
+//! While internally the bins are computed over a unified type, equi_width_bins returns the type of the input MAX
+LogicalType EquiWidthResolveTypes(ResolveReturnTypeInput &input) {
+	auto min_type = input.GetArgumentType(0);
+	auto max_type = input.GetArgumentType(1);
+	auto overloads = GetBinTypeOverloads();
+	auto selected =
+	    FunctionBinder::SelectFunction(input.GetClientContext(), overloads, vector<LogicalType> {min_type, max_type});
+	if (!selected) {
+		selected.GetError().Throw();
+	}
+	auto bin_types = selected.GetBinding().GetArgumentTypes();
+	input.CastArgument(0, bin_types[0]);
+	input.CastArgument(1, bin_types[1]);
+
+	switch (max_type.id()) {
+	case LogicalTypeId::SQLNULL:
+		return LogicalType::SQLNULL;
+	case LogicalTypeId::DECIMAL:
+		// decimals are computed and returned as doubles
+		return LogicalType::LIST(LogicalType::DOUBLE);
+	default:
+		return LogicalType::LIST(max_type);
+	}
+}
+
+//! The kernel of the type the bins are computed as
+scalar_function_t GetEquiWidthBinFunction(const LogicalType &bin_type) {
+	switch (bin_type.id()) {
+	case LogicalTypeId::BIGINT:
+		return EquiWidthBinFunction<int64_t, EquiWidthBinsInteger>;
+	case LogicalTypeId::DOUBLE:
+		return EquiWidthBinFunction<double, EquiWidthBinsDouble>;
+	case LogicalTypeId::TIMESTAMP:
+		return EquiWidthBinFunction<timestamp_t, EquiWidthBinsTimestamp>;
+	default:
+		return UnsupportedEquiWidth;
+	}
+}
+
+unique_ptr<FunctionData> EquiWidthBind(BindScalarFunctionInput &input) {
+	auto &bound_function = input.GetBoundFunction();
+	bound_function.SetFunctionCallback(GetEquiWidthBinFunction(bound_function.GetArguments()[0]));
+	return nullptr;
+}
+
 void EquiWidthBinSerialize(Serializer &, const optional_ptr<FunctionData>, const BoundScalarFunction &) {
 	return;
 }
 
 unique_ptr<FunctionData> EquiWidthBinDeserialize(Deserializer &deserializer, BoundScalarFunction &function) {
 	function.SetReturnType(deserializer.Get<const LogicalType &>());
+	function.SetFunctionCallback(GetEquiWidthBinFunction(function.GetArguments()[0]));
 	return nullptr;
 }
 
 } // namespace
 
-void UnsupportedEquiWidth(DataChunk &args, ExpressionState &state, Vector &) {
-	throw BinderException(state.expr, "Unsupported type \"%s\" for equi_width_bins", args.data[0].GetType());
-}
-
-static void AddEquiWidthBinFunction(ScalarFunctionSet &functions, const TypeName &min_max_type,
-                                    scalar_function_t function, FunctionSignature signature = FunctionSignature()) {
-	ScalarFunction fun(signature.AddParameter("min", min_max_type)
-	                       .AddParameter("max", min_max_type)
-	                       .AddParameter("bin_count", LogicalType::BIGINT)
-	                       .AddParameter("nice_rounding", LogicalType::BOOLEAN)
-	                       .SetReturnType(LogicalType::LIST(LogicalType::ANY)),
-	                   std::move(function));
-	fun.SetResolveTypesCallback(EquiWidthResolveTypes);
-	functions.AddFunction(std::move(fun));
-}
-
 ScalarFunctionSet EquiWidthBinsFun::GetFunctions() {
 	ScalarFunctionSet functions("equi_width_bins");
-	AddEquiWidthBinFunction(functions, LogicalType::BIGINT, EquiWidthBinFunction<int64_t, EquiWidthBinsInteger>);
-	AddEquiWidthBinFunction(functions, LogicalType::DOUBLE, EquiWidthBinFunction<double, EquiWidthBinsDouble>);
-	AddEquiWidthBinFunction(functions, LogicalType::TIMESTAMP,
-	                        EquiWidthBinFunction<timestamp_t, EquiWidthBinsTimestamp>);
-	// a template is selected last: this overload is for the types that cast to none of the above
-	AddEquiWidthBinFunction(functions, TypeName::VARIABLE("T"), UnsupportedEquiWidth,
-	                        FunctionSignature().AddVariable("T"));
-	functions.ApplyToFunctions([](ScalarFunction &function) {
-		function.SetSerializeCallback(EquiWidthBinSerialize);
-		function.SetDeserializeCallback(EquiWidthBinDeserialize);
-		function.SetFallible();
-	});
+	// MIN and MAX are passed as they are: the type of MAX is the type that is returned
+	ScalarFunction function(FunctionSignature()
+	                            .AddVariable("MIN")
+	                            .AddVariable("MAX")
+	                            .AddParameter("min", TypeName::VARIABLE("MIN"))
+	                            .AddParameter("max", TypeName::VARIABLE("MAX"))
+	                            .AddParameter("bin_count", LogicalType::BIGINT)
+	                            .AddParameter("nice_rounding", LogicalType::BOOLEAN)
+	                            .SetReturnType(ReturnType::ANY(EquiWidthResolveTypes)),
+	                        UnsupportedEquiWidth, EquiWidthBind);
+	function.SetSerializeCallback(EquiWidthBinSerialize);
+	function.SetDeserializeCallback(EquiWidthBinDeserialize);
+	function.SetFallible();
+	functions.AddFunction(std::move(function));
 	return functions;
 }
 

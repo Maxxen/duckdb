@@ -35,12 +35,12 @@ void UnionValueFunction(DataChunk &args, ExpressionState &state, Vector &result)
 }
 
 //! The union whose only member is the named argument
-LogicalType UnionValueReturnType(const ResolveReturnTypeInput &input) {
+LogicalType UnionValueReturnType(ResolveReturnTypeInput &input) {
 	if (input.GetArgumentCount() != 1) {
 		throw BinderException("union_value takes exactly one argument");
 	}
 	child_list_t<LogicalType> union_members;
-	union_members.emplace_back(make_pair(input.GetArgumentName(0), input.GetArgument(0).GetReturnType()));
+	union_members.emplace_back(make_pair(input.GetArgumentName(0), input.GetArgumentType(0)));
 	return LogicalType::UNION(std::move(union_members));
 }
 

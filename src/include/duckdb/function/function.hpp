@@ -330,9 +330,9 @@ private:
 class ResolveReturnTypeInput;
 
 //! Resolves the return type of a call from its arguments. It runs once the overload is selected and its arguments
-//! are resolved, before the bind callback, and is pure: it holds no bind data and changes nothing about the function
-//! or its arguments
-typedef LogicalType (*resolve_return_type_t)(const ResolveReturnTypeInput &input);
+//! are cast to the declared types, before the bind callback. It holds no bind data, and the only thing it can change
+//! is the type an argument is cast to
+typedef LogicalType (*resolve_return_type_t)(ResolveReturnTypeInput &input);
 
 //! What a function returns: a type it declares by name, a table, or a type that is only known after binding
 class ReturnType {
@@ -981,10 +981,10 @@ private:
 };
 
 //! Input of the resolve_return_type callback: the arguments of the call, in the order the signature declares them -
-//! [standard | *args | keyword-only | **kwargs], defaults included. Everything is read-only
+//! [standard | *args | keyword-only | **kwargs], defaults included. The arguments can be cast, nothing else changes
 class ResolveReturnTypeInput : private BindFunctionInput {
 public:
-	ResolveReturnTypeInput(ClientContext &context_p, const BoundSimpleFunction &function_p,
+	ResolveReturnTypeInput(ClientContext &context_p, BoundSimpleFunction &function_p,
 	                       const FunctionSignature &signature_p, vector<unique_ptr<Expression>> &arguments_p)
 	    : BindFunctionInput(context_p, function_p, signature_p, arguments_p), function(function_p),
 	      arguments(arguments_p) {
@@ -999,17 +999,26 @@ public:
 	idx_t GetArgumentCount() const {
 		return arguments.size();
 	}
-	const Expression &GetArgument(idx_t arg_idx) const {
-		return *arguments[arg_idx];
-	}
 	//! The type the function receives an argument as: the type of its parameter, or the type of the argument itself
 	//! if the parameter accepts any (e.g. ANY)
 	DUCKDB_API const LogicalType &GetArgumentType(idx_t arg_idx) const;
 	DUCKDB_API vector<LogicalType> GetArgumentTypes() const;
+	DUCKDB_API const Identifier &GetFunctionName() const;
+	//! The function the call is bound to - it cannot be changed
+	const BoundSimpleFunction &GetBoundFunction() const {
+		return function;
+	}
+	//! Whether an argument holds a parameter of a prepared statement that is not resolved yet
+	DUCKDB_API bool HasParameter(idx_t arg_idx) const;
+	//! Where an argument is in the query - for error messages
+	DUCKDB_API QueryErrorContext GetArgumentLocation(idx_t arg_idx) const;
+	//! Casts an argument to the given type, which the function then receives it as. For an argument that is passed
+	//! as it is (to a type variable or ANY) and that the function executes on as another type
+	DUCKDB_API void CastArgument(idx_t arg_idx, const LogicalType &type);
 
 private:
-	const BoundSimpleFunction &function;
-	const vector<unique_ptr<Expression>> &arguments;
+	BoundSimpleFunction &function;
+	vector<unique_ptr<Expression>> &arguments;
 };
 
 } // namespace duckdb

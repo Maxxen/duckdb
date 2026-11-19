@@ -53,7 +53,7 @@ static void StructValuesFunction(DataChunk &args, ExpressionState &state, Vector
 }
 
 //! The values of a struct are a tuple of the types of its children
-static LogicalType StructValuesReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType StructValuesReturnType(ResolveReturnTypeInput &input) {
 	auto &struct_type = input.GetArgumentType(0);
 	if (struct_type.id() != LogicalTypeId::STRUCT) {
 		// the argument is NULL

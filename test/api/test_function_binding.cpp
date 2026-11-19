@@ -420,7 +420,7 @@ TEST_CASE("A named argument passed twice matches no overload", "[api][function_b
 }
 
 //! h(value ANY, depth BIGINT := 0, *args ANY) -> "value" nested in "depth" lists
-static LogicalType NestedReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType NestedReturnType(ResolveReturnTypeInput &input) {
 	// the arguments are in the order of the signature, the default of a parameter the call leaves out included
 	REQUIRE(input.GetArgumentCount() >= 2);
 	REQUIRE(input.GetArgumentType(1) == LogicalType::BIGINT);

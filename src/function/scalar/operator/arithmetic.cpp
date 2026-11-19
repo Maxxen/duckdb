@@ -358,8 +358,8 @@ bool DecimalAddSubtractOverflows(const LogicalType &argument_type) {
 }
 
 //! An addition or subtraction needs one more digit than its arguments, for the carry
-LogicalType DecimalAddSubtractReturnType(const ResolveReturnTypeInput &input) {
-	auto &argument_type = input.GetArgumentType(0);
+LogicalType DecimalAddSubtractReturnType(ResolveReturnTypeInput &input) {
+	auto argument_type = input.GetArgumentType(0);
 	if (argument_type.id() != LogicalTypeId::DECIMAL) {
 		// both arguments are NULL
 		return argument_type;
@@ -368,7 +368,13 @@ LogicalType DecimalAddSubtractReturnType(const ResolveReturnTypeInput &input) {
 	if (!DecimalAddSubtractOverflows(argument_type)) {
 		width++;
 	}
-	return LogicalType::DECIMAL(width, DecimalType::GetScale(argument_type));
+	auto result_type = LogicalType::DECIMAL(width, DecimalType::GetScale(argument_type));
+	if (argument_type.InternalType() != result_type.InternalType()) {
+		// the kernel computes in the physical type of the result
+		input.CastArgument(0, result_type);
+		input.CastArgument(1, result_type);
+	}
+	return result_type;
 }
 
 template <class OP, class OPOVERFLOWCHECK, bool IS_SUBTRACT = false>
@@ -376,14 +382,10 @@ unique_ptr<FunctionData> BindDecimalAddSubtract(BindScalarFunctionInput &input) 
 	auto &bound_function = input.GetBoundFunction();
 	auto bind_data = make_uniq<DecimalArithmeticBindData>();
 	auto &result_type = bound_function.GetReturnType();
-	auto argument_type = bound_function.GetArguments()[0];
+	// the type of the arguments before they were cast to the physical type of the result
+	auto &argument_type = bound_function.GetLogicalArguments()[0];
 	if (argument_type.id() == LogicalTypeId::DECIMAL) {
 		bind_data->check_overflow = DecimalAddSubtractOverflows(argument_type);
-		if (argument_type.InternalType() != result_type.InternalType()) {
-			// the kernel computes in the physical type of the result
-			input.CastArgument(0, result_type);
-			input.CastArgument(1, result_type);
-		}
 	}
 
 	// now select the physical function to execute
@@ -815,39 +817,63 @@ static unique_ptr<FunctionData> DecimalNegateBind(BindScalarFunctionInput &input
 	return nullptr;
 }
 
-static void IntegerNegateResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	D_ASSERT(input.GetArgumentCount() == 1);
-
-	// only need to promote if the argument is a constant that exactly equals the type's minimum value
-	auto constant = input.TryGetConstant(0);
-	if (!constant || constant->IsNull()) {
-		return;
-	}
-	auto &type = bound_function.GetArguments()[0];
-	if (*constant != Value::MinimumValue(type)) {
-		return;
-	}
-	LogicalType promoted_type;
+//! The type that can hold the negation of the minimum value of a signed integer type - or the type itself
+static LogicalType PromotedNegateType(const LogicalType &type) {
 	switch (type.id()) {
 	case LogicalTypeId::TINYINT:
-		promoted_type = LogicalType::SMALLINT;
+		return LogicalType::SMALLINT;
+	case LogicalTypeId::SMALLINT:
+		return LogicalType::INTEGER;
+	case LogicalTypeId::INTEGER:
+		return LogicalType::BIGINT;
+	case LogicalTypeId::BIGINT:
+		return LogicalType::HUGEINT;
+	default:
+		return type;
+	}
+}
+
+//! Negating a constant that is the minimum value of its type returns the next larger type
+static LogicalType IntegerNegateReturnType(ResolveReturnTypeInput &input) {
+	D_ASSERT(input.GetArgumentCount() == 1);
+	auto &type = input.GetArgumentType(0);
+	auto constant = input.TryGetConstant(0);
+	if (!constant || constant->IsNull() || *constant != Value::MinimumValue(type)) {
+		return type;
+	}
+	return PromotedNegateType(type);
+}
+
+template <class SOURCE, class TARGET>
+static void PromotingNegateFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	UnaryExecutor::Execute<SOURCE, TARGET>(args.data[0], result, args.size(),
+	                                       [](SOURCE input) { return -TARGET(input); });
+}
+
+//! The argument is negated as the type it is passed as - into the promoted type if that is what is returned
+static unique_ptr<FunctionData> IntegerNegateBind(BindScalarFunctionInput &input) {
+	auto &bound_function = input.GetBoundFunction();
+	auto &type = bound_function.GetArguments()[0];
+	if (bound_function.GetReturnType() == type) {
+		return nullptr;
+	}
+	switch (type.id()) {
+	case LogicalTypeId::TINYINT:
+		bound_function.SetFunctionCallback(PromotingNegateFunction<int8_t, int16_t>);
 		break;
 	case LogicalTypeId::SMALLINT:
-		promoted_type = LogicalType::INTEGER;
+		bound_function.SetFunctionCallback(PromotingNegateFunction<int16_t, int32_t>);
 		break;
 	case LogicalTypeId::INTEGER:
-		promoted_type = LogicalType::BIGINT;
+		bound_function.SetFunctionCallback(PromotingNegateFunction<int32_t, int64_t>);
 		break;
 	case LogicalTypeId::BIGINT:
-		promoted_type = LogicalType::HUGEINT;
+		bound_function.SetFunctionCallback(PromotingNegateFunction<int64_t, hugeint_t>);
 		break;
 	default:
-		return;
+		throw InternalException("Unsupported type %s for a promoting negate", type.ToString());
 	}
-	bound_function.GetArguments()[0] = promoted_type;
-	bound_function.SetReturnType(promoted_type);
-	bound_function.SetFunctionCallback(ScalarFunction::GetScalarUnaryFunction<NegateOperator>(promoted_type));
+	return nullptr;
 }
 
 ScalarFunction SubtractFunction::GetFunction(const LogicalType &type) {
@@ -870,7 +896,10 @@ ScalarFunction SubtractFunction::GetFunction(const LogicalType &type) {
 	} else {
 		D_ASSERT(type.IsNumeric());
 		ScalarFunction func("-", {type}, type, ScalarFunction::GetScalarUnaryFunction<NegateOperator>(type));
-		func.SetResolveTypesCallback(IntegerNegateResolveTypes);
+		if (PromotedNegateType(type) != type) {
+			func.GetSignature().SetReturnType(ReturnType::ANY(IntegerNegateReturnType));
+			func.SetBindCallback(IntegerNegateBind);
+		}
 		func.SetFallible();
 		func.SetUnaryArgProperties(ArgProperties().StrictlyDecreasing());
 		return func;
@@ -1158,17 +1187,10 @@ LogicalType DecimalMultiplyResultType(const vector<LogicalType> &input_types, bo
 }
 
 //! A product has the digits and the scale of both factors
-LogicalType DecimalMultiplyReturnType(const ResolveReturnTypeInput &input) {
+LogicalType DecimalMultiplyReturnType(ResolveReturnTypeInput &input) {
 	bool check_overflow;
-	return DecimalMultiplyResultType(input.GetArgumentTypes(), check_overflow);
-}
-
-unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto bind_data = make_uniq<DecimalArithmeticBindData>();
-	auto argument_types = bound_function.GetArguments();
-	auto &result_type = bound_function.GetReturnType();
-	DecimalMultiplyResultType(argument_types, bind_data->check_overflow);
+	auto argument_types = input.GetArgumentTypes();
+	auto result_type = DecimalMultiplyResultType(argument_types, check_overflow);
 	// the scale of the result is the sum of the scales of the factors, so they keep their scale - the kernel
 	// computes in the physical type of the result
 	for (idx_t i = 0; i < argument_types.size(); i++) {
@@ -1180,6 +1202,16 @@ unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
 		input.CastArgument(
 		    i, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(argument_type)));
 	}
+	return result_type;
+}
+
+unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
+	auto &bound_function = input.GetBoundFunction();
+	auto bind_data = make_uniq<DecimalArithmeticBindData>();
+	// the types of the factors before they were cast to the physical type of the result
+	auto &argument_types = bound_function.GetLogicalArguments();
+	auto &result_type = bound_function.GetReturnType();
+	DecimalMultiplyResultType(argument_types, bind_data->check_overflow);
 	// now select the physical function to execute
 	if (bind_data->check_overflow) {
 		bound_function.SetFunctionCallback(

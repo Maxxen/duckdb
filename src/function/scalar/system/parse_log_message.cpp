@@ -31,23 +31,8 @@ struct ParseLogMessageData : FunctionData {
 	}
 };
 
-void ParseLogMessageResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	if (input.GetArgumentCount() != 2) {
-		throw BinderException("structured_log_schema: expects 1 argument", input.GetArgument(0).GetAlias());
-	}
-	// resolve the constant first, so that unresolved parameters are deferred
-	input.GetConstant(0);
-	if (input.GetArgumentType(0).id() != LogicalTypeId::VARCHAR) {
-		throw BinderException("structured_log_schema: 'log_type' argument must be a string");
-	}
-}
-
-unique_ptr<FunctionData> ParseLogMessageBind(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-
-	auto type_val = input.GetConstant(0);
-
+//! Looks up the log type that is named by the constant first argument
+const LogType &LookupLogType(ClientContext &context, const Value &type_val) {
 	auto type = StringValue::Get(type_val);
 
 	auto lookup = LogManager::Get(context).LookupLogType(type);
@@ -56,21 +41,24 @@ unique_ptr<FunctionData> ParseLogMessageBind(BindScalarFunctionInput &input) {
 		ExtensionHelper::TryAutoloadFromEntry(*context.db, Identifier(type), EXTENSION_LOG_TYPES);
 		lookup = LogManager::Get(context).LookupLogType(type);
 	}
-
 	if (!lookup) {
 		throw InvalidInputException("structured_log_schema: '%s' not found", type);
 	}
+	return *lookup;
+}
 
-	if (!lookup->is_structured) {
-		// Unstructured types we simply wrap in a struct with a single field called message
-		child_list_t<LogicalType> children = {{"message", LogicalType::VARCHAR}};
-		bound_function.SetReturnType(LogicalType::STRUCT(children));
-	} else {
-		D_ASSERT(lookup->type.IsNested());
-		bound_function.SetReturnType(lookup->type);
+//! The type of the log type - unstructured types are wrapped in a struct with a single field called message
+LogicalType ParseLogMessageReturnType(ResolveReturnTypeInput &input) {
+	auto &log_type = LookupLogType(input.GetClientContext(), input.GetConstant(0));
+	if (!log_type.is_structured) {
+		return LogicalType::STRUCT({{"message", LogicalType::VARCHAR}});
 	}
+	D_ASSERT(log_type.type.IsNested());
+	return log_type.type;
+}
 
-	return make_uniq<ParseLogMessageData>(*lookup);
+unique_ptr<FunctionData> ParseLogMessageBind(BindScalarFunctionInput &input) {
+	return make_uniq<ParseLogMessageData>(LookupLogType(input.GetClientContext(), input.GetConstant(0)));
 }
 
 void ParseLogMessageFunction(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -89,10 +77,9 @@ void ParseLogMessageFunction(DataChunk &args, ExpressionState &state, Vector &re
 } // namespace
 
 ScalarFunction ParseLogMessage::GetFunction() {
-	auto fun = ScalarFunction({}, ReturnType::ANY(), ParseLogMessageFunction, ParseLogMessageBind, nullptr, nullptr,
-	                          LogicalType(LogicalTypeId::INVALID));
+	auto fun = ScalarFunction({}, ReturnType::ANY(ParseLogMessageReturnType), ParseLogMessageFunction,
+	                          ParseLogMessageBind, nullptr, nullptr, LogicalType(LogicalTypeId::INVALID));
 	fun.GetSignature().AddParameter("type", LogicalType::VARCHAR).AddParameter("message", LogicalType::VARCHAR);
-	fun.SetResolveTypesCallback(ParseLogMessageResolveTypes);
 	fun.SetErrorMode(FunctionErrors::CAN_THROW_RUNTIME_ERROR);
 	return fun;
 }

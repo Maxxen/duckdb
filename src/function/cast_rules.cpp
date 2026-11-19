@@ -36,11 +36,13 @@ static int64_t TargetTypeCost(const LogicalType &type) {
 		return 149;
 	case LogicalTypeId::STRUCT:
 	case LogicalTypeId::TUPLE:
-	case LogicalTypeId::MAP:
 	case LogicalTypeId::LIST:
 	case LogicalTypeId::UNION:
-	case LogicalTypeId::ARRAY:
 		return 160;
+	case LogicalTypeId::ARRAY:
+	case LogicalTypeId::MAP:
+		// an untyped value is a list rather than an array or a map
+		return 161;
 	case LogicalTypeId::ANY:
 		return 5;
 	default:

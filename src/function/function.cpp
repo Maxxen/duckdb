@@ -407,6 +407,26 @@ const LogicalType &ResolveReturnTypeInput::GetArgumentType(idx_t arg_idx) const 
 	return parameter_type.IsComplete() ? parameter_type : arguments[arg_idx]->GetReturnType();
 }
 
+const Identifier &ResolveReturnTypeInput::GetFunctionName() const {
+	return function.GetName();
+}
+
+bool ResolveReturnTypeInput::HasParameter(idx_t arg_idx) const {
+	return arguments[arg_idx]->HasParameter();
+}
+
+QueryErrorContext ResolveReturnTypeInput::GetArgumentLocation(idx_t arg_idx) const {
+	return QueryErrorContext(arguments[arg_idx]->GetQueryLocation());
+}
+
+void ResolveReturnTypeInput::CastArgument(idx_t arg_idx, const LogicalType &type) {
+	auto &argument = arguments[arg_idx];
+	if (argument->GetReturnType() != type) {
+		argument = BoundCastExpression::AddCastToType(GetClientContext(), std::move(argument), type);
+	}
+	function.GetArguments()[arg_idx] = type;
+}
+
 vector<LogicalType> ResolveReturnTypeInput::GetArgumentTypes() const {
 	vector<LogicalType> result;
 	result.reserve(arguments.size());

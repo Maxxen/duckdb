@@ -22,7 +22,7 @@ static void StructConcatFunction(DataChunk &args, ExpressionState &state, Vector
 }
 
 //! The struct of the fields of the structs that are concatenated
-static LogicalType StructConcatReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType StructConcatReturnType(ResolveReturnTypeInput &input) {
 	// collect names and deconflict, construct return type
 	if (input.GetArgumentCount() == 0) {
 		throw InvalidInputException("struct_concat: At least one argument is required");
@@ -34,7 +34,7 @@ static LogicalType StructConcatReturnType(const ResolveReturnTypeInput &input) {
 	bool has_unnamed = false;
 
 	for (idx_t arg_idx = 0; arg_idx < input.GetArgumentCount(); arg_idx++) {
-		const auto &arg_type = input.GetArgument(arg_idx).GetReturnType();
+		const auto &arg_type = input.GetArgumentType(arg_idx);
 
 		if (!StructType::IsStruct(arg_type)) {
 			throw InvalidInputException("struct_concat: Argument at position \"%d\" is not a STRUCT", arg_idx + 1);

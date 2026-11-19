@@ -15,19 +15,17 @@ void BarrierFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	result.Reference(args.data[0]);
 }
 
-//! The argument is returned as it is
-LogicalType BarrierReturnType(const ResolveReturnTypeInput &input) {
-	return input.GetArgument(0).GetReturnType();
-}
-
 unique_ptr<BaseStatistics> BarrierStats(ClientContext &context, FunctionStatisticsInput &input) {
 	// the barrier returns its argument unchanged - the statistics of the child carry over
 	return input.child_stats[0].ToUnique();
 }
 
-ScalarFunction GetBarrierFunction(const TypeName &type, ReturnType return_type) {
-	ScalarFunction fun(BarrierFun::Name, {}, std::move(return_type), BarrierFunction);
-	fun.GetSignature().AddParameter("arg", type);
+//! The argument is returned as it is
+ScalarFunction GetBarrierFunction() {
+	auto type = TypeName::VARIABLE("T");
+	ScalarFunction fun(BarrierFun::Name,
+	                   FunctionSignature().AddVariable("T").AddParameter("arg", type).SetReturnType(type),
+	                   BarrierFunction);
 	fun.SetBindCallback(VariableReturnBindData::Bind);
 	fun.SetStatisticsCallback(BarrierStats);
 	// default null handling replaces the call with a NULL constant when the argument is typed as NULL - that would
@@ -42,7 +40,7 @@ ScalarFunction GetBarrierFunction(const TypeName &type, ReturnType return_type) 
 } // namespace
 
 ScalarFunction BarrierFun::GetFunction() {
-	return GetBarrierFunction(LogicalType::ANY, ReturnType::ANY(BarrierReturnType));
+	return GetBarrierFunction();
 }
 
 bool ExpressionBarrier::IsBarrier(const Expression &expr) {
@@ -67,8 +65,7 @@ bool ExpressionBarrier::Required(const Expression &expr) {
 
 unique_ptr<Expression> ExpressionBarrier::Wrap(unique_ptr<Expression> expr) {
 	auto return_type = expr->GetReturnType();
-	auto function = GetBarrierFunction(TypeName::VARIABLE("T"), TypeName::VARIABLE("T"));
-	function.GetSignature().AddVariable("T");
+	auto function = GetBarrierFunction();
 
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(expr));

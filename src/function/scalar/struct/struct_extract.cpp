@@ -64,7 +64,7 @@ static idx_t ResolveStructEntryByIndex(const LogicalType &struct_type, int64_t i
 
 //! Validates the struct argument, and resolves the type of the entry that a constant key extracts
 template <StructExtractKey KEY>
-static LogicalType StructExtractReturnType(const ResolveReturnTypeInput &input) {
+static LogicalType StructExtractReturnType(ResolveReturnTypeInput &input) {
 	auto &child_type = input.GetArgumentType(0);
 	if (!StructType::IsStruct(child_type)) {
 		throw BinderException("struct_extract can only be used on a STRUCT, not on %s", child_type.ToString());

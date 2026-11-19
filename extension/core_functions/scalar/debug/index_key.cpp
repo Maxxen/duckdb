@@ -195,16 +195,22 @@ void RegisterIndexKeyRead(BindScalarFunctionInput &input, TableCatalogEntry &tab
 	}
 }
 
-void RegisterIndexKeyRead(ResolveScalarFunctionTypesInput &input, TableCatalogEntry &table_entry) {
+void RegisterIndexKeyRead(ResolveReturnTypeInput &input, TableCatalogEntry &table_entry) {
 }
 
-//! Called from both resolve_types and bind - the key types and the bind data both come from the index
+idx_t GetArgumentCount(ResolveReturnTypeInput &input) {
+	return input.GetArgumentCount();
+}
+idx_t GetArgumentCount(BindScalarFunctionInput &input) {
+	return input.GetArguments().size();
+}
+
+//! Called when the types are resolved and from bind - the key types and the bind data both come from the index
 template <class INPUT>
-unique_ptr<FunctionData> IndexKeyBind(INPUT &input) {
+unique_ptr<IndexKeyBindData> IndexKeyBindInternal(INPUT &input) {
 	ClientContext &context = input.GetClientContext();
-	BoundScalarFunction &bound_function = input.GetBoundFunction();
-	const vector<unique_ptr<Expression>> &arguments = input.GetArguments();
-	if (arguments.size() < INDEX_KEY_FIXED_ARGS) {
+	const auto argument_count = GetArgumentCount(input);
+	if (argument_count < INDEX_KEY_FIXED_ARGS) {
 		throw BinderException("index_key: requires a path (STRUCT) argument");
 	}
 
@@ -245,7 +251,7 @@ unique_ptr<FunctionData> IndexKeyBind(INPUT &input) {
 
 	auto key_types = index->GetLogicalTypes();
 
-	idx_t num_key_args = arguments.size() - INDEX_KEY_FIXED_ARGS;
+	idx_t num_key_args = argument_count - INDEX_KEY_FIXED_ARGS;
 	if (num_key_args != key_types.size()) {
 		auto index_description =
 		    path.constraint_type == IndexConstraintType::NONE
@@ -255,22 +261,28 @@ unique_ptr<FunctionData> IndexKeyBind(INPUT &input) {
 		                      index_description, qualified_table, key_types.size(), num_key_args);
 	}
 
-	// Set bound_function.GetArguments() to actual types for proper casting.
-	// Note: In case this is ever a bottleneck for testing purposes -- currently, we retain the path argument
-	// for execution even though it is only required for binding. This requires us to create a key_chunk
-	// that only references the key columns during execution. We could erase the path argument here, but
-	// that also requires some (de)serialization boilerplate, so for now we don't do it.
-	bound_function.GetArguments().clear();
-	bound_function.GetArguments().push_back(arguments[0]->GetReturnType());
-	for (auto &key_type : key_types) {
-		bound_function.GetArguments().push_back(key_type);
-	}
-
 	return make_uniq<IndexKeyBindData>(index_entry, std::move(key_types));
 }
 
-void IndexKeyResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	IndexKeyBind(input);
+//! Casts the key arguments to the key types of the index.
+// Note: In case this is ever a bottleneck for testing purposes -- currently, we retain the path argument
+// for execution even though it is only required for binding. This requires us to create a key_chunk
+// that only references the key columns during execution. We could erase the path argument here, but
+// that also requires some (de)serialization boilerplate, so for now we don't do it.
+LogicalType IndexKeyResolveTypes(ResolveReturnTypeInput &input) {
+	if (input.GetArgumentCount() >= INDEX_KEY_FIXED_ARGS && input.GetConstant(0).IsNull()) {
+		// the call is NULL without looking up the index
+		return LogicalType::BLOB;
+	}
+	auto bind_data = IndexKeyBindInternal(input);
+	for (idx_t i = 0; i < bind_data->key_types.size(); i++) {
+		input.CastArgument(INDEX_KEY_FIXED_ARGS + i, bind_data->key_types[i]);
+	}
+	return LogicalType::BLOB;
+}
+
+unique_ptr<FunctionData> IndexKeyBind(BindScalarFunctionInput &input) {
+	return IndexKeyBindInternal(input);
 }
 
 void IndexKeyFunction(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -309,10 +321,9 @@ void IndexKeyFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 } // namespace
 
 ScalarFunction IndexKeyFun::GetFunction() {
-	ScalarFunction fun("index_key", {}, LogicalType::BLOB, IndexKeyFunction, IndexKeyBind<BindScalarFunctionInput>);
+	ScalarFunction fun("index_key", {}, ReturnType::ANY(IndexKeyResolveTypes), IndexKeyFunction, IndexKeyBind);
 	fun.GetSignature().AddVariable("T", LogicalTypeId::STRUCT).AddParameter("path", TypeName::VARIABLE("T"));
 	fun.GetSignature().AddArgs("args", LogicalTypeId::ANY);
-	fun.SetResolveTypesCallback(IndexKeyResolveTypes);
 	return fun;
 }
 

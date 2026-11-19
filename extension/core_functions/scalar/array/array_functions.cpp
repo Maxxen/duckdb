@@ -6,57 +6,6 @@
 
 namespace duckdb {
 
-static void ArrayGenericBinaryResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	const auto &lhs_type = arguments[0]->GetReturnType();
-	const auto &rhs_type = arguments[1]->GetReturnType();
-
-	if (lhs_type.IsUnknown() && rhs_type.IsUnknown()) {
-		bound_function.GetArguments()[0] = rhs_type;
-		bound_function.GetArguments()[1] = lhs_type;
-		bound_function.SetReturnType(LogicalType::UNKNOWN);
-		return;
-	}
-
-	bound_function.GetArguments()[0] = lhs_type.IsUnknown() ? rhs_type : lhs_type;
-	bound_function.GetArguments()[1] = rhs_type.IsUnknown() ? lhs_type : rhs_type;
-
-	if (bound_function.GetArguments()[0].id() != LogicalTypeId::ARRAY ||
-	    bound_function.GetArguments()[1].id() != LogicalTypeId::ARRAY) {
-		throw InvalidInputException(StringUtil::Format("%s: Arguments must be arrays of FLOAT or DOUBLE",
-		                                               SQLIdentifier(bound_function.GetName())));
-	}
-
-	const auto lhs_size = ArrayType::GetSize(bound_function.GetArguments()[0]);
-	const auto rhs_size = ArrayType::GetSize(bound_function.GetArguments()[1]);
-
-	// the signature declares both arrays to be of one size
-	D_ASSERT(lhs_size == rhs_size);
-
-	const auto &lhs_element_type = ArrayType::GetChildType(bound_function.GetArguments()[0]);
-	const auto &rhs_element_type = ArrayType::GetChildType(bound_function.GetArguments()[1]);
-
-	// Resolve common type
-	LogicalType common_type;
-	if (!LogicalType::TryGetMaxLogicalType(context, lhs_element_type, rhs_element_type, common_type)) {
-		throw BinderException("%s: Cannot infer common element type (left = '%s', right = '%s')",
-		                      SQLIdentifier(bound_function.GetName()), lhs_element_type.ToString(),
-		                      rhs_element_type.ToString());
-	}
-
-	// Ensure it is float or double
-	if (common_type.id() != LogicalTypeId::FLOAT && common_type.id() != LogicalTypeId::DOUBLE) {
-		throw BinderException("%s: Arguments must be arrays of FLOAT or DOUBLE",
-		                      SQLIdentifier(bound_function.GetName()));
-	}
-
-	// The important part is just that we resolve the size of the input arrays
-	bound_function.GetArguments()[0] = LogicalType::ARRAY(common_type, lhs_size);
-	bound_function.GetArguments()[1] = LogicalType::ARRAY(common_type, rhs_size);
-}
-
 //! Read the elements of an array into a contiguous buffer - throws if any of them are NULL
 template <class TYPE>
 static void ReadArrayElements(const VectorIterator<TYPE> &child_values, idx_t offset, idx_t array_size, TYPE *target,
@@ -240,7 +189,6 @@ static void AddArrayFoldFunction(ScalarFunctionSet &set, const LogicalType &type
 	                        .AddParameter("array2", array)
 	                        .SetReturnType(type),
 	                    GetArrayFoldFunction<OP>(type), nullptr, ArrayGenericFoldStats);
-	func.SetResolveTypesCallback(ArrayGenericBinaryResolveTypes);
 	func.SetFallible();
 
 	set.AddFunction(func);

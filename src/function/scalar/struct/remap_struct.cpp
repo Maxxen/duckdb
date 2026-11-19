@@ -633,18 +633,13 @@ identifier_map_t<RemapEntry> GetRemapEntries(const vector<LogicalType> &types, c
 	return remap_map;
 }
 
-void RemapStructResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
+//! Casts the input to match up the source types to the target - the input is remapped to the target type
+LogicalType RemapStructResolveTypes(ResolveReturnTypeInput &input) {
 	auto types = input.GetArgumentTypes();
 	VerifyRemapArgumentTypes(types);
-	auto remap_map = GetRemapEntries(types, input.GetConstant(2), input.GetArgument(3).IsFoldable());
-
-	// push a cast for argument 0 to match up the source types to the target
-	bound_function.GetArguments()[0] = RemapEntry::RemapCast(types[0], remap_map);
-	bound_function.GetArguments()[1] = types[1];
-	bound_function.GetArguments()[2] = types[2];
-	bound_function.GetArguments()[3] = types[3];
-	bound_function.SetReturnType(types[1]);
+	auto remap_map = GetRemapEntries(types, input.GetConstant(2), input.TryGetConstant(3).has_value());
+	input.CastArgument(0, RemapEntry::RemapCast(types[0], remap_map));
+	return types[1];
 }
 
 //! The remapping is derived from the types the function was called with, before the input was cast
@@ -667,9 +662,8 @@ ScalarFunction RemapStructFun::GetFunction() {
 	                         .AddParameter("target_type", TypeName::VARIABLE("U"))
 	                         .AddParameter("mapping", TypeName::VARIABLE("V"))
 	                         .AddParameter("defaults", TypeName::VARIABLE("W"))
-	                         .SetReturnType(ReturnType::ANY()),
+	                         .SetReturnType(ReturnType::ANY(RemapStructResolveTypes)),
 	                     RemapStructFunction, RemapStructBind);
-	remap.SetResolveTypesCallback(RemapStructResolveTypes);
 	remap.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return remap;
 }

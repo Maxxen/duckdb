@@ -126,7 +126,7 @@ static const StaticFunctionDefinition core_functions[] = {
 	DUCKDB_AGGREGATE_FUNCTION(BoolAndFun),
 	DUCKDB_AGGREGATE_FUNCTION(BoolOrFun),
 	DUCKDB_SCALAR_FUNCTION(CanCastImplicitlyFun),
-	DUCKDB_SCALAR_FUNCTION(CardinalityFun),
+	DUCKDB_SCALAR_FUNCTION_SET(CardinalityFun),
 	DUCKDB_SCALAR_FUNCTION(CastToTypeFun),
 	DUCKDB_SCALAR_FUNCTION(CbrtFun),
 	DUCKDB_SCALAR_FUNCTION_SET(CeilFun),

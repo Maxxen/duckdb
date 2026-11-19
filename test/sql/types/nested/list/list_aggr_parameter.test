@@ -21,7 +21,7 @@ SELECT list_aggr(list(i)::varchar[], 'string_agg', '|') FROM range(1, 4) tbl(i);
 statement error
 SELECT list_aggr([0, 1, 2, 3], 'arg_min', i) FROM range(1, 4) tbl(i);
 ----
-<REGEX>:.*Invalid Input Error.*extra arguments must be constant.*
+<REGEX>:.*Binder Error.*must be a constant expression.*
 
 # not enough arguments
 statement error

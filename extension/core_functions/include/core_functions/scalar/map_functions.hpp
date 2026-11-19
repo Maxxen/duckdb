@@ -22,7 +22,7 @@ struct CardinalityFun {
 	static constexpr const char *Example = "cardinality( map([4, 2], ['a', 'b']) );";
 	static constexpr const char *Categories = "";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct MapFun {

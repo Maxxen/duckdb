@@ -84,13 +84,15 @@ static unique_ptr<FunctionData> BindEnumFunction(BindScalarFunctionInput &input)
 }
 
 //! The unsigned integer the values of the enum are stored as
-static LogicalType EnumCodeReturnType(const ResolveReturnTypeInput &input) {
-	auto &argument = input.GetArgument(0);
-	CheckEnumParameter(argument);
-	if (argument.GetReturnType().id() != LogicalTypeId::ENUM) {
+static LogicalType EnumCodeReturnType(ResolveReturnTypeInput &input) {
+	if (input.HasParameter(0)) {
+		throw ParameterNotResolvedException();
+	}
+	auto &enum_type = input.GetArgumentType(0);
+	if (enum_type.id() != LogicalTypeId::ENUM) {
 		throw BinderException("This function needs an ENUM as an argument");
 	}
-	switch (EnumType::GetPhysicalType(argument.GetReturnType())) {
+	switch (EnumType::GetPhysicalType(enum_type)) {
 	case PhysicalType::UINT8:
 		return LogicalType::UTINYINT;
 	case PhysicalType::UINT16:

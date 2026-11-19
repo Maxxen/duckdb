@@ -763,17 +763,36 @@ void ParseOrderBys(const Value &order_value, idx_t column_count, vector<SortedAg
 	}
 }
 
-//! Binds the exported aggregate from the constant arguments, and resolves the state / return types from it
+idx_t GetArgumentCount(ResolveReturnTypeInput &input) {
+	return input.GetArgumentCount();
+}
+idx_t GetArgumentCount(BindScalarFunctionInput &input) {
+	return input.GetArguments().size();
+}
+bool HasParameter(ResolveReturnTypeInput &input, idx_t index) {
+	return input.HasParameter(index);
+}
+bool HasParameter(BindScalarFunctionInput &input, idx_t index) {
+	return input.GetArguments()[index]->HasParameter();
+}
+LogicalType GetArgumentType(ResolveReturnTypeInput &input, idx_t index) {
+	return input.GetArgumentType(index);
+}
+LogicalType GetArgumentType(BindScalarFunctionInput &input, idx_t index) {
+	return input.GetArguments()[index]->GetReturnType();
+}
+
+//! Binds the exported aggregate from the constant arguments, and resolves from it the type the value is reinterpreted
+//! as (the layout of the state) and the state type that is returned
 template <class INPUT>
-unique_ptr<FunctionData> BindToAggregateState(INPUT &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
+unique_ptr<FunctionData> BindToAggregateState(INPUT &input, LogicalType &value_type, LogicalType &state_type) {
+	const auto argument_count = GetArgumentCount(input);
 	auto &context = input.GetClientContext();
-	for (idx_t i = 1; i < arguments.size(); i++) {
-		if (arguments[i]->HasParameter()) {
+	for (idx_t i = 1; i < argument_count; i++) {
+		if (HasParameter(input, i)) {
 			throw ParameterNotResolvedException();
 		}
-		if (!arguments[i]->IsFoldable()) {
+		if (!input.TryGetConstant(i)) {
 			throw BinderException("to_aggregate_state: the aggregate name, signature and constant parameters must be "
 			                      "constant");
 		}
@@ -795,7 +814,7 @@ unique_ptr<FunctionData> BindToAggregateState(INPUT &input) {
 	// constant_parameters holds the values of arguments that must be re-bound with a specific constant rather than a
 	// NULL value of the argument type (e.g. string_agg's separator), keyed by the argument's index
 	map<idx_t, Value> constant_parameters;
-	if (arguments.size() > 3) {
+	if (argument_count > 3) {
 		auto constants_val = input.GetConstant(3);
 		ParseConstantParameters(constants_val, argument_types.size(), constant_parameters);
 	}
@@ -812,15 +831,15 @@ unique_ptr<FunctionData> BindToAggregateState(INPUT &input) {
 		    function_name);
 	}
 
-	if (arguments.size() > 4) {
+	if (argument_count > 4) {
 		// an ordered aggregate state: the value is the buffer (LIST<buffered_struct>), the fifth argument the ORDER BY
-		auto &state_type = arguments[0]->GetReturnType();
-		if (state_type.id() != LogicalTypeId::LIST ||
-		    ListType::GetChildType(state_type).id() != LogicalTypeId::STRUCT) {
+		auto buffer_type = GetArgumentType(input, 0);
+		if (buffer_type.id() != LogicalTypeId::LIST ||
+		    ListType::GetChildType(buffer_type).id() != LogicalTypeId::STRUCT) {
 			throw BinderException("to_aggregate_state: an ordered aggregate state value must be a LIST of STRUCTs (the "
 			                      "buffer of values), e.g. [{'v0': ...}, ...]");
 		}
-		auto buffer_columns = StructType::GetChildTypes(ListType::GetChildType(state_type));
+		auto buffer_columns = StructType::GetChildTypes(ListType::GetChildType(buffer_type));
 		const idx_t column_count = buffer_columns.size();
 		// the leading buffered columns are the aggregate's arguments - cast them to the argument types
 		auto &aggr_arguments = aggr.GetArguments();
@@ -848,24 +867,29 @@ unique_ptr<FunctionData> BindToAggregateState(INPUT &input) {
 		if (orders.empty()) {
 			throw BinderException("to_aggregate_state: an ordered aggregate state must have at least one ORDER BY key");
 		}
-		bound_function.GetArguments()[0] = LogicalType::LIST(buffer_struct);
-		bound_function.SetReturnType(
-		    CreateSortedAggregateStateType(aggr, bind_data->bind_data.get(), buffer_struct, orders));
+		value_type = LogicalType::LIST(buffer_struct);
+		state_type = CreateSortedAggregateStateType(aggr, bind_data->bind_data.get(), buffer_struct, orders);
 		return std::move(bind_data);
 	}
 
-	auto state_layout = aggr.GetStateType(bind_data->bind_data.get()).type;
-	bound_function.GetArguments()[0] = state_layout;
-	bound_function.SetReturnType(CreateAggregateStateType(aggr, bind_data->bind_data.get()));
+	value_type = aggr.GetStateType(bind_data->bind_data.get()).type;
+	state_type = CreateAggregateStateType(aggr, bind_data->bind_data.get());
 	return std::move(bind_data);
 }
 
-void ToAggregateStateResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	BindToAggregateState(input);
+//! Casts the value to the layout of the state, and returns the state type
+LogicalType ToAggregateStateResolveTypes(ResolveReturnTypeInput &input) {
+	LogicalType value_type;
+	LogicalType state_type;
+	BindToAggregateState(input, value_type, state_type);
+	input.CastArgument(0, value_type);
+	return state_type;
 }
 
 unique_ptr<FunctionData> ToAggregateStateBind(BindScalarFunctionInput &input) {
-	return BindToAggregateState(input);
+	LogicalType value_type;
+	LogicalType state_type;
+	return BindToAggregateState(input, value_type, state_type);
 }
 
 void ToAggregateStateFunction(DataChunk &input, ExpressionState &state, Vector &result) {
@@ -1048,7 +1072,7 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 	                     .AddPositionalOnly("data", TypeName::VARIABLE("T"))
 	                     .AddPositionalOnly("name", LogicalType::VARCHAR)
 	                     .AddPositionalOnly("signature", TypeName::VARIABLE("SIGNATURE"))
-	                     .SetReturnType(ReturnType::ANY());
+	                     .SetReturnType(ReturnType::ANY(ToAggregateStateResolveTypes));
 	for (idx_t optional_args = 0; optional_args < 3; optional_args++) {
 		if (optional_args == 1) {
 			// optional fourth argument: constant parameter values as a list with one entry per argument (e.g.
@@ -1061,7 +1085,6 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 			signature.AddVariable("ORDER_BY").AddPositionalOnly("order_by", TypeName::VARIABLE("ORDER_BY"));
 		}
 		ScalarFunction function("to_aggregate_state", signature, ToAggregateStateFunction, ToAggregateStateBind);
-		function.SetResolveTypesCallback(ToAggregateStateResolveTypes);
 		function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 		set.AddFunction(std::move(function));
 	}

@@ -39,14 +39,13 @@ void TemplatedPopulateChild(DataChunk &args, Vector &result) {
 	}
 }
 
-void PopulateChildFallback(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &child_type = ListType::GetChildType(result.GetType());
+void PopulateChildFallback(DataChunk &args, Vector &result) {
 	auto result_data = FlatVector::Writer<list_entry_t>(result, args.size());
 	for (idx_t i = 0; i < args.size(); i++) {
 		const auto entry_offset = ListVector::GetListSize(result);
 		for (idx_t col_idx = 0; col_idx < args.ColumnCount(); col_idx++) {
-			auto val = args.GetValue(col_idx, i).CastAs(state.GetContext(), child_type);
-			ListVector::PushBack(result, val);
+			// the arguments are of the element type of the list
+			ListVector::PushBack(result, args.GetValue(col_idx, i));
 		}
 		result_data.WriteValue(list_entry_t(entry_offset, args.ColumnCount()));
 	}
@@ -226,7 +225,7 @@ void ListValueFunction(DataChunk &args, ExpressionState &state, Vector &result) 
 	auto &result_child = ListVector::GetChildMutable(result);
 
 	if (!PopulateChild(args, result_child)) {
-		PopulateChildFallback(args, state, result);
+		PopulateChildFallback(args, result);
 	}
 
 	const idx_t column_count = args.ColumnCount();
@@ -235,44 +234,6 @@ void ListValueFunction(DataChunk &args, ExpressionState &state, Vector &result) 
 		result_data.WriteValue(list_entry_t(row * column_count, column_count));
 	}
 	ListVector::SetListSize(result, column_count * args.size());
-}
-
-void UnpivotResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	// collect names and deconflict, construct return type
-	LogicalType child_type =
-	    arguments.empty() ? LogicalType::SQLNULL : ExpressionBinder::GetExpressionReturnType(*arguments[0]);
-	for (idx_t i = 1; i < arguments.size(); i++) {
-		auto arg_type = ExpressionBinder::GetExpressionReturnType(*arguments[i]);
-		if (!LogicalType::TryGetMaxLogicalType(context, child_type, arg_type, child_type)) {
-			string list_arguments = "Full list: ";
-			idx_t error_index = list_arguments.size();
-			for (idx_t k = 0; k < arguments.size(); k++) {
-				if (k > 0) {
-					list_arguments += ", ";
-				}
-				if (k == i) {
-					error_index = list_arguments.size();
-				}
-				list_arguments += arguments[k]->ToString() + " " + arguments[k]->GetReturnType().ToString();
-			}
-			auto error = StringUtil::Format("Cannot unpivot columns of types %s and %s - an explicit cast is required",
-			                                child_type.ToString(), arg_type.ToString());
-			throw BinderException(arguments[i]->GetQueryLocation(),
-			                      QueryErrorContext::Format(list_arguments, error, error_index, false));
-		}
-	}
-	child_type = LogicalType::NormalizeType(child_type);
-
-	auto &function_args = bound_function.GetArguments();
-	function_args.clear();
-	function_args.reserve(arguments.size());
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		function_args.push_back(child_type);
-	}
-	bound_function.SetReturnType(LogicalType::LIST(child_type));
 }
 
 unique_ptr<BaseStatistics> ListValueStats(ClientContext &context, FunctionStatisticsInput &input) {
@@ -290,20 +251,6 @@ unique_ptr<BaseStatistics> ListValueStats(ClientContext &context, FunctionStatis
 
 } // namespace
 
-//! The arguments are cast to the child type of the list at execution time - if any of those casts can throw the
-//! function is fallible
-void ListValueResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &child_type = ListType::GetChildType(bound_function.GetReturnType());
-	for (auto &argument : input.GetArguments()) {
-		auto argument_type = ExpressionBinder::GetExpressionReturnType(*argument);
-		if (BoundCastExpression::CastCanThrow(argument_type, child_type, false)) {
-			bound_function.SetFallible();
-			break;
-		}
-	}
-}
-
 ScalarFunctionSet ListValueFun::GetFunctions() {
 	ScalarFunctionSet set("list_value");
 
@@ -319,7 +266,6 @@ ScalarFunctionSet ListValueFun::GetFunctions() {
 	                             .AddArgs("args", element_type)
 	                             .SetReturnType(TypeName::LIST(element_type)),
 	                         ListValueFunction, nullptr, ListValueStats);
-	value_fun.SetResolveTypesCallback(ListValueResolveTypes);
 	value_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(value_fun);
 
@@ -327,10 +273,15 @@ ScalarFunctionSet ListValueFun::GetFunctions() {
 }
 
 ScalarFunction UnpivotListFun::GetFunction() {
+	// the unpivoted columns are a list of the type they unify into
+	auto element_type = TypeName::VARIABLE("T");
 	ScalarFunction fun("unpivot_list",
-	                   FunctionSignature().AddArgs("args", LogicalTypeId::ANY).SetReturnType(ReturnType::ANY()),
-	                   ListValueFunction, VariableReturnBindData::Bind, ListValueStats);
-	fun.SetResolveTypesCallback(UnpivotResolveTypes);
+	                   FunctionSignature()
+	                       .AddVariable("T")
+	                       .AddPositionalOnly("value", element_type)
+	                       .AddArgs("args", element_type)
+	                       .SetReturnType(TypeName::LIST(element_type)),
+	                   ListValueFunction, nullptr, ListValueStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

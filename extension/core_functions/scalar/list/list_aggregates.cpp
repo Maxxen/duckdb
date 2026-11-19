@@ -23,14 +23,6 @@ namespace {
 
 // FIXME: benchmark the use of cluster_update against using update (if applicable)
 
-unique_ptr<FunctionData> ListAggregatesBindFailure(BoundScalarFunction &bound_function) {
-	bound_function.GetArguments()[0] = LogicalType::SQLNULL;
-	bound_function.SetReturnType(LogicalType::SQLNULL);
-	// no bind data, like the other path that binds nothing: the bind data of this function is always a
-	// ListAggregatesBindData, so anything else here cannot be told apart from one
-	return nullptr;
-}
-
 struct ListAggregatesBindData : public FunctionData {
 	ListAggregatesBindData(const LogicalType &stype_p, unique_ptr<Expression> aggr_expr_p);
 	~ListAggregatesBindData() override;
@@ -70,9 +62,7 @@ struct ListAggregatesBindData : public FunctionData {
 	                                                    BoundScalarFunction &bound_function) {
 		auto result = deserializer.ReadPropertyWithExplicitDefault<unique_ptr<ListAggregatesBindData>>(
 		    100, "bind_data", unique_ptr<ListAggregatesBindData>(nullptr));
-		if (!result) {
-			return ListAggregatesBindFailure(bound_function);
-		}
+		// no bind data: the list is a constant NULL
 		return std::move(result);
 	}
 };
@@ -232,22 +222,23 @@ struct UniqueFunctor {
 template <class FUNCTION_FUNCTOR, bool IS_AGGR = false>
 void ListAggregatesFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto count = args.size();
-	Vector &lists = args.data[0];
 
 	// set the result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
 	auto &result_validity = FlatVector::ValidityMutable(result);
 
-	if (lists.GetType().id() == LogicalTypeId::SQLNULL) {
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	if (!func_expr.BindInfo()) {
+		// the list is a constant NULL
 		ConstantVector::SetNull(result, count_t(count));
 		return;
 	}
 
 	// get the aggregate function
-	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
 	auto &info = func_expr.BindInfo()->Cast<ListAggregatesBindData>();
 	auto &aggr = info.aggr_expr->Cast<BoundAggregateExpression>();
 	auto &local_state = ExecuteFunctionState::GetFunctionState(state)->Cast<ListAggregatesLocalState>();
+	Vector &lists = args.data[0];
 	auto &allocator = local_state.arena_allocator;
 	allocator.Reset();
 	AggregateFinalizeInputData aggr_input_data(aggr, allocator);
@@ -481,47 +472,44 @@ unique_ptr<BoundAggregateExpression> BindListAggregate(ClientContext &context, L
 	return result;
 }
 
-template <bool IS_AGGR = false>
-void ListAggregatesResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto list_type = input.GetArgumentType(0);
-	if (list_type.id() == LogicalTypeId::ARRAY) {
-		list_type = LogicalType::LIST(ArrayType::GetChildType(list_type));
-	}
-
+//! A constant NULL list is not aggregated: the result is NULL
+template <class INPUT>
+bool IsConstantNullList(const INPUT &input, const LogicalType &list_type) {
 	if (list_type.id() == LogicalTypeId::SQLNULL) {
-		ListAggregatesBindFailure(bound_function);
-		return;
+		return true;
 	}
-	auto function_name = IS_AGGR ? input.GetConstant(1).ToString() : string("histogram");
-	if (list_type.id() == LogicalTypeId::UNKNOWN) {
-		// verify the aggregate exists, even if we cannot bind it yet
-		GetListAggregateEntry(context, function_name);
-		bound_function.GetArguments()[0] = LogicalTypeId::UNKNOWN;
-		bound_function.SetReturnType(LogicalType::SQLNULL);
-		return;
+	if (list_type.id() != LogicalTypeId::LIST || ListType::GetChildType(list_type).id() != LogicalTypeId::SQLNULL) {
+		return false;
 	}
-	if (list_type.id() != LogicalTypeId::LIST && list_type.id() != LogicalTypeId::MAP) {
-		// Unreachable
-		throw InvalidInputException("First argument of list aggregate must be a list, map or array");
-	}
+	auto list = input.TryGetConstant(0);
+	return list && list->IsNull();
+}
 
+//! The return type of the aggregate that is named, applied to the elements of the list - they are cast to the type the
+//! aggregate takes them as
+LogicalType ListAggregateResolveTypes(ResolveReturnTypeInput &input) {
+	if (IsConstantNullList(input, input.GetArgumentType(0))) {
+		return LogicalType::SQLNULL;
+	}
 	vector<unique_ptr<Expression>> extra_arguments;
 	for (idx_t i = 2; i < input.GetArgumentCount(); i++) {
-		extra_arguments.push_back(input.GetArgument(i).Copy());
-	}
-	auto bound_aggr_function = BindListAggregate<IS_AGGR>(context, ListType::GetChildType(list_type), function_name,
-	                                                      std::move(extra_arguments));
-
-	bound_function.GetArguments()[0] = LogicalType::LIST(bound_aggr_function->Function().GetArguments()[0]);
-	if (IS_AGGR) {
-		if (bound_aggr_function->Function().GetErrorMode() == FunctionErrors::CAN_THROW_RUNTIME_ERROR) {
-			// never clear the error mode here - executing the aggregate can throw regardless of how it is declared
-			bound_function.SetErrorMode(FunctionErrors::CAN_THROW_RUNTIME_ERROR);
+		// the extra arguments are passed to the aggregate as constants
+		if (input.HasParameter(i)) {
+			throw ParameterNotResolvedException();
 		}
-		bound_function.SetReturnType(bound_aggr_function->Function().GetReturnType());
+		auto constant = input.TryGetConstant(i);
+		if (!constant) {
+			throw BinderException(input.GetArgumentLocation(i),
+			                      "%s: the arguments of the aggregate must be a constant expression",
+			                      input.GetFunctionName());
+		}
+		extra_arguments.push_back(make_uniq<BoundConstantExpression>(*constant));
 	}
+	auto bound_aggr_function =
+	    BindListAggregate<true>(input.GetClientContext(), ListType::GetChildType(input.GetArgumentType(0)),
+	                            input.GetConstant(1).ToString(), std::move(extra_arguments));
+	input.CastArgument(0, LogicalType::LIST(bound_aggr_function->Function().GetArguments()[0]));
+	return bound_aggr_function->Function().GetReturnType();
 }
 
 template <bool IS_AGGR = false>
@@ -529,8 +517,7 @@ unique_ptr<FunctionData> ListAggregatesBind(BindScalarFunctionInput &input) {
 	auto &context = input.GetClientContext();
 	auto &bound_function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
-	auto list_type_id = arguments[0]->GetReturnType().id();
-	if (list_type_id == LogicalTypeId::SQLNULL || list_type_id == LogicalTypeId::UNKNOWN) {
+	if (IsConstantNullList(input, arguments[0]->GetReturnType())) {
 		// no bind data, the bind data of this function is always a ListAggregatesBindData
 		return nullptr;
 	}
@@ -589,11 +576,10 @@ ScalarFunction ListAggregateFun::GetFunction() {
 	                                 .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                                 .AddParameter("function_name", LogicalType::VARCHAR)
 	                                 .AddArgs("args", LogicalType::ANY)
-	                                 .SetReturnType(ReturnType::ANY()),
+	                                 .SetReturnType(ReturnType::ANY(ListAggregateResolveTypes)),
 	                             ListAggregateFunction, ListAggregateBind, nullptr, ListAggregatesInitLocalState);
 	result.SetFallible();
 	result.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	result.SetResolveTypesCallback(ListAggregatesResolveTypes<true>);
 	result.SetSerializeCallback(ListAggregatesBindData::SerializeFunction);
 	result.SetDeserializeCallback(ListAggregatesBindData::DeserializeFunction);
 	return result;
@@ -603,7 +589,6 @@ ScalarFunction ListDistinctFun::GetFunction() {
 	auto list_type = TypeName::LIST(TypeName::VARIABLE("T"));
 	ScalarFunction fun(FunctionSignature().AddVariable("T").AddParameter("list", list_type).SetReturnType(list_type),
 	                   ListDistinctFunction, ListAggregatesBind<false>, nullptr, ListAggregatesInitLocalState);
-	fun.SetResolveTypesCallback(ListAggregatesResolveTypes<false>);
 	return fun;
 }
 
@@ -613,7 +598,6 @@ ScalarFunction ListUniqueFun::GetFunction() {
 	                       .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                       .SetReturnType(LogicalType::UBIGINT),
 	                   ListUniqueFunction, ListAggregatesBind<false>, nullptr, ListAggregatesInitLocalState);
-	fun.SetResolveTypesCallback(ListAggregatesResolveTypes<false>);
 	return fun;
 }
 

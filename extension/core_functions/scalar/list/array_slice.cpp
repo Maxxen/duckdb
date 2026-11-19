@@ -304,68 +304,53 @@ void ArraySliceFunction(DataChunk &args, ExpressionState &state, Vector &result)
 }
 
 //! An omitted slice bound is parsed as an empty list constructor (see OperatorExpression::EmptySliceBound)
-bool CheckIfParamIsEmpty(const Expression &param) {
-	if (param.GetReturnType().id() != LogicalTypeId::LIST) {
+bool IsEmptySliceBound(ResolveReturnTypeInput &input, idx_t arg_idx) {
+	if (input.GetArgumentType(arg_idx).id() != LogicalTypeId::LIST) {
 		return false;
 	}
-	if (param.GetExpressionClass() == ExpressionClass::BOUND_FUNCTION) {
-		auto &function = param.Cast<BoundFunctionExpression>();
-		if (function.Function().GetName() == "list_value" && function.GetChildren().empty()) {
-			return true;
-		}
-	}
-	if (param.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
-		auto &value = param.Cast<BoundConstantExpression>().GetValue();
-		if (!value.IsNull() && ListValue::GetChildren(value).empty()) {
-			return true;
-		}
+	auto bound = input.TryGetConstant(arg_idx);
+	if (bound && !bound->IsNull() && ListValue::GetChildren(*bound).empty()) {
+		return true;
 	}
 	// the user has entered a list instead of a BIGINT
 	throw BinderException("The upper and lower bounds of the slice must be a BIGINT");
 }
 
-void ArraySliceResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
+//! A slice is of the type that is sliced: an array is sliced as a list, JSON as a string. The bounds are BIGINT
+LogicalType ArraySliceResolveTypes(ResolveReturnTypeInput &input) {
 	D_ASSERT(input.GetArgumentCount() == 3 || input.GetArgumentCount() == 4);
-	D_ASSERT(bound_function.GetArguments().size() == 3 || bound_function.GetArguments().size() == 4);
 
-	auto &list_type = input.GetArgumentType(0);
+	auto list_type = input.GetArgumentType(0);
+	LogicalType return_type;
 	switch (list_type.id()) {
-	case LogicalTypeId::ARRAY: {
+	case LogicalTypeId::ARRAY:
 		// Cast to list
-		auto target_type = LogicalType::LIST(ArrayType::GetChildType(list_type));
-		bound_function.GetArguments()[0] = target_type;
-		bound_function.SetReturnType(target_type);
-	} break;
+		return_type = LogicalType::LIST(ArrayType::GetChildType(list_type));
+		input.CastArgument(0, return_type);
+		break;
 	case LogicalTypeId::LIST:
 		// The result is the same type
-		bound_function.SetReturnType(list_type);
+		return_type = list_type;
 		break;
 	case LogicalTypeId::BLOB:
 	case LogicalTypeId::VARCHAR:
 		// string slice returns a string
-		if (bound_function.GetArguments().size() == 4) {
+		if (input.GetArgumentCount() == 4) {
 			throw NotImplementedException(
 			    "Slice with steps has not been implemented for string types, you can consider rewriting your query as "
 			    "follows:\n SELECT array_to_string((str_split(string, '')[begin:end:step], '');");
 		}
 		if (list_type.IsJSONType()) {
 			// This is needed to avoid producing invalid JSON
-			bound_function.GetArguments()[0] = LogicalType::VARCHAR;
-			bound_function.SetReturnType(LogicalType::VARCHAR);
+			return_type = LogicalType::VARCHAR;
+			input.CastArgument(0, return_type);
 		} else {
-			bound_function.SetReturnType(list_type);
-		}
-		for (idx_t i = 1; i < 3; i++) {
-			if (input.GetArgumentType(i).id() != LogicalTypeId::LIST) {
-				bound_function.GetArguments()[i] = LogicalType::BIGINT;
-			}
+			return_type = list_type;
 		}
 		break;
 	case LogicalTypeId::SQLNULL:
 	case LogicalTypeId::UNKNOWN:
-		bound_function.GetArguments()[0] = LogicalTypeId::UNKNOWN;
-		bound_function.SetReturnType(LogicalType::SQLNULL);
+		return_type = LogicalType::SQLNULL;
 		break;
 	default:
 		throw BinderException("ARRAY_SLICE can only operate on LISTs and VARCHARs");
@@ -373,10 +358,11 @@ void ArraySliceResolveTypes(ResolveScalarFunctionTypesInput &input) {
 
 	// empty bounds keep their (empty list) type - the other bounds are cast to BIGINT
 	for (idx_t i = 1; i < 3; i++) {
-		if (!CheckIfParamIsEmpty(input.GetArgument(i))) {
-			bound_function.GetArguments()[i] = LogicalType::BIGINT;
+		if (!IsEmptySliceBound(input, i)) {
+			input.CastArgument(i, LogicalType::BIGINT);
 		}
 	}
+	return return_type;
 }
 
 unique_ptr<FunctionData> ArraySliceBind(BindScalarFunctionInput &input) {
@@ -470,9 +456,8 @@ ScalarFunctionSet ListSliceFun::GetFunctions() {
 	                       .AddParameter("list", TypeName::VARIABLE("T"))
 	                       .AddParameter("begin", TypeName::VARIABLE("U"))
 	                       .AddParameter("end", TypeName::VARIABLE("V"))
-	                       .SetReturnType(ReturnType::ANY()),
+	                       .SetReturnType(ReturnType::ANY(ArraySliceResolveTypes)),
 	                   ArraySliceFunction, ArraySliceBind);
-	fun.SetResolveTypesCallback(ArraySliceResolveTypes);
 	fun.SetStatisticsCallback(ArraySlicePropagateStats);
 	fun.SetUnbindCallback(ArraySliceUnbind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

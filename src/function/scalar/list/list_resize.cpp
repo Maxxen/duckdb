@@ -84,42 +84,21 @@ static void ListResizeFunction(DataChunk &args, ExpressionState &, Vector &resul
 	}
 }
 
-static void ListResizeResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	D_ASSERT(bound_function.GetArguments().size() == 2 || input.GetArgumentCount() == 3);
-	bound_function.GetArguments()[1] = LogicalType::UBIGINT;
+//! The list is resized to a UBIGINT size, and padded with a value of its element type
+static LogicalType ListResizeResolveTypes(ResolveReturnTypeInput &input) {
+	D_ASSERT(input.GetArgumentCount() == 2 || input.GetArgumentCount() == 3);
+	input.CastArgument(1, LogicalType::UBIGINT);
 
-	// If the first argument is an array, cast it to a list.
+	// a constant NULL list is resized to NULL, whatever it is padded with
 	auto list_type = input.GetArgumentType(0);
-	if (list_type.id() == LogicalTypeId::ARRAY) {
-		list_type = LogicalType::LIST(ArrayType::GetChildType(list_type));
-		bound_function.GetArguments()[0] = list_type;
+	auto constant_list = input.TryGetConstant(0);
+	if (ListType::GetChildType(list_type).id() == LogicalTypeId::SQLNULL && constant_list && constant_list->IsNull()) {
+		return LogicalType::SQLNULL;
 	}
-
-	// Early-out, if the first argument is a constant NULL.
-	if (list_type == LogicalType::SQLNULL) {
-		bound_function.GetArguments()[0] = LogicalType::SQLNULL;
-		bound_function.SetReturnType(LogicalType::SQLNULL);
-		return;
+	if (input.GetArgumentCount() == 3 && input.GetArgumentType(2).id() != LogicalTypeId::SQLNULL) {
+		input.CastArgument(2, ListType::GetChildType(list_type));
 	}
-
-	// Early-out, if the first argument is a prepared statement.
-	if (list_type == LogicalType::UNKNOWN) {
-		bound_function.SetReturnType(list_type);
-		return;
-	}
-
-	if (list_type.id() != LogicalTypeId::LIST) {
-		throw BinderException("%s can only operate on LISTs", bound_function.GetName());
-	}
-
-	// Attempt implicit casting, if the default type does not match list the list child type.
-	if (bound_function.GetArguments().size() == 3 && ListType::GetChildType(list_type) != input.GetArgumentType(2) &&
-	    input.GetArgumentType(2) != LogicalTypeId::SQLNULL) {
-		bound_function.GetArguments()[2] = ListType::GetChildType(list_type);
-	}
-
-	bound_function.SetReturnType(list_type);
+	return list_type;
 }
 
 ScalarFunctionSet ListResizeFun::GetFunctions() {
@@ -128,11 +107,10 @@ ScalarFunctionSet ListResizeFun::GetFunctions() {
 	                              .AddVariable("SIZE")
 	                              .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                              .AddParameter("size", TypeName::VARIABLE("SIZE"))
-	                              .SetReturnType(TypeName::LIST(TypeName::VARIABLE("T"))),
+	                              .SetReturnType(ReturnType::ANY(ListResizeResolveTypes)),
 	                          ListResizeFunction, VariableReturnBindData::Bind);
 	simple_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	simple_fun.SetFallible();
-	simple_fun.SetResolveTypesCallback(ListResizeResolveTypes);
 	ScalarFunction default_value_fun(FunctionSignature()
 	                                     .AddVariable("T")
 	                                     .AddVariable("SIZE")
@@ -140,11 +118,10 @@ ScalarFunctionSet ListResizeFun::GetFunctions() {
 	                                     .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                                     .AddParameter("size", TypeName::VARIABLE("SIZE"))
 	                                     .AddParameter("value", TypeName::VARIABLE("VALUE"))
-	                                     .SetReturnType(TypeName::LIST(TypeName::VARIABLE("T"))),
+	                                     .SetReturnType(ReturnType::ANY(ListResizeResolveTypes)),
 	                                 ListResizeFunction, VariableReturnBindData::Bind);
 	default_value_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	default_value_fun.SetFallible();
-	default_value_fun.SetResolveTypesCallback(ListResizeResolveTypes);
 	ScalarFunctionSet list_resize_set("list_resize");
 	list_resize_set.AddFunction(simple_fun);
 	list_resize_set.AddFunction(default_value_fun);

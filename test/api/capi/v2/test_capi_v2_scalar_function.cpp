@@ -628,10 +628,10 @@ TEST_CASE("V2 scalar: bind reads argument count, types and constants", "[capi_v2
 }
 
 // ===========================================================================
-// Resolve types runs before the arguments are cast, bind after.
+// Resolve types and bind both run after the arguments are cast to the declared types.
 // ===========================================================================
 
-TEST_CASE("V2 scalar: resolve types sees the uncast argument types, bind the cast ones", "[capi_v2][scalar_function]") {
+TEST_CASE("V2 scalar: resolve types and bind see the cast argument types", "[capi_v2][scalar_function]") {
 	EnvFixture fx;
 	auto integer = MakeType(fx.factory, DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 
@@ -651,7 +651,7 @@ TEST_CASE("V2 scalar: resolve types sees the uncast argument types, bind the cas
 	phase_probe = {};
 	arg_probe = {};
 	REQUIRE(QueryI32(fx.conn, "SELECT phase_probe(1::SMALLINT)") == 0);
-	REQUIRE(phase_probe.resolve_arg_type == DUCKDB_V2_LOGICAL_TYPE_ID_SMALLINT);
+	REQUIRE(phase_probe.resolve_arg_type == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	REQUIRE(phase_probe.bind_arg_type == DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER);
 	// Scalar functions set the bind data through their own bind info, in the bind callback only.
 	REQUIRE(phase_probe.resolve_set_bind_data_rc != DUCKDB_V2_ERROR_NONE);

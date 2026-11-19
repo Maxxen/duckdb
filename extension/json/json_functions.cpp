@@ -65,18 +65,19 @@ bool JSONReadFunctionData::Equals(const FunctionData &other_p) const {
 	return constant == other.constant && path == other.path && len == other.len && path_type == other.path_type;
 }
 
-//! An integral path is an array index, other paths are cast to VARCHAR
-void JSONReadFunctionData::ResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	D_ASSERT(bound_function.GetArguments().size() == 2);
-	if (input.GetArgumentType(1).IsIntegral()) {
-		bound_function.GetArguments()[1] = LogicalType::BIGINT;
-	} else {
-		bound_function.GetArguments()[1] = LogicalType::VARCHAR;
+void JSONReadFunctionData::AddPathFunctions(ScalarFunctionSet &set, const ScalarFunction &function,
+                                            const LogicalType &json_type) {
+	for (auto &index_type : {LogicalType::BIGINT, LogicalType::UBIGINT, LogicalType::HUGEINT, LogicalType::UHUGEINT}) {
+		auto index_fun = function;
+		index_fun.GetSignature().AddParameter("json", json_type).AddParameter("index", index_type);
+		set.AddFunction(index_fun);
 	}
+	auto path_fun = function;
+	path_fun.GetSignature().AddParameter("json", json_type).AddParameter("path", LogicalType::VARCHAR);
+	set.AddFunction(path_fun);
 }
 
-LogicalType JSONReadFunctionData::ResolveReturnType(const ResolveReturnTypeInput &input, const LogicalType &type) {
+LogicalType JSONReadFunctionData::ResolveReturnType(ResolveReturnTypeInput &input, const LogicalType &type) {
 	auto path_val = input.TryGetConstant(1);
 	if (!path_val || path_val->IsNull()) {
 		return type;

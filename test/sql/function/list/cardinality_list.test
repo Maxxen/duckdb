@@ -51,7 +51,7 @@ NULL
 statement error
 SELECT cardinality(42)
 ----
-<REGEX>:Binder Error.*Cardinality can only operate on MAPs, LISTs and ARRAYs.*
+<REGEX>:Binder Error.*No function matches.*
 
 statement error
 SELECT cardinality('abc')
