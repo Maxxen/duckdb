@@ -76,9 +76,19 @@ void JSONReadFunctionData::ResolveTypes(ResolveScalarFunctionTypesInput &input) 
 	}
 }
 
+LogicalType JSONReadFunctionData::ResolveReturnType(const ResolveReturnTypeInput &input, const LogicalType &type) {
+	auto path_val = input.TryGetConstant(1);
+	if (!path_val || path_val->IsNull()) {
+		return type;
+	}
+	string path;
+	idx_t len = 0;
+	auto path_type = CheckPath(input.GetClientContext().GetContext(), *path_val, path, len);
+	return path_type == JSONCommon::JSONPathType::WILDCARD ? LogicalType::LIST(type) : type;
+}
+
 unique_ptr<FunctionData> JSONReadFunctionData::Bind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	D_ASSERT(bound_function.GetArguments().size() == 2);
+	D_ASSERT(input.GetBoundFunction().GetArguments().size() == 2);
 	bool constant = false;
 	string path;
 	idx_t len = 0;
@@ -87,9 +97,6 @@ unique_ptr<FunctionData> JSONReadFunctionData::Bind(BindScalarFunctionInput &inp
 	if (path_val && !path_val->IsNull()) {
 		constant = true;
 		path_type = CheckPath(input.GetClientContext().GetContext(), *path_val, path, len);
-	}
-	if (path_type == JSONCommon::JSONPathType::WILDCARD) {
-		bound_function.SetReturnType(LogicalType::LIST(bound_function.GetReturnType()));
 	}
 	return make_uniq<JSONReadFunctionData>(constant, std::move(path), len, path_type);
 }

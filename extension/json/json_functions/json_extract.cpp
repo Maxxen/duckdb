@@ -34,17 +34,19 @@ static void ExtractStringManyFunction(DataChunk &args, ExpressionState &state, V
 	JSONExecutors::ExecuteMany<string_t>(args, state, result, ExtractStringFromVal);
 }
 
+static LogicalType ExtractReturnType(const ResolveReturnTypeInput &input) {
+	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::JSON());
+}
+
 static void GetExtractFunctionsInternal(ScalarFunctionSet &set, const LogicalType &input_type) {
-	ScalarFunction index_fun({}, LogicalType::JSON(), ExtractFunction, JSONReadFunctionData::Bind, nullptr,
+	ScalarFunction index_fun({}, ReturnType::ANY(ExtractReturnType), ExtractFunction, JSONReadFunctionData::Bind, nullptr,
 	                         JSONFunctionLocalState::Init);
 	index_fun.GetSignature().AddParameter("json", input_type).AddParameter("index", LogicalType::BIGINT);
 	index_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
-	index_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
 	set.AddFunction(index_fun);
-	ScalarFunction path_fun({}, LogicalType::JSON(), ExtractFunction, JSONReadFunctionData::Bind, nullptr,
+	ScalarFunction path_fun({}, ReturnType::ANY(ExtractReturnType), ExtractFunction, JSONReadFunctionData::Bind, nullptr,
 	                        JSONFunctionLocalState::Init);
 	path_fun.GetSignature().AddParameter("json", input_type).AddParameter("path", LogicalType::VARCHAR);
-	path_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
 	path_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
 	set.AddFunction(path_fun);
 	ScalarFunction many_fun({}, LogicalType::LIST(LogicalType::JSON()), ExtractManyFunction,
@@ -71,12 +73,16 @@ ScalarFunctionSet JSONFunctions::GetExtractFunction() {
 	return set;
 }
 
+static LogicalType ExtractStringReturnType(const ResolveReturnTypeInput &input) {
+	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::VARCHAR);
+}
+
 static void GetExtractStringFunctionsInternal(ScalarFunctionSet &set, const LogicalType &input_type) {
-	ScalarFunction index_fun({}, LogicalType::VARCHAR, ExtractStringFunction, JSONReadFunctionData::Bind, nullptr,
+	ScalarFunction index_fun({}, ReturnType::ANY(ExtractStringReturnType), ExtractStringFunction, JSONReadFunctionData::Bind, nullptr,
 	                         JSONFunctionLocalState::Init);
 	index_fun.GetSignature().AddParameter("json", input_type).AddParameter("index", LogicalType::BIGINT);
 	set.AddFunction(index_fun);
-	ScalarFunction path_fun({}, LogicalType::VARCHAR, ExtractStringFunction, JSONReadFunctionData::Bind, nullptr,
+	ScalarFunction path_fun({}, ReturnType::ANY(ExtractStringReturnType), ExtractStringFunction, JSONReadFunctionData::Bind, nullptr,
 	                        JSONFunctionLocalState::Init);
 	path_fun.GetSignature().AddParameter("json", input_type).AddParameter("path", LogicalType::VARCHAR);
 	set.AddFunction(path_fun);

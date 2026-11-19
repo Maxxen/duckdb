@@ -34,6 +34,8 @@ public:
 	bool Equals(const FunctionData &other_p) const override;
 	static JSONCommon::JSONPathType CheckPath(Context &context, const Value &path_val, string &path, idx_t &len);
 	static void ResolveTypes(ResolveScalarFunctionTypesInput &input);
+	//! A constant path with a wildcard returns a list of the given type
+	static LogicalType ResolveReturnType(const ResolveReturnTypeInput &input, const LogicalType &type);
 	static unique_ptr<FunctionData> Bind(BindScalarFunctionInput &input);
 
 public:

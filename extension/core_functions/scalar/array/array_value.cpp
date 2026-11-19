@@ -45,33 +45,16 @@ void ArrayValueFunction(DataChunk &args, ExpressionState &state, Vector &result)
 	result.Verify();
 }
 
-void ArrayValueResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	if (arguments.empty()) {
+//! An array of the type the arguments unify into, with one element for each argument
+LogicalType ArrayValueReturnType(const ResolveReturnTypeInput &input) {
+	const auto argument_count = input.GetArgumentCount();
+	if (argument_count == 0) {
 		throw InvalidInputException("array_value requires at least one argument");
 	}
-
-	// construct return type
-	LogicalType child_type = arguments[0]->GetReturnType();
-	for (idx_t i = 1; i < arguments.size(); i++) {
-		child_type = LogicalType::MaxLogicalType(context, child_type, arguments[i]->GetReturnType());
-	}
-
-	if (arguments.size() > ArrayType::MAX_ARRAY_SIZE) {
+	if (argument_count > ArrayType::MAX_ARRAY_SIZE) {
 		throw OutOfRangeException("Array size exceeds maximum allowed size");
 	}
-
-	// Cast all arguments to the common child type so that execution and statistics see matching types.
-	auto &function_args = bound_function.GetArguments();
-	function_args.clear();
-	function_args.reserve(arguments.size());
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		function_args.push_back(child_type);
-	}
-
-	bound_function.SetReturnType(LogicalType::ARRAY(child_type, arguments.size()));
+	return LogicalType::ARRAY(input.GetArgumentType(0), argument_count);
 }
 
 unique_ptr<BaseStatistics> ArrayValueStats(ClientContext &context, FunctionStatisticsInput &input) {
@@ -89,11 +72,13 @@ unique_ptr<BaseStatistics> ArrayValueStats(ClientContext &context, FunctionStati
 } // namespace
 
 ScalarFunction ArrayValueFun::GetFunction() {
-	// the arguments and return types are actually set in the binder function
+	auto element_type = TypeName::VARIABLE("T");
 	ScalarFunction fun("array_value",
-	                   FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
+	                   FunctionSignature()
+	                       .AddVariable("T")
+	                       .AddArgs("args", element_type)
+	                       .SetReturnType(ReturnType::ANY(ArrayValueReturnType)),
 	                   ArrayValueFunction, VariableReturnBindData::Bind, ArrayValueStats);
-	fun.SetResolveTypesCallback(ArrayValueResolveTypes);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// casting the arguments to the common child type can fail, e.g. for arrays of different sizes
 	fun.SetFallible();

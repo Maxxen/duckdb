@@ -18,12 +18,16 @@ static void ManyArrayLengthFunction(DataChunk &args, ExpressionState &state, Vec
 	JSONExecutors::ExecuteMany<uint64_t>(args, state, result, GetArrayLength);
 }
 
+static LogicalType ArrayLengthReturnType(const ResolveReturnTypeInput &input) {
+	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::UBIGINT);
+}
+
 static void GetArrayLengthFunctionsInternal(ScalarFunctionSet &set, const LogicalType &input_type) {
 	ScalarFunction unary_fun({}, LogicalType::UBIGINT, UnaryArrayLengthFunction, nullptr, nullptr,
 	                         JSONFunctionLocalState::Init);
 	unary_fun.GetSignature().AddParameter("json", input_type);
 	set.AddFunction(unary_fun);
-	ScalarFunction path_fun({}, LogicalType::UBIGINT, BinaryArrayLengthFunction, JSONReadFunctionData::Bind, nullptr,
+	ScalarFunction path_fun({}, ReturnType::ANY(ArrayLengthReturnType), BinaryArrayLengthFunction, JSONReadFunctionData::Bind, nullptr,
 	                        JSONFunctionLocalState::Init);
 	path_fun.GetSignature().AddParameter("json", input_type).AddParameter("path", LogicalType::VARCHAR);
 	path_fun.SetResolveTypesCallback(JSONReadFunctionData::ResolveTypes);
